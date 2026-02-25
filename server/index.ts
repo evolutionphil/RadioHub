@@ -415,6 +415,8 @@ if (isProduction && mongoUri) {
 app.use(session(sessionConfig));
 
 app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'production') return next();
+
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;

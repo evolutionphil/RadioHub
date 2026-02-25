@@ -1,11 +1,14 @@
 /**
- * Logger utility - Now enabled in all environments
- * User requested production logging for debugging
+ * Logger utility
+ * - Production: only errors and warnings
+ * - Development: everything
  */
+
+const isProd = process.env.NODE_ENV === 'production';
 
 export const logger = {
   log: (...args: any[]) => {
-    console.log(...args);
+    if (!isProd) console.log(...args);
   },
   error: (...args: any[]) => {
     console.error(...args);
@@ -14,9 +17,9 @@ export const logger = {
     console.warn(...args);
   },
   info: (...args: any[]) => {
-    console.info(...args);
+    if (!isProd) console.info(...args);
   },
   debug: (...args: any[]) => {
-    console.debug(...args);
+    if (!isProd) console.debug(...args);
   }
 };
