@@ -4662,6 +4662,40 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         return res.status(400).json({ error: 'Country code, name, or "global" is required' });
       }
 
+      // Cold-start fallback: if precomputed cache returned empty (warmup in progress),
+      // serve a quick direct DB query so users don't see blank page
+      if (result.stations.length === 0 && result.total === 0) {
+        const offset = (pageNum - 1) * limitNum;
+        const matchFilter: any = { lastCheckOk: true };
+        const isGlobal = countryName === 'global' || country === 'global';
+        if (!isGlobal) {
+          const resolvedCountry = countryName || (country ? (await import('./utils/normalize-country')).normalizeCountryFilter(country as string) : null);
+          if (resolvedCountry) {
+            matchFilter.country = { $regex: new RegExp(`^${resolvedCountry}$`, 'i') };
+          }
+        }
+        const [fallbackStations, fallbackTotal] = await Promise.all([
+          Station.find(matchFilter, {
+            _id:1, slug:1, name:1, url:1, url_resolved:1,
+            favicon:1, logo:1, country:1, state:1, votes:1,
+            tags:1, codec:1, bitrate:1, logoAssets:1
+          }).sort({ votes: -1 }).skip(offset).limit(limitNum).lean(),
+          Station.countDocuments(matchFilter)
+        ]);
+        logger.log(`⚡ COLD-START FALLBACK: served ${fallbackStations.length} stations directly from DB`);
+        return res.json({
+          success: true,
+          data: fallbackStations,
+          pagination: {
+            page: pageNum,
+            limit: limitNum,
+            total: fallbackTotal,
+            totalPages: Math.ceil(fallbackTotal / limitNum)
+          },
+          cached: false
+        });
+      }
+
       res.json({
         success: true,
         data: result.stations,
