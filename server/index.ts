@@ -173,6 +173,11 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'development' || req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
     return next();
   }
+
+  // Skip HTTPS redirect for health check endpoints (Railway/internal probes use HTTP)
+  if (req.path === '/api/health' || req.path === '/health') {
+    return next();
+  }
   
   // Check if connection is HTTP (not secure and no proxy HTTPS header)
   const isHttpOnly = !req.secure && req.get('x-forwarded-proto') !== 'https';
