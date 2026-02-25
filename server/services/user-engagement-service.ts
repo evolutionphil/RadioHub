@@ -82,16 +82,15 @@ export class UserEngagementService {
           isPublicProfile: true
         });
       } else {
-        // Find user by slug (derived from email, username, or fullName)
+        // Find user by slug (indexed field, fast lookup)
         user = await User.findOne({ 
-          $or: [
-            { slug: slug },
-            { email: new RegExp(slug, 'i') },
-            { username: new RegExp(slug, 'i') },
-            { fullName: new RegExp(slug, 'i') }
-          ],
+          slug: slug,
           isPublicProfile: true
         });
+        // Fallback: try username if slug not found
+        if (!user) {
+          user = await User.findOne({ username: slug, isPublicProfile: true });
+        }
       }
       
       if (!user) {
