@@ -10478,7 +10478,7 @@ ${keysText}`;
   app.get("/api/public-profiles", async (req, res) => {
     try {
       // Check cache first - 24 hours TTL (public profiles rarely change)
-      const cacheKey = 'public_profiles:v3';
+      const cacheKey = 'public_profiles:v4';
       const cachedData = await CacheManager.get(cacheKey);
       if (cachedData) {
         return res.json({ data: cachedData });
@@ -10574,8 +10574,8 @@ ${keysText}`;
       // Final result: users with photos first, then others
       const finalProfiles = [...withPhotos, ...withoutPhotos].slice(0, 70);
 
-      // Cache the results for 24 hours (public profiles rarely change)
-      await CacheManager.set(cacheKey, finalProfiles, { ttl: 86400 });
+      // Cache the results for 1 hour
+      await CacheManager.set(cacheKey, finalProfiles, { ttl: 3600 });
 
       res.json({ data: finalProfiles });
     } catch (error) {
