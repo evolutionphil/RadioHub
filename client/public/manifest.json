@@ -1,0 +1,65 @@
+{
+  "name": "Mega Radio - Live Radio Streaming",
+  "short_name": "Mega Radio",
+  "description": "Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f0f23",
+  "theme_color": "#1a1a2e",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en",
+  "categories": ["music", "entertainment", "news"],
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Browse Stations",
+      "short_name": "Stations",
+      "description": "Browse all radio stations",
+      "url": "/stations",
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Browse Genres",
+      "short_name": "Genres",
+      "description": "Discover music by genre",
+      "url": "/genres",
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Popular Stations",
+      "short_name": "Popular",
+      "description": "Listen to popular radio stations",
+      "url": "/popular",
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}

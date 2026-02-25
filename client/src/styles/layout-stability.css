@@ -1,0 +1,196 @@
+/* Layout Stability - Prevent Cumulative Layout Shift (CLS) */
+
+/* Reserve space for flag images to prevent shifts */
+.flag-container {
+  width: 20px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.flag-image {
+  width: 20px;
+  height: 16px;
+  object-fit: cover;
+  border-radius: 2px;
+}
+
+/* Stable navigation layout */
+.nav-container {
+  min-height: 64px; /* Reserve space for header */
+  display: flex;
+  align-items: center;
+}
+
+/* Prevent button text reflow */
+.nav-item {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 8px 12px;
+}
+
+/* Country selector stable dimensions */
+.country-selector {
+  min-width: 120px;
+  width: auto;
+  max-width: 180px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Authentication section stable layout */
+.auth-section {
+  min-width: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+/* User menu stable dimensions */
+.user-menu-trigger {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Logo container - prevent shift */
+.logo-container {
+  width: 120px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Mobile menu button stable size */
+.mobile-menu-button {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Search input stable layout */
+.search-input-container {
+  min-width: 200px;
+  max-width: 400px;
+  width: 100%;
+  position: relative;
+}
+
+/* Dropdown stable positioning */
+.dropdown-container {
+  position: relative;
+  display: inline-block;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 50;
+  min-width: 200px;
+  /* Use transform instead of changing position properties */
+  transform: translateY(8px);
+}
+
+/* Skeleton loading to prevent shifts */
+.nav-skeleton {
+  background: linear-gradient(90deg, #2a2a2a 25%, #3a3a3a 50%, #2a2a2a 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.nav-skeleton-text {
+  height: 20px;
+  width: 80px;
+}
+
+.nav-skeleton-button {
+  height: 40px;
+  width: 100px;
+}
+
+.nav-skeleton-flag {
+  height: 16px;
+  width: 20px;
+}
+
+/* Prevent layout shifts from dynamic content */
+.stable-grid {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 64px;
+}
+
+/* Mobile responsive stability */
+@media (max-width: 768px) {
+  .auth-section {
+    min-width: 120px;
+  }
+  
+  .country-selector {
+    min-width: 100px;
+    max-width: 140px;
+  }
+  
+  .nav-item {
+    padding: 6px 8px;
+    font-size: 14px;
+  }
+}
+
+/* Animation stability - use transforms only */
+.stable-animation {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.stable-animation:hover {
+  transform: translateY(-1px);
+}
+
+/* Prevent shifts from loading states */
+.loading-placeholder {
+  background: #2a2a2a;
+  border-radius: 4px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 0.8; }
+}
+
+/* Stable aspect ratios for images */
+.aspect-ratio-1-1 {
+  aspect-ratio: 1 / 1;
+}
+
+.aspect-ratio-4-3 {
+  aspect-ratio: 4 / 3;
+}
+
+.aspect-ratio-16-9 {
+  aspect-ratio: 16 / 9;
+}

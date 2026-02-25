@@ -1,0 +1,92 @@
+/* Desktop-specific CSS - Load only on desktop devices */
+
+@media (min-width: 1024px) {
+  /* Desktop-specific optimizations */
+  .desktop-layout {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 2rem;
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+  
+  /* Desktop navigation */
+  .desktop-nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 2rem 1rem;
+  }
+  
+  /* Desktop hover effects */
+  .desktop-hover {
+    transition: all 0.3s ease;
+  }
+  
+  .desktop-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Desktop typography */
+  .desktop-heading {
+    font-size: 2.5rem;
+    line-height: 1.2;
+    margin: 2rem 0;
+  }
+  
+  .desktop-text {
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+  
+  /* Desktop grid layouts */
+  .desktop-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+  }
+  
+  /* Desktop sidebar */
+  .desktop-sidebar {
+    width: 300px;
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    background: #1a1a1a;
+    padding: 2rem 1rem;
+    overflow-y: auto;
+  }
+  
+  /* Desktop main content */
+  .desktop-main {
+    margin-left: 300px;
+    padding: 2rem;
+  }
+}
+
+@media (min-width: 1440px) {
+  /* Large desktop screens */
+  .xl-desktop-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  
+  .xl-desktop-spacing {
+    gap: 3rem;
+    padding: 3rem;
+  }
+}
+
+@media (min-width: 1920px) {
+  /* Extra large desktop screens */
+  .xxl-desktop-container {
+    max-width: 1800px;
+    margin: 0 auto;
+  }
+  
+  .xxl-desktop-grid {
+    grid-template-columns: repeat(5, 1fr);
+  }
+}

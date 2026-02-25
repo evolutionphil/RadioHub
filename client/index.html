@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mega Radio - Listen to Free Live Radio Online</title>
+    <meta name="description" content="Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free." />
+    
+    <!-- SEO Meta Tags -->
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="bingbot" content="index, follow" />
+    <meta name="yandex-verification" content="57c83c6ab08ec3ba" />
+    <!-- Canonical tag dynamically set by SeoHead component -->
+    
+    <!-- Favicon and Apple Touch Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.json">
+    
+    <!-- Mobile and PWA Meta Tags -->
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="apple-mobile-web-app-title" content="Mega Radio">
+    <!-- CRITICAL for Safari iOS background audio: prevent PWA mode -->
+    <meta name="apple-mobile-web-app-capable" content="no" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Mega Radio">
+    <meta name="msapplication-TileColor" content="#1a1a2e">
+    <meta name="msapplication-TileImage" content="/apple-touch-icon.png">
+    
+    <!-- Core Web Vitals Performance Optimizations - No external font requests -->
+    <link rel="dns-prefetch" href="https://flagcdn.com">
+    
+    <!-- 🚀 Preload critical resources for LCP optimization -->
+    <link rel="preload" href="/header-logo-80w.webp" as="image" type="image/webp">
+    <!-- 🚀 CRITICAL: Hero background - mobile-first preload -->
+    <link rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 430px)">
+    <link rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 431px)">
+    
+    <!-- 🚀 Preload local Ubuntu fonts for critical weights (400, 600) -->
+    <link rel="preload" href="/fonts/ubuntu-400.ttf" as="font" type="font/ttf" crossorigin>
+    <link rel="preload" href="/fonts/ubuntu-600.ttf" as="font" type="font/ttf" crossorigin>
+    
+    <!-- Critical above-the-fold CSS - INLINED -->
+    <style>
+      /* Critical CSS for immediate rendering */
+      body { 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #0a0a0a;
+        color: #ffffff;
+        line-height: 1.5;
+      }
+      
+      *, *::before, *::after { box-sizing: border-box; }
+      
+      img { 
+        height: auto; 
+        max-width: 100%;
+        display: block;
+        /* SEO: Native lazy loading for better performance */
+        loading: lazy;
+      }
+      
+      /* CLS OPTIMIZATION: Images with width/height preserve aspect ratio automatically in modern browsers */
+      
+      /* Optimize above-the-fold images */
+      img[data-priority="high"] {
+        loading: eager;
+      }
+      
+      .header-critical {
+        background-color: #0a0a0a;
+        border-bottom: 1px solid #1f1f1f;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+      }
+      
+      .container-critical {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1rem;
+      }
+      
+      .btn-critical {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: background-color 0.2s;
+        border: none;
+        cursor: pointer;
+      }
+      
+      .btn-primary-critical {
+        background-color: #dc2626;
+        color: white;
+      }
+      
+      .btn-primary-critical:hover {
+        background-color: #b91c1c;
+      }
+      
+      .below-fold { visibility: hidden; }
+      
+      .skeleton {
+        background: linear-gradient(90deg, #1f1f1f 25%, #2a2a2a 50%, #1f1f1f 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+      }
+      
+      @keyframes loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      
+      .search-critical {
+        background-color: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        width: 100%;
+        max-width: 400px;
+      }
+      
+      @media (max-width: 768px) {
+        .container-critical { padding: 0 0.75rem; }
+        .btn-critical { padding: 0.5rem 0.75rem; font-size: 0.875rem; }
+      }
+    </style>
+    
+    <!-- Performance monitoring script -->
+    <script>
+      // Early performance monitoring
+      window.performance = window.performance || {};
+      window.performance.mark && window.performance.mark('head-end');
+    </script>
+
+    <!-- Base Structured Data (JSON-LD) for SEO -->
+    <script type="application/ld+json" id="base-structured-data">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "Mega Radio",
+      "url": "https://themegaradio.com",
+      "alternateName": "MegaRadio",
+      "logo": "https://themegaradio.com/images/logo-icon.webp",
+      "description": "Mega Radio - Your ultimate destination for live radio streaming from around the world. Discover thousands of radio stations across all genres and countries.",
+      "sameAs": [
+        "https://themegaradio.com"
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "customer service"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://themegaradio.com/?search={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+
+    <script type="application/ld+json" id="website-structured-data">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "Mega Radio - Live Radio Streaming",
+      "url": "https://themegaradio.com",
+      "description": "Stream live radio stations from around the world. Discover music, news, talk shows, and more across thousands of radio stations in multiple languages and genres.",
+      "inLanguage": ["en", "es", "fr", "de", "tr", "ar"],
+      "audience": {
+        "@type": "Audience",
+        "audienceType": "Music lovers, radio enthusiasts, international listeners"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://themegaradio.com/?search={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
+
+    <!-- Microsoft Clarity tracking code for https://themegaradio.com/ - Deferred for performance -->
+    <script type="text/javascript">
+    // Defer Clarity analytics to requestIdleCallback for better TBT
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(function() {
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i+"?ref=bwt";
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "u56nfdsjou");
+      }, { timeout: 5000 });
+    } else {
+      // Fallback for older browsers
+      setTimeout(function() {
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i+"?ref=bwt";
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "u56nfdsjou");
+      }, 2000);
+    }
+    </script>
+
+    <!-- Ahrefs Analytics - Deferred for performance -->
+    <script>
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(function() {
+        var script = document.createElement('script');
+        script.src = 'https://analytics.ahrefs.com/analytics.js';
+        script.async = true;
+        script.dataset.key = 'QNVkFrmfdtnDdToXyhwXww';
+        document.head.appendChild(script);
+      }, { timeout: 5000 });
+    } else {
+      var script = document.createElement('script');
+      script.src = 'https://analytics.ahrefs.com/analytics.js';
+      script.async = true;
+      script.dataset.key = 'QNVkFrmfdtnDdToXyhwXww';
+      document.head.appendChild(script);
+    }
+    </script>
+
+    <!-- Google AdSense -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434" crossorigin="anonymous"></script>
+    
+    <!-- Google Cast SDK for Chromecast -->
+    <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    <!-- Main application script -->
+    <script type="module" src="/src/main.tsx"></script>
+    
+    <!-- Script to show below-fold content and optimize loading -->
+    <script>
+      // Performance optimizations
+      window.performance.mark && window.performance.mark('body-start');
+      
+      document.addEventListener('DOMContentLoaded', function() {
+        // Show below-fold content after initial render
+        setTimeout(function() {
+          var belowFoldElements = document.querySelectorAll('.below-fold');
+          belowFoldElements.forEach(function(el) {
+            el.style.visibility = 'visible';
+          });
+          
+          // Mark critical content as loaded
+          window.performance.mark && window.performance.mark('critical-content-loaded');
+        }, 100);
+        
+        // Preload next page resources on hover
+        document.addEventListener('mouseover', function(e) {
+          if (e.target.tagName === 'A' && e.target.href) {
+            var link = document.createElement('link');
+            link.rel = 'prefetch';
+            link.href = e.target.href;
+            document.head.appendChild(link);
+          }
+        }, { once: true, passive: true });
+      });
+      
+      // Critical Web Vitals measurement
+      window.addEventListener('load', function() {
+        window.performance.mark && window.performance.mark('page-loaded');
+      });
+    </script>
+  </body>
+</html>

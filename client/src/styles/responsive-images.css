@@ -1,0 +1,55 @@
+/* Responsive Image Optimizations */
+
+/* Ensure all images scale properly and don't exceed container */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Optimize large background images for mobile */
+@media (max-width: 768px) {
+  .hero-background,
+  .device-showcase,
+  .promotional-image {
+    background-size: cover;
+    background-position: center;
+  }
+}
+
+/* Prevent layout shift while images load */
+.aspect-ratio-container {
+  position: relative;
+  overflow: hidden;
+}
+
+.aspect-ratio-container::before {
+  content: '';
+  display: block;
+  padding-top: var(--aspect-ratio, 56.25%); /* 16:9 default */
+}
+
+.aspect-ratio-container > img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Lazy loading optimization */
+img[loading="lazy"] {
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+img[loading="lazy"].loaded {
+  opacity: 1;
+}
+
+/* Reduce image quality on slower connections */
+@media (prefers-reduced-data: reduce) {
+  img {
+    filter: contrast(1.1) saturate(1.1);
+  }
+}

@@ -1,0 +1,58 @@
+modules = ["nodejs-20", "web", "python-3.11", "postgresql-16"]
+run = "npm run dev"
+hidden = [".config", ".git", "generated-icon.png", "node_modules", "dist"]
+
+[nix]
+channel = "stable-24_05"
+packages = ["ffmpeg", "glibcLocales", "jq", "unzip"]
+
+[deployment]
+deploymentTarget = "autoscale"
+build = ["npm", "run", "build"]
+run = ["npm", "run", "start"]
+
+[env]
+PORT = "5000"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npm run dev"
+waitForPort = 5000
+
+[objectStorage]
+defaultBucketID = "replit-objstore-8f5e4f39-25ed-4879-8ca1-85d6f335f5fe"
+
+[agent]
+integrations = ["javascript_google_analytics:1.0.0", "javascript_openai_ai_integrations:1.0.0"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[userenv]
+
+[userenv.shared]
+GOOGLE_CALLBACK_URL = "https://themegaradio.com/api/auth/google/callback"
+GOOGLE_IOS_CLIENT_ID = "246210957471-18662dh38h9tmlk7nppdk15ucbha4emk.apps.googleusercontent.com"
+APPLE_CLIENT_ID = "com.visiongo.megaradio"
+APPLE_TEAM_ID = "M6T85HP76P"

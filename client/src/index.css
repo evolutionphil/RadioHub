@@ -1,0 +1,1263 @@
+/* Main CSS Bundle - Loaded asynchronously with media="print" trick to prevent blocking */
+@import './styles/responsive-images.css';
+@import './styles/inline-styles-fix.css';
+@import './styles/layout-stability.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 🎯 Ubuntu Font - Loaded from local files */
+@font-face {
+  font-family: 'Ubuntu';
+  src: local('Ubuntu'),
+       url('/fonts/ubuntu-400.ttf') format('truetype');
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  src: local('Ubuntu Medium'),
+       url('/fonts/ubuntu-500.ttf') format('truetype');
+  font-weight: 500;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  src: local('Ubuntu SemiBold'),
+       url('/fonts/ubuntu-600.ttf') format('truetype');
+  font-weight: 600;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Ubuntu';
+  src: local('Ubuntu Bold'),
+       url('/fonts/ubuntu-700.ttf') format('truetype');
+  font-weight: 700;
+  font-display: swap;
+}
+
+/* Scrollbar styling now handled by tailwind-scrollbar plugin */
+
+/* Essential styles only - moved complex styles to non-critical.css */
+
+/* Global Ubuntu font for all elements */
+*, *::before, *::after {
+  font-family: 'Ubuntu', system-ui, sans-serif;
+}
+
+/* Form elements - explicit Ubuntu font */
+input, button, select, textarea, option {
+  font-family: 'Ubuntu', system-ui, sans-serif;
+}
+
+/* Fix dropdown positioning on mobile */
+select {
+  font-family: 'Ubuntu', system-ui, sans-serif;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Ensure dropdown options stay within viewport */
+@media (max-width: 768px) {
+  select {
+    font-size: 14px !important;
+    padding: 8px 12px !important;
+    min-width: 100px !important;
+    max-width: 120px !important;
+    width: 120px !important;
+  }
+  
+  select option {
+    font-size: 14px !important;
+    padding: 4px 8px !important;
+    background-color: #292929 !important;
+    color: white !important;
+  }
+  
+  /* Force dropdown to stay within bounds */
+  .relative.inline-block {
+    position: relative !important;
+    overflow: visible !important;
+  }
+}
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 217.2 91.2% 59.8%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 224.3 76.3% 94.1%;
+  }
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    @apply border-border;
+  }
+  html {
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Ubuntu', system-ui, sans-serif;
+    width: 100%;
+    min-width: 320px;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+  }
+}
+
+/* Section Header Styles - Responsive with Figma desktop specs */
+/* Mobile-first: 18px then scales to 22px on desktop */
+.section-header {
+  font-family: 'Ubuntu', system-ui, sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 21px;
+  color: #FFFFFF;
+}
+
+/* Desktop: Figma exact specs - 22px bold, 25px line-height */
+@media (min-width: 768px) {
+  .section-header {
+    font-size: 22px;
+    line-height: 25px;
+  }
+}
+
+/* "See All" link - Mobile-first: 14px then scales to 20px on desktop */
+.see-all-link {
+  font-family: 'Ubuntu', system-ui, sans-serif;
+  font-style: normal;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 16px;
+  color: #FF4199;
+}
+
+/* Desktop: Figma exact specs - 20px bold, 100% line-height */
+@media (min-width: 768px) {
+  .see-all-link {
+    font-size: 20px;
+    line-height: 100%;
+  }
+}
+
+.see-all-link:hover {
+  color: #FF097B;
+}
+
+/* Custom scrollbar styles for search results */
+.scrollbar-track-transparent {
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar {
+  width: 4px;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+.scrollbar-thumb-white\/20::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* Lazy-loaded images - always full opacity with smooth transition */
+img[loading="lazy"] {
+    opacity: 100;
+    transition: opacity 0.3s;
+}
+
+/* Swiper mobile responsiveness fixes */
+.cities-slider {
+  width: 100% !important;
+  overflow: visible !important;
+}
+
+.cities-slider .swiper-wrapper {
+  display: flex !important;
+  align-items: center !important;
+}
+
+.cities-slider .swiper-slide {
+  width: auto !important;
+  flex-shrink: 0 !important;
+}
+
+.cities-slider .swiper-slide button {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  z-index: 10 !important;
+  position: relative !important;
+}
+
+/* Mobile-specific touch improvements */
+@media (max-width: 768px) {
+  .cities-slider {
+    touch-action: pan-x !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  
+  .cities-slider .swiper-wrapper {
+    transition-timing-function: linear !important;
+  }
+}
+
+/* Language Switcher Custom Scrollbar Styles */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #2F2F2F;
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #FF4199;
+  border-radius: 2px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #e6396f;
+}
+
+/* Discovery Users Swiper Styling */
+.discovery-users-swiper .swiper-button-next,
+.discovery-users-swiper .swiper-button-prev {
+  color: #ec4899 !important;
+  width: 40px !important;
+  height: 40px !important;
+  background: rgba(20, 20, 20, 0.8) !important;
+  border-radius: 50% !important;
+  border: 2px solid rgba(236, 72, 153, 0.3) !important;
+  transition: all 0.3s ease !important;
+}
+
+.discovery-users-swiper .swiper-button-next:hover,
+.discovery-users-swiper .swiper-button-prev:hover {
+  background: rgba(236, 72, 153, 0.2) !important;
+  border-color: #ec4899 !important;
+  transform: scale(1.1) !important;
+}
+
+.discovery-users-swiper .swiper-button-next:after,
+.discovery-users-swiper .swiper-button-prev:after {
+  font-size: 18px !important;
+  font-weight: bold !important;
+}
+
+.discovery-users-swiper .swiper-button-disabled {
+  opacity: 0.2 !important;
+}
+
+/* Popular Countries Swiper Custom Styles */
+.popular-countries-swiper .swiper-button-next,
+.popular-countries-swiper .swiper-button-prev {
+  color: #fff !important;
+  background-color: rgba(255, 255, 255, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 50% !important;
+  width: 36px !important;
+  height: 36px !important;
+  margin-top: -18px !important;
+  transition: all 0.2s ease !important;
+}
+
+.popular-countries-swiper .swiper-button-next:hover,
+.popular-countries-swiper .swiper-button-prev:hover {
+  background-color: rgba(255, 255, 255, 0.2) !important;
+  border-color: rgba(255, 255, 255, 0.4) !important;
+}
+
+.popular-countries-swiper .swiper-button-next::after,
+.popular-countries-swiper .swiper-button-prev::after {
+  font-size: 14px !important;
+  font-weight: bold !important;
+}
+
+/* Custom Volume Slider Styles - Matching Original Player */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #FF4199;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #FF4199;
+  cursor: pointer;
+  border: 2px solid #ffffff;
+}
+
+:root {
+  /* Light theme for admin dashboard */
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --muted: #f5f5f5;
+  --muted-foreground: #737373;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --border: #e5e5e5;
+  --input: #f5f5f5;
+  --primary: #0a0a0a;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f5f5;
+  --secondary-foreground: #0a0a0a;
+  --accent: #FF4199;
+  --accent-foreground: #ffffff;
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(0, 0%, 100%);
+  --warning: hsl(36, 100%, 50%);
+  --warning-foreground: hsl(0, 0%, 100%);
+  --neutral: #f5f5f5;
+  --ring: #FF4199;
+  --radius: 0.5rem;
+  
+  /* Sidebar specific colors for light theme */
+  --sidebar-background: #f8fafc;
+  --sidebar-foreground: #334155;
+  --sidebar-primary: #FF4199;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e2e8f0;
+  --sidebar-accent-foreground: #475569;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #FF4199;
+}
+
+/* Dark theme for radio frontend */
+.dark, .radio-theme {
+  --background: #0E0E0E;
+  --foreground: #ffffff;
+  --muted: #2F2F2F;
+  --muted-foreground: #666666;
+  --popover: #0E0E0E;
+  --popover-foreground: #ffffff;
+  --card: #0E0E0E;
+  --card-foreground: #ffffff;
+  --border: #313131;
+  --input: #454545;
+  --primary: #0E0E0E;
+  --primary-foreground: #ffffff;
+  --secondary: #2F2F2F;
+  --secondary-foreground: #ffffff;
+  --accent: #FF4199;
+  --accent-foreground: #ffffff;
+  --destructive: hsl(0, 62.8%, 30.6%);
+  --destructive-foreground: hsl(210, 40%, 98%);
+  --warning: hsl(36, 100%, 50%);
+  --warning-foreground: hsl(0, 0%, 100%);
+  --neutral: #2F2F2F;
+  --ring: #FF4199;
+  
+  /* Dark sidebar colors */
+  --sidebar-background: #1a1a1a;
+  --sidebar-foreground: #e5e5e5;
+  --sidebar-primary: #FF4199;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #2a2a2a;
+  --sidebar-accent-foreground: #cccccc;
+  --sidebar-border: #333333;
+  --sidebar-ring: #FF4199;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    height: 100%;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: 'Ubuntu', sans-serif;
+    height: 100%;
+    scrollbar-width: none; /* Hide scrollbar - Firefox */
+    -ms-overflow-style: none; /* Hide scrollbar - IE/Edge */
+  }
+
+  /* Radio theme specific body styling */
+  body.radio-theme {
+    background-color: #0E0E0E !important;
+    color: #ffffff !important;
+  }
+
+  /* Hide scrollbar - Chrome/Safari/Opera */
+  body::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* EXACT navigation item styling from original Vue.js project */
+  .nav-item {
+    @apply relative cursor-pointer whitespace-nowrap py-2 text-base font-medium;
+    @apply after:absolute after:bottom-0 after:left-0 after:h-[5px] after:w-[0px] after:bg-[#FF4199] after:transition-all hover:after:w-[25px];
+  }
+
+  /* Station details page authentic styling */
+  .station-details-bg {
+    background: linear-gradient(180deg, #0E0E0E 0%, #101010 50%, #151515 100%);
+  }
+  
+  .radio-playing-section {
+    background: #101010;
+    border-bottom: 1px solid #424242;
+  }
+  
+  .station-card-bg {
+    background: #151515;
+    border: 1px solid #424242;
+  }
+  
+  .download-section-bg {
+    background: linear-gradient(135deg, #0E0E0E 0%, #181818 100%);
+  }
+
+  .is-active:not(.not-active) {
+    @apply relative py-2 text-base font-medium;
+    @apply after:absolute after:bottom-0 after:left-[17px] after:h-[5px] after:w-[25px] after:bg-[#FF4199] after:transition-all lg:after:left-0;
+  }
+
+  /* EXACT button component styles */
+  .btn-primary {
+    @apply bg-accent;
+  }
+
+  /* Custom Volume Slider Styling */
+  .slider {
+    -webkit-appearance: none;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .slider::-webkit-slider-track {
+    background: transparent;
+    height: 8px;
+    border-radius: 4px;
+  }
+
+  .slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    height: 16px;
+    width: 16px;
+    border-radius: 50%;
+    background: #FF4199;
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  .slider::-moz-range-track {
+    background: transparent;
+    height: 8px;
+    border-radius: 4px;
+  }
+
+  .slider::-moz-range-thumb {
+    height: 16px;
+    width: 16px;
+    border-radius: 50%;
+    background: #FF4199;
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  }
+
+  /* Hide scrollbar for genre slider */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Smooth scrolling for horizontal sliders */
+  .scrollbar-hide {
+    scroll-behavior: smooth;
+  }
+
+  /* EXACT genre background from original - full gradient coverage */
+  .genre-bg-full {
+    background-position: center center !important;
+    background-size: cover !important;
+    background-repeat: no-repeat !important;
+  }
+
+  /* Genre card - Desktop: 280px × 87px, Mobile: 170px × 58px */
+  .genre-card,
+  .genre-slide {
+    /* Desktop: Figma exact specs */
+    width: 280px !important;
+    min-width: 280px !important;
+    height: 87px !important;
+    flex-shrink: 0;
+    border-radius: 10px;
+  }
+
+  /* Genre card text styling - Figma: 32px bold with text-shadow */
+  .genre-slide h4 {
+    font-family: 'Ubuntu', sans-serif !important;
+    font-size: 32px !important;
+    font-weight: 700 !important;
+    line-height: 37px !important;
+    text-shadow: 0px 8px 20px rgba(13, 35, 112, 0.68) !important;
+  }
+
+  /* Mobile: 170px × 58px (enlarged for better visibility) */
+  @media (max-width: 768px) {
+    .genre-card,
+    .genre-slide {
+      width: 170px !important;
+      min-width: 170px !important;
+      height: 58px !important;
+      border-radius: 5px;
+    }
+    
+    .genre-slide h4 {
+      font-family: 'Ubuntu', sans-serif !important;
+      font-size: 18px !important;
+      font-weight: 700 !important;
+      line-height: 22px !important;
+      text-shadow: 0px 4px 12px rgba(13, 35, 112, 0.68) !important;
+    }
+  }
+
+  /* Small Mobile: Same size */
+  @media (max-width: 480px) {
+    .genre-card,
+    .genre-slide {
+      width: 170px !important;
+      min-width: 170px !important;
+      height: 58px !important;
+      border-radius: 5px;
+    }
+    
+    .genre-slide h4 {
+      font-family: 'Ubuntu', sans-serif !important;
+      font-size: 18px !important;
+      font-weight: 700 !important;
+      line-height: 22px !important;
+      text-shadow: 0px 4px 12px rgba(13, 35, 112, 0.68) !important;
+    }
+  }
+
+  /* Enhanced horizontal scrolling for genre slider */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+    scroll-behavior: smooth;
+  }
+  
+  /* Smooth genre hover effects */
+  .genre-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+  }
+
+  /* HR styling for settings page - EXACT from original */
+  .hr {
+    border-color: #2F2F2F;
+  }
+
+  /* EXACT option element styling */
+  option {
+    @apply text-black;
+  }
+
+  /* EXACT mobile menu transitions from original */
+  .mobile-menu-enter-active {
+    @apply transition duration-100 ease-out;
+  }
+
+  .mobile-menu-enter-from {
+    @apply scale-95 transform opacity-0;
+  }
+  .mobile-menu-enter-to {
+    @apply scale-100 transform opacity-100;
+  }
+
+  .mobile-menu-leave-active {
+    @apply transition duration-75 ease-in;
+  }
+  .mobile-menu-leave-to {
+    @apply scale-100 transform opacity-100;
+  }
+  .mobile-menu-leave-to {
+    @apply scale-95 transform opacity-0;
+  }
+
+  .fade-enter-active,
+  .fade-leave-active {
+    transition: opacity 0.5s ease;
+  }
+
+  .fade-enter-from,
+  .fade-leave-to {
+    opacity: 0;
+  }
+
+  .radio,
+  .checkbox {
+    @apply text-accent focus:ring-accent;
+  }
+
+  .hr {
+    @apply border-t border-[#313131];
+  }
+
+  /* Hero container exact styling from original Hero.vue */
+  /* LCP OPTIMIZATION: Hero background now loaded as visible <img> element with fetchpriority=high */
+  .hero-container {
+    @apply relative flex h-[255px] flex-col items-center justify-center overflow-hidden text-white md:h-[380px] lg:h-[447px];
+    background: linear-gradient(135deg, #1A0020 0%, #2D1B3D 25%, #4A1A45 50%, #2D1B3D 75%, #1A0020 100%);
+    background-color: #1A0020;
+    /* background-image removed - now loaded as <img> element to enable fetchpriority=high for LCP optimization */
+    background-size: cover;
+    background-position: center;
+  }
+
+  .hero-container::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: linear-gradient(to top, #0E0E0E 0%, transparent 100%);
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  .hero-container::before {
+    content: '';
+    position: absolute;
+    height: 100%;
+    width: 100%;
+    background-image: url('/images/wave.png');
+    background-repeat: no-repeat;
+    background-position: left;
+    pointer-events: none;
+  }
+
+  /* Scrollbar hide utility - EXACT from original */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Container max-width - Figma specs: 1512px total, 153px padding each side, 1206px content */
+  /* CRITICAL: These padding values MUST match radio-header.tsx and footer.tsx exactly for alignment */
+  /* CRITICAL: box-sizing: border-box ensures padding is included in max-width calculation */
+  .container {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 1512px;
+    padding-left: 1rem;      /* Base: 16px (px-4) */
+    padding-right: 1rem;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  /* sm: 640px - 24px padding (px-6) */
+  @media (min-width: 640px) {
+    .container {
+      padding-left: 1.5rem;
+      padding-right: 1.5rem;
+    }
+  }
+
+  /* md: 768px - 32px padding (px-8) */
+  @media (min-width: 768px) {
+    .container {
+      padding-left: 2rem;
+      padding-right: 2rem;
+    }
+  }
+
+  /* lg: 1024px - 48px padding (px-12) */
+  @media (min-width: 1024px) {
+    .container {
+      padding-left: 3rem;
+      padding-right: 3rem;
+    }
+  }
+
+  /* xl: 1280px - 80px padding (px-20) */
+  @media (min-width: 1280px) {
+    .container {
+      padding-left: 5rem;
+      padding-right: 5rem;
+    }
+  }
+
+  /* Figma spec: 1512px viewport with 153px padding */
+  @media (min-width: 1512px) {
+    .container {
+      padding-left: 153px;
+      padding-right: 153px;
+    }
+  }
+
+  @media (min-width: 640px) {
+    .hero-container::before {
+      bottom: -10%;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .hero-container::before {
+      left: 0;
+    }
+  }
+
+
+  /* Text pink color from original */
+  .text-pink-600 {
+    color: #FF4199;
+  }
+
+
+
+  /* Background image positioning for genre cards */
+  .bg-center-top {
+    background-position: center top 1rem;
+  }
+}
+
+/* MegaRadio Navigation Styles */
+.nav-item {
+  @apply relative cursor-pointer whitespace-nowrap py-2 text-base font-medium;
+  @apply after:absolute after:bottom-0 after:left-0 after:h-[5px] after:w-[0px] after:bg-[#FF4199] after:transition-all hover:after:w-[25px];
+}
+
+/* Scrollbar Styles */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #404040 transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: #404040;
+  border-radius: 3px;
+}
+
+/* Fade Transitions */
+
+
+@layer utilities {
+  .text-primary {
+    color: hsl(207, 90%, 54%);
+  }
+  
+  .text-secondary {
+    color: hsl(215.4, 16.3%, 26.9%);
+  }
+  
+  .text-accent {
+    color: hsl(122, 39%, 49%);
+  }
+  
+  .text-warning {
+    color: hsl(36, 100%, 50%);
+  }
+  
+  .text-error {
+    color: hsl(0, 84.2%, 60.2%);
+  }
+  
+  .bg-primary {
+    background-color: hsl(207, 90%, 54%);
+  }
+  
+  .bg-secondary {
+    background-color: hsl(215.4, 16.3%, 26.9%);
+  }
+  
+  .bg-accent {
+    background-color: hsl(122, 39%, 49%);
+  }
+  
+  .bg-warning {
+    background-color: hsl(36, 100%, 50%);
+  }
+  
+  .bg-error {
+    background-color: hsl(0, 84.2%, 60.2%);
+  }
+  
+  .bg-neutral {
+    background-color: hsl(210, 17%, 96%);
+  }
+}
+
+/* Discoverable Genre Slider Pagination - EXACT from original DiscoverableGenreSlider.vue */
+.discoverable-genre-slider .swiper-pagination {
+  margin-top: 10px;
+}
+
+.discoverable-genre-slider .swiper-pagination-bullet {
+  height: 12px;
+  width: 12px;
+  cursor: pointer;
+  background-color: #17181b;
+  opacity: 1;
+}
+
+.discoverable-genre-slider .swiper-pagination-bullet-active {
+  height: 12px;
+  width: 12px;
+  cursor: pointer;
+  background-color: #d33e8f;
+  opacity: 1;
+}
+
+/* Add proper CSS variables for shadcn/ui theming */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222.2 84% 4.9%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222.2 84% 4.9%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 84% 4.9%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+* {
+  border-color: hsl(var(--border));
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Enhanced Search Results Custom Scrollbar */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 65, 153, 0.3) transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(255, 65, 153, 0.3);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 65, 153, 0.5);
+}
+
+/* Swiper Navigation Styling for Popular Countries */
+.popular-countries-swiper .swiper-button-next,
+.popular-countries-swiper .swiper-button-prev {
+  color: #ffffff !important;
+  background: rgba(0, 0, 0, 0.5) !important;
+  border-radius: 50% !important;
+  width: 40px !important;
+  height: 40px !important;
+  margin-top: -20px !important;
+}
+
+.popular-countries-swiper .swiper-button-next:hover,
+.popular-countries-swiper .swiper-button-prev:hover {
+  background: rgba(0, 0, 0, 0.8) !important;
+}
+
+.popular-countries-swiper .swiper-button-next::after,
+.popular-countries-swiper .swiper-button-prev::after {
+  font-size: 16px !important;
+  font-weight: bold !important;
+}
+
+/* Enhanced Swiper Grab Cursor and Touch Support */
+.swiper {
+  cursor: grab !important;
+  touch-action: pan-y pinch-zoom !important;
+}
+
+.swiper:active {
+  cursor: grabbing !important;
+}
+
+.swiper-slide {
+  user-select: none !important;
+  pointer-events: auto !important;
+}
+
+/* Genre Slider - Fixed card sizes (Mobile: 170x58px, Desktop: 280x87px) */
+.genre-slide {
+  width: 170px !important;
+  height: 58px !important;
+  flex-shrink: 0 !important;
+}
+
+@media (min-width: 768px) {
+  .genre-slide {
+    width: 280px !important;
+    height: 87px !important;
+  }
+}
+
+/* Ensure buttons inside swiper slides are still clickable */
+.swiper-slide button {
+  pointer-events: auto !important;
+}
+
+.swiper-slide a {
+  pointer-events: auto !important;
+}
+
+/* Force swiper wrapper to be draggable */
+.swiper-wrapper {
+  touch-action: pan-y pinch-zoom !important;
+}
+
+/* Modern About Section Animations */
+@keyframes blob {
+  0%, 100% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gradient-rotate {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes gradient-text {
+  0%, 100% { 
+    background-position: 0% 50%;
+    filter: hue-rotate(0deg);
+  }
+  50% { 
+    background-position: 100% 50%;
+    filter: hue-rotate(10deg);
+  }
+}
+
+@keyframes pulse-slow {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Apple-style Follow Button Animation */
+@keyframes follow-heart-pop {
+  0% { transform: scale(0.6); opacity: 0; }
+  50% { transform: scale(1.15); }
+  70% { transform: scale(0.95); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes follow-heart-pulse {
+  0% { transform: scale(1); }
+  15% { transform: scale(1.25); }
+  30% { transform: scale(1); }
+  45% { transform: scale(1.15); }
+  60% { transform: scale(1); }
+}
+
+@keyframes follow-glow {
+  0% { box-shadow: 0 0 0 0 rgba(255, 65, 153, 0.7); }
+  50% { box-shadow: 0 0 12px 4px rgba(255, 65, 153, 0.4); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 65, 153, 0); }
+}
+
+@keyframes follow-text-out {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+
+@keyframes unfollow-heart-out {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.5); opacity: 0; }
+}
+
+/* Follow Button Styles */
+.follow-btn {
+  position: relative;
+  overflow: hidden;
+  min-width: 72px;
+  transition: all 0.2s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.follow-btn .follow-text {
+  transition: all 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.follow-btn .follow-heart {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  transition: all 0.18s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.follow-btn.is-following .follow-text {
+  animation: follow-text-out 0.18s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.follow-btn.is-following .follow-heart {
+  animation: follow-heart-pop 0.4s cubic-bezier(0.22, 0.61, 0.36, 1) 0.1s forwards,
+             follow-heart-pulse 0.6s cubic-bezier(0.22, 0.61, 0.36, 1) 0.5s;
+}
+
+.follow-btn.is-following {
+  animation: follow-glow 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+.follow-btn.is-unfollowing .follow-heart {
+  animation: unfollow-heart-out 0.2s cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+}
+
+.follow-btn.followed .follow-text {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+.follow-btn.followed .follow-heart {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .follow-btn,
+  .follow-btn .follow-text,
+  .follow-btn .follow-heart {
+    animation: none !important;
+    transition: opacity 0.1s ease !important;
+  }
+  
+  .follow-btn.followed .follow-heart {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Animation Classes */
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.8s ease-out forwards;
+}
+
+.animate-gradient-rotate {
+  animation: gradient-rotate 15s linear infinite;
+}
+
+.animate-gradient-shift {
+  animation: gradient-shift 8s ease infinite;
+  background-size: 200% 200%;
+}
+
+.animate-gradient-text {
+  animation: gradient-text 6s ease infinite;
+  background-size: 200% auto;
+}
+
+.animate-pulse-slow {
+  animation: pulse-slow 3s ease-in-out infinite;
+}
+
+.animate-gradient-x {
+  animation: gradient-x 3s ease infinite;
+}
+
+/* Animation Delays */
+.animation-delay-200 {
+  animation-delay: 200ms;
+}
+
+.animation-delay-400 {
+  animation-delay: 400ms;
+}
+
+.animation-delay-600 {
+  animation-delay: 600ms;
+}
+
+.animation-delay-800 {
+  animation-delay: 800ms;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+/* Glass Morphism Effects */
+.glass-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-card-dark {
+  background: rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
