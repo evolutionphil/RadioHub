@@ -13906,19 +13906,27 @@ If you have any questions about this privacy policy or our data practices, pleas
   // Frontend-compatible follow endpoints
   app.post("/api/users/:userId/follow", requireAuth, async (req, res) => {
     try {
-      const followingUserId = req.params.userId;
-      const currentUserId = (req.session as any).userId;
+      const userParam = req.params.userId;
+      const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
 
-      // logger.log(` User ${currentUserId} following ${followingUserId}...`);
+      if (!currentUserId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      // Find target user by ObjectId OR slug
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(userParam);
+      const userToFollow = isObjectId
+        ? await User.findById(userParam)
+        : await User.findOne({ slug: userParam });
+
+      if (!userToFollow) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const followingUserId = userToFollow._id.toString();
 
       if (followingUserId === currentUserId) {
         return res.status(400).json({ error: "You cannot follow yourself" });
-      }
-
-      // Check if the user being followed exists
-      const userToFollow = await User.findById(followingUserId);
-      if (!userToFollow) {
-        return res.status(404).json({ error: "User not found" });
       }
 
       // Check if already following
@@ -13928,38 +13936,18 @@ If you have any questions about this privacy policy or our data practices, pleas
       });
 
       if (existingFollow) {
-        // logger.log(` User ${currentUserId} already following ${followingUserId}`);
         return res.status(400).json({ error: "Already following this user" });
       }
 
       // Create follow relationship
-      // logger.log(` Creating UserFollow: ${currentUserId} (${typeof currentUserId}) -> ${followingUserId} (${typeof followingUserId})`);
-      const newFollow = await UserFollow.create({
-        userId: currentUserId,
-        followingUserId: followingUserId
-      });
-      // logger.log(` UserFollow created with ID: ${newFollow._id}`);
-      
-      // Verify it was actually saved
-      const verifyFollow = await UserFollow.findById(newFollow._id);
-      // logger.log(` Verification - UserFollow exists: ${!!verifyFollow}`);
-      if (verifyFollow) {
-        // logger.log(` Verified UserFollow: ${verifyFollow.userId} -> ${verifyFollow.followingUserId}`);
-      }
-      
-      // Also check total count in DB
-      const totalFollows = await UserFollow.countDocuments();
-      // logger.log(` Total UserFollow records in DB: ${totalFollows}`);
+      await UserFollow.create({ userId: currentUserId, followingUserId });
 
       // Update user counts
-      await User.findByIdAndUpdate(currentUserId, { 
-        $inc: { followingCount: 1 } 
-      });
+      await User.findByIdAndUpdate(currentUserId, { $inc: { followingCount: 1 } });
       const updatedTargetUser = await User.findByIdAndUpdate(followingUserId, { 
         $inc: { followersCount: 1 } 
       }, { new: true });
 
-      // logger.log(` Follow relationship created`);
       const currentUserDoc = await User.findById(currentUserId).select('email').lean();
       await Promise.all([
         invalidateSocialCacheForUser(currentUserId, currentUserDoc?.email),
@@ -13969,20 +13957,34 @@ If you have any questions about this privacy policy or our data practices, pleas
       res.json({ 
         success: true, 
         message: "User followed successfully",
-        followersCount: updatedTargetUser.followersCount
+        followersCount: updatedTargetUser?.followersCount
       });
     } catch (error) {
-      // console.error('Follow user error:', error);
+      console.error('Follow user error:', error);
       res.status(500).json({ error: 'Failed to follow user' });
     }
   });
 
   app.post("/api/users/:userId/unfollow", requireAuth, async (req, res) => {
     try {
-      const followingUserId = req.params.userId;
-      const currentUserId = (req.session as any).userId;
+      const userParam = req.params.userId;
+      const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
 
-      // logger.log(` User ${currentUserId} unfollowing ${followingUserId}...`);
+      if (!currentUserId) {
+        return res.status(401).json({ error: "Not authenticated" });
+      }
+
+      // Find target user by ObjectId OR slug
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(userParam);
+      const targetUser = isObjectId
+        ? await User.findById(userParam).select('_id email').lean()
+        : await User.findOne({ slug: userParam }).select('_id email').lean();
+
+      if (!targetUser) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const followingUserId = targetUser._id.toString();
 
       // Remove follow relationship
       const deleted = await UserFollow.findOneAndDelete({
@@ -13991,35 +13993,28 @@ If you have any questions about this privacy policy or our data practices, pleas
       });
 
       if (!deleted) {
-        // logger.log(` User ${currentUserId} was not following ${followingUserId}`);
         return res.status(400).json({ error: "Not following this user" });
       }
 
       // Update user counts
-      await User.findByIdAndUpdate(currentUserId, { 
-        $inc: { followingCount: -1 } 
-      });
+      await User.findByIdAndUpdate(currentUserId, { $inc: { followingCount: -1 } });
       const updatedTargetUser = await User.findByIdAndUpdate(followingUserId, { 
         $inc: { followersCount: -1 } 
       }, { new: true });
 
-      // logger.log(` Unfollow relationship removed`);
-      const [currentUserDoc, targetUserDoc] = await Promise.all([
-        User.findById(currentUserId).select('email').lean(),
-        User.findById(followingUserId).select('email').lean()
-      ]);
+      const currentUserDoc = await User.findById(currentUserId).select('email').lean();
       await Promise.all([
         invalidateSocialCacheForUser(currentUserId, currentUserDoc?.email),
-        invalidateSocialCacheForUser(followingUserId, targetUserDoc?.email)
+        invalidateSocialCacheForUser(followingUserId, targetUser?.email)
       ]);
 
       res.json({ 
         success: true, 
         message: "User unfollowed successfully",
-        followersCount: updatedTargetUser.followersCount
+        followersCount: updatedTargetUser?.followersCount
       });
     } catch (error) {
-      // console.error('Unfollow user error:', error);
+      console.error('Unfollow user error:', error);
       res.status(500).json({ error: 'Failed to unfollow user' });
     }
   });
