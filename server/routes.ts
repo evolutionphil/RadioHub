@@ -10050,9 +10050,19 @@ ${keysText}`;
   });
 
   // GET CURRENT USER'S NOTIFICATIONS (Authenticated)
-  app.get("/api/user/notifications", requireAuth, async (req, res) => {
+  app.get("/api/user/notifications", async (req, res) => {
     try {
-      const currentUserId = (req.session as any)?.userId;
+      // Support both session cookie (web) and Bearer token (mobile)
+      let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
+      if (!currentUserId) {
+        const authHeader = req.headers['authorization'];
+        const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (bearerToken) {
+          const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
+          if (tokenDoc) currentUserId = tokenDoc.userId?.toString();
+        }
+      }
+
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 10;
       const skip = (page - 1) * limit;
@@ -10115,9 +10125,17 @@ ${keysText}`;
   });
 
   // MARK NOTIFICATION AS READ (Authenticated)
-  app.patch("/api/user/notifications/:id/read", requireAuth, async (req, res) => {
+  app.patch("/api/user/notifications/:id/read", async (req, res) => {
     try {
-      const currentUserId = (req.session as any)?.userId;
+      let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
+      if (!currentUserId) {
+        const authHeader = req.headers['authorization'];
+        const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (bearerToken) {
+          const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
+          if (tokenDoc) currentUserId = tokenDoc.userId?.toString();
+        }
+      }
       const notificationId = req.params.id;
       
       if (!currentUserId) {
@@ -10143,9 +10161,17 @@ ${keysText}`;
   });
 
   // MARK ALL NOTIFICATIONS AS READ (Authenticated)
-  app.patch("/api/user/notifications/read-all", requireAuth, async (req, res) => {
+  app.patch("/api/user/notifications/read-all", async (req, res) => {
     try {
-      const currentUserId = (req.session as any)?.userId;
+      let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
+      if (!currentUserId) {
+        const authHeader = req.headers['authorization'];
+        const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (bearerToken) {
+          const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
+          if (tokenDoc) currentUserId = tokenDoc.userId?.toString();
+        }
+      }
       
       if (!currentUserId) {
         return res.status(401).json({ error: 'Authentication required' });

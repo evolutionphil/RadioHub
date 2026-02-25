@@ -1,14 +1,17 @@
 import webpush from 'web-push';
 import { User } from '../db-mongo.js';
-import { IUser } from '../../shared/mongo-schemas';
-import { logger } from '../utils/logger';
+import { PushToken, IUser } from '../../shared/mongo-schemas';
+import https from 'https';
 
-// Configure web-push with VAPID keys
-webpush.setVapidDetails(
-  'mailto:admin@megaradio.com', // Replace with your email
-  process.env.VAPID_PUBLIC_KEY || '',
-  process.env.VAPID_PRIVATE_KEY || ''
-);
+// Configure web-push with VAPID keys (for browser/web push)
+// Only configure if keys are present (not available in all environments)
+if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    'mailto:admin@megaradio.com',
+    process.env.VAPID_PUBLIC_KEY,
+    process.env.VAPID_PRIVATE_KEY
+  );
+}
 
 export interface NotificationPayload {
   title: string;
@@ -27,17 +30,81 @@ export interface NotificationPayload {
   data?: any;
 }
 
+// Send to Expo push tokens (React Native with expo-notifications)
+async function sendExpoNotifications(tokens: string[], payload: NotificationPayload): Promise<number> {
+  const expoTokens = tokens.filter(t => t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken['));
+  if (expoTokens.length === 0) return 0;
+
+  const messages = expoTokens.map(token => ({
+    to: token,
+    title: payload.title,
+    body: payload.body,
+    data: { ...(payload.data || {}), url: payload.url, tag: payload.tag },
+    sound: 'default',
+    badge: 1,
+    channelId: 'default',
+  }));
+
+  return new Promise((resolve) => {
+    const body = JSON.stringify(messages);
+    const options = {
+      hostname: 'exp.host',
+      path: '/--/api/v2/push/send',
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(body),
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const result = JSON.parse(data);
+          const successCount = Array.isArray(result.data)
+            ? result.data.filter((r: any) => r.status === 'ok').length
+            : expoTokens.length;
+          resolve(successCount);
+        } catch {
+          resolve(0);
+        }
+      });
+    });
+    req.on('error', () => resolve(0));
+    req.write(body);
+    req.end();
+  });
+}
+
 export class PushNotificationService {
   /**
-   * Send a push notification to a specific user
+   * Send push notification to a user via their stored mobile push tokens (iOS/Android)
+   */
+  static async sendToMobileUser(userId: string, payload: NotificationPayload): Promise<boolean> {
+    try {
+      const pushTokens = await PushToken.find({ userId, isActive: true }).lean();
+      if (pushTokens.length === 0) return false;
+
+      const tokens = pushTokens.map(t => t.token);
+      const sent = await sendExpoNotifications(tokens, payload);
+      return sent > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Send a push notification to a specific user (web/browser push via VAPID)
    */
   static async sendToUser(userId: string, payload: NotificationPayload): Promise<boolean> {
+    if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return false;
     try {
       const user = await User.findById(userId);
-      if (!user?.pushSubscription) {
-        // console.log(`No push subscription found for user ${userId}`);
-        return false;
-      }
+      if (!user?.pushSubscription) return false;
 
       const notificationPayload = JSON.stringify({
         title: payload.title,
@@ -54,12 +121,23 @@ export class PushNotificationService {
       });
 
       await webpush.sendNotification(user.pushSubscription, notificationPayload);
-      // console.log(`✅ Push notification sent to user ${userId}`);
       return true;
-    } catch (error) {
-      // console.error(`❌ Failed to send push notification to user ${userId}:`, error);
+    } catch {
       return false;
     }
+  }
+
+  /**
+   * Send to user via ALL channels: web push + mobile push tokens
+   */
+  static async sendToUserAllChannels(userId: string, payload: NotificationPayload): Promise<boolean> {
+    const [web, mobile] = await Promise.allSettled([
+      this.sendToUser(userId, payload),
+      this.sendToMobileUser(userId, payload),
+    ]);
+    const webOk = web.status === 'fulfilled' && web.value;
+    const mobileOk = mobile.status === 'fulfilled' && mobile.value;
+    return webOk || mobileOk;
   }
 
   /**
@@ -67,15 +145,12 @@ export class PushNotificationService {
    */
   static async sendToMultipleUsers(userIds: string[], payload: NotificationPayload): Promise<number> {
     const results = await Promise.allSettled(
-      userIds.map(userId => this.sendToUser(userId, payload))
+      userIds.map(userId => this.sendToUserAllChannels(userId, payload))
     );
 
-    const successCount = results.filter(result => 
+    return results.filter(result =>
       result.status === 'fulfilled' && result.value === true
     ).length;
-
-    // console.log(`📊 Sent push notifications to ${successCount}/${userIds.length} users`);
-    return successCount;
   }
 
   /**
@@ -86,10 +161,36 @@ export class PushNotificationService {
       const users = await User.find({ pushSubscription: { $exists: true, $ne: null } });
       const userIds = users.map((user: IUser) => (user._id as any).toString());
       return await this.sendToMultipleUsers(userIds, payload);
-    } catch (error) {
-      // console.error('❌ Failed to broadcast push notification:', error);
+    } catch {
       return 0;
     }
+  }
+
+  /**
+   * Send a follow notification to the followed user (both web + mobile)
+   */
+  static async sendFollowNotification(
+    followedUserId: string,
+    followerName: string,
+    followerSlug?: string
+  ): Promise<boolean> {
+    const payload: NotificationPayload = {
+      title: 'New Follower',
+      body: `${followerName} started following you`,
+      icon: '/favicon.ico',
+      badge: '/favicon.ico',
+      url: followerSlug ? `/community/profile/${followerSlug}` : '/community',
+      tag: 'follow',
+      requireInteraction: false,
+      data: {
+        type: 'follow',
+        followerName,
+        followerSlug,
+        screen: 'Community',
+      }
+    };
+
+    return await this.sendToUserAllChannels(followedUserId, payload);
   }
 
   /**
@@ -104,10 +205,10 @@ export class PushNotificationService {
     favicon?: string;
     homepage?: string;
   }): Promise<boolean> {
-    const nowPlaying = stationData.nowPlaying || 
-                      (stationData.artist && stationData.title ? 
-                        `${stationData.artist} - ${stationData.title}` : 
-                        stationData.name);
+    const nowPlaying = stationData.nowPlaying ||
+      (stationData.artist && stationData.title ?
+        `${stationData.artist} - ${stationData.title}` :
+        stationData.name);
 
     const payload: NotificationPayload = {
       title: `🎵 ${stationData.name}`,
@@ -118,21 +219,46 @@ export class PushNotificationService {
       tag: 'now-playing',
       requireInteraction: false,
       actions: [
-        {
-          action: 'play',
-          title: '▶️ Play'
-        },
-        {
-          action: 'favorite',
-          title: '❤️ Favorite'
-        }
+        { action: 'play', title: '▶️ Play' },
+        { action: 'favorite', title: '❤️ Favorite' }
       ],
       data: {
         type: 'now-playing',
         stationName: stationData.name,
-        nowPlaying: nowPlaying,
+        nowPlaying,
         genre: stationData.genre,
         homepage: stationData.homepage
+      }
+    };
+
+    return await this.sendToUser(userId, payload);
+  }
+
+  /**
+   * Send a favorite added notification
+   */
+  static async sendFavoriteAddedNotification(userId: string, stationData: {
+    stationId: string;
+    name: string;
+    country?: string;
+    genre?: string;
+    favicon?: string;
+  }): Promise<boolean> {
+    const payload: NotificationPayload = {
+      title: '❤️ Station Added to Favorites',
+      body: `${stationData.name}${stationData.genre ? ` • ${stationData.genre}` : ''}${stationData.country ? ` • ${stationData.country}` : ''}`,
+      icon: stationData.favicon || '/favicon.ico',
+      badge: '/favicon.ico',
+      url: '/',
+      tag: 'favorite-added',
+      requireInteraction: false,
+      actions: [
+        { action: 'view', title: '🎵 Listen Now' }
+      ],
+      data: {
+        type: 'favorite-added',
+        stationId: stationData.stationId,
+        stationName: stationData.name
       }
     };
 
@@ -162,14 +288,11 @@ export class PushNotificationService {
       tag: 'recommendations',
       requireInteraction: false,
       actions: [
-        {
-          action: 'explore',
-          title: '🔍 Explore'
-        }
+        { action: 'explore', title: '🔍 Explore' }
       ],
       data: {
         type: 'recommendations',
-        stations: stations
+        stations
       }
     };
 
@@ -186,26 +309,21 @@ export class PushNotificationService {
 
       for (const user of users as IUser[]) {
         try {
-          // Test the subscription with a minimal payload
           await webpush.sendNotification(user.pushSubscription, JSON.stringify({
             title: 'Test',
             body: 'Connection test',
             silent: true
           }));
         } catch (error: any) {
-          // If subscription is invalid (410 Gone or 404 Not Found), remove it
           if (error.statusCode === 410 || error.statusCode === 404) {
             await User.findByIdAndUpdate(user._id, { $unset: { pushSubscription: 1 } });
             removedCount++;
-            // console.log(`🧹 Removed invalid push subscription for user ${user._id}`);
           }
         }
       }
 
-      // console.log(`🧹 Cleaned up ${removedCount} invalid push subscriptions`);
       return removedCount;
-    } catch (error) {
-      // console.error('❌ Failed to cleanup push subscriptions:', error);
+    } catch {
       return 0;
     }
   }

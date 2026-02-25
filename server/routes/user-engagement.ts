@@ -1,6 +1,8 @@
 import express from 'express';
 import { UserEngagementService } from '../services/user-engagement-service';
 import CacheManager from '../cache';
+import { User, UserFollow, UserNotification, AuthToken } from '../../shared/mongo-schemas';
+import { PushNotificationService } from '../services/pushNotificationService';
 
 const router = express.Router();
 const userEngagementService = new UserEngagementService();
@@ -196,24 +198,69 @@ router.post('/stations/:stationId/favorite', async (req, res) => {
   }
 });
 
+// Helper: resolve userId from session (web) or Bearer token (mobile)
+async function resolveCurrentUserId(req: any): Promise<string | null> {
+  const session = req.session;
+  const fromSession = session?.userId || session?.user?.userId || session?.passport?.user;
+  if (fromSession) return fromSession.toString();
+
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (bearerToken) {
+    const tokenDoc = await AuthToken.findOne({
+      token: bearerToken,
+      isRevoked: false,
+      expiresAt: { $gt: new Date() }
+    }).lean();
+    if (tokenDoc) return tokenDoc.userId?.toString() ?? null;
+  }
+  return null;
+}
+
+// Helper: resolve target userId - accepts ObjectId OR slug
+async function resolveTargetUserId(param: string): Promise<string | null> {
+  const isObjectId = /^[0-9a-fA-F]{24}$/.test(param);
+  if (isObjectId) return param;
+  const user = await User.findOne({ $or: [{ slug: param }, { username: param }] }).select('_id').lean();
+  return user ? (user._id as any).toString() : null;
+}
+
 // Follow a user
 router.post('/follow/:userId', async (req, res) => {
   try {
-    const session = (req as any).session;
-    if (!session?.user?.userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    const currentUserId = session.user.userId;
-    const { userId } = req.params;
-    
-    if (currentUserId === userId) {
-      return res.status(400).json({ error: 'Cannot follow yourself' });
-    }
-    
-    const result = await userEngagementService.followUser(currentUserId, userId);
+    const currentUserId = await resolveCurrentUserId(req);
+    if (!currentUserId) return res.status(401).json({ error: 'Authentication required' });
+
+    const targetUserId = await resolveTargetUserId(req.params.userId);
+    if (!targetUserId) return res.status(404).json({ error: 'User not found' });
+    if (currentUserId === targetUserId) return res.status(400).json({ error: 'Cannot follow yourself' });
+
+    // Check already following
+    const existing = await UserFollow.findOne({ userId: currentUserId, followingUserId: targetUserId });
+    if (existing) return res.json({ success: true, message: 'Already following' });
+
+    await UserFollow.create({ userId: currentUserId, followingUserId: targetUserId });
+
+    // Get follower info for notification
+    const follower = await User.findById(currentUserId).select('fullName username slug').lean();
+    const followerName = (follower as any)?.fullName || (follower as any)?.username || 'Someone';
+    const followerSlug = (follower as any)?.slug;
+
+    // Create in-app notification (non-blocking)
+    UserNotification.create({
+      userId: targetUserId,
+      fromUserId: currentUserId,
+      type: 'follow',
+      title: 'New Follower',
+      message: `${followerName} started following you`,
+      data: { followerId: currentUserId, followerSlug }
+    }).catch(() => {});
+
+    // Send push notification (web + mobile, non-blocking)
+    PushNotificationService.sendFollowNotification(targetUserId, followerName, followerSlug).catch(() => {});
+
     res.json({ success: true, message: 'User followed successfully' });
   } catch (error) {
-    console.error('Error following user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -221,17 +268,15 @@ router.post('/follow/:userId', async (req, res) => {
 // Unfollow a user
 router.post('/unfollow/:userId', async (req, res) => {
   try {
-    const session = (req as any).session;
-    if (!session?.user?.userId) {
-      return res.status(401).json({ error: 'Authentication required' });
-    }
-    const currentUserId = session.user.userId;
-    const { userId } = req.params;
-    
-    const result = await userEngagementService.unfollowUser(currentUserId, userId);
+    const currentUserId = await resolveCurrentUserId(req);
+    if (!currentUserId) return res.status(401).json({ error: 'Authentication required' });
+
+    const targetUserId = await resolveTargetUserId(req.params.userId);
+    if (!targetUserId) return res.status(404).json({ error: 'User not found' });
+
+    await UserFollow.findOneAndDelete({ userId: currentUserId, followingUserId: targetUserId });
     res.json({ success: true, message: 'User unfollowed successfully' });
   } catch (error) {
-    console.error('Error unfollowing user:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
