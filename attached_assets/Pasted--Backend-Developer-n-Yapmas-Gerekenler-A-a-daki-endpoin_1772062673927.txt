@@ -1,0 +1,77 @@
+📋 Backend Developer'ın Yapması Gerekenler
+
+Aşağıdaki endpoint'lerin çalışır durumda olduğundan emin olması gerekiyor:
+
+1. Push Token Kaydetme ✅ Kontrol Et
+POST /api/user/push-token
+
+Headers:
+  Authorization: Bearer {mrt_xxx token}
+  Content-Type: application/json
+
+Body:
+{
+  "token": "ExponentPushToken[xxxxxxxxxxxxxx]",
+  "platform": "ios" | "android",
+  "deviceName": "iPhone 15 Pro"
+}
+
+Response: { "success": true }
+2. Push Token Silme (Logout) ⚠️ YENİ ENDPOINT
+DELETE /api/user/push-token
+
+Headers:
+  Authorization: Bearer {mrt_xxx token}
+  Content-Type: application/json
+
+Body:
+{
+  "token": "ExponentPushToken[xxxxxxxxxxxxxx]"
+}
+
+Response: { "success": true }
+3. Follow Edildiğinde Push Notification ✅ Kontrol Et
+POST /api/user-engagement/follow/:userId çağrıldığında:
+
+1. Database'de follow kaydı oluştur
+2. Takip edilen kullanıcının push token'ını bul
+3. Expo Push API'ye bildirim gönder:
+
+POST https://exp.host/--/api/v2/push/send
+{
+  "to": "ExponentPushToken[karşı_tarafın_tokeni]",
+  "sound": "default",
+  "title": "Yeni Takipçi",
+  "body": "Şahin seni takip etmeye başladı",
+  "data": { 
+    "type": "follow",
+    "followerSlug": "sahinyogurtcu",
+    "followerName": "Şahin Y"
+  }
+}
+4. Bildirim Endpoint'leri ✅ Kontrol Et
+GET /api/user/notifications?page=1&limit=20
+PATCH /api/user/notifications/:id/read  
+PATCH /api/user/notifications/read-all
+🔴 ÖNEMLİ NOT
+
+Cuneyt bildirim alamıyorsa:
+
+Cuneyt'in telefonunda push token kayıtlı mı? → Database'de kontrol et
+Token varsa, Expo Push API'ye gönderim yapılıyor mu? → Log'lara bak
+Test için:
+
+# Manuel push notification gönder (test)
+curl -X POST https://exp.host/--/api/v2/push/send \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "ExponentPushToken[CUNEYT_TOKEN_BURAYA]",
+    "title": "Test",
+    "body": "Bu bir test bildirimi"
+  }'
+✅ Özet: Backend Developer Ne Yapsın?
+
+DELETE /api/user/push-token endpoint'i yoksa eklesin
+Follow işleminde push notification gönderimini kontrol etsin
+User tablosunda push token alanının doğru kaydedildiğini doğrulasın
+Deploy etsin

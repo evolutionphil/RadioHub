@@ -19375,14 +19375,14 @@ This is a development environment. For production content, please visit https://
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      // Import the service dynamically to avoid circular dependencies
       const { PushNotificationService } = await import('./services/pushNotificationService.js');
 
-      const success = await PushNotificationService.sendToUser(currentUserId, {
+      const success = await PushNotificationService.sendToUserAllChannels(currentUserId, {
         title: '🎵 Test Notification',
         body: 'This is a test push notification from Megaradio!',
         icon: '/favicon.ico',
-        tag: 'test'
+        tag: 'test',
+        data: { type: 'test' }
       });
 
       if (success) {
@@ -19391,8 +19391,96 @@ This is a development environment. For production content, please visit https://
         res.json({ success: false, message: 'Failed to send notification or no subscription found' });
       }
     } catch (error) {
-      // console.error('❌ Send test notification error:', error);
       res.status(500).json({ error: 'Failed to send test notification' });
+    }
+  });
+
+  // ADMIN: Check push tokens for a user + send test push (for debugging)
+  app.post('/api/admin/push/test-user', requireAdmin, async (req, res) => {
+    try {
+      const { slug, token: directToken, title, body } = req.body;
+
+      // If a direct Expo token is provided, send directly
+      if (directToken) {
+        const https = await import('https');
+        const payload = JSON.stringify([{
+          to: directToken,
+          title: title || '🎵 MegaRadio Test',
+          body: body || 'Bu bir test bildirimidir',
+          sound: 'default',
+          data: { type: 'test' }
+        }]);
+
+        const result: any = await new Promise((resolve, reject) => {
+          const reqHttp = (https as any).default.request({
+            hostname: 'exp.host',
+            path: '/--/api/v2/push/send',
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(payload)
+            }
+          }, (r: any) => {
+            let data = '';
+            r.on('data', (c: any) => { data += c; });
+            r.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve({}); } });
+          });
+          reqHttp.on('error', reject);
+          reqHttp.write(payload);
+          reqHttp.end();
+        });
+
+        return res.json({ success: true, expoResponse: result });
+      }
+
+      if (!slug) {
+        return res.status(400).json({ error: 'slug or token required' });
+      }
+
+      // Look up user by slug
+      const user = await User.findOne({
+        $or: [{ slug }, { username: slug }, { email: slug }]
+      }).select('_id fullName username slug email').lean();
+
+      if (!user) {
+        return res.status(404).json({ error: 'User not found' });
+      }
+
+      const userId = (user._id as any).toString();
+
+      // Get push tokens
+      const pushTokens = await PushToken.find({ userId, isActive: true }).lean();
+
+      if (pushTokens.length === 0) {
+        return res.json({
+          user: { id: userId, name: (user as any).fullName || (user as any).username, slug: (user as any).slug },
+          pushTokens: [],
+          message: 'No active push tokens found for this user. They need to open the app and login to register a token.'
+        });
+      }
+
+      // Send test push to all their tokens
+      const { PushNotificationService } = await import('./services/pushNotificationService.js');
+      const sent = await PushNotificationService.sendToMobileUser(userId, {
+        title: title || '🎵 MegaRadio Test',
+        body: body || `Merhaba ${(user as any).fullName || (user as any).username}, bu bir test bildirimidir!`,
+        tag: 'test',
+        data: { type: 'test' }
+      });
+
+      res.json({
+        user: { id: userId, name: (user as any).fullName || (user as any).username, slug: (user as any).slug },
+        pushTokens: pushTokens.map(t => ({
+          token: t.token.substring(0, 30) + '...',
+          platform: t.platform,
+          deviceName: t.deviceName,
+          updatedAt: t.updatedAt
+        })),
+        notificationSent: sent,
+        message: sent ? 'Test push notification sent successfully' : 'Token found but push failed (check Expo response)'
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to test push notification' });
     }
   });
 
