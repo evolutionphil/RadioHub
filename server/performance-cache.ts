@@ -19,25 +19,28 @@ export class PerformanceCache {
       maxKeys: 100 // Max 100 language translation sets
     });
     
-    // Rendered HTML cache - 30 minutes TTL (for SEO bot responses)
+    // Rendered HTML cache - 20 minutes TTL (for SEO bot responses)
     this.seoHtmlCache = new NodeCache({ 
-      stdTTL: 1800, // 30 minutes
-      checkperiod: 300, // Check every 5 minutes  
-      maxKeys: 1000 // Max 1000 cached pages
+      stdTTL: 1200, // 20 minutes
+      checkperiod: 120, // Check every 2 minutes
+      maxKeys: 10000, // Max 10000 cached pages
+      useClones: false // Save memory
     });
     
-    // Page metadata cache - 15 minutes TTL
+    // Page metadata cache - 10 minutes TTL
     this.pageDataCache = new NodeCache({ 
-      stdTTL: 900, // 15 minutes
-      checkperiod: 120, // Check every 2 minutes
-      maxKeys: 500 // Max 500 page data entries
+      stdTTL: 600, // 10 minutes
+      checkperiod: 60, // Check every minute
+      maxKeys: 5000, // Max 5000 page data entries
+      useClones: false // Save memory
     });
     
     // Quick data cache - 5 minutes TTL (for frequently accessed data)
     this.quickCache = new NodeCache({ 
       stdTTL: 300, // 5 minutes
       checkperiod: 60, // Check every minute
-      maxKeys: 200 // Max 200 quick entries
+      maxKeys: 500, // Max 500 quick entries
+      useClones: false // Save memory
     });
     
     logger.log('🚀 CACHE: Performance cache system initialized');
