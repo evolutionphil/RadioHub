@@ -16,7 +16,7 @@ declare module "express-session" {
 }
 import path from "path";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { serveStatic, log } from "./serve-static";
 import { connectToMongoDB } from "./db-mongo";
 import { performanceCache } from "./performance-cache";
 import { htmlLangMiddleware } from "./html-lang-middleware";
@@ -688,6 +688,10 @@ app.use((req, res, next) => {
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
+    // Use computed path to prevent static bundler analysis of vite (devDependency)
+    // This ensures vite is never required in production builds
+    const viteSetupPath = "./vite";
+    const { setupVite } = await import(/* @vite-ignore */ viteSetupPath as any);
     await setupVite(app, server);
   } else {
     serveStatic(app);
