@@ -1,5 +1,6 @@
-import { createContext, useContext, ReactNode } from "react";
+import { createContext, useContext, ReactNode, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { faIdentify, faReset } from '../lib/flowalive';
 
 interface User {
   _id: string;
@@ -58,7 +59,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // CRITICAL FIX: API returns { user: {...} }, need to extract the user object
   const user = (data as any)?.user as User | null;
-  
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (user) {
+        faIdentify(user._id, {
+          username: user.username,
+          email: user.email,
+          name: user.fullName,
+          role: user.role,
+          plan: user.role === 'admin' ? 'admin' : 'free',
+        });
+      } else {
+        faReset();
+      }
+    }
+  }, [user?._id, isLoading]);
+
   const contextValue: AuthContextType = {
     user: user || null,
     isAuthenticated: !!user,

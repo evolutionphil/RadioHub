@@ -1,3 +1,5 @@
+import { faTrackEvent, faTrackPageView } from './flowalive';
+
 // Define the gtag function globally
 declare global {
   interface Window {
@@ -77,14 +79,13 @@ export const initGA = () => {
 
 // Track page views - useful for single-page applications
 export const trackPageView = (url: string) => {
-  if (typeof window === 'undefined' || !window.gtag) return;
-  
-  const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
-  if (!measurementId) return;
-  
-  window.gtag('config', measurementId, {
-    page_path: url
-  });
+  if (typeof window !== 'undefined' && window.gtag) {
+    const measurementId = import.meta.env.VITE_GA_MEASUREMENT_ID;
+    if (measurementId) {
+      window.gtag('config', measurementId, { page_path: url });
+    }
+  }
+  faTrackPageView(url);
 };
 
 // Track events
@@ -106,32 +107,49 @@ export const trackEvent = (
 // Radio-specific analytics events
 export const trackStationPlay = (stationName: string, stationCountry: string, stationGenre?: string) => {
   trackEvent('station_play', 'radio', `${stationName} - ${stationCountry}`, 1);
-  
-  // Track by genre if available
   if (stationGenre) {
     trackEvent('genre_play', 'radio_genre', stationGenre, 1);
   }
-  
-  // Track by country
   trackEvent('country_play', 'radio_country', stationCountry, 1);
+
+  faTrackEvent('station_played', {
+    station_name: stationName,
+    country: stationCountry,
+    genre: stationGenre || null,
+  });
 };
 
 export const trackStationFavorite = (stationName: string, stationCountry: string, action: 'add' | 'remove') => {
   trackEvent(`station_favorite_${action}`, 'user_engagement', `${stationName} - ${stationCountry}`, 1);
+
+  faTrackEvent(action === 'add' ? 'station_favorited' : 'station_unfavorited', {
+    station_name: stationName,
+    country: stationCountry,
+  });
 };
 
 export const trackUserSignup = (method: 'google' | 'email') => {
   trackEvent('sign_up', 'user_account', method, 1);
+  faTrackEvent('user_signed_up', { method });
 };
 
 export const trackUserLogin = (method: 'google' | 'email') => {
   trackEvent('login', 'user_account', method, 1);
+  faTrackEvent('user_logged_in', { method });
 };
 
 export const trackListeningTime = (stationName: string, durationMinutes: number) => {
   trackEvent('listening_time', 'radio_engagement', stationName, durationMinutes);
+  faTrackEvent('listening_session_ended', {
+    station_name: stationName,
+    duration_minutes: durationMinutes,
+  });
 };
 
 export const trackSearch = (searchTerm: string, resultsCount: number) => {
   trackEvent('search', 'user_interaction', searchTerm, resultsCount);
+  faTrackEvent('search_performed', {
+    query: searchTerm,
+    results_count: resultsCount,
+  });
 };
