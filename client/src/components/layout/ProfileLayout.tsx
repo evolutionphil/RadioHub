@@ -1,6 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Link, useLocation } from "wouter";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Menu, X } from "lucide-react";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery } from "@tanstack/react-query";
@@ -14,6 +14,20 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
   const { getLocalizedUrl } = useSeoRouting();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Preload all profile sub-pages when ProfileLayout first mounts.
+  // This prevents the React 18 "suspended during synchronous input" warning
+  // that occurs when lazy-loaded components haven't been fetched yet at click time.
+  useEffect(() => {
+    Promise.allSettled([
+      import("@/pages/messages"),
+      import("@/pages/favorites"),
+      import("@/pages/profile-discover"),
+      import("@/pages/profile-settings"),
+      import("@/pages/notifications-view"),
+      import("@/pages/notifications"),
+    ]);
+  }, []);
 
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],

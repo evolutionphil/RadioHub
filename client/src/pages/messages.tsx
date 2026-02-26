@@ -204,6 +204,9 @@ export default function MessagesPage() {
   const hbInterval = useRef<ReturnType<typeof setInterval>>();
   const activeIdRef = useRef<string | null>(null);
 
+  // Use a ref for the latest onWsEvent to avoid stale closures in the WS handler
+  const onWsEventRef = useRef<(ev: WsEvent) => void>(() => {});
+
   const myId: string = (user as any)?._id || (user as any)?.id || "";
 
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
@@ -212,12 +215,14 @@ export default function MessagesPage() {
 
   const { data: convsData, isLoading: convsLoading } = useQuery<{ conversations: Conversation[] }>({
     queryKey: ["/api/messages/conversations"],
-    refetchInterval: wsOk ? 30_000 : 5_000,
+    refetchInterval: wsOk ? 30_000 : 8_000,
+    retry: 1,
   });
 
   const { data: contactsData } = useQuery<{ contacts: UserInfo[] }>({
     queryKey: ["/api/messages/contacts"],
     refetchInterval: 60_000,
+    retry: 1,
   });
 
   const { data: chatData, isLoading: chatLoading } = useQuery<{
@@ -227,7 +232,8 @@ export default function MessagesPage() {
   }>({
     queryKey: ["/api/messages/conversation", activeId],
     enabled: !!activeId,
-    refetchInterval: wsOk ? false : 3_000,
+    refetchInterval: wsOk ? false : 5_000,
+    retry: 1,
   });
 
   const convs = convsData?.conversations ?? [];
@@ -244,53 +250,7 @@ export default function MessagesPage() {
     );
   })();
 
-  // ─── WebSocket ─────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    if (!user) return;
-    let destroyed = false;
-    let ws: WebSocket;
-
-    const connect = async () => {
-      try {
-        const res = await fetch("/api/messages/ws-ticket");
-        if (!res.ok || destroyed) return;
-        const { ticket } = await res.json();
-        if (destroyed) return;
-
-        const proto = window.location.protocol === "https:" ? "wss" : "ws";
-        ws = new WebSocket(`${proto}://${window.location.host}/ws/chat?ticket=${ticket}`);
-        wsRef.current = ws;
-
-        ws.onopen = () => {
-          setWsOk(true);
-          clearInterval(hbInterval.current);
-          hbInterval.current = setInterval(() => {
-            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "chat:ping" }));
-          }, 25_000);
-        };
-
-        ws.onclose = () => {
-          setWsOk(false);
-          clearInterval(hbInterval.current);
-          if (!destroyed) setTimeout(connect, 3_500);
-        };
-
-        ws.onerror = () => ws.close();
-
-        ws.onmessage = ({ data }) => {
-          try { onWsEvent(JSON.parse(data)); } catch {}
-        };
-      } catch {}
-    };
-
-    connect();
-    return () => {
-      destroyed = true;
-      clearInterval(hbInterval.current);
-      wsRef.current?.close();
-    };
-  }, [user]);
+  // ─── WebSocket event handler (kept in a ref so the WS handler never goes stale) ─
 
   const onWsEvent = useCallback((ev: WsEvent) => {
     switch (ev.type) {
@@ -307,8 +267,12 @@ export default function MessagesPage() {
 
         if (inActive) {
           setLocalMsgs(prev => (prev.find(x => x._id === m._id) ? prev : [...prev, m]));
-          // Mark read immediately if in conversation
-          if (m.fromUserId !== myId) sendWs({ type: "chat:read", fromUserId: m.fromUserId });
+          if (m.fromUserId !== myId) {
+            const ws = wsRef.current;
+            if (ws?.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "chat:read", fromUserId: m.fromUserId }));
+            }
+          }
         }
 
         qc.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
@@ -337,10 +301,63 @@ export default function MessagesPage() {
     }
   }, [myId, qc]);
 
-  const sendWs = (payload: object) => {
+  // Keep ref in sync with latest callback (avoids stale closures in WS handler)
+  useEffect(() => { onWsEventRef.current = onWsEvent; }, [onWsEvent]);
+
+  // ─── WebSocket ─────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!user) return;
+    let destroyed = false;
+    let ws: WebSocket;
+
+    const connect = async () => {
+      try {
+        // credentials: "include" ensures session cookie is always sent (critical for auth)
+        const res = await fetch("/api/messages/ws-ticket", { credentials: "include" });
+        if (!res.ok || destroyed) return;
+        const { ticket } = await res.json();
+        if (destroyed) return;
+
+        const proto = window.location.protocol === "https:" ? "wss" : "ws";
+        ws = new WebSocket(`${proto}://${window.location.host}/ws/chat?ticket=${ticket}`);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setWsOk(true);
+          clearInterval(hbInterval.current);
+          hbInterval.current = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "chat:ping" }));
+          }, 25_000);
+        };
+
+        ws.onclose = () => {
+          setWsOk(false);
+          clearInterval(hbInterval.current);
+          if (!destroyed) setTimeout(connect, 3_500);
+        };
+
+        ws.onerror = () => ws.close();
+
+        // Always call the latest version of onWsEvent via the ref
+        ws.onmessage = ({ data }) => {
+          try { onWsEventRef.current(JSON.parse(data)); } catch {}
+        };
+      } catch {}
+    };
+
+    connect();
+    return () => {
+      destroyed = true;
+      clearInterval(hbInterval.current);
+      wsRef.current?.close();
+    };
+  }, [user]);
+
+  const sendWs = useCallback((payload: object) => {
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
-  };
+  }, []);
 
   // ─── Typing indicator send ─────────────────────────────────────────────────
 
@@ -354,7 +371,8 @@ export default function MessagesPage() {
 
   const sendMut = useMutation({
     mutationFn: (content: string) =>
-      apiRequest("POST", "/api/messages/send", { toUserId: activeId, content }),
+      // FIX: body must be wrapped in { body: ... } for apiRequest
+      apiRequest("POST", "/api/messages/send", { body: { toUserId: activeId, content } }),
     onSuccess: () => {
       setInput("");
       qc.invalidateQueries({ queryKey: ["/api/messages/conversation", activeId] });
@@ -387,7 +405,7 @@ export default function MessagesPage() {
     setSearching(true);
     searchTimer.current = setTimeout(async () => {
       try {
-        const r = await fetch(`/api/messages/search-users?q=${encodeURIComponent(searchQ)}`);
+        const r = await fetch(`/api/messages/search-users?q=${encodeURIComponent(searchQ)}`, { credentials: "include" });
         const d = await r.json();
         setSearchRes(d.users ?? []);
       } catch { setSearchRes([]); }
@@ -619,32 +637,35 @@ export default function MessagesPage() {
                     value={input}
                     onChange={e => { setInput(e.target.value); emitTyping(); }}
                     onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
-                    placeholder="Type a message…"
-                    className="flex-1 px-4 py-2.5 bg-transparent text-white placeholder-gray-600 outline-none text-sm"
-                    disabled={sendMut.isPending}
-                    autoComplete="off"
+                    placeholder={`Message ${activeName || "…"}`}
+                    maxLength={2000}
+                    className="flex-1 px-4 py-2.5 bg-transparent text-white text-sm placeholder-gray-600 outline-none"
                   />
+                  {input.length > 1800 && (
+                    <span className="pr-3 text-[10px]" style={{ color: input.length > 1950 ? "#ef4444" : "#6b7280" }}>
+                      {2000 - input.length}
+                    </span>
+                  )}
                 </div>
                 <button
                   onClick={doSend}
                   disabled={!input.trim() || sendMut.isPending}
-                  className="w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0"
-                  style={{ background: input.trim() ? "#FF4199" : "#2D2D2D", opacity: sendMut.isPending ? 0.6 : 1 }}
+                  className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all"
+                  style={{
+                    background: input.trim() && !sendMut.isPending ? "#FF4199" : "#2D2D2D",
+                    cursor: input.trim() && !sendMut.isPending ? "pointer" : "default",
+                  }}
                 >
-                  <Send size={15} className="text-white" style={{ transform: "translateX(1px)" }} />
+                  <Send size={16} className="text-white" style={{ marginLeft: 2 }} />
                 </button>
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4">
-              <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{ background: "rgba(255,65,153,0.07)" }}>
-                <MessageCircle size={36} style={{ color: "#FF4199", opacity: 0.6 }} />
-              </div>
+            <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-40">
+              <MessageCircle size={48} style={{ color: "#FF4199" }} />
               <div className="text-center">
-                <h3 className="text-white font-bold text-lg mb-2">Your Messages</h3>
-                <p className="text-gray-500 text-sm max-w-xs">
-                  Select a chat or find a contact. You can message people you follow or who follow you.
-                </p>
+                <p className="text-white font-semibold text-base">Your Messages</p>
+                <p className="text-gray-500 text-sm mt-1">Select a conversation or start a new one</p>
               </div>
             </div>
           )}
