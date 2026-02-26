@@ -244,11 +244,8 @@ export async function connectToMongoDB() {
     // Seed default languages after connection (this is critical, so we await it)
     await seedDefaultLanguages();
     
-    // Clean up any placeholder text from existing descriptions in BACKGROUND (non-blocking)
-    // This runs async without blocking the port binding
-    cleanupDescriptionPlaceholders().catch(err => 
-      logger.log('⚠️ Background cleanup error:', err)
-    );
+    // Description placeholder cleanup is handled by index.ts background tasks
+    // (runs once per 24h with cursor-based processing to avoid memory issues)
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
     logger.log('💡 MongoDB: Using in-memory fallback for development');

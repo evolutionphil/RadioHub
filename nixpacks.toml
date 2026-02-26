@@ -1,0 +1,5 @@
+[phases.setup]
+aptPkgs = ["fontconfig", "libfontconfig1-dev"]
+
+[variables]
+FONTCONFIG_FILE = "/dev/null"

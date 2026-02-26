@@ -1,3 +1,8 @@
+// Suppress libvips/Sharp fontconfig warning on Railway (no text rendering needed)
+if (!process.env.FONTCONFIG_FILE) {
+  process.env.FONTCONFIG_FILE = '/dev/null';
+}
+
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import MongoStore from "connect-mongo";
@@ -811,8 +816,13 @@ app.use((req, res, next) => {
       
       // Warm up Discoverable Genres cache at startup (hero section)
       try {
-        const axios = (await import('axios')).default;
-        await axios.get(`http://localhost:${warmupPort}/api/genres/discoverable`, { timeout: 10000 });
+        const { Genre } = await import('../shared/mongo-schemas');
+        const CacheManagerModule = (await import('./cache')).default;
+        const genres = await Genre.find({ isDiscoverable: true })
+          .sort({ stationCount: -1 })
+          .limit(13)
+          .lean();
+        await CacheManagerModule.set('genres:discoverable:all:13', genres, { ttl: 600 });
         logger.log('✅ CACHE: Discoverable genres warmed up');
       } catch (err) {
         logger.warn('⚠️ Discoverable genres warmup failed (will cache on first request)');
@@ -856,156 +866,48 @@ app.use((req, res, next) => {
       const { loadDatabaseUrlTranslations } = await import('../shared/url-translations');
       await loadDatabaseUrlTranslations();
       
-      // Auto-cleanup: Clean meta descriptions from ALL stations on startup
-      // DISABLED: This cleanup was too aggressive and deleting valid content
-      // Only clean obvious template patterns that start with brackets
-      logger.log('🧹 BACKGROUND: Starting automatic meta description cleanup (safe mode)...');
+      // Auto-cleanup: Remove placeholder prefixes from descriptions using MongoDB-native regex
+      // Uses a 24h cooldown to avoid running on every restart (expensive on 40k+ stations)
       try {
-        const { Station } = await import('../shared/mongo-schemas');
-        const stripPlaceholders = (obj: any): any => {
-          if (!obj) return obj;
-          
-          if (typeof obj === 'string') {
-            // SAFE MODE: Only clean obvious template patterns at the START of text
-            // Do NOT remove content in the middle of descriptions
-            return obj
-              .replace(/&quot;/g, '"')
-              .replace(/&amp;/g, '&')
-              // Only remove bracketed template patterns at the VERY START
-              .replace(/^\[TRANSLATED\s+(META|FULL)[^\]]*\]\s*/i, '')
-              .replace(/^\[SEO\s+META[^\]]*\]\s*/i, '')
-              .replace(/^\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')
-              .replace(/^\[META[^\]]*\]\s*/i, '')
-              .trim();
-          }
-          
-          if (Array.isArray(obj)) {
-            return obj.map(item => stripPlaceholders(item));
-          }
-          
-          if (typeof obj === 'object') {
-            const cleaned = { ...obj };
-            if (cleaned.descriptions && typeof cleaned.descriptions === 'object') {
-              cleaned.descriptions = { ...cleaned.descriptions };
-              for (const langCode in cleaned.descriptions) {
-                const langDesc = cleaned.descriptions[langCode];
-                if (typeof langDesc === 'object' && langDesc !== null) {
-                  cleaned.descriptions[langCode] = {
-                    ...langDesc,
-                    full: stripPlaceholders(langDesc.full || ''),
-                    meta: stripPlaceholders(langDesc.meta || '')
-                  };
-                } else if (typeof langDesc === 'string') {
-                  cleaned.descriptions[langCode] = stripPlaceholders(langDesc);
-                }
+        const CacheManagerModule = (await import('./cache')).default;
+        const CLEANUP_CACHE_KEY = 'startup:description_cleanup:last_run';
+        const lastRun = await CacheManagerModule.get(CLEANUP_CACHE_KEY);
+        if (lastRun) {
+          logger.log('🧹 CLEANUP: Skipping (already ran within 24h)');
+        } else {
+          const { Station } = await import('../shared/mongo-schemas');
+          let cleanedCount = 0;
+          const placeholderRegex = /^\[(TRANSLATED\s+)?(META|FULL\s+DESCRIPTION|SEO\s+META)[^\]]*\]\s*/i;
+          // Only fetch stations that have at least one description field matching the pattern
+          const cursor = Station.find({
+            $or: [
+              { 'descriptions': { $regex: /^\[(TRANSLATED\s+)?(META|FULL|SEO)[^\]]*\]/i } }
+            ]
+          }).select('_id descriptions').lean().cursor({ batchSize: BATCH });
+
+          for await (const station of cursor) {
+            if (!station.descriptions || typeof station.descriptions !== 'object') continue;
+            const updatedDescriptions: any = {};
+            let hasChanges = false;
+            for (const [lang, desc] of Object.entries(station.descriptions as any)) {
+              if (typeof desc === 'object' && desc !== null) {
+                const d = desc as any;
+                const cleanedMeta = (d.meta || '').replace(placeholderRegex, '').trim();
+                const cleanedFull = (d.full || '').replace(placeholderRegex, '').trim();
+                if (cleanedMeta !== d.meta || cleanedFull !== d.full) hasChanges = true;
+                updatedDescriptions[lang] = { ...d, meta: cleanedMeta, full: cleanedFull };
+              } else {
+                updatedDescriptions[lang] = desc;
               }
             }
-            return cleaned;
-          }
-          return obj;
-        };
-        
-        const allStations = await Station.find({ descriptions: { $exists: true } }).lean();
-        let cleanedCount = 0;
-        
-        logger.log(`🧹 CLEANUP: Found ${allStations.length} stations with descriptions to scan`);
-        
-        let scannedCount = 0;
-        let firstExampleLogged = false;
-        let loggedSamples = 0;
-        let langCount = 0;
-        let metaCount = 0;
-        
-        for (const station of allStations) {
-          scannedCount++;
-          if (!station.descriptions) {
-            if (loggedSamples === 0) {
-              logger.log(`🔍 CLEANUP DEBUG: First station ${station.name} - NO descriptions field`);
-              loggedSamples++;
-            }
-            continue;
-          }
-          
-          if (typeof station.descriptions !== 'object') {
-            if (loggedSamples === 1) {
-              logger.log(`🔍 CLEANUP DEBUG: First station ${station.name} - descriptions NOT object, type: ${typeof station.descriptions}`);
-              loggedSamples++;
-            }
-            continue;
-          }
-          
-          // Check descriptions structure
-          const langCount_local = Object.keys(station.descriptions).length;
-          if (langCount_local > 0 && loggedSamples < 3) {
-            const firstLang = Object.keys(station.descriptions)[0];
-            const firstDesc = station.descriptions[firstLang];
-            logger.log(`🔍 SAMPLE: "${station.name}" has ${langCount_local} languages, first lang: ${firstLang}, desc type: ${typeof firstDesc}`);
-            if (typeof firstDesc === 'object' && firstDesc !== null) {
-              logger.log(`   Fields in first desc: ${Object.keys(firstDesc).join(', ')}`);
-              logger.log(`   Meta: ${(firstDesc as any).meta?.substring(0, 80) || 'EMPTY'}`);
-            }
-            loggedSamples++;
-          }
-          
-          let hasChanges = false;
-          const updatedDescriptions: any = {};
-          
-          // Start with ALL existing descriptions (to avoid losing languages)
-          for (const [lang, desc] of Object.entries(station.descriptions)) {
-            if (typeof desc === 'object' && desc !== null && 'meta' in desc) {
-              let originalMeta = (desc as any).meta || '';
-              let originalFull = (desc as any).full || '';
-              
-              // Log sample before cleanup
-              if (loggedSamples < 3 && originalMeta && originalMeta.length > 0) {
-                logger.log(`🔍 SAMPLE ${loggedSamples + 1}: "${station.name}" (${lang})`);
-                logger.log(`   Meta (first 150): ${originalMeta.substring(0, 150)}`);
-                loggedSamples++;
-              }
-              
-              let cleanedMeta = stripPlaceholders(originalMeta);
-              let cleanedFull = stripPlaceholders(originalFull);
-              
-              // Log first cleaned example to debug
-              if (!firstExampleLogged && (cleanedMeta !== originalMeta || cleanedFull !== originalFull)) {
-                logger.log(`✅ CLEANUP FOUND: Station "${station.name}" (${lang})`);
-                logger.log(`   Orig Meta: ${originalMeta.substring(0, 80)}`);
-                logger.log(`   Clean Meta: ${cleanedMeta.substring(0, 80)}`);
-                firstExampleLogged = true;
-              }
-              
-              if (cleanedMeta !== originalMeta || cleanedFull !== originalFull) {
-                hasChanges = true;
-              }
-              
-              // ALWAYS include this language in updatedDescriptions (with cleaned or original)
-              updatedDescriptions[lang] = {
-                full: cleanedFull,
-                meta: cleanedMeta
-              };
-            } else if (typeof desc === 'string') {
-              // Handle string descriptions
-              let cleaned = stripPlaceholders(desc);
-              if (cleaned !== desc) {
-                hasChanges = true;
-              }
-              updatedDescriptions[lang] = cleaned;
-            } else {
-              // Keep as-is if not object or string
-              updatedDescriptions[lang] = desc;
+            if (hasChanges) {
+              await Station.updateOne({ _id: station._id }, { $set: { descriptions: updatedDescriptions } });
+              cleanedCount++;
             }
           }
-          
-          if (hasChanges) {
-            await Station.updateOne(
-              { _id: station._id },
-              { $set: { descriptions: updatedDescriptions } }
-            );
-            cleanedCount++;
-          }
+          await CacheManagerModule.set(CLEANUP_CACHE_KEY, Date.now(), { ttl: 86400 });
+          if (cleanedCount > 0) logger.log(`🧹 CLEANUP: Cleaned placeholder prefixes from ${cleanedCount} stations`);
         }
-        
-        logger.log(`🧹 CLEANUP: Scanned ${scannedCount} stations, automatically cleaned ${cleanedCount} on startup`);
       } catch (error: any) {
         logger.warn(`⚠️ Automatic cleanup failed:`, error.message);
       }
