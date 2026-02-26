@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import { RecommendationEngine } from '../services/recommendation-engine';
 import { getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
+import { PrecomputedStationsService } from '../services/precomputed-stations';
 
 export function registerPublicStationRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
@@ -510,6 +511,52 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       res.json(stripPlaceholders(station));
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch random station' });
+    }
+  });
+
+  // PRECOMPUTED STATIONS API - 7-day cache, ultra-fast station browsing
+  app.get("/api/stations/precomputed", async (req, res) => {
+    try {
+      const { countryCode, countryName, page = '1', limit = '33', genre, language, search, hasLogo, codec, bitrate, sort } = req.query;
+      const pageNum = Math.max(1, parseInt(page as string) || 1);
+      const limitNum = Math.min(parseInt(limit as string) || 33, 500);
+
+      let result;
+      const identifier = (countryName as string) || (countryCode as string);
+
+      if (!identifier || identifier === 'global' || identifier === 'all') {
+        result = await PrecomputedStationsService.getGlobalStations(pageNum, limitNum);
+      } else if (countryCode) {
+        result = await PrecomputedStationsService.getCountryStations(countryCode as string, pageNum, limitNum);
+      } else {
+        result = await PrecomputedStationsService.getCountryStationsByName(countryName as string, pageNum, limitNum);
+      }
+
+      let { stations } = result;
+
+      // Apply client-side filters on cached data
+      if (genre) stations = stations.filter((s: any) => s.genre?.toLowerCase().includes((genre as string).toLowerCase()) || s.tags?.some((t: string) => t.toLowerCase().includes((genre as string).toLowerCase())));
+      if (language) stations = stations.filter((s: any) => s.language?.toLowerCase().includes((language as string).toLowerCase()));
+      if (search) {
+        const q = (search as string).toLowerCase();
+        stations = stations.filter((s: any) => s.name?.toLowerCase().includes(q) || s.country?.toLowerCase().includes(q));
+      }
+      if (hasLogo === 'true') stations = stations.filter((s: any) => s.favicon || s.hasLogo);
+      if (codec) stations = stations.filter((s: any) => s.codec?.toLowerCase() === (codec as string).toLowerCase());
+      if (bitrate) stations = stations.filter((s: any) => s.bitrate >= parseInt(bitrate as string));
+
+      res.json({
+        stations,
+        total: result.total,
+        count: result.total,
+        page: result.page,
+        totalPages: result.totalPages,
+        cached: result.cached,
+        pagination: { page: result.page, limit: limitNum, total: result.total, pages: result.totalPages }
+      });
+    } catch (error) {
+      logger.error('Error fetching precomputed stations:', error);
+      res.status(500).json({ error: 'Failed to fetch precomputed stations' });
     }
   });
 }

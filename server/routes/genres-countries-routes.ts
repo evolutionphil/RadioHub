@@ -378,4 +378,45 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       res.status(500).json({ error: 'Failed to fetch genres' });
     }
   });
+
+  // PRECOMPUTED GENRES API - 7-day cache, ultra-fast genre browsing
+  app.get("/api/genres/precomputed", async (req, res) => {
+    try {
+      const country = req.query.country as string | undefined;
+      const data = await PrecomputedGenresService.getGenres(country || undefined);
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch precomputed genres' });
+    }
+  });
+
+  // DISCOVERABLE GENRES API - for homepage genre tiles
+  app.get("/api/genres/discoverable", async (req, res) => {
+    try {
+      const country = req.query.country as string | undefined;
+      const limit = Math.min(parseInt(req.query.limit as string) || 13, 50);
+      const cacheKey = `genres:discoverable:${country || 'all'}:${limit}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) return res.json(cached);
+
+      let filter: any = { isDiscoverable: true };
+      if (country) {
+        const countryFilter = normalizeCountryFilter(country);
+        if (Object.keys(countryFilter).length > 0) {
+          const stationCountries = await Station.distinct('genre', { ...countryFilter, isDiscoverable: true });
+          filter.name = { $in: stationCountries };
+        }
+      }
+
+      const genres = await Genre.find({ isDiscoverable: true })
+        .sort({ displayOrder: 1, stationCount: -1 })
+        .limit(limit)
+        .lean();
+
+      await CacheManager.set(cacheKey, genres, { ttl: 600 });
+      res.json(genres);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch discoverable genres' });
+    }
+  });
 }
