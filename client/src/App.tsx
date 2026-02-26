@@ -1,5 +1,34 @@
-import React from "react";
+import React, { Component, type ReactNode } from "react";
 import { Switch, Route, Redirect } from "wouter";
+
+// ─── Page Error Boundary ─────────────────────────────────────────────────────
+// Catches render errors in page components and shows a friendly fallback
+// instead of crashing the entire app (prevents React error #426 white screen)
+class PageErrorBoundary extends Component<
+  { children: ReactNode; fallback?: ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  componentDidCatch(error: Error) {
+    console.error("[PageErrorBoundary]", error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback ?? (
+        <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center">
+          <div className="text-center text-white">
+            <p className="text-gray-400 text-sm mt-2">Something went wrong. Please refresh the page.</p>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -246,9 +275,11 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     if (pathToUse === '/profile/messages' || pathToUse.startsWith('/profile/messages/')) {
       return (
         <ProtectedRoute>
-          <LazyProfileLayout>
-            <LazyRoutes.MessagesPage />
-          </LazyProfileLayout>
+          <PageErrorBoundary>
+            <LazyProfileLayout>
+              <LazyRoutes.MessagesPage />
+            </LazyProfileLayout>
+          </PageErrorBoundary>
         </ProtectedRoute>
       );
     }

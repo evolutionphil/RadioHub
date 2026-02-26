@@ -17,6 +17,11 @@ setInterval(() => {
   }
 }, 120_000);
 
+// ─── Session userId helper ─────────────────────────────────────────────────────
+function getSessionUserId(req: any): string | null {
+  return req.session?.user?.userId || null;
+}
+
 // ─── Follow check helper ───────────────────────────────────────────────────────
 async function canChat(userA: string, userB: string): Promise<boolean> {
   const [aFollowsB, bFollowsA] = await Promise.all([
@@ -33,7 +38,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   // ── GET /api/messages/ws-ticket ─────────────────────────────────────────────
   // Returns a one-time ticket for WebSocket auth (expires in 60s)
   app.get("/api/messages/ws-ticket", requireAuth, (req, res) => {
-    const userId = (req.session as any).userId as string;
+    const userId = getSessionUserId(req);
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
     const ticket = crypto.randomBytes(32).toString("hex");
     wsTickets.set(ticket, { userId, expiresAt: Date.now() + 60_000 });
@@ -44,7 +49,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   // Returns people the current user can chat with (follows them or they follow back)
   app.get("/api/messages/contacts", requireAuth, async (req, res) => {
     try {
-      const userId = (req.session as any).userId as string;
+      const userId = getSessionUserId(req);
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
 
       // People I follow
       const following = await UserFollow.find({ userId }).select("followingUserId").lean();
@@ -59,7 +65,6 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         .select("username fullName avatar profileImageUrl")
         .lean();
 
-      // Annotate with relationship
       const result = contacts.map(c => ({
         ...c,
         iFollow: followingIds.includes(c._id.toString()),
@@ -77,7 +82,9 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   // ── GET /api/messages/conversations ─────────────────────────────────────────
   app.get("/api/messages/conversations", requireAuth, async (req, res) => {
     try {
-      const userId = new mongoose.Types.ObjectId((req.session as any).userId);
+      const rawId = getSessionUserId(req);
+      if (!rawId) return res.status(401).json({ error: "Not authenticated" });
+      const userId = new mongoose.Types.ObjectId(rawId);
 
       const conversations = await DirectMessage.aggregate([
         { $match: { $or: [{ fromUserId: userId }, { toUserId: userId }] } },
@@ -139,7 +146,9 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   // ── GET /api/messages/unread-count ──────────────────────────────────────────
   app.get("/api/messages/unread-count", requireAuth, async (req, res) => {
     try {
-      const userId = new mongoose.Types.ObjectId((req.session as any).userId);
+      const rawId = getSessionUserId(req);
+      if (!rawId) return res.status(401).json({ error: "Not authenticated" });
+      const userId = new mongoose.Types.ObjectId(rawId);
       const count = await DirectMessage.countDocuments({ toUserId: userId, read: false });
       res.json({ count });
     } catch {
@@ -150,7 +159,10 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   // ── GET /api/messages/conversation/:partnerId ────────────────────────────────
   app.get("/api/messages/conversation/:partnerId", requireAuth, async (req, res) => {
     try {
-      const userId = new mongoose.Types.ObjectId((req.session as any).userId);
+      const rawId = getSessionUserId(req);
+      if (!rawId) return res.status(401).json({ error: "Not authenticated" });
+      const userId = new mongoose.Types.ObjectId(rawId);
+
       let partnerId: mongoose.Types.ObjectId;
       try {
         partnerId = new mongoose.Types.ObjectId(req.params.partnerId);
@@ -159,7 +171,6 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
       }
 
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
-      // Cursor-based pagination: before= message _id
       const before = req.query.before as string;
 
       const filter: any = {
@@ -196,7 +207,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         .lean();
 
       res.json({
-        messages: messages.reverse(), // oldest first
+        messages: messages.reverse(),
         partner: partner ? { ...partner, online: chatService.isOnline(partnerId.toString()) } : null,
         hasMore: messages.length === limit,
       });
@@ -209,7 +220,9 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   // ── POST /api/messages/send ──────────────────────────────────────────────────
   app.post("/api/messages/send", requireAuth, async (req, res) => {
     try {
-      const fromUserId = (req.session as any).userId as string;
+      const fromUserId = getSessionUserId(req);
+      if (!fromUserId) return res.status(401).json({ error: "Not authenticated" });
+
       const { toUserId, content } = req.body;
 
       if (!toUserId || !content?.trim()) {
@@ -230,7 +243,6 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         return res.status(400).json({ error: "Cannot message yourself" });
       }
 
-      // ── Follow check ──────────────────────────────────────────────────────
       const allowed = await canChat(fromUserId, targetId.toString());
       if (!allowed) {
         return res.status(403).json({
@@ -251,7 +263,6 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         read: false,
       });
 
-      // ── Get sender info for real-time push ───────────────────────────────
       const sender = await User.findById(fromObjId)
         .select("username fullName avatar profileImageUrl")
         .lean();
@@ -269,12 +280,9 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         sender,
       };
 
-      // Push to recipient in real-time
       chatService.sendToUser(targetId.toString(), wsPayload);
-      // Echo back to sender (other tabs)
       chatService.sendToUser(fromUserId, { ...wsPayload, echo: true });
 
-      // ── In-app notification if recipient is offline ───────────────────────
       if (!chatService.isOnline(targetId.toString())) {
         try {
           await UserNotification.create({
@@ -296,16 +304,15 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   });
 
   // ── GET /api/messages/search-users ──────────────────────────────────────────
-  // Only returns users that follow current user or current user follows (can-chat check)
   app.get("/api/messages/search-users", requireAuth, async (req, res) => {
     try {
       const q = (req.query.q as string)?.trim();
       if (!q || q.length < 2) return res.json({ users: [] });
 
-      const userId = (req.session as any).userId as string;
+      const userId = getSessionUserId(req);
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const userObjId = new mongoose.Types.ObjectId(userId);
 
-      // Get IDs of people connected via follow
       const [following, followers] = await Promise.all([
         UserFollow.find({ userId: userObjId }).select("followingUserId").lean(),
         UserFollow.find({ followingUserId: userObjId }).select("userId").lean(),
@@ -351,7 +358,6 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     const url = new URL(request.url || "", `http://${request.headers.host}`);
     const ticket = url.searchParams.get("ticket");
 
-    // ── Validate ticket ────────────────────────────────────────────────────
     if (!ticket) {
       socket.send(JSON.stringify({ type: "error", message: "Missing ticket" }));
       socket.close(4001, "No ticket provided");
@@ -367,12 +373,9 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     }
 
     const userId = ticketData.userId;
-    wsTickets.delete(ticket); // one-time use
+    wsTickets.delete(ticket);
 
-    // ── Register connection ────────────────────────────────────────────────
     const client = chatService.addClient(userId, socket);
-
-    // Notify user's contacts that they came online
     broadcastOnlineStatus(userId, true);
 
     socket.send(JSON.stringify({
@@ -381,7 +384,6 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
       onlineUsers: chatService.getOnlineUsers(),
     }));
 
-    // ── Incoming message handler ───────────────────────────────────────────
     socket.on("message", async (rawData) => {
       try {
         const msg = JSON.parse(rawData.toString());
@@ -398,7 +400,6 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
 
           case "chat:read": {
             if (!msg.fromUserId) break;
-            // Mark all messages from fromUserId to this user as read in DB
             await DirectMessage.updateMany(
               {
                 fromUserId: new mongoose.Types.ObjectId(msg.fromUserId),
@@ -424,10 +425,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
       }
     });
 
-    // ── Disconnect ─────────────────────────────────────────────────────────
     socket.on("close", () => {
       chatService.removeClient(userId, client);
-      // Notify contacts if now fully offline
       if (!chatService.isOnline(userId)) {
         broadcastOnlineStatus(userId, false);
       }
