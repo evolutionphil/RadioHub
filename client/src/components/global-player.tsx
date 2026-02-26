@@ -48,9 +48,9 @@ export default function GlobalPlayer() {
     if (!currentStation) return '/no-image.webp';
     
     if (currentStation.logoAssets?.status === 'completed' && currentStation.logoAssets.folder) {
-      const filename = currentStation.logoAssets.webp96 || currentStation.logoAssets.webp256 || currentStation.logoAssets.webp48;
-      if (filename) {
-        return `/station-logos/${currentStation.logoAssets.folder}/${filename}`;
+      const value = currentStation.logoAssets.webp96 || currentStation.logoAssets.webp256 || currentStation.logoAssets.webp48;
+      if (value) {
+        return value.startsWith('http') ? value : `/station-logos/${currentStation.logoAssets.folder}/${value}`;
       }
     }
     

@@ -63,12 +63,20 @@ function NoImageFallback({ className }: { className?: string }) {
   );
 }
 
+// Resolve a logoAssets value to an absolute URL.
+// New S3 data: value is already a full https:// URL → return as-is.
+// Old local data: value is a filename like "logo-96.webp" → construct /station-logos path.
+function resolveLogoUrl(folder: string, value: string): string {
+  if (value.startsWith('https://') || value.startsWith('http://')) return value;
+  return `/station-logos/${folder}/${value}`;
+}
+
 function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 96): string {
-  // 1. First priority: Optimized logo assets (local WebP files)
+  // 1. First priority: Optimized logo assets (S3 or local WebP)
   if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-    const filename = station.logoAssets[`webp${preferredSize}` as keyof typeof station.logoAssets] as string | undefined;
-    if (filename) {
-      return `/station-logos/${station.logoAssets.folder}/${filename}`;
+    const value = station.logoAssets[`webp${preferredSize}` as keyof typeof station.logoAssets] as string | undefined;
+    if (value) {
+      return resolveLogoUrl(station.logoAssets.folder, value);
     }
   }
 
@@ -112,11 +120,11 @@ export function StationLogo({
   const sources = useMemo(() => {
     const list: string[] = [];
     
-    // 1. Optimized logoAssets (local WebP files)
+    // 1. Optimized logoAssets (S3 URL or local WebP)
     if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-      const filename = station.logoAssets[`webp${preferredWebp}` as keyof typeof station.logoAssets] as string | undefined;
-      if (filename) {
-        list.push(`/station-logos/${station.logoAssets.folder}/${filename}`);
+      const value = station.logoAssets[`webp${preferredWebp}` as keyof typeof station.logoAssets] as string | undefined;
+      if (value) {
+        list.push(resolveLogoUrl(station.logoAssets.folder, value));
       }
     }
     
@@ -160,13 +168,13 @@ export function StationLogo({
     const parts: string[] = [];
 
     if (station.logoAssets.webp48) {
-      parts.push(`/station-logos/${folder}/${station.logoAssets.webp48} 48w`);
+      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp48)} 48w`);
     }
     if (station.logoAssets.webp96) {
-      parts.push(`/station-logos/${folder}/${station.logoAssets.webp96} 96w`);
+      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp96)} 96w`);
     }
     if (station.logoAssets.webp256) {
-      parts.push(`/station-logos/${folder}/${station.logoAssets.webp256} 256w`);
+      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp256)} 256w`);
     }
 
     return parts.length > 0 ? parts.join(', ') : undefined;

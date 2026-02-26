@@ -23,25 +23,29 @@ async function downloadImage(url: string): Promise<Buffer | null> {
   }
 }
 
+function resolveLogoAssetUrl(folder: string, value: string): string | null {
+  if (!value) return null;
+  if (value.startsWith('https://') || value.startsWith('http://')) return value;
+  const localPath = path.join(process.cwd(), 'public', 'station-logos', folder, value);
+  return fs.existsSync(localPath) ? localPath : null;
+}
+
 async function getStationLogoBuffer(station: any): Promise<Buffer | null> {
-  if (station.logoAssets?.webp256) {
-    const logoPath = path.join(process.cwd(), 'public', 'station-logos', station.logoAssets.folder, station.logoAssets.webp256);
-    if (fs.existsSync(logoPath)) {
-      return fs.readFileSync(logoPath);
+  for (const key of ['webp256', 'webp96'] as const) {
+    const value = station.logoAssets?.[key];
+    if (!value) continue;
+    const resolved = resolveLogoAssetUrl(station.logoAssets.folder, value);
+    if (!resolved) continue;
+    // S3 or remote URL — fetch via HTTP
+    if (resolved.startsWith('https://') || resolved.startsWith('http://')) {
+      const buf = await downloadImage(resolved);
+      if (buf) return buf;
+    } else {
+      // Local file path
+      try { return fs.readFileSync(resolved); } catch {}
     }
   }
-  
-  if (station.logoAssets?.webp96) {
-    const logoPath = path.join(process.cwd(), 'public', 'station-logos', station.logoAssets.folder, station.logoAssets.webp96);
-    if (fs.existsSync(logoPath)) {
-      return fs.readFileSync(logoPath);
-    }
-  }
-  
-  if (station.favicon && station.favicon.startsWith('http')) {
-    return await downloadImage(station.favicon);
-  }
-  
+  if (station.favicon?.startsWith('http')) return await downloadImage(station.favicon);
   return null;
 }
 

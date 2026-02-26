@@ -107,6 +107,9 @@ CRITICAL SEO HEADING RULE: Only ONE H1 per page (provided by server-rendered con
 - **plyr**: Lightweight media player.
 - **sharp**: High-performance image processing library.
 
-## Planned Improvements
-- **S3 Logo Storage**: Station logos currently cached locally in `public/station-logos/` (runtime-generated, gitignored). Plan to migrate to Amazon S3 for scalable, persistent storage.
-- **Logo Processor** (`server/services/logo-processor.ts`): Creates WebP variants in `public/station-logos/{slug}/` folders. Will need refactoring when S3 migration happens.
+## S3 Logo Storage (COMPLETE)
+- **AWS S3**: Station logos uploaded to `{AWS_BUCKET_NAME}` (eu-north-1) under `station-logos/{folderName}/` prefix.
+- **S3 Service** (`server/services/s3-storage.ts`): `uploadToS3()`, `deleteFolderFromS3()`, `isS3Configured()`, `getS3PublicUrl()`.
+- **Logo Processor** (`server/services/logo-processor.ts`): Detects `isS3Configured()` — uploads to S3 and stores full `https://` URLs in `logoAssets.webp48/96/256`. Falls back to local filesystem if S3 not configured.
+- **Backwards Compatible**: `resolveLogoUrl(folder, value)` in frontend — if value starts with `http`, use as-is (S3); otherwise construct `/station-logos/{folder}/{value}` (legacy local). Updated in: `station-logo.tsx`, `global-player.tsx`, `audio-player.tsx`, `radio-frontend.tsx`, `stations/[id].tsx`, `logo-management.tsx`, `og-image-generator.ts`.
+- **Secrets needed**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME`, `AWS_REGION`.

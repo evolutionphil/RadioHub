@@ -1056,7 +1056,7 @@ export default function RadioFrontend({
                                     src={
                                       // 1. Priority: Optimized logo assets
                                       station.logoAssets?.status === 'completed' && station.logoAssets?.folder && station.logoAssets?.webp48
-                                        ? `/station-logos/${station.logoAssets.folder}/${station.logoAssets.webp48}`
+                                        ? (station.logoAssets.webp48.startsWith('http') ? station.logoAssets.webp48 : `/station-logos/${station.logoAssets.folder}/${station.logoAssets.webp48}`)
                                         // 2. Local image path
                                         : station.localImagePath ? `/station-images/${station.localImagePath}` 
                                         // 3. External favicon

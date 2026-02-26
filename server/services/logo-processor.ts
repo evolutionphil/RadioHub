@@ -6,6 +6,7 @@ import zlib from 'zlib';
 import { promisify } from 'util';
 import { Station } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
 
 const gunzip = promisify(zlib.gunzip);
 const inflate = promisify(zlib.inflate);
@@ -469,14 +470,17 @@ export class LogoProcessor {
 
     try {
       const folderName = this.getFolderName(slug, stationId);
-      const folderPath = path.join(LOGOS_DIR, folderName);
+      const useS3 = isS3Configured();
 
       await Station.updateOne(
         { _id: stationId },
         { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName } }
       );
 
-      await fs.mkdir(folderPath, { recursive: true });
+      if (!useS3) {
+        const folderPath = path.join(LOGOS_DIR, folderName);
+        await fs.mkdir(folderPath, { recursive: true });
+      }
 
       // Download with detailed error reporting
       const downloadResult = await this.downloadImageWithRetry(faviconUrl, 2);
@@ -492,22 +496,32 @@ export class LogoProcessor {
         throw new Error(validation.reason || 'Invalid image format');
       }
 
-      // Save original
       const originalExt = this.getExtensionFromFormat(validation.format) || this.getExtension(faviconUrl);
       const originalFilename = `original${originalExt}`;
-      await fs.writeFile(path.join(folderPath, originalFilename), downloadResult.buffer);
 
-      // Process each size
-      const logoAssets: Record<string, string> = {
-        folder: folderName,
-        original: originalFilename,
-      };
+      const logoAssets: Record<string, string> = { folder: folderName };
 
-      for (const size of LOGO_SIZES) {
-        const filename = `logo-${size}.webp`;
-        const processedBuffer = await this.safeProcessImage(downloadResult.buffer, size);
-        await fs.writeFile(path.join(folderPath, filename), processedBuffer);
-        logoAssets[`webp${size}`] = filename;
+      if (useS3) {
+        // Upload to S3 — store full URLs directly in logoAssets
+        const s3Key = (filename: string) => `station-logos/${folderName}/${filename}`;
+        logoAssets.original = await uploadToS3(s3Key(originalFilename), downloadResult.buffer, 'image/webp');
+        for (const size of LOGO_SIZES) {
+          const filename = `logo-${size}.webp`;
+          const buf = await this.safeProcessImage(downloadResult.buffer, size);
+          logoAssets[`webp${size}`] = await uploadToS3(s3Key(filename), buf, 'image/webp');
+        }
+        logger.log(`☁️ S3 upload complete: ${folderName}`);
+      } else {
+        // Fallback: local filesystem
+        const folderPath = path.join(LOGOS_DIR, folderName);
+        await fs.writeFile(path.join(folderPath, originalFilename), downloadResult.buffer);
+        logoAssets.original = originalFilename;
+        for (const size of LOGO_SIZES) {
+          const filename = `logo-${size}.webp`;
+          const buf = await this.safeProcessImage(downloadResult.buffer, size);
+          await fs.writeFile(path.join(folderPath, filename), buf);
+          logoAssets[`webp${size}`] = filename;
+        }
       }
 
       await Station.updateOne(
@@ -523,7 +537,7 @@ export class LogoProcessor {
         }
       );
 
-      logger.log(`✅ Logo processed: ${folderName}`);
+      logger.log(`✅ Logo processed: ${folderName} (${useS3 ? 'S3' : 'local'})`);
       return { success: true, folder: folderName };
 
     } catch (error: any) {
@@ -572,29 +586,37 @@ export class LogoProcessor {
 
     try {
       const folderName = this.getFolderName(slug, stationId);
-      const folderPath = path.join(LOGOS_DIR, folderName);
+      const useS3 = isS3Configured();
 
       await Station.updateOne(
         { _id: stationId },
         { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName } }
       );
 
-      await fs.mkdir(folderPath, { recursive: true });
-
       const ext = path.extname(originalFilename) || '.png';
       const originalFile = `original${ext}`;
-      await fs.writeFile(path.join(folderPath, originalFile), buffer);
+      const logoAssets: Record<string, string> = { folder: folderName };
 
-      const logoAssets: Record<string, string> = {
-        folder: folderName,
-        original: originalFile,
-      };
-
-      for (const size of LOGO_SIZES) {
-        const filename = `logo-${size}.webp`;
-        const processedBuffer = await this.safeProcessImage(buffer, size);
-        await fs.writeFile(path.join(folderPath, filename), processedBuffer);
-        logoAssets[`webp${size}`] = filename;
+      if (useS3) {
+        const s3Key = (filename: string) => `station-logos/${folderName}/${filename}`;
+        logoAssets.original = await uploadToS3(s3Key(originalFile), buffer, 'image/webp');
+        for (const size of LOGO_SIZES) {
+          const filename = `logo-${size}.webp`;
+          const buf = await this.safeProcessImage(buffer, size);
+          logoAssets[`webp${size}`] = await uploadToS3(s3Key(filename), buf, 'image/webp');
+        }
+        logger.log(`☁️ S3 upload complete (manual): ${folderName}`);
+      } else {
+        const folderPath = path.join(LOGOS_DIR, folderName);
+        await fs.mkdir(folderPath, { recursive: true });
+        await fs.writeFile(path.join(folderPath, originalFile), buffer);
+        logoAssets.original = originalFile;
+        for (const size of LOGO_SIZES) {
+          const filename = `logo-${size}.webp`;
+          const buf = await this.safeProcessImage(buffer, size);
+          await fs.writeFile(path.join(folderPath, filename), buf);
+          logoAssets[`webp${size}`] = filename;
+        }
       }
 
       await Station.updateOne(
@@ -611,7 +633,7 @@ export class LogoProcessor {
         }
       );
 
-      logger.log(`✅ Logo uploaded: ${folderName}`);
+      logger.log(`✅ Logo uploaded: ${folderName} (${useS3 ? 'S3' : 'local'})`);
       return { success: true, folder: folderName };
 
     } catch (error: any) {
@@ -860,9 +882,13 @@ export class LogoProcessor {
   async deleteLogos(stationId: string, slug: string): Promise<void> {
     try {
       const folderName = this.getFolderName(slug, stationId);
-      const folderPath = path.join(LOGOS_DIR, folderName);
-      await fs.rm(folderPath, { recursive: true, force: true });
-      logger.log(`🗑️ Deleted logo folder: ${folderName}`);
+      if (isS3Configured()) {
+        await deleteFolderFromS3(`station-logos/${folderName}/`);
+      } else {
+        const folderPath = path.join(LOGOS_DIR, folderName);
+        await fs.rm(folderPath, { recursive: true, force: true });
+        logger.log(`🗑️ Deleted local logo folder: ${folderName}`);
+      }
     } catch (error) {
       // Ignore errors
     }

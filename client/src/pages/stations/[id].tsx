@@ -1135,7 +1135,7 @@ export default function StationDetails() {
                                 height={56}
                                 width={56}
                                 src={linkedStation.logoAssets?.webp96 
-                                  ? `/station-logos/${linkedStation.logoAssets.folder}/${linkedStation.logoAssets.webp96}`
+                                  ? (linkedStation.logoAssets.webp96.startsWith('http') ? linkedStation.logoAssets.webp96 : `/station-logos/${linkedStation.logoAssets.folder}/${linkedStation.logoAssets.webp96}`)
                                   : linkedStation.favicon || "/images/no-image.webp"}
                                 alt={`Listen ${linkedStation.name}`}
                                 className="w-14 h-14 rounded object-cover"

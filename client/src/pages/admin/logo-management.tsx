@@ -402,7 +402,7 @@ export default function LogoManagement() {
                     <div className="w-12 h-12 flex-shrink-0 bg-muted rounded">
                       {station.logoAssets?.webp96 ? (
                         <img 
-                          src={`/station-logos/${station.logoAssets.folder}/${station.logoAssets.webp96}`}
+                          src={station.logoAssets.webp96.startsWith('http') ? station.logoAssets.webp96 : `/station-logos/${station.logoAssets.folder}/${station.logoAssets.webp96}`}
                           alt={station.name}
                           className="w-12 h-12 object-cover rounded"
                           onError={(e) => {

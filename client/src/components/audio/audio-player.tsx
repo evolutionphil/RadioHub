@@ -187,17 +187,18 @@ export function AudioPlayer({ station, onClose, onNext, onPrevious }: AudioPlaye
         let artworkArray: { src: string; sizes: string; type: string }[] = [];
         
         if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-          // Use optimized local logo assets with proper sizes
-          const basePath = `/station-logos/${station.logoAssets.folder}`;
+          // Use optimized logo assets — supports both S3 URLs and local WebP paths
+          const resolveArtwork = (val: string) =>
+            val.startsWith('http') ? val : `/station-logos/${station.logoAssets!.folder}/${val}`;
           artworkArray = [];
           if (station.logoAssets.webp256) {
-            artworkArray.push({ src: `${basePath}/${station.logoAssets.webp256}`, sizes: '256x256', type: 'image/webp' });
+            artworkArray.push({ src: resolveArtwork(station.logoAssets.webp256), sizes: '256x256', type: 'image/webp' });
           }
           if (station.logoAssets.webp96) {
-            artworkArray.push({ src: `${basePath}/${station.logoAssets.webp96}`, sizes: '96x96', type: 'image/webp' });
+            artworkArray.push({ src: resolveArtwork(station.logoAssets.webp96), sizes: '96x96', type: 'image/webp' });
           }
           if (station.logoAssets.webp48) {
-            artworkArray.push({ src: `${basePath}/${station.logoAssets.webp48}`, sizes: '48x48', type: 'image/webp' });
+            artworkArray.push({ src: resolveArtwork(station.logoAssets.webp48), sizes: '48x48', type: 'image/webp' });
           }
         } else if (station.localImagePath) {
           // Local image has priority
