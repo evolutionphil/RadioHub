@@ -36,7 +36,7 @@ import NotificationContainer from "@/components/ui/NotificationContainer";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { TranslationPreloader } from "@/components/translation/TranslationPreloader";
-import { useState, useEffect, useTransition } from "react";
+import { useState, useEffect, useDeferredValue } from "react";
 import { useLocation } from "wouter";
 import { getLanguageFromPath } from "@shared/seo-config";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
@@ -190,26 +190,18 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
   const { cleanPath, englishPath, currentLanguage } = useSeoRouting();
   const [location, setLocation] = useLocation();
 
-  // Use useTransition so that lazy component suspensions triggered by navigation
-  // are treated as non-urgent transitions — fixes React 18 "suspended during
-  // synchronous input" warning when clicking links to lazy-loaded pages.
-  const [, startRouteTransition] = useTransition();
-  const [activePath, setActivePath] = useState(englishPath);
-
-  // Whenever the URL changes, update the active path inside a transition
-  // so React knows it's OK for this render to suspend.
-  useEffect(() => {
-    startRouteTransition(() => {
-      setActivePath(englishPath);
-    });
-  }, [englishPath]);
+  // React 18 useDeferredValue: keeps the previous route visible while the next
+  // lazy chunk is loading — prevents "suspended during synchronous input" warning.
+  // On navigation: englishPath changes immediately, deferredPath stays at the old
+  // value until the new component is ready (Suspense-safe transition).
+  const deferredPath = useDeferredValue(englishPath);
 
   // CRITICAL FIX: Route based on englishPath, not cleanPath
   // cleanPath can be in translated language (e.g., "/zhanret"), but router needs English (e.g., "/genres")
   const renderByCleanPath = () => {
     // CRITICAL FIX: Strip query params and hash for route matching
     // GenresPage adds ?page=1 which would break the equality check
-    const pathToUse = activePath.split('?')[0].split('#')[0];  // Use transitioned English path for matching
+    const pathToUse = deferredPath.split('?')[0].split('#')[0];
     
     
     if (pathToUse === '/') return <LazyRoutes.RadioFrontend selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
@@ -1037,9 +1029,9 @@ const SeoMainRouter = React.memo(() => {
             )}
 
             {/* Trending - English + Translated */}
-            <Route path={`/${countryCode}/trending`} component={LazyRoutes.TrendingStations} />
+            <Route path={`/${countryCode}/trending`} component={PlayerWrapper} />
             {translations['trending'] && (
-              <Route path={`/${countryCode}/${translations['trending']}`} component={LazyRoutes.TrendingStations} />
+              <Route path={`/${countryCode}/${translations['trending']}`} component={PlayerWrapper} />
             )}
           </React.Fragment>
         );
@@ -1122,7 +1114,7 @@ const SeoMainRouter = React.memo(() => {
       <Route path="/genres/:rest*" component={PlayerWrapper} />
       <Route path="/radios/:rest*" component={PlayerWrapper} />
       <Route path="/change-password" component={PlayerWrapper} />
-      <Route path="/trending" component={LazyRoutes.TrendingStations} />
+      <Route path="/trending" component={PlayerWrapper} />
       <Route path="/users/:rest*" component={PlayerWrapper} />
       <Route path="/request-station" component={PlayerWrapper} />
       <Route path="/recommendations" component={PlayerWrapper} />
@@ -1144,8 +1136,12 @@ const SeoMainRouter = React.memo(() => {
           via useSeoRouting.englishPath and renderByCleanPath() */}
       <Route path="/:countryCode/:rest*" component={PlayerWrapper} />
       
-      {/* 404 for any unmatched routes */}
-      <Route component={LazyRoutes.NotFound} />
+      {/* 404 for any unmatched routes - Suspense needed since NotFound is lazy */}
+      <Route component={() => (
+        <Suspense fallback={<div className="min-h-screen bg-[#0E0E0E]" />}>
+          <LazyRoutes.NotFound />
+        </Suspense>
+      )} />
     </Switch>
   );
 });
@@ -1194,13 +1190,17 @@ function App() {
     }
   }, []);
 
-  // 🚀 PRELOAD: Eagerly load profile/auth route chunks after initial render.
-  // This ensures that by the time any user clicks a profile link, the lazy
-  // chunks are already downloaded — preventing the "suspended during synchronous
-  // input" React 18 warning.
+  // 🚀 PRELOAD: Eagerly load common route chunks after initial render.
+  // Preloading starts at 500ms so chunks are ready before any user interaction,
+  // ensuring useDeferredValue + Suspense can defer without showing a flash.
   useEffect(() => {
     const preloadRoutes = () => {
       Promise.allSettled([
+        // Most-visited pages (load first)
+        import("@/pages/stations/[id]"),
+        import("@/pages/TrendingStations"),
+        import("@/pages/not-found"),
+        // Profile/auth chunks
         import("@/components/layout/ProfileLayout"),
         import("@/pages/messages"),
         import("@/pages/favorites"),
@@ -1213,8 +1213,7 @@ function App() {
         import("@/pages/auth/signup"),
       ]);
     };
-    // Delay so it doesn't compete with critical first-paint resources
-    const timer = setTimeout(preloadRoutes, 3000);
+    const timer = setTimeout(preloadRoutes, 500);
     return () => clearTimeout(timer);
   }, []);
   

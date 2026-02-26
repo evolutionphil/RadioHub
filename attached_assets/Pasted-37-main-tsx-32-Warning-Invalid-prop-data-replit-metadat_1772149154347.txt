@@ -1,0 +1,489 @@
+37
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2445:51)
+80
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2445:51)
+main.tsx:32 Warning: React does not recognize the `fetchPriority` prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase `fetchpriority` instead. If you accidentally passed it from a parent component, remove it from the DOM element.
+    at img
+    at picture
+    at div
+    at div
+    at RadioFrontend (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/pages/radio-frontend.tsx:363:3)
+    at Suspense
+    at PublicRouter (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:318:25)
+    at main
+    at div
+    at SeoPageWrapper (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/components/SeoPageWrapper.tsx:23:34)
+    at PlayerWrapper (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:668:57)
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2445:51)
+31
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2445:51)
+89
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2445:51)
+42
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2445:51)
+83
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=XFFWKjbKfDxLSO6c7xR6X:2445:51)
+en:1 The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy.
+show_ads_impl_fy2021…s?bust=31096879:570 The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy.
+show_ads_impl_fy2021…s?bust=31096879:805 The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy.
+chrome-error://chromewebdata/:1 
+ Failed to load resource: the server responded with a status of 403 ()
+25
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+60
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+30
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+83
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+sodar2.js:31 The Content Security Policy directive 'upgrade-insecure-requests' is ignored when delivered in a report-only policy.
+31
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+57
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+31
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+64
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+26
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+66
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+28
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+72
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+24
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+52
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+36
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+69
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+32
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+53
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+31
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+66
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+25
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+72
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+24
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+61
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at GlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/useGlobalPlayer.tsx:24:40)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+23
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+55
+main.tsx:32 Warning: Invalid prop `data-replit-metadata` supplied to `React.Fragment`. React.Fragment can only have `key` and `children` props.
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+main.tsx:32 The above error occurred in one of your React components:
+
+    at Lazy
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:974:42
+    at Route (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:323:16)
+    at Switch (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5a30c5dc:379:17)
+    at Router (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2413:3)
+    at Provider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…unner/workspace/node_modules/.vite/deps/chunk-OXZDJRWN.js?v=5a30c5dc:38:15)
+    at TooltipProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…kspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5a30c5dc:951:5)
+    at Suspense
+    at LazyGlobalPlayerProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/hooks/LazyGlobalPlayerProvider.tsx:26:44)
+    at ThemeProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/lib/theme-provider.tsx:25:3)
+    at QueryClientProvider (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.…rkspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5a30c5dc:2805:3)
+    at App (https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev/src/App.tsx?v=PnzJjAufg6u7mOttUFTHp:2445:51)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+chunk-RPCDYKBN.js?v=5a30c5dc:14213 Uncaught Error: A component suspended while responding to synchronous input. This will cause the UI to be replaced with a loading indicator. To fix, updates that suspend should be wrapped with startTransition.
+    at throwException (chunk-RPCDYKBN.js?v=5a30c5dc:14213:43)
+    at handleError (chunk-RPCDYKBN.js?v=5a30c5dc:19034:15)
+    at renderRootSync (chunk-RPCDYKBN.js?v=5a30c5dc:19119:15)
+    at recoverFromConcurrentError (chunk-RPCDYKBN.js?v=5a30c5dc:18736:28)
+    at performSyncWorkOnRoot (chunk-RPCDYKBN.js?v=5a30c5dc:18879:28)
+    at flushSyncCallbacks (chunk-RPCDYKBN.js?v=5a30c5dc:9119:30)
+    at chunk-RPCDYKBN.js?v=5a30c5dc:18627:21
+
+﻿
