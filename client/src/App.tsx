@@ -80,10 +80,18 @@ import { SeoPageWrapper } from "@/components/SeoPageWrapper";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
 import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, COUNTRY_TO_CODE, getLanguageForCountry } from "@shared/seo-config";
+
 import { URL_TRANSLATIONS } from "@shared/url-translations";
+
 import AddYourStationModal from "@/components/modals/AddYourStationModal";
 import StructuredData from "@/components/seo/StructuredData";
 import { initializeBackgroundPlayback } from "@/lib/backgroundAudio";
+
+// Module-level constant (outside any component) — prevents useEffect from firing on every render
+const CODE_TO_COUNTRY: { [key: string]: string } = {};
+Object.entries(COUNTRY_TO_CODE).forEach(([country, code]) => {
+  if (!CODE_TO_COUNTRY[code]) CODE_TO_COUNTRY[code] = country;
+});
 
 function AdminRouterContent() {
   return (
@@ -296,16 +304,6 @@ function PlayerWrapper() {
   
   // Use getLanguageForCountry helper from @shared/seo-config (single source of truth)
   
-  // Create reverse mapping from country code to country name
-  // CRITICAL: Use COUNTRY_TO_CODE (ISO codes), not countryToLanguage (language codes)
-  const codeToCountry: { [key: string]: string } = {};
-  Object.entries(COUNTRY_TO_CODE).forEach(([country, code]) => {
-    // Only set if not already set (first country wins for duplicate codes)
-    if (!codeToCountry[code]) {
-      codeToCountry[code] = country;
-    }
-  });
-
   // Initialize country state from localStorage only (independent from language)
   const [selectedCountry, setSelectedCountry] = useState(() => {
     try {
@@ -334,7 +332,7 @@ function PlayerWrapper() {
     // Also match paths like /tr (not just /tr/)
     const match = currentPath.match(/^\/([a-z]{2})(?:\/|$)/);
     
-    logger.log('🌍 URL analysis:', { currentPath, match: match?.[1], codeToCountry: match ? codeToCountry[match[1]] : 'no match' });
+    logger.log('🌍 URL analysis:', { currentPath, match: match?.[1], codeToCountry: match ? CODE_TO_COUNTRY[match[1]] : 'no match' });
     
     if (match) {
       const urlCode = match[1];  // This is a LANGUAGE code in URL (tr, de, en, ar, etc.)
@@ -364,7 +362,7 @@ function PlayerWrapper() {
         setSelectedCountry("all");
       }
     }
-  }, [cleanPath, dropdownOverride, selectedCountry, codeToCountry]);
+  }, [cleanPath, dropdownOverride, selectedCountry]);
 
   const handleCountryChange = (country: string, isManual: boolean = true) => {
     logger.log(`🎯 handleCountryChange called: ${selectedCountry} -> ${country} (${isManual ? 'manual' : 'automatic'})`);

@@ -955,41 +955,44 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   });
   logger.log('⏰ Genres cache auto-refresh scheduled: every 5 minutes');
 
-  // Popular stations: refresh every 5 minutes for top countries
-  cron.default.schedule('*/5 * * * *', async () => {
+  // Popular stations: refresh every 15 minutes — run all countries in PARALLEL (was sequential = 94s)
+  cron.default.schedule('*/15 * * * *', async () => {
     try {
       const startTime = Date.now();
-      const topCountries = [undefined, 'Turkey', 'Germany', 'United States', 'United Kingdom', 'France', 
+      const topCountries = [undefined, 'Turkey', 'Germany', 'United States', 'United Kingdom', 'France',
         'Spain', 'Italy', 'Netherlands', 'Austria', 'Switzerland', 'Brazil', 'Russia',
         'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland'];
-      for (const country of topCountries) {
-        await refreshPopularStationsCache(country);
-      }
+      await Promise.all(topCountries.map(country => refreshPopularStationsCache(country)));
       const elapsed = Date.now() - startTime;
-      logger.log(`⏰ [Cron] Popular stations cache refreshed in ${elapsed}ms (${topCountries.length} countries)`);
+      logger.log(`⏰ [Cron] Popular stations cache refreshed in ${elapsed}ms (${topCountries.length} countries, parallel)`);
     } catch (error) {
       logger.error('[Cron] Popular stations cache refresh failed:', error);
     }
   });
-  logger.log('⏰ Popular stations cache auto-refresh scheduled: every 5 minutes');
+  logger.log('⏰ Popular stations cache auto-refresh scheduled: every 15 minutes (parallel)');
 
-  // /api/genres endpoint cache: refresh every 5 minutes for common request patterns
-  cron.default.schedule('*/5 * * * *', async () => {
+  // /api/genres endpoint cache: refresh every 2 hours — run all countries in PARALLEL
+  // (was sequential every 5 min = 524 seconds overlap; now parallel every 2h)
+  cron.default.schedule('0 */2 * * *', async () => {
     try {
       const startTime = Date.now();
       const commonCountries = [null, 'TR', 'DE', 'US', 'GB', 'FR', 'ES', 'IT', 'NL', 'AT', 'BR', 'RU'];
-      for (const countrycode of commonCountries) {
-        const filters = { countrycode, searchQuery: null, sortColumn: 'stationCount', sortBy: 'desc' };
-        await refreshGenresCache(1, 27, filters);
-        await refreshGenresCache(1, 9, filters);
-      }
+      await Promise.all(
+        commonCountries.flatMap(countrycode => {
+          const filters = { countrycode, searchQuery: null, sortColumn: 'stationCount', sortBy: 'desc' };
+          return [
+            refreshGenresCache(1, 27, filters),
+            refreshGenresCache(1, 9, filters),
+          ];
+        })
+      );
       const elapsed = Date.now() - startTime;
-      logger.log(`⏰ [Cron] Genres API cache refreshed in ${elapsed}ms (${commonCountries.length} countries)`);
+      logger.log(`⏰ [Cron] Genres API cache refreshed in ${elapsed}ms (${commonCountries.length} countries, parallel)`);
     } catch (error) {
       logger.error('[Cron] Genres API cache refresh failed:', error);
     }
   });
-  logger.log('⏰ Genres API cache auto-refresh scheduled: every 5 minutes');
+  logger.log('⏰ Genres API cache auto-refresh scheduled: every 2 hours (parallel)');
 
   // Startup: Warm up PrecomputedGenresService immediately (non-blocking)
   setImmediate(async () => {

@@ -868,6 +868,11 @@ const GenreSchema = new Schema<IGenre>({
   createdAt: { type: Date, default: Date.now }
 }, { strict: false }); // Allow any _id type without strict validation
 
+GenreSchema.index({ name: 1 });
+GenreSchema.index({ isDiscoverable: 1 });
+GenreSchema.index({ slug: 1 }, { sparse: true });
+GenreSchema.index({ stationCount: -1 });
+
 const CodecSchema = new Schema<ICodec>({
   name: { type: String, required: true, unique: true },  
   stationCount: { type: Number, default: 0 },
@@ -1299,6 +1304,7 @@ StationSchema.index({ tags: 1 });
 StationSchema.index({ votes: -1 });
 StationSchema.index({ clickCount: -1 });
 StationSchema.index({ updatedAt: -1 });
+StationSchema.index({ codec: 1 }); // Used in dashboard stats distinct/aggregate queries
 // Compound indexes for Similar Radios performance
 StationSchema.index({ country: 1, lastCheckOk: 1, votes: -1 }); // Country lookup with votes sort
 StationSchema.index({ lastCheckOk: 1, votes: -1 }); // Global popular lookup
@@ -1559,6 +1565,9 @@ export const Language = mongoose.model<ILanguage>('Language', LanguageSchema);
 export const Genre = mongoose.model<IGenre>('Genre', GenreSchema);
 export const Codec = mongoose.model<ICodec>('Codec', CodecSchema);
 export const SyncLog = mongoose.model<ISyncLog>('SyncLog', SyncLogSchema);
+UserSchema.index({ slug: 1 }, { sparse: true }); // Used in profile lookups
+UserSchema.index({ isPublicProfile: 1 }); // Used in community listings
+
 export const User = mongoose.model<IUser>('User', UserSchema);
 export const StationRating = mongoose.model<IStationRating>('StationRating', StationRatingSchema);
 export const UserFavorite = mongoose.model<IUserFavorite>('UserFavorite', UserFavoriteSchema);
