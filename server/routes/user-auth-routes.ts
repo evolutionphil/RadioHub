@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import mongoose from 'mongoose';
-import { User, UserFollow, AuthToken } from '../../shared/mongo-schemas';
+import { User, UserFollow, AuthToken, UserNotification } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 export function registerUserAuthRoutes(app: Express, deps: any) {
