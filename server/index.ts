@@ -497,6 +497,10 @@ app.use((req, res, next) => {
       server.castWss.handleUpgrade(request, socket, head, (ws) => {
         server.castWss.emit('connection', ws, request);
       });
+    } else if (pathname === '/ws/chat') {
+      server.chatWss.handleUpgrade(request, socket, head, (ws) => {
+        server.chatWss.emit('connection', ws, request);
+      });
     }
     // Other paths (like Vite HMR) are handled by Vite's own upgrade handler
   });

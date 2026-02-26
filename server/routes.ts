@@ -56,7 +56,7 @@ const deps = {
   seedDemoApiKey
 };
 
-export async function registerRoutes(app: Express): Promise<Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer> }> {
+export async function registerRoutes(app: Express): Promise<Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer>, chatWss: InstanceType<typeof WebSocketServer> }> {
   const server = createServer(app);
 
   // === HEALTH CHECK ===
@@ -95,6 +95,9 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
   const castWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
   logger.log(`📺 CAST: WebSocket server ready at /ws/cast`);
+
+  const chatWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  logger.log(`💬 CHAT: WebSocket server ready at /ws/chat`);
 
   // === CAST ROUTES (WebSocket + REST, registered before middleware) ===
   registerCastRoutes(app, castWss, deps);
@@ -443,11 +446,12 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   registerStreamProxyRoutes(app, deps);
   registerRegionsRecommendationsRoutes(app, deps);
   registerMiscRoutes(app, deps);
-  registerMessagesRoutes(app, deps);
+  registerMessagesRoutes(app, chatWss, deps);
 
   // === RETURN SERVER WITH WEBSOCKET REFERENCES ===
-  const result = server as Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer> };
+  const result = server as Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer>, chatWss: InstanceType<typeof WebSocketServer> };
   result.metadataWss = wss;
   result.castWss = castWss;
+  result.chatWss = chatWss;
   return result;
 }

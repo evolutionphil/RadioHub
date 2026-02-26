@@ -1921,10 +1921,10 @@ const UserNotificationSchema = new Schema({
   fromUserId: { type: Schema.Types.ObjectId, ref: 'User' }, // User who triggered the notification
   type: { 
     type: String, 
-    enum: ['follow', 'unfollow', 'favorite_station', 'new_station', 'system'],
+    enum: ['follow', 'unfollow', 'favorite_station', 'new_station', 'system', 'new_message'],
     required: true 
   },
-  title: { type: String, required: true },
+  title: { type: String, required: false },
   message: { type: String, required: true },
   data: { type: Schema.Types.Mixed }, // Additional data for the notification
   read: { type: Boolean, default: false },

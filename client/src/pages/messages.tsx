@@ -1,18 +1,27 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
-import { Search, Send, Smile } from "lucide-react";
+import { Search, Send, Circle, CheckCheck, Users, MessageCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
-import { getImageUrl } from "@/lib/utils";
+import { apiRequest } from "@/lib/queryClient";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+interface UserInfo {
+  _id: string;
+  username: string;
+  fullName?: string;
+  avatar?: string;
+  profileImageUrl?: string;
+  online?: boolean;
+}
+
 interface Conversation {
   partnerId: string;
-  partner: { _id: string; username: string; fullName?: string; avatar?: string; profileImageUrl?: string } | null;
+  partner: UserInfo | null;
   lastMessage: string;
   lastMessageAt: string;
   unreadCount: number;
+  online?: boolean;
 }
 
 interface Message {
@@ -24,55 +33,98 @@ interface Message {
   createdAt: string;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+interface WsEvent {
+  type: string;
+  message?: Message;
+  sender?: UserInfo;
+  fromUserId?: string;
+  byUserId?: string;
+  userId?: string;
+  online?: boolean;
+  echo?: boolean;
+  onlineUsers?: string[];
+}
 
-function getAvatar(user: Conversation["partner"], size = 40) {
-  if (!user) return null;
+// ─── Avatar ───────────────────────────────────────────────────────────────────
+
+function Avatar({ user, size = 40 }: { user: UserInfo | null; size?: number }) {
+  if (!user) {
+    return (
+      <div
+        className="rounded-full flex items-center justify-center bg-gray-800 flex-shrink-0"
+        style={{ width: size, height: size }}
+      >
+        <Users size={size * 0.4} className="text-gray-600" />
+      </div>
+    );
+  }
   const src = user.avatar || user.profileImageUrl;
-  if (src) return <img src={src} alt={user.fullName || user.username} className="rounded-full object-cover" style={{ width: size, height: size }} />;
-  const initials = (user.fullName || user.username || "?").charAt(0).toUpperCase();
+  const initial = (user.fullName || user.username || "?").charAt(0).toUpperCase();
+  const dot = user.online !== undefined && (
+    <span
+      className="absolute bottom-0 right-0 rounded-full border-2"
+      style={{
+        width: size * 0.27,
+        height: size * 0.27,
+        background: user.online ? "#22c55e" : "#4b5563",
+        borderColor: "#151515",
+      }}
+    />
+  );
+
   return (
-    <div
-      className="rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-      style={{ width: size, height: size, background: "linear-gradient(135deg, #F86DAD, #FF4FA0)", fontSize: size * 0.4 }}
-    >
-      {initials}
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      {src ? (
+        <img src={src} alt={user.fullName || user.username} className="rounded-full object-cover w-full h-full" />
+      ) : (
+        <div
+          className="rounded-full flex items-center justify-center text-white font-bold w-full h-full"
+          style={{ background: "linear-gradient(135deg,#F86DAD,#FF4FA0)", fontSize: size * 0.4 }}
+        >
+          {initial}
+        </div>
+      )}
+      {dot}
     </div>
   );
 }
 
 function formatTime(iso: string) {
+  if (!iso) return "";
   const d = new Date(iso);
-  const now = new Date();
-  const diff = (now.getTime() - d.getTime()) / 1000;
+  const diff = (Date.now() - d.getTime()) / 1000;
   if (diff < 60) return "now";
   if (diff < 3600) return `${Math.floor(diff / 60)}m`;
   if (diff < 86400) return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (diff < 604800) return d.toLocaleDateString([], { weekday: "short" });
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Conversation Item ────────────────────────────────────────────────────────
 
-function ConversationItem({ conv, active, onClick }: { conv: Conversation; active: boolean; onClick: () => void }) {
+function ConvItem({ conv, active, onClick }: { conv: Conversation; active: boolean; onClick: () => void }) {
   const name = conv.partner?.fullName || conv.partner?.username || "Unknown";
   return (
     <div
       onClick={onClick}
-      className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors"
-      style={{ background: active ? "#2D2D2D" : "transparent" }}
-      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLDivElement).style.background = "#1A1A1A"; }}
-      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLDivElement).style.background = "transparent"; }}
+      className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-all"
+      style={{
+        background: active ? "rgba(255,65,153,0.1)" : "transparent",
+        borderLeft: active ? "3px solid #FF4199" : "3px solid transparent",
+      }}
+      onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "#1A1A1A"; }}
+      onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      <div className="flex-shrink-0">{getAvatar(conv.partner, 40)}</div>
+      <Avatar user={conv.partner ? { ...conv.partner, online: conv.online } : null} size={40} />
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between">
           <span className="text-white font-semibold text-sm truncate">{name}</span>
           {conv.lastMessageAt && (
-            <span className="text-gray-500 text-xs flex-shrink-0 ml-1">{formatTime(conv.lastMessageAt)}</span>
+            <span className="text-gray-500 text-[11px] flex-shrink-0 ml-1">{formatTime(conv.lastMessageAt)}</span>
           )}
         </div>
         <div className="flex items-center justify-between mt-0.5">
-          <span className="text-gray-400 text-xs truncate">{conv.lastMessage}</span>
+          <span className="text-gray-400 text-xs truncate">{conv.lastMessage || "—"}</span>
           {conv.unreadCount > 0 && (
             <span className="ml-2 flex-shrink-0 bg-[#FF4199] text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
               {conv.unreadCount > 99 ? "99+" : conv.unreadCount}
@@ -84,280 +136,520 @@ function ConversationItem({ conv, active, onClick }: { conv: Conversation; activ
   );
 }
 
-function MessageBubble({ msg, isOwn }: { msg: Message; isOwn: boolean }) {
+// ─── Message Bubble ───────────────────────────────────────────────────────────
+
+function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: boolean }) {
   return (
-    <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-2`}>
+    <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
       <div
-        className="max-w-[70%] rounded-2xl px-4 py-2.5 text-sm text-white"
+        className="max-w-[70%] rounded-2xl px-4 py-2.5"
         style={{
-          background: isOwn ? "#2D2D2D" : "#272727",
+          background: isOwn ? "#FF4199" : "#2A2A2A",
           borderBottomRightRadius: isOwn ? 4 : undefined,
           borderBottomLeftRadius: isOwn ? undefined : 4,
         }}
       >
-        <span>{msg.content}</span>
-        <div className={`text-[10px] text-gray-500 mt-1 ${isOwn ? "text-right" : "text-left"}`}>
-          {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+        <p className="text-white text-sm leading-relaxed break-words whitespace-pre-wrap">{msg.content}</p>
+        <div className={`flex items-center gap-1 mt-1 ${isOwn ? "justify-end" : "justify-start"}`}>
+          <span className="text-[10px]" style={{ color: isOwn ? "rgba(255,255,255,0.55)" : "#5a5a6a" }}>
+            {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+          {isOwn && isLast && msg.read && <CheckCheck size={10} className="text-white/50" />}
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Main Component ────────────────────────────────────────────────────────────
-
-export default function MessagesPage() {
-  const { user } = useAuth();
-  const [, setLocation] = useLocation();
-  const queryClient = useQueryClient();
-
-  const [activePartnerId, setActivePartnerId] = useState<string | null>(null);
-  const [inputText, setInputText] = useState("");
-  const [searchQ, setSearchQ] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-
-  const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const searchTimeout = useRef<ReturnType<typeof setTimeout>>();
-
-  // ── Queries ──────────────────────────────────────────────────────────────────
-
-  const { data: convsData, isLoading: convsLoading } = useQuery<{ conversations: Conversation[] }>({
-    queryKey: ["/api/messages/conversations"],
-    refetchInterval: 5000, // poll every 5s for new messages
-  });
-
-  const conversations = convsData?.conversations ?? [];
-
-  const { data: chatData, isLoading: chatLoading } = useQuery<{ messages: Message[]; partner: Conversation["partner"] }>({
-    queryKey: ["/api/messages/conversation", activePartnerId],
-    enabled: !!activePartnerId,
-    refetchInterval: 3000, // poll for new messages in active chat
-  });
-
-  const messages = chatData?.messages ?? [];
-  const activePartner = chatData?.partner ?? conversations.find(c => c.partnerId === activePartnerId)?.partner ?? null;
-
-  // ── Send message mutation ─────────────────────────────────────────────────────
-
-  const sendMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const res = await fetch("/api/messages/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ toUserId: activePartnerId, content }),
-      });
-      if (!res.ok) throw new Error("Send failed");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversation", activePartnerId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
-      setInputText("");
-    },
-  });
-
-  // ── Auto-scroll to bottom ─────────────────────────────────────────────────────
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length]);
-
-  // ── User search ───────────────────────────────────────────────────────────────
-
-  useEffect(() => {
-    clearTimeout(searchTimeout.current);
-    if (!searchQ.trim() || searchQ.length < 2) {
-      setSearchResults([]);
-      return;
-    }
-    setIsSearching(true);
-    searchTimeout.current = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/messages/search-users?q=${encodeURIComponent(searchQ)}`);
-        const data = await res.json();
-        setSearchResults(data.users ?? []);
-      } catch { setSearchResults([]); }
-      setIsSearching(false);
-    }, 400);
-  }, [searchQ]);
-
-  // ── Handlers ──────────────────────────────────────────────────────────────────
-
-  const handleSend = useCallback(() => {
-    const text = inputText.trim();
-    if (!text || !activePartnerId || sendMutation.isPending) return;
-    sendMutation.mutate(text);
-  }, [inputText, activePartnerId, sendMutation]);
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
-
-  const startConversationWith = (userId: string) => {
-    setActivePartnerId(userId);
-    setSearchQ("");
-    setSearchResults([]);
-    queryClient.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
-  };
-
-  const activeConvName = activePartner?.fullName || activePartner?.username || "";
-
-  // ── Render ────────────────────────────────────────────────────────────────────
-
+function TypingIndicator() {
   return (
-    <div
-      className="-mx-2 -my-8 md:-mx-8 flex"
-      style={{ height: "calc(100vh - 70px)", minHeight: 0, overflow: "hidden" }}
-    >
-      {/* ── Left: Conversation List ── */}
-      <div
-        className="flex flex-col border-r flex-shrink-0"
-        style={{ width: 220, background: "#151515", borderColor: "#222" }}
-      >
-        {/* Search */}
-        <div className="p-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
-            <input
-              value={searchQ}
-              onChange={e => setSearchQ(e.target.value)}
-              placeholder="Search"
-              className="w-full pl-8 pr-3 py-2 rounded text-sm text-white placeholder-gray-500 outline-none"
-              style={{ background: "#2D2D2D", border: "none", fontSize: 13 }}
-            />
-          </div>
-        </div>
-
-        {/* Search Results */}
-        {searchResults.length > 0 && (
-          <div className="border-b pb-2" style={{ borderColor: "#222" }}>
-            <div className="px-4 py-1 text-[10px] text-gray-500 uppercase tracking-wider">Start chat</div>
-            {searchResults.map(u => (
-              <div
-                key={u._id}
-                onClick={() => startConversationWith(u._id)}
-                className="flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-[#2D2D2D] transition-colors"
-              >
-                {getAvatar(u, 32)}
-                <div>
-                  <div className="text-white text-xs font-semibold">{u.fullName || u.username}</div>
-                  {u.fullName && <div className="text-gray-500 text-[10px]">@{u.username}</div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Conversation List */}
-        <div className="flex-1 overflow-y-auto">
-          {convsLoading && (
-            <div className="p-4 text-center text-gray-500 text-sm">Loading...</div>
-          )}
-          {!convsLoading && conversations.length === 0 && !searchResults.length && (
-            <div className="p-4 text-center text-gray-600 text-xs">
-              Search for a user above to start chatting
-            </div>
-          )}
-          {conversations.map(conv => (
-            <ConversationItem
-              key={conv.partnerId}
-              conv={conv}
-              active={activePartnerId === conv.partnerId}
-              onClick={() => setActivePartnerId(conv.partnerId)}
+    <div className="flex justify-start mb-2">
+      <div className="rounded-2xl px-4 py-3" style={{ background: "#2A2A2A", borderBottomLeftRadius: 4 }}>
+        <div className="flex gap-1 items-center h-3">
+          {[0, 1, 2].map(i => (
+            <div
+              key={i}
+              className="w-1.5 h-1.5 rounded-full bg-gray-400"
+              style={{ animation: `chatBounce 1.2s ease-in-out ${i * 0.2}s infinite` }}
             />
           ))}
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* ── Right: Chat Area ── */}
-      <div className="flex-1 flex flex-col min-w-0" style={{ background: "#0E0E0E" }}>
-        {activePartnerId ? (
-          <>
-            {/* Chat header */}
-            <div
-              className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0"
-              style={{ background: "#151515", borderColor: "#222" }}
-            >
-              {getAvatar(activePartner, 36)}
-              <div>
-                <div className="text-white font-semibold text-sm">{activeConvName}</div>
-                <div className="text-green-400 text-xs">Online</div>
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+export default function MessagesPage() {
+  const { user } = useAuth();
+  const qc = useQueryClient();
+
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [searchQ, setSearchQ] = useState("");
+  const [searchRes, setSearchRes] = useState<UserInfo[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [online, setOnline] = useState<Set<string>>(new Set());
+  const [typing, setTyping] = useState<Set<string>>(new Set());
+  const [localMsgs, setLocalMsgs] = useState<Message[]>([]);
+  const [wsOk, setWsOk] = useState(false);
+  const [tab, setTab] = useState<"chats" | "contacts">("chats");
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const typingTimer = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
+  const hbInterval = useRef<ReturnType<typeof setInterval>>();
+  const activeIdRef = useRef<string | null>(null);
+
+  const myId: string = (user as any)?._id || (user as any)?.id || "";
+
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
+  // ─── Queries ───────────────────────────────────────────────────────────────
+
+  const { data: convsData, isLoading: convsLoading } = useQuery<{ conversations: Conversation[] }>({
+    queryKey: ["/api/messages/conversations"],
+    refetchInterval: wsOk ? 30_000 : 5_000,
+  });
+
+  const { data: contactsData } = useQuery<{ contacts: UserInfo[] }>({
+    queryKey: ["/api/messages/contacts"],
+    refetchInterval: 60_000,
+  });
+
+  const { data: chatData, isLoading: chatLoading } = useQuery<{
+    messages: Message[];
+    partner: UserInfo | null;
+    hasMore: boolean;
+  }>({
+    queryKey: ["/api/messages/conversation", activeId],
+    enabled: !!activeId,
+    refetchInterval: wsOk ? false : 3_000,
+  });
+
+  const convs = convsData?.conversations ?? [];
+  const contacts = contactsData?.contacts ?? [];
+  const dbMsgs = chatData?.messages ?? [];
+  const partner = chatData?.partner ?? convs.find(c => c.partnerId === activeId)?.partner ?? null;
+
+  // Merge DB + local WS messages (deduplicated, chronological)
+  const messages = (() => {
+    const known = new Set(dbMsgs.map(m => m._id));
+    const extra = localMsgs.filter(m => !known.has(m._id));
+    return [...dbMsgs, ...extra].sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+    );
+  })();
+
+  // ─── WebSocket ─────────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!user) return;
+    let destroyed = false;
+    let ws: WebSocket;
+
+    const connect = async () => {
+      try {
+        const res = await fetch("/api/messages/ws-ticket");
+        if (!res.ok || destroyed) return;
+        const { ticket } = await res.json();
+        if (destroyed) return;
+
+        const proto = window.location.protocol === "https:" ? "wss" : "ws";
+        ws = new WebSocket(`${proto}://${window.location.host}/ws/chat?ticket=${ticket}`);
+        wsRef.current = ws;
+
+        ws.onopen = () => {
+          setWsOk(true);
+          clearInterval(hbInterval.current);
+          hbInterval.current = setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "chat:ping" }));
+          }, 25_000);
+        };
+
+        ws.onclose = () => {
+          setWsOk(false);
+          clearInterval(hbInterval.current);
+          if (!destroyed) setTimeout(connect, 3_500);
+        };
+
+        ws.onerror = () => ws.close();
+
+        ws.onmessage = ({ data }) => {
+          try { onWsEvent(JSON.parse(data)); } catch {}
+        };
+      } catch {}
+    };
+
+    connect();
+    return () => {
+      destroyed = true;
+      clearInterval(hbInterval.current);
+      wsRef.current?.close();
+    };
+  }, [user]);
+
+  const onWsEvent = useCallback((ev: WsEvent) => {
+    switch (ev.type) {
+      case "chat:connected":
+        if (ev.onlineUsers) setOnline(new Set(ev.onlineUsers));
+        break;
+
+      case "chat:message": {
+        if (!ev.message) break;
+        const m = ev.message;
+        const inActive =
+          (m.fromUserId === activeIdRef.current && m.toUserId === myId) ||
+          (m.fromUserId === myId && m.toUserId === activeIdRef.current);
+
+        if (inActive) {
+          setLocalMsgs(prev => (prev.find(x => x._id === m._id) ? prev : [...prev, m]));
+          // Mark read immediately if in conversation
+          if (m.fromUserId !== myId) sendWs({ type: "chat:read", fromUserId: m.fromUserId });
+        }
+
+        qc.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+        qc.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+        break;
+      }
+
+      case "chat:typing":
+        if (!ev.fromUserId) break;
+        setTyping(prev => new Set([...prev, ev.fromUserId!]));
+        setTimeout(() => setTyping(prev => { const n = new Set(prev); n.delete(ev.fromUserId!); return n; }), 3_200);
+        break;
+
+      case "chat:read":
+        if (ev.byUserId) qc.invalidateQueries({ queryKey: ["/api/messages/conversation", ev.byUserId] });
+        break;
+
+      case "chat:online_status":
+        if (!ev.userId) break;
+        setOnline(prev => {
+          const n = new Set(prev);
+          ev.online ? n.add(ev.userId!) : n.delete(ev.userId!);
+          return n;
+        });
+        break;
+    }
+  }, [myId, qc]);
+
+  const sendWs = (payload: object) => {
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(payload));
+  };
+
+  // ─── Typing indicator send ─────────────────────────────────────────────────
+
+  const emitTyping = () => {
+    if (!activeId) return;
+    sendWs({ type: "chat:typing", toUserId: activeId });
+    clearTimeout(typingTimer.current);
+  };
+
+  // ─── Send mutation ─────────────────────────────────────────────────────────
+
+  const sendMut = useMutation({
+    mutationFn: (content: string) =>
+      apiRequest("POST", "/api/messages/send", { toUserId: activeId, content }),
+    onSuccess: () => {
+      setInput("");
+      qc.invalidateQueries({ queryKey: ["/api/messages/conversation", activeId] });
+      qc.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
+    },
+    onError: (err: any) => {
+      const msg: string = err?.message || "";
+      if (msg.toLowerCase().includes("follow")) {
+        alert("You can only message people you follow or who follow you.");
+      }
+    },
+  });
+
+  // ─── Auto-scroll ───────────────────────────────────────────────────────────
+
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages.length, typing.size]);
+
+  // ─── Reset local msgs on conversation switch ───────────────────────────────
+
+  useEffect(() => {
+    setLocalMsgs([]);
+    if (activeId) sendWs({ type: "chat:read", fromUserId: activeId });
+  }, [activeId]);
+
+  // ─── User search ───────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    clearTimeout(searchTimer.current);
+    if (!searchQ.trim() || searchQ.length < 2) { setSearchRes([]); return; }
+    setSearching(true);
+    searchTimer.current = setTimeout(async () => {
+      try {
+        const r = await fetch(`/api/messages/search-users?q=${encodeURIComponent(searchQ)}`);
+        const d = await r.json();
+        setSearchRes(d.users ?? []);
+      } catch { setSearchRes([]); }
+      setSearching(false);
+    }, 350);
+  }, [searchQ]);
+
+  // ─── Handlers ──────────────────────────────────────────────────────────────
+
+  const doSend = () => {
+    const t = input.trim();
+    if (!t || !activeId || sendMut.isPending) return;
+    sendMut.mutate(t);
+  };
+
+  const openConv = (userId: string) => {
+    setActiveId(userId);
+    setSearchQ("");
+    setSearchRes([]);
+    setTab("chats");
+  };
+
+  const partnerOnline = partner ? online.has(partner._id) : false;
+  const partnerTyping = activeId ? typing.has(activeId) : false;
+
+  const enrichedConvs = convs.map(c => ({ ...c, online: c.partner ? online.has(c.partner._id) : false }));
+  const enrichedContacts = contacts.map(c => ({ ...c, online: online.has(c._id) }));
+  const activeName = partner?.fullName || partner?.username || "";
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
+  return (
+    <>
+      <style>{`
+        @keyframes chatBounce {
+          0%,80%,100%{transform:translateY(0)}
+          40%{transform:translateY(-5px)}
+        }
+      `}</style>
+
+      <div
+        className="-mx-2 -my-8 md:-mx-8 flex"
+        style={{ height: "calc(100vh - 70px)", overflow: "hidden" }}
+      >
+        {/* ── Left: sidebar ── */}
+        <div
+          className="flex flex-col border-r flex-shrink-0"
+          style={{ width: 260, background: "#151515", borderColor: "#222" }}
+        >
+          {/* Header */}
+          <div className="px-4 pt-4 pb-2 border-b flex-shrink-0" style={{ borderColor: "#222" }}>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-white font-bold text-base">Messages</span>
+              <div className="flex items-center gap-1">
+                <div
+                  className="w-2 h-2 rounded-full"
+                  style={{ background: wsOk ? "#22c55e" : "#eab308", animation: wsOk ? "none" : "pulse 1s infinite" }}
+                />
+                <span className="text-[10px]" style={{ color: wsOk ? "#22c55e" : "#eab308" }}>
+                  {wsOk ? "Live" : "Connecting…"}
+                </span>
               </div>
             </div>
 
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-6 py-4">
-              {chatLoading && (
-                <div className="text-center text-gray-500 text-sm py-8">Loading messages...</div>
-              )}
-              {!chatLoading && messages.length === 0 && (
-                <div className="text-center text-gray-600 text-sm py-8">
-                  No messages yet. Say hello! 👋
-                </div>
-              )}
-              {messages.map(msg => (
-                <MessageBubble
-                  key={msg._id}
-                  msg={msg}
-                  isOwn={msg.fromUserId === user?._id || msg.fromUserId === (user as any)?.id}
-                />
+            {/* Tabs */}
+            <div className="flex gap-1 mb-3">
+              {(["chats", "contacts"] as const).map(t => (
+                <button
+                  key={t}
+                  onClick={() => setTab(t)}
+                  className="flex-1 py-1.5 rounded text-xs font-semibold capitalize transition-all"
+                  style={{ background: tab === t ? "#FF4199" : "#2D2D2D", color: tab === t ? "#fff" : "#9ca3af" }}
+                >
+                  {t}
+                </button>
               ))}
-              <div ref={messagesEndRef} />
             </div>
 
-            {/* Input Bar */}
-            <div
-              className="flex-shrink-0 flex items-center gap-3 px-4 py-4"
-              style={{ background: "#272727" }}
-            >
-              <button className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">
-                <span style={{ fontSize: 24 }}>😀</span>
-              </button>
-
-              <div className="flex-1 rounded" style={{ background: "#3A3A3A" }}>
-                <input
-                  ref={inputRef}
-                  value={inputText}
-                  onChange={e => setInputText(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Text here"
-                  className="w-full px-4 py-3 bg-transparent text-white placeholder-[#7E7E7E] outline-none text-sm"
-                  style={{ border: "none" }}
-                  disabled={sendMutation.isPending}
-                />
-              </div>
-
-              <button
-                onClick={handleSend}
-                disabled={!inputText.trim() || sendMutation.isPending}
-                className="flex-shrink-0 w-14 h-[54px] rounded flex items-center justify-center transition-opacity"
-                style={{ background: "#FF4199", opacity: inputText.trim() ? 1 : 0.5 }}
-              >
-                <Send className="w-5 h-5 text-white" />
-              </button>
-            </div>
-          </>
-        ) : (
-          /* Empty state */
-          <div className="flex-1 flex flex-col items-center justify-center gap-3">
-            <div
-              className="w-20 h-20 rounded-full flex items-center justify-center"
-              style={{ background: "rgba(255,65,153,0.1)" }}
-            >
-              <Send className="w-9 h-9" style={{ color: "#FF4199" }} />
-            </div>
-            <div className="text-white font-semibold text-lg">Your Messages</div>
-            <div className="text-gray-500 text-sm text-center max-w-xs">
-              Search for a user on the left to start a conversation
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-600" />
+              <input
+                value={searchQ}
+                onChange={e => setSearchQ(e.target.value)}
+                placeholder="Search to chat…"
+                className="w-full pl-8 pr-3 py-2 rounded text-xs text-white placeholder-gray-600 outline-none"
+                style={{ background: "#2D2D2D", border: "none" }}
+              />
             </div>
           </div>
-        )}
+
+          {/* Search results */}
+          {searchRes.length > 0 && (
+            <div className="border-b flex-shrink-0" style={{ borderColor: "#222" }}>
+              <div className="px-4 py-1.5 text-[9px] text-gray-500 uppercase tracking-widest">
+                {searching ? "Searching…" : "Start chat with"}
+              </div>
+              {searchRes.map(u => (
+                <div
+                  key={u._id}
+                  onClick={() => openConv(u._id)}
+                  className="flex items-center gap-2.5 px-4 py-2.5 cursor-pointer hover:bg-[#2D2D2D] transition-colors"
+                >
+                  <Avatar user={{ ...u, online: online.has(u._id) }} size={32} />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-white text-xs font-semibold truncate">{u.fullName || u.username}</div>
+                    {u.fullName && <div className="text-gray-500 text-[10px]">@{u.username}</div>}
+                  </div>
+                  {online.has(u._id) && <Circle size={7} className="text-green-400 fill-green-400 flex-shrink-0" />}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* List */}
+          <div className="flex-1 overflow-y-auto">
+            {tab === "chats" && (
+              <>
+                {convsLoading && (
+                  <div className="flex flex-col gap-2 p-3">
+                    {[1, 2, 3].map(i => (
+                      <div key={i} className="flex items-center gap-3 animate-pulse">
+                        <div className="w-10 h-10 rounded-full bg-gray-800 flex-shrink-0" />
+                        <div className="flex-1"><div className="h-2.5 bg-gray-800 rounded w-20 mb-2" /><div className="h-2 bg-gray-800 rounded w-32" /></div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {!convsLoading && enrichedConvs.length === 0 && !searchRes.length && (
+                  <div className="flex flex-col items-center justify-center h-32 text-center px-4">
+                    <MessageCircle size={22} className="text-gray-700 mb-2" />
+                    <p className="text-gray-600 text-xs">No conversations yet. Follow someone to start chatting.</p>
+                  </div>
+                )}
+                {enrichedConvs.map(c => (
+                  <ConvItem key={c.partnerId} conv={c} active={activeId === c.partnerId} onClick={() => openConv(c.partnerId)} />
+                ))}
+              </>
+            )}
+
+            {tab === "contacts" && (
+              <>
+                {enrichedContacts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-32 text-center px-4">
+                    <Users size={22} className="text-gray-700 mb-2" />
+                    <p className="text-gray-600 text-xs">Follow or be followed to see contacts here.</p>
+                  </div>
+                ) : (
+                  <div className="py-1">
+                    {enrichedContacts.map(c => (
+                      <div
+                        key={c._id}
+                        onClick={() => openConv(c._id)}
+                        className="flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-[#1A1A1A] transition-colors"
+                      >
+                        <Avatar user={c} size={36} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white text-xs font-semibold truncate">{c.fullName || c.username}</div>
+                          <div className="text-gray-600 text-[10px]">@{c.username}</div>
+                        </div>
+                        {c.online && <Circle size={7} className="text-green-400 fill-green-400 flex-shrink-0" />}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Right: chat ── */}
+        <div className="flex-1 flex flex-col min-w-0" style={{ background: "#0E0E0E" }}>
+          {activeId ? (
+            <>
+              {/* Chat header */}
+              <div
+                className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0"
+                style={{ background: "#151515", borderColor: "#222" }}
+              >
+                <Avatar user={partner ? { ...partner, online: partnerOnline } : null} size={38} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-white font-semibold text-sm truncate">{activeName}</div>
+                  <div
+                    className="text-xs transition-colors"
+                    style={{ color: partnerTyping ? "#FF4199" : partnerOnline ? "#22c55e" : "#6b7280" }}
+                  >
+                    {partnerTyping ? "typing…" : partnerOnline ? "Online" : "Offline"}
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages area */}
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                {chatLoading ? (
+                  <div className="flex flex-col gap-3">
+                    {[80, 140, 60, 110].map((w, i) => (
+                      <div key={i} className={`flex ${i % 2 ? "justify-end" : "justify-start"}`}>
+                        <div className="animate-pulse rounded-2xl h-10" style={{ background: "#2A2A2A", width: w }} />
+                      </div>
+                    ))}
+                  </div>
+                ) : messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 opacity-50">
+                    <MessageCircle size={32} style={{ color: "#FF4199" }} />
+                    <p className="text-gray-400 text-sm">Say hello to {activeName}! 👋</p>
+                  </div>
+                ) : (
+                  messages.map((m, i) => (
+                    <Bubble
+                      key={m._id}
+                      msg={m}
+                      isOwn={m.fromUserId === myId}
+                      isLast={i === messages.length - 1}
+                    />
+                  ))
+                )}
+                {partnerTyping && <TypingIndicator />}
+                <div ref={bottomRef} />
+              </div>
+
+              {/* Input */}
+              <div
+                className="flex-shrink-0 flex items-center gap-2 px-3 py-3 border-t"
+                style={{ background: "#151515", borderColor: "#222" }}
+              >
+                <div className="flex-1 flex items-center rounded-full overflow-hidden" style={{ background: "#2D2D2D" }}>
+                  <input
+                    ref={inputRef}
+                    value={input}
+                    onChange={e => { setInput(e.target.value); emitTyping(); }}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
+                    placeholder="Type a message…"
+                    className="flex-1 px-4 py-2.5 bg-transparent text-white placeholder-gray-600 outline-none text-sm"
+                    disabled={sendMut.isPending}
+                    autoComplete="off"
+                  />
+                </div>
+                <button
+                  onClick={doSend}
+                  disabled={!input.trim() || sendMut.isPending}
+                  className="w-10 h-10 rounded-full flex items-center justify-center transition-all flex-shrink-0"
+                  style={{ background: input.trim() ? "#FF4199" : "#2D2D2D", opacity: sendMut.isPending ? 0.6 : 1 }}
+                >
+                  <Send size={15} className="text-white" style={{ transform: "translateX(1px)" }} />
+                </button>
+              </div>
+            </>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center gap-4">
+              <div className="w-24 h-24 rounded-full flex items-center justify-center" style={{ background: "rgba(255,65,153,0.07)" }}>
+                <MessageCircle size={36} style={{ color: "#FF4199", opacity: 0.6 }} />
+              </div>
+              <div className="text-center">
+                <h3 className="text-white font-bold text-lg mb-2">Your Messages</h3>
+                <p className="text-gray-500 text-sm max-w-xs">
+                  Select a chat or find a contact. You can message people you follow or who follow you.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
