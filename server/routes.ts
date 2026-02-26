@@ -410,7 +410,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         expiresIn: '24 hours',
       });
     } catch (error: any) {
-      console.error('[CAST] Create session error:', error.message);
+      logger.error(`[CAST] Create session error: ${error.message}`);
       res.status(500).json({ error: 'Failed to create cast session' });
     }
   });
@@ -462,7 +462,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         message: 'Successfully paired with mobile device',
       });
     } catch (error: any) {
-      console.error('[CAST] Pair session error:', error.message);
+      logger.error(`[CAST] Pair session error: ${error.message}`);
       res.status(500).json({ error: 'Failed to pair session' });
     }
   });
@@ -502,7 +502,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
       res.json({ success: true, command, sessionId });
     } catch (error: any) {
-      console.error('[CAST] Command error:', error.message);
+      logger.error(`[CAST] Command error: ${error.message}`);
       res.status(500).json({ error: 'Failed to send command' });
     }
   });
@@ -532,7 +532,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
       res.json({ success: true, ...status });
     } catch (error: any) {
-      console.error('[CAST] Status error:', error.message);
+      logger.error(`[CAST] Status error: ${error.message}`);
       res.status(500).json({ error: 'Failed to get session status' });
     }
   });
@@ -556,7 +556,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       const sessions = await castService.getUserActiveSessions(userId);
       res.json({ success: true, sessions });
     } catch (error: any) {
-      console.error('[CAST] Sessions error:', error.message);
+      logger.error(`[CAST] Sessions error: ${error.message}`);
       res.status(500).json({ error: 'Failed to get sessions' });
     }
   });
@@ -586,7 +586,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
       res.json({ success: true, message: 'Cast session ended' });
     } catch (error: any) {
-      console.error('[CAST] End session error:', error.message);
+      logger.error(`[CAST] End session error: ${error.message}`);
       res.status(500).json({ error: 'Failed to end session' });
     }
   });
@@ -1100,6 +1100,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     const featuredStations = await Station.find(featuredFilter)
       .sort({ votes: -1 })
       .limit(20)
+      .select(TV_STATION_PROJECTION)
       .lean();
     
     const remainingLimit = 20 - featuredStations.length;
@@ -1109,6 +1110,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       regularStations = await Station.find({ ...countryFilter, isFeatured: { $ne: true } })
         .sort({ votes: -1 })
         .limit(remainingLimit)
+        .select(TV_STATION_PROJECTION)
         .lean();
     }
     
@@ -1507,8 +1509,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           role: 'admin'
         }
       });
-    } catch (error) {
-      console.error('❌ Admin login error:', error);
+    } catch (error: any) {
+      logger.error(`❌ Admin login error: ${error.message}`);
       res.status(500).json({ error: 'Login failed' });
     }
   });
@@ -1519,7 +1521,6 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       (req.session as any).adminAuth = null;
       res.json({ success: true, message: "Logged out successfully" });
     } catch (error) {
-      // console.error('Admin logout error:', error);
       res.status(500).json({ error: 'Logout failed' });
     }
   });
@@ -1548,8 +1549,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           authenticated: false
         });
       }
-    } catch (error) {
-      console.error('❌ Admin auth check error:', error);
+    } catch (error: any) {
+      logger.error(`❌ Admin auth check error: ${error.message}`);
       res.status(500).json({ error: 'Admin auth check failed' });
     }
   });
@@ -1584,7 +1585,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           return next();
         }
       } catch (err) {
-        console.error('Token auth error:', err);
+        logger.error(`Token auth error: ${err.message}`);
       }
     }
 
@@ -1634,8 +1635,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
       await listeningSession.save();
       res.json({ success: true, totalTime: listenDuration });
-    } catch (error) {
-      console.error('Error recording listening session:', error);
+    } catch (error: any) {
+      logger.error(`Error recording listening session: ${error.message}`);
       res.status(500).json({ error: 'Failed to record listening session' });
     }
   });
@@ -1770,7 +1771,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   }
 
   // Admin endpoint to get slug statistics (no auth required for status checking)
-  app.get("/api/admin/station-slugs/status", async (req, res) => {
+  app.get("/api/admin/station-slugs/status", requireAdmin, async (req, res) => {
     try {
       const totalStations = await Station.countDocuments();
       const stationsWithSlugs = await Station.countDocuments({
@@ -1790,14 +1791,14 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       };
 
       res.json(stats);
-    } catch (error) {
-      console.error('Error fetching slug statistics:', error);
+    } catch (error: any) {
+      logger.error(`Error fetching slug statistics: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch slug statistics' });
     }
   });
 
   // Admin endpoint for job status (with real-time tracking)
-  app.get("/api/admin/station-slugs/job-status", async (req, res) => {
+  app.get("/api/admin/station-slugs/job-status", requireAdmin, async (req, res) => {
     try {
       // Find the most recent running or recent job
       let mostRecentJob = null;
@@ -1809,8 +1810,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       
       // Return the most recent job or null if none exists
       res.json(mostRecentJob);
-    } catch (error) {
-      console.error('Error fetching job status:', error);
+    } catch (error: any) {
+      logger.error(`Error fetching job status: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch job status' });
     }
   });
@@ -1828,8 +1829,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       }
       
       res.json({ success: true, message: 'Generation stopped' });
-    } catch (error) {
-      console.error('Error stopping slug generation:', error);
+    } catch (error: any) {
+      logger.error(`Error stopping slug generation: ${error.message}`);
       res.status(500).json({ error: 'Failed to stop generation' });
     }
   });
@@ -1871,8 +1872,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         genres: clearResults[1].modifiedCount,
         users: clearResults[2].modifiedCount
       });
-    } catch (error) {
-      console.error('❌ Error clearing slugs:', error);
+    } catch (error: any) {
+      logger.error(`❌ Error clearing slugs: ${error.message}`);
       res.status(500).json({ error: 'Failed to clear slugs' });
     }
   });
@@ -2015,8 +2016,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
                   }
                   logger.log(`📈 Station Progress: ${totalProcessed}/${totalToProcess} processed (${Math.round(totalProcessed/totalToProcess*100)}%)`);
                 }
-              } catch (error) {
-                console.error(`❌ Error processing station ${station._id}:`, error);
+              } catch (error: any) {
+                logger.error(`❌ Error processing station ${station._id}: ${error.message}`);
               }
             }
             
@@ -2074,8 +2075,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
                   }
                   logger.log(`📈 Genre Progress: ${totalProcessed}/${totalToProcess} processed (${Math.round(totalProcessed/totalToProcess*100)}%)`);
                 }
-              } catch (error) {
-                console.error(`❌ Error processing genre ${genre._id}:`, error);
+              } catch (error: any) {
+                logger.error(`❌ Error processing genre ${genre._id}: ${error.message}`);
               }
             }
             
@@ -2143,8 +2144,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
                   }
                   logger.log(`📈 User Progress: ${totalProcessed}/${totalToProcess} processed (${Math.round(totalProcessed/totalToProcess*100)}%)`);
                 }
-              } catch (error) {
-                console.error(`❌ Error processing user ${user._id}:`, error);
+              } catch (error: any) {
+                logger.error(`❌ Error processing user ${user._id}: ${error.message}`);
               }
             }
             
@@ -2186,8 +2187,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
             logger.warn('⚠️ Cache clear failed:', cacheError);
           }
           
-        } catch (error) {
-          console.error('❌ Comprehensive slug generation failed:', error);
+        } catch (error: any) {
+          logger.error(`❌ Comprehensive slug generation failed: ${error.message}`);
           
           // Mark job as failed
           const failedJob = slugGenerationJobs.get(jobId);
@@ -2201,8 +2202,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         }
       });
       
-    } catch (error) {
-      console.error('❌ Error starting slug generation:', error);
+    } catch (error: any) {
+      logger.error(`❌ Error starting slug generation: ${error.message}`);
       res.status(500).json({ error: 'Failed to start slug generation' });
     }
   });
@@ -2259,8 +2260,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
                 if (processed % 1000 === 0) {
                   logger.log(`📊 Slug progress: ${processed}/${totalStations} stations processed, ${updated} updated`);
                 }
-              } catch (error) {
-                console.error(`❌ Error processing station ${station._id}:`, error);
+              } catch (error: any) {
+                logger.error(`❌ Error processing station ${station._id}: ${error.message}`);
               }
             }
             
@@ -2272,8 +2273,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           
           logger.log(`✅ Background slug generation completed! Processed: ${processed}, Updated: ${updated}`);
           
-        } catch (error) {
-          console.error('❌ Background slug generation failed:', error);
+        } catch (error: any) {
+          logger.error(`❌ Background slug generation failed: ${error.message}`);
         }
       });
       
@@ -2649,7 +2650,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           
           while (processed < stationsToProcess) {
             const currentLimit = limit ? Math.min(batchSize, stationsToProcess - processed) : batchSize;
-            const stations = await Station.find(query).skip(skip).limit(currentLimit).lean();
+            const stations = await Station.find(query).skip(skip).limit(currentLimit).select(TV_STATION_PROJECTION).lean();
             
             if (stations.length === 0) break;
             
@@ -2855,7 +2856,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       // Get stations with descriptions
       const stations = await Station.find({ 
         descriptions: { $exists: true, $ne: {} } 
-      }).limit(Number(limit)).lean();
+      }).limit(Number(limit)).select('_id name descriptions country countryCode').lean();
       
       const problematicStations: Array<{
         _id: string;
@@ -3250,7 +3251,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           
           while (processed < stationsToProcess) {
             const currentLimit = limit ? Math.min(batchSize, stationsToProcess - processed) : batchSize;
-            const stations = await Station.find(query).skip(skip).limit(currentLimit).lean();
+            const stations = await Station.find(query).skip(skip).limit(currentLimit).select(TV_STATION_PROJECTION).lean();
             
             if (stations.length === 0) {
               break;
@@ -3726,7 +3727,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         processingComplete: stationsNeedingProcessing === 0
       });
     } catch (error: any) {
-      console.error('Error getting logo stats:', error);
+      logger.error(`Error getting logo stats: ${error.message}`);
       res.status(500).json({ error: 'Failed to get logo statistics' });
     }
   });
@@ -3756,7 +3757,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         total
       });
     } catch (error: any) {
-      console.error('Error fetching optimized stations:', error);
+      logger.error(`Error fetching optimized stations: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch optimized stations' });
     }
   });
@@ -3958,7 +3959,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         }
       });
     } catch (error: any) {
-      console.error('Error starting logo processing:', error);
+      logger.error(`Error starting logo processing: ${error.message}`);
       res.status(500).json({ error: 'Failed to start logo processing' });
     }
   });
@@ -4372,7 +4373,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       
       res.json(response);
     } catch (error) {
-      console.error('Error fetching admin stations:', error);
+      logger.error(`Error fetching admin stations: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch stations' });
     }
   });
@@ -4521,7 +4522,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         hasMore: allDuplicates.length === parseInt(limit)
       });
     } catch (error) {
-      console.error('🔴 Error finding duplicate stations:', error);
+      logger.error(`🔴 Error finding duplicate stations: ${error.message}`);
       res.status(500).json({ error: 'Failed to find duplicate stations' });
     }
   });
@@ -4537,7 +4538,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       
       res.json(station);
     } catch (error) {
-      console.error('Error fetching admin station:', error);
+      logger.error(`Error fetching admin station: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch station' });
     }
   });
@@ -4563,7 +4564,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       console.log('✅ Station updated successfully:', updatedStation.name, 'favicon:', updatedStation.favicon);
       res.json(updatedStation);
     } catch (error) {
-      console.error('❌ Error updating admin station:', error);
+      logger.error(`❌ Error updating admin station: ${error.message}`);
       res.status(500).json({ error: 'Failed to update station' });
     }
   });
@@ -4748,7 +4749,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         cached: result.cached
       });
     } catch (error) {
-      console.error('Error fetching precomputed stations:', error);
+      logger.error(`Error fetching precomputed stations: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch stations' });
     }
   });
@@ -4766,7 +4767,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         data: result
       });
     } catch (error) {
-      console.error('Error refreshing precomputed cache:', error);
+      logger.error(`Error refreshing precomputed cache: ${error.message}`);
       res.status(500).json({ error: 'Failed to refresh cache' });
     }
   });
@@ -4785,7 +4786,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         }
       });
     } catch (error) {
-      console.error('Error getting precomputed stats:', error);
+      logger.error(`Error getting precomputed stats: ${error.message}`);
       res.status(500).json({ error: 'Failed to get stats' });
     }
   });
@@ -4825,7 +4826,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         cached: true
       });
     } catch (error) {
-      console.error('Error fetching precomputed genres:', error);
+      logger.error(`Error fetching precomputed genres: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch genres' });
     }
   });
@@ -5552,7 +5553,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       logger.log(`✅ New station created: ${station.name} (${station._id})`);
       res.status(201).json(station);
     } catch (error: any) {
-      console.error('Error creating station:', error);
+      logger.error(`Error creating station: ${error.message}`);
       if (error.code === 11000) {
         // Duplicate key error
         res.status(409).json({ error: 'Station URL or UUID already exists' });
@@ -5618,7 +5619,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         users: activeUsers.length
       });
     } catch (error: any) {
-      console.error('Error seeding notifications:', error);
+      logger.error(`Error seeding notifications: ${error.message}`);
       res.status(500).json({ error: 'Failed to seed notifications' });
     }
   });
@@ -5630,7 +5631,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       // Return uploadUrl (not url) to match frontend expectation
       res.json({ uploadUrl, publicUrl, objectPath });
     } catch (error: any) {
-      console.error('Error generating favicon upload URL:', error);
+      logger.error(`Error generating favicon upload URL: ${error.message}`);
       res.status(500).json({ error: 'Failed to generate upload URL' });
     }
   });
@@ -5647,7 +5648,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       
       await objectStorageService.downloadObject(file, res);
     } catch (error: any) {
-      console.error('Error serving public object:', error);
+      logger.error(`Error serving public object: ${error.message}`);
       if (!res.headersSent) {
         res.status(500).json({ error: 'Failed to serve object' });
       }
@@ -5791,7 +5792,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         }
       }
     } catch (error: any) {
-      console.error('Error updating station:', error);
+      logger.error(`Error updating station: ${error.message}`);
       if (error.code === 11000) {
         // Duplicate key error
         res.status(409).json({ error: 'Station URL or UUID already exists' });
@@ -5813,7 +5814,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         objectPath 
       });
     } catch (error: any) {
-      console.error('Error generating favicon upload URL:', error);
+      logger.error(`Error generating favicon upload URL: ${error.message}`);
       res.status(500).json({ error: 'Failed to generate upload URL', details: error.message });
     }
   });
@@ -5941,7 +5942,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       });
       
     } catch (error: any) {
-      console.error('❌ HLS session generation error:', error.message);
+      logger.error(`❌ HLS session generation error: ${error.message}`);
       res.status(500).json({ error: 'HLS session failed', details: error.message });
     }
   });
@@ -6045,7 +6046,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       });
       
     } catch (error: any) {
-      console.error('❌ Bulk import error:', error.message);
+      logger.error(`❌ Bulk import error: ${error.message}`);
       res.status(500).json({ error: 'Bulk import failed', details: error.message });
     }
   });
@@ -6076,8 +6077,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     }
   });
 
-  // DELETE STATION ENDPOINT (Admin Only) - Temporarily removing requireAdmin for testing
-  app.delete("/api/stations/:stationId", async (req, res) => {
+  // DELETE STATION ENDPOINT (Admin Only)
+  app.delete("/api/stations/:stationId", requireAdmin, async (req, res) => {
     try {
       const { stationId } = req.params;
       
@@ -6120,8 +6121,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         message: 'Station deleted successfully and added to blacklist to prevent re-syncing',
         blacklisted: true
       });
-    } catch (error) {
-      console.error('Error deleting station:', error);
+    } catch (error: any) {
+      logger.error(`Error deleting station: ${error.message}`);
       res.status(500).json({ error: 'Failed to delete station' });
     }
   });
@@ -6211,7 +6212,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       });
 
     } catch (error: any) {
-      console.error('Error in bulk delete stations:', error);
+      logger.error(`Error in bulk delete stations: ${error.message}`);
       res.status(500).json({ 
         success: false,
         error: 'Failed to delete stations',
@@ -6314,7 +6315,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       });
       
     } catch (error: any) {
-      console.error('Error in URL name cleanup:', error);
+      logger.error(`Error in URL name cleanup: ${error.message}`);
       res.status(500).json({ 
         success: false,
         error: 'Failed to cleanup URL-named stations',
@@ -6358,7 +6359,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         }
       });
     } catch (error) {
-      console.error('Error fetching blacklisted stations:', error);
+      logger.error(`Error fetching blacklisted stations: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch blacklisted stations' });
     }
   });
@@ -6487,7 +6488,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         warning: 'Restored with limited data - fresh sync recommended'
       });
     } catch (error) {
-      console.error('Error restoring blacklisted station:', error);
+      logger.error(`Error restoring blacklisted station: ${error.message}`);
       res.status(500).json({ error: 'Failed to restore station' });
     }
   });
@@ -7348,7 +7349,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   });
 
   // Mass favicon fix endpoint for all stations with broken favicons
-  app.post('/api/admin/fix-all-favicons', async (req, res) => {
+  app.post('/api/admin/fix-all-favicons', requireAdmin, async (req, res) => {
     try {
       const fixedStations = [];
       const errors = [];
@@ -7400,13 +7401,13 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         total: fixedStations.length
       });
     } catch (error) {
-      console.error('❌ Mass favicon fix error:', error);
+      logger.error(`❌ Mass favicon fix error: ${error.message}`);
       res.status(500).json({ error: error.message });
     }
   });
 
   // Fix DAMAR TURK FM URL with semicolon for better streaming
-  app.post('/api/admin/fix-damar-url-semicolon', async (req, res) => {
+  app.post('/api/admin/fix-damar-url-semicolon', requireAdmin, async (req, res) => {
     try {
       const correctUrl = 'https://live.radyositesihazir.com:10997/;';
       
@@ -7432,13 +7433,13 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         res.json({ success: false, message: 'Station not found or already updated' });
       }
     } catch (error) {
-      console.error('❌ DAMAR TURK FM URL fix error:', error);
+      logger.error(`❌ DAMAR TURK FM URL fix error: ${error.message}`);
       res.status(500).json({ error: error.message });
     }
   });
 
   // Quick fix endpoint for DAMAR TURK FM favicon
-  app.post('/api/admin/fix-damar-favicon', async (req, res) => {
+  app.post('/api/admin/fix-damar-favicon', requireAdmin, async (req, res) => {
     try {
       const correctFavicon = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSAlkZWbK47GUO6iQFP2yohP0z_5X3WpdjdMQ&s';
       
@@ -7475,7 +7476,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         stationId: currentStation._id
       });
     } catch (error) {
-      console.error('❌ Fix DAMAR favicon error:', error);
+      logger.error(`❌ Fix DAMAR favicon error: ${error.message}`);
       res.status(500).json({ error: error.message });
     }
   });
@@ -7908,7 +7909,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
       res.json(updatedGenre);
     } catch (error: any) {
-      console.error('Error updating genre:', error);
+      logger.error(`Error updating genre: ${error.message}`);
       res.status(500).json({ error: 'Failed to update genre' });
     }
   });
@@ -7940,7 +7941,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
       res.json({ message: 'Genre deleted successfully' });
     } catch (error: any) {
-      console.error('Error deleting genre:', error);
+      logger.error(`Error deleting genre: ${error.message}`);
       res.status(500).json({ error: 'Failed to delete genre' });
     }
   });
@@ -8122,7 +8123,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       const metadata = await getTranslationMetadata();
       res.json(metadata);
     } catch (error) {
-      console.error('Error fetching translation metadata:', error);
+      logger.error(`Error fetching translation metadata: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch translation metadata' });
     }
   });
@@ -8144,7 +8145,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         res.status(500).json({ error: 'Failed to bump translation version' });
       }
     } catch (error) {
-      console.error('Error bumping translation version:', error);
+      logger.error(`Error bumping translation version: ${error.message}`);
       res.status(500).json({ error: 'Failed to bump translation version' });
     }
   });
@@ -8204,7 +8205,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         }
       });
     } catch (error) {
-      console.error('Error seeding translation languages:', error);
+      logger.error(`Error seeding translation languages: ${error.message}`);
       res.status(500).json({ error: 'Failed to seed translation languages' });
     }
   });
@@ -8542,7 +8543,7 @@ ${keysText}`;
         }
       });
     } catch (error) {
-      console.error('Error auto-translating language:', error);
+      logger.error(`Error auto-translating language: ${error.message}`);
       res.status(500).json({ error: 'Failed to auto-translate language' });
     }
   });
@@ -8669,7 +8670,7 @@ ${keysText}`;
         totalStations: allLanguages.reduce((sum, lang) => sum + lang.totalStations, 0)
       });
     } catch (error) {
-      console.error('Error fetching real languages:', error);
+      logger.error(`Error fetching real languages: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch real languages' });
     }
   });
@@ -8797,13 +8798,13 @@ ${keysText}`;
         totalPages: Math.ceil(total / limit)
       });
     } catch (error) {
-      console.error('Error fetching admin genres:', error);
+      logger.error(`Error fetching admin genres: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch admin genres' });
     }
   });
 
   // ADMIN GENRE POPULATION API - Manually trigger genre population from station tags
-  app.post("/api/admin/populate-genres", async (req, res) => {
+  app.post("/api/admin/populate-genres", requireAdmin, async (req, res) => {
     try {
       logger.log('🎵 Manually triggering genre population from station tags...');
       
@@ -8816,7 +8817,7 @@ ${keysText}`;
         tagsProcessed: result.tagsProcessed
       });
     } catch (error) {
-      console.error('Error manually populating genres:', error);
+      logger.error(`Error manually populating genres: ${error.message}`);
       res.status(500).json({ error: 'Failed to populate genres' });
     }
   });
@@ -8897,7 +8898,7 @@ ${keysText}`;
         tagsProcessed: Object.keys(tagCounts).length
       };
     } catch (error) {
-      console.error('❌ Error populating genres:', error);
+      logger.error(`❌ Error populating genres: ${error.message}`);
       throw error;
     }
   }
@@ -10322,7 +10323,7 @@ ${keysText}`;
   });
 
   // Admin endpoint to fix user profiles (make public + generate slugs)
-  app.post("/api/admin/fix-user-profiles", async (req, res) => {
+  app.post("/api/admin/fix-user-profiles", requireAdmin, async (req, res) => {
     try {
       // Get all users without public profiles or with ID-based slugs
       const users = await User.find({
@@ -10916,7 +10917,7 @@ ${keysText}`;
   });
 
   // Flush all station data
-  app.post("/api/admin/flush-stations", async (req, res) => {
+  app.post("/api/admin/flush-stations", requireAdmin, async (req, res) => {
     try {
       logger.log('🗑️ Flushing all station data...');
       
@@ -10952,7 +10953,7 @@ ${keysText}`;
   // ANALYTICS API ENDPOINTS
   
   // Remove playlist files (M3U, PLS, ASX) endpoint
-  app.post("/api/admin/remove-playlist-streams", async (req, res) => {
+  app.post("/api/admin/remove-playlist-streams", requireAdmin, async (req, res) => {
     try {
       logger.log('🗑️ Starting removal of playlist files (M3U, PLS, ASX)...');
       
@@ -11002,7 +11003,7 @@ ${keysText}`;
   });
 
   // Remove HLS/M3U8 streams endpoint (completed)
-  app.post("/api/admin/remove-hls-streams", async (req, res) => {
+  app.post("/api/admin/remove-hls-streams", requireAdmin, async (req, res) => {
     try {
       logger.log('🗑️ Starting removal of HLS/M3U8 streams...');
       
@@ -11214,7 +11215,7 @@ ${keysText}`;
       
       res.json(results);
     } catch (error) {
-      console.error('Stream analysis error:', error);
+      logger.error(`Stream analysis error: ${error.message}`);
       res.status(500).json({ error: 'Failed to analyze streams' });
     }
   });
@@ -14688,7 +14689,7 @@ If you have any questions about this privacy policy or our data practices, pleas
   });
 
   // Add missing share translation keys
-  app.post("/api/admin/translation-keys/add-missing-share-keys", async (req, res) => {
+  app.post("/api/admin/translation-keys/add-missing-share-keys", requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('./services/translation-version');
       logger.log('🔗 Adding missing share translation keys...');
@@ -14844,7 +14845,7 @@ If you have any questions about this privacy policy or our data practices, pleas
   });
 
   // Add Samsung TV translation keys
-  app.post("/api/admin/translation-keys/add-samsung-tv-keys", async (req, res) => {
+  app.post("/api/admin/translation-keys/add-samsung-tv-keys", requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('./services/translation-version');
       logger.log('📱 Adding Samsung TV translation keys...');
@@ -15160,7 +15161,7 @@ If you have any questions about this privacy policy or our data practices, pleas
   });
 
   // Seed basic translations for testing
-  app.post("/api/admin/translation-keys/seed-basic", async (req, res) => {
+  app.post("/api/admin/translation-keys/seed-basic", requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('./services/translation-version');
       // logger.log('🌱 Seeding basic German translations...');
@@ -15376,7 +15377,7 @@ If you have any questions about this privacy policy or our data practices, pleas
   });
 
   // Remove incorrect German auth translations to allow English fallback
-  app.post('/api/admin/remove-german-auth-translations', async (req, res) => {
+  app.post('/api/admin/remove-german-auth-translations', requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('./services/translation-version');
       logger.log('🎯 Removing incorrect German auth translations to enable English fallback...');
@@ -15434,7 +15435,7 @@ If you have any questions about this privacy policy or our data practices, pleas
   });
 
   // Add missing English auth translations
-  app.post('/api/admin/seed-english-auth-translations', async (req, res) => {
+  app.post('/api/admin/seed-english-auth-translations', requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('./services/translation-version');
       logger.log('🎯 Adding missing English authentication translations...');
@@ -15741,7 +15742,7 @@ If you have any questions about this privacy policy or our data practices, pleas
   });
 
   // ADMIN FIX: Reset all genres to non-discoverable
-  app.post("/api/admin/reset-genres-discoverable", async (req, res) => {
+  app.post("/api/admin/reset-genres-discoverable", requireAdmin, async (req, res) => {
     try {
       logger.log('🔧 Resetting all genres to non-discoverable (isDiscoverable: false)...');
       
@@ -19815,7 +19816,7 @@ This is a development environment. For production content, please visit https://
         }
       });
     } catch (error) {
-      console.error('Error fetching global cities:', error);
+      logger.error(`Error fetching global cities: ${error.message}`);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch global cities'
@@ -19846,7 +19847,7 @@ This is a development environment. For production content, please visit https://
         }
       });
     } catch (error) {
-      console.error('Error fetching precomputed cities:', error);
+      logger.error(`Error fetching precomputed cities: ${error.message}`);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch cities'
@@ -19868,7 +19869,7 @@ This is a development environment. For production content, please visit https://
         data: regions
       });
     } catch (error) {
-      console.error('Error fetching regions:', error);
+      logger.error(`Error fetching regions: ${error.message}`);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch regions'
@@ -19959,7 +19960,7 @@ This is a development environment. For production content, please visit https://
         }
       });
     } catch (error) {
-      console.error('Error fetching region countries:', error);
+      logger.error(`Error fetching region countries: ${error.message}`);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch region countries'
@@ -20094,7 +20095,7 @@ This is a development environment. For production content, please visit https://
         }
       });
     } catch (error) {
-      console.error('Error fetching country cities:', error);
+      logger.error(`Error fetching country cities: ${error.message}`);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch country cities'
@@ -20242,7 +20243,7 @@ This is a development environment. For production content, please visit https://
         }
       });
     } catch (error) {
-      console.error('Error fetching region stations:', error);
+      logger.error(`Error fetching region stations: ${error.message}`);
       res.status(500).json({
         success: false,
         error: 'Failed to fetch region stations'
@@ -20371,13 +20372,13 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error) {
-      console.error('Error fetching diverse recommendations:', error);
+      logger.error(`Error fetching diverse recommendations: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch recommendations' });
     }
   });
 
   // Remove all HLS stations endpoint
-  app.post('/api/admin/remove-hls-stations', async (req, res) => {
+  app.post('/api/admin/remove-hls-stations', requireAdmin, async (req, res) => {
     try {
       // More comprehensive HLS detection patterns
       const hlsPatterns = [
@@ -20426,7 +20427,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error) {
-      console.error('❌ Error removing HLS stations:', error);
+      logger.error(`❌ Error removing HLS stations: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to remove HLS stations',
         details: error.message 
@@ -20435,7 +20436,7 @@ This is a development environment. For production content, please visit https://
   });
 
   // Optimize database - remove broken stations and duplicates
-  app.post('/api/admin/optimize-database', async (req, res) => {
+  app.post('/api/admin/optimize-database', requireAdmin, async (req, res) => {
     try {
       logger.log('🚀 Starting database optimization...');
       
@@ -20481,7 +20482,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error) {
-      console.error('❌ Database optimization error:', error);
+      logger.error(`❌ Database optimization error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to optimize database',
         details: error.message 
@@ -20494,7 +20495,7 @@ This is a development environment. For production content, please visit https://
   let healthCheckResults = null;
 
   // GET endpoint for browser access - shows simple interface
-  app.get('/api/admin/start-health-check', (req, res) => {
+  app.get('/api/admin/start-health-check', requireAdmin, (req, res) => {
     res.setHeader('Content-Type', 'text/html');
     res.send(`
 <!DOCTYPE html>
@@ -20577,7 +20578,7 @@ This is a development environment. For production content, please visit https://
     `);
   });
 
-  app.post('/api/admin/start-health-check', async (req, res) => {
+  app.post('/api/admin/start-health-check', requireAdmin, async (req, res) => {
     try {
       if (healthCheckProgress && healthCheckProgress.running) {
         return res.json({
@@ -20606,7 +20607,7 @@ This is a development environment. For production content, please visit https://
 
       // Start health check in background
       runHealthCheck(testLimit).catch(error => {
-        console.error('Health check error:', error);
+        logger.error(`Health check error: ${error.message}`);
         if (healthCheckProgress) {
           healthCheckProgress.running = false;
           healthCheckProgress.error = error.message;
@@ -20620,7 +20621,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error) {
-      console.error('❌ Start health check error:', error);
+      logger.error(`❌ Start health check error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to start health check',
         details: error.message 
@@ -20628,7 +20629,7 @@ This is a development environment. For production content, please visit https://
     }
   });
 
-  app.get('/api/admin/health-check-progress', (req, res) => {
+  app.get('/api/admin/health-check-progress', requireAdmin, (req, res) => {
     res.json({
       progress: healthCheckProgress,
       results: healthCheckResults
@@ -20982,7 +20983,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error: any) {
-      console.error('iTunes Top 100 fetch error:', error);
+      logger.error(`iTunes Top 100 fetch error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to fetch top songs',
         message: error.message 
@@ -21042,7 +21043,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error: any) {
-      console.error('iTunes search error:', error);
+      logger.error(`iTunes search error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to search iTunes catalog',
         message: error.message 
@@ -21073,7 +21074,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error: any) {
-      console.error('Artwork generation error:', error);
+      logger.error(`Artwork generation error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to generate artwork URL',
         message: error.message 
@@ -21115,7 +21116,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error: any) {
-      console.error('Track lookup error:', error);
+      logger.error(`Track lookup error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to fetch track details',
         message: error.message 
@@ -21159,7 +21160,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error: any) {
-      console.error('Album lookup error:', error);
+      logger.error(`Album lookup error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to fetch album details',
         message: error.message 
@@ -21244,7 +21245,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error: any) {
-      console.error('Artist lookup error:', error);
+      logger.error(`Artist lookup error: ${error.message}`);
       res.status(500).json({ 
         error: 'Failed to fetch artist details',
         message: error.message 
@@ -21401,7 +21402,7 @@ This is a development environment. For production content, please visit https://
         });
       }
     } catch (error: any) {
-      console.error('Stream analysis error:', error);
+      logger.error(`Stream analysis error: ${error.message}`);
       res.status(500).json({ error: 'Failed to analyze stream URL' });
     }
   });
@@ -21458,7 +21459,7 @@ This is a development environment. For production content, please visit https://
       });
 
     } catch (error: any) {
-      console.error('Error uploading station favicon:', error);
+      logger.error(`Error uploading station favicon: ${error.message}`);
       // Clean up temp file if exists
       if (req.file?.path) {
         try { await fs.unlink(req.file.path); } catch {}
@@ -21581,7 +21582,7 @@ This is a development environment. For production content, please visit https://
       const ads = await Advertisement.find({ isActive: true }).sort({ createdAt: -1 }).lean();
       res.json(ads);
     } catch (error) {
-      console.error('Error fetching advertisements:', error);
+      logger.error(`Error fetching advertisements: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch advertisements' });
     }
   });
@@ -21592,7 +21593,7 @@ This is a development environment. For production content, please visit https://
       const ads = await Advertisement.find().sort({ createdAt: -1 }).lean();
       res.json(ads);
     } catch (error) {
-      console.error('Error fetching advertisements:', error);
+      logger.error(`Error fetching advertisements: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch advertisements' });
     }
   });
@@ -21978,7 +21979,7 @@ CONTACT=support@themegaradio.com
   });
 
   // Endpoint to view remote app logs
-  app.get('/api/admin/app-logs', async (req, res) => {
+  app.get('/api/admin/app-logs', requireAdmin, async (req, res) => {
     try {
       const { platform, deviceId, message, level, page = '1', limit = '50' } = req.query;
       const filter: any = {};
@@ -22007,7 +22008,7 @@ CONTACT=support@themegaradio.com
   });
 
   // Endpoint to get crash summary
-  app.get('/api/admin/app-logs/crashes', async (req, res) => {
+  app.get('/api/admin/app-logs/crashes', requireAdmin, async (req, res) => {
     try {
       const crashes = await AppLog.find({ 'logs.message': 'APP_CRASH' })
         .sort({ createdAt: -1 })
@@ -22064,7 +22065,7 @@ CONTACT=support@themegaradio.com
         }
       });
     } catch (error: any) {
-      console.error('Error fetching SEO metadata:', error);
+      logger.error(`Error fetching SEO metadata: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch SEO metadata' });
     }
   });
@@ -22078,7 +22079,7 @@ CONTACT=support@themegaradio.com
       }
       res.json(entry);
     } catch (error: any) {
-      console.error('Error fetching SEO metadata:', error);
+      logger.error(`Error fetching SEO metadata: ${error.message}`);
       res.status(500).json({ error: 'Failed to fetch SEO metadata' });
     }
   });

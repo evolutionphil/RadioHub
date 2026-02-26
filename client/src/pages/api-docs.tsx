@@ -2594,6 +2594,65 @@ Sitemap: https://themegaradio.com/sitemap.xml`
     ]
   },
   {
+    id: "webhooks",
+    name: "Webhooks",
+    icon: "🪝",
+    description: "Receive real-time notifications for station status changes, new station additions, and track updates via HTTP webhooks.",
+    endpoints: [
+      {
+        method: "GET",
+        path: "Overview",
+        summary: "What are Webhooks?",
+        description: `Webhooks allow your application to receive real-time data from MegaRadio as it happens, instead of polling our API. When an event occurs, we send an HTTP POST request to a URL you provide.
+
+Available Webhook Events:
+- station.status_changed: Triggered when a station goes online or offline.
+- station.added: Triggered when a new station is added to our database.
+- track.changed: Triggered when a station's current track metadata changes.
+
+To set up webhooks, go to your Developer Portal at /api-user and enter your destination URL in the Webhooks section.`,
+        responseExample: `// Example Webhook POST Body (station.status_changed):
+{
+  "event": "station.status_changed",
+  "timestamp": "2025-12-10T10:00:00.000Z",
+  "data": {
+    "stationId": "507f1f77bcf86cd799439011",
+    "name": "BBC Radio 1",
+    "oldStatus": "online",
+    "newStatus": "offline",
+    "reason": "Connection timeout"
+  }
+}`
+      },
+      {
+        method: "POST",
+        path: "Webhook Security",
+        summary: "Verifying Webhook Requests",
+        description: `To ensure that webhook requests are coming from MegaRadio, we include a signature in the X-MegaRadio-Signature header.
+
+The signature is a HMAC SHA256 hash of the request body using your Webhook Secret (found in your Developer Portal) as the key.
+
+Verification Step:
+1. Retrieve the raw request body.
+2. Compute the HMAC SHA256 hash using your secret.
+3. Compare your result with the signature in the header.`,
+        responseExample: `// Node.js Verification Example:
+const crypto = require('crypto');
+const signature = req.headers['x-megaradio-signature'];
+const expectedSignature = crypto
+  .createHmac('sha256', WEBHOOK_SECRET)
+  .update(JSON.stringify(req.body))
+  .digest('hex');
+
+if (signature === expectedSignature) {
+  // Request is valid
+} else {
+  // Request is invalid
+}`
+      }
+    ]
+  },
+  {
     id: "auth-flow",
     name: "API Authentication Guide",
     icon: "🛡️",

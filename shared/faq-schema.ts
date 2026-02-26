@@ -112,7 +112,7 @@ export const TECHNICAL_FAQ: FAQItem[] = [
   },
   {
     question: "Does Mega Radio have an API?",
-    answer: "Currently, Mega Radio doesn't offer a public API, but we're considering this for future development."
+    answer: "Yes! Mega Radio offers a comprehensive public API for developers. We provide Demo, Free, and Pro plans to suit different needs, from personal testing to professional applications."
   },
   {
     question: "How do you ensure stream reliability?",

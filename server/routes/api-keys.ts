@@ -185,6 +185,10 @@ router.get('/validate', async (req: Request, res: Response) => {
       return res.status(403).json({ valid: false, error: 'API key has expired' });
     }
 
+    res.setHeader('X-RateLimit-Limit', apiKeyDoc.rateLimitPerMin.toString());
+    res.setHeader('X-RateLimit-Remaining', (apiKeyDoc.rateLimitPerMin - (rateLimitMap.get(keyHash)?.count || 0)).toString());
+    res.setHeader('X-Daily-Remaining', (apiKeyDoc.dailyQuota - apiKeyDoc.usage.todayCount).toString());
+
     res.json({
       valid: true,
       keyPrefix: apiKeyDoc.keyPrefix,
@@ -330,6 +334,10 @@ router.get('/usage', async (req: Request, res: Response) => {
       if (needDayReset) apiKeyDoc.usage.todayCount = 0;
       if (needMonthReset) apiKeyDoc.usage.monthCount = 0;
     }
+
+    res.setHeader('X-RateLimit-Limit', apiKeyDoc.rateLimitPerMin.toString());
+    res.setHeader('X-RateLimit-Remaining', (apiKeyDoc.rateLimitPerMin - (rateLimitMap.get(keyHash)?.count || 0)).toString());
+    res.setHeader('X-Daily-Remaining', (apiKeyDoc.dailyQuota - apiKeyDoc.usage.todayCount).toString());
 
     res.json({
       keyPrefix: apiKeyDoc.keyPrefix,

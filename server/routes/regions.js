@@ -1,15 +1,27 @@
 import express from 'express';
 import { WORLD_REGIONS, COUNTRY_CITIES } from '../data/regions.js';
+import { Station } from '../shared/mongo-schemas';
 
 const router = express.Router();
 
 // Get all world regions
-router.get('/regions', (req, res) => {
+router.get('/regions', async (req, res) => {
   try {
-    const regions = Object.keys(WORLD_REGIONS).map(key => ({
-      slug: key,
-      name: WORLD_REGIONS[key].name,
-      countryCount: WORLD_REGIONS[key].countries.length
+    const regions = await Promise.all(Object.keys(WORLD_REGIONS).map(async key => {
+      const region = WORLD_REGIONS[key];
+      const countryCount = region.countries.length;
+      
+      // Get real station count for the region
+      const stationCount = await Station.countDocuments({ 
+        country: { $in: region.countries } 
+      });
+
+      return {
+        slug: key,
+        name: region.name,
+        countryCount,
+        stationCount
+      };
     }));
     
     res.json({
@@ -26,7 +38,7 @@ router.get('/regions', (req, res) => {
 });
 
 // Get countries in a specific region
-router.get('/regions/:regionSlug', (req, res) => {
+router.get('/regions/:regionSlug', async (req, res) => {
   try {
     const { regionSlug } = req.params;
     const region = WORLD_REGIONS[regionSlug];
@@ -38,12 +50,22 @@ router.get('/regions/:regionSlug', (req, res) => {
       });
     }
     
-    // Get country counts from stations (you can implement this later)
+    // Get real station counts per country using aggregation
+    const stationCounts = await Station.aggregate([
+      { $match: { country: { $in: region.countries } } },
+      { $group: { _id: "$country", count: { $sum: 1 } } }
+    ]);
+
+    const countMap = stationCounts.reduce((acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    }, {});
+
     const countries = region.countries.map(country => ({
       name: country,
       slug: country.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, ''),
-      stationCount: Math.floor(Math.random() * 100) + 5 // Placeholder - replace with actual count
-    }));
+      stationCount: countMap[country] || 0
+    })).sort((a, b) => b.stationCount - a.stationCount);
     
     res.json({
       success: true,
@@ -65,7 +87,7 @@ router.get('/regions/:regionSlug', (req, res) => {
 });
 
 // Get cities in a specific country
-router.get('/regions/:regionSlug/:countrySlug', (req, res) => {
+router.get('/regions/:regionSlug/:countrySlug', async (req, res) => {
   try {
     const { regionSlug, countrySlug } = req.params;
     const region = WORLD_REGIONS[regionSlug];
@@ -89,15 +111,24 @@ router.get('/regions/:regionSlug/:countrySlug', (req, res) => {
       });
     }
     
-    console.log('🏙️ Looking up cities for country:', countryName);
-    console.log('🗺️ Available countries in COUNTRY_CITIES:', Object.keys(COUNTRY_CITIES));
     const cities = COUNTRY_CITIES[countryName] || [];
-    console.log('🏙️ Found cities:', cities);
+    
+    // Get real station counts per city using aggregation
+    const stationCounts = await Station.aggregate([
+      { $match: { country: countryName, state: { $in: cities } } },
+      { $group: { _id: "$state", count: { $sum: 1 } } }
+    ]);
+
+    const countMap = stationCounts.reduce((acc, curr) => {
+      acc[curr._id] = curr.count;
+      return acc;
+    }, {});
+
     const citiesWithCounts = cities.map(city => ({
       name: city,
       slug: city.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, ''),
-      stationCount: Math.floor(Math.random() * 50) + 1 // Placeholder - replace with actual count
-    }));
+      stationCount: countMap[city] || 0
+    })).sort((a, b) => b.stationCount - a.stationCount);
     
     res.json({
       success: true,

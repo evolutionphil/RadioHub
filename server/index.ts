@@ -3,6 +3,7 @@ import session from "express-session";
 import MongoStore from "connect-mongo";
 import compression from "compression";
 import crypto from "crypto";
+import { rateLimit } from 'express-rate-limit';
 
 // Extend session type to include user data
 declare module "express-session" {
@@ -45,6 +46,27 @@ function getFrameOptionsHeader(): string {
   return 'DENY';
 }
 
+// RATE LIMITING: Prevent brute-force and DoS attacks
+const globalApiLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 100, // limit each IP to 100 requests per windowMs
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) => {
+    // Skip rate limiting for health checks and non-API routes
+    return !req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health';
+  }
+});
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // limit each IP to 10 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts, please try again in 15 minutes.' }
+});
+
 // HSTS Configuration: Implement gradual rollout strategy as recommended by Lighthouse
 // Start with conservative values and gradually increase based on confidence
 // Phases: testing (60s) → initial (1h) → confident (1 week) → production (1 year + preload)
@@ -82,6 +104,14 @@ function getHstsHeader(): string {
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
+
+// Apply global API rate limiting to all /api routes
+app.use('/api', globalApiLimiter);
+
+// Apply strict rate limiting to sensitive authentication endpoints
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/admin/login', authLimiter);
 
 // Request routing middleware
 app.use((req, res, next) => {

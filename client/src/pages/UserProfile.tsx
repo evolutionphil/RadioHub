@@ -120,9 +120,14 @@ export default function UserProfile() {
     retry: false
   });
 
-  // Get recently played stations (placeholder for now)
-  const recentlyPlayedStations: Station[] = [];
-  const isLoadingRecentlyPlayed = false;
+  // Fetch recently played stations
+  const { data: recentlyPlayed, isLoading: isLoadingRecentlyPlayed } = useQuery<Station[]>({
+    queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/recently-played`],
+    enabled: !!userIdOrSlug && !!userProfile?.isPublic,
+    retry: false
+  });
+
+  const recentlyPlayedStations: Station[] = recentlyPlayed || [];
 
   // Check authentication and permissions
   const isAuthenticated = (currentUser as any)?.authenticated;

@@ -695,15 +695,6 @@ export default function Stations() {
       // Check if highest-voted remaining station lacks BOTH favicon and localImagePath
       const remainingHasIcon = isValidUrl(highestVotedRemaining?.favicon) || isValidUrl(highestVotedRemaining?.localImagePath);
       
-      console.log('🔍 FAVICON DEBUG:', {
-        hasRemaining: !!highestVotedRemaining,
-        remainingName: highestVotedRemaining?.name,
-        remainingFavicon: highestVotedRemaining?.favicon,
-        remainingLocalImage: highestVotedRemaining?.localImagePath,
-        remainingHasIcon,
-        selectedCount: selectedIds.length
-      });
-      
       // If highest-voted station exists and has NO icon (neither favicon nor localImagePath), try to copy one
       if (highestVotedRemaining && !remainingHasIcon) {
         // Find a favicon from stations being deleted (check BOTH favicon and localImagePath)
@@ -719,30 +710,14 @@ export default function Stations() {
             ? faviconSource.localImagePath 
             : '';
         
-        console.log('🔍 FAVICON SOURCE:', {
-          foundSource: !!faviconSource,
-          sourceName: faviconSource?.name,
-          sourceFavicon: faviconSource?.favicon,
-          sourceLocalImage: faviconSource?.localImagePath,
-          finalUrl: sourceFaviconUrl,
-          deletedStations: stationsBeingDeleted.map(s => ({ 
-            name: s.name, 
-            favicon: s.favicon, 
-            localImagePath: s.localImagePath 
-          }))
-        });
-        
         if (sourceFaviconUrl) {
           // Copy favicon to highest-voted station before deletion
           try {
-            console.log('📋 Copying favicon:', sourceFaviconUrl, 'to station:', highestVotedRemaining._id);
             const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ favicon: sourceFaviconUrl })
             });
-            
-            console.log('📋 Update response:', updateResponse.status, updateResponse.ok);
             
             if (updateResponse.ok) {
               toast({

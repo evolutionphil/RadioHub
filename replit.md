@@ -36,9 +36,19 @@ CRITICAL SEO HEADING RULE: Only ONE H1 per page (provided by server-rendered con
 - **Key Fields**: Slugs for navigation, poster images, detailed metadata, activity logs.
 - **Enhanced User Model**: `favoriteStations`, `recentlyPlayedStations`, user preferences, authentication.
 
+### Route Module Architecture (Ongoing Refactor)
+`server/routes.ts` (22k+ lines) is being refactored into modular files under `server/routes/`. All modules have been extracted and exist as standalone files. The main `routes.ts` still serves as the active orchestrator during the transition. Module files created:
+- `cast-routes.ts`, `og-image-routes.ts`, `cache-dashboard-routes.ts`, `admin-auth-routes.ts`
+- `slug-routes.ts`, `ai-description-routes.ts`, `logo-routes.ts`, `admin-station-routes.ts`
+- `station-public-routes.ts`, `genres-countries-routes.ts`, `translation-admin-routes.ts`
+- `user-auth-routes.ts`, `mobile-tv-routes.ts`, `translation-keys-routes.ts`, `seo-sitemap-routes.ts`
+- `stream-proxy-routes.ts`, `regions-recommendations-routes.ts`, `misc-routes.ts`
+- `shared-utils.ts` (pure utilities), `server/middleware/auth.ts` (requireAuth, requireAdmin, generateAuthToken)
+
 ### Key Architectural Decisions
 - **Monorepo Structure**: Frontend, backend, and shared types in a single repository.
 - **Type Safety**: End-to-end TypeScript with Zod validation.
+- **Rate Limiting**: Global 100 req/min API limiter + strict 10 req/15min for auth endpoints (express-rate-limit).
 - **SEO-Friendly URLs**: Slug-based navigation, dynamic sitemap, robots.txt, structured data (JSON-LD), multilingual support with hreflang.
 - **Audio Continuity**: URL updates and page navigation preserve audio playback.
 - **Performance Optimizations**: Caching, database indexing, lazy loading, code splitting, Core Web Vitals optimization.

@@ -1,0 +1,89 @@
+import crypto from 'crypto';
+import mongoose from 'mongoose';
+import { AuthToken } from '../../shared/mongo-schemas';
+import { logger } from '../utils/logger';
+
+export type MiddlewareFn = (req: any, res: any, next: any) => void | Promise<void>;
+
+export const requireAuth: MiddlewareFn = async (req, res, next) => {
+  const session = req.session;
+  if (session?.user?.userId) {
+    (req.session as any).userId = session.user.userId;
+    return next();
+  }
+
+  const authHeader = req.headers['authorization'];
+  const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+  if (bearerToken) {
+    try {
+      const tokenDoc = await AuthToken.findOne({
+        token: bearerToken,
+        isRevoked: false,
+        expiresAt: { $gt: new Date() }
+      });
+
+      if (tokenDoc) {
+        tokenDoc.lastUsedAt = new Date();
+        await tokenDoc.save();
+
+        if (!req.session) req.session = {};
+        (req.session as any).userId = tokenDoc.userId.toString();
+        if (!req.session.user) req.session.user = {} as any;
+        (req.session as any).user = { userId: tokenDoc.userId.toString() };
+        return next();
+      }
+    } catch (err) {
+      logger.error('Token auth error:', err);
+    }
+  }
+
+  return res.status(401).json({ error: 'Authentication required' });
+};
+
+export const requireAdmin: MiddlewareFn = async (req, res, next) => {
+  const session = req.session as any;
+
+  if (!session || !session.adminAuth) {
+    return res.status(401).json({
+      error: 'Admin authentication required',
+      message: 'You must be logged in as an admin to access this resource.'
+    });
+  }
+
+  try {
+    if (session.adminAuth.role !== 'admin') {
+      return res.status(403).json({
+        error: 'Admin access required',
+        message: 'You do not have permission to access this resource. Admin privileges required.'
+      });
+    }
+    (req.session as any).adminUser = session.adminAuth;
+    next();
+  } catch {
+    return res.status(500).json({ error: 'Authentication error' });
+  }
+};
+
+export const generateAuthToken = async (
+  userId: string,
+  deviceType: 'mobile' | 'tv' | 'desktop' | 'web' = 'mobile',
+  deviceName?: string
+): Promise<string> => {
+  const prefix = deviceType === 'tv' ? 'mrt_tv_' : 'mrt_';
+  const token = `${prefix}${crypto.randomBytes(32).toString('hex')}`;
+  const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
+
+  await AuthToken.create({
+    token,
+    userId: new mongoose.Types.ObjectId(userId),
+    deviceType,
+    deviceName,
+    expiresAt,
+    lastUsedAt: new Date(),
+    createdAt: new Date(),
+    isRevoked: false,
+  });
+
+  return token;
+};

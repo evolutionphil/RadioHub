@@ -548,32 +548,13 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
     const handleError = (event: any) => {
       const error = event.target?.error;
       
-      // COMPREHENSIVE ERROR LOGGING
-      logger.log('❌ AUDIO ERROR DETECTED - DEPLOYMENT DEBUGGING');
+      // Log error details for developers
+      logger.log('❌ AUDIO ERROR DETECTED');
       logger.log('🔍 ERROR: Code:', error?.code, 'Message:', error?.message);
       logger.log('🔍 ERROR: Network state:', audioRef.current?.networkState);
       logger.log('🔍 ERROR: Ready state:', audioRef.current?.readyState);
       logger.log('🔍 ERROR: Audio source:', audioRef.current?.src);
-      logger.log('🔍 ERROR: Time since last play:', Date.now() - ((window as any).lastPlayTime || 0), 'ms');
       logger.log('🔍 ERROR: Current position:', audioRef.current?.currentTime);
-      
-      // LOG ENVIRONMENT DIFFERENCES - DEPLOYMENT VS DEVELOPMENT
-      logger.log('🌍 ENVIRONMENT DEBUG:', {
-        hostname: window.location.hostname,
-        protocol: window.location.protocol,
-        isDeployment: window.location.hostname.includes('replit.app'),
-        isDevelopment: window.location.hostname.includes('replit.dev'),
-        connectionType: (navigator as any).connection?.effectiveType,
-        onLine: navigator.onLine,
-        cookieEnabled: navigator.cookieEnabled
-      });
-      
-      // DETAILED ERROR STACK TRACE
-      logger.log('🔍 ERROR STACK TRACE:');
-      const errorStack = new Error().stack?.split('\n') || [];
-      errorStack.slice(1, 6).forEach((line, index) => {
-        logger.log(`   ${index + 1}:`, line.trim());
-      });
       
       setIsLoading(false);
       setIsPlaying(false);
