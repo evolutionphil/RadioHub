@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import MongoStore from "connect-mongo";
 import compression from "compression";
+import crypto from "crypto";
 
 // Extend session type to include user data
 declare module "express-session" {

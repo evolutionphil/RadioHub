@@ -1320,6 +1320,10 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   // DASHBOARD STATS API
   app.get("/api/dashboard/stats", async (req, res) => {
     try {
+      const CACHE_KEY = 'dashboard:stats:v1';
+      const cached = await CacheManager.get(CACHE_KEY);
+      if (cached) return res.json(cached);
+
       // Get dashboard statistics
       const [
         totalStations,
@@ -1458,6 +1462,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         }
       };
 
+      await CacheManager.set(CACHE_KEY, stats, { ttl: 300 }); // Cache 5 minutes
       res.json(stats);
     } catch (error) {
       // console.error('Dashboard stats error:', error);
@@ -1962,10 +1967,12 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           let skip = 0;
           
           while (true) {
-            // Get stations based on regenerateAll flag
-            const stations = regenerateAll 
-              ? await Station.find({})
-              : await Station.find({ $or: [{ slug: { $exists: false } }, { slug: "" }, { slug: null }] })
+            // Get stations based on regenerateAll flag — ALWAYS use skip/limit/lean for batching
+            const stationFilter = regenerateAll
+              ? {}
+              : { $or: [{ slug: { $exists: false } }, { slug: '' }, { slug: null }] };
+            const stations = await Station.find(stationFilter)
+              .select('_id name url country language codec bitrate')
               .skip(skip)
               .limit(batchSize)
               .lean();
@@ -2440,57 +2447,61 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         note: 'Check server logs for progress'
       });
       
-      // Process in background - non-blocking
+      // Process in background - non-blocking, uses batching to avoid loading all stations into memory
       setImmediate(async () => {
         try {
-          logger.log(`🧹 Cleanup job: Loading all stations...`);
-          
-          const allStations = await Station.find({ descriptions: { $exists: true } }).lean();
+          const BATCH = 500;
+          let skip = 0;
           let cleanedCount = 0;
           const cleanupStats: any = {};
           
-          logger.log(`🧹 Cleanup job: Processing ${allStations.length} stations...`);
-          
-          for (const station of allStations) {
-            if (!station.descriptions || typeof station.descriptions !== 'object') continue;
+          while (true) {
+            const batch = await Station.find({ descriptions: { $exists: true } })
+              .select('_id descriptions')
+              .skip(skip)
+              .limit(BATCH)
+              .lean();
             
-            let hasChanges = false;
-            const updatedDescriptions: any = {};
+            if (batch.length === 0) break;
+            logger.log(`🧹 Cleanup batch: processing stations ${skip + 1}–${skip + batch.length}...`);
             
-            for (const [lang, desc] of Object.entries(station.descriptions)) {
-              if (typeof desc === 'object' && desc !== null && 'meta' in desc) {
-                let originalMeta = (desc as any).meta || '';
-                let originalFull = (desc as any).full || '';
-                
-                // Apply stripPlaceholders cleanup to BOTH full and meta
-                let cleanedMeta = stripPlaceholders(originalMeta);
-                let cleanedFull = stripPlaceholders(originalFull);
-                
-                if (cleanedMeta !== originalMeta || cleanedFull !== originalFull) {
-                  hasChanges = true;
-                  updatedDescriptions[lang] = {
-                    full: cleanedFull,
-                    meta: cleanedMeta
-                  };
+            const bulkOps: any[] = [];
+            for (const station of batch) {
+              if (!station.descriptions || typeof station.descriptions !== 'object') continue;
+              
+              let hasChanges = false;
+              const updatedDescriptions: any = {};
+              
+              for (const [lang, desc] of Object.entries(station.descriptions)) {
+                if (typeof desc === 'object' && desc !== null && 'meta' in desc) {
+                  const originalMeta = (desc as any).meta || '';
+                  const originalFull = (desc as any).full || '';
+                  const cleanedMeta = stripPlaceholders(originalMeta);
+                  const cleanedFull = stripPlaceholders(originalFull);
                   
-                  if (!cleanupStats[lang]) cleanupStats[lang] = 0;
-                  cleanupStats[lang]++;
+                  if (cleanedMeta !== originalMeta || cleanedFull !== originalFull) {
+                    hasChanges = true;
+                    updatedDescriptions[lang] = { full: cleanedFull, meta: cleanedMeta };
+                    if (!cleanupStats[lang]) cleanupStats[lang] = 0;
+                    cleanupStats[lang]++;
+                  }
                 }
               }
-            }
-            
-            if (hasChanges) {
-              await Station.updateOne(
-                { _id: station._id },
-                { $set: { descriptions: updatedDescriptions } }
-              );
-              cleanedCount++;
               
-              // Log every 100 stations
-              if (cleanedCount % 100 === 0) {
-                logger.log(`🧹 Cleanup progress: ${cleanedCount} stations updated...`);
+              if (hasChanges) {
+                bulkOps.push({
+                  updateOne: {
+                    filter: { _id: station._id },
+                    update: { $set: { descriptions: updatedDescriptions } }
+                  }
+                });
+                cleanedCount++;
               }
             }
+            
+            if (bulkOps.length > 0) await Station.bulkWrite(bulkOps);
+            skip += BATCH;
+            if (batch.length < BATCH) break;
           }
           
           logger.log(`✅ Meta description cleanup completed: ${cleanedCount} stations updated`);
@@ -4055,45 +4066,55 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   // DATA SYNC UTILITY - Fix follower counts for all users
   app.post("/api/admin/sync-follower-counts", requireAdmin, async (req, res) => {
     try {
-      // logger.log('🔄 Starting follower count synchronization...');
-      
-      // Get all users
-      const allUsers = await User.find({}).select('_id followersCount followingCount');
+      // Compute follower and following counts via aggregation (single query each)
+      const [followersAgg, followingAgg] = await Promise.all([
+        UserFollow.aggregate([
+          { $group: { _id: '$followingUserId', count: { $sum: 1 } } }
+        ]),
+        UserFollow.aggregate([
+          { $group: { _id: '$userId', count: { $sum: 1 } } }
+        ])
+      ]);
+
+      const followersMap = new Map(followersAgg.map((r: any) => [String(r._id), r.count]));
+      const followingMap = new Map(followingAgg.map((r: any) => [String(r._id), r.count]));
+
+      // Build bulk update using aggregated data — no per-user queries
+      const BATCH = 1000;
+      let skip = 0;
       let syncedUsers = 0;
-      let errors = 0;
-      
-      for (const user of allUsers) {
-        try {
-          // Calculate actual counts from UserFollow collection
-          const actualFollowersCount = await UserFollow.countDocuments({ followingUserId: user._id });
-          const actualFollowingCount = await UserFollow.countDocuments({ userId: user._id });
-          
-          // Update if counts are incorrect
-          if (user.followersCount !== actualFollowersCount || user.followingCount !== actualFollowingCount) {
-            // logger.log(` Syncing user ${user._id}: followers ${user.followersCount} -> ${actualFollowersCount}, following ${user.followingCount} -> ${actualFollowingCount}`);
-            
-            await User.findByIdAndUpdate(user._id, {
-              followersCount: actualFollowersCount,
-              followingCount: actualFollowingCount
-            });
+
+      while (true) {
+        const users = await User.find({})
+          .select('_id followersCount followingCount')
+          .skip(skip)
+          .limit(BATCH)
+          .lean();
+        if (users.length === 0) break;
+
+        const bulkOps = users
+          .map((user: any) => {
+            const actualFollowers = followersMap.get(String(user._id)) ?? 0;
+            const actualFollowing = followingMap.get(String(user._id)) ?? 0;
+            if (user.followersCount === actualFollowers && user.followingCount === actualFollowing) return null;
             syncedUsers++;
-          }
-        } catch (error) {
-          // console.error(` Error syncing user ${user._id}:`, error);
-          errors++;
-        }
+            return {
+              updateOne: {
+                filter: { _id: user._id },
+                update: { $set: { followersCount: actualFollowers, followingCount: actualFollowing } }
+              }
+            };
+          })
+          .filter(Boolean);
+
+        if (bulkOps.length > 0) await User.bulkWrite(bulkOps as any[]);
+        skip += BATCH;
+        if (users.length < BATCH) break;
       }
-      
-      // logger.log(`✅ Follower count sync completed: ${syncedUsers} users updated, ${errors} errors`);
-      res.json({ 
-        success: true, 
-        message: `Synchronized ${syncedUsers} users, ${errors} errors`,
-        totalUsers: allUsers.length,
-        syncedUsers,
-        errors
-      });
+
+      const totalUsers = skip; // approximate
+      res.json({ success: true, message: `Synchronized ${syncedUsers} users`, totalUsers, syncedUsers, errors: 0 });
     } catch (error) {
-      // console.error('Error syncing follower counts:', error);
       res.status(500).json({ error: 'Failed to sync follower counts' });
     }
   });
@@ -4547,8 +4568,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     }
   });
 
-  // DEBUG UTILITY - Inspect UserFavorite data integrity issues
-  app.get("/api/admin/debug-favorites/:userId", async (req, res) => {
+  // DEBUG UTILITY - Inspect UserFavorite data integrity issues (Admin Only)
+  app.get("/api/admin/debug-favorites/:userId", requireAdmin, async (req, res) => {
     try {
       const { userId } = req.params;
       // logger.log(`🔍 Debugging UserFavorite data for user: ${userId}`);
@@ -5780,8 +5801,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     }
   });
 
-  // GET FAVICON UPLOAD URL - Generate signed URL for favicon upload
-  app.get("/api/admin/favicon-upload-url", async (req, res) => {
+  // GET FAVICON UPLOAD URL - Generate signed URL for favicon upload (Admin Only)
+  app.get("/api/admin/favicon-upload-url", requireAdmin, async (req, res) => {
     try {
       const objectStorageService = new ObjectStorageService();
       const { uploadUrl, publicUrl, objectPath } = await objectStorageService.getFaviconUploadURL();
@@ -5925,8 +5946,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     }
   });
 
-  // BULK IMPORT ENDPOINT - Import stations from Radio Browser API
-  app.post("/api/admin/bulk-import-stations", async (req, res) => {
+  // BULK IMPORT ENDPOINT - Import stations from Radio Browser API (Admin Only)
+  app.post("/api/admin/bulk-import-stations", requireAdmin, async (req, res) => {
     try {
       logger.log('🔄 Starting bulk station import...');
       
@@ -6304,7 +6325,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
 
   // BLACKLISTED STATIONS ENDPOINTS (Admin Only)
   // Get all blacklisted stations
-  app.get("/api/admin/blacklisted-stations", async (req, res) => {
+  app.get("/api/admin/blacklisted-stations", requireAdmin, async (req, res) => {
     try {
       const { page = 1, limit = 50, search = '' } = req.query;
       const skip = (Number(page) - 1) * Number(limit);
@@ -6342,8 +6363,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     }
   });
 
-  // Restore blacklisted station
-  app.post("/api/admin/blacklisted-stations/:blacklistId/restore", async (req, res) => {
+  // Restore blacklisted station (Admin Only)
+  app.post("/api/admin/blacklisted-stations/:blacklistId/restore", requireAdmin, async (req, res) => {
     try {
       const { blacklistId } = req.params;
       
@@ -8526,8 +8547,8 @@ ${keysText}`;
     }
   });
 
-  // ADMIN REAL LANGUAGES API - Manage real languages from station database
-  app.get("/api/admin/real-languages", async (req, res) => {
+  // ADMIN REAL LANGUAGES API - Manage real languages from station database (Admin Only)
+  app.get("/api/admin/real-languages", requireAdmin, async (req, res) => {
     try {
       // Language grouping map to consolidate variants
       const languageGroups = {
@@ -8653,8 +8674,8 @@ ${keysText}`;
     }
   });
 
-  // ADMIN MERGE STATIONS API - Merge duplicate stations manually
-  app.post("/api/admin/stations/merge", async (req, res) => {
+  // ADMIN MERGE STATIONS API - Merge duplicate stations manually (Admin Only)
+  app.post("/api/admin/stations/merge", requireAdmin, async (req, res) => {
     try {
       const { primaryStationId, duplicateStationIds, mergeData } = req.body;
       
@@ -8707,8 +8728,8 @@ ${keysText}`;
     }
   });
 
-  // ADMIN GENRES API - Returns only real genres from database for management
-  app.get("/api/admin/genres", async (req, res) => {
+  // ADMIN GENRES API - Returns only real genres from database for management (Admin Only)
+  app.get("/api/admin/genres", requireAdmin, async (req, res) => {
     try {
       logger.log('🎵 Fetching ONLY real genres from database for admin management...');
       
