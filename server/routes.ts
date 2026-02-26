@@ -1148,34 +1148,50 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       Object.assign(stationFilter, normalizeCountryFilter(countrycode));
     }
     
-    // Get stations and extract dynamic genres
-    const stations = await Station.find(stationFilter, 'tags genre').lean();
-    
-    // Extract and count tags
-    const tagCounts = new Map();
-    for (const station of stations) {
-      if (station.tags && typeof station.tags === 'string') {
-        const tags = station.tags.split(',')
-          .map(tag => tag.trim().toLowerCase())
-          .filter(tag => tag.length > 0);
-        for (const tag of tags) {
-          tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
+    // Get tag/genre counts via aggregation — avoids loading 50k+ docs into memory
+    const tagAggResult = await Station.aggregate([
+      { $match: stationFilter },
+      {
+        $project: {
+          allTags: {
+            $concatArrays: [
+              {
+                $cond: [
+                  { $and: [
+                    { $gt: ['$tags', null] },
+                    { $gt: [{ $strLenCP: { $ifNull: ['$tags', ''] } }, 0] }
+                  ]},
+                  { $split: ['$tags', ','] },
+                  []
+                ]
+              },
+              {
+                $cond: [
+                  { $and: [
+                    { $gt: ['$genre', null] },
+                    { $gt: [{ $strLenCP: { $ifNull: ['$genre', ''] } }, 0] }
+                  ]},
+                  ['$genre'],
+                  []
+                ]
+              }
+            ]
+          }
         }
-      }
-      if (station.genre && typeof station.genre === 'string') {
-        const genre = station.genre.trim().toLowerCase();
-        if (genre.length > 0) {
-          tagCounts.set(genre, (tagCounts.get(genre) || 0) + 1);
-        }
-      }
-    }
-    
-    // Convert dynamic tags to genre objects
-    let dynamicGenres = Array.from(tagCounts.entries())
-      .filter(([tag, count]) => count >= 1 && tag.length > 0)
-      .map(([tag, count]) => ({
-        name: tag.charAt(0).toUpperCase() + tag.slice(1),
-        slug: tag,
+      },
+      { $unwind: '$allTags' },
+      { $project: { tag: { $trim: { input: { $toLower: '$allTags' } } } } },
+      { $match: { tag: { $ne: '' } } },
+      { $group: { _id: '$tag', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]);
+
+    // Convert aggregation result to genre objects
+    let dynamicGenres = tagAggResult
+      .filter(({ _id, count }: { _id: string; count: number }) => count >= 1 && _id.length > 0)
+      .map(({ _id, count }: { _id: string; count: number }) => ({
+        name: _id.charAt(0).toUpperCase() + _id.slice(1),
+        slug: _id,
         stationCount: count,
         isDynamic: true
       }));

@@ -2236,8 +2236,7 @@ const AuthTokenSchema = new Schema<IAuthToken>({
   isRevoked: { type: Boolean, default: false },
 });
 
-AuthTokenSchema.index({ token: 1 });
-AuthTokenSchema.index({ userId: 1 });
+AuthTokenSchema.index({ userId: 1 }); // token already indexed via unique: true on field
 AuthTokenSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const AuthToken = mongoose.model<IAuthToken>('AuthToken', AuthTokenSchema);
@@ -2448,8 +2447,7 @@ const PushTokenSchema = new Schema<IPushToken>({
   updatedAt: { type: Date, default: Date.now },
 });
 
-PushTokenSchema.index({ userId: 1 });
-PushTokenSchema.index({ token: 1 }, { unique: true });
+PushTokenSchema.index({ userId: 1 }); // token already indexed via unique: true on field
 
 export const PushToken = mongoose.model<IPushToken>('PushToken', PushTokenSchema);
 

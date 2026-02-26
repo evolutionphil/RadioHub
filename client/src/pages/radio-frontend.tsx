@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, Suspense, lazy } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
@@ -20,6 +20,40 @@ const formatVoteCount = (count: number): string => {
     return (count / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
   }
   return count.toString();
+};
+
+// Pure functions at module level — no deps on component state, never re-created
+const rankSearchResults = (stations: any[], query: string): any[] => {
+  if (!stations || stations.length === 0 || !query) return stations;
+  const normalizedQuery = query.toLowerCase().trim();
+  const exactMatches: any[] = [];
+  const startsWithMatches: any[] = [];
+  const containsMatches: any[] = [];
+  for (const station of stations) {
+    const normalizedName = (station.name || '').toLowerCase();
+    if (normalizedName === normalizedQuery) {
+      exactMatches.push(station);
+    } else if (normalizedName.startsWith(normalizedQuery)) {
+      startsWithMatches.push(station);
+    } else {
+      containsMatches.push(station);
+    }
+  }
+  const sortByVotes = (a: any, b: any) => (b.votes || 0) - (a.votes || 0);
+  exactMatches.sort(sortByVotes);
+  startsWithMatches.sort(sortByVotes);
+  containsMatches.sort(sortByVotes);
+  return [...exactMatches, ...startsWithMatches, ...containsMatches];
+};
+
+const GENRE_IMAGES = [
+  '/images/genre-bg-grad-1.webp',
+  '/images/genre-bg-grad-2.webp',
+  '/images/genre-bg-grad-2.webp',
+  '/images/genre-bg-grad-4.webp',
+];
+const getRandomImage = (index: number): string => {
+  return `url(${GENRE_IMAGES[Math.abs(index) % GENRE_IMAGES.length]})`;
 };
 import DiscoverableGenreSlider from "@/components/DiscoverableGenreSlider";
 import { InView } from "@/components/ui/in-view";
@@ -277,39 +311,6 @@ export default function RadioFrontend({
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Smart ranking: exact match > starts-with > contains, each sorted by votes (highest first)
-  const rankSearchResults = (stations: any[], query: string): any[] => {
-    if (!stations || stations.length === 0 || !query) return stations;
-    
-    const normalizedQuery = query.toLowerCase().trim();
-    
-    // Categorize stations
-    const exactMatches: any[] = [];
-    const startsWithMatches: any[] = [];
-    const containsMatches: any[] = [];
-    
-    for (const station of stations) {
-      const normalizedName = (station.name || '').toLowerCase();
-      
-      if (normalizedName === normalizedQuery) {
-        exactMatches.push(station);
-      } else if (normalizedName.startsWith(normalizedQuery)) {
-        startsWithMatches.push(station);
-      } else {
-        containsMatches.push(station);
-      }
-    }
-    
-    // Sort each category by votes (highest first)
-    const sortByVotes = (a: any, b: any) => (b.votes || 0) - (a.votes || 0);
-    exactMatches.sort(sortByVotes);
-    startsWithMatches.sort(sortByVotes);
-    containsMatches.sort(sortByVotes);
-    
-    // Combine: exact first, then starts-with, then contains
-    return [...exactMatches, ...startsWithMatches, ...containsMatches];
-  };
-
   // Reset focus states when search changes
   useEffect(() => {
     setFocusedResultIndex(-1);
@@ -322,7 +323,7 @@ export default function RadioFrontend({
 
 
   // Keyboard navigation handler for search results
-  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!filteredStations || filteredStations.length === 0) return;
 
     switch (e.key) {
@@ -354,7 +355,7 @@ export default function RadioFrontend({
         setFocusedResultIndex(-1);
         break;
     }
-  };
+  }, [filteredStations, focusedResultIndex, navigateWithLanguage]);
 
   // DEFERRED: Genres only needed for dropdown, not LCP hero section
   // Deferring reduces critical request chain from 11.86s
@@ -449,11 +450,6 @@ export default function RadioFrontend({
   const detectedCountry = (locationData as any)?.location?.country || 'all';
   const activeCountry = selectedCountry;
   
-  // Force re-fetch when country changes
-  useEffect(() => {
-    // Country changed, data will be refetched automatically
-  }, [selectedCountry]);
-
   // PROGRESSIVE LOADING: Ultra-fast precomputed stations (7-day cache, zero DB queries)
   // 🚀 PERF FIX: Gate behind countryReady to prevent fetching for 'all' if redirect coming
   const { data: stationsData, isLoading: stationsLoading } = useQuery({
@@ -714,11 +710,6 @@ export default function RadioFrontend({
     }
   });
 
-  // Update nearby stations data when conditions change
-  useEffect(() => {
-    // Nearby stations data will be refetched automatically when dependencies change
-  }, [selectedCountry, locationPermission, userDetectedCountry, shouldShowNearbyStations, nearbyStationsData, locationData]);
-
   // PROGRESSIVE LOADING: Load 12 popular stations from 7-day cache (hasLogo→votes sorted)
   // DEFERRED: Load popular stations after page interactive (below fold content)
   const { data: popularStationsData } = useQuery({
@@ -801,33 +792,27 @@ export default function RadioFrontend({
   const displayPopularStations = unfavoritedPopularStations.length > 0 ? unfavoritedPopularStations : initialPopularStations;
   const displayAllStations = allStations.length > 0 ? allStations : initialAllStations;
   
-  // Update display data when country or data changes
-  useEffect(() => {
-    // Display data will be updated automatically when dependencies change
-  }, [selectedCountry, stations.length, popularStations.length, nearbyStationsData, locationData]);
-  
   // Handle play function with page stations
-  const handlePlay = async (station: any, playlistName?: string) => {
+  const handlePlay = useCallback(async (station: any, _playlistName?: string) => {
     try {
-      // Pass the current page stations to the global player for queue navigation
-      const currentPageStations = allLoadedStations.length > 0 ? allLoadedStations : 
-                                 (extendedStationsData?.stations || stationsData?.stations || []);
+      const currentPageStations = allLoadedStations.length > 0 ? allLoadedStations :
+        (extendedStationsData?.stations || stationsData?.stations || []);
       await playStation(station, currentPageStations);
-    } catch (error) {
-      // console.error('Failed to play station:', error);
+    } catch (_error) {
+      // silently ignore play errors
     }
-  };
-  
+  }, [allLoadedStations, extendedStationsData, stationsData, playStation]);
+
   // Handle stop function
-  const handleStop = () => {
+  const handleStop = useCallback(() => {
     stopStation();
-  };
-  
+  }, [stopStation]);
+
   // Navigate to station function with language-aware routing
-  const navigateToStation = (station: any) => {
+  const navigateToStation = useCallback((station: any) => {
     const stationPath = station.slug ? `/station/${station.slug}` : `/station/${station._id}`;
     navigateWithLanguage(stationPath);
-  };
+  }, [navigateWithLanguage]);
   
   // Player state helper
   const playerState = currentStation ? (isPlaying ? 'playing' : 'stopped') : 'stopped';
@@ -914,22 +899,6 @@ export default function RadioFrontend({
 
   // Enhanced loading state - tracks both debounce delay AND API request
   // const [isSearching, setIsSearching] = useState(false); // Already declared above
-
-  // EXACT from original GenreSlider.vue - using actual background images
-  const getRandomImage = (index: number) => {
-    // Original background images from megaradio-frontend-clone-master repository
-    const images = [
-      '/images/genre-bg-grad-1.webp',
-      '/images/genre-bg-grad-2.webp', 
-      '/images/genre-bg-grad-2.webp', // Original uses grad-2 twice
-      '/images/genre-bg-grad-4.webp'
-    ];
-    
-    // Simulate the random selection from original but with consistent results per index
-    // Using Math.round(Math.random() * (images.length - 1)) + 0 approach from original
-    const selectedIndex = Math.abs(index) % images.length;
-    return `url(${images[selectedIndex]})`;
-  };
 
   return (
     <div className="w-full">

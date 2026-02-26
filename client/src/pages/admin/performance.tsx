@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -110,6 +110,14 @@ export default function AdminPerformance() {
   const [cacheClearResult, setCacheClearResult] = useState<CacheClearResponse | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const activeIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      activeIntervalsRef.current.forEach(id => clearInterval(id));
+      activeIntervalsRef.current.clear();
+    };
+  }, []);
 
   // Optimized metrics fetching with React Query
   const { data: metrics, isLoading, refetch: fetchMetrics } = useQuery<PerformanceMetrics>({
@@ -180,13 +188,13 @@ export default function AdminPerformance() {
     }
   };
 
-  const pollOptimizationJob = async (jobId: string) => {
-    const pollInterval = setInterval(async () => {
+  const pollOptimizationJob = (jobId: string) => {
+    const intervalId = setInterval(async () => {
       try {
         const response = await fetch(`/api/admin/performance/jobs/${jobId}`);
         const job = await response.json();
-        
-        setOptimizationJobs(prev => 
+
+        setOptimizationJobs(prev =>
           prev.map(j => j.id === jobId ? {
             ...j,
             status: job.status,
@@ -195,18 +203,20 @@ export default function AdminPerformance() {
             results: job.results
           } : j)
         );
-        
+
         if (job.status === 'completed' || job.status === 'failed') {
-          clearInterval(pollInterval);
+          clearInterval(intervalId);
+          activeIntervalsRef.current.delete(jobId);
           if (job.status === 'completed') {
-            handleRefreshMetrics(); // Refresh metrics after completion
+            handleRefreshMetrics();
           }
         }
-      } catch (error) {
-        // Error polling optimization job
-        clearInterval(pollInterval);
+      } catch (_error) {
+        clearInterval(intervalId);
+        activeIntervalsRef.current.delete(jobId);
       }
     }, 1000);
+    activeIntervalsRef.current.set(jobId, intervalId);
   };
 
   const runFullOptimization = async () => {

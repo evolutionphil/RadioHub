@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -65,6 +65,15 @@ export default function AdminDuplicates() {
   
   // Track manually selected primary stations per group (key: group name + country)
   const [selectedPrimaryStations, setSelectedPrimaryStations] = useState<{[groupKey: string]: string}>({});
+
+  const activeIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
+
+  useEffect(() => {
+    return () => {
+      activeIntervalsRef.current.forEach(id => clearInterval(id));
+      activeIntervalsRef.current.clear();
+    };
+  }, []);
 
   const detectDuplicates = async () => {
     setIsLoading(true);
@@ -292,16 +301,6 @@ export default function AdminDuplicates() {
           // Check if highest-voted remaining station lacks BOTH favicon and localImagePath
           const remainingHasIcon = isValidUrl(highestVotedRemaining?.favicon) || isValidUrl(highestVotedRemaining?.localImagePath);
           
-          console.log('🔍 FAVICON DEBUG (Global Delete):', {
-            groupName: group.name,
-            hasRemaining: !!highestVotedRemaining,
-            remainingName: highestVotedRemaining?.name,
-            remainingFavicon: highestVotedRemaining?.favicon,
-            remainingLocalImage: highestVotedRemaining?.localImagePath,
-            remainingHasIcon,
-            selectedCount: selectedInGroup.length
-          });
-          
           // If highest-voted station exists and has NO icon (neither favicon nor localImagePath), try to copy one
           if (highestVotedRemaining && !remainingHasIcon) {
             // Find a favicon from stations being deleted (check BOTH favicon and localImagePath)
@@ -317,32 +316,13 @@ export default function AdminDuplicates() {
                 ? faviconSource.localImagePath 
                 : '';
             
-            console.log('🔍 FAVICON SOURCE (Global Delete):', {
-              groupName: group.name,
-              foundSource: !!faviconSource,
-              sourceName: faviconSource?.name,
-              sourceFavicon: faviconSource?.favicon,
-              sourceLocalImage: faviconSource?.localImagePath,
-              finalUrl: sourceFaviconUrl,
-              deletedStations: stationsBeingDeleted.map(s => ({ 
-                name: s.name, 
-                favicon: s.favicon, 
-                localImagePath: s.localImagePath 
-              }))
-            });
-            
             if (sourceFaviconUrl) {
-              // Copy favicon to highest-voted station before deletion
               try {
-                console.log('📋 Copying favicon:', sourceFaviconUrl, 'to station:', highestVotedRemaining._id);
                 const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ favicon: sourceFaviconUrl })
                 });
-                
-                console.log('📋 Update response:', updateResponse.status, updateResponse.ok);
-                
                 if (updateResponse.ok) {
                   faviconsCopied++;
                   toast({
@@ -357,16 +337,8 @@ export default function AdminDuplicates() {
                 console.error('Failed to copy favicon:', error);
                 // Continue with deletion even if favicon copy fails
               }
-            } else {
-              console.log('⚠️ No favicon source found in deleted stations for group:', group.name);
             }
-          } else {
-            console.log('⚠️ Highest voted station already has icon or no remaining stations for group:', group.name);
           }
-        }
-        
-        if (faviconsCopied > 0) {
-          console.log(`✅ Total favicons copied across all groups: ${faviconsCopied}`);
         }
       }
 
@@ -439,15 +411,6 @@ export default function AdminDuplicates() {
       // Check if highest-voted remaining station lacks BOTH favicon and localImagePath
       const remainingHasIcon = isValidUrl(highestVotedRemaining?.favicon) || isValidUrl(highestVotedRemaining?.localImagePath);
       
-      console.log('🔍 FAVICON DEBUG:', {
-        hasRemaining: !!highestVotedRemaining,
-        remainingName: highestVotedRemaining?.name,
-        remainingFavicon: highestVotedRemaining?.favicon,
-        remainingLocalImage: highestVotedRemaining?.localImagePath,
-        remainingHasIcon,
-        selectedCount: selectedInGroup.length
-      });
-      
       // If highest-voted station exists and has NO icon (neither favicon nor localImagePath), try to copy one
       if (highestVotedRemaining && !remainingHasIcon) {
         // Find a favicon from stations being deleted (check BOTH favicon and localImagePath)
@@ -463,31 +426,13 @@ export default function AdminDuplicates() {
             ? faviconSource.localImagePath 
             : '';
         
-        console.log('🔍 FAVICON SOURCE:', {
-          foundSource: !!faviconSource,
-          sourceName: faviconSource?.name,
-          sourceFavicon: faviconSource?.favicon,
-          sourceLocalImage: faviconSource?.localImagePath,
-          finalUrl: sourceFaviconUrl,
-          deletedStations: stationsBeingDeleted.map(s => ({ 
-            name: s.name, 
-            favicon: s.favicon, 
-            localImagePath: s.localImagePath 
-          }))
-        });
-        
         if (sourceFaviconUrl) {
-          // Copy favicon to highest-voted station before deletion
           try {
-            console.log('📋 Copying favicon:', sourceFaviconUrl, 'to station:', highestVotedRemaining._id);
             const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ favicon: sourceFaviconUrl })
             });
-            
-            console.log('📋 Update response:', updateResponse.status, updateResponse.ok);
-            
             if (updateResponse.ok) {
               toast({
                 title: 'Favicon preserved',
@@ -501,11 +446,7 @@ export default function AdminDuplicates() {
             console.error('Failed to copy favicon:', error);
             // Continue with deletion even if favicon copy fails
           }
-        } else {
-          console.log('⚠️ No favicon source found in deleted stations');
         }
-      } else {
-        console.log('⚠️ Highest voted station already has icon or no remaining stations');
       }
 
       // Proceed with deletion
@@ -583,10 +524,9 @@ export default function AdminDuplicates() {
     }
   };
 
-  const pollJobStatus = async (jobId: string, groupName?: string) => {
+  const pollJobStatus = (jobId: string, groupName?: string) => {
     setActiveJobs(prev => new Set([...Array.from(prev), jobId]));
-    
-    // More frequent polling for better progress updates
+
     const pollInterval = setInterval(async () => {
       try {
         const response = await fetch(`/api/admin/merge-jobs/${jobId}`);
@@ -607,6 +547,7 @@ export default function AdminDuplicates() {
         
         if (job.status === 'completed') {
           clearInterval(pollInterval);
+          activeIntervalsRef.current.delete(jobId);
           setActiveJobs(prev => {
             const newSet = new Set(Array.from(prev));
             newSet.delete(jobId);
@@ -654,6 +595,7 @@ export default function AdminDuplicates() {
           await detectDuplicates();
         } else if (job.status === 'failed') {
           clearInterval(pollInterval);
+          activeIntervalsRef.current.delete(jobId);
           setActiveJobs(prev => {
             const newSet = new Set(Array.from(prev));
             newSet.delete(jobId);
@@ -679,11 +621,14 @@ export default function AdminDuplicates() {
       } catch (error) {
         // Error polling job status
       }
-    }, 1000); // Poll every 1 second for better responsiveness
+    }, 1000);
 
-    // Clean up after 10 minutes to prevent infinite polling
+    activeIntervalsRef.current.set(jobId, pollInterval);
+
+    // Safety: stop polling after 10 minutes regardless of job status
     setTimeout(() => {
       clearInterval(pollInterval);
+      activeIntervalsRef.current.delete(jobId);
       setActiveJobs(prev => {
         const newSet = new Set(Array.from(prev));
         newSet.delete(jobId);
