@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { Station, UserProfile, UserListeningHistory, User, UserFollow, Country, Genre } from '../../shared/mongo-schemas';
-import { deduplicatedFetch, calculateDistance, stripPlaceholders, tvValidateParams, tvSlimStation, tvSlimGenre } from './shared-utils';
+import { deduplicatedFetch, calculateDistance, stripPlaceholders, tvValidateParams, tvSlimStation, tvSlimGenre, tvSlimProjection } from './shared-utils';
 import { normalizeCountryFilter } from '../utils/normalize-country';
 import CacheManager, { CacheKeys } from '../cache';
 import { logger } from '../utils/logger';
@@ -9,8 +9,55 @@ import { getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
 import { PrecomputedStationsService } from '../services/precomputed-stations';
 
+// Helper: generate unique slug inline
+async function generateUniqueSlug(name: string, type: string, id: string): Promise<string> {
+  const base = name.toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .trim();
+  let slug = base || id;
+  let counter = 0;
+  while (true) {
+    const candidate = counter === 0 ? slug : `${slug}-${counter}`;
+    const existing = await Station.findOne({ slug: candidate, _id: { $ne: id } });
+    if (!existing) return candidate;
+    counter++;
+  }
+}
+
 export function registerPublicStationRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
+
+  // SINGLE STATION BY SLUG OR ID - Used by all station detail pages
+  app.get("/api/station/:identifier", async (req, res) => {
+    try {
+      const { identifier } = req.params;
+      let station: any;
+
+      station = await Station.findOne({ slug: identifier }).select('+descriptions').lean();
+
+      if (!station) {
+        if (identifier.match(/^[0-9a-fA-F]{24}$/)) {
+          station = await Station.findById(identifier).select('+descriptions').lean();
+        }
+      }
+
+      if (!station) {
+        return res.status(404).json({ error: 'Station not found' });
+      }
+
+      if (!station.slug) {
+        const newSlug = await generateUniqueSlug(station.name, 'station', station._id.toString());
+        await Station.updateOne({ _id: station._id }, { $set: { slug: newSlug } });
+        station.slug = newSlug;
+      }
+
+      res.json(stripPlaceholders(station));
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch station' });
+    }
+  });
 
   // POPULAR STATIONS API - With duplicate detection and icon-only filtering
   app.get("/api/stations/popular", async (req, res) => {
@@ -546,6 +593,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       if (bitrate) stations = stations.filter((s: any) => s.bitrate >= parseInt(bitrate as string));
 
       res.json({
+        success: true,
+        data: stations,
         stations,
         total: result.total,
         count: result.total,
@@ -557,6 +606,241 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     } catch (error) {
       logger.error('Error fetching precomputed stations:', error);
       res.status(500).json({ error: 'Failed to fetch precomputed stations' });
+    }
+  });
+
+  // LINKED STATIONS - Related stations for station detail page
+  app.get("/api/stations/:stationId/linked", async (req, res) => {
+    try {
+      const { stationId } = req.params;
+      const station = await Station.findById(stationId).lean() as any;
+      if (!station) return res.status(404).json({ error: 'Station not found' });
+
+      const filter: any = { _id: { $ne: stationId } };
+      if (station.country) filter.country = station.country;
+      if (station.genre) filter.genre = { $regex: new RegExp(station.genre, 'i') };
+
+      const linked = await Station.find(filter)
+        .select('_id name favicon slug country genre tags votes bitrate codec language url urlResolved hls lastCheckOk hasLogo logoAssets')
+        .sort({ votes: -1 })
+        .limit(12)
+        .lean();
+
+      res.json({ stations: linked });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch linked stations' });
+    }
+  });
+
+  // MAIN STATIONS LIST API - Full filter/sort/search/pagination
+  app.get("/api/stations", async (req, res) => {
+    try {
+      const isTV = req.query.tv === '1';
+      const {
+        country,
+        state,
+        genre,
+        tags,
+        language,
+        search,
+        sort = 'votes',
+        order = 'desc',
+        excludeBroken = 'false',
+        excludeStationIds = '',
+        minVotes = 0,
+        timePeriod = 'all'
+      } = req.query;
+
+      const safeParams = isTV ? tvValidateParams(req.query) : {
+        page: parseInt(req.query.page as string) || 1,
+        limit: parseInt(req.query.limit as string) || 25
+      };
+      const { page, limit } = safeParams;
+
+      if (isTV && !search) {
+        const tvCacheKey = `tv:stations:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${timePeriod}`;
+        const cachedResult = await CacheManager.get(tvCacheKey);
+        if (cachedResult) return res.json(cachedResult);
+        (req as any)._tvCacheKey = tvCacheKey;
+      }
+
+      const filter: any = {};
+
+      if (excludeBroken === 'true') filter.lastCheckOk = true;
+
+      if (excludeStationIds && typeof excludeStationIds === 'string') {
+        const excludeIds = excludeStationIds.split(',').filter((id: string) => id.trim());
+        if (excludeIds.length > 0) filter._id = { $nin: excludeIds };
+      }
+
+      if (minVotes && Number(minVotes) > 0) filter.votes = { $gte: Number(minVotes) };
+
+      if (timePeriod && timePeriod !== 'all') {
+        const now = new Date();
+        const startDate = new Date();
+        if (timePeriod === '24h') startDate.setHours(now.getHours() - 24);
+        else if (timePeriod === '7d') startDate.setDate(now.getDate() - 7);
+        else if (timePeriod === '30d') startDate.setDate(now.getDate() - 30);
+        filter.$or = [
+          { lastChangeTime: { $gte: startDate } },
+          { clickTimestamp: { $gte: startDate } },
+          { createdAt: { $gte: startDate } }
+        ];
+      }
+
+      if (country && country !== 'all') {
+        Object.assign(filter, normalizeCountryFilter(country as string));
+      }
+
+      if (state && state !== 'all') {
+        const stateAliases: { [key: string]: string[] } = {
+          'Wien': ['Wien', 'Vienna'],
+          'Vienna': ['Wien', 'Vienna'],
+        };
+        const searchTerms = stateAliases[state as string] || [state as string];
+        if (searchTerms.length > 1) {
+          if (!filter.$or) filter.$or = [];
+          filter.$or.push(...searchTerms.map((term: string) => ({ state: { $regex: new RegExp(term, 'i') } })));
+        } else {
+          filter.state = { $regex: new RegExp(state as string, 'i') };
+        }
+      }
+
+      if (tags && tags !== 'all') filter.tags = { $regex: new RegExp(tags as string, 'i') };
+
+      if (genre && genre !== 'all') {
+        const escapedGenre = (genre as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.$or = [
+          { genre: { $regex: new RegExp(`^${escapedGenre}$`, 'i') } },
+          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedGenre}\\s*(,|$)`, 'i') } }
+        ];
+      }
+
+      if (language && language !== 'all') filter.language = { $regex: new RegExp(language as string, 'i') };
+
+      let isGenreSearch = false;
+      let genreSearchTerm = '';
+
+      if (search) {
+        const searchTerm = (search as string).trim();
+        if (searchTerm.length >= 2) {
+          const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const flexibleTerm = escapedTerm.replace(/\s+/g, '\\s*');
+          const customBoundaryRegex = new RegExp(`(^|[^a-zA-Z0-9])${flexibleTerm}`, 'i');
+          const startsWithRegex = new RegExp(`^${flexibleTerm}`, 'i');
+          const knownGenres = ['jazz', 'pop', 'rock', 'classical', 'news', 'talk', 'dance', 'electronic',
+            'hiphop', 'country', 'oldies', 'hits', 'rnb', 'soul', 'blues', 'reggae',
+            'metal', 'punk', 'alternative', 'indie', 'folk', 'world', 'latin'];
+          if (knownGenres.some(g => g === searchTerm.toLowerCase().replace(/[\s-]/g, ''))) {
+            isGenreSearch = true;
+            genreSearchTerm = escapedTerm;
+          }
+          filter.$or = [
+            { name: { $regex: customBoundaryRegex } },
+            { country: { $regex: startsWithRegex } },
+            { genre: { $regex: customBoundaryRegex } },
+            { tags: { $regex: customBoundaryRegex } }
+          ];
+        }
+      }
+
+      const total = await Station.countDocuments(filter);
+
+      let pipeline: any[] = [{ $match: filter }];
+
+      if (isGenreSearch && genreSearchTerm) {
+        pipeline.push({
+          $addFields: {
+            genreMatchScore: {
+              $cond: [{ $regexMatch: { input: { $ifNull: ['$genre', ''] }, regex: genreSearchTerm, options: 'i' } }, 2,
+                { $cond: [{ $regexMatch: { input: { $ifNull: ['$tags', ''] }, regex: genreSearchTerm, options: 'i' } }, 1, 0] }]
+            }
+          }
+        });
+      }
+
+      pipeline.push({
+        $addFields: {
+          hasValidFavicon: {
+            $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$favicon', ''] } } }, regex: '^(https?:\\/\\/.+|data:image\\/.+)', options: 'i' } }, 1, 0]
+          },
+          startsWithNumber: {
+            $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$name', ''] } } }, regex: '^[0-9]' } }, 1, 0]
+          }
+        }
+      });
+
+      let sortObj: any = isGenreSearch
+        ? { genreMatchScore: -1, hasValidFavicon: -1 }
+        : { hasValidFavicon: -1 };
+
+      switch (sort) {
+        case 'az':
+          sortObj = isGenreSearch
+            ? { genreMatchScore: -1, startsWithNumber: 1, hasValidFavicon: -1, name: 1 }
+            : { startsWithNumber: 1, hasValidFavicon: -1, name: 1 };
+          break;
+        case 'za':
+          sortObj = isGenreSearch
+            ? { genreMatchScore: -1, startsWithNumber: 1, hasValidFavicon: -1, name: -1 }
+            : { startsWithNumber: 1, hasValidFavicon: -1, name: -1 };
+          break;
+        case 'newest':
+          sortObj = isGenreSearch
+            ? { genreMatchScore: -1, hasValidFavicon: -1, createdAt: -1 }
+            : { hasValidFavicon: -1, createdAt: -1 };
+          break;
+        case 'oldest':
+          sortObj = isGenreSearch
+            ? { genreMatchScore: -1, hasValidFavicon: -1, createdAt: 1 }
+            : { hasValidFavicon: -1, createdAt: 1 };
+          break;
+        default:
+          sortObj = isGenreSearch
+            ? { genreMatchScore: -1, hasValidFavicon: -1, votes: -1 }
+            : { hasValidFavicon: -1, votes: -1 };
+          break;
+      }
+
+      if (isTV) {
+        pipeline.push(tvSlimProjection());
+      } else {
+        pipeline.push({
+          $project: {
+            _id: 1, name: 1, url: 1, urlResolved: 1, favicon: 1, country: 1, countrycode: 1,
+            state: 1, language: 1, genre: 1, codec: 1, bitrate: 1, homepage: 1, tags: 1,
+            slug: 1, hls: 1, votes: 1, clickCount: 1, lastCheckOk: 1, lastCheckTime: 1,
+            descriptions: 1, logoAssets: 1, localImagePath: 1, createdAt: 1, updatedAt: 1,
+            hasValidFavicon: 1, startsWithNumber: 1
+          }
+        });
+      }
+
+      pipeline.push({ $sort: sortObj });
+      pipeline.push({ $skip: (Number(page) - 1) * Number(limit) });
+      pipeline.push({ $limit: Number(limit) });
+
+      const stations = await Station.aggregate(pipeline);
+
+      const response = {
+        stations,
+        totalCount: total,
+        count: total,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit))
+        }
+      };
+
+      const tvCacheKey = (req as any)._tvCacheKey;
+      if (tvCacheKey) await CacheManager.set(tvCacheKey, response, { ttl: 300 });
+
+      res.json(response);
+    } catch (error) {
+      logger.error('Error fetching stations:', error);
+      res.status(500).json({ error: 'Failed to fetch stations' });
     }
   });
 }
