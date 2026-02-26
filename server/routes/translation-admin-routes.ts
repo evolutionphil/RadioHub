@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language } from "../../shared/mongo-schemas";
+import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite } from "../../shared/mongo-schemas";
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
 import { refreshCommunityFavoritesCache, fetchTranslationsForLanguage, refreshTranslationsCache } from "./cache-refresh-utils";

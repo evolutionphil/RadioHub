@@ -292,7 +292,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any) {
       
       const fullDomain = getProductionDomain(req.get('host'));
       
-      const seoData = await seoRenderer.getPageData(url, fullDomain);
+      const seoData = await seoRenderer.renderStaticPage(url, fullDomain);
       res.json(seoData);
     } catch (error) {
       console.error('SEO Page Data error:', error);
