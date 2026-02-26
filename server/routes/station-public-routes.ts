@@ -568,10 +568,36 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const pageNum = Math.max(1, parseInt(page as string) || 1);
       const limitNum = Math.min(parseInt(limit as string) || 33, 500);
 
-      let result;
       const identifier = (countryName as string) || (countryCode as string);
+      const isGlobal = !identifier || identifier === 'global' || identifier === 'all';
 
-      if (!identifier || identifier === 'global' || identifier === 'all') {
+      // For global requests: check cache readiness; if not ready, use fast MongoDB fallback
+      if (isGlobal) {
+        const cacheReady = await PrecomputedStationsService.hasGlobalCache();
+        if (!cacheReady) {
+          // Fast MongoDB fallback: sorted by votes desc with logo priority
+          const skip = (pageNum - 1) * limitNum;
+          const mongoFilter: any = genre ? { $or: [{ genre: { $regex: new RegExp(genre as string, 'i') } }, { tags: { $regex: new RegExp(genre as string, 'i') } }] } : {};
+          if (search) { const q = search as string; mongoFilter.name = { $regex: new RegExp(q, 'i') }; }
+          const [stations, total] = await Promise.all([
+            Station.find(mongoFilter)
+              .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
+              .sort({ hasLogo: -1, votes: -1 })
+              .skip(skip)
+              .limit(limitNum)
+              .lean(),
+            Station.countDocuments(mongoFilter)
+          ]);
+          return res.json({
+            success: true, data: stations, stations, total, count: total, page: pageNum,
+            totalPages: Math.ceil(total / limitNum), cached: false,
+            pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) }
+          });
+        }
+      }
+
+      let result;
+      if (isGlobal) {
         result = await PrecomputedStationsService.getGlobalStations(pageNum, limitNum);
       } else if (countryCode) {
         result = await PrecomputedStationsService.getCountryStations(countryCode as string, pageNum, limitNum);
@@ -582,7 +608,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       let { stations } = result;
 
       // Apply client-side filters on cached data
-      if (genre) stations = stations.filter((s: any) => s.genre?.toLowerCase().includes((genre as string).toLowerCase()) || s.tags?.some((t: string) => t.toLowerCase().includes((genre as string).toLowerCase())));
+      if (genre) stations = stations.filter((s: any) => s.genre?.toLowerCase().includes((genre as string).toLowerCase()) || (typeof s.tags === 'string' ? s.tags.toLowerCase().includes((genre as string).toLowerCase()) : Array.isArray(s.tags) && s.tags.some((t: string) => t.toLowerCase().includes((genre as string).toLowerCase()))));
       if (language) stations = stations.filter((s: any) => s.language?.toLowerCase().includes((language as string).toLowerCase()));
       if (search) {
         const q = (search as string).toLowerCase();
