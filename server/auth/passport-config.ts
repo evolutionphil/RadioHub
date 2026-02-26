@@ -75,9 +75,12 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       let user = await User.findOne({ googleId: profile.id });
       
       if (user) {
-        console.log('👤 Existing Google user found, updating last login');
-        // Update last login
+        // Update last login AND avatar (always refresh from Google profile)
+        const googleAvatar = profile.photos?.[0]?.value;
         user.lastLoginAt = new Date();
+        if (googleAvatar && !user.avatar) {
+          (user as any).avatar = googleAvatar;
+        }
         await user.save();
         return done(null, user);
       }
@@ -86,10 +89,16 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       user = await User.findOne({ email: profile.emails?.[0]?.value });
       
       if (user) {
-        console.log('👤 Existing user found by email, linking Google account');
-        // Link Google account to existing user
+        // Link Google account to existing user, set avatar if not already set
+        const googleAvatar = profile.photos?.[0]?.value;
         user.googleId = profile.id;
         user.lastLoginAt = new Date();
+        if (googleAvatar && !(user as any).avatar) {
+          (user as any).avatar = googleAvatar;
+        }
+        if (!user.fullName && profile.displayName) {
+          user.fullName = profile.displayName;
+        }
         await user.save();
         return done(null, user);
       }

@@ -663,9 +663,22 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       if (!fullName || !username || !email || !password) {
         return res.status(400).json({ error: 'All fields are required' });
       }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+      }
+      if (username.length < 3 || username.length > 30) {
+        return res.status(400).json({ error: 'Username must be 3-30 characters long' });
+      }
+      if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+        return res.status(400).json({ error: 'Username may only contain letters, numbers, underscores, dots, and hyphens' });
+      }
 
       // Check if user exists
-      const existingUser = await User.findOne({ $or: [{ email }, { username }] });
+      const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase().trim() }, { username }] });
       if (existingUser) {
         return res.status(400).json({ error: 'User with this email or username already exists' });
       }
@@ -678,11 +691,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       // Create user slug
       const userSlug = username.toLowerCase().replace(/[^a-z0-9]/g, '-');
 
+      const normalizedEmail = email.toLowerCase().trim();
+
       // Create new user
       const newUser = new User({
-        fullName,
+        fullName: fullName.trim(),
         username,
-        email,
+        email: normalizedEmail,
         passwordHash,
         slug: userSlug,
         role: 'user',
@@ -732,8 +747,16 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     try {
       const { email, password, rememberMe } = req.body;
 
+      if (!email || !password) {
+        return res.status(400).json({ error: 'Email and password are required' });
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ error: 'Invalid email format' });
+      }
+
       // Find user by email
-      const user = await User.findOne({ email });
+      const user = await User.findOne({ email: email.toLowerCase().trim() });
       if (!user) {
         return res.status(401).json({ error: 'Invalid email or password' });
       }

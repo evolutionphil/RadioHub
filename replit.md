@@ -81,6 +81,10 @@ CRITICAL SEO HEADING RULE: Only ONE H1 per page (provided by server-rendered con
 - **API Key Management System**: Secure API key generation, validation, rate limiting, and usage tracking with various plans (Demo, Free, Pro).
 - **Cast System (Mobile → TV)**: Dual cast architecture: (1) WebSocket-based at `/ws/cast` for real-time command relay, (2) Polling-based HTTP endpoints for TV apps without WebSocket support. Polling endpoints: `GET /api/cast/poll` (TV polls every 3s), `POST /api/cast/send` (mobile sends commands), `POST /api/cast/now-playing` (TV reports playback), `GET /api/cast/now-playing` (mobile reads TV status). MongoDB `CastCommand` (24h TTL, consumed flag, deviceId scoping) and `CastNowPlaying` (unique per userId+deviceId) models. Docs: `docs/cast-integration-guide.md`.
 - **TV Device Code Login**: Netflix/YouTube-style TV login flow. TV requests 6-digit code → displays on screen → user enters on mobile → TV gets `mrt_tv_` prefixed token (90-day). Endpoints: `/api/auth/tv/code`, `/api/auth/tv/code/:code/status`, `/api/auth/tv/activate`, `/api/auth/tv/logout`, `/api/auth/tv/verify`. MongoDB `TvLoginCode` model with 10-min TTL. Rate-limited activation, unique code generation.
+- **Security Hardening**: Rate limiting (100 req/min global + 10 req/15min auth with `skipSuccessfulRequests`), X-Powered-By removed, security headers (HSTS, CSP, X-Frame-Options), error responses don't expose internal messages.
+- **Input Validation**: Login and signup endpoints validate email format, password length (min 8 chars), username format (3-30 chars, alphanumeric/dash/dot/underscore only) with email normalization.
+- **Google OAuth Avatar Fix**: Existing Google users get avatar saved on first login if field was empty; email-linked users also get avatar when linking Google account.
+- **Random Station Performance**: `/api/stations/country-random` uses MongoDB `$sample` aggregation instead of `countDocuments + skip()` — much faster on large collections.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.

@@ -64,6 +64,7 @@ const authLimiter = rateLimit({
   max: 10, // limit each IP to 10 requests per windowMs
   standardHeaders: true,
   legacyHeaders: true,
+  skipSuccessfulRequests: true, // Only count failed attempts — successful logins don't consume quota
   message: { error: 'Too many login attempts, please try again in 15 minutes.' }
 });
 

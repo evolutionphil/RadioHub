@@ -550,11 +550,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       if (!country) return res.status(400).json({ error: 'Country parameter is required' });
 
       const filter = normalizeCountryFilter(country as string);
-      const count = await Station.countDocuments(filter);
-      if (count === 0) return res.status(404).json({ error: 'No stations found for this country' });
-
-      const randomIdx = Math.floor(Math.random() * count);
-      const station = await Station.findOne(filter).skip(randomIdx).lean();
+      const [station] = await Station.aggregate([
+        { $match: filter },
+        { $sample: { size: 1 } }
+      ]);
+      if (!station) return res.status(404).json({ error: 'No stations found for this country' });
       res.json(stripPlaceholders(station));
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch random station' });

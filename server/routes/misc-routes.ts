@@ -87,7 +87,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error('iTunes Top 100 fetch error:', error);
-      res.status(500).json({ error: 'Failed to fetch top songs', message: error.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -124,7 +124,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       res.json({ results, cached: false, total: results.length, query: query, type: type });
     } catch (error: any) {
       console.error('iTunes search error:', error);
-      res.status(500).json({ error: 'Failed to search iTunes catalog', message: error.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -141,7 +141,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       res.json({ originalUrl: artworkUrl, highQualityUrl, size: Number(size) });
     } catch (error: any) {
       console.error('Artwork generation error:', error);
-      res.status(500).json({ error: 'Failed to generate artwork URL', message: error.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -165,7 +165,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       res.json({ track: trackDetails, cached: false });
     } catch (error: any) {
       console.error('Track lookup error:', error);
-      res.status(500).json({ error: 'Failed to fetch track details', message: error.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -189,7 +189,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       res.json({ album: albumData.album, tracks: albumData.tracks, cached: false });
     } catch (error: any) {
       console.error('Album lookup error:', error);
-      res.status(500).json({ error: 'Failed to fetch album details', message: error.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 
@@ -249,7 +249,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error('Artist lookup error:', error);
-      res.status(500).json({ error: 'Failed to fetch artist details', message: error.message });
+      res.status(500).json({ error: 'Internal server error' });
     }
   });
 

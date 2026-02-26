@@ -128,7 +128,6 @@ export default function RecommendationsPage({
         if (response.ok) {
           const data = await response.json();
           if (data && data.length > 0) {
-            console.log(t('debug_personalized_stations_fetched', '👤 Personalized stations fetched:'), data.length, t('stations_ml_powered', 'stations (ML-powered)'));
             return data;
           }
         }
@@ -145,7 +144,6 @@ export default function RecommendationsPage({
       const fallbackResponse = await fetch(`/api/recommendations/diverse?${params}`);
       if (fallbackResponse.ok) {
         const fallbackData = await fallbackResponse.json();
-        console.log(t('debug_personalized_fallback_fetched', '🔄 Personalized fallback stations fetched:'), fallbackData.stations?.length, t('stations_diverse_mix', 'stations (diverse mix)'));
         return fallbackData.stations || [];
       }
       
@@ -228,14 +226,6 @@ export default function RecommendationsPage({
     ? (moodStationsCache[selectedMood] || [])
     : defaultStations;
     
-  // Debug logging for mood stations
-  if (selectedMood) {
-    console.log(`🎯 Selected mood: ${selectedMood}`);
-    console.log(`🎯 Mood genres: [${getMoodGenres(selectedMood).join(', ')}]`);
-    console.log(`🎯 Available mood stations in cache: ${currentMoodStations.length}`);
-    console.log(`🎯 First 3 station names:`, currentMoodStations.slice(0, 3).map((s: any) => s.name));
-  }
-
   // Different filtering logic for mood-specific vs all-moods view
   let filteredTrendingStations = trendingStations;
   let filteredDiscoveryStations = discoveryStations;
@@ -273,13 +263,6 @@ export default function RecommendationsPage({
     });
   }
   
-  // Debug logging for final filtered stations
-  if (selectedMood) {
-    console.log(`🎯 Final filtered mood stations: ${filteredMoodStations.length}`);
-    console.log(`🎯 Display limit: ${selectedMood ? 21 : 6} stations`);
-    console.log(`🎯 Will show: ${Math.min(filteredMoodStations.length, selectedMood ? 21 : 6)} stations`);
-  }
-
   // Mood options - EXACT from original design
   const moods = [
     { value: 'energetic', label: t('mood_energetic', 'Energetic'), icon: '⚡' },
