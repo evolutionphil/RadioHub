@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
+import { useQuery } from "@tanstack/react-query";
 
 interface ProfileLayoutProps {
   children: React.ReactNode;
@@ -13,6 +14,13 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
   const { getLocalizedUrl } = useSeoRouting();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ["/api/messages/unread-count"],
+    enabled: !!user,
+    refetchInterval: 15000,
+  });
+  const unreadCount = unreadData?.count ?? 0;
   
   // Get clean path for comparison
   const isActive = (path: string) => {
@@ -74,7 +82,12 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
                   <div className="mr-5">
                     <img src="/sms.png" alt="Messages" className="w-6 h-6" />
                   </div>
-                  <div className="text-base font-bold">Messages</div>
+                  <div className="text-base font-bold flex-1">Messages</div>
+                  {unreadCount > 0 && (
+                    <span className="bg-[#FF4199] text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
                 </div>
               </Link>
 

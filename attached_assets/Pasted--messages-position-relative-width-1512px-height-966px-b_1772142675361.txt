@@ -1,0 +1,2238 @@
+/* messages */
+
+position: relative;
+width: 1512px;
+height: 966px;
+
+background: #0E0E0E;
+
+
+/* footer */
+
+position: absolute;
+visibility: hidden;
+width: 1262px;
+height: 275px;
+left: 250px;
+top: 1032px;
+
+background: #000000;
+
+
+/* bg-gradient */
+
+position: absolute;
+width: 381px;
+height: 381px;
+left: 10px;
+top: 46px;
+
+background: rgba(110, 35, 149, 0.55);
+filter: blur(102.5px);
+
+
+/* logo */
+
+position: absolute;
+width: 301.64px;
+height: 97px;
+left: 30px;
+top: 89px;
+
+
+
+/* Frame 172 */
+
+position: absolute;
+width: 97px;
+height: 97px;
+left: calc(50% - 97px/2 - 102.32px);
+top: calc(50% - 97px/2);
+
+
+
+/* app-icon */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 97px;
+height: 97px;
+left: 0px;
+top: 0px;
+
+background: linear-gradient(135.44deg, #F86DAD 0.76%, #FF4FA0 98.51%);
+border-radius: 16.7241px;
+
+
+/* Ellipse 6 */
+
+position: absolute;
+width: 112.52px;
+height: 112.52px;
+left: -44.62px;
+top: -43.16px;
+
+background: #E752FF;
+filter: blur(37.83px);
+
+
+/* Rectangle */
+
+position: absolute;
+width: 106.21px;
+height: 106.21px;
+left: -5.33px;
+top: -4.36px;
+
+background: url(.png);
+mix-blend-mode: normal;
+
+
+/* Path 8 */
+
+position: absolute;
+left: 16.5%;
+right: 16.5%;
+top: 17.5%;
+bottom: 17.5%;
+
+background: #F8E9F0;
+box-shadow: 0.485px 5.82px 7.76px #DA287A, inset -0.97px 0.485px 1.455px rgba(255, 255, 255, 0.43), inset 0.485px 2.91px 2.425px rgba(255, 250, 250, 0.51), inset -0.485px -1.455px 2.91px rgba(255, 65, 153, 0.59);
+
+
+/* MegaRadio */
+
+position: absolute;
+visibility: hidden;
+width: 82px;
+height: 19px;
+left: 11.16px;
+top: 104.76px;
+
+font-family: 'SF Pro';
+font-style: normal;
+font-weight: 400;
+font-size: 15.52px;
+line-height: 19px;
+/* identical to box height */
+
+color: #5F5F5F;
+
+
+
+/* megaradio */
+
+position: absolute;
+left: 40.78%;
+right: 0%;
+top: 28.87%;
+bottom: 28.87%;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 36.1063px;
+line-height: 41px;
+
+color: #FFFFFF;
+
+
+
+/* links */
+
+position: absolute;
+width: 310px;
+height: 102px;
+left: 514px;
+top: 87px;
+
+
+
+/* About Us */
+
+position: absolute;
+width: 69px;
+height: 18px;
+left: 0px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Contact */
+
+position: absolute;
+width: 59px;
+height: 18px;
+left: 217px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Applications */
+
+position: absolute;
+width: 93px;
+height: 18px;
+left: 217px;
+top: 43px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Play Radio */
+
+position: absolute;
+width: 78px;
+height: 18px;
+left: 217px;
+top: 84px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Privacy Policy */
+
+position: absolute;
+width: 96px;
+height: 17px;
+left: 0px;
+top: 44px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 15px;
+line-height: 17px;
+
+color: #FFFFFF;
+
+
+
+/* Terms and Conditions */
+
+position: absolute;
+width: 151px;
+height: 17px;
+left: 0px;
+top: 85px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 15px;
+line-height: 17px;
+
+color: #FFFFFF;
+
+
+
+/* © 2021 Copyright Mega Radio. All rights reserved. */
+
+position: absolute;
+width: 348px;
+height: 17px;
+left: 514px;
+top: 229px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 15px;
+line-height: 17px;
+
+color: #4B4B4B;
+
+
+
+/* social-media */
+
+position: absolute;
+width: 192px;
+height: 82px;
+left: 1043px;
+top: 97px;
+
+
+
+/* Social Media */
+
+position: absolute;
+width: 93px;
+height: 18px;
+left: 0px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Frame 179 */
+
+position: absolute;
+width: 192px;
+height: 49px;
+left: 0px;
+top: 33px;
+
+
+
+/* Twitter */
+
+position: absolute;
+left: 75%;
+right: 0%;
+top: 0%;
+bottom: 2.04%;
+
+
+
+/* Facebook */
+
+position: absolute;
+left: 0%;
+right: 75%;
+top: 0%;
+bottom: 2.04%;
+
+
+
+/* instagram */
+
+position: absolute;
+width: 48px;
+height: 48px;
+left: 72px;
+top: 1px;
+
+
+
+/* Frame 340 */
+
+position: absolute;
+width: 973px;
+height: 119px;
+left: 539px;
+top: 847px;
+
+background: #272727;
+
+
+/* Frame 341 */
+
+position: absolute;
+width: 784px;
+height: 54px;
+left: 92px;
+top: 33px;
+
+background: #3A3A3A;
+border-radius: 4px;
+
+
+/* Text here */
+
+position: absolute;
+width: 71px;
+height: 18px;
+left: 20px;
+top: 18px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 500;
+font-size: 16px;
+line-height: 18px;
+
+color: #7E7E7E;
+
+
+
+/* Frame 342 */
+
+position: absolute;
+width: 54px;
+height: 54px;
+left: 889px;
+top: 33px;
+
+background: #FF4199;
+border-radius: 4px;
+
+
+/* vuesax/bold/send */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 15px;
+top: 15px;
+
+
+
+/* vuesax/bold/send */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* send */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 12.71%;
+right: 12.71%;
+top: 12.51%;
+bottom: 12.51%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+transform: rotate(-180deg);
+
+
+/* Frame */
+
+position: absolute;
+width: 40px;
+height: 40px;
+left: 33px;
+top: 39px;
+
+
+
+/* Grinning_Face */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+
+
+/* circle */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+background: #FDCA47;
+
+
+/* Vector */
+
+position: absolute;
+left: 8.04%;
+right: 60.85%;
+top: 6.1%;
+bottom: 66.83%;
+
+background: #FFE8BB;
+
+
+/* Vector */
+
+position: absolute;
+left: 12.21%;
+right: 0%;
+top: 12.28%;
+bottom: 0%;
+
+background: #F9B700;
+
+
+/* mouth */
+
+position: absolute;
+left: 19.2%;
+right: 19.2%;
+top: 55.9%;
+bottom: 14%;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 19.2%;
+right: 19.2%;
+top: 55.9%;
+bottom: 14%;
+
+background: #664100;
+
+
+/* Vector */
+
+position: absolute;
+left: 24.79%;
+right: 24.79%;
+top: 61.48%;
+bottom: 26.91%;
+
+background: #FFFFFF;
+
+
+/* eyes */
+
+position: absolute;
+left: 26.64%;
+right: 26.64%;
+top: 28.39%;
+bottom: 53.08%;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 60.17%;
+right: 26.64%;
+top: 28.39%;
+bottom: 53.08%;
+
+background: #664100;
+
+
+/* Vector */
+
+position: absolute;
+left: 26.64%;
+right: 60.17%;
+top: 28.39%;
+bottom: 53.08%;
+
+background: #664100;
+
+
+/* Frame 343 */
+
+position: absolute;
+width: 289px;
+height: 861px;
+left: 250px;
+top: 105px;
+
+background: #1B1B1B;
+
+
+/* Frame 345 */
+
+position: absolute;
+width: 289px;
+height: 67px;
+left: 0px;
+top: 80px;
+
+
+
+/* Frame 349 */
+
+position: absolute;
+width: 289px;
+height: 67px;
+left: 0px;
+top: 345px;
+
+
+
+/* Frame 351 */
+
+position: absolute;
+width: 289px;
+height: 356px;
+left: 0px;
+top: -277px;
+
+
+
+/* Frame 348 */
+
+position: absolute;
+width: 289px;
+height: 88px;
+left: 0px;
+top: 89px;
+
+background: #313131;
+
+
+/* Frame 344 */
+
+position: absolute;
+width: 96px;
+height: 39px;
+left: 75px;
+top: 25px;
+
+
+
+/* Talha Çay */
+
+position: absolute;
+width: 73px;
+height: 18px;
+left: 0px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* tamam anladık */
+
+position: absolute;
+width: 96px;
+height: 16px;
+left: 0px;
+top: 23px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 500;
+font-size: 14px;
+line-height: 16px;
+/* identical to box height */
+
+color: #CECECE;
+
+
+
+/* Frame 218 */
+
+position: absolute;
+width: 45px;
+height: 45px;
+left: 20px;
+top: 22px;
+
+background: url(.png);
+border-radius: 50px;
+
+
+/* Line 8 */
+
+position: absolute;
+width: 289px;
+height: 0px;
+left: 0px;
+top: 89px;
+
+border: 1px solid #313131;
+
+
+/* Line 9 */
+
+position: absolute;
+width: 289px;
+height: 0px;
+left: 0px;
+top: 0px;
+
+border: 1px solid #313131;
+
+
+/* Frame 346 */
+
+position: absolute;
+width: 289px;
+height: 67px;
+left: 0px;
+top: 109px;
+
+
+
+/* Frame 344 */
+
+position: absolute;
+width: 96px;
+height: 39px;
+left: 75px;
+top: 5px;
+
+
+
+/* Ahmet */
+
+position: absolute;
+width: 52px;
+height: 18px;
+left: 0px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* hangi radyo dinliyosun payla... */
+
+position: absolute;
+width: 196px;
+height: 16px;
+left: 0px;
+top: 23px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 500;
+font-size: 14px;
+line-height: 16px;
+/* identical to box height */
+
+color: #CECECE;
+
+
+
+/* Frame 218 */
+
+position: absolute;
+width: 45px;
+height: 45px;
+left: 20px;
+top: 2px;
+
+background: url(.png);
+border-radius: 50px;
+
+
+/* Line 8 */
+
+position: absolute;
+width: 289px;
+height: 0px;
+left: 0px;
+top: 69px;
+
+border: 1px solid #313131;
+
+
+/* Frame 347 */
+
+position: absolute;
+width: 289px;
+height: 67px;
+left: 0px;
+top: 198px;
+
+
+
+/* Frame 344 */
+
+position: absolute;
+width: 96px;
+height: 39px;
+left: 75px;
+top: 5px;
+
+
+
+/* Meryem */
+
+position: absolute;
+width: 63px;
+height: 18px;
+left: 0px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* tamam anladık */
+
+position: absolute;
+width: 96px;
+height: 16px;
+left: 0px;
+top: 23px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 500;
+font-size: 14px;
+line-height: 16px;
+/* identical to box height */
+
+color: #CECECE;
+
+
+
+/* Frame 218 */
+
+position: absolute;
+width: 45px;
+height: 45px;
+left: 20px;
+top: 2px;
+
+background: url(.png);
+border-radius: 50px;
+
+
+/* Line 8 */
+
+position: absolute;
+width: 289px;
+height: 0px;
+left: 0px;
+top: 69px;
+
+border: 1px solid #313131;
+
+
+/* Frame 334 */
+
+position: absolute;
+width: 18px;
+height: 16px;
+left: 251px;
+top: 20px;
+
+background: #FF5B5B;
+border-radius: 2px;
+
+
+/* 2 */
+
+position: absolute;
+width: 6px;
+height: 11px;
+left: 6px;
+top: 3px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 10px;
+line-height: 11px;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 344 */
+
+position: absolute;
+width: 96px;
+height: 39px;
+left: 75px;
+top: 292px;
+
+
+
+/* Zehra Yılmaz */
+
+position: absolute;
+width: 99px;
+height: 18px;
+left: 0px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* tamam anladık */
+
+position: absolute;
+width: 96px;
+height: 16px;
+left: 0px;
+top: 23px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 500;
+font-size: 14px;
+line-height: 16px;
+/* identical to box height */
+
+color: #CECECE;
+
+
+
+/* Frame 218 */
+
+position: absolute;
+width: 45px;
+height: 45px;
+left: 20px;
+top: 289px;
+
+background: url(.png);
+border-radius: 50px;
+
+
+/* Line 8 */
+
+position: absolute;
+width: 289px;
+height: 0px;
+left: 0px;
+top: 356px;
+
+border: 1px solid #313131;
+
+
+/* Frame 350 */
+
+position: absolute;
+width: 255px;
+height: 32px;
+left: 17px;
+top: 16px;
+
+background: #313131;
+border-radius: 4px;
+
+
+/* Search */
+
+position: absolute;
+width: 43px;
+height: 16px;
+left: 10px;
+top: 8px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 400;
+font-size: 14px;
+line-height: 16px;
+/* identical to box height */
+
+color: #595959;
+
+
+
+/* Frame 352 */
+
+position: absolute;
+width: 277px;
+height: 69px;
+left: 1183px;
+top: 750px;
+
+background: #3F3F3F;
+border-radius: 10px;
+
+
+/* tamam anladık */
+
+position: absolute;
+width: 96px;
+height: 16px;
+left: 30px;
+top: 27px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 500;
+font-size: 14px;
+line-height: 16px;
+/* identical to box height */
+
+color: #FFFFFF;
+
+
+
+/* Frame */
+
+position: absolute;
+width: 22px;
+height: 22px;
+left: 132px;
+top: 24px;
+
+
+
+/* Grinning_Face_with_Sweat */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+
+
+/* circle */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+background: #FDCA47;
+
+
+/* Vector */
+
+position: absolute;
+left: 8.04%;
+right: 60.85%;
+top: 6.1%;
+bottom: 66.83%;
+
+background: #FFE8BB;
+
+
+/* Vector */
+
+position: absolute;
+left: 12.21%;
+right: 0%;
+top: 12.28%;
+bottom: 0%;
+
+background: #F9B700;
+
+
+/* mouth */
+
+position: absolute;
+left: 19.2%;
+right: 19.2%;
+top: 58.08%;
+bottom: 11.82%;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 19.2%;
+right: 19.2%;
+top: 58.08%;
+bottom: 11.82%;
+
+background: #664100;
+
+
+/* Vector */
+
+position: absolute;
+left: 24.79%;
+right: 24.79%;
+top: 63.66%;
+bottom: 24.73%;
+
+background: #FFFFFF;
+
+
+/* eyes */
+
+position: absolute;
+left: 21.22%;
+right: 21.22%;
+top: 39.97%;
+bottom: 49.29%;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 54.64%;
+right: 21.22%;
+top: 39.97%;
+bottom: 49.29%;
+
+background: #664100;
+
+
+/* Vector */
+
+position: absolute;
+left: 21.22%;
+right: 54.64%;
+top: 39.97%;
+bottom: 49.29%;
+
+background: #664100;
+
+
+/* drop */
+
+position: absolute;
+left: 69.96%;
+right: 2.93%;
+top: 2.13%;
+bottom: 56.01%;
+
+background: #5DB0EE;
+
+
+/* Frame 353 */
+
+position: absolute;
+width: 277px;
+height: 69px;
+left: 583px;
+top: 631px;
+
+background: #3F3F3F;
+border-radius: 10px;
+
+
+/* hangi radyoyu dinliyorsun paylaş */
+
+position: absolute;
+width: 212px;
+height: 16px;
+left: 30px;
+top: 27px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 500;
+font-size: 14px;
+line-height: 16px;
+/* identical to box height */
+
+color: #FFFFFF;
+
+
+
+/* Vector 3 */
+
+position: absolute;
+width: 36px;
+height: 33px;
+left: 1446px;
+top: 750px;
+
+background: #3F3F3F;
+border-radius: 2px;
+
+
+/* Vector 4 */
+
+position: absolute;
+width: 36px;
+height: 33px;
+left: 559px;
+top: 631px;
+
+background: #3F3F3F;
+border-radius: 2px;
+transform: matrix(-1, 0, 0, 1, 0, 0);
+
+
+/* menu */
+
+position: absolute;
+width: 1512px;
+height: 105px;
+left: 0px;
+top: 0px;
+
+background: #000000;
+
+
+/* left */
+
+position: absolute;
+width: 161.85px;
+height: 50px;
+left: 30px;
+top: 27px;
+
+
+
+/* Frame 172 */
+
+position: absolute;
+width: 50px;
+height: 50px;
+left: calc(50% - 50px/2 - 55.93px);
+top: calc(50% - 50px/2);
+
+filter: drop-shadow(3.57143px 7.14286px 28.5714px rgba(206, 65, 255, 0.61));
+
+
+/* app-icon */
+
+box-sizing: border-box;
+
+position: absolute;
+width: 50px;
+height: 50px;
+left: 0px;
+top: 0px;
+
+background: linear-gradient(135.44deg, #F86DAD 0.76%, #FF4FA0 98.51%);
+border-radius: 8.62069px;
+
+
+/* Ellipse 6 */
+
+position: absolute;
+width: 58px;
+height: 58px;
+left: -23px;
+top: -22.25px;
+
+background: #E752FF;
+filter: blur(19.5px);
+
+
+/* Rectangle */
+
+position: absolute;
+width: 54.75px;
+height: 54.75px;
+left: -2.75px;
+top: -2.25px;
+
+background: url(.png);
+mix-blend-mode: normal;
+
+
+/* Path 8 */
+
+position: absolute;
+left: 16.5%;
+right: 16.5%;
+top: 17.5%;
+bottom: 17.5%;
+
+background: #F8E9F0;
+box-shadow: 0.25px 3px 4px #DA287A, inset -0.5px 0.25px 0.75px rgba(255, 255, 255, 0.43), inset 0.25px 1.5px 1.25px rgba(255, 250, 250, 0.51), inset -0.25px -0.75px 1.5px rgba(255, 65, 153, 0.59);
+
+
+/* MegaRadio */
+
+position: absolute;
+visibility: hidden;
+width: 43px;
+height: 10px;
+left: 5.75px;
+top: 54px;
+
+font-family: 'SF Pro';
+font-style: normal;
+font-weight: 400;
+font-size: 8px;
+line-height: 10px;
+/* identical to box height */
+
+color: #5F5F5F;
+
+
+
+/* megaradio */
+
+position: absolute;
+left: 37.69%;
+right: 0%;
+top: 30%;
+bottom: 23.71%;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 20.3839px;
+line-height: 23px;
+/* identical to box height */
+
+color: #FFFFFF;
+
+
+
+/* Frame 266 */
+
+position: absolute;
+width: 587px;
+height: 46px;
+left: 895px;
+top: 29px;
+
+
+
+/* About */
+
+position: absolute;
+width: 52px;
+height: 17px;
+left: 210px;
+top: 15px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 15px;
+line-height: 17px;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Genres */
+
+position: absolute;
+width: 52px;
+height: 17px;
+left: 108px;
+top: 15px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 15px;
+line-height: 17px;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 183 */
+
+position: absolute;
+width: 58px;
+height: 30px;
+left: 0px;
+top: 15px;
+
+
+
+/* Pricing */
+
+position: absolute;
+width: 58px;
+height: 17px;
+left: 0px;
+top: 0px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 15px;
+line-height: 17px;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 219 */
+
+position: absolute;
+width: 38px;
+height: 38px;
+left: 310px;
+top: 4px;
+
+background: #1D1D1D;
+border-radius: 5px;
+
+
+/* vuesax/linear/search-normal */
+
+position: absolute;
+width: 20px;
+height: 20px;
+left: calc(50% - 20px/2);
+top: calc(50% - 20px/2);
+
+
+
+/* vuesax/linear/search-normal */
+
+position: absolute;
+width: 20px;
+height: 20px;
+left: 0px;
+top: 0px;
+
+
+
+/* search-normal */
+
+position: absolute;
+width: 20px;
+height: 20px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 8.33%;
+right: 12.5%;
+top: 8.33%;
+bottom: 12.5%;
+
+border: 2px solid #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 83.33%;
+right: 8.33%;
+top: 83.33%;
+bottom: 8.33%;
+
+border: 1.5px solid #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+
+
+/* Line 7 */
+
+position: absolute;
+width: 33px;
+height: 0px;
+left: 396px;
+top: 8px;
+
+border: 2px solid #222222;
+transform: rotate(90deg);
+
+
+/* Frame 220 */
+
+position: absolute;
+width: 143px;
+height: 46px;
+left: 444px;
+top: 0px;
+
+
+
+/* Talha Çay */
+
+position: absolute;
+width: 69px;
+height: 17px;
+left: 0px;
+top: 16px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 15px;
+line-height: 17px;
+text-align: center;
+
+color: #FFFFFF;
+
+
+
+/* Frame 176 */
+
+position: absolute;
+width: 25px;
+height: 5px;
+left: 0px;
+top: 41px;
+
+background: #FF4199;
+
+
+/* Frame 218 */
+
+position: absolute;
+width: 45px;
+height: 45px;
+left: 98px;
+top: 0px;
+
+background: url(.png);
+border-radius: 50px;
+
+
+/* Frame 180 */
+
+position: absolute;
+width: 250px;
+height: 1525px;
+left: 0px;
+top: 105px;
+
+background: #151515;
+
+
+/* Frame 226 */
+
+position: absolute;
+visibility: hidden;
+width: 106px;
+height: 24px;
+left: 31px;
+top: 200px;
+
+
+
+/* Settings */
+
+position: absolute;
+width: 65px;
+height: 18px;
+left: 41px;
+top: 3px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* vuesax/bold/setting-2 */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Frame 230 */
+
+position: absolute;
+width: 191px;
+height: 643px;
+right: 29px;
+top: 28px;
+
+
+
+/* Frame 223 */
+
+position: absolute;
+width: 191px;
+height: 45px;
+left: 0px;
+top: 0px;
+
+border-radius: 5px;
+
+
+/* Your Favorites */
+
+position: absolute;
+width: 110px;
+height: 18px;
+left: 60px;
+top: 13px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Frame 60 */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: calc(50% - 24px/2 - 64.5px);
+top: calc(50% - 24px/2 - 0.5px);
+
+
+
+/* vuesax/bold/heart */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: calc(50% - 24px/2);
+top: calc(50% - 24px/2 + 1px);
+
+
+
+/* vuesax/bold/heart */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* heart */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 8.33%;
+right: 8.33%;
+top: 12.92%;
+bottom: 12.92%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+transform: rotate(-180deg);
+
+
+/* Frame 268 */
+
+position: absolute;
+width: 191px;
+height: 45px;
+left: 0px;
+top: 59px;
+
+border-radius: 5px;
+
+
+/* Frame 224 */
+
+position: absolute;
+width: 107px;
+height: 24px;
+left: 19px;
+top: 10px;
+
+
+
+/* Discover */
+
+position: absolute;
+width: 66px;
+height: 18px;
+left: 41px;
+top: 4px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Frame 72 */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* vuesax/bold/radio */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* vuesax/bold/radio */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* radio */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+transform: rotate(-180deg);
+
+
+/* Vector */
+
+position: absolute;
+left: 26.04%;
+right: 67.71%;
+top: 5.21%;
+bottom: 78.96%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 8.33%;
+right: 8.33%;
+top: 20.83%;
+bottom: 8.33%;
+
+background: #FFFFFF;
+
+
+/* Frame 270 */
+
+position: absolute;
+width: 191px;
+height: 45px;
+left: 0px;
+top: 177px;
+
+background: #2D2D2D;
+border-radius: 5px;
+
+
+/* Frame 224 */
+
+position: absolute;
+width: 116px;
+height: 24px;
+left: 19px;
+top: 10px;
+
+
+
+/* Messages */
+
+position: absolute;
+width: 75px;
+height: 18px;
+left: 37px;
+top: 4px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* Frame 334 */
+
+position: absolute;
+width: 18px;
+height: 16px;
+left: 119px;
+top: 6px;
+
+background: #FF5B5B;
+border-radius: 2px;
+
+
+/* 10 */
+
+position: absolute;
+width: 12px;
+height: 11px;
+left: 3px;
+top: 3px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 10px;
+line-height: 11px;
+
+color: #FFFFFF;
+
+
+
+/* vuesax/bold/message */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 19px;
+top: 11px;
+
+
+
+/* vuesax/bold/message */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* message */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 8.33%;
+right: 8.33%;
+top: 8.33%;
+bottom: 8.38%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+transform: rotate(-180deg);
+
+
+/* Frame 269 */
+
+position: absolute;
+width: 191px;
+height: 45px;
+left: 0px;
+top: 118px;
+
+border-radius: 5px;
+
+
+/* Frame 225 */
+
+position: absolute;
+width: 94px;
+height: 24px;
+left: 19px;
+top: 10px;
+
+
+
+/* Profile */
+
+position: absolute;
+width: 53px;
+height: 18px;
+left: 41px;
+top: 3px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* vuesax/bold/frame */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* vuesax/bold/frame */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* frame */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 30.21%;
+right: 30.21%;
+top: 8.33%;
+bottom: 52.12%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 20.67%;
+right: 20.67%;
+top: 53.15%;
+bottom: 8.33%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+transform: rotate(-180deg);
+
+
+/* Frame 275 */
+
+position: absolute;
+width: 82px;
+height: 24px;
+left: 43px;
+top: 650px;
+
+
+
+/* Logout */
+
+position: absolute;
+width: 55px;
+height: 18px;
+left: 37px;
+top: 3px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* vuesax/bold/logout */
+
+position: absolute;
+width: 24px;
+height: 24px;
+right: 58px;
+top: 0px;
+
+
+
+/* vuesax/bold/logout */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* logout */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 37.5%;
+right: 8.37%;
+top: 8.33%;
+bottom: 8.33%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 8.35%;
+right: 62.5%;
+top: 32.93%;
+bottom: 32.93%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+transform: rotate(-180deg);
+
+
+/* Frame 274 */
+
+position: absolute;
+width: 101px;
+height: 24px;
+left: 43px;
+top: 603px;
+
+
+
+/* Feedback */
+
+position: absolute;
+width: 74px;
+height: 18px;
+left: 37px;
+top: 3px;
+
+font-family: 'Ubuntu';
+font-style: normal;
+font-weight: 700;
+font-size: 16px;
+line-height: 18px;
+
+color: #FFFFFF;
+
+
+
+/* vuesax/bold/send-2 */
+
+position: absolute;
+width: 24px;
+height: 24px;
+right: 77px;
+top: 0px;
+
+
+
+/* vuesax/bold/send-2 */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* send-2 */
+
+position: absolute;
+width: 24px;
+height: 24px;
+left: 0px;
+top: 0px;
+
+
+
+/* Vector */
+
+position: absolute;
+left: 10.66%;
+right: 10.65%;
+top: 10.68%;
+bottom: 10.66%;
+
+background: #FFFFFF;
+
+
+/* Vector */
+
+position: absolute;
+left: 0%;
+right: 0%;
+top: 0%;
+bottom: 0%;
+
+opacity: 0;
+transform: rotate(-180deg);

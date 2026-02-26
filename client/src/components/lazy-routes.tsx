@@ -30,6 +30,7 @@ export const ProfileDiscover = lazy(() => import("@/pages/profile-discover"));
 export const ProfileSettings = lazy(() => import("@/pages/profile-settings"));
 export const NotificationSettings = lazy(() => import("@/pages/notifications"));
 export const NotificationsView = lazy(() => import("@/pages/notifications-view"));
+export const MessagesPage = lazy(() => import("@/pages/messages"));
 
 // Authentication pages
 export const Login = lazy(() => import("@/pages/login"));

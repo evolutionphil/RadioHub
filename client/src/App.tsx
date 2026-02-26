@@ -243,6 +243,15 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
         </ProtectedRoute>
       );
     }
+    if (pathToUse === '/profile/messages' || pathToUse.startsWith('/profile/messages/')) {
+      return (
+        <ProtectedRoute>
+          <LazyProfileLayout>
+            <LazyRoutes.MessagesPage />
+          </LazyProfileLayout>
+        </ProtectedRoute>
+      );
+    }
     if (pathToUse === '/profile') {
       return (
         <ProtectedRoute>

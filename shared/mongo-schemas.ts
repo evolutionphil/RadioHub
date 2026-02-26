@@ -2491,3 +2491,25 @@ AppLogSchema.index({ createdAt: -1 });
 AppLogSchema.index({ platform: 1, 'logs.message': 1 });
 
 export const AppLog = mongoose.model<IAppLog>('AppLog', AppLogSchema);
+// ==================== Direct Messages ====================
+
+export interface IDirectMessage {
+  fromUserId: mongoose.Types.ObjectId;
+  toUserId: mongoose.Types.ObjectId;
+  content: string;
+  read: boolean;
+  createdAt: Date;
+}
+
+const DirectMessageSchema = new Schema<IDirectMessage>({
+  fromUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  toUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+  content: { type: String, required: true, maxlength: 2000 },
+  read: { type: Boolean, default: false },
+  createdAt: { type: Date, default: Date.now },
+});
+
+DirectMessageSchema.index({ fromUserId: 1, toUserId: 1, createdAt: -1 });
+DirectMessageSchema.index({ toUserId: 1, read: 1 });
+
+export const DirectMessage = mongoose.model<IDirectMessage>('DirectMessage', DirectMessageSchema);

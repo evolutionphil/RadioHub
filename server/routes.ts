@@ -46,6 +46,7 @@ import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
 import { registerMiscRoutes } from './routes/misc-routes';
+import { registerMessagesRoutes } from './routes/messages-routes';
 
 const deps = {
   requireAuth,
@@ -442,6 +443,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   registerStreamProxyRoutes(app, deps);
   registerRegionsRecommendationsRoutes(app, deps);
   registerMiscRoutes(app, deps);
+  registerMessagesRoutes(app, deps);
 
   // === RETURN SERVER WITH WEBSOCKET REFERENCES ===
   const result = server as Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer> };
