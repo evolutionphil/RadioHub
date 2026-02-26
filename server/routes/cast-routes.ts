@@ -1,6 +1,6 @@
 import { type Express } from "express";
 import { type WebSocketServer, type WebSocket } from 'ws';
-import { AuthToken, CastSession } from '../shared/mongo-schemas';
+import { AuthToken, CastSession } from '../../shared/mongo-schemas';
 import { castService } from '../services/cast-service';
 import { logger } from '../utils/logger';
 

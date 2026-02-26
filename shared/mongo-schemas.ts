@@ -832,6 +832,7 @@ const StationSchema = new Schema<IStation>({
   showInGlobalPopular: { type: Boolean, default: false }, // Also show in global popular section (requires isFeatured=true)
   descriptions: { type: Schema.Types.Mixed, default: {} }, // Multi-language AI descriptions - { "en": "...", "tr": "...", etc }
   aiDescriptionSkipped: { type: Boolean, default: false, index: true }, // Station was checked for AI description but had no info from OpenAI - don't recheck to save tokens
+  hasLogo: { type: Boolean, default: false }, // Pre-computed flag: true if station has a valid favicon/logo - used for fast sorting in precomputed cache
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }
 });
@@ -1308,6 +1309,7 @@ StationSchema.index({ codec: 1 }); // Used in dashboard stats distinct/aggregate
 // Compound indexes for Similar Radios performance
 StationSchema.index({ country: 1, lastCheckOk: 1, votes: -1 }); // Country lookup with votes sort
 StationSchema.index({ lastCheckOk: 1, votes: -1 }); // Global popular lookup
+StationSchema.index({ lastCheckOk: 1, hasLogo: -1, votes: -1 }); // Precomputed stations fast sort
 
 // Debug log indexes
 StationDebugLogSchema.index({ stationId: 1 });

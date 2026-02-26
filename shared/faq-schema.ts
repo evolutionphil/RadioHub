@@ -28,7 +28,7 @@ export const MEGA_RADIO_FAQ: FAQItem[] = [
   },
   {
     question: "Is Mega Radio free to use?",
-    answer: "Yes! Mega Radio is completely free to use. You can listen to thousands of radio stations from around the world without any subscription fees."
+    answer: "Yes! Mega Radio is free to use for listeners. For developers, we offer a public API with Demo, Free, and Pro plans to suit different needs."
   },
   {
     question: "How many radio stations are available?",

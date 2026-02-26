@@ -61,14 +61,11 @@ export default function AdminStationSlugs() {
   // Start comprehensive slug generation (simplified)
   const generateSlugsMutation = useMutation({
     mutationFn: async () => {
-      console.log('🚀 Starting comprehensive slug generation...');
       const response = await apiRequest('POST', '/api/generate-all-slugs');
-      console.log('✅ Generation response:', response);
       return response;
     },
     onSuccess: (data: any) => {
       setIsGenerating(true);
-      console.log('✅ Comprehensive slug generation response:', data);
       
       // Set the current job from the response
       if (data?.jobId) {

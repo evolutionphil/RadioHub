@@ -471,11 +471,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
     res.send(adsTxt);
   });
 
-  import('./routes/user-engagement').then(m => app.use('/api/user-engagement', m.userEngagementRouter));
-  const apiKeysRouter = (require('./routes/api-keys')).default;
-  app.use('/api/api-keys', apiKeysRouter);
-  seedDemoApiKey();
-  app.use('/api', apiKeyMiddleware);
+  // api-keys, user-engagement, and apiKeyMiddleware are registered by the thin routes.ts orchestrator
 
   app.post('/api/logs/remote', async (req, res) => {
     try {
@@ -523,11 +519,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
     }
   });
 
-  import('./routes/country-language-mappings').then(m => m.registerCountryLanguageMappingRoutes(app, requireAdmin));
-  const urlTranslationsRouter = (require('./routes/url-translations')).default;
-  app.use('/api/admin/url-translations', urlTranslationsRouter);
-  const performanceRouter = (require('./routes/performance')).default;
-  app.use('/api/admin/performance', performanceRouter);
+  // country-language-mappings, url-translations, and performance routers are registered by the thin routes.ts orchestrator
 
   app.get("/api/admin/seo-metadata", requireAdmin, async (req, res) => {
     try {

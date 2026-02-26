@@ -76,14 +76,6 @@ export default function UserProfile() {
     enabled: !!userId
   });
 
-  // Debug logging
-  console.log('Profile Debug:', {
-    userId,
-    userProfile,
-    isLoadingProfile,
-    profileError,
-    isPublic: userProfile?.isPublic || userProfile?.isPublicProfile
-  });
 
   // Fetch user's favorite stations using user-engagement API
   const { data: favoriteStationsData, isLoading: isLoadingFavorites } = useQuery<{
@@ -106,14 +98,6 @@ export default function UserProfile() {
 
   const recentlyPlayedStations = recentlyPlayedData || userProfile?.recentlyPlayedStations || [];
   
-  // Debug logging for favorites
-  console.log('Favorites Debug:', {
-    favoriteStationsData,
-    favorites: favoriteStationsData?.favorites,
-    userProfileFavorites: userProfile?.favoriteStations,
-    finalFavoriteStations: favoriteStations,
-    count: favoriteStations.length
-  });
 
   // Check if current user is following this user
   const isFollowing = (currentUser as any)?.user?.following?.includes(userId) || false;

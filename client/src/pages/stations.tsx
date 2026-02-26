@@ -732,11 +732,7 @@ export default function Stations() {
             console.error('Failed to copy favicon:', error);
             // Continue with deletion even if favicon copy fails
           }
-        } else {
-          console.log('⚠️ No favicon source found in deleted stations');
         }
-      } else {
-        console.log('⚠️ Highest voted station already has icon or no remaining stations');
       }
 
       // Proceed with deletion

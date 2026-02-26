@@ -45,13 +45,9 @@ export function useChromecast(): ChromecastState & ChromecastControls {
     if (initializedRef.current) return;
     
     const initializeCastApi = () => {
-      if (!window.cast?.framework) {
-        console.log('🎬 Cast framework not available yet');
-        return;
-      }
+      if (!window.cast?.framework) return;
 
       try {
-        console.log('🎬 Initializing Cast SDK...');
         const castContext = window.cast.framework.CastContext.getInstance();
         
         castContext.setOptions({
@@ -66,11 +62,8 @@ export function useChromecast(): ChromecastState & ChromecastControls {
           window.cast.framework.CastContextEventType.CAST_STATE_CHANGED,
           (event: any) => {
             const castState = event.castState;
-            console.log('🎬 CAST_STATE_CHANGED:', castState);
             
-            // Handle NO_DEVICES_AVAILABLE state explicitly
             if (castState === window.cast.framework.CastState.NO_DEVICES_AVAILABLE) {
-              console.log('🎬 ❌ No Cast devices available on network');
               setIsAvailable(false);
               setIsConnected(false);
               setIsPlaying(false);
@@ -83,10 +76,6 @@ export function useChromecast(): ChromecastState & ChromecastControls {
             
             setIsAvailable(isAvail);
             setIsConnected(castState === window.cast.framework.CastState.CONNECTED);
-            
-            if (isAvail) {
-              console.log('🎬 ✅ Cast device available!');
-            }
           }
         );
 
@@ -94,19 +83,16 @@ export function useChromecast(): ChromecastState & ChromecastControls {
           window.cast.framework.CastContextEventType.SESSION_STATE_CHANGED,
           (event: any) => {
             const sessionState = event.sessionState;
-            console.log('🎬 SESSION_STATE_CHANGED:', sessionState);
             
             if (sessionState === window.cast.framework.SessionState.SESSION_STARTED ||
                 sessionState === window.cast.framework.SessionState.SESSION_RESUMED) {
               const session = castContext.getCurrentSession();
               if (session) {
                 const device = session.getCastDevice();
-                console.log('🎬 Connected to device:', device?.friendlyName);
                 setDeviceName(device?.friendlyName || null);
                 setIsConnected(true);
               }
             } else if (sessionState === window.cast.framework.SessionState.SESSION_ENDED) {
-              console.log('🎬 Cast session ended');
               setDeviceName(null);
               setIsConnected(false);
               setIsPlaying(false);
@@ -124,40 +110,29 @@ export function useChromecast(): ChromecastState & ChromecastControls {
         }
 
         initializedRef.current = true;
-        console.log('🎬 ✅ Chromecast SDK initialized successfully');
         
-        // Force a state check after initialization
         setTimeout(() => {
           const castState = castContext.getCastState?.();
-          console.log('🎬 Current Cast State:', castState);
           if (castState) {
             setIsAvailable(castState !== window.cast.framework.CastState.NO_DEVICES_AVAILABLE);
           }
         }, 500);
       } catch (error) {
-        console.error('🎬 ❌ Failed to initialize Chromecast:', error);
+        console.error('🎬 Failed to initialize Chromecast:', error);
       }
     };
 
     window['__onGCastApiAvailable'] = (isAvailable: boolean) => {
-      console.log('🎬 __onGCastApiAvailable called:', isAvailable);
       if (isAvailable) {
         initializeCastApi();
-      } else {
-        console.log('🎬 Cast API not available on this device');
       }
     };
 
-    // Check if SDK is already loaded
     if (window.cast?.framework) {
-      console.log('🎬 Cast framework already loaded, initializing...');
       initializeCastApi();
     } else {
-      console.log('🎬 Waiting for Cast SDK to load...');
-      // Set a timeout to check again
       const checkTimeout = setTimeout(() => {
         if (window.cast?.framework && !initializedRef.current) {
-          console.log('🎬 Cast SDK loaded after delay');
           initializeCastApi();
         }
       }, 2000);
@@ -175,22 +150,16 @@ export function useChromecast(): ChromecastState & ChromecastControls {
 
   const requestSession = useCallback(async () => {
     if (!window.cast?.framework) {
-      console.error('🎬 ❌ Cast framework not available');
       throw new Error('Cast framework not available');
     }
 
     try {
-      console.log('🎬 Requesting Cast session...');
       const castContext = window.cast.framework.CastContext.getInstance();
-      console.log('🎬 Cast context state:', castContext.getCastState?.());
       await castContext.requestSession();
-      console.log('🎬 ✅ Cast session requested');
     } catch (error: any) {
       if (error.code !== 'cancel' && error?.message?.includes('cancel') === false) {
-        console.error('🎬 ❌ Failed to request Cast session:', error);
         throw error;
       } else {
-        console.log('🎬 User cancelled Cast device selection');
         throw error;
       }
     }
@@ -211,31 +180,21 @@ export function useChromecast(): ChromecastState & ChromecastControls {
   }, []);
 
   const loadMedia = useCallback(async (streamUrl: string, metadata: MediaMetadata) => {
-    console.log('🎬 loadMedia called with:', metadata.stationName);
-    
     if (!window.cast?.framework || !window.chrome?.cast) {
-      console.error('🎬 ❌ Cast framework not available');
       throw new Error('Cast framework not available');
     }
 
     try {
-      console.log('🎬 Getting Cast context...');
       const castContext = window.cast.framework.CastContext.getInstance();
       let session = castContext.getCurrentSession();
       
       if (!session) {
-        console.log('🎬 No session, requesting...');
         await requestSession();
         session = castContext.getCurrentSession();
         if (!session) {
-          console.error('🎬 ❌ No Cast session available after request');
           throw new Error('No Cast session available');
         }
       }
-
-      console.log('🎬 Session available, loading media...');
-      console.log('🎬 Stream URL:', streamUrl);
-      console.log('🎬 Metadata:', metadata);
 
       const contentType = streamUrl.includes('.m3u8') ? 'application/x-mpegURL' : 
                           streamUrl.includes('.aac') ? 'audio/aac' : 
@@ -260,11 +219,9 @@ export function useChromecast(): ChromecastState & ChromecastControls {
       const request = new window.chrome.cast.media.LoadRequest(mediaInfo);
       request.autoplay = true;
 
-      console.log('🎬 Sending LoadRequest to Cast device...');
       await session.loadMedia(request);
-      console.log('🎬 ✅ Media loaded on Chromecast:', metadata.stationName);
     } catch (error) {
-      console.error('🎬 ❌ Failed to load media on Chromecast:', error);
+      console.error('🎬 Failed to load media on Chromecast:', error);
       throw error;
     }
   }, [requestSession]);
@@ -309,11 +266,11 @@ export function useChromecast(): ChromecastState & ChromecastControls {
       request.activeTrackIds = media.activeTrackIds || [];
       
       media.editTracksInfo(request, 
-        () => console.log('Metadata updated on Chromecast:', metadata),
-        (error: any) => console.error('Failed to update metadata:', error)
+        () => {},
+        (error: any) => console.error('Failed to update Chromecast metadata:', error)
       );
     } catch (error) {
-      console.error('Failed to update metadata:', error);
+      console.error('Failed to update Chromecast metadata:', error);
     }
   }, []);
 

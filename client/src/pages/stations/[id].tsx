@@ -196,12 +196,11 @@ export default function StationDetails() {
             const stationData = await response.json();
             if (stationData.slug) {
               const slugUrl = getStationUrl(stationData);
-              console.log(`🔄 Immediately redirecting from ObjectId to slug: ${slugUrl}`);
               setLocation(slugUrl);
             }
           }
         } catch (error) {
-          console.log('Failed to redirect, continuing with ObjectId URL');
+          // Continue with ObjectId URL if redirect fails
         }
       };
       

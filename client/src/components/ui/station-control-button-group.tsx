@@ -93,9 +93,6 @@ export default function StationControlButtonGroup({ className, currentPageStatio
     } else if (currentStation) {
       // Resume the currently paused station
       resumeStation();
-    } else {
-      // No station to resume, this shouldn't happen
-      console.log('❌ No station to resume');
     }
   };
 

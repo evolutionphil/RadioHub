@@ -46,15 +46,6 @@ export default function GenreDetail({
   // Use URL-based country if available, otherwise use currentCountryFilter, then fall back to selectedCountry
   const countryForFiltering = urlCountryName || currentCountryFilter || selectedCountry;
   
-  // Debug logging
-  console.log('🌍 Genre Country Filtering Debug:', {
-    url: window.location.pathname,
-    selectedCountry,
-    countryForFiltering,
-    slug,
-    timestamp: new Date().toISOString()
-  });
-  
   if (!slug) {
     return <NotFound />;
   }
@@ -195,7 +186,6 @@ export default function GenreDetail({
                     <Select 
                       value={currentCountryFilter} 
                       onValueChange={(value) => {
-                        console.log('🌍 Country filter changed to:', value);
                         setCurrentCountryFilter(value);
                         setPage(1); // Reset to first page when country changes
                       }}

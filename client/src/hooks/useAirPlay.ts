@@ -17,11 +17,8 @@ export function useAirPlay(): AirPlayState & AirPlayControls {
   useEffect(() => {
     // Check if AirPlay API is supported (Safari only)
     if (!window.WebKitPlaybackTargetAvailabilityEvent) {
-      console.log('📺 AirPlay: Not supported in this browser (Safari only)');
       return;
     }
-
-    console.log('📺 AirPlay: API supported, setting up listeners...');
 
     const setupAirPlayListeners = () => {
       const audio = document.getElementById('global-radio-player') as HTMLAudioElement;
@@ -36,13 +33,11 @@ export function useAirPlay(): AirPlayState & AirPlayControls {
       // Listen for AirPlay device availability
       const handleAvailabilityChange = (event: any) => {
         const available = event.availability === 'available';
-        console.log('📺 AirPlay availability changed:', available);
         setIsAvailable(available);
       };
 
       // Listen for when playback target changes (user selects AirPlay device)
       const handleCurrentTargetChange = () => {
-        console.log('📺 AirPlay: Playback target changed');
         // Check if playing on remote device
         const isRemote = (audio as any).webkitCurrentPlaybackTargetIsWireless;
         setIsPlaying(isRemote);
@@ -65,20 +60,17 @@ export function useAirPlay(): AirPlayState & AirPlayControls {
     const audio = audioElementRef.current || document.getElementById('global-radio-player') as HTMLAudioElement;
     
     if (!audio) {
-      console.error('📺 AirPlay: No audio element found');
       return;
     }
 
     if (!(audio as any).webkitShowPlaybackTargetPicker) {
-      console.error('📺 AirPlay: webkitShowPlaybackTargetPicker not available');
       return;
     }
 
     try {
-      console.log('📺 AirPlay: Showing picker...');
       (audio as any).webkitShowPlaybackTargetPicker();
     } catch (error) {
-      console.error('📺 AirPlay: Failed to show picker:', error);
+      console.error('AirPlay: Failed to show picker:', error);
     }
   }, []);
 

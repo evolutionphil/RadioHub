@@ -101,13 +101,11 @@ export default function RegionStationsPage() {
       if (offset === 0) {
         // First load or reset - replace all stations
         setAllStations(data.stations);
-        console.log(`🎵 First load: ${data.stations.length} stations loaded`);
       } else {
         // Load more - append new stations without duplicates
         setAllStations(prev => {
           const existingIds = new Set(prev.map(s => s._id));
           const newStations = data.stations.filter(s => !existingIds.has(s._id));
-          console.log(`🎵 Load more: ${newStations.length} new stations added (was ${prev.length}, now ${prev.length + newStations.length})`);
           return [...prev, ...newStations];
         });
       }
@@ -115,7 +113,6 @@ export default function RegionStationsPage() {
       // Update hasMore state based on actual pagination data
       const actualHasMore = data.pagination && (offset + data.stations.length < data.pagination.total);
       setHasMore(actualHasMore);
-      console.log(`🎵 Pagination: offset=${offset}, loaded=${data.stations.length}, total=${data.pagination?.total}, hasMore=${actualHasMore}`);
       
       // Stop loading more state and restore scroll position
       if (offset > 0) {
@@ -507,16 +504,10 @@ export default function RegionStationsPage() {
           <div className="text-center mt-12">
             <button
               onClick={() => {
-                console.log(`🎵 Load More clicked: current offset=${offset}, will load from ${offset + limit}`);
-                
                 // Save current scroll position before loading more
                 setScrollPosition(window.scrollY);
                 setIsLoadingMore(true);
-                setOffset(prev => {
-                  const newOffset = prev + limit;
-                  console.log(`🎵 Setting new offset: ${newOffset}`);
-                  return newOffset;
-                });
+                setOffset(prev => prev + limit);
               }}
               disabled={isLoadingMore || isFetching}
               className="px-6 py-3 bg-gradient-to-r from-pink-600 to-purple-600 hover:from-pink-700 hover:to-purple-700 text-white rounded-lg font-medium transition-all duration-200 hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"

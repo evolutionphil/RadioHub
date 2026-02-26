@@ -535,50 +535,29 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     });
   });
 
-  // Simple test endpoint for Google callback debugging
-  app.get("/api/auth/google/callback-test", (req, res) => {
-    console.log('🟢 SIMPLE CALLBACK TEST: Request received!');
-    console.log('🟢 Query:', req.query);
-    res.json({ success: true, message: 'Callback test works!', query: req.query });
-  });
-
   // Google OAuth callback - implemented with passport (simplified, no dynamic import)
   app.get("/api/auth/google/callback", (req, res, next) => {
-    console.log('🔵 GOOGLE CALLBACK: Request received');
-    console.log('🔵 GOOGLE CALLBACK: Query params:', req.query);
-    
     // Get saved language/country from session (set before OAuth redirect)
     const savedLang = (req.session as any)?.oauthReturnLang || '';
     const langPrefix = savedLang ? `/${savedLang}` : '';
     
-    console.log('🔵 GOOGLE CALLBACK: Calling passport.authenticate...');
     passport.authenticate('google', { 
       failureRedirect: `${langPrefix}/?error=google_auth_failed` 
     }, (err: any, user: any, info: any) => {
-      console.log('🔵 GOOGLE CALLBACK: passport.authenticate callback called');
-      console.log('🔵 GOOGLE CALLBACK: err:', err);
-      console.log('🔵 GOOGLE CALLBACK: user:', user ? 'exists' : 'null');
-      console.log('🔵 GOOGLE CALLBACK: info:', info);
-      
       if (err) {
-        console.error('Google OAuth callback error:', err);
+        logger.error('Google OAuth callback error:', err);
         return res.redirect(`${langPrefix}/?error=google_auth_failed`);
       }
       if (!user) {
-        console.log('🔵 GOOGLE CALLBACK: No user returned, redirecting...');
         return res.redirect(`${langPrefix}/?error=google_auth_cancelled`);
       }
       
       // Log in the user using Passport's req.login (same as email/password login)
       req.login(user, (loginErr: any) => {
         if (loginErr) {
-          console.error('❌ Google OAuth login error:', loginErr);
+          logger.error('Google OAuth login error:', loginErr);
           return res.redirect(`${langPrefix}/?error=login_failed`);
         }
-        
-        console.log('✅ Google OAuth user logged in successfully');
-        console.log('🔍 Session ID:', req.sessionID);
-        console.log('🔍 User ID:', user._id);
         
         // Also set manual session data for compatibility
         (req.session as any).user = {
@@ -592,15 +571,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         // CRITICAL: Save session before redirect to ensure it's persisted
         req.session.save((saveErr: any) => {
           if (saveErr) {
-            console.error('❌ Session save error:', saveErr);
+            logger.error('Session save error after Google OAuth:', saveErr);
             return res.redirect(`${langPrefix}/?error=session_save_failed`);
           }
-          console.log('✅ Session saved successfully, redirecting...');
           // Check for returnTo URL (e.g., /tr/tv after TV login flow)
           const returnTo = (req.session as any)?.oauthReturnTo;
           delete (req.session as any).oauthReturnTo;
           if (returnTo && returnTo.startsWith('/')) {
-            console.log('🔀 Redirecting to returnTo:', returnTo);
             return res.redirect(returnTo);
           }
           // Successful authentication, redirect to home with language preserved

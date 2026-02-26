@@ -422,7 +422,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         createdAt: new Date(),
       });
 
-      console.log(`[TV AUTH] Code ${code} generated for device ${deviceId} (${platform})`);
+      logger.info(`[TV AUTH] Code ${code} generated for device ${deviceId} (${platform})`);
 
       res.json({
         success: true,
@@ -553,7 +553,7 @@ If you have any questions about this privacy policy or our data practices, pleas
 
       const user = await User.findById(userId).select('fullName username').lean();
 
-      console.log(`[TV AUTH] Code ${code} activated by user ${userId} for ${deviceName} (device permanently saved)`);
+      logger.info(`[TV AUTH] Code ${code} activated by user ${userId} for ${deviceName} (device permanently saved)`);
 
       res.json({
         success: true,
@@ -591,7 +591,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         { $set: { status: 'expired', isPlaying: false } }
       );
 
-      console.log(`[TV AUTH] TV token revoked for user ${userId}`);
+      logger.info(`[TV AUTH] TV token revoked for user ${userId}`);
 
       res.json({ success: true, message: 'Logged out' });
     } catch (error: any) {

@@ -16,7 +16,6 @@ export function useListeningTimer({ isPlaying, stationId }: UseListeningTimerPro
 
   const resetTimer = () => {
     // No-op since the global timer is managed by the global player
-    console.log('⚠️ Timer reset requested, but using global timer managed by player');
   };
 
   return {

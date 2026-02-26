@@ -47,18 +47,6 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
     ? selectedCountry 
     : (urlCountryName || selectedCountry || 'all');
   
-  console.log('🌍 GenreLanding Debug:', {
-    url: window.location.pathname,
-    urlCountryCode,
-    urlCountryName,
-    currentCountry,
-    selectedCountry,
-    slug,
-    paramsLang,
-    paramsDefault,
-    dropdownOverride: (selectedCountry && selectedCountry !== 'all' && selectedCountry !== urlCountryName),
-    timestamp: new Date().toISOString()
-  });
   
   // Handle country selection with proper URL navigation (prevent page scroll and audio interruption)
   const handleCountryClick = (countryName: string) => {
@@ -96,15 +84,6 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
     enabled: !!slug
   });
 
-  // Debug logging for genre query
-  console.log('📘 GenreLanding Genre Query:', {
-    paramsSlug,
-    slug,
-    enabled: !!slug,
-    genreLoading,
-    genre,
-    genreError
-  });
 
   const { data: stationsResponse, isLoading: stationsLoading } = useQuery<{stations: any[], pagination: {total: number}}>({
     queryKey: [`/api/genres/${slug}/stations`, { page: currentPage, limit: stationsPerPage }, currentCountry, urlCountryCode],
@@ -119,12 +98,9 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
         params.append('country', currentCountry);
       }
       
-      console.log(`🔍 GenreLanding: Fetching stations for ${slug} in country: ${currentCountry}`, params.toString());
       const response = await fetch(`/api/genres/${slug}/stations?${params}`);
       if (!response.ok) throw new Error('Failed to fetch stations');
-      const data = await response.json();
-      console.log(`📊 GenreLanding response:`, data.pagination?.total || 0, 'stations');
-      return data;
+      return await response.json();
     },
     enabled: !!slug
   });

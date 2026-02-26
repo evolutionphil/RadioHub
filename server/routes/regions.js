@@ -196,19 +196,38 @@ router.get('/regions/:regionSlug/:countrySlug/:citySlug?/stations', async (req, 
       }
     }
     
-    // TODO: Implement actual station filtering by country/city
-    // For now, return placeholder data structure
+    const limitNum = Math.min(parseInt(limit) || 20, 100);
+    const offsetNum = parseInt(offset) || 0;
+
+    const filter = { country: countryName, isWorking: true };
+    if (cityName) {
+      filter.$or = [
+        { city: { $regex: cityName, $options: 'i' } },
+        { state: { $regex: cityName, $options: 'i' } }
+      ];
+    }
+
+    const [stations, total] = await Promise.all([
+      Station.find(filter)
+        .select('name slug country language genre favicon bitrate codec votes clickcount')
+        .sort({ votes: -1, clickcount: -1 })
+        .skip(offsetNum)
+        .limit(limitNum)
+        .lean(),
+      Station.countDocuments(filter)
+    ]);
+
     res.json({
       success: true,
       data: {
         region: { name: region.name, slug: regionSlug },
         country: { name: countryName, slug: countrySlug },
         city: cityName ? { name: cityName, slug: citySlug } : null,
-        stations: [],
+        stations,
         pagination: {
-          total: 0,
-          limit: parseInt(limit),
-          offset: parseInt(offset)
+          total,
+          limit: limitNum,
+          offset: offsetNum
         }
       }
     });

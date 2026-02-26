@@ -84,7 +84,7 @@ export class PrecomputedStationsService {
     }
     
     try {
-      const countries = await Station.distinct('country').lean();
+      const countries = await Station.distinct('country');
       this.allCountries = countries
         .filter((c: any) => c && typeof c === 'string' && c.trim().length > 0)
         .map((c: any) => c.trim());
@@ -107,23 +107,6 @@ export class PrecomputedStationsService {
         $match: {
           country: countryName,
           lastCheckOk: true
-        }
-      },
-      {
-        $addFields: {
-          hasLogo: {
-            $cond: {
-              if: {
-                $or: [
-                  { $and: [{ $ne: ['$logoAssets.webp96', null] }, { $ne: ['$logoAssets.webp96', ''] }] },
-                  { $and: [{ $ne: ['$favicon', null] }, { $ne: ['$favicon', ''] }] },
-                  { $and: [{ $ne: ['$logo', null] }, { $ne: ['$logo', ''] }] }
-                ]
-              },
-              then: true,
-              else: false
-            }
-          }
         }
       },
       {
@@ -363,23 +346,6 @@ export class PrecomputedStationsService {
       {
         $match: {
           lastCheckOk: true
-        }
-      },
-      {
-        $addFields: {
-          hasLogo: {
-            $cond: {
-              if: {
-                $or: [
-                  { $and: [{ $ne: ['$logoAssets.webp96', null] }, { $ne: ['$logoAssets.webp96', ''] }] },
-                  { $and: [{ $ne: ['$favicon', null] }, { $ne: ['$favicon', ''] }] },
-                  { $and: [{ $ne: ['$logo', null] }, { $ne: ['$logo', ''] }] }
-                ]
-              },
-              then: true,
-              else: false
-            }
-          }
         }
       },
       {

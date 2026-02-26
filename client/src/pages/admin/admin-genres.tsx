@@ -76,8 +76,6 @@ export default function AdminGenres() {
   const { data: genresResponse, isLoading, error } = useQuery({
     queryKey: ['/api/admin/genres', pagination.page, pagination.limit, filters.sortBy, filters.searchQuery, filters.showDiscoverableOnly],
     queryFn: async () => {
-      console.log('🔍 Admin Genres - Starting fetch with filters:', filters);
-      
       // Build query parameters
       const params = new URLSearchParams({
         page: pagination.page.toString(),
@@ -94,13 +92,6 @@ export default function AdminGenres() {
       const response = await fetch(`/api/admin/genres?${params}`);
       if (!response.ok) throw new Error(`Failed to fetch genres: ${response.status}`);
       const data = await response.json();
-      
-      console.log('🔍 Admin Genres - Response data:', {
-        dataLength: data.data?.length || 0,
-        total: data.total,
-        currentPage: data.currentPage,
-        totalPages: data.totalPages
-      });
       
       // Apply client-side discoverable filter only (search is now server-side)
       let filteredGenres = data.data || [];
@@ -123,14 +114,6 @@ export default function AdminGenres() {
   const totalGenres = genresResponse?.count || 0;
   const totalPages = genresResponse?.totalPages || 1;
 
-  // Debug logging
-  console.log('🔍 Admin Genres - Component state:', {
-    isLoading,
-    error: error?.message,
-    genresLength: genres.length,
-    totalGenres,
-    genresResponse: !!genresResponse
-  });
 
   // Reset form when dialogs close
   useEffect(() => {

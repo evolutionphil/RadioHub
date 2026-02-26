@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language } from "../../shared/mongo-schemas";
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
+import { refreshCommunityFavoritesCache, fetchTranslationsForLanguage, refreshTranslationsCache } from "./cache-refresh-utils";
 
 export function registerTranslationAdminRoutes(app: Express, deps: any) {
   const { requireAuth, requireAdmin } = deps;
@@ -155,7 +156,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
   // GET Translation Metadata - for cache versioning
   app.get("/api/admin/translation-metadata", requireAdmin, async (req, res) => {
     try {
-      const { getTranslationMetadata } = await import('./services/translation-version');
+      const { getTranslationMetadata } = await import('../services/translation-version');
       const metadata = await getTranslationMetadata();
       res.json(metadata);
     } catch (error) {
@@ -168,7 +169,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
   app.post("/api/admin/translation-metadata/bump", requireAdmin, async (req, res) => {
     try {
       const { notes } = req.body;
-      const { bumpTranslationVersion } = await import('./services/translation-version');
+      const { bumpTranslationVersion } = await import('../services/translation-version');
       const result = await bumpTranslationVersion(notes);
       
       if (result.success) {
@@ -2782,7 +2783,7 @@ ${keysText}`;
   
   // Import the Radio Browser service
   let radioBrowserService: any;
-  import('./services/radio-browser').then(module => {
+  import('../services/radio-browser').then(module => {
     radioBrowserService = module.radioBrowserService;
   });
 
