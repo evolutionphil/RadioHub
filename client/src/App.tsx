@@ -1008,6 +1008,19 @@ const SeoMainRouter = React.memo(() => {
             {translations['profile'] && translations['notifications'] && (
               <Route path={`/${countryCode}/${translations['profile']}/${translations['notifications']}`} component={PlayerWrapper} />
             )}
+
+            {/* Messages - English + Translated */}
+            <Route path={`/${countryCode}/profile/messages`} component={PlayerWrapper} />
+            <Route path={`/${countryCode}/profile/messages/:rest*`} component={PlayerWrapper} />
+            {translations['profile'] && (
+              <Route path={`/${countryCode}/${translations['profile']}/messages`} component={PlayerWrapper} />
+            )}
+            {translations['messages'] && (
+              <Route path={`/${countryCode}/profile/${translations['messages']}`} component={PlayerWrapper} />
+            )}
+            {translations['profile'] && translations['messages'] && (
+              <Route path={`/${countryCode}/${translations['profile']}/${translations['messages']}`} component={PlayerWrapper} />
+            )}
             
             <Route path={`/${countryCode}/profile`} component={PlayerWrapper} />
             {translations['profile'] && translations['profile'] !== 'profile' && (
@@ -1043,6 +1056,8 @@ const SeoMainRouter = React.memo(() => {
       <Route path="/profile/discover" component={PlayerWrapper} />
       <Route path="/profile/settings" component={PlayerWrapper} />
       <Route path="/profile/notifications" component={PlayerWrapper} />
+      <Route path="/profile/messages" component={PlayerWrapper} />
+      <Route path="/profile/messages/:rest*" component={PlayerWrapper} />
       <Route path="/profile/records" component={PlayerWrapper} />
       <Route path="/profile" component={PlayerWrapper} />
       
@@ -1091,6 +1106,8 @@ const SeoMainRouter = React.memo(() => {
       <Route path="/:countryCode/profile/discover" component={PlayerWrapper} />
       <Route path="/:countryCode/profile/settings" component={PlayerWrapper} />
       <Route path="/:countryCode/profile/notifications" component={PlayerWrapper} />
+      <Route path="/:countryCode/profile/messages" component={PlayerWrapper} />
+      <Route path="/:countryCode/profile/messages/:rest*" component={PlayerWrapper} />
       <Route path="/:countryCode/profile/records" component={PlayerWrapper} />
       <Route path="/:countryCode/profile" component={PlayerWrapper} />
       

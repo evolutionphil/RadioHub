@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken } from "../../shared/mongo-schemas";
+import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating } from "../../shared/mongo-schemas";
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
