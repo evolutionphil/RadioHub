@@ -220,11 +220,23 @@ export async function connectToMongoDB() {
     return;
   }
 
+  const isProd = process.env.NODE_ENV === 'production';
+
   try {
     await mongoose.connect(MONGODB_URI, {
-      // Use development defaults
-      serverSelectionTimeoutMS: 5000,
-      socketTimeoutMS: 45000,
+      // Connection pool: default 5 is too low for heavy startup warmup
+      maxPoolSize: isProd ? 25 : 10,
+      minPoolSize: isProd ? 5 : 2,
+      // Timeout settings: production needs more time for cold starts
+      serverSelectionTimeoutMS: isProd ? 30000 : 15000,
+      socketTimeoutMS: isProd ? 60000 : 45000,
+      connectTimeoutMS: isProd ? 30000 : 15000,
+      // Buffer queries while reconnecting (don't fail immediately on transient disconnect)
+      bufferCommands: true,
+      // Use IPv4 to avoid IPv6 routing issues on some cloud providers
+      family: 4,
+      // Heartbeat to keep connection alive
+      heartbeatFrequencyMS: 10000,
     });
     isConnected = true;
     logger.log('✅ MongoDB: Connected successfully');

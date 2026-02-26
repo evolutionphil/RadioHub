@@ -108,8 +108,6 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
     });
   });
 
-  logger.log('📺 CAST: WebSocket server ready at /ws/cast');
-
   // ==================== CAST REST API Endpoints ====================
 
   app.post('/api/cast/session/create', async (req: any, res) => {

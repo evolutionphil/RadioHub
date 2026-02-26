@@ -340,7 +340,21 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ TV/Mobile cache auto-refresh scheduled: daily 2 AM (Europe/Berlin)');
 
+  // Genres cache: refresh every 5 minutes (NOT immediate - startup warmup handles initial load)
+  // Using a flag to skip the first fire if startup warmup already ran
+  let genresWarmupDone = false;
+  setImmediate(async () => {
+    try {
+      const start = Date.now();
+      await PrecomputedGenresService.warmupCache();
+      genresWarmupDone = true;
+      logger.log(`🔥 PrecomputedGenres startup warmup completed in ${Date.now() - start}ms`);
+    } catch (error) { logger.error('PrecomputedGenres startup warmup failed:', error); }
+  });
+
   cron.default.schedule('*/5 * * * *', async () => {
+    // Skip first cron fire if startup warmup just ran (avoid double work)
+    if (!genresWarmupDone) { genresWarmupDone = true; return; }
     try {
       const start = Date.now();
       await PrecomputedGenresService.warmupCache();
@@ -349,25 +363,21 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   });
   logger.log('⏰ Genres cache auto-refresh scheduled: every 5 minutes');
 
+  // Popular stations: refresh every 15 minutes SEQUENTIALLY to avoid DB overload
   cron.default.schedule('*/15 * * * *', async () => {
     try {
       const start = Date.now();
-      const topCountries = [undefined, 'Turkey', 'Germany', 'United States', 'United Kingdom', 'France',
-        'Spain', 'Italy', 'Netherlands', 'Austria', 'Switzerland', 'Brazil', 'Russia',
-        'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland'];
-      await Promise.all(topCountries.map(country => refreshPopularStationsCache(country)));
-      logger.log(`⏰ [Cron] Popular stations cache refreshed in ${Date.now() - start}ms (${topCountries.length} countries, parallel)`);
+      const topCountries: (string | undefined)[] = [undefined, 'Turkey', 'Germany', 'United States',
+        'United Kingdom', 'France', 'Spain', 'Italy', 'Netherlands', 'Austria', 'Switzerland',
+        'Brazil', 'Russia', 'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland'];
+      for (const country of topCountries) {
+        try { await refreshPopularStationsCache(country); } catch {}
+        await new Promise(r => setTimeout(r, 200)); // 200ms between each to avoid connection storm
+      }
+      logger.log(`⏰ [Cron] Popular stations cache refreshed in ${Date.now() - start}ms (${topCountries.length} countries, sequential)`);
     } catch (error) { logger.error('[Cron] Popular stations cache refresh failed:', error); }
   });
-  logger.log('⏰ Popular stations cache auto-refresh scheduled: every 15 minutes (parallel)');
-
-  setImmediate(async () => {
-    try {
-      const start = Date.now();
-      await PrecomputedGenresService.warmupCache();
-      logger.log(`🔥 PrecomputedGenres startup warmup completed in ${Date.now() - start}ms`);
-    } catch (error) { logger.error('PrecomputedGenres startup warmup failed:', error); }
-  });
+  logger.log('⏰ Popular stations cache auto-refresh scheduled: every 15 minutes (sequential)');
 
   // === SEO REDIRECT ===
   app.get('/stations', (_req, res) => res.redirect(301, '/radios'));
