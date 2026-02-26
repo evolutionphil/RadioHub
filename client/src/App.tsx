@@ -36,7 +36,7 @@ import NotificationContainer from "@/components/ui/NotificationContainer";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { TranslationPreloader } from "@/components/translation/TranslationPreloader";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useTransition } from "react";
 import { useLocation } from "wouter";
 import { getLanguageFromPath } from "@shared/seo-config";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
@@ -189,13 +189,27 @@ function AdminRouterContent() {
 function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: string; onCountryChange?: (country: string, isManual?: boolean) => void }) {
   const { cleanPath, englishPath, currentLanguage } = useSeoRouting();
   const [location, setLocation] = useLocation();
-  
+
+  // Use useTransition so that lazy component suspensions triggered by navigation
+  // are treated as non-urgent transitions — fixes React 18 "suspended during
+  // synchronous input" warning when clicking links to lazy-loaded pages.
+  const [, startRouteTransition] = useTransition();
+  const [activePath, setActivePath] = useState(englishPath);
+
+  // Whenever the URL changes, update the active path inside a transition
+  // so React knows it's OK for this render to suspend.
+  useEffect(() => {
+    startRouteTransition(() => {
+      setActivePath(englishPath);
+    });
+  }, [englishPath]);
+
   // CRITICAL FIX: Route based on englishPath, not cleanPath
   // cleanPath can be in translated language (e.g., "/zhanret"), but router needs English (e.g., "/genres")
   const renderByCleanPath = () => {
     // CRITICAL FIX: Strip query params and hash for route matching
     // GenresPage adds ?page=1 which would break the equality check
-    const pathToUse = englishPath.split('?')[0].split('#')[0];  // Use English path for matching, without query/hash
+    const pathToUse = activePath.split('?')[0].split('#')[0];  // Use transitioned English path for matching
     
     
     if (pathToUse === '/') return <LazyRoutes.RadioFrontend selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
@@ -1178,6 +1192,30 @@ function App() {
     } else {
       setTimeout(deferInit, 100);
     }
+  }, []);
+
+  // 🚀 PRELOAD: Eagerly load profile/auth route chunks after initial render.
+  // This ensures that by the time any user clicks a profile link, the lazy
+  // chunks are already downloaded — preventing the "suspended during synchronous
+  // input" React 18 warning.
+  useEffect(() => {
+    const preloadRoutes = () => {
+      Promise.allSettled([
+        import("@/components/layout/ProfileLayout"),
+        import("@/pages/messages"),
+        import("@/pages/favorites"),
+        import("@/pages/profile-discover"),
+        import("@/pages/profile-settings"),
+        import("@/pages/notifications-view"),
+        import("@/pages/profile"),
+        import("@/pages/login"),
+        import("@/pages/auth/login"),
+        import("@/pages/auth/signup"),
+      ]);
+    };
+    // Delay so it doesn't compete with critical first-paint resources
+    const timer = setTimeout(preloadRoutes, 3000);
+    return () => clearTimeout(timer);
   }, []);
   
   // Update HTML lang attribute dynamically based on URL

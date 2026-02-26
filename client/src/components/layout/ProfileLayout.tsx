@@ -1,9 +1,25 @@
 import { useAuth } from "@/hooks/useAuth";
-import { Link, useLocation } from "wouter";
-import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
+import { useState, useEffect, startTransition } from "react";
 import { Menu, X } from "lucide-react";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery } from "@tanstack/react-query";
+
+function NavLink({ href, children, isActive }: { href: string; children: React.ReactNode; isActive: boolean }) {
+  const [, navigate] = useLocation();
+  return (
+    <a
+      href={href}
+      onClick={(e) => {
+        e.preventDefault();
+        startTransition(() => { navigate(href); });
+      }}
+      className={`flex cursor-pointer items-center rounded px-5 py-3 ${isActive ? 'bg-[#2D2D2D]' : ''}`}
+    >
+      {children}
+    </a>
+  );
+}
 
 interface ProfileLayoutProps {
   children: React.ReactNode;
@@ -56,79 +72,43 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
           <div className="flex h-full flex-col justify-between px-5">
             {/* Main Navigation Links - Reference: space-y-5 */}
             <div className="space-y-5 pt-10">
-              <Link href={getLocalizedUrl("/profile/favorites")}>
-                <div 
-                  className={`flex cursor-pointer items-center rounded px-5 py-3 ${isActive(getLocalizedUrl("/profile/favorites")) ? 'bg-[#2D2D2D]' : ''}`}
-                >
-                  <div className="mr-5">
-                    <img src="/favorites.png" alt="Favorites" className="w-6 h-6" />
-                  </div>
-                  <div className="text-base font-bold">Your Favorites</div>
-                </div>
-              </Link>
+              <NavLink href={getLocalizedUrl("/profile/favorites")} isActive={isActive(getLocalizedUrl("/profile/favorites"))}>
+                <div className="mr-5"><img src="/favorites.png" alt="Favorites" className="w-6 h-6" /></div>
+                <div className="text-base font-bold">Your Favorites</div>
+              </NavLink>
 
-              <Link href={getLocalizedUrl("/profile/discover")}>
-                <div 
-                  className={`flex cursor-pointer items-center rounded px-5 py-3 ${isActive(getLocalizedUrl("/profile/discover")) ? 'bg-[#2D2D2D]' : ''}`}
-                >
-                  <div className="mr-5">
-                    <img src="/discovery.png" alt="Discover" className="w-6 h-6" />
-                  </div>
-                  <div className="text-base font-bold">Discover</div>
-                </div>
-              </Link>
+              <NavLink href={getLocalizedUrl("/profile/discover")} isActive={isActive(getLocalizedUrl("/profile/discover"))}>
+                <div className="mr-5"><img src="/discovery.png" alt="Discover" className="w-6 h-6" /></div>
+                <div className="text-base font-bold">Discover</div>
+              </NavLink>
 
-              <Link href={getLocalizedUrl("/profile/settings")}>
-                <div 
-                  className={`flex cursor-pointer items-center rounded px-5 py-3 ${isActive(getLocalizedUrl("/profile/settings")) ? 'bg-[#2D2D2D]' : ''}`}
-                >
-                  <div className="mr-5">
-                    <img src="/profile.png" alt="Profile" className="w-6 h-6" />
-                  </div>
-                  <div className="text-base font-bold">Profile</div>
-                </div>
-              </Link>
+              <NavLink href={getLocalizedUrl("/profile/settings")} isActive={isActive(getLocalizedUrl("/profile/settings"))}>
+                <div className="mr-5"><img src="/profile.png" alt="Profile" className="w-6 h-6" /></div>
+                <div className="text-base font-bold">Profile</div>
+              </NavLink>
 
-              <Link href={getLocalizedUrl("/profile/messages")}>
-                <div 
-                  className={`flex cursor-pointer items-center rounded px-5 py-3 ${isActive(getLocalizedUrl("/profile/messages")) ? 'bg-[#2D2D2D]' : ''}`}
-                >
-                  <div className="mr-5">
-                    <img src="/sms.png" alt="Messages" className="w-6 h-6" />
-                  </div>
-                  <div className="text-base font-bold flex-1">Messages</div>
-                  {unreadCount > 0 && (
-                    <span className="bg-[#FF4199] text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </span>
-                  )}
-                </div>
-              </Link>
+              <NavLink href={getLocalizedUrl("/profile/messages")} isActive={isActive(getLocalizedUrl("/profile/messages"))}>
+                <div className="mr-5"><img src="/sms.png" alt="Messages" className="w-6 h-6" /></div>
+                <div className="text-base font-bold flex-1">Messages</div>
+                {unreadCount > 0 && (
+                  <span className="bg-[#FF4199] text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </NavLink>
 
-              <Link href={getLocalizedUrl("/profile/records")}>
-                <div 
-                  className={`flex cursor-pointer items-center rounded px-5 py-3 ${isActive(getLocalizedUrl("/profile/records")) ? 'bg-[#2D2D2D]' : ''}`}
-                >
-                  <div className="mr-5">
-                    <img src="/rec.png" alt="Records" className="w-6 h-6" />
-                  </div>
-                  <div className="text-base font-bold">Records</div>
-                </div>
-              </Link>
+              <NavLink href={getLocalizedUrl("/profile/records")} isActive={isActive(getLocalizedUrl("/profile/records"))}>
+                <div className="mr-5"><img src="/rec.png" alt="Records" className="w-6 h-6" /></div>
+                <div className="text-base font-bold">Records</div>
+              </NavLink>
             </div>
 
             {/* Bottom Navigation Links */}
             <div className="mb-4 space-y-5">
-              <Link href={getLocalizedUrl("/feedback")}>
-                <div 
-                  className={`flex cursor-pointer items-center rounded px-5 py-3 ${isActive(getLocalizedUrl("/feedback")) ? 'bg-[#2D2D2D]' : ''}`}
-                >
-                  <div className="mr-5">
-                    <img src="/feedback.png" alt="Feedback" className="w-6 h-6" />
-                  </div>
-                  <div className="text-base font-bold">Feedback</div>
-                </div>
-              </Link>
+              <NavLink href={getLocalizedUrl("/feedback")} isActive={isActive(getLocalizedUrl("/feedback"))}>
+                <div className="mr-5"><img src="/feedback.png" alt="Feedback" className="w-6 h-6" /></div>
+                <div className="text-base font-bold">Feedback</div>
+              </NavLink>
 
               <div
                 onClick={() => {
