@@ -382,9 +382,40 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
   // PRECOMPUTED GENRES API - 7-day cache, ultra-fast genre browsing
   app.get("/api/genres/precomputed", async (req, res) => {
     try {
-      const country = req.query.country as string | undefined;
-      const data = await PrecomputedGenresService.getGenres(country || undefined);
-      res.json(data);
+      const countryName = (req.query.countryName || req.query.country) as string | undefined;
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 27), 200);
+      const search = (req.query.search as string || '').toLowerCase().trim();
+
+      const identifier = (!countryName || countryName === 'all') ? 'global' : countryName;
+      const raw = await PrecomputedGenresService.getGenres(identifier);
+
+      let genres = raw.genres || [];
+
+      if (search) {
+        genres = genres.filter((g: any) =>
+          g.name?.toLowerCase().includes(search) || g.slug?.toLowerCase().includes(search)
+        );
+      }
+
+      const total = genres.length;
+      const skip = (page - 1) * limit;
+      const paginated = genres.slice(skip, skip + limit);
+
+      res.json({
+        success: true,
+        data: paginated,
+        genres: paginated,
+        count: total,
+        total,
+        currentPage: page,
+        page,
+        perPage: limit,
+        limit,
+        totalPages: Math.ceil(total / limit),
+        computedAt: raw.computedAt,
+        countryName: raw.countryName
+      });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch precomputed genres' });
     }
