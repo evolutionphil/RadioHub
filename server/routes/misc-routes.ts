@@ -481,15 +481,16 @@ export function registerMiscRoutes(app: Express, deps: any) {
       const { ApiKey: ApiKeyModel } = await import('../shared/mongo-schemas');
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
       if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
-      const { logs, deviceId, platform } = req.body;
+      const { logs, deviceId, platform, appVersion = '1.0.0', buildNumber = '' } = req.body;
       if (!logs || !Array.isArray(logs) || !deviceId || !platform) return res.status(400).json({ error: 'logs, deviceId, and platform are required' });
+      if (!['ios', 'android'].includes(platform)) return res.status(400).json({ error: 'platform must be "ios" or "android"' });
       const sanitizedLogs = logs.slice(0, 100).map((log: any) => ({
         level: ['info', 'warn', 'error', 'debug', 'fatal'].includes(log.level) ? log.level : 'info',
         message: String(log.message || '').substring(0, 500),
         timestamp: log.timestamp || new Date().toISOString(),
         data: log.data && typeof log.data === 'object' ? JSON.parse(JSON.stringify(log.data).substring(0, 5000)) : {},
       }));
-      await AppLog.create({ deviceId, platform, logs: sanitizedLogs, apiKeyHash: keyHash });
+      await AppLog.create({ deviceId, platform, appVersion: String(appVersion), buildNumber: String(buildNumber), logs: sanitizedLogs, apiKeyHash: keyHash });
       res.json({ success: true, received: sanitizedLogs.length });
     } catch (error) {
       res.status(500).json({ error: 'Failed to store logs' });
