@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Send, Circle, CheckCheck, Users, MessageCircle, ArrowLeft } from "lucide-react";
+import { Search, Send, Circle, CheckCheck, Users, MessageCircle, ArrowLeft, Smile, ImagePlus, X } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
@@ -30,6 +30,8 @@ interface Message {
   fromUserId: string;
   toUserId: string;
   content: string;
+  messageType?: 'text' | 'image' | 'emoji';
+  imageUrl?: string;
   read: boolean;
   createdAt: string;
 }
@@ -142,6 +144,47 @@ function ConvItem({ conv, active, onClick }: { conv: Conversation; active: boole
 // ─── Message Bubble ───────────────────────────────────────────────────────────
 
 function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: boolean }) {
+  const isEmoji = msg.messageType === 'emoji';
+  const isImage = msg.messageType === 'image' && msg.imageUrl;
+
+  if (isEmoji) {
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
+        <div className="flex flex-col items-center">
+          <span className="text-5xl leading-none">{msg.content}</span>
+          <span className="text-[10px] mt-1" style={{ color: "#5a5a6a" }}>
+            {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  if (isImage) {
+    return (
+      <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
+        <div className="max-w-[70%]">
+          <img
+            src={msg.imageUrl}
+            alt="Shared image"
+            className="rounded-2xl max-h-64 object-cover cursor-pointer"
+            style={{ borderBottomRightRadius: isOwn ? 4 : undefined, borderBottomLeftRadius: isOwn ? undefined : 4 }}
+            onClick={() => window.open(msg.imageUrl, '_blank')}
+          />
+          {msg.content && msg.content !== '📷 Photo' && (
+            <p className="text-white text-sm mt-1 px-1 break-words">{msg.content}</p>
+          )}
+          <div className={`flex items-center gap-1 mt-1 px-1 ${isOwn ? "justify-end" : "justify-start"}`}>
+            <span className="text-[10px]" style={{ color: "#5a5a6a" }}>
+              {new Date(msg.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+            {isOwn && isLast && msg.read && <CheckCheck size={10} className="text-white/50" />}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
       <div
@@ -199,10 +242,16 @@ export default function MessagesPage() {
   const [localMsgs, setLocalMsgs] = useState<Message[]>([]);
   const [wsOk, setWsOk] = useState(false);
   const [tab, setTab] = useState<"chats" | "contacts">("chats");
+  const [showEmoji, setShowEmoji] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const wsRef = useRef<WebSocket | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const emojiRef = useRef<HTMLDivElement>(null);
   const typingTimer = useRef<ReturnType<typeof setTimeout>>();
   const searchTimer = useRef<ReturnType<typeof setTimeout>>();
   const hbInterval = useRef<ReturnType<typeof setInterval>>();
@@ -406,9 +455,8 @@ export default function MessagesPage() {
   // ─── Send mutation ─────────────────────────────────────────────────────────
 
   const sendMut = useMutation({
-    mutationFn: (content: string) =>
-      // FIX: body must be wrapped in { body: ... } for apiRequest
-      apiRequest("POST", "/api/messages/send", { body: { toUserId: activeId, content } }),
+    mutationFn: (data: { content: string; messageType: 'text' | 'image' | 'emoji'; imageUrl?: string }) =>
+      apiRequest("POST", "/api/messages/send", { body: { toUserId: activeId, content: data.content, messageType: data.messageType, imageUrl: data.imageUrl } }),
     onSuccess: () => {
       setInput("");
       qc.invalidateQueries({ queryKey: ["/api/messages/conversation", activeId] });
@@ -454,7 +502,41 @@ export default function MessagesPage() {
   const doSend = () => {
     const t = input.trim();
     if (!t || !activeId || sendMut.isPending) return;
-    sendMut.mutate(t);
+    sendMut.mutate({ content: t, messageType: 'text' as const });
+  };
+
+  const doSendEmoji = (emoji: string) => {
+    if (!activeId || sendMut.isPending) return;
+    sendMut.mutate({ content: emoji, messageType: 'emoji' as const });
+    setShowEmoji(false);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    if (file.size > 5 * 1024 * 1024) { alert('Max 5MB'); return; }
+    setImageFile(file);
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const cancelImage = () => { setImageFile(null); setImagePreview(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
+
+  const doSendImage = async () => {
+    if (!imageFile || !activeId || uploadingImage) return;
+    setUploadingImage(true);
+    try {
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      const uploadRes = await fetch('/api/messages/upload-image', { method: 'POST', body: formData, credentials: 'include' });
+      if (!uploadRes.ok) throw new Error('Upload failed');
+      const { imageUrl } = await uploadRes.json();
+      sendMut.mutate({ content: '📷 Photo', messageType: 'image' as const, imageUrl });
+      cancelImage();
+    } catch { alert('Image upload failed'); }
+    setUploadingImage(false);
   };
 
   const openConv = (userId: string) => {
@@ -502,7 +584,7 @@ export default function MessagesPage() {
       `}</style>
 
       <div
-        className="-mx-2 -my-8 md:-mx-8 flex pb-12 md:pb-0"
+        className="-mx-2 -my-8 md:-mx-8 flex"
         style={{ height: "calc(100vh - 70px)", overflow: "hidden" }}
       >
         {/* ── Left: conversation list ──
@@ -696,37 +778,86 @@ export default function MessagesPage() {
                 <div ref={bottomRef} />
               </div>
 
+              {/* Image preview */}
+              {imagePreview && (
+                <div className="flex-shrink-0 px-3 py-2 border-t" style={{ background: "#151515", borderColor: "#222" }}>
+                  <div className="relative inline-block">
+                    <img src={imagePreview} alt="Preview" className="h-24 rounded-xl object-cover" />
+                    <button
+                      onClick={cancelImage}
+                      className="absolute -top-2 -right-2 w-6 h-6 rounded-full flex items-center justify-center"
+                      style={{ background: "#FF4199" }}
+                    >
+                      <X size={12} className="text-white" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Emoji picker */}
+              {showEmoji && (
+                <div ref={emojiRef} className="flex-shrink-0 border-t" style={{ background: "#1A1A1A", borderColor: "#222" }}>
+                  <div className="grid grid-cols-8 gap-1 p-3 max-h-48 overflow-y-auto">
+                    {['😀','😂','🤣','😍','😘','🥰','😊','😎','🤩','🥺','😢','😭','😤','🤔','🤗','🤫','😴','🤮','🥳','😈','👿','💀','👻','🤡','💩','👍','👎','👏','🙌','🤝','❤️','🧡','💛','💚','💙','💜','🖤','💔','🔥','⭐','🎵','🎶','🎤','🎧','📻','📡','🌍','🌈'].map(e => (
+                      <button
+                        key={e}
+                        onClick={() => doSendEmoji(e)}
+                        className="text-2xl p-1.5 rounded-lg hover:bg-[#2D2D2D] transition-colors flex items-center justify-center"
+                      >
+                        {e}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Input */}
               <div
-                className="flex-shrink-0 flex items-center gap-2 px-3 py-3 border-t"
+                className="flex-shrink-0 flex items-center gap-1.5 px-2 py-2 border-t"
                 style={{ background: "#151515", borderColor: "#222" }}
               >
+                <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageSelect} className="hidden" />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#2D2D2D] transition-colors"
+                  title="Send image"
+                >
+                  <ImagePlus size={18} className="text-gray-400" />
+                </button>
+                <button
+                  onClick={() => setShowEmoji(prev => !prev)}
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center hover:bg-[#2D2D2D] transition-colors"
+                  style={{ color: showEmoji ? "#FF4199" : undefined }}
+                  title="Emoji"
+                >
+                  <Smile size={18} className={showEmoji ? "text-[#FF4199]" : "text-gray-400"} />
+                </button>
                 <div className="flex-1 flex items-center rounded-full overflow-hidden" style={{ background: "#2D2D2D" }}>
                   <input
                     ref={inputRef}
                     value={input}
                     onChange={e => { setInput(e.target.value); emitTyping(); }}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doSend(); } }}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); imagePreview ? doSendImage() : doSend(); } }}
                     placeholder={`Message ${activeName || "…"}`}
                     maxLength={2000}
-                    className="flex-1 px-4 py-2.5 bg-transparent text-white text-sm placeholder-gray-600 outline-none"
+                    className="flex-1 px-3 py-2 bg-transparent text-white text-sm placeholder-gray-600 outline-none"
                   />
                   {input.length > 1800 && (
-                    <span className="pr-3 text-[10px]" style={{ color: input.length > 1950 ? "#ef4444" : "#6b7280" }}>
+                    <span className="pr-2 text-[10px]" style={{ color: input.length > 1950 ? "#ef4444" : "#6b7280" }}>
                       {2000 - input.length}
                     </span>
                   )}
                 </div>
                 <button
-                  onClick={doSend}
-                  disabled={!input.trim() || sendMut.isPending}
-                  className="flex-shrink-0 w-10 h-10 rounded-full flex items-center justify-center transition-all"
+                  onClick={imagePreview ? doSendImage : doSend}
+                  disabled={imagePreview ? uploadingImage : (!input.trim() || sendMut.isPending)}
+                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-all"
                   style={{
-                    background: input.trim() && !sendMut.isPending ? "#FF4199" : "#2D2D2D",
-                    cursor: input.trim() && !sendMut.isPending ? "pointer" : "default",
+                    background: (imagePreview || (input.trim() && !sendMut.isPending)) ? "#FF4199" : "#2D2D2D",
+                    cursor: (imagePreview || (input.trim() && !sendMut.isPending)) ? "pointer" : "default",
                   }}
                 >
-                  <Send size={16} className="text-white" style={{ marginLeft: 2 }} />
+                  <Send size={14} className="text-white" style={{ marginLeft: 1 }} />
                 </button>
               </div>
             </>

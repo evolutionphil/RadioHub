@@ -1,6 +1,9 @@
 import type { Express } from "express";
 import mongoose from "mongoose";
 import crypto from "crypto";
+import path from "path";
+import fs from "fs/promises";
+import multer from "multer";
 import { type WebSocketServer, type WebSocket } from 'ws';
 import { DirectMessage, User, UserFollow, UserNotification } from "../../shared/mongo-schemas";
 import { chatService } from "../services/chat-service";
@@ -223,6 +226,35 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     }
   });
 
+  // ── POST /api/messages/upload-image ─────────────────────────────────────────
+  const chatUploadsDir = path.resolve(process.cwd(), 'public', 'uploads', 'chat');
+  fs.mkdir(chatUploadsDir, { recursive: true }).catch(() => {});
+
+  const chatUpload = multer({
+    storage: multer.diskStorage({
+      destination: chatUploadsDir,
+      filename: (_req, file, cb) => {
+        const ext = path.extname(file.originalname) || '.jpg';
+        cb(null, `${Date.now()}-${crypto.randomBytes(8).toString('hex')}${ext}`);
+      }
+    }),
+    limits: { fileSize: 5 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      cb(null, file.mimetype.startsWith('image/'));
+    }
+  });
+
+  app.post("/api/messages/upload-image", requireAuth, chatUpload.single('image'), (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+      const imageUrl = `/uploads/chat/${req.file.filename}`;
+      res.json({ imageUrl });
+    } catch (error) {
+      logger.error("Chat image upload failed:", error);
+      res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
   // ── POST /api/messages/send ──────────────────────────────────────────────────
   app.post("/api/messages/send", requireAuth, async (req, res) => {
     try {
@@ -283,6 +315,8 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
           fromUserId,
           toUserId: targetId.toString(),
           content: message.content,
+          messageType: message.messageType || 'text',
+          imageUrl: message.imageUrl,
           read: false,
           createdAt: message.createdAt,
         },
