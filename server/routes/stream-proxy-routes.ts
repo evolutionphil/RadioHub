@@ -84,18 +84,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
       const acceptHeader = req.headers.accept || '';
       const preferAVIF = acceptHeader.includes('image/avif');
-      const format = preferAVIF ? 'avif' : 'webp';
-      const imageCacheKey = `image_proxy:${urlPath}:${targetWidth}x${targetHeight}:${format}`;
-      
-      const CacheManager = (await import('../cache')).default;
-      const cachedImage = await CacheManager.get(imageCacheKey);
-      if (cachedImage && Buffer.isBuffer(cachedImage)) {
-        res.setHeader('Content-Type', preferAVIF ? 'image/avif' : 'image/webp');
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        res.setHeader('X-Cache', 'HIT');
-        res.setHeader('Content-Length', cachedImage.length);
-        return res.send(cachedImage);
-      }
+      // NOTE: Binary image buffers are NOT cached in NodeCache (memory leak risk).
+      // Cloudflare edge cache handles HTTP-level caching via Cache-Control headers.
 
       logger.log(`🖼️ IMAGE PROXY: ${originalUrl} → ${targetWidth}x${targetHeight}px WebP`);
 
@@ -149,65 +139,35 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       
       const sharp = (await import('sharp')).default;
       
-      let optimizedImageAVIF, optimizedImageWebP;
+      // Process ONLY the requested format — never both simultaneously (halves peak memory)
+      const useAVIF = acceptHeader.includes('image/avif');
+      const contentType = useAVIF ? 'image/avif' : 'image/webp';
+      
+      let optimizedImage: Buffer;
       try {
-        optimizedImageAVIF = await sharp(imageBuffer)
-          .resize(targetWidth, targetHeight, {
-            fit: 'cover',
-            position: 'center'
-          })
-          .avif({ 
-            quality: 80,
-            effort: 6
-          })
-          .toBuffer();
-
-        optimizedImageWebP = await sharp(imageBuffer)
-          .resize(targetWidth, targetHeight, {
-            fit: 'cover',
-            position: 'center'
-          })
-          .webp({ 
-            quality: 85,
-            effort: 4
-          })
-          .toBuffer();
+        const pipeline = sharp(imageBuffer).resize(targetWidth, targetHeight, { fit: 'cover', position: 'center' });
+        optimizedImage = useAVIF
+          ? await pipeline.avif({ quality: 80, effort: 4 }).toBuffer()
+          : await pipeline.webp({ quality: 85, effort: 4 }).toBuffer();
       } catch (sharpError: any) {
         console.error(`Image proxy Sharp error: ${sharpError.message}`);
+        // Fall back to original image — send it but do NOT cache in memory
         res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Cache-Control', 'public, max-age=300'); // 5 min only for fallback
         return res.send(imageBuffer);
       }
 
-      let contentType = 'image/webp';
-      let optimizedImage = optimizedImageWebP;
-      
-      if (acceptHeader.includes('image/avif')) {
-        contentType = 'image/avif';
-        optimizedImage = optimizedImageAVIF;
-        logger.log(`🖼️ IMAGE PROXY: AVIF compression (${Math.round((1 - optimizedImageAVIF.length / imageBuffer.length) * 100)}% smaller)`);
-      } else {
-        logger.log(`🖼️ IMAGE PROXY: WebP compression (${Math.round((1 - optimizedImageWebP.length / imageBuffer.length) * 100)}% smaller)`);
-      }
+      // Free the raw download buffer immediately (GC hint)
+      (imageBuffer as any) = null;
 
       res.setHeader('Content-Type', contentType);
-      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      // Long cache on Cloudflare edge — no server-side binary buffer caching needed
+      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
       res.setHeader('Vary', 'Accept');
-      
-      const urlHash = Buffer.from(`${originalUrl}-${targetWidth}x${targetHeight}-${contentType}`).toString('base64').slice(0, 16);
-      res.setHeader('ETag', `"img-${urlHash}"`);
-      res.setHeader('Last-Modified', new Date(Date.now() - 86400000).toUTCString());
       res.setHeader('Content-Length', optimizedImage.length);
       res.setHeader('Content-Encoding', 'identity');
       res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('X-Frame-Options', 'DENY');
       
-      logger.log(`✅ Image optimized: ${imageBuffer.length} bytes → ${optimizedImage.length} bytes (${Math.round((1 - optimizedImage.length / imageBuffer.length) * 100)}% smaller) as ${contentType}`);
-      
-      const imageCacheKeyToStore = `image_proxy:${urlPath}:${targetWidth}x${targetHeight}:${contentType.split('/')[1]}`;
-      await CacheManager.set(imageCacheKeyToStore, optimizedImage, { ttl: 3600 });
-      
-      res.setHeader('X-Cache', 'MISS');
       res.send(optimizedImage);
 
     } catch (error) {

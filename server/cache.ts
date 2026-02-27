@@ -5,8 +5,9 @@ import { logger } from './utils/logger';
 // In-memory cache with TTL
 const memoryCache = new NodeCache({ 
   stdTTL: 600, // 10 minutes default TTL
-  checkperiod: 120, // Check for expired keys every 2 minutes
-  useClones: false // Don't clone objects for better performance
+  checkperiod: 60, // Check for expired keys every 1 minute (faster cleanup)
+  useClones: false, // Don't clone objects for better performance
+  maxKeys: 2000 // Hard cap: prevents unbounded memory growth (OOM protection)
 });
 
 // Redis client for production (optional)
