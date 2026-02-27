@@ -659,10 +659,10 @@ export class SeoRenderer {
               <div class="external-resources">
                 <h3>${this.escapeHtml(getLocalizedText('external_resources', 'External Resources'))}</h3>
                 <ul>
-                  <li><a href="https://flixapp.tv" target="_blank" rel="noopener noreferrer">${this.escapeHtml(getLocalizedText('flixapp_tv', 'FlixApp TV - Entertainment Platform'))}</a></li>
-                  <li><a href="https://www.radio-browser.info" target="_blank" rel="noopener noreferrer">${this.escapeHtml(getLocalizedText('radio_browser', 'Radio Browser - Open Radio Database'))}</a></li>
-                  <li><a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer">${this.escapeHtml(getLocalizedText('musicbrainz', 'MusicBrainz - Music Metadata'))}</a></li>
-                  <li><a href="https://www.last.fm" target="_blank" rel="noopener noreferrer">${this.escapeHtml(getLocalizedText('lastfm', 'Last.fm - Music Discovery'))}</a></li>
+                  <li><a href="https://flixapp.tv" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('flixapp_tv', 'FlixApp TV - Entertainment Platform'))}</a></li>
+                  <li><a href="https://www.radio-browser.info" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('radio_browser', 'Radio Browser - Open Radio Database'))}</a></li>
+                  <li><a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('musicbrainz', 'MusicBrainz - Music Metadata'))}</a></li>
+                  <li><a href="https://www.last.fm" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('lastfm', 'Last.fm - Music Discovery'))}</a></li>
                 </ul>
               </div>
             </section>
@@ -1053,7 +1053,7 @@ export class SeoRenderer {
         ...(stationData.country && { "areaServed": stationData.country }),
         ...(stationData.language && { "broadcastLanguage": stationData.language }),
         ...(stationData.codec && { "broadcastFormat": stationData.codec }),
-        ...(stationData.bitrate && { "broadcastFrequency": `${stationData.bitrate} kbps` }),
+        ...(stationData.bitrate && { "additionalProperty": { "@type": "PropertyValue", "name": "bitrate", "value": `${stationData.bitrate} kbps` } }),
         "broadcaster": {
           "@type": "Organization",
           "name": stationData.name,

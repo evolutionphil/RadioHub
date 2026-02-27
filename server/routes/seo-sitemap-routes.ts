@@ -306,6 +306,22 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any) {
     const robots = `User-agent: *
 Allow: /
 
+# Block API endpoints — JSON responses, not useful for Google
+Disallow: /api/
+
+# Block admin and auth-only pages — requires login, not indexable
+Disallow: /*/admin/
+Disallow: /*/admin
+Disallow: /*/login
+Disallow: /*/signup
+Disallow: /*/settings
+Disallow: /*/forgot-password
+Disallow: /*/import-export
+Disallow: /*/analytics
+
+# Block OG image generator — internal image generation endpoint
+Disallow: /og-image
+
 # Sitemap index — all individual sitemaps are listed inside
 Sitemap: ${baseUrl}/sitemap-index.xml`;
 
