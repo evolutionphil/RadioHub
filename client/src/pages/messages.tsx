@@ -238,6 +238,7 @@ export default function MessagesPage() {
 
   const { data: convsData, isLoading: convsLoading } = useQuery<{ conversations: Conversation[] }>({
     queryKey: ["/api/messages/conversations"],
+    staleTime: 0,
     refetchInterval: wsOk ? 30_000 : 8_000,
     retry: 1,
   });
@@ -255,6 +256,7 @@ export default function MessagesPage() {
   }>({
     queryKey: ["/api/messages/conversation", activeId],
     enabled: !!activeId,
+    staleTime: 0,
     refetchInterval: wsOk ? false : 5_000,
     retry: 1,
   });
