@@ -57,12 +57,11 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         Station.countDocuments({ 'logoAssets.status': 'completed' }),
         Station.countDocuments({
           favicon: { $exists: true, $nin: ['', null, 'null'] },
-          slug: { $exists: true, $ne: null },
           $or: [
-            { 'logoAssets.status': { $exists: false } },  // Never processed
-            { 'logoAssets.status': 'pending' }             // Still pending
-          ],
-          'logoAssets.status': { $ne: 'failed' }           // Skip failed - never retry
+            { 'logoAssets.status': { $exists: false } },
+            { 'logoAssets.status': 'pending' },
+            { 'logoAssets.status': 'failed' },
+          ]
         })
       ]);
       
@@ -178,16 +177,13 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       });
       
       // Query filter for stations needing processing
-      // IMPORTANT: Skip all previously failed stations - never retry them!
-      // Only process unprocessed stations or those still pending
       const needsProcessingFilter = {
         favicon: { $exists: true, $nin: ['', null, 'null'] },
-        slug: { $exists: true, $ne: null },
         $or: [
-          { 'logoAssets.status': { $exists: false } },     // Never processed before
-          { 'logoAssets.status': 'pending' }               // Marked as pending
-        ],
-        'logoAssets.status': { $ne: 'failed' }             // Explicitly skip ALL failed stations
+          { 'logoAssets.status': { $exists: false } },
+          { 'logoAssets.status': 'pending' },
+          { 'logoAssets.status': 'failed' },
+        ]
       };
       
       // Process in background with CONTINUOUS LOOP until all done

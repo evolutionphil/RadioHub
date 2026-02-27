@@ -291,34 +291,24 @@ export default function LogoManagement() {
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4 py-4">
-              {stats?.processingComplete ? (
-                <div className="text-center">
-                  <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-2" />
-                  <p className="text-lg font-semibold text-green-600" data-testid="text-all-complete">All logos are optimized!</p>
-                  <p className="text-sm text-muted-foreground">
-                    {stats.stationsWithLogoAssets?.toLocaleString()} stations have optimized logos
-                  </p>
-                </div>
-              ) : (
-                <>
-                  <p className="text-center text-muted-foreground">
-                    {stats?.stationsNeedingProcessing?.toLocaleString()} stations are ready for logo optimization.
-                    This will download favicon images and create optimized WebP versions.
-                  </p>
-                  <Button 
-                    onClick={() => startProcessingMutation.mutate()}
-                    disabled={startProcessingMutation.isPending || !stats?.stationsNeedingProcessing}
-                    data-testid="button-start-processing"
-                  >
-                    {startProcessingMutation.isPending ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Play className="w-4 h-4 mr-2" />
-                    )}
-                    Start Processing
-                  </Button>
-                </>
-              )}
+              <p className="text-center text-muted-foreground">
+                {(stats?.stationsNeedingProcessing ?? 0) > 0
+                  ? `${stats?.stationsNeedingProcessing?.toLocaleString()} stations are ready for logo optimization.`
+                  : `${stats?.stationsWithLogoAssets?.toLocaleString() ?? 0} stations have optimized logos.`}
+                {' '}This will download favicon images and create optimized WebP versions in S3.
+              </p>
+              <Button 
+                onClick={() => startProcessingMutation.mutate()}
+                disabled={startProcessingMutation.isPending}
+                data-testid="button-start-processing"
+              >
+                {startProcessingMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4 mr-2" />
+                )}
+                {(stats?.stationsNeedingProcessing ?? 0) > 0 ? 'Start Processing' : 'Re-process All Logos'}
+              </Button>
             </div>
           )}
         </CardContent>
