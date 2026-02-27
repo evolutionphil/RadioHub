@@ -988,16 +988,16 @@ export function getLanguageFromPath(pathname: string): { language: string; clean
  * 
  * Example for /genres page:
  * - EN page (https://example.com/genres) includes:
- *   <link rel="alternate" hreflang="en-US" href="https://example.com/genres">
- *   <link rel="alternate" hreflang="tr-TR" href="https://example.com/tr/turler">
- *   <link rel="alternate" hreflang="de-DE" href="https://example.com/de/genres">
- *   <link rel="alternate" hreflang="x-default" href="https://example.com/genres">
+ *   <link rel="alternate" hreflang="en" href="https://example.com/en/genres">
+ *   <link rel="alternate" hreflang="tr" href="https://example.com/tr/turler">
+ *   <link rel="alternate" hreflang="de" href="https://example.com/de/genres">
+ *   <link rel="alternate" hreflang="x-default" href="https://example.com/en/genres">
  * 
  * - TR page (https://example.com/tr/turler) includes THE SAME hreflang tags:
- *   <link rel="alternate" hreflang="en-US" href="https://example.com/genres">
- *   <link rel="alternate" hreflang="tr-TR" href="https://example.com/tr/turler">
- *   <link rel="alternate" hreflang="de-DE" href="https://example.com/de/genres">
- *   <link rel="alternate" hreflang="x-default" href="https://example.com/genres">
+ *   <link rel="alternate" hreflang="en" href="https://example.com/en/genres">
+ *   <link rel="alternate" hreflang="tr" href="https://example.com/tr/turler">
+ *   <link rel="alternate" hreflang="de" href="https://example.com/de/genres">
+ *   <link rel="alternate" hreflang="x-default" href="https://example.com/en/genres">
  * 
  * This bidirectional linking is verified by:
  * - All pages for the same content share the same cleanPath
@@ -1201,7 +1201,7 @@ export function generateLanguageUrls(
         url = `${currentDomain}/${lang.code}${translatedPath}`;
       }
       
-      const hreflang = lang.iso;
+      const hreflang = lang.code;
       
       return {
         lang: lang.code,

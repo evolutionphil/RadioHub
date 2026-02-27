@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppLog, UserListeningHistory, AuthToken } from "../../shared/mongo-schemas";
+import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppLog, UserListeningHistory, AuthToken, ApiKey as ApiKeyModel } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import crypto from 'crypto';
 
@@ -478,7 +478,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       const apiKey = req.headers['x-api-key'] as string;
       if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
       const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-      const { ApiKey: ApiKeyModel } = await import('../shared/mongo-schemas');
+      
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
       if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
       const { logs, deviceId, platform, appVersion = '1.0.0', buildNumber = '' } = req.body;
@@ -490,10 +490,115 @@ export function registerMiscRoutes(app: Express, deps: any) {
         timestamp: log.timestamp || new Date().toISOString(),
         data: log.data && typeof log.data === 'object' ? JSON.parse(JSON.stringify(log.data).substring(0, 5000)) : {},
       }));
-      await AppLog.create({ deviceId, platform, appVersion: String(appVersion), buildNumber: String(buildNumber), logs: sanitizedLogs, apiKeyHash: keyHash });
+      const isCarPlayLog = sanitizedLogs.some((log: any) => /CarPlay|Template/i.test(log.message));
+      await AppLog.create({ deviceId, platform, appVersion: String(appVersion), buildNumber: String(buildNumber), logs: sanitizedLogs, apiKeyHash: keyHash, isCarPlayLog });
       res.json({ success: true, received: sanitizedLogs.length });
     } catch (error) {
       res.status(500).json({ error: 'Failed to store logs' });
+    }
+  });
+
+  app.get('/api/logs/remote', async (req, res) => {
+    try {
+      const apiKey = req.headers['x-api-key'] as string;
+      if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
+      const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+      
+      const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
+      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
+      const { limit = '50', platform, level, search, deviceId, from, to } = req.query;
+      const maxLimit = Math.min(parseInt(limit as string) || 50, 500);
+      const filter: any = {};
+      if (platform) filter.platform = platform;
+      if (deviceId) filter.deviceId = { $regex: String(deviceId), $options: 'i' };
+      if (level) filter['logs.level'] = level;
+      if (search) filter['logs.message'] = { $regex: String(search), $options: 'i' };
+      if (from || to) {
+        filter.createdAt = {};
+        if (from) filter.createdAt.$gte = new Date(String(from));
+        if (to) filter.createdAt.$lte = new Date(String(to));
+      }
+      const logs = await AppLog.find(filter).sort({ createdAt: -1 }).limit(maxLimit).lean();
+      const formatted = logs.map((log: any) => ({
+        id: log._id,
+        deviceId: log.deviceId,
+        platform: log.platform,
+        appVersion: log.appVersion,
+        buildNumber: log.buildNumber,
+        isCarPlayLog: log.isCarPlayLog,
+        logs: log.logs,
+        createdAt: log.createdAt,
+      }));
+      res.json({ success: true, count: formatted.length, logs: formatted });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch logs' });
+    }
+  });
+
+  app.get('/api/logs/remote/stats', async (req, res) => {
+    try {
+      const apiKey = req.headers['x-api-key'] as string;
+      if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
+      const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+      
+      const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
+      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
+      const todayStart = new Date();
+      todayStart.setUTCHours(0, 0, 0, 0);
+      const aggResult = await AppLog.aggregate([
+        {
+          $facet: {
+            total: [{ $count: 'count' }],
+            today: [{ $match: { createdAt: { $gte: todayStart } } }, { $count: 'count' }],
+            byPlatform: [{ $group: { _id: '$platform', count: { $sum: 1 } } }],
+            byLevel: [{ $unwind: '$logs' }, { $group: { _id: '$logs.level', count: { $sum: 1 } } }],
+            carplayConnected: [{ $unwind: '$logs' }, { $match: { 'logs.message': { $regex: 'CarPlay CONNECTED', $options: 'i' } } }, { $count: 'count' }],
+            carplayDisconnected: [{ $unwind: '$logs' }, { $match: { 'logs.message': { $regex: 'CarPlay DISCONNECTED', $options: 'i' } } }, { $count: 'count' }],
+            templateCreated: [{ $unwind: '$logs' }, { $match: { 'logs.message': { $regex: 'Template created', $options: 'i' } } }, { $count: 'count' }],
+            carplayErrors: [{ $unwind: '$logs' }, { $match: { 'logs.message': { $regex: 'CarPlay|Template', $options: 'i' }, 'logs.level': 'error' } }, { $count: 'count' }],
+          },
+        },
+      ]);
+      const pipeline = aggResult[0] || {};
+      const byPlatform: Record<string, number> = {};
+      (pipeline.byPlatform || []).forEach((p: any) => { if (p._id) byPlatform[p._id] = p.count; });
+      const byLevel: Record<string, number> = {};
+      (pipeline.byLevel || []).forEach((l: any) => { if (l._id) byLevel[l._id] = l.count; });
+      res.json({
+        success: true,
+        stats: {
+          total: pipeline.total?.[0]?.count || 0,
+          today: pipeline.today?.[0]?.count || 0,
+          byLevel,
+          byPlatform,
+          carplayEvents: {
+            connected: pipeline.carplayConnected?.[0]?.count || 0,
+            disconnected: pipeline.carplayDisconnected?.[0]?.count || 0,
+            templateCreated: pipeline.templateCreated?.[0]?.count || 0,
+            errors: pipeline.carplayErrors?.[0]?.count || 0,
+          },
+        },
+      });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch log stats' });
+    }
+  });
+
+  app.delete('/api/logs/remote', async (req, res) => {
+    try {
+      const apiKey = req.headers['x-api-key'] as string;
+      if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
+      const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
+      
+      const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
+      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
+      if (!['internal', 'pro'].includes(apiKeyDoc.plan)) return res.status(403).json({ error: 'Pro or Internal plan required to delete logs' });
+      const olderThanDays = Math.max(1, parseInt(String(req.query.olderThan || req.query.older_than_days || '30')));
+      const cutoff = new Date(Date.now() - olderThanDays * 86400000);
+      const result = await AppLog.deleteMany({ createdAt: { $lt: cutoff } });
+      res.json({ success: true, deletedCount: result.deletedCount, message: `Logs older than ${olderThanDays} days deleted` });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete logs' });
     }
   });
 

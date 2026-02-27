@@ -2469,6 +2469,7 @@ export interface IAppLog {
   platform: 'ios' | 'android';
   logs: IAppLogEntry[];
   apiKeyHash?: string;
+  isCarPlayLog?: boolean;
   createdAt: Date;
 }
 
@@ -2484,11 +2485,14 @@ const AppLogSchema = new Schema<IAppLog>({
     data: { type: Schema.Types.Mixed, default: {} },
   }],
   apiKeyHash: { type: String, default: '' },
+  isCarPlayLog: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now, expires: 2592000 },
 });
 
 AppLogSchema.index({ createdAt: -1 });
-AppLogSchema.index({ platform: 1, 'logs.message': 1 });
+AppLogSchema.index({ platform: 1, createdAt: -1 });
+AppLogSchema.index({ deviceId: 1, createdAt: -1 });
+AppLogSchema.index({ 'logs.level': 1 });
 
 export const AppLog = mongoose.model<IAppLog>('AppLog', AppLogSchema);
 // ==================== Direct Messages ====================
