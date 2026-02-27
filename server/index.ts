@@ -1,6 +1,6 @@
-// Suppress libvips/Sharp fontconfig warning on Railway (no text rendering needed)
-if (!process.env.FONTCONFIG_FILE) {
-  process.env.FONTCONFIG_FILE = '/dev/null';
+// Suppress libvips/Sharp fontconfig warnings (no text rendering needed for image processing)
+if (!process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_FILE === '/dev/null') {
+  process.env.FONTCONFIG_FILE = process.cwd() + '/fontconfig.conf';
 }
 
 import express, { type Request, Response, NextFunction } from "express";
