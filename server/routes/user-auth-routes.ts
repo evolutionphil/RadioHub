@@ -858,9 +858,15 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       const userId = req.session?.user?.userId || (req as any).user?._id;
 
-      const user = await User.findById(userId)
-        .select('-passwordHash -emailVerificationToken -resetPasswordToken')
-        .lean() as any;
+      const [user, followingList, actualFollowersCount] = await Promise.all([
+        User.findById(userId)
+          .select('fullName username email emailVerified role status avatar location isPublicProfile preferences followersCount followingCount favoriteStationsCount totalListeningTime lastLoginAt createdAt')
+          .lean() as any,
+        UserFollow.find({ userId })
+          .select('followingUserId')
+          .lean(),
+        UserFollow.countDocuments({ followingUserId: userId })
+      ]);
 
       if (!user) {
         if (req.session) {
@@ -869,20 +875,14 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         return res.json({ user: null, authenticated: false });
       }
 
-      const followingList = await UserFollow.find({ userId: (user._id as any) })
-        .select('followingUserId')
-        .lean();
       const following = followingList.map((f: any) => f.followingUserId.toString());
-      
-      const actualFollowersCount = await UserFollow.countDocuments({ followingUserId: (user._id as any) });
       const actualFollowingCount = following.length;
       
-      const needsUpdate = user.followersCount !== actualFollowersCount || user.followingCount !== actualFollowingCount;
-      if (needsUpdate) {
-        await User.findByIdAndUpdate((user._id as any), {
+      if (user.followersCount !== actualFollowersCount || user.followingCount !== actualFollowingCount) {
+        User.findByIdAndUpdate(user._id, {
           followersCount: actualFollowersCount,
           followingCount: actualFollowingCount
-        });
+        }).catch(() => {});
       }
 
       const userData = {

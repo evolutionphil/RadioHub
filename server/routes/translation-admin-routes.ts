@@ -1927,7 +1927,11 @@ ${keysText}`;
     try {
       const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
 
-      const user = await User.findById(currentUserId);
+      const cacheKey = `recently-played:${currentUserId}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) return res.json(cached);
+
+      const user = await User.findById(currentUserId).select('recentlyPlayedStations').lean();
       if (!user || !user.recentlyPlayedStations || user.recentlyPlayedStations.length === 0) {
         return res.json([]);
       }
@@ -1939,7 +1943,7 @@ ${keysText}`;
       });
       const stations = await Station.find({
         _id: { $in: stationIds }
-      }).lean();
+      }).select('name slug country votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets').lean();
 
       const stationMap = new Map(stations.map(s => [s._id.toString(), s]));
       const orderedStations = recentEntries
@@ -1951,7 +1955,9 @@ ${keysText}`;
         })
         .filter(Boolean);
 
-      res.json(stripPlaceholders(orderedStations));
+      const result = stripPlaceholders(orderedStations);
+      await CacheManager.set(cacheKey, result, { ttl: 300 });
+      res.json(result);
     } catch (error) {
       console.error('Error fetching recently played:', error);
       res.status(500).json({ error: 'Failed to fetch recently played' });
@@ -1988,6 +1994,7 @@ ${keysText}`;
         }
       });
 
+      await CacheManager.clearByPattern(`recently-played:${currentUserId}`);
       res.json({ success: true });
     } catch (error) {
       console.error('Error adding to recently played:', error);
@@ -2132,7 +2139,6 @@ ${keysText}`;
   // GET CURRENT USER'S NOTIFICATIONS (Authenticated)
   app.get("/api/user/notifications", async (req, res) => {
     try {
-      // Support both session cookie (web) and Bearer token (mobile)
       let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
       if (!currentUserId) {
         const authHeader = req.headers['authorization'];
@@ -2151,50 +2157,44 @@ ${keysText}`;
         return res.status(401).json({ error: 'Authentication required' });
       }
 
-      // logger.log(`📬 Fetching notifications for user ${currentUserId} (page ${page}, limit ${limit})`);
-      
-      // Show new_station and follow notifications from last 10 days, new_message from last 7 days
+      const cacheKey = `notifications:${currentUserId}:${page}:${limit}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) return res.json(cached);
+
       const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-      // Get notifications for the current user - relevant types, sorted by most recent
-      const notifications = await UserNotification.find({
+      const dateFilter = {
         userId: currentUserId,
         $or: [
           { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo } },
           { type: 'new_message', createdAt: { $gte: sevenDaysAgo } }
         ]
-      })
-        .populate('fromUserId', 'fullName username avatar profileImageUrl')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean();
+      };
 
-      // Get total count for pagination (all relevant types)
-      const totalCount = await UserNotification.countDocuments({
-        userId: currentUserId,
-        $or: [
-          { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo } },
-          { type: 'new_message', createdAt: { $gte: sevenDaysAgo } }
-        ]
-      });
-      const unreadCount = await UserNotification.countDocuments({
-        userId: currentUserId,
-        $or: [
-          { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo }, read: false },
-          { type: 'new_message', createdAt: { $gte: sevenDaysAgo }, read: false }
-        ]
-      });
+      const [notifications, totalCount, unreadCount] = await Promise.all([
+        UserNotification.find(dateFilter)
+          .populate('fromUserId', 'fullName username avatar profileImageUrl')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        UserNotification.countDocuments(dateFilter),
+        UserNotification.countDocuments({
+          userId: currentUserId,
+          $or: [
+            { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo }, read: false },
+            { type: 'new_message', createdAt: { $gte: sevenDaysAgo }, read: false }
+          ]
+        })
+      ]);
 
-      // Map notifications - title already clean from database
       const mappedNotifications = notifications.map(n => ({
         ...n,
         isRead: n.read
-      }))
+      }));
 
-      
-      res.json({
+      const result = {
         notifications: mappedNotifications,
         pagination: {
           page,
@@ -2203,7 +2203,9 @@ ${keysText}`;
           pages: Math.ceil(totalCount / limit)
         },
         unreadCount
-      });
+      };
+      await CacheManager.set(cacheKey, result, { ttl: 15 });
+      res.json(result);
     } catch (error) {
       // console.error('Error fetching user notifications:', error);
       res.status(500).json({ error: 'Failed to fetch notifications' });

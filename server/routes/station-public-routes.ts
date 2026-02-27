@@ -280,8 +280,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const { lat, lng, radius = 100, limit = 12, country, excludeBroken = 'false', userCountry } = req.query;
       
       if (lat && lng) {
+        const snappedLat = Math.round(parseFloat(lat as string) * 100) / 100;
+        const snappedLng = Math.round(parseFloat(lng as string) * 100) / 100;
         const countryKey = country && country !== 'all' ? (country as string) : 'global';
-        const cacheKey = `nearby:${parseFloat(lat as string)}_${parseFloat(lng as string)}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`;
+        const cacheKey = `nearby:${snappedLat}_${snappedLng}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`;
         
         const cachedResult = await CacheManager.get(cacheKey);
         if (cachedResult) {
@@ -327,7 +329,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         
         try {
           const candidateStations = await Station.find(queryFilter)
-            .select('name country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk')
+            .select('name slug country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets')
+            .limit(500)
             .lean(); 
           
           const stationsWithDistance = candidateStations
@@ -405,9 +408,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         if (excludeBroken === 'true') {
           filter.lastCheckOk = true;
         }
-        const allStations = await Station.find(filter).lean();
+        const countryStations = await Station.find(filter)
+          .select('name slug country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets')
+          .sort({ votes: -1 })
+          .limit(Math.min(Number(limit) * 3, 100))
+          .lean();
 
-        allStations.sort((a: any, b: any) => {
+        countryStations.sort((a: any, b: any) => {
           const aHasFavicon = a.favicon && a.favicon.trim() !== '' && a.favicon !== 'null' && a.favicon !== 'undefined';
           const bHasFavicon = b.favicon && b.favicon.trim() !== '' && b.favicon !== 'null' && b.favicon !== 'undefined';
           
@@ -417,7 +424,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           return (b.votes || 0) - (a.votes || 0);
         });
 
-        stations = allStations.slice(0, Number(limit));
+        stations = countryStations.slice(0, Number(limit));
         
       } else {
         return res.json([]);
