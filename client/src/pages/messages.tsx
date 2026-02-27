@@ -474,6 +474,24 @@ export default function MessagesPage() {
 
   // ─── Render ────────────────────────────────────────────────────────────────
 
+  useEffect(() => {
+    let startX = 0;
+    const handleTouchStart = (e: TouchEvent) => {
+      startX = e.touches[0].clientX;
+    };
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (mobileView === 'chat' && e.changedTouches[0].clientX - startX > 100) {
+        setMobileView('list');
+      }
+    };
+    document.addEventListener('touchstart', handleTouchStart);
+    document.addEventListener('touchend', handleTouchEnd);
+    return () => {
+      document.removeEventListener('touchstart', handleTouchStart);
+      document.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [mobileView]);
+
   return (
     <>
       <style>{`
@@ -484,7 +502,7 @@ export default function MessagesPage() {
       `}</style>
 
       <div
-        className="-mx-2 -my-8 md:-mx-8 flex"
+        className="-mx-2 -my-8 md:-mx-8 flex pb-12 md:pb-0"
         style={{ height: "calc(100vh - 70px)", overflow: "hidden" }}
       >
         {/* ── Left: conversation list ──
