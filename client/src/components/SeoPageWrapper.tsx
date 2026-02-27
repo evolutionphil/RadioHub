@@ -18,9 +18,19 @@ export function SeoPageWrapper({ children, pageType = 'home' }: SeoPageWrapperPr
   // This ensures the API returns SEO in the correct language
   const fullUrl = location;
   
-  const [seoTags, setSeoTags] = useState<SeoMetaTags>({
-    title: 'MegaRadio - Free Online Radio',
-    description: 'Listen to free online radio stations from around the world.'
+  // CRITICAL FIX: Initialize with server-preloaded title (already language-correct from htmlLangMiddleware)
+  // instead of hardcoded English 'MegaRadio - Free Online Radio' — this eliminates the window
+  // where analytics tools (Flowalive) or bots capture an English title on non-English pages.
+  const [seoTags, setSeoTags] = useState<SeoMetaTags>(() => {
+    const preTitle =
+      typeof window !== 'undefined' && window.__INITIAL_TRANSLATIONS__?.meta_title
+        ? window.__INITIAL_TRANSLATIONS__.meta_title
+        : 'MegaRadio - Free Online Radio';
+    const preDesc =
+      typeof window !== 'undefined' && window.__INITIAL_TRANSLATIONS__?.meta_description
+        ? window.__INITIAL_TRANSLATIONS__.meta_description
+        : 'Listen to free online radio stations from around the world.';
+    return { title: preTitle, description: preDesc };
   });
 
   // Fetch SEO data from server using FULL URL with country code

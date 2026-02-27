@@ -33,9 +33,22 @@ export function SeoHead({ stationData, pageType = 'home' }: SeoHeadProps) {
   const { language } = useTranslation();
 
   // Get translations for SEO
+  // CRITICAL FIX: Use server-preloaded translations as initialData so the correct language
+  // title is set IMMEDIATELY on first render — no more race condition where Flowalive/bots
+  // capture the English placeholder title before the API call resolves.
+  const preloadedForThisLang =
+    typeof window !== 'undefined' &&
+    window.__INITIAL_LANGUAGE__ === language &&
+    window.__INITIAL_TRANSLATIONS__ &&
+    Object.keys(window.__INITIAL_TRANSLATIONS__).length > 0
+      ? window.__INITIAL_TRANSLATIONS__
+      : undefined;
+
   const { data: translations } = useQuery<Record<string, string>>({
     queryKey: ["/api/translations", language],
     staleTime: 5 * 60 * 1000,
+    initialData: preloadedForThisLang,
+    initialDataUpdatedAt: preloadedForThisLang ? Date.now() : undefined,
   });
 
   useEffect(() => {
