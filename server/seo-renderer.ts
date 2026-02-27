@@ -125,8 +125,12 @@ export class SeoRenderer {
   }
   
   async renderStaticPage(url: string, domain: string = '', preferredLanguage?: string): Promise<StaticPageData> {
+    // CRITICAL SEO FIX: Strip query string before language detection
+    // Prevents /en?page=2 → canonical /en/en double-prefix bug
+    const cleanUrl = url.split('?')[0].split('#')[0];
+
     // Get language from URL path, but prefer user's stored preference if available
-    let { language, cleanPath } = getLanguageFromPath(url);
+    let { language, cleanPath } = getLanguageFromPath(cleanUrl);
     
     // CRITICAL: Language/Country separation
     // If user has a stored language preference (from cookie), use that instead of country-derived language
@@ -321,7 +325,7 @@ export class SeoRenderer {
     // Generate enhanced SEO tags with additional context
     // Pass localized path to use translated paths in canonical URL
     // Also pass urlTranslations map for hreflang tags with translated paths
-    let seoTags = this.generateEnhancedSeoTags(pageType, language, translations, cleanPath, domain, stationData, additionalData, url, localizedPath, urlTranslations);
+    let seoTags = this.generateEnhancedSeoTags(pageType, language, translations, cleanPath, domain, stationData, additionalData, cleanUrl, localizedPath, urlTranslations);
     
     // Check for custom SEO metadata from admin (database override)
     // Map internal pageTypes to database format
@@ -374,7 +378,7 @@ export class SeoRenderer {
       seoTags,
       translations,
       urlTranslations,
-      pageData: { pageType, station: stationData, seoTags, ...additionalData }
+      pageData: { pageType, station: stationData, seoTags, ...additionalData, additionalData }
     };
     
     // Cache the page data for future requests (using cacheKey that includes preferredLanguage)
@@ -400,8 +404,20 @@ export class SeoRenderer {
     // Also pass urlTranslations map for generating hreflang tags with translated paths
     const baseSeoTags = generateSeoTags(pageType, language, translations, cleanPath, domain, stationData, originalPath, translatedPath, urlTranslations);
     
-    // Helper to get translations from database
-    const getTranslation = (key: string): string => translations[key] || '';
+    // Helper to get translations from database — with English fallbacks for critical SEO keys
+    // These keys are often empty in non-English DB → without fallbacks titles become "Pop  -  | Mega Radio"
+    const SEO_KEY_FALLBACKS: Record<string, string> = {
+      seo_radio_stations: 'Radio Stations',
+      seo_listen_live_online: 'Listen Live Online',
+      seo_listen_to_live_radio_from: 'Listen to live radio from',
+      seo_discover_local: 'Discover local',
+      seo_music_and_shows: 'music and shows',
+      seo_radio_broadcasting_free: 'radio broadcasting for free',
+      seo_regional_broadcasting: 'Regional Broadcasting',
+      seo_explore_radio_stations_from: 'Explore radio stations from',
+      seo_listen_to_regional_broadcasting: 'Listen to regional broadcasting',
+    };
+    const getTranslation = (key: string): string => translations[key] || SEO_KEY_FALLBACKS[key] || '';
 
     // Enhance with more specific content based on page type and additional data
     // Same logic as before, but using database translations
@@ -744,6 +760,56 @@ export class SeoRenderer {
         `;
         break;
       
+      case 'genres':
+        {
+          const genreName = additionalData?.genreName || '';
+          const langPrefix = language === 'en' ? '' : `/${language}`;
+          content = `
+          <main>
+            <h1>${this.escapeHtml(h1Text)}</h1>
+            ${genreName ? `
+            <section>
+              <p>${this.escapeHtml(getLocalizedText('seo_listen_to_live_radio_from', 'Listen to live radio from'))} ${this.escapeHtml(genreName)}. ${this.escapeHtml(getLocalizedText('seo_discover_local', 'Discover local'))} ${this.escapeHtml(genreName)} ${this.escapeHtml(getLocalizedText('seo_music_and_shows', 'music and shows'))} ${this.escapeHtml(getLocalizedText('streaming_free', 'streaming for free on Mega Radio'))}.</p>
+              <p>${this.escapeHtml(getLocalizedText('hero_over_100_countries', 'Browse 60,000+ radio stations from 120+ countries'))} — ${this.escapeHtml(genreName)} ${this.escapeHtml(getLocalizedText('seo_radio_stations', 'Radio Stations'))} ${this.escapeHtml(getLocalizedText('streaming_available_24_7', 'available 24/7 for free streaming'))}.</p>
+            </section>` : ''}
+            <nav>
+              <ul>
+                <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>
+                <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
+                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+              </ul>
+            </nav>
+          </main>
+        `;
+        }
+        break;
+
+      case 'regions':
+        {
+          const regionName = additionalData?.regionName || additionalData?.country || additionalData?.region || '';
+          const langPrefix = language === 'en' ? '' : `/${language}`;
+          content = `
+          <main>
+            <h1>${this.escapeHtml(h1Text)}</h1>
+            ${regionName ? `
+            <section>
+              <p>${this.escapeHtml(getLocalizedText('seo_explore_radio_stations_from', 'Explore radio stations from'))} ${this.escapeHtml(regionName)}. ${this.escapeHtml(getLocalizedText('seo_listen_to_regional_broadcasting', 'Listen to regional broadcasting'))} ${this.escapeHtml(getLocalizedText('streaming_free', 'for free on Mega Radio'))}.</p>
+              <p>${this.escapeHtml(getLocalizedText('hero_over_100_countries', 'Browse 60,000+ radio stations from 120+ countries'))} — ${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('seo_radio_stations', 'Radio Stations'))} ${this.escapeHtml(getLocalizedText('streaming_available_24_7', 'available 24/7'))}.</p>
+            </section>` : ''}
+            <nav>
+              <ul>
+                <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'All Regions'))}</a></li>
+                <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
+                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+              </ul>
+            </nav>
+          </main>
+        `;
+        }
+        break;
+
       default:
         content = `
           <main>
@@ -844,7 +910,7 @@ export class SeoRenderer {
           "@type": "ListItem",
           "position": 1,
           "name": getLocalizedText('nav_home', 'Home'),
-          "item": baseDomain + (language === 'en' ? '/' : `/${language}/`)
+          "item": baseDomain + `/${language}/`
         }
       ];
 
@@ -864,7 +930,7 @@ export class SeoRenderer {
             "@type": "ListItem",
             "position": breadcrumbItems.length + 1,
             "name": name,
-            "item": baseDomain + (language === 'en' ? '' : `/${language}`) + currentPath
+            "item": baseDomain + `/${language}` + currentPath
           });
         } else if (segment !== 'stations' && segment !== 'station') {
           // Use translated names for main navigation
@@ -874,7 +940,7 @@ export class SeoRenderer {
             "@type": "ListItem",
             "position": breadcrumbItems.length + 1,
             "name": displayName,
-            "item": baseDomain + (language === 'en' ? '' : `/${language}`) + currentPath
+            "item": baseDomain + `/${language}` + currentPath
           });
         }
       }
@@ -899,7 +965,7 @@ export class SeoRenderer {
             "@type": "ListItem",
             "position": idx + 2,
             "name": getLocalizedText('nav_stations', 'Stations'),
-            "item": baseDomain + (language === 'en' ? '/stations' : `/${language}/${stationSegment}`)
+            "item": baseDomain + `/${language}/${stationSegment}`
           });
         }
       }

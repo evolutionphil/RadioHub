@@ -550,7 +550,7 @@ app.use((req, res, next) => {
     // Non-Latin: Chinese (电台), Japanese (ステーション), Korean (라디오/스테이션), Arabic (محطات), etc.
     const isStationPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/)?(?:stations?|istasyons?|istasyonlar|senders?|staziones?|stazioni|estacions?|estaciones|estaçoes?|estacoes?|mahtas?|mahtat|stansiya|stansiyas?|stantsiya|stantsii|radiostations?|radyo-istasyonu|taçhana|tachana|tachanot|stacja|stacje|stanice|statie|statii|stanica|stanice|stacija|stacijas|stotis|stotys|jaam|jaamad|postaja|postaje|asema|asemat|stasjon|stasjoner|stasiun|stasiun-stasiun|dai|stesen|stasie|stasies|radio|isiteshi|nilayam|steshan|stesheni|ραδιόφωνο|σταθμος|σταθμοι|станція|станции|ստdelays|ステーション|라디오|스테이션|电台|電台|محطات|محطة|اسٹیشن|ایستگاه|স্টেশন|સ્ટેશન|ஸ்டேஷன்|நிலையம்|స్టేషన్|ನಿಲ್ದಾಣ|സ്റ്റേഷൻ|ราดียว|สถานี)\//u);
     const isHomepage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?$/);
-    const isRegionsPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:regions|bolgeler|regionen|regioni|regioes|regiones|manatiq|regionlar|regioni)\/?$/u);
+    const isRegionsPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:regions|bolgeler|regionen|regioni|regioes|regiones|manatiq|regionlar|regioni)(\/.*)?$/u);
     const isGenresPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:genres|turler|zhanroves|anwaa|janrlar|zhanroves|genres|generos|generi|generos|anwaa)\/?/u);
     const isAboutPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:about|hakkinda|uber|sobre|a-propos|chi-siamo|an|haqqinda|za-nas)\/?/u);
     const isContactPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:contact|iletisim|kontakt|contacto|contatto|ittisal|elaqe|kontakti)\/?/u);

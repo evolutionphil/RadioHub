@@ -1,0 +1,278 @@
+📋 Backend Developer İçin CarPlay Log API Spesifikasyonu
+
+1. Mevcut Durum
+Şu an var olan endpoint:
+
+POST /api/logs/remote
+Frontend'den gelen data formatı:
+
+{
+  "logs": [
+    {
+      "level": "info",
+      "message": "CarPlay CONNECTED",
+      "timestamp": "2024-01-15T10:30:01Z",
+      "data": { "templateCount": 4 }
+    }
+  ],
+  "deviceId": "ios_1234567890",
+  "appVersion": "1.0.26",
+  "buildNumber": "9",
+  "platform": "ios"
+}
+2. Eklenmesi Gereken Endpoint'ler
+2.1. GET /api/logs/remote
+Amaç: Kayıtlı logları listelemek
+
+Query Parameters:
+
+Param	Type	Default	Açıklama
+limit	int	50	Max kayıt sayısı
+platform	string	-	Filtre: ios, android
+level	string	-	Filtre: info, warn, error, debug
+search	string	-	Mesaj içinde arama
+deviceId	string	-	Belirli cihazın logları
+from	datetime	-	Başlangıç tarihi
+to	datetime	-	Bitiş tarihi
+Response:
+
+{
+  "success": true,
+  "count": 25,
+  "logs": [
+    {
+      "id": "65abc123...",
+      "deviceId": "ios_1234567890",
+      "platform": "ios",
+      "appVersion": "1.0.26",
+      "logs": [
+        {
+          "level": "info",
+          "message": "🚗 CarPlay CONNECTED",
+          "timestamp": "2024-01-15T10:30:01Z",
+          "data": {}
+        }
+      ],
+      "createdAt": "2024-01-15T10:30:05Z"
+    }
+  ]
+}
+2.2. GET /api/logs/remote/stats
+Amaç: Log istatistikleri
+
+Response:
+
+{
+  "success": true,
+  "stats": {
+    "total": 1520,
+    "today": 45,
+    "byLevel": {
+      "info": 1200,
+      "warn": 250,
+      "error": 70
+    },
+    "byPlatform": {
+      "ios": 980,
+      "android": 540
+    },
+    "carplayEvents": {
+      "connected": 89,
+      "disconnected": 87,
+      "templateCreated": 356,
+      "errors": 12
+    }
+  }
+}
+2.3. DELETE /api/logs/remote
+Amaç: Eski logları temizlemek
+
+Query Parameters:
+
+Param	Type	Açıklama
+olderThan	int	X günden eski logları sil
+Response:
+
+{
+  "success": true,
+  "deletedCount": 523,
+  "message": "Logs older than 30 days deleted"
+}
+3. CarPlay Özel Log Mesajları
+Frontend'den gelecek CarPlay logları şu formatta olacak:
+
+Mesaj	Level	Açıklama
+🚗 CarPlay CONNECTED	info	CarPlay bağlandı
+🚗 CarPlay DISCONNECTED	info	CarPlay ayrıldı
+📋 Template created: TabBar	info	Template oluşturuldu
+📋 Template created: Browse/Keşfet	info	Browse tab oluşturuldu
+📋 Template created: Favorites/Favoriler	info	Favoriler tab oluşturuldu
+❌ Template error: Browse	error	Template hatası
+🎵 Station selected: Radio Name	info	İstasyon seçildi
+▶️ Playback started: Radio Name	info	Oynatma başladı
+⏹️ Playback error	error	Oynatma hatası
+4. MongoDB Collection Yapısı
+Collection: remote_logs
+
+{
+  _id: ObjectId,
+  deviceId: String,
+  platform: String,        // "ios" | "android"
+  appVersion: String,
+  buildNumber: String,
+  logs: [
+    {
+      level: String,       // "info" | "warn" | "error" | "debug"
+      message: String,
+      timestamp: String,
+      data: Object         // Opsiyonel ek veri
+    }
+  ],
+  createdAt: Date,
+  
+  // CarPlay analizi için index'ler
+  isCarPlayLog: Boolean,   // logs içinde "CarPlay" geçiyorsa true
+}
+Önerilen Index'ler:
+
+db.remote_logs.createIndex({ createdAt: -1 })
+db.remote_logs.createIndex({ platform: 1, createdAt: -1 })
+db.remote_logs.createIndex({ deviceId: 1, createdAt: -1 })
+db.remote_logs.createIndex({ "logs.level": 1 })
+db.remote_logs.createIndex({ "logs.message": "text" })  // Full-text search
+5. Örnek Python/FastAPI Implementasyonu
+from fastapi import APIRouter, Query
+from datetime import datetime, timedelta
+from typing import Optional
+
+router = APIRouter(prefix="/api/logs")
+
+@router.get("/remote")
+async def get_remote_logs(
+    limit: int = Query(50, le=500),
+    platform: Optional[str] = None,
+    level: Optional[str] = None,
+    search: Optional[str] = None,
+    deviceId: Optional[str] = None,
+    from_date: Optional[datetime] = None,
+    to_date: Optional[datetime] = None,
+):
+    query = {}
+    
+    if platform:
+        query["platform"] = platform
+    if deviceId:
+        query["deviceId"] = deviceId
+    if level:
+        query["logs.level"] = level
+    if search:
+        query["logs.message"] = {"$regex": search, "$options": "i"}
+    if from_date or to_date:
+        query["createdAt"] = {}
+        if from_date:
+            query["createdAt"]["$gte"] = from_date
+        if to_date:
+            query["createdAt"]["$lte"] = to_date
+    
+    logs = await db.remote_logs.find(
+        query,
+        {"_id": 0}
+    ).sort("createdAt", -1).limit(limit).to_list(limit)
+    
+    return {
+        "success": True,
+        "count": len(logs),
+        "logs": logs
+    }
+
+
+@router.get("/remote/stats")
+async def get_log_stats():
+    today = datetime.utcnow().replace(hour=0, minute=0, second=0)
+    
+    pipeline = [
+        {
+            "$facet": {
+                "total": [{"$count": "count"}],
+                "today": [
+                    {"$match": {"createdAt": {"$gte": today}}},
+                    {"$count": "count"}
+                ],
+                "byPlatform": [
+                    {"$group": {"_id": "$platform", "count": {"$sum": 1}}}
+                ],
+                "byLevel": [
+                    {"$unwind": "$logs"},
+                    {"$group": {"_id": "$logs.level", "count": {"$sum": 1}}}
+                ],
+                "carplayConnected": [
+                    {"$unwind": "$logs"},
+                    {"$match": {"logs.message": {"$regex": "CarPlay CONNECTED"}}},
+                    {"$count": "count"}
+                ],
+                "carplayErrors": [
+                    {"$unwind": "$logs"},
+                    {"$match": {
+                        "logs.message": {"$regex": "CarPlay|Template"},
+                        "logs.level": "error"
+                    }},
+                    {"$count": "count"}
+                ]
+            }
+        }
+    ]
+    
+    result = await db.remote_logs.aggregate(pipeline).to_list(1)
+    # ... format and return stats
+
+
+@router.delete("/remote")
+async def clear_old_logs(older_than_days: int = Query(30, ge=1)):
+    cutoff = datetime.utcnow() - timedelta(days=older_than_days)
+    result = await db.remote_logs.delete_many({"createdAt": {"$lt": cutoff}})
+    
+    return {
+        "success": True,
+        "deletedCount": result.deleted_count,
+        "message": f"Logs older than {older_than_days} days deleted"
+    }
+6. Test Curl Komutları
+# Tüm logları getir
+curl "https://themegaradio.com/api/logs/remote?limit=20" \
+  -H "X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw"
+
+# Sadece iOS CarPlay logları
+curl "https://themegaradio.com/api/logs/remote?platform=ios&search=CarPlay" \
+  -H "X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw"
+
+# Sadece hatalar
+curl "https://themegaradio.com/api/logs/remote?level=error" \
+  -H "X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw"
+
+# İstatistikler
+curl "https://themegaradio.com/api/logs/remote/stats" \
+  -H "X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw"
+
+# 30 günden eski logları sil
+curl -X DELETE "https://themegaradio.com/api/logs/remote?older_than_days=30" \
+  -H "X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw"
+7. Frontend Hazır ✅
+CarPlay logları frontend'de zaten hazır. carPlayService.ts dosyasında:
+
+import CarPlayLogger from './carPlayLogService';
+
+// Bağlantı olayları
+CarPlayLogger.connected();
+CarPlayLogger.disconnected();
+
+// Template olayları
+CarPlayLogger.templateCreated('TabBar', { tabCount: 4 });
+CarPlayLogger.templateError('Browse', error);
+
+// Oynatma olayları
+CarPlayLogger.stationSelected('Power FM', 'station_123');
+CarPlayLogger.playbackStarted('Power FM');
+CarPlayLogger.playbackError(error);
+Loglar otomatik olarak POST /api/logs/remote adresine gönderilecek.
+
+Bu dökümanı backend developer'a ilet. Endpoint'ler hazır olunca CarPlay loglarını hemen görebileceksiniz! 🚀
