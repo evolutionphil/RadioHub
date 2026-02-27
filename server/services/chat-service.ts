@@ -11,6 +11,9 @@ class ChatService {
   // userId → Set of WebSocket clients (user can have multiple tabs/devices)
   private clients = new Map<string, Set<ChatClient>>();
 
+  // userId → partnerId they are currently viewing (null = not in chat)
+  private activeConversations = new Map<string, string>();
+
   /** Register a new WebSocket connection for a user */
   addClient(userId: string, ws: WebSocket): ChatClient {
     const client: ChatClient = { ws, userId, connectedAt: new Date() };
@@ -29,9 +32,24 @@ class ChatService {
       set.delete(client);
       if (set.size === 0) {
         this.clients.delete(userId);
+        this.activeConversations.delete(userId);
         logger.log(`💬 CHAT: User ${userId} disconnected (all tabs closed)`);
       }
     }
+  }
+
+  /** Track which conversation a user is actively viewing */
+  setActiveConversation(userId: string, partnerId: string | null) {
+    if (partnerId) {
+      this.activeConversations.set(userId, partnerId);
+    } else {
+      this.activeConversations.delete(userId);
+    }
+  }
+
+  /** Get the partnerId a user is currently viewing, or null */
+  getActiveConversation(userId: string): string | null {
+    return this.activeConversations.get(userId) ?? null;
   }
 
   /** Check if a user is online */

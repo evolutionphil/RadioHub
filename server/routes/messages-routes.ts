@@ -289,21 +289,31 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
       chatService.sendToUser(targetId.toString(), wsPayload);
       chatService.sendToUser(fromUserId, { ...wsPayload, echo: true });
 
-      try {
-        await UserNotification.create({
-          userId: targetId,
-          type: "new_message",
-          fromUserId: fromObjId,
-          title: "Yeni mesaj",
-          message: `${sender?.fullName || sender?.username || "Someone"} size mesaj yazdı`,
-          read: false,
-        });
-        chatService.sendToUser(targetId.toString(), {
-          type: "notification:new_message",
-          fromUser: { _id: fromUserId, username: sender?.username, fullName: sender?.fullName, avatar: sender?.avatar || sender?.profileImageUrl },
-          preview: content.trim().substring(0, 60),
-        });
-      } catch {}
+      // Only notify if recipient is NOT currently viewing this conversation
+      const recipientActiveWith = chatService.getActiveConversation(targetId.toString());
+      const isViewingConversation = recipientActiveWith === fromUserId;
+
+      if (!isViewingConversation) {
+        try {
+          // Upsert: one unread notification per sender (10 messages → 1 notification)
+          await UserNotification.findOneAndUpdate(
+            { userId: targetId, type: "new_message", fromUserId: fromObjId, read: false },
+            {
+              $set: {
+                title: "Yeni mesaj",
+                message: `${sender?.fullName || sender?.username || "Someone"} size mesaj yazdı`,
+              },
+              $setOnInsert: { createdAt: new Date() },
+            },
+            { upsert: true }
+          );
+          chatService.sendToUser(targetId.toString(), {
+            type: "notification:new_message",
+            fromUser: { _id: fromUserId, username: sender?.username, fullName: sender?.fullName, avatar: sender?.avatar || sender?.profileImageUrl },
+            preview: content.trim().substring(0, 60),
+          });
+        } catch {}
+      }
 
       res.json({ success: true, message });
     } catch (error) {
@@ -424,6 +434,28 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             break;
           }
 
+          case "chat:active": {
+            // User opened/closed a conversation — track it to suppress duplicate notifications
+            const withId = msg.withUserId || null;
+            chatService.setActiveConversation(userId, withId);
+
+            // Immediately mark any pending notifications from that partner as read
+            if (withId) {
+              try {
+                await UserNotification.updateMany(
+                  {
+                    userId: new mongoose.Types.ObjectId(userId),
+                    type: "new_message",
+                    fromUserId: new mongoose.Types.ObjectId(withId),
+                    read: false,
+                  },
+                  { $set: { read: true } }
+                );
+              } catch {}
+            }
+            break;
+          }
+
           case "chat:ping": {
             socket.send(JSON.stringify({ type: "chat:pong" }));
             break;
@@ -435,6 +467,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     });
 
     socket.on("close", () => {
+      chatService.setActiveConversation(userId, null);
       chatService.removeClient(userId, client);
       if (!chatService.isOnline(userId)) {
         broadcastOnlineStatus(userId, false);

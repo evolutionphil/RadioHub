@@ -223,8 +223,13 @@ export default function MessagesPage() {
 
   // When opening a conversation, invalidate notifications (server marks them read on fetch)
   useEffect(() => {
+    setLocalMsgs([]);
+    // Tell server which conversation we're viewing so it skips notifications for active chats
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "chat:active", withUserId: activeId || null }));
+    }
     if (activeId) {
-      setLocalMsgs([]);
       setTimeout(() => qc.invalidateQueries({ queryKey: ["/api/user/notifications"] }), 800);
     }
   }, [activeId, qc]);
@@ -353,6 +358,10 @@ export default function MessagesPage() {
           hbInterval.current = setInterval(() => {
             if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "chat:ping" }));
           }, 25_000);
+          // Tell server which conversation we're already viewing (in case WS reconnected)
+          if (activeIdRef.current) {
+            ws.send(JSON.stringify({ type: "chat:active", withUserId: activeIdRef.current }));
+          }
         };
 
         ws.onclose = () => {
