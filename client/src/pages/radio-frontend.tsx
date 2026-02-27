@@ -1124,9 +1124,6 @@ export default function RadioFrontend({
           
           <div className="m-auto text-white space-y-8">
 
-            {/* Hidden SEO heading for genres section */}
-            <h3 className="sr-only">{t('seo_browse_genres', 'Browse Radio Stations by Music Genre')}</h3>
-            
             {/* 1. GENRES SECTION - EXACT from index.vue */}
             <div className="container">
               <div className="flex justify-between items-center pb-4">
@@ -1220,9 +1217,6 @@ export default function RadioFrontend({
             {/* 1.5. RECENTLY PLAYED STATIONS - Show only if user has played stations */}
             <RecentlyPlayedSection onPlay={handlePlay} />
 
-            {/* Hidden SEO heading for popular stations */}
-            <h3 className="sr-only">{t('seo_popular_stations', 'Most Popular Radio Stations - Top Rated by Listeners')}</h3>
-
             {/* 2. POPULAR STATIONS - Reserve space with min-height to prevent CLS */}
             <InView rootMargin="150px">
               {(inView) => (
@@ -1266,9 +1260,6 @@ export default function RadioFrontend({
               </div>
             )}
           </InView>
-
-            {/* Hidden SEO heading for nearby stations */}
-            <h3 className="sr-only">{t('seo_local_stations', 'Local Radio Stations Near Your Location')}</h3>
 
             {/* 3. STATIONS NEAR YOU SECTION */}
             {shouldShowNearbyStations && (nearbyStationsData as any)?.stations?.length > 0 && (
@@ -1333,9 +1324,6 @@ export default function RadioFrontend({
               zIndex: 0
             }} aria-hidden="true" />
 
-            {/* Hidden SEO heading for discoverable genres */}
-            <h3 className="sr-only">{t('seo_discover_genres', 'Discover New Music Genres - Curated Radio Collections')}</h3>
-
             {/* 4. DISCOVERABLE GENRE SLIDER SECTION - LAZY LOADED FOR TBT OPTIMIZATION */}
             <InView rootMargin="200px">
               {(inView) => inView ? (
@@ -1379,9 +1367,6 @@ export default function RadioFrontend({
               )}
             </InView>
 
-            {/* Hidden SEO heading for community favorites */}
-            <h3 className="sr-only">{t('seo_community_favorites', 'Community Radio Favorites - User Curated Station Collections')}</h3>
-
             {/* 5. FAVORITES FROM USERS SECTION - LAZY LOADED FOR TBT OPTIMIZATION */}
             <InView rootMargin="200px">
               {(inView) => inView ? (
@@ -1412,9 +1397,6 @@ export default function RadioFrontend({
                 </div>
               )}
             </InView>
-
-            {/* Hidden SEO heading for all stations */}
-            <h3 className="sr-only">{t('seo_all_stations', 'Complete Directory of All Radio Stations Worldwide')}</h3>
 
             {/* 6. ALL STATIONS SECTION - EXACT from AllStations.vue */}
             <div className="container relative">

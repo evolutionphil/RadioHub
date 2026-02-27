@@ -676,15 +676,7 @@ export class SeoRenderer {
             <h1>${this.escapeHtml(h1Text)}</h1>
             ${stationData ? `
               <div class="station-info">
-                <!-- Introduction Section -->
-                <p>
-                  ${this.escapeHtml(stationData.name)} is a premium online radio station available for free streaming on Mega Radio. 
-                  Listen to ${this.escapeHtml(stationData.name)} live 24/7 from anywhere in the world with crystal-clear audio quality. 
-                  ${stationData.country ? `Broadcasting from ${this.escapeHtml(stationData.country)}, ` : ''}
-                  ${this.escapeHtml(stationData.name)} offers an exceptional listening experience for radio enthusiasts worldwide.
-                </p>
-                
-                <!-- Main Description -->
+                <!-- AI-Generated Description (unique per station) -->
                 <h2>${this.escapeHtml(getLocalizedText('about_station', 'About ' + stationData.name))}</h2>
                 ${stationData.descriptions && stationData.descriptions[language] ? (() => {
                   const desc = stationData.descriptions[language];
@@ -694,23 +686,18 @@ export class SeoRenderer {
                   } else if (typeof desc === 'string') {
                     fullText = desc;
                   }
-                  // Strip ALL bracketed placeholders comprehensively
-                  // Remove [TRANSLATED FULL DESCRIPTION], [TRANSLATED META...], [FULL DESCRIPTION...], etc.
                   fullText = fullText
-                    .replace(/^\s*\[TRANSLATED\s+FULL\s+DESCRIPTION\]\s*/i, '')  // Remove [TRANSLATED FULL DESCRIPTION]
-                    .replace(/^\s*\[TRANSLATED\s+META[^\]]*\]\s*/i, '')  // Remove [TRANSLATED META...]
-                    .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')  // Remove [FULL DESCRIPTION...]
-                    .replace(/^\s*\[[^\]]*DESCRIPTION[^\]]*\]\s*/i, '')  // Remove any bracketed description placeholder
-                    .replace(/^\s*\[[^\]]*\]\s*/g, '')  // Final: Remove any remaining bracketed text at start
+                    .replace(/^\s*\[TRANSLATED\s+FULL\s+DESCRIPTION\]\s*/i, '')
+                    .replace(/^\s*\[TRANSLATED\s+META[^\]]*\]\s*/i, '')
+                    .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')
+                    .replace(/^\s*\[[^\]]*DESCRIPTION[^\]]*\]\s*/i, '')
+                    .replace(/^\s*\[[^\]]*\]\s*/g, '')
                     .replace(/\{STATION_NAME\}/g, stationData.name)
                     .trim();
-                  
-                  // Split into paragraphs if it's a long description
                   if (fullText && fullText.length > 300) {
                     const sentences = fullText.match(/[^.!?]+[.!?]+/g) || [fullText];
                     const paragraphs = [];
                     let currentParagraph = '';
-                    
                     for (const sentence of sentences) {
                       currentParagraph += sentence;
                       if (currentParagraph.length > 400) {
@@ -721,7 +708,6 @@ export class SeoRenderer {
                     if (currentParagraph.trim()) {
                       paragraphs.push(currentParagraph.trim());
                     }
-                    
                     return paragraphs.map(p => '<p>' + this.escapeHtml(p) + '</p>').join('');
                   } else if (fullText) {
                     return '<p>' + this.escapeHtml(fullText) + '</p>';
@@ -729,168 +715,29 @@ export class SeoRenderer {
                   return '';
                 })() : (stationData.description ? `<p>${this.escapeHtml(stationData.description)}</p>` : '')}
                 
-                <!-- Station Details Section -->
+                <!-- Station Details -->
                 <section class="station-details">
                   <h2>${this.escapeHtml(getLocalizedText('station_information', 'Station Information'))}</h2>
-                  
                   ${stationData.country ? `
-                  <p>
-                    <strong>${this.escapeHtml(getLocalizedText('country', 'Country'))}:</strong> 
-                    ${this.escapeHtml(stationData.country)}
-                  </p>
+                  <p><strong>${this.escapeHtml(getLocalizedText('country', 'Country'))}:</strong> ${this.escapeHtml(stationData.country)}</p>
                   ` : ''}
-                  
                   ${stationData.tags ? `
-                  <p>
-                    <strong>${this.escapeHtml(getLocalizedText('genres', 'Genres'))}:</strong> 
-                    ${stationData.tags.split(',').slice(0, 8).map((tag: string) => this.escapeHtml(tag.trim())).join(', ')}
-                  </p>
+                  <p><strong>${this.escapeHtml(getLocalizedText('genres', 'Genres'))}:</strong> ${stationData.tags.split(',').slice(0, 6).map((tag: string) => this.escapeHtml(tag.trim())).join(', ')}</p>
                   ` : ''}
-                  
                   ${stationData.url ? `
-                  <p>
-                    <strong>${this.escapeHtml(getLocalizedText('website', 'Official Website'))}:</strong> 
-                    <a href="${this.escapeHtml(stationData.url)}" target="_blank" rel="noopener noreferrer">${this.escapeHtml(stationData.url)}</a>
-                  </p>
+                  <p><strong>${this.escapeHtml(getLocalizedText('website', 'Official Website'))}:</strong> <a href="${this.escapeHtml(stationData.url)}" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(stationData.url)}</a></p>
                   ` : ''}
                 </section>
                 
-                <!-- Why Listen Section - Adds keyword relevance and content -->
-                <section class="why-listen">
-                  <h2>${this.escapeHtml(getLocalizedText('why_listen', 'Why Listen to ' + stationData.name))}</h2>
-                  <p>
-                    ${this.escapeHtml(stationData.name)} delivers premium streaming quality with minimal buffering and interruptions. 
-                    Whether you're commuting, working, or relaxing at home, ${this.escapeHtml(stationData.name)} provides non-stop entertainment with a carefully curated playlist. 
-                    The station's expert DJs bring energy and personality to every broadcast, creating an engaging listening experience. 
-                    With ${this.escapeHtml(stationData.name)}, you get professional radio station quality without subscription fees - completely free to stream.
-                  </p>
-                  <p>
-                    Listeners choose ${this.escapeHtml(stationData.name)} for its consistent broadcasting schedule and reliable audio quality. 
-                    The station maintains high technical standards to ensure smooth streaming across all devices and internet speeds. 
-                    From early morning wake-up playlists to evening wind-down music, ${this.escapeHtml(stationData.name)} adapts its programming to your daily rhythm. 
-                    Thousands of listeners worldwide have made ${this.escapeHtml(stationData.name)} their favorite go-to station for music and entertainment.
-                  </p>
-                  <p>
-                    The convenience of accessing ${this.escapeHtml(stationData.name)} cannot be overstated. 
-                    No registration required, no account creation, no hidden fees. Simply visit Mega Radio, search for ${this.escapeHtml(stationData.name)}, and start listening instantly. 
-                    The platform remembers your preferences and continues improving your listening experience the more you tune in. 
-                    Experience why millions of radio enthusiasts trust ${this.escapeHtml(stationData.name)} for their daily entertainment needs.
-                  </p>
-                </section>
-                
-                <!-- Music Programming Section -->
-                <section class="music-programming">
-                  <h2>${this.escapeHtml(getLocalizedText('music_programming', 'Music and Programming'))}</h2>
-                  <p>
-                    ${stationData.tags ? `${this.escapeHtml(stationData.name)} specializes in ${stationData.tags.split(',').slice(0, 3).map((tag: string) => tag.trim().toLowerCase()).join(', ')} music. ` : ''}
-                    The station features a mix of current hits, timeless classics, and emerging artists. 
-                    Programming includes themed hours, exclusive mixes, and live DJ commentary that keeps the listening experience fresh and engaging. 
-                    Whether you're a dedicated fan or casual listener, ${this.escapeHtml(stationData.name)} has something for everyone.
-                  </p>
-                  <p>
-                    The music selection on ${this.escapeHtml(stationData.name)} is carefully curated by experienced broadcasters who understand what listeners want. 
-                    Each day brings new surprises with exclusive tracks, remix debuts, and artist spotlights. 
-                    The station balances popular mainstream music with deeper cuts from the catalog, ensuring there's always something fresh to discover. 
-                    Regular listeners develop a deep appreciation for ${this.escapeHtml(stationData.name)}'s thoughtful approach to music programming.
-                  </p>
-                  <p>
-                    Special programming blocks throughout the week feature different themes and genres. 
-                    Morning shows energize listeners with upbeat selections, while afternoon slots offer a mellower vibe for work or study. 
-                    Evening programs transition to relaxing music perfect for unwinding after a long day. 
-                    This varied programming structure ensures ${this.escapeHtml(stationData.name)} remains entertaining and relevant throughout the entire day.
-                  </p>
-                </section>
-                
-                <!-- Community and DJs Section -->
-                <section class="community">
-                  <h2>${this.escapeHtml(getLocalizedText('community', 'Community and DJ Interaction'))}</h2>
-                  <p>
-                    ${this.escapeHtml(stationData.name)} fosters a vibrant community of music enthusiasts from across ${stationData.country || 'the world'}. 
-                    Talented DJs bring their personality and expertise to every broadcast, creating entertaining shows that listeners look forward to. 
-                    Many listeners tune in regularly to ${this.escapeHtml(stationData.name)} for the DJ's unique commentary, song selections, and listener interactions. 
-                    The station serves as a gathering place for people who share passion for quality radio entertainment and music discovery.
-                  </p>
-                  <p>
-                    The DJs at ${this.escapeHtml(stationData.name)} are industry professionals with deep knowledge of music history and current trends. 
-                    They share interesting facts about songs, artists, and the stories behind popular tracks during their broadcasts. 
-                    This educational aspect of ${this.escapeHtml(stationData.name)} transforms casual listening into a richer music appreciation experience. 
-                    Listeners often discover new favorite artists and songs through the DJ's insightful recommendations and commentary.
-                  </p>
-                  <p>
-                    Community engagement is central to ${this.escapeHtml(stationData.name)}'s mission and identity. 
-                    The station regularly features listener requests, shout-outs, and interactive segments that make each broadcast unique. 
-                    Being part of the ${this.escapeHtml(stationData.name)} community means having your voice heard and your preferences valued. 
-                    This interactive approach creates loyal listeners who feel personally connected to the station and its programming.
-                  </p>
-                </section>
-                
-                <!-- How to Listen Section -->
-                <section class="how-to-listen">
-                  <h2>${this.escapeHtml(getLocalizedText('how_to_listen', 'How to Listen to ' + stationData.name))}</h2>
-                  <p>
-                    ${this.escapeHtml(stationData.name)} can be enjoyed on multiple devices and platforms. 
-                    Access ${this.escapeHtml(stationData.name)} through:
-                  </p>
-                  <ul>
-                    <li><strong>${this.escapeHtml(getLocalizedText('listen_web', 'Web Browser'))}</strong> - Open Mega Radio website and start streaming instantly</li>
-                    <li><strong>${this.escapeHtml(getLocalizedText('listen_mobile', 'Mobile Apps'))}</strong> - Download our iOS and Android apps for on-the-go listening</li>
-                    <li><strong>${this.escapeHtml(getLocalizedText('listen_tablet', 'Tablets'))}</strong> - Stream ${this.escapeHtml(stationData.name)} on iPad, Android tablets, and other devices</li>
-                    <li><strong>${this.escapeHtml(getLocalizedText('listen_smartspeaker', 'Smart Speakers'))}</strong> - Compatible with voice-activated smart home audio systems</li>
-                  </ul>
-                  <p>
-                    No subscription required. No installation needed. Simply click play and start listening to ${this.escapeHtml(stationData.name)} immediately.
-                  </p>
-                  <p>
-                    The listening process is straightforward and intuitive for users of all technical levels. 
-                    Navigate to the ${this.escapeHtml(stationData.name)} station page on Mega Radio, and click the play button to begin streaming. 
-                    The platform automatically adjusts streaming quality based on your internet connection speed. 
-                    Whether you have high-speed broadband or a modest mobile connection, ${this.escapeHtml(stationData.name)} continues playing smoothly.
-                  </p>
-                  <p>
-                    Personalization features allow you to customize your ${this.escapeHtml(stationData.name)} experience. 
-                    Add the station to your favorites list, set up notifications for special broadcasts, and keep track of your listening history. 
-                    Mega Radio learns your preferences and recommends similar stations you might enjoy. 
-                    Over time, your account becomes a personalized radio experience tailored specifically to your musical tastes.
-                  </p>
-                </section>
-                
-                <!-- Streaming Quality Section -->
-                <section class="streaming-quality">
-                  <h2>${this.escapeHtml(getLocalizedText('streaming_quality', 'Premium Streaming Quality'))}</h2>
-                  <p>
-                    Mega Radio delivers ${this.escapeHtml(stationData.name)} with high-quality audio streaming technology. 
-                    Our advanced streaming infrastructure ensures stable connections with minimal latency and buffering issues. 
-                    The platform supports both WiFi and mobile data connections, adapting quality based on your bandwidth for the best listening experience possible. 
-                    Stream ${this.escapeHtml(stationData.name)} with confidence knowing you're getting professional-grade radio station audio quality.
-                  </p>
-                  <p>
-                    Technical excellence is a cornerstone of the ${this.escapeHtml(stationData.name)} listening experience. 
-                    The station broadcasts with reliable bitrates that maintain audio clarity across diverse listening conditions. 
-                    Our servers use geographically distributed infrastructure to minimize lag and provide seamless streaming worldwide. 
-                    Whether it's peak listening hours or off-peak times, ${this.escapeHtml(stationData.name)} maintains consistent broadcast quality.
-                  </p>
-                  <p>
-                    Advanced compression algorithms and adaptive streaming technology optimize ${this.escapeHtml(stationData.name)} for every internet speed. 
-                    Users with limited bandwidth can enjoy the station without interruptions, while those with fast connections receive premium audio quality. 
-                    The platform automatically detects connection changes and adjusts quality in real-time. 
-                    This sophisticated technology ensures that your experience listening to ${this.escapeHtml(stationData.name)} remains uninterrupted regardless of network conditions.
-                  </p>
-                </section>
-                
-                <!-- Explore Section -->
-                <section class="explore-more">
-                  <h2>${this.escapeHtml(getLocalizedText('explore_mega_radio', 'Explore More on Mega Radio'))}</h2>
-                  <p>
-                    Discover more radio stations and content on Mega Radio. ${this.escapeHtml(stationData.name)} is just one of thousands of premium stations available on our platform. 
-                    Explore different genres, discover stations from various countries, and build your personalized radio experience with Mega Radio.
-                  </p>
+                <!-- Navigation -->
+                <nav class="explore-nav">
                   <ul>
                     <li><a href="/${language === 'en' ? '' : language + '/'}genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse All Radio Genres'))}</a></li>
                     <li><a href="/${language === 'en' ? '' : language + '/'}regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio Stations by Country'))}</a></li>
                     <li><a href="/${language === 'en' ? '' : language + '/'}stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Explore All Stations'))}</a></li>
-                    <li><a href="/${language === 'en' ? '' : language + '/'}">${this.escapeHtml(getLocalizedText('nav_home', 'Return to Home'))}</a></li>
+                    <li><a href="/${language === 'en' ? '' : language + '/'}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                   </ul>
-                </section>
+                </nav>
               </div>
             ` : ''}
           </main>

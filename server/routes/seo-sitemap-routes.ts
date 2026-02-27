@@ -303,27 +303,14 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any) {
   // Robots.txt generator
   app.get("/robots.txt", async (req, res) => {
     const baseUrl = getBaseUrl(req);
-    
-    let robots = `User-agent: *
+    const robots = `User-agent: *
 Allow: /
 
-# Sitemaps
-Sitemap: ${baseUrl}/sitemap-index.xml
-Sitemap: ${baseUrl}/sitemap-main.xml
-Sitemap: ${baseUrl}/sitemap-news.xml
-Sitemap: ${baseUrl}/sitemap-videos.xml`;
-
-    // Add language-specific sitemaps
-    for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
-      robots += `\nSitemap: ${baseUrl}/sitemap-main-${lang}.xml`;
-      robots += `\nSitemap: ${baseUrl}/sitemap-genres-${lang}.xml`;
-      // Check for station chunks (assuming 15 chunks as safe default or better yet, calculate)
-      for (let i = 1; i <= 15; i++) {
-        robots += `\nSitemap: ${baseUrl}/sitemap-stations-${lang}-${i}.xml`;
-      }
-    }
+# Sitemap index — all individual sitemaps are listed inside
+Sitemap: ${baseUrl}/sitemap-index.xml`;
 
     res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
     res.send(robots);
   });
 
@@ -385,7 +372,7 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
       }
 
       const baseUrl = getBaseUrl(req);
-      const lastMod = new Date().toISOString();
+      const lastMod = new Date().toISOString().split('T')[0]; // Date-only for stability
 
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
@@ -393,8 +380,10 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
       let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
 
-      // Main pages to include
-      const mainPages = ['', '/stations', '/genres', '/countries', '/about'];
+      // Main pages to include (includes /regions to avoid orphan from sitemap-main.xml removal)
+      const mainPages = ['', '/stations', '/genres', '/countries', '/about', '/regions',
+        '/regions/europe', '/regions/asia', '/regions/africa',
+        '/regions/north-america', '/regions/south-america', '/regions/oceania'];
 
       for (const page of mainPages) {
         // Build localized URL for this language
@@ -408,13 +397,18 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
     <changefreq>daily</changefreq>
     <priority>0.9</priority>`;
 
-        // Add hreflang tags for all Phase 1 languages
+        // Add hreflang tags for all active languages (plain codes only, no ISO)
         for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
           const altLocalizedPath = buildLocalizedUrl(page, altLang, undefined, urlTranslations);
           const altFullUrl = `${baseUrl}${altLocalizedPath}`;
           xml += `
     <xhtml:link rel="alternate" hreflang="${altLang}" href="${altFullUrl}"/>`;
         }
+
+        // x-default points to English version
+        const enLocalizedPath = buildLocalizedUrl(page, 'en', undefined, urlTranslations);
+        xml += `
+    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>`;
 
         xml += `
   </url>`;
@@ -474,16 +468,15 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
       }
 
       const baseUrl = getBaseUrl(req);
-      const lastMod = new Date().toISOString();
       const stationsPerChunk = SITEMAP_CONFIG.stationsPerChunk;
       const skip = (chunk - 1) * stationsPerChunk;
 
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      // Fetch stations for this chunk
+      // Fetch stations for this chunk — include updatedAt for real lastmod
       const stations = await Station.find({ slug: { $exists: true, $ne: '' } })
-        .select('slug _id')
+        .select('slug _id updatedAt')
         .sort({ votes: -1 })
         .skip(skip)
         .limit(stationsPerChunk)
@@ -494,24 +487,33 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
 
       for (const station of stations) {
         // Build localized station URL for this language
-        const stationPath = `/station/${station.slug}`;
+        const stationPath = `/station/${(station as any).slug}`;
         const localizedPath = buildLocalizedUrl(stationPath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
+        // Use real updatedAt date for accurate lastmod
+        const stationLastMod = (station as any).updatedAt
+          ? new Date((station as any).updatedAt).toISOString().split('T')[0]
+          : new Date().toISOString().split('T')[0];
 
         xml += `
   <url>
     <loc>${fullUrl}</loc>
-    <lastmod>${lastMod}</lastmod>
+    <lastmod>${stationLastMod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`;
 
-        // Add hreflang tags for all Phase 1 languages
+        // Add hreflang tags for all active languages (plain codes only, no ISO)
         for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
           const altLocalizedPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
           const altFullUrl = `${baseUrl}${altLocalizedPath}`;
           xml += `
     <xhtml:link rel="alternate" hreflang="${altLang}" href="${altFullUrl}"/>`;
         }
+
+        // x-default points to English version
+        const enLocalizedPath = buildLocalizedUrl(stationPath, 'en', undefined, urlTranslations);
+        xml += `
+    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>`;
 
         xml += `
   </url>`;
@@ -570,12 +572,12 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
       }
 
       const baseUrl = getBaseUrl(req);
-      const lastMod = new Date().toISOString();
+      const lastMod = new Date().toISOString().split('T')[0]; // Date-only for stability
 
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      // Fetch all genres with slugs
+      // Fetch all genres with slugs from Genre collection (not Station.distinct('tags'))
       const genres = await Genre.find({ slug: { $exists: true, $ne: '' } })
         .select('slug _id')
         .sort({ stationCount: -1 })
@@ -586,7 +588,7 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
 
       for (const genre of genres) {
         // Build localized genre URL for this language
-        const genrePath = `/genres/${genre.slug}`;
+        const genrePath = `/genres/${(genre as any).slug}`;
         const localizedPath = buildLocalizedUrl(genrePath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
 
@@ -597,13 +599,18 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>`;
 
-        // Add hreflang tags for all Phase 1 languages
+        // Add hreflang tags for all active languages (plain codes only, no ISO)
         for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
           const altLocalizedPath = buildLocalizedUrl(genrePath, altLang, undefined, urlTranslations);
           const altFullUrl = `${baseUrl}${altLocalizedPath}`;
           xml += `
     <xhtml:link rel="alternate" hreflang="${altLang}" href="${altFullUrl}"/>`;
         }
+
+        // x-default points to English version
+        const enLocalizedPath = buildLocalizedUrl(genrePath, 'en', undefined, urlTranslations);
+        xml += `
+    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>`;
 
         xml += `
   </url>`;
@@ -630,458 +637,99 @@ Sitemap: ${baseUrl}/sitemap-videos.xml`;
     }
   });
 
-  // Split sitemap by content type for better organization
-  app.get("/sitemap-main.xml", async (req, res) => {
-    try {
-      const baseUrl = getBaseUrl(req);
-      
-      // Load URL translations from database and static files
-      const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
-      
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
-
-      // Add main pages with language variants
-      const mainPages = ['', '/stations', '/genres', '/countries', '/about'];
-      let languages: string[] = ['en']; // Fallback
-      let DEFAULT_LANGUAGE = 'en';
-      
-      try {
-        const seoConfig = await import('@shared/seo-config');
-        languages = seoConfig.SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.code);
-        DEFAULT_LANGUAGE = seoConfig.DEFAULT_LANGUAGE;
-      } catch (error) {
-        logger.warn('⚠️ Sitemap: Could not load SEO config, using defaults');
-      }
-      
-      const qualifiedLanguages = await getQualifiedSeoLanguages(languages);
-      
-      // Pre-load country mappings once
-      const countryMappings = await import('@shared/seo-config').then(config => config.COUNTRY_TO_LANGUAGE).catch(() => ({}));
-      const seoLanguagesConfig = await import('@shared/seo-config').then(config => config.SEO_LANGUAGES).catch(() => []);
-      
-      // Helper function to generate hreflang links for a page
-      const generateHreflangs = (page: string, urlTranslations: Map<string, string>) => {
-        let hreflangs = '';
-        const addedHreflangs = new Set();
-        
-        // Add language alternatives
-        for (const lang of qualifiedLanguages) {
-          const langConfig = seoLanguagesConfig.find((l: any) => l.code === lang);
-          const localizedUrl = buildLocalizedUrl(page, lang, undefined, urlTranslations);
-          const hreflang = langConfig?.iso || lang;
-          if (!addedHreflangs.has(hreflang)) {
-            hreflangs += `
-    <xhtml:link rel="alternate" hreflang="${hreflang}" href="${baseUrl}${localizedUrl}"/>`;
-            addedHreflangs.add(hreflang);
-          }
-        }
-        
-        // Add country-specific alternatives
-        for (const [countryCode, countryLang] of Object.entries(countryMappings)) {
-          if (countryLang && languages.includes(countryLang as string)) {
-            const localizedUrl = buildLocalizedUrl(page, countryLang as string, countryCode, urlTranslations);
-            const hreflang = `${countryLang}-${countryCode.toUpperCase()}`;
-            if (!addedHreflangs.has(hreflang)) {
-              hreflangs += `
-    <xhtml:link rel="alternate" hreflang="${hreflang}" href="${baseUrl}${localizedUrl}"/>`;
-              addedHreflangs.add(hreflang);
-            }
-          }
-        }
-        
-        // Add x-default
-        hreflangs += `
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${page}"/>`;
-        
-        return hreflangs;
-      };
-      
-      for (const page of mainPages) {
-        // 1. Default language version (English)
-        xml += `
-  <url>
-    <loc>${baseUrl}${page}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>${generateHreflangs(page, urlTranslations)}
-  </url>`;
-        
-        // 2. Add separate <url> entries for each LANGUAGE variant
-        for (const lang of qualifiedLanguages) {
-          if (lang === DEFAULT_LANGUAGE) continue;
-          
-          const localizedUrl = buildLocalizedUrl(page, lang, undefined, urlTranslations);
-          xml += `
-  <url>
-    <loc>${baseUrl}${localizedUrl}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>${generateHreflangs(page, urlTranslations)}
-  </url>`;
-        }
-        
-        // 3. Add separate <url> entries for each COUNTRY variant
-        for (const [countryCode, countryLang] of Object.entries(countryMappings)) {
-          if (countryLang && languages.includes(countryLang as string)) {
-            if (countryCode === countryLang) continue;
-            
-            const localizedUrl = buildLocalizedUrl(page, countryLang as string, countryCode, urlTranslations);
-            xml += `
-  <url>
-    <loc>${baseUrl}${localizedUrl}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>${generateHreflangs(page, urlTranslations)}
-  </url>`;
-          }
-        }
-      }
-
-      const seoLanguages = await import('@shared/seo-config').then(config => config.SEO_LANGUAGES).catch(() => []);
-      const langCodeToIso = new Map(seoLanguages.map((lang: any) => [lang.code, lang.iso]));
-      
-      // Add genre pages with language alternatives
-      let genres: string[] = [];
-      try {
-        genres = await Promise.race([
-          Station.distinct('tags'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 3000))
-        ]) as string[];
-      } catch (error) {
-        logger.warn('⚠️ Sitemap: Could not load genres');
-      }
-      const topGenres = genres.filter(g => g && g.length > 0).slice(0, 100);
-      
-      for (const genre of topGenres) {
-        const genreSlug = genre.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        const genrePath = `/genres/${genreSlug}`;
-        const canonicalUrl = buildLocalizedUrl(genrePath, DEFAULT_LANGUAGE, undefined, urlTranslations);
-        
-        xml += `
-  <url>
-    <loc>${baseUrl}${canonicalUrl}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>`;
-        
-        const addedHreflangs = new Set();
-        for (const lang of qualifiedLanguages) {
-          const localizedUrl = buildLocalizedUrl(genrePath, lang, undefined, urlTranslations);
-          const hreflang = langCodeToIso.get(lang) || lang;
-          if (!addedHreflangs.has(hreflang)) {
-            xml += `
-    <xhtml:link rel="alternate" hreflang="${hreflang}" href="${baseUrl}${localizedUrl}"/>`;
-            addedHreflangs.add(hreflang);
-          }
-        }
-        
-        xml += `
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${canonicalUrl}"/>
-  </url>`;
-      }
-
-      // Add country pages
-      let countries: string[] = [];
-      try {
-        countries = await Promise.race([
-          Station.distinct('country'),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 3000))
-        ]) as string[];
-      } catch (error) {
-        logger.warn('⚠️ Sitemap: Could not load countries');
-      }
-      for (const country of countries.filter(c => c).slice(0, 50)) {
-        const countrySlug = country.toLowerCase().replace(/[^a-z0-9]/g, '-');
-        const countryPath = `/countries/${countrySlug}`;
-        const canonicalUrl = buildLocalizedUrl(countryPath, DEFAULT_LANGUAGE, undefined, urlTranslations);
-        
-        xml += `
-  <url>
-    <loc>${baseUrl}${canonicalUrl}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>`;
-        
-        const addedHreflangs = new Set();
-        for (const lang of qualifiedLanguages) {
-          const localizedUrl = buildLocalizedUrl(countryPath, lang, undefined, urlTranslations);
-          const hreflang = langCodeToIso.get(lang) || lang;
-          if (!addedHreflangs.has(hreflang)) {
-            xml += `
-    <xhtml:link rel="alternate" hreflang="${hreflang}" href="${baseUrl}${localizedUrl}"/>`;
-            addedHreflangs.add(hreflang);
-          }
-        }
-        
-        xml += `
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${canonicalUrl}"/>
-  </url>`;
-      }
-
-      // Add regions pages
-      const regionsData = [
-        { slug: 'africa', name: 'Africa' },
-        { slug: 'asia', name: 'Asia' },
-        { slug: 'europe', name: 'Europe' },
-        { slug: 'north-america', name: 'North America' },
-        { slug: 'south-america', name: 'South America' },
-        { slug: 'oceania', name: 'Oceania' }
-      ];
-
-      xml += `
-  <url>
-    <loc>${baseUrl}/regions</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
-  </url>`;
-
-      for (const region of regionsData) {
-        xml += `
-  <url>
-    <loc>${baseUrl}/regions/${region.slug}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>`;
-      }
-
-      const regionCountryCombinations = [
-        { region: 'europe', country: 'germany' },
-        { region: 'europe', country: 'france' },
-        { region: 'europe', country: 'united-kingdom' },
-        { region: 'europe', country: 'spain' },
-        { region: 'europe', country: 'italy' },
-        { region: 'asia', country: 'turkey' },
-        { region: 'asia', country: 'japan' },
-        { region: 'asia', country: 'india' },
-        { region: 'north-america', country: 'united-states' },
-        { region: 'north-america', country: 'canada' },
-        { region: 'south-america', country: 'brazil' },
-        { region: 'africa', country: 'south-africa' }
-      ];
-
-      for (const combo of regionCountryCombinations) {
-        xml += `
-  <url>
-    <loc>${baseUrl}/regions/${combo.region}/${combo.country}</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.5</priority>
-  </url>
-  <url>
-    <loc>${baseUrl}/regions/${combo.region}/${combo.country}/stations</loc>
-    <lastmod>${new Date().toISOString()}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.5</priority>
-  </url>`;
-      }
-
-      xml += `
-</urlset>`;
-
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.send(xml);
-      
-    } catch (error) {
-      console.error('❌ Error generating main sitemap:', error);
-      res.status(500).send('Error generating sitemap');
-    }
+  // sitemap-main.xml: Redirect to the English language-specific sitemap.
+  // All pages are now covered by sitemap-main-{lang}.xml (listed in sitemap-index.xml).
+  // This redirect keeps backward compatibility for any direct bookmarks or cached references.
+  app.get("/sitemap-main.xml", (req, res) => {
+    const baseUrl = getBaseUrl(req);
+    res.redirect(301, `${baseUrl}/sitemap-main-en.xml`);
   });
 
-  // News Sitemap for stations with news content
-  app.get("/sitemap-news.xml", async (req, res) => {
-    try {
-      const baseUrl = getBaseUrl(req);
-      
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9">`;
-
-      let newsStations = [];
-      try {
-        newsStations = await Promise.race([
-          Station.find({
-            $or: [
-              { tags: { $regex: /news/i } },
-              { genre: { $regex: /news|talk|current/i } },
-              { name: { $regex: /news|talk|radio|fm|am/i } }
-            ]
-          }, 'slug _id name tags genre country homepage updatedAt')
-            .limit(1000)
-            .lean(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 5000))
-        ]) as any[];
-      } catch (error) {
-        console.error('❌ News Sitemap: Database query failed');
-        return res.status(503).send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"></urlset>');
-      }
-      
-      for (const station of newsStations) {
-        const stationPath = `/station/${station.slug || station._id}`;
-        const pubDate = station.updatedAt ? new Date(station.updatedAt) : new Date();
-        const twoDaysAgo = new Date();
-        twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
-        
-        if (pubDate >= twoDaysAgo) {
-          xml += `
-  <url>
-    <loc>${baseUrl}${stationPath}</loc>
-    <news:news>
-      <news:publication>
-        <news:name>${station.name}</news:name>
-        <news:language>en</news:language>
-      </news:publication>
-      <news:publication_date>${pubDate.toISOString()}</news:publication_date>
-      <news:title>${station.name} - Live News Radio</news:title>
-      <news:keywords>${Array.isArray(station.tags) ? station.tags.join(', ') : (station.tags || 'news, radio, live')}</news:keywords>
-    </news:news>
-  </url>`;
-        }
-      }
-
-      xml += `
-</urlset>`;
-
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('Cache-Control', 'public, max-age=1800');
-      res.send(xml);
-      
-    } catch (error) {
-      console.error('❌ Error generating news sitemap:', error);
-      res.status(500).send('Error generating news sitemap');
-    }
+  // News Sitemap — intentionally empty.
+  // Google News Sitemap is for news articles published in the last 48 hours.
+  // Radio stations are not news articles — submitting them violates Google News policy.
+  app.get("/sitemap-news.xml", (_req, res) => {
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"></urlset>`);
   });
 
-  // Video Sitemap for stations with video streams
-  app.get("/sitemap-videos.xml", async (req, res) => {
-    try {
-      const baseUrl = getBaseUrl(req);
-      
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1">`;
-
-      let videoStations = [];
-      try {
-        videoStations = await Promise.race([
-          Station.find({
-            $or: [
-              { url: { $regex: /\.m3u8|hls|stream.*video|rtmp|rtsp/i } },
-              { tags: { $regex: /tv|video|webcam|visual/i } },
-              { name: { $regex: /tv|television|video|webcam/i } }
-            ]
-          }, 'slug _id name url tags genre country homepage favicon updatedAt')
-            .limit(500)
-            .lean(),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Query timeout')), 5000))
-        ]) as any[];
-      } catch (error) {
-        console.error('❌ Video Sitemap: Database query failed');
-        return res.status(503).send('<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"></urlset>');
-      }
-      
-      for (const station of videoStations) {
-        const stationPath = `/station/${station.slug || station._id}`;
-        const lastMod = station.updatedAt ? new Date(station.updatedAt).toISOString() : new Date().toISOString();
-        
-        xml += `
-  <url>
-    <loc>${baseUrl}${stationPath}</loc>
-    <lastmod>${lastMod}</lastmod>
-    <video:video>
-      <video:thumbnail_loc>${station.favicon || `${baseUrl}/images/default-station.jpg`}</video:thumbnail_loc>
-      <video:title>${station.name} - Live Video Stream</video:title>
-      <video:description>Watch ${station.name} live video stream${station.country ? ` from ${station.country}` : ''}. ${Array.isArray(station.tags) ? station.tags.join(', ') : (station.tags || 'Live streaming video content.')}</video:description>
-      <video:content_loc>${station.url}</video:content_loc>
-      <video:player_loc>${baseUrl}${stationPath}</video:player_loc>
-      <video:duration>0</video:duration>
-      <video:live>yes</video:live>
-      <video:family_friendly>yes</video:family_friendly>
-    </video:video>
-  </url>`;
-      }
-
-      xml += `
-</urlset>`;
-
-      res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.send(xml);
-      
-    } catch (error) {
-      console.error('❌ Error generating video sitemap:', error);
-      res.status(500).send('Error generating video sitemap');
-    }
+  // Video Sitemap — intentionally empty.
+  // Google Video Sitemap requires valid video content with duration > 0.
+  // Radio audio streams are not video content — submitting them violates Google policy.
+  app.get("/sitemap-videos.xml", (_req, res) => {
+    res.setHeader('Content-Type', 'application/xml');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"></urlset>`);
   });
 
-  // Sitemap Index - References all specialized sitemaps
+  // Sitemap Index — single entry point for Google to discover all sitemaps.
+  // References ONLY routes that exist and return valid XML.
+  // Architecture:
+  //   sitemap-main-{lang}.xml    → main pages per language (home, genres, regions, etc.)
+  //   sitemap-genres-{lang}.xml  → genre pages per language
+  //   sitemap-stations-{lang}-{chunk}.xml → station pages per language, paginated
   app.get("/sitemap-index.xml", async (req, res) => {
     try {
       const baseUrl = getBaseUrl(req);
-      const lastMod = new Date().toISOString();
-      
+      // Use a stable date-only lastmod — updated only when structure changes
+      const lastMod = new Date().toISOString().split('T')[0];
+
+      // Count only stations with slugs (the only ones we actually index)
       let totalStations = 0;
-      let totalImageStations = 0;
-      const stationsPerChunk = 1000;
-      const imageStationsPerChunk = 500;
-      
       try {
-        [totalStations, totalImageStations] = await Promise.all([
-          Promise.race([
-            Station.countDocuments(),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Station count timeout')), 3000))
-          ]) as Promise<number>,
-          Promise.race([
-            Station.countDocuments({ favicon: { $nin: [null, ''] } }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Image count timeout')), 3000))
-          ]) as Promise<number>
-        ]);
-      } catch (error: any) {
-        logger.warn('⚠️ Sitemap Index: Could not count stations');
+        totalStations = await Promise.race([
+          Station.countDocuments({ slug: { $exists: true, $ne: '' } }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
+        ]) as number;
+      } catch {
+        logger.warn('⚠️ Sitemap Index: Station count timed out — using safe fallback');
+        totalStations = 50000; // Conservative fallback; generates more chunks, none will 404 (they just return empty)
       }
-      
-      const stationChunks = Math.ceil(totalStations / stationsPerChunk) || 1;
-      const imageChunks = Math.ceil(totalImageStations / imageStationsPerChunk) || 1;
-      
+
+      const stationChunks = Math.max(1, Math.ceil(totalStations / SITEMAP_CONFIG.stationsPerChunk));
+
       let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <sitemap>
-    <loc>${baseUrl}/sitemap-main.xml</loc>
-    <lastmod>${lastMod}</lastmod>
-  </sitemap>`;
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
 
-      for (let i = 1; i <= stationChunks; i++) {
+      // 1. Language-specific main page sitemaps (home, stations, genres, regions, about, countries)
+      for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
         xml += `
   <sitemap>
-    <loc>${baseUrl}/sitemap-stations-${i}.xml</loc>
+    <loc>${baseUrl}/sitemap-main-${lang}.xml</loc>
     <lastmod>${lastMod}</lastmod>
   </sitemap>`;
       }
 
-      for (let i = 1; i <= imageChunks; i++) {
+      // 2. Language-specific genre sitemaps (Genre collection, not Station.distinct)
+      for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
         xml += `
   <sitemap>
-    <loc>${baseUrl}/sitemap-images-${i}.xml</loc>
+    <loc>${baseUrl}/sitemap-genres-${lang}.xml</loc>
     <lastmod>${lastMod}</lastmod>
   </sitemap>`;
+      }
+
+      // 3. Language-specific station sitemaps — chunk count calculated from real DB count
+      for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
+        for (let i = 1; i <= stationChunks; i++) {
+          xml += `
+  <sitemap>
+    <loc>${baseUrl}/sitemap-stations-${lang}-${i}.xml</loc>
+    <lastmod>${lastMod}</lastmod>
+  </sitemap>`;
+        }
       }
 
       xml += `
-  <sitemap>
-    <loc>${baseUrl}/sitemap-news.xml</loc>
-    <lastmod>${lastMod}</lastmod>
-  </sitemap>
-  <sitemap>
-    <loc>${baseUrl}/sitemap-videos.xml</loc>
-    <lastmod>${lastMod}</lastmod>
-  </sitemap>
 </sitemapindex>`;
 
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('Cache-Control', 'public, max-age=3600');
       res.send(xml);
-      
+
     } catch (error) {
       console.error('❌ Error generating sitemap index:', error);
       res.status(500).send('Error generating sitemap index');
