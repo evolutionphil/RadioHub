@@ -53,6 +53,7 @@ export default function RadioHeader({
   // Touch handling for mobile scroll
   const [touchStartY, setTouchStartY] = useState<number>(0);
   const [touchStartTime, setTouchStartTime] = useState<number>(0);
+  const [avatarError, setAvatarError] = useState(false);
   
   // Refs for positioning dropdown
   const countryButtonRef = useRef<HTMLButtonElement>(null);
@@ -409,8 +410,8 @@ export default function RadioHeader({
                       aria-label="Profile menu"
                       data-testid="button-mobile-profile"
                     >
-                      {user?.avatar ? (
-                        <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                      {user?.avatar && !avatarError ? (
+                        <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" onError={() => setAvatarError(true)} />
                       ) : (
                         <User className="w-6 h-6 text-white" />
                       )}
@@ -561,8 +562,8 @@ export default function RadioHeader({
                     )}
                     {/* Avatar - 45x45px rounded-full per Figma */}
                     <div className="flex items-center justify-center flex-shrink-0 overflow-hidden bg-[#FF4199]" style={{ width: '45px', height: '45px', borderRadius: '50px' }}>
-                      {user?.avatar ? (
-                        <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                      {user?.avatar && !avatarError ? (
+                        <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" onError={() => setAvatarError(true)} />
                       ) : (
                         <User className="w-5 h-5 text-white" />
                       )}
@@ -1120,6 +1121,16 @@ export default function RadioHeader({
                           src={fromUser.avatar || fromUser.profileImageUrl} 
                           alt="" 
                           className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const img = e.target as HTMLImageElement;
+                            img.style.display = 'none';
+                            const parent = img.parentElement;
+                            if (parent) {
+                              const letter = (fromUser.fullName || fromUser.username || 'U').charAt(0).toUpperCase();
+                              const bg = isMessage ? '#FF4199' : '#2F2F2F';
+                              parent.innerHTML = `<div class="w-full h-full flex items-center justify-center" style="background:${bg}"><span class="text-white text-xs font-medium">${letter}</span></div>`;
+                            }
+                          }}
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center" style={{ background: isMessage ? '#FF4199' : '#2F2F2F' }}>
