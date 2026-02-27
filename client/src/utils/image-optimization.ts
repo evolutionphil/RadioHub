@@ -72,7 +72,6 @@ export const preloadCriticalImages = async () => {
 
   try {
     await Promise.all(criticalImages.map(preloadImage));
-    console.log('✅ Critical images preloaded');
   } catch (error) {
     console.warn('⚠️ Some critical images failed to preload:', error);
   }

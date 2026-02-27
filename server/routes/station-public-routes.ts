@@ -396,7 +396,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           
           stations = stations.map((station: any) => ({
             ...station,
-            distance: Math.round((Math.random() * 100 + 10) * 10) / 10
+            distance: null
           }));
         }
         

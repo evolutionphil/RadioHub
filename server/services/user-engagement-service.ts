@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { User, Station, UserFavorite, UserFollow } from '../../shared/mongo-schemas';
+import { User, Station, UserFavorite, UserFollow, StationRating } from '../../shared/mongo-schemas';
 
 export interface TrendingStation {
   stationId: string;
@@ -272,26 +272,11 @@ export class UserEngagementService {
       
       const stations = paginatedIds.length > 0 ? await Station.find({ 
         _id: { $in: paginatedIds } 
-      }) : [];
-      
-      const stationsWithEngagement = stations.map((station: any) => ({
-        _id: station._id,
-        name: station.name,
-        country: station.country,
-        tags: station.tags,
-        favicon: station.favicon,
-        votes: station.votes,
-        slug: station.slug,
-        engagement: {
-          totalFavorites: Math.floor(Math.random() * 50) + 5, // Mock engagement for now
-          averageRating: 3.5 + Math.random() * 1.5,
-          trendingScore: Math.floor(Math.random() * 100)
-        }
-      }));
+      }).select('_id name country tags favicon votes slug genre language codec bitrate url hasLogo logoAssets').lean() : [];
       
       return {
         profile,
-        favorites: stationsWithEngagement
+        favorites: stations
       };
     } catch (error) {
       console.error('Error fetching user favorites:', error);
@@ -512,28 +497,32 @@ export class UserEngagementService {
     };
   }
   
-  // Get station ratings (mock implementation)
+  // Get station ratings from real database
   async getStationRatings(stationId: string, page = 1, limit = 10): Promise<any> {
-    // Mock ratings for demonstration
-    const mockRatings = [];
-    for (let i = 0; i < limit; i++) {
-      mockRatings.push({
-        userId: `user_${i}`,
-        rating: 3 + Math.floor(Math.random() * 3),
-        review: Math.random() > 0.5 ? `Great station! ${i}` : '',
-        isPublic: true,
-        helpfulVotes: Math.floor(Math.random() * 10),
-        createdAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
-      });
-    }
-    
+    const skip = (page - 1) * limit;
+    const [ratings, total] = await Promise.all([
+      StationRating.find({ stationId })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .select('userId rating comment createdAt')
+        .lean(),
+      StationRating.countDocuments({ stationId })
+    ]);
+
+    const avgResult = await StationRating.aggregate([
+      { $match: { stationId } },
+      { $group: { _id: null, avg: { $avg: '$rating' } } }
+    ]);
+    const averageRating = avgResult.length > 0 ? Math.round(avgResult[0].avg * 10) / 10 : 0;
+
     return {
-      ratings: mockRatings,
+      ratings,
       meta: {
         page,
         limit,
-        total: 50, // Mock total
-        averageRating: 4.2
+        total,
+        averageRating
       }
     };
   }

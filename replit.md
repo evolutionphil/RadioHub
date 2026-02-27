@@ -85,6 +85,9 @@ CRITICAL SEO HEADING RULE: Only ONE H1 per page (provided by server-rendered con
 - **Input Validation**: Login and signup endpoints validate email format, password length (min 8 chars), username format (3-30 chars, alphanumeric/dash/dot/underscore only) with email normalization.
 - **Google OAuth Avatar Fix**: Existing Google users get avatar saved on first login if field was empty; email-linked users also get avatar when linking Google account.
 - **Random Station Performance**: `/api/stations/country-random` uses MongoDB `$sample` aggregation instead of `countDocuments + skip()` — much faster on large collections.
+- **Real User Engagement Data**: `user-engagement-service.ts` fully replaced mock data — `getUserFavoritesBySlug` returns real station data with `.lean()` (no fake Math.random() engagement scores); `getStationRatings` queries real `StationRating` collection with pagination and real average calculation.
+- **Nearby Stations Distance Fix**: Error-fallback path in `/api/stations/nearby` returns `distance: null` instead of `Math.random()` placeholder values.
+- **Import Completeness**: `translation-admin-routes.ts` imports `SyncLog`, `BlacklistedStation` (static, for direct usage at route level), and `syncService` from `server/services/sync` (fixes previously undefined sync management endpoints).
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.
