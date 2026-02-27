@@ -66,7 +66,7 @@ export default function RadioHeader({
   const { playStation } = useGlobalPlayer();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
 
-  // Fetch user notifications
+  // Fetch user notifications (with 30s polling for real-time message notifications)
   const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
     queryKey: ['/api/user/notifications'],
     queryFn: async () => {
@@ -79,6 +79,8 @@ export default function RadioHeader({
       return response.json();
     },
     enabled: !!isAuthenticated,
+    refetchInterval: 30_000,
+    staleTime: 10_000,
   });
 
   const notifications = (notificationsData as any)?.notifications || [];
@@ -1071,46 +1073,62 @@ export default function RadioHeader({
                 <div className="animate-spin rounded-full h-5 w-5 border-2 border-gray-500 border-t-white"></div>
               </div>
             ) : notifications.length > 0 ? (
-              notifications.map((notification: any, index: number) => (
+              notifications.map((notification: any, index: number) => {
+                const fromUser = notification.fromUserId;
+                const isMessage = notification.type === 'new_message';
+                const isFollow = notification.type === 'follow' || notification.type === 'unfollow';
+                const isStation = notification.type === 'new_station';
+                const isUnread = !notification.read && !notification.isRead;
+
+                const handleNotifClick = async () => {
+                  if (isMessage && fromUser?._id) {
+                    setLocation(`/en/profile/messages?partner=${fromUser._id}`);
+                  } else if (isFollow && fromUser?.username) {
+                    setLocation(`/en/user/${fromUser.username}`);
+                  } else if (isStation && notification.data?.stationSlug) {
+                    setLocation(`/en/station/${notification.data.stationSlug}`);
+                  }
+                  if (notification._id) {
+                    fetch(`/api/user/notifications/${notification._id}/read`, { method: 'PATCH', credentials: 'include' }).catch(() => {});
+                  }
+                };
+
+                return (
                 <div 
                   key={notification._id || index}
-                  className="flex items-center gap-3 hover:bg-[#1A1A1A] transition-colors cursor-pointer"
-                  style={{ padding: '8px 19px', minHeight: '48px' }}
+                  onClick={handleNotifClick}
+                  className="flex items-center gap-3 hover:bg-[#1A1A1A] transition-colors cursor-pointer relative"
+                  style={{ padding: '8px 19px', minHeight: '48px', background: isUnread ? 'rgba(255,65,153,0.05)' : undefined }}
                   data-testid={`notification-item-${index}`}
                 >
-                  {/* Icon - Figma: 32x32px, border-radius 16.49px - Show station logo or user avatar */}
+                  {isUnread && <div className="absolute left-2 top-1/2 -translate-y-1/2 w-1.5 h-1.5 rounded-full bg-[#FF4199]" />}
+                  {/* Icon - 32x32px */}
                   <div 
                     className="flex-shrink-0 overflow-hidden"
                     style={{ width: '32px', height: '32px', borderRadius: '16.49px' }}
                   >
-                    {/* Station notification - show station favicon */}
-                    {notification.type === 'new_station' && notification.data?.stationFavicon ? (
+                    {isStation && notification.data?.stationFavicon ? (
                       <img 
                         src={notification.data.stationFavicon} 
                         alt="" 
                         className="w-full h-full object-cover"
-                        onError={(e) => {
-                          const img = e.target as HTMLImageElement;
-                          img.style.display = 'none';
-                        }}
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                       />
-                    ) : (notification.type === 'follow' || notification.type === 'unfollow') && notification.fromUserId ? (
-                      /* Follow notification - show user avatar */
-                      notification.fromUserId.avatar || notification.fromUserId.profileImageUrl ? (
+                    ) : (isFollow || isMessage) && fromUser ? (
+                      fromUser.avatar || fromUser.profileImageUrl ? (
                         <img 
-                          src={notification.fromUserId.avatar || notification.fromUserId.profileImageUrl} 
+                          src={fromUser.avatar || fromUser.profileImageUrl} 
                           alt="" 
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full bg-[#2F2F2F] flex items-center justify-center">
+                        <div className="w-full h-full flex items-center justify-center" style={{ background: isMessage ? '#FF4199' : '#2F2F2F' }}>
                           <span className="text-white text-xs font-medium">
-                            {(notification.fromUserId.fullName || notification.fromUserId.username || 'U').charAt(0).toUpperCase()}
+                            {(fromUser.fullName || fromUser.username || 'U').charAt(0).toUpperCase()}
                           </span>
                         </div>
                       )
                     ) : (
-                      /* Default avatar */
                       <div className="w-full h-full bg-[#2F2F2F] flex items-center justify-center">
                         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4 text-gray-400">
                           <path fillRule="evenodd" d="M7.5 6a4.5 4.5 0 119 0 4.5 4.5 0 01-9 0zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" clipRule="evenodd" />
@@ -1121,13 +1139,13 @@ export default function RadioHeader({
                   
                   {/* Content */}
                   <div className="flex-1 min-w-0">
-                    {/* Title - Figma: Ubuntu Medium 14px, #FFFFFF */}
                     <div className="font-ubuntu font-medium text-white truncate" style={{ fontSize: '14px', lineHeight: '100%' }}>
-                      {notification.type === 'new_station' 
+                      {isStation
                         ? `${notification.data?.stationSlug?.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') || notification.title?.replace(' Added', '') || 'Station'} added. Click to listen!`
-                        : notification.title || t('notifications_new_station', 'New notification')}
+                        : isMessage && fromUser
+                          ? `${fromUser.fullName || fromUser.username || 'Someone'} size mesaj yazdı`
+                          : notification.title || t('notifications_new_station', 'New notification')}
                     </div>
-                    {/* Time - Figma: Ubuntu Regular 12px, #777777 */}
                     <div className="font-ubuntu font-normal mt-1" style={{ fontSize: '12px', lineHeight: '100%', color: '#777777' }}>
                       {notification.createdAt ? (
                         (() => {
@@ -1146,7 +1164,8 @@ export default function RadioHeader({
                     </div>
                   </div>
                 </div>
-              ))
+                );
+              })
             ) : (
               <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
                 <div 

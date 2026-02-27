@@ -196,6 +196,12 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         { $set: { read: true } }
       );
 
+      // Mark new_message notifications from this partner as read
+      await UserNotification.updateMany(
+        { userId: userId, type: "new_message", fromUserId: partnerId, read: false },
+        { $set: { read: true } }
+      );
+
       // Notify sender their messages were read via WS
       chatService.sendToUser(partnerId.toString(), {
         type: "chat:read",
@@ -283,18 +289,21 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
       chatService.sendToUser(targetId.toString(), wsPayload);
       chatService.sendToUser(fromUserId, { ...wsPayload, echo: true });
 
-      if (!chatService.isOnline(targetId.toString())) {
-        try {
-          await UserNotification.create({
-            userId: targetId,
-            type: "new_message",
-            fromUserId: fromObjId,
-            title: "New message",
-            message: `${sender?.fullName || sender?.username || "Someone"} sent you a message`,
-            read: false,
-          });
-        } catch {}
-      }
+      try {
+        await UserNotification.create({
+          userId: targetId,
+          type: "new_message",
+          fromUserId: fromObjId,
+          title: "Yeni mesaj",
+          message: `${sender?.fullName || sender?.username || "Someone"} size mesaj yazdı`,
+          read: false,
+        });
+        chatService.sendToUser(targetId.toString(), {
+          type: "notification:new_message",
+          fromUser: { _id: fromUserId, username: sender?.username, fullName: sender?.fullName, avatar: sender?.avatar || sender?.profileImageUrl },
+          preview: content.trim().substring(0, 60),
+        });
+      } catch {}
 
       res.json({ success: true, message });
     } catch (error) {

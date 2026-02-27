@@ -2153,14 +2153,17 @@ ${keysText}`;
 
       // logger.log(`📬 Fetching notifications for user ${currentUserId} (page ${page}, limit ${limit})`);
       
-      // Only show new_station and follow notifications from last 10 days
+      // Show new_station and follow notifications from last 10 days, new_message from last 7 days
       const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-      
-      // Get notifications for the current user - only relevant types, sorted by most recent
-      const notifications = await UserNotification.find({ 
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+      // Get notifications for the current user - relevant types, sorted by most recent
+      const notifications = await UserNotification.find({
         userId: currentUserId,
-        type: { $in: ['new_station', 'follow'] },
-        createdAt: { $gte: tenDaysAgo }
+        $or: [
+          { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo } },
+          { type: 'new_message', createdAt: { $gte: sevenDaysAgo } }
+        ]
       })
         .populate('fromUserId', 'fullName username avatar profileImageUrl')
         .sort({ createdAt: -1 })
@@ -2168,17 +2171,20 @@ ${keysText}`;
         .limit(limit)
         .lean();
 
-      // Get total count for pagination (only relevant types)
-      const totalCount = await UserNotification.countDocuments({ 
+      // Get total count for pagination (all relevant types)
+      const totalCount = await UserNotification.countDocuments({
         userId: currentUserId,
-        type: { $in: ['new_station', 'follow'] },
-        createdAt: { $gte: tenDaysAgo }
+        $or: [
+          { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo } },
+          { type: 'new_message', createdAt: { $gte: sevenDaysAgo } }
+        ]
       });
-      const unreadCount = await UserNotification.countDocuments({ 
-        userId: currentUserId, 
-        type: { $in: ['new_station', 'follow'] },
-        createdAt: { $gte: tenDaysAgo },
-        read: false 
+      const unreadCount = await UserNotification.countDocuments({
+        userId: currentUserId,
+        $or: [
+          { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo }, read: false },
+          { type: 'new_message', createdAt: { $gte: sevenDaysAgo }, read: false }
+        ]
       });
 
       // Map notifications - title already clean from database

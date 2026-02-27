@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Send, Circle, CheckCheck, Users, MessageCircle } from "lucide-react";
+
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -37,12 +38,14 @@ interface WsEvent {
   type: string;
   message?: Message;
   sender?: UserInfo;
+  fromUser?: UserInfo;
   fromUserId?: string;
   byUserId?: string;
   userId?: string;
   online?: boolean;
   echo?: boolean;
   onlineUsers?: string[];
+  preview?: string;
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
@@ -211,6 +214,21 @@ export default function MessagesPage() {
 
   useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
 
+  // Auto-open conversation from ?partner= URL param (e.g. when clicking a message notification)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const partner = params.get("partner");
+    if (partner) setActiveId(partner);
+  }, []);
+
+  // When opening a conversation, invalidate notifications (server marks them read on fetch)
+  useEffect(() => {
+    if (activeId) {
+      setLocalMsgs([]);
+      setTimeout(() => qc.invalidateQueries({ queryKey: ["/api/user/notifications"] }), 800);
+    }
+  }, [activeId, qc]);
+
   // ─── Queries ───────────────────────────────────────────────────────────────
 
   const { data: convsData, isLoading: convsLoading } = useQuery<{ conversations: Conversation[] }>({
@@ -272,13 +290,19 @@ export default function MessagesPage() {
             if (ws?.readyState === WebSocket.OPEN) {
               ws.send(JSON.stringify({ type: "chat:read", fromUserId: m.fromUserId }));
             }
+            qc.invalidateQueries({ queryKey: ["/api/messages/conversation", activeIdRef.current] });
           }
         }
 
         qc.invalidateQueries({ queryKey: ["/api/messages/conversations"] });
         qc.invalidateQueries({ queryKey: ["/api/messages/unread-count"] });
+        qc.invalidateQueries({ queryKey: ["/api/user/notifications"] });
         break;
       }
+
+      case "notification:new_message":
+        qc.invalidateQueries({ queryKey: ["/api/user/notifications"] });
+        break;
 
       case "chat:typing":
         if (!ev.fromUserId) break;
