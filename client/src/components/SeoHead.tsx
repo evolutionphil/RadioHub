@@ -109,10 +109,16 @@ export function SeoHead({ stationData, pageType = 'home' }: SeoHeadProps) {
       schemas.push(generateRadioStationSchema(stationData, domain, language, location, seoTags.description));
       
       // Add breadcrumb for station page with proper localized URLs
-      // Extract language from location to build correct URLs
-      const homeUrl = language === 'en' ? '/' : `/${language}`;
-      const stationsUrl = language === 'en' ? '/stations' : `/${language}/sender`;
-      const stationUrl = language === 'en' ? `/stations/${stationData.slug}` : `/${language}/sender/${stationData.slug}`;
+      // Derive language code and segment from actual location path
+      // e.g. /de/sender/dance-wave → langCode='de', stationsSegment='sender'
+      const pathParts = location.split('/').filter(Boolean);
+      const langCode = pathParts[0] || language;
+      const homeUrl = `/${langCode}`;
+      // Strip the station slug from the URL to get the stations list URL
+      // e.g. /de/sender/dance-wave → /de/sender
+      const stationSegment = pathParts[1] || 'stations';
+      const stationsUrl = `/${langCode}/${stationSegment}`;
+      const stationUrl = location;
       
       const breadcrumbs = [
         { name: translations?.['nav_home'] || 'Home', url: homeUrl },
@@ -120,6 +126,25 @@ export function SeoHead({ stationData, pageType = 'home' }: SeoHeadProps) {
         { name: stationData.name, url: stationUrl }
       ];
       schemas.push(generateBreadcrumbSchema(breadcrumbs, domain));
+    }
+
+    // Add FAQ schema for home page — same 10 questions as SSR FAQPage schema
+    // CRITICAL: Without this, SSR FAQ schema gets removed on hydration (never re-added)
+    if (pageType === 'home') {
+      const tr = (key: string, fb: string) => translations?.[key] || fb;
+      const homeFaqItems = [
+        { question: tr('faq_what_is_radio', 'What is Radio?'), answer: tr('faq_what_is_radio_answer', 'Radio is a technology that uses electromagnetic waves to transmit audio signals wirelessly.') },
+        { question: tr('faq_what_is_internet_radio', 'What is Internet Radio?'), answer: tr('faq_what_is_internet_radio_answer', 'Internet radio is audio broadcasting transmitted over the internet, allowing you to listen to stations from anywhere in the world.') },
+        { question: tr('faq_what_is_web_radio', 'What is Web Radio?'), answer: tr('faq_what_is_web_radio_answer', 'Web radio is another term for internet radio — audio content streamed through websites and web applications.') },
+        { question: tr('faq_how_to_listen', 'How can I listen to Radio?'), answer: tr('faq_how_to_listen_answer', 'Visit our website, choose a station, and click play to start streaming instantly. No download required.') },
+        { question: tr('faq_listen_on_phone', 'Can I listen to Radio on my Phone?'), answer: tr('faq_listen_on_phone_answer', 'Yes! Mega Radio works perfectly on smartphones and tablets on both iOS and Android devices.') },
+        { question: tr('faq_is_radio_free', 'Is Internet Radio Free?'), answer: tr('faq_is_radio_free_answer', 'Yes, listening to internet radio on Mega Radio is completely free with no subscription fees.') },
+        { question: tr('faq_listen_on_pc', 'How can I listen to Radio on my PC?'), answer: tr('faq_listen_on_pc_answer', 'Just visit Mega Radio in any web browser and click play. No downloads or installations needed.') },
+        { question: tr('faq_which_stations', 'Which Radio Stations can I listen to?'), answer: tr('faq_which_stations_answer', 'Mega Radio offers over 60,000 radio stations from 120+ countries covering all genres.') },
+        { question: tr('faq_best_station', 'Which Radio Station is the best?'), answer: tr('faq_best_station_answer', 'The best station depends on your personal taste! Use our popularity rankings to discover trending stations.') },
+        { question: tr('faq_no_ads_stations', 'Which Radio Stations have no Advertising?'), answer: tr('faq_no_ads_stations_answer', 'Many stations on Mega Radio are commercial-free, including public broadcasters and community stations.') }
+      ];
+      schemas.push(generateFAQSchema(homeFaqItems, domain));
     }
 
     // Add FAQ schema for about page

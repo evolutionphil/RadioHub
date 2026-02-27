@@ -608,6 +608,27 @@ export default function StationDetails() {
       
       {station && (
         <>
+          {/* Breadcrumb Navigation - visible to users and Google (matches BreadcrumbList JSON-LD schema) */}
+          <nav aria-label="breadcrumb" className="bg-[#101010] px-4 pt-3 pb-0">
+            <ol className="flex items-center gap-1 text-xs text-gray-500 flex-wrap">
+              <li>
+                <Link to={getLocalizedUrl('/')} className="hover:text-gray-300 transition-colors">
+                  {t('nav_home', 'Home')}
+                </Link>
+              </li>
+              <li aria-hidden="true" className="text-gray-600">›</li>
+              <li>
+                <Link to={getLocalizedUrl('/stations')} className="hover:text-gray-300 transition-colors">
+                  {t('nav_stations', 'Stations')}
+                </Link>
+              </li>
+              <li aria-hidden="true" className="text-gray-600">›</li>
+              <li className="text-gray-400 truncate max-w-[160px] sm:max-w-xs" aria-current="page">
+                {station.name}
+              </li>
+            </ol>
+          </nav>
+
           {/* Radio Playing Section - Mobile First Responsive */}
           <div className="relative bg-[#101010] md:bg-[#1D1D1D] py-4 overflow-hidden">
             {/* Connection Failed Overlay - Figma: 1512x308, #00000080, blur(13px) */}

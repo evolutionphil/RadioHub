@@ -797,7 +797,9 @@ export class SeoRenderer {
     const websiteSchema = {
       "@context": "https://schema.org",
       "@type": "WebSite",
+      "@id": `${baseDomain}/#website`,
       "name": "Mega Radio",
+      "alternateName": "Mega Radio - Free Online Radio",
       "url": baseDomain,
       "inLanguage": language,
       "description": getLocalizedText('faq_seo_intro', 'Mega Radio is your ultimate destination for discovering and streaming live radio stations from around the world.'),
@@ -815,21 +817,22 @@ export class SeoRenderer {
     const organizationSchema = {
       "@context": "https://schema.org",
       "@type": "Organization",
+      "@id": `${baseDomain}/#organization`,
       "name": "Mega Radio",
       "url": baseDomain,
-      "logo": `${baseDomain}/images/logo-icon.webp`,
+      "logo": {
+        "@type": "ImageObject",
+        "url": `${baseDomain}/images/logo-icon.webp`,
+        "width": 80,
+        "height": 80
+      },
       "description": getLocalizedText('faq_seo_intro', 'Free online radio platform featuring 60,000+ radio stations from 120+ countries worldwide'),
       "inLanguage": language,
       "contactPoint": {
         "@type": "ContactPoint",
         "contactType": "Customer Service",
         "availableLanguage": SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.name)
-      },
-      "sameAs": [
-        "https://facebook.com/megaradio",
-        "https://twitter.com/megaradio",
-        "https://instagram.com/megaradio"
-      ]
+      }
     };
 
     // LOCALIZED: BreadcrumbList with proper translated paths

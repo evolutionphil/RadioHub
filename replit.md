@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-This project is a full-stack radio station management application providing streaming and management capabilities for radio stations. It features a comprehensive admin interface, real-time monitoring, robust audio format compatibility, and a slug-based URL system for SEO. The system supports user management, social interactions, geolocation, advanced search, authentic user engagement data, trending stations, and machine learning-powered recommendations. The core vision is to establish a leading platform in digital audio, utilizing AI-driven content delivery and advanced HLS session management for global reach and uninterrupted streaming.
+This project is a full-stack radio station management application offering streaming and management capabilities for radio stations. It features a comprehensive admin interface, real-time monitoring, robust audio format compatibility, and a slug-based URL system for SEO. The system supports user management, social interactions, geolocation, advanced search, authentic user engagement data, trending stations, and machine learning-powered recommendations. The core vision is to establish a leading platform in digital audio, utilizing AI-driven content delivery and advanced HLS session management for global reach and uninterrupted streaming.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -17,6 +17,8 @@ CRITICAL SEO COMPLIANCE RULE: NO sr-only H3 headings with SEO keywords on any pa
 CRITICAL SITEMAP RULE: sitemap-index.xml references ONLY existing routes: sitemap-main-{lang}.xml, sitemap-genres-{lang}.xml, sitemap-stations-{lang}-{chunk}.xml. Never add sitemap-images-*, sitemap-stations-{digit}.xml, sitemap-news.xml, sitemap-videos.xml back — these violate Google policies or don't exist. robots.txt must only list sitemap-index.xml. sitemap-main.xml is a 301 redirect to sitemap-main-en.xml.
 
 CRITICAL HREFLANG RULE: ALL sitemaps use plain language codes (en, de, tr) — NEVER ISO codes (en-US, de-DE). All URLs in sitemaps must be language-prefixed (/en/stations not /stations). Every URL must have x-default hreflang pointing to the /en/ version.
+
+CRITICAL STRUCTURED DATA RULE: WebSite schema has @id=`{domain}/#website` and alternateName. Organization schema has @id=`{domain}/#organization` and logo as ImageObject. FAQPage schema is present BOTH in SSR (seo-renderer.ts) AND in client SeoHead.tsx for `pageType==='home'` — do NOT remove the home FAQ from SeoHead or it disappears after React hydration. BreadcrumbList schema on station pages must always match visible breadcrumb nav in the React component (client/src/pages/stations/[id].tsx). sameAs removed from Organization schema since social accounts unverified.
 
 ## System Architecture
 
@@ -35,65 +37,42 @@ CRITICAL HREFLANG RULE: ALL sitemaps use plain language codes (en, de, tr) — N
 - **UI Framework**: Tailwind CSS with shadcn/ui components
 - **Build Tool**: Vite
 - **Audio Streaming**: Advanced HLS.js integration with Plyr.
-- **UI/UX Decisions**: Pixel-perfect, responsive mobile-first design, consistent design system, functional audio player, original error handling.
+- **UI/UX Decisions**: Pixel-perfect, responsive mobile-first design, consistent design system, functional audio player.
 
 ### Database Design
 - **Collections**: Stations, Countries, Languages, Genres, Codecs, Sync Logs, Users, StationComment, UserSession, Notification, AdvancedSearch.
 - **Key Fields**: Slugs for navigation, poster images, detailed metadata, activity logs.
 - **Enhanced User Model**: `favoriteStations`, `recentlyPlayedStations`, user preferences, authentication.
 
-### Route Module Architecture (COMPLETE)
-`server/routes.ts` was refactored from 22,718 lines to 451-line thin orchestrator. All modules live under `server/routes/`:
-- `cast-routes.ts`, `og-image-routes.ts`, `cache-dashboard-routes.ts`, `admin-auth-routes.ts`
-- `slug-routes.ts`, `ai-description-routes.ts`, `logo-routes.ts`, `admin-station-routes.ts`
-- `station-public-routes.ts`, `genres-countries-routes.ts`, `translation-admin-routes.ts`
-- `user-auth-routes.ts`, `mobile-tv-routes.ts`, `translation-keys-routes.ts`, `seo-sitemap-routes.ts`
-- `stream-proxy-routes.ts`, `regions-recommendations-routes.ts`, `misc-routes.ts`
-- `shared-utils.ts` (pure utilities), `server/middleware/auth.ts` (requireAuth, requireAdmin, generateAuthToken)
-- Special routers (api-keys, url-translations, performance, user-engagement, country-language-mappings) registered directly in thin routes.ts
-
 ### Key Architectural Decisions
 - **Monorepo Structure**: Frontend, backend, and shared types in a single repository.
 - **Type Safety**: End-to-end TypeScript with Zod validation.
-- **Rate Limiting**: Global 100 req/min API limiter + strict 10 req/15min for auth endpoints (express-rate-limit).
-- **SEO-Friendly URLs**: Slug-based navigation, dynamic sitemap, robots.txt, structured data (JSON-LD), multilingual support with hreflang.
+- **Rate Limiting**: Global and auth-specific rate limiting using `express-rate-limit`.
+- **SEO-Friendly URLs**: Slug-based navigation, dynamic sitemap, robots.txt, structured data (JSON-LD), multilingual support with hreflang, unified language URL prefix system.
 - **Audio Continuity**: URL updates and page navigation preserve audio playback.
-- **Performance Optimizations**: Caching, database indexing, lazy loading, code splitting, Core Web Vitals optimization.
+- **Performance Optimizations**: Caching, database indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed station caches, optimized user profile data fetching.
 - **Local Font Hosting**: Ubuntu font served locally.
 - **Instant Location Detection**: Cloudflare CF-IPCountry headers for geolocation.
 - **Web Push Notifications**: VAPID keys and service workers.
 - **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy.
 - **Comprehensive Auto-Reconnect & Server Timeout Optimization**: Client-side auto-reconnect; optimized server-side timeouts.
 - **Vote-Based Station Ordering**: Defaults to popularity.
-- **Google OAuth Authentication**: Fully operational Google login.
+- **Google OAuth Authentication**: Fully operational Google login with avatar management.
 - **Radio Station Sync System**: Robust synchronization with automated index migration, duplicate prevention, and blacklist checking.
-- **Authentic User Engagement**: Real user favorites power trending stations and recommendations.
+- **Authentic User Engagement**: Real user favorites power trending stations and recommendations, real station ratings.
 - **Listening Timer Feature**: Real-time listening timer displays duration on station detail pages.
-- **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation.
-- **Centralized Country Normalization**: `normalizeCountryFilter()` in `server/utils/normalize-country.ts` handles ISO codes (TR/US/RU/GB), English names (Turkey/Russia), native names (Türkiye/Deutschland), and localized names across 6+ languages. Used by all station/genre/popular/nearby endpoints for consistent results.
-- **Country-Specific Genre Filtering**: Authentic genre filtering based on station tags.
+- **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation, country-specific URL translations, centralized country normalization.
 - **Background Audio Prevention System**: 5-layer protection against browser audio suspension.
 - **Geolocation & Country Detection System**: IP-based geolocation for auto-detection and personalization, including GPS-based nearby stations.
 - **SEO FAQ Content Management**: Admin-manageable, translatable FAQ for homepage SEO.
-- **Automatic Image Optimization**: Server-side image resizing and WebP conversion using Sharp for station favicons.
-- **Country-Specific URL Translations**: Complete URL translation system with database-first priority.
-- **Universal Country Code Navigation**: All navigation links use `getLocalizedPath()` to preserve country codes.
-- **Scheduled SEO Cache Clear**: Nightly service clears server and Cloudflare caches for fresh AI-generated content.
-- **Core Web Vitals Monitoring**: RUM integration with Cloudflare.
-- **Logo Optimization System**: MongoDB schema update for `logoAssets`, LogoProcessor service for WebP conversion, unified StationLogo component, SSR-safe helpers, admin UI for bulk processing.
-- **Non-Latin Script SEO Routing Fix**: `decodeURIComponent()` and Unicode flags for proper SEO across non-Latin scripts.
-- **Precomputed Stations Cache System**: Ultra-fast `/radios` page performance with pre-computed country-level station cache.
-- **Unified Language URL Prefix System**: All languages (including English) now use `/{lang}/*` URL format for SEO consistency with 301 redirects for legacy English URLs.
-- **API Key Management System**: Secure API key generation, validation, rate limiting, and usage tracking with various plans (Demo, Free, Pro).
-- **Cast System (Mobile → TV)**: Dual cast architecture: (1) WebSocket-based at `/ws/cast` for real-time command relay, (2) Polling-based HTTP endpoints for TV apps without WebSocket support. Polling endpoints: `GET /api/cast/poll` (TV polls every 3s), `POST /api/cast/send` (mobile sends commands), `POST /api/cast/now-playing` (TV reports playback), `GET /api/cast/now-playing` (mobile reads TV status). MongoDB `CastCommand` (24h TTL, consumed flag, deviceId scoping) and `CastNowPlaying` (unique per userId+deviceId) models. Docs: `docs/cast-integration-guide.md`.
-- **TV Device Code Login**: Netflix/YouTube-style TV login flow. TV requests 6-digit code → displays on screen → user enters on mobile → TV gets `mrt_tv_` prefixed token (90-day). Endpoints: `/api/auth/tv/code`, `/api/auth/tv/code/:code/status`, `/api/auth/tv/activate`, `/api/auth/tv/logout`, `/api/auth/tv/verify`. MongoDB `TvLoginCode` model with 10-min TTL. Rate-limited activation, unique code generation.
-- **Security Hardening**: Rate limiting (100 req/min global + 10 req/15min auth with `skipSuccessfulRequests`), X-Powered-By removed, security headers (HSTS, CSP, X-Frame-Options), error responses don't expose internal messages.
-- **Input Validation**: Login and signup endpoints validate email format, password length (min 8 chars), username format (3-30 chars, alphanumeric/dash/dot/underscore only) with email normalization.
-- **Google OAuth Avatar Fix**: Existing Google users get avatar saved on first login if field was empty; email-linked users also get avatar when linking Google account.
-- **Random Station Performance**: `/api/stations/country-random` uses MongoDB `$sample` aggregation instead of `countDocuments + skip()` — much faster on large collections.
-- **Real User Engagement Data**: `user-engagement-service.ts` fully replaced mock data — `getUserFavoritesBySlug` returns real station data with `.lean()` (no fake Math.random() engagement scores); `getStationRatings` queries real `StationRating` collection with pagination and real average calculation.
-- **Nearby Stations Distance Fix**: Error-fallback path in `/api/stations/nearby` returns `distance: null` instead of `Math.random()` placeholder values.
-- **Import Completeness**: `translation-admin-routes.ts` imports `SyncLog`, `BlacklistedStation` (static, for direct usage at route level), and `syncService` from `server/services/sync` (fixes previously undefined sync management endpoints).
+- **Automatic Image Optimization**: Server-side image resizing and WebP conversion using Sharp for station favicons, integrated with S3 for storage.
+- **API Key Management System**: Secure API key generation, validation, rate limiting, and usage tracking.
+- **Cast System (Mobile → TV)**: Dual cast architecture supporting WebSocket and polling-based communication for real-time command relay and now-playing status.
+- **TV Device Code Login**: Netflix/YouTube-style TV login flow for device activation.
+- **Security Hardening**: Rate limiting, X-Powered-By removal, security headers (HSTS, CSP, X-Frame-Options), suppressed internal error messages.
+- **Input Validation**: Robust validation for user authentication endpoints.
+- **Random Station Performance**: Optimized random station selection using MongoDB `$sample`.
+- **Logo Optimization System**: MongoDB schema for `logoAssets`, LogoProcessor service for WebP conversion, unified StationLogo component, SSR-safe helpers, admin UI for bulk processing, S3 integration for logo storage.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.
@@ -115,20 +94,4 @@ CRITICAL HREFLANG RULE: ALL sitemaps use plain language codes (en, de, tr) — N
 - **hls.js**: Professional HLS streaming library.
 - **plyr**: Lightweight media player.
 - **sharp**: High-performance image processing library.
-
-## User Profile Performance Optimization (COMPLETE)
-- **Combined Endpoint**: `GET /api/user-engagement/profile/:slug/full` returns profile + favorites + recently-played in **one** HTTP round trip — eliminates 3-request waterfall.
-- **Parallelized DB Queries**: `getUserProfileBySlug` now fires all 5 independent queries (`UserFavorite.find`, `UserFollow.countDocuments` x2, `UserFollow.findOne`, `Station.find`) with `Promise.all()` — was 7+ sequential queries.
-- **`.lean()` Everywhere**: All Mongoose queries in `user-engagement-service.ts` now use `.lean()` — no Mongoose hydration overhead.
-- **Background Slug Fix**: Slug auto-generation removed from the hot path; runs via `setImmediate()` after response is sent.
-- **Minimal Projections**: `getUserProfileBySlug` now fetches only `tags country` from stations for stats; user document fetches only needed fields.
-- **No Redundant Lookups**: `getUserFavoritesBySlug` no longer calls `getUserProfileBySlug` — uses its own lean direct lookup.
-- **Aggregation Pipeline**: `getUserFavoritesBySlug` uses MongoDB aggregation with `$lookup` instead of two separate queries.
-- **Frontend**: `UserProfile.tsx` now uses the combined `/full` endpoint with `staleTime: 60000` — no more `enabled: !!userProfile?.isPublic` waterfall gate.
-
-## S3 Logo Storage (COMPLETE)
-- **AWS S3**: Station logos uploaded to `{AWS_BUCKET_NAME}` (eu-north-1) under `station-logos/{folderName}/` prefix.
-- **S3 Service** (`server/services/s3-storage.ts`): `uploadToS3()`, `deleteFolderFromS3()`, `isS3Configured()`, `getS3PublicUrl()`.
-- **Logo Processor** (`server/services/logo-processor.ts`): Detects `isS3Configured()` — uploads to S3 and stores full `https://` URLs in `logoAssets.webp48/96/256`. Falls back to local filesystem if S3 not configured.
-- **Backwards Compatible**: `resolveLogoUrl(folder, value)` in frontend — if value starts with `http`, use as-is (S3); otherwise construct `/station-logos/{folder}/{value}` (legacy local). Updated in: `station-logo.tsx`, `global-player.tsx`, `audio-player.tsx`, `radio-frontend.tsx`, `stations/[id].tsx`, `logo-management.tsx`, `og-image-generator.ts`.
-- **Secrets needed**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_BUCKET_NAME`, `AWS_REGION`.
+- **AWS S3**: Cloud storage for station logos.
