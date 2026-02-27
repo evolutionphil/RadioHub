@@ -737,18 +737,6 @@ app.use((req, res, next) => {
   app.use(htmlLangMiddleware);
   
   // importantly only setup vite in development and after
-  // CRITICAL: Bind port IMMEDIATELY so workflow detection doesn't timeout
-  // Vite setup and heavy operations happen after port is open
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-    logger.log(`🚀 DEPLOYMENT: Port ${port} bound successfully - health check should pass`);
-  });
-
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
   if (app.get("env") === "development") {
@@ -758,6 +746,17 @@ app.use((req, res, next) => {
   } else {
     serveStatic(app);
   }
+
+  // BIND PORT AFTER EVERYTHING IS READY
+  const port = parseInt(process.env.PORT || '5000', 10);
+  server.listen({
+    port,
+    host: "0.0.0.0",
+    reusePort: true,
+  }, () => {
+    log(`serving on port ${port}`);
+    logger.log(`🚀 DEPLOYMENT: Port ${port} bound successfully`);
+  });
 
   // Background tasks: Run cache warming and translation loading AFTER port binding
   // These operations no longer block deployment health checks
