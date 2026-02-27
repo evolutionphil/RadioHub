@@ -2501,6 +2501,8 @@ export interface IDirectMessage {
   fromUserId: mongoose.Types.ObjectId;
   toUserId: mongoose.Types.ObjectId;
   content: string;
+  messageType?: 'text' | 'image' | 'emoji';
+  imageUrl?: string;
   read: boolean;
   createdAt: Date;
 }
@@ -2509,6 +2511,8 @@ const DirectMessageSchema = new Schema<IDirectMessage>({
   fromUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   toUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
   content: { type: String, required: true, maxlength: 2000 },
+  messageType: { type: String, enum: ['text', 'image', 'emoji'], default: 'text' },
+  imageUrl: { type: String },
   read: { type: Boolean, default: false },
   createdAt: { type: Date, default: Date.now },
 });

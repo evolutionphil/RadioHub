@@ -229,7 +229,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
       const fromUserId = getSessionUserId(req);
       if (!fromUserId) return res.status(401).json({ error: "Not authenticated" });
 
-      const { toUserId, content } = req.body;
+      const { toUserId, content, messageType, imageUrl } = req.body;
 
       if (!toUserId || !content?.trim()) {
         return res.status(400).json({ error: "toUserId and content are required" });
@@ -262,10 +262,13 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
       }
 
       const fromObjId = new mongoose.Types.ObjectId(fromUserId);
+      const validType = ['text', 'image', 'emoji'].includes(messageType) ? messageType : 'text';
       const message = await DirectMessage.create({
         fromUserId: fromObjId,
         toUserId: targetId,
         content: content.trim(),
+        messageType: validType,
+        imageUrl: validType === 'image' && imageUrl ? imageUrl : undefined,
         read: false,
       });
 
