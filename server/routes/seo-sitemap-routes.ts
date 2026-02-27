@@ -661,25 +661,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     res.redirect(301, `${baseUrl}/sitemap-main-en.xml`);
   });
 
-  // News Sitemap — intentionally empty.
-  // Google News Sitemap is for news articles published in the last 48 hours.
-  // Radio stations are not news articles — submitting them violates Google News policy.
-  app.get("/sitemap-news.xml", (_req, res) => {
-    res.setHeader('Content-Type', 'application/xml');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:news="http://www.google.com/schemas/sitemap-news/0.9"></urlset>`);
-  });
-
-  // Video Sitemap — intentionally empty.
-  // Google Video Sitemap requires valid video content with duration > 0.
-  // Radio audio streams are not video content — submitting them violates Google policy.
-  app.get("/sitemap-videos.xml", (_req, res) => {
-    res.setHeader('Content-Type', 'application/xml');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:video="http://www.google.com/schemas/sitemap-video/1.1"></urlset>`);
-  });
 
   // Sitemap Index — single entry point for Google to discover all sitemaps.
   // References ONLY routes that exist and return valid XML.
