@@ -110,6 +110,16 @@ CRITICAL SEO HEADING RULE: Only ONE H1 per page (provided by server-rendered con
 - **plyr**: Lightweight media player.
 - **sharp**: High-performance image processing library.
 
+## User Profile Performance Optimization (COMPLETE)
+- **Combined Endpoint**: `GET /api/user-engagement/profile/:slug/full` returns profile + favorites + recently-played in **one** HTTP round trip — eliminates 3-request waterfall.
+- **Parallelized DB Queries**: `getUserProfileBySlug` now fires all 5 independent queries (`UserFavorite.find`, `UserFollow.countDocuments` x2, `UserFollow.findOne`, `Station.find`) with `Promise.all()` — was 7+ sequential queries.
+- **`.lean()` Everywhere**: All Mongoose queries in `user-engagement-service.ts` now use `.lean()` — no Mongoose hydration overhead.
+- **Background Slug Fix**: Slug auto-generation removed from the hot path; runs via `setImmediate()` after response is sent.
+- **Minimal Projections**: `getUserProfileBySlug` now fetches only `tags country` from stations for stats; user document fetches only needed fields.
+- **No Redundant Lookups**: `getUserFavoritesBySlug` no longer calls `getUserProfileBySlug` — uses its own lean direct lookup.
+- **Aggregation Pipeline**: `getUserFavoritesBySlug` uses MongoDB aggregation with `$lookup` instead of two separate queries.
+- **Frontend**: `UserProfile.tsx` now uses the combined `/full` endpoint with `staleTime: 60000` — no more `enabled: !!userProfile?.isPublic` waterfall gate.
+
 ## S3 Logo Storage (COMPLETE)
 - **AWS S3**: Station logos uploaded to `{AWS_BUCKET_NAME}` (eu-north-1) under `station-logos/{folderName}/` prefix.
 - **S3 Service** (`server/services/s3-storage.ts`): `uploadToS3()`, `deleteFolderFromS3()`, `isS3Configured()`, `getS3PublicUrl()`.

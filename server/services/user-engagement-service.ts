@@ -68,160 +68,107 @@ export interface UserProfile {
 export class UserEngagementService {
   
   // Get user profile by slug (SEO-friendly URL) or ObjectId
+  // OPTIMIZED: single user lookup + all secondary queries in parallel, .lean() everywhere
   async getUserProfileBySlug(slug: string, currentUserId?: string): Promise<UserProfile | null> {
     try {
-      let user;
-      
-      // Check if slug is a valid MongoDB ObjectId
       const isObjectId = /^[0-9a-fA-F]{24}$/.test(slug);
-      
-      if (isObjectId) {
-        // If it's an ObjectId, find by _id and ensure it's a public profile
-        user = await User.findOne({ 
-          _id: slug,
-          isPublicProfile: true
-        });
-      } else {
-        // Find user by slug (indexed field, fast lookup)
-        user = await User.findOne({ 
-          slug: slug,
-          isPublicProfile: true
-        });
-        // Fallback: try username if slug not found
-        if (!user) {
-          user = await User.findOne({ username: slug, isPublicProfile: true });
-        }
-      }
-      
-      if (!user) {
-        return null;
-      }
 
-      // Auto-generate slug if user doesn't have a proper one
-      const hasRandomSlug = user.slug && user.slug.startsWith('user_') && user.slug.includes('_');
-      if (!user.slug || user.slug === user._id.toString() || /^[0-9a-fA-F]{24}$/.test(user.slug) || hasRandomSlug) {
-        const generateSlug = (name: string): string => {
-          return name
-            .toLowerCase()
-            .replace(/[^\w\s-]/g, '') 
-            .replace(/\s+/g, '') // Remove spaces completely for "sahinyogurtcu" format
-            .replace(/-+/g, '-') 
-            .trim()
-            .replace(/^-+|-+$/g, '');
-        };
+      // Single query with $or fallback — no sequential fallback round trips
+      const user: any = isObjectId
+        ? await User.findOne({ _id: slug, isPublicProfile: true })
+            .select('_id fullName username email bio avatar slug isPublicProfile createdAt updatedAt')
+            .lean()
+        : await User.findOne({
+            $or: [{ slug }, { username: slug }],
+            isPublicProfile: true
+          })
+            .select('_id fullName username email bio avatar slug isPublicProfile createdAt updatedAt')
+            .lean();
 
-        let slugSource = user.fullName || user.username || user.email?.split('@')[0] || 'user';
-        let newSlug = generateSlug(slugSource);
-        
-        // Simple uniqueness check
-        let counter = 1;
-        let uniqueSlug = newSlug;
-        while (await User.findOne({ slug: uniqueSlug, _id: { $ne: user._id } })) {
-          uniqueSlug = `${newSlug}-${counter}`;
-          counter++;
-        }
-        
-        try {
-          await User.findByIdAndUpdate(user._id, { 
-            slug: uniqueSlug,
-            isPublicProfile: true 
-          });
-          user.slug = uniqueSlug;
-          user.isPublicProfile = true;
-        } catch (updateError) {
-          console.error('Failed to auto-generate slug:', updateError);
-          // Use MongoDB ID as fallback
-          user.slug = user._id.toString();
-        }
-      }
-      
-      // Get user's favorites from UserFavorite collection (new system)
-      const userFavorites = await UserFavorite.find({ userId: user._id.toString() });
-      const favoriteStationIds = userFavorites.map(fav => fav.stationId);
-      
-      // Get station details for the favorites - only count stations that actually exist
-      const favoriteStations = favoriteStationIds.length > 0 ? await Station.find({ 
-        _id: { $in: favoriteStationIds } 
-      }) : [];
-      
-      // Use the count of actual valid stations, not all favorite records
+      if (!user) return null;
+
+      const userId = user._id.toString();
+
+      // Fire ALL independent queries in parallel — was 7 sequential queries, now 1 batch
+      const [userFavIds, followersCount, followingCount, isFollowingDoc] = await Promise.all([
+        UserFavorite.find({ userId }).select('stationId').lean(),
+        UserFollow.countDocuments({ followingUserId: user._id }),
+        UserFollow.countDocuments({ userId: user._id }),
+        currentUserId
+          ? UserFollow.findOne({ userId: currentUserId, followingUserId: user._id }).select('_id').lean()
+          : Promise.resolve(null),
+      ]);
+
+      const favoriteStationIds = userFavIds.map((f: any) => f.stationId);
+
+      // Only fetch tags + country for stats computation — minimal payload
+      const favoriteStations: any[] = favoriteStationIds.length > 0
+        ? await Station.find({ _id: { $in: favoriteStationIds } })
+            .select('tags country')
+            .lean()
+        : [];
+
       const totalFavorites = favoriteStations.length;
-      
-      // Calculate genre and country statistics
-      const genreMap = new Map();
-      const countryMap = new Map();
-      
-      favoriteStations.forEach((station: any) => {
-        // Process genres from tags
+
+      // Compute genre + country stats
+      const genreMap = new Map<string, number>();
+      const countryMap = new Map<string, number>();
+
+      for (const station of favoriteStations) {
         if (station.tags) {
-          const tags = station.tags.split(',').map((tag: string) => tag.trim().toLowerCase());
-          tags.forEach((tag: string) => {
-            if (tag && tag.length > 2) {
-              genreMap.set(tag, (genreMap.get(tag) || 0) + 1);
-            }
-          });
+          for (const tag of station.tags.split(',')) {
+            const t = tag.trim().toLowerCase();
+            if (t && t.length > 2) genreMap.set(t, (genreMap.get(t) || 0) + 1);
+          }
         }
-        
-        // Process countries
         if (station.country) {
-          const country = station.country.trim();
-          countryMap.set(country, (countryMap.get(country) || 0) + 1);
+          const c = station.country.trim();
+          countryMap.set(c, (countryMap.get(c) || 0) + 1);
         }
-      });
-      
-      // Convert maps to sorted arrays
-      const favoriteGenres = Array.from(genreMap.entries())
-        .map(([genre, count]) => ({
-          genre,
-          count: count as number,
-          percentage: Math.round((count as number / totalFavorites) * 100)
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-        
-      const favoriteCountries = Array.from(countryMap.entries())
-        .map(([country, count]) => ({
-          country,
-          count: count as number,
-          percentage: Math.round((count as number / totalFavorites) * 100)
-        }))
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 10);
-      
-      // Get actual follower and following counts from UserFollow collection
-      const followersCount = await UserFollow.countDocuments({ followingUserId: user._id });
-      const followingCount = await UserFollow.countDocuments({ userId: user._id });
-      
-      // Check if current user is following this profile
-      let isFollowing = false;
-      if (currentUserId) {
-        const followRelation = await UserFollow.findOne({ 
-          userId: currentUserId, 
-          followingUserId: user._id 
-        });
-        isFollowing = !!followRelation;
       }
-      
-      // Simulate listening stats (in real app, this would come from listening history)
-      const mockPeakHours = [9, 10, 11, 14, 15, 18, 19, 20]; // Common listening hours
-      
+
+      const toSorted = (map: Map<string, number>, key: string) =>
+        Array.from(map.entries())
+          .map(([val, count]) => ({ [key]: val, count, percentage: totalFavorites ? Math.round(count / totalFavorites * 100) : 0 }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10);
+
+      const effectiveSlug = user.slug || userId;
+
+      // Background: fix missing/old slug without blocking response
+      const hasOldSlug = !user.slug || user.slug === userId || (user.slug.startsWith('user_') && user.slug.includes('_'));
+      if (hasOldSlug) {
+        setImmediate(async () => {
+          try {
+            const base = (user.fullName || user.username || user.email?.split('@')[0] || 'user')
+              .toLowerCase().replace(/[^\w-]/g, '').replace(/-+/g, '-').replace(/^-|-$/g, '') || 'user';
+            let candidate = base;
+            let i = 1;
+            while (await User.findOne({ slug: candidate, _id: { $ne: user._id } }).select('_id').lean()) {
+              candidate = `${base}-${i++}`;
+            }
+            await User.findByIdAndUpdate(user._id, { slug: candidate });
+          } catch { /* silent */ }
+        });
+      }
+
       return {
         displayName: user.fullName || user.username || user.email?.split('@')[0] || 'Anonymous User',
         bio: user.bio || `Radio enthusiast with ${totalFavorites} favorite stations`,
-        slug: user.slug || slug,
+        slug: effectiveSlug,
         avatar: user.avatar,
         isPublic: user.isPublicProfile || false,
         followersCount,
         followingCount,
-        isFollowing,
+        isFollowing: !!isFollowingDoc,
         listeningStats: {
-          totalListenHours: Math.max(totalFavorites * 2.5, 10), // Estimate based on favorites
+          totalListenHours: Math.max(totalFavorites * 2.5, 10),
           uniqueStationsListened: Math.max(totalFavorites, 1),
-          favoriteGenres,
-          favoriteCountries,
-          peakListeningHours: mockPeakHours,
-          joinedDate: user.createdAt?.toISOString() || new Date().toISOString(),
-          lastActiveDate: user.updatedAt?.toISOString() || new Date().toISOString()
+          favoriteGenres: toSorted(genreMap, 'genre') as any,
+          favoriteCountries: toSorted(countryMap, 'country') as any,
+          peakListeningHours: [9, 10, 11, 14, 15, 18, 19, 20],
+          joinedDate: (user.createdAt as Date)?.toISOString() || new Date().toISOString(),
+          lastActiveDate: (user.updatedAt as Date)?.toISOString() || new Date().toISOString()
         },
         privacy: {
           showFavorites: user.isPublicProfile || false,
@@ -235,49 +182,44 @@ export class UserEngagementService {
   }
   
   // Get user favorites with station details
+  // OPTIMIZED: no longer calls getUserProfileBySlug (was running all 9 queries again)
   async getUserFavoritesBySlug(slug: string, page = 1, limit = 20): Promise<any> {
     try {
-      const profile = await this.getUserProfileBySlug(slug);
-      if (!profile || !profile.privacy.showFavorites) {
-        return null;
-      }
-      
-      // Find user again to get favorites - handle both ObjectId and slug
-      let user;
       const isObjectId = /^[0-9a-fA-F]{24}$/.test(slug);
-      
-      if (isObjectId) {
-        user = await User.findOne({ 
-          _id: slug,
-          isPublicProfile: true
-        });
-      } else {
-        user = await User.findOne({ 
-          $or: [
-            { slug: slug },
-            { email: new RegExp(slug, 'i') },
-            { username: new RegExp(slug, 'i') },
-            { fullName: new RegExp(slug, 'i') }
-          ],
-          isPublicProfile: true
-        });
-      }
-      
-      if (!user) return null;
-      
-      // Get paginated favorites with station details
-      const favoriteStationIds = user.favoriteStations || [];
+      const user: any = isObjectId
+        ? await User.findOne({ _id: slug, isPublicProfile: true }).select('_id isPublicProfile').lean()
+        : await User.findOne({ $or: [{ slug }, { username: slug }], isPublicProfile: true }).select('_id isPublicProfile').lean();
+
+      if (!user || !user.isPublicProfile) return null;
+
+      const userId = user._id.toString();
       const skip = (page - 1) * limit;
-      const paginatedIds = favoriteStationIds.slice(skip, skip + limit);
-      
-      const stations = paginatedIds.length > 0 ? await Station.find({ 
-        _id: { $in: paginatedIds } 
-      }).select('_id name country tags favicon votes slug genre language codec bitrate url hasLogo logoAssets').lean() : [];
-      
-      return {
-        profile,
-        favorites: stations
-      };
+
+      // Use aggregation to get paginated favorites with station details in one query
+      const favs = await UserFavorite.aggregate([
+        { $match: { userId } },
+        { $sort: { createdAt: -1 } },
+        { $skip: skip },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: 'stations',
+            let: { sid: { $toObjectId: '$stationId' } },
+            pipeline: [
+              { $match: { $expr: { $eq: ['$_id', '$$sid'] } } },
+              { $project: { _id: 1, name: 1, country: 1, tags: 1, favicon: 1, votes: 1, slug: 1,
+                  genre: 1, language: 1, codec: 1, bitrate: 1, url: 1, hasLogo: 1, logoAssets: 1, urlResolved: 1 } }
+            ],
+            as: 'station'
+          }
+        },
+        { $unwind: { path: '$station', preserveNullAndEmptyArrays: false } },
+        { $replaceRoot: { newRoot: '$station' } }
+      ]);
+
+      const total = await UserFavorite.countDocuments({ userId });
+
+      return { favorites: favs, total, page, limit };
     } catch (error) {
       console.error('Error fetching user favorites:', error);
       return null;

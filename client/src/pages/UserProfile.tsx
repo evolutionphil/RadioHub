@@ -91,14 +91,24 @@ export default function UserProfile() {
     queryKey: ["/api/auth/me"],
   });
 
-  // Fetch user profile data using user-engagement API  
-  const { data: userProfileData, isLoading: isLoadingProfile, error: profileError } = useQuery<UserProfile>({
-    queryKey: [`/api/user-engagement/profile/${userIdOrSlug}`],
+  // Single combined request: profile + favorites + recently-played in ONE round trip.
+  // No more waterfall where favorites/recently-played were blocked until profile loaded.
+  const { data: fullProfileData, isLoading: isLoadingProfile, error: profileError } = useQuery<{
+    profile: UserProfile;
+    favorites: Station[];
+    recentlyPlayed: Station[];
+  }>({
+    queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`],
     enabled: !!userIdOrSlug,
-    retry: false
+    retry: false,
+    staleTime: 60000,
   });
-  
-  const userProfile = userProfileData;
+
+  const userProfile = fullProfileData?.profile;
+  const favoriteStations = fullProfileData?.favorites;
+  const recentlyPlayed = fullProfileData?.recentlyPlayed;
+  const isLoadingFavorites = isLoadingProfile;
+  const isLoadingRecentlyPlayed = isLoadingProfile;
 
   // CRITICAL FIX: Redirect from MongoDB ID to slug URL for translated routes
   // Use navigateWithLanguage to properly handle translated URLs
@@ -113,20 +123,6 @@ export default function UserProfile() {
     }
   }, [userProfile, userIdOrSlug, isMongoId, navigateWithLanguage]);
 
-  // Fetch favorite stations using regular API
-  const { data: favoriteStations, isLoading: isLoadingFavorites } = useQuery<Station[]>({
-    queryKey: [`/api/users/${userIdOrSlug}/favorites`],
-    enabled: !!userIdOrSlug && !!userProfile?.isPublic,
-    retry: false
-  });
-
-  // Fetch recently played stations
-  const { data: recentlyPlayed, isLoading: isLoadingRecentlyPlayed } = useQuery<Station[]>({
-    queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/recently-played`],
-    enabled: !!userIdOrSlug && !!userProfile?.isPublic,
-    retry: false
-  });
-
   const recentlyPlayedStations: Station[] = recentlyPlayed || [];
 
   // Check authentication and permissions
@@ -138,12 +134,8 @@ export default function UserProfile() {
   const followMutation = useMutation({
     mutationFn: () => apiRequest('POST', `/api/user-engagement/follow/${userIdOrSlug}`),
     onSuccess: () => {
-      // Force refresh both profile data and auth state
-      queryClient.invalidateQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      // Clear cache completely and force refetch
-      queryClient.removeQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}`] });
-      queryClient.refetchQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}`] });
+      queryClient.removeQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
+      queryClient.refetchQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
       toast({ title: "Success", description: "User followed successfully" });
     },
     onError: () => {
@@ -154,12 +146,8 @@ export default function UserProfile() {
   const unfollowMutation = useMutation({
     mutationFn: () => apiRequest('POST', `/api/user-engagement/unfollow/${userIdOrSlug}`),
     onSuccess: () => {
-      // Force refresh both profile data and auth state  
-      queryClient.invalidateQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      // Clear cache completely and force refetch
-      queryClient.removeQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}`] });
-      queryClient.refetchQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}`] });
+      queryClient.removeQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
+      queryClient.refetchQueries({ queryKey: [`/api/user-engagement/profile/${userIdOrSlug}/full`] });
       toast({ title: "Success", description: "User unfollowed successfully" });
     },
     onError: () => {

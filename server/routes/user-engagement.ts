@@ -64,6 +64,47 @@ router.get('/profile/:slug/favorites', async (req, res) => {
   }
 });
 
+// Combined endpoint: profile + favorites + recently-played in ONE round trip
+// Eliminates 3-request waterfall on the frontend (no more enabled: !!userProfile?.isPublic blocking)
+router.get('/profile/:slug/full', async (req, res) => {
+  try {
+    const { slug } = req.params;
+    const { favLimit = '20', recentLimit = '20' } = req.query;
+    const session = (req as any).session;
+    const currentUserId = session?.user?.userId || null;
+
+    const cacheKey = `user-engagement-full:${slug}:${currentUserId || 'anon'}:fl${favLimit}:rl${recentLimit}`;
+    const cached = await CacheManager.get(cacheKey);
+    if (cached) return res.json(cached);
+
+    const profile = await userEngagementService.getUserProfileBySlug(slug, currentUserId);
+    if (!profile) return res.status(404).json({ error: 'Profile not found' });
+
+    let favorites: any[] = [];
+    let recentlyPlayed: any[] = [];
+
+    if (profile.isPublic) {
+      const isObjectId = /^[0-9a-fA-F]{24}$/.test(slug);
+      const [favResult, userDoc] = await Promise.all([
+        userEngagementService.getUserFavoritesBySlug(slug, 1, parseInt(favLimit as string)),
+        isObjectId
+          ? User.findById(slug).select('recentlyPlayedStations').lean()
+          : User.findOne({ $or: [{ slug }, { username: slug }] }).select('recentlyPlayedStations').lean(),
+      ]);
+
+      favorites = favResult?.favorites || [];
+      recentlyPlayed = ((userDoc as any)?.recentlyPlayedStations || []).slice(0, parseInt(recentLimit as string));
+    }
+
+    const result = { profile, favorites, recentlyPlayed };
+    await CacheManager.set(cacheKey, result, { ttl: 90 });
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching full user profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get recently played by slug
 router.get('/profile/:slug/recently-played', async (req, res) => {
   try {
