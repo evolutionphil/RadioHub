@@ -124,14 +124,6 @@ export default function AdminLogin() {
             </Button>
           </form>
 
-          <div className="mt-6 p-4 bg-gray-800/50 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-300 mb-2">Admin Credentials:</h4>
-            <div className="text-xs text-gray-400 space-y-1">
-              <div>Username: <span className="font-mono text-blue-400">admin</span></div>
-              <div>Password: <span className="font-mono text-blue-400">admin123</span></div>
-            </div>
-          </div>
-
           <div className="mt-4 text-center">
             <button
               onClick={() => window.location.href = '/'}
