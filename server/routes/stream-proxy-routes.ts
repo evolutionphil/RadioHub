@@ -134,7 +134,9 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       }
 
       if (!response.ok) {
-        console.error(`❌ Image proxy failed: ${response.status} ${response.statusText} for ${originalUrl}`);
+        if (response.status !== 404) {
+          console.warn(`⚠️ Image proxy: ${response.status} for ${originalUrl}`);
+        }
         return res.status(404).json({ error: 'Image not found or inaccessible' });
       }
 
