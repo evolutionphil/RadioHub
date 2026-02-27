@@ -303,11 +303,15 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     }
   }
 
-  setImmediate(() => warmupPopularStationsCache());
-  setImmediate(() => warmupTvMobileCache());
+  if (process.env.NODE_ENV !== 'development') {
+    setImmediate(() => warmupPopularStationsCache());
+    setImmediate(() => warmupTvMobileCache());
+  } else {
+    logger.log('⚡ Popular stations & TV/Mobile cache warmup: Skipped in dev mode');
+  }
 
-  // === HALOGO MIGRATION (one-time background) ===
-  setImmediate(async () => {
+  // === HALOGO MIGRATION (one-time background, production only) ===
+  if (process.env.NODE_ENV !== 'development') setImmediate(async () => {
     try {
       const migrationKey = 'migration:hasLogo:v1';
       const alreadyDone = await CacheManager.get(migrationKey);
@@ -346,14 +350,19 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   // Genres cache: refresh every 5 minutes (NOT immediate - startup warmup handles initial load)
   // Using a flag to skip the first fire if startup warmup already ran
   let genresWarmupDone = false;
-  setImmediate(async () => {
-    try {
-      const start = Date.now();
-      await PrecomputedGenresService.warmupCache();
-      genresWarmupDone = true;
-      logger.log(`🔥 PrecomputedGenres startup warmup completed in ${Date.now() - start}ms`);
-    } catch (error) { logger.error('PrecomputedGenres startup warmup failed:', error); }
-  });
+  if (process.env.NODE_ENV !== 'development') {
+    setImmediate(async () => {
+      try {
+        const start = Date.now();
+        await PrecomputedGenresService.warmupCache();
+        genresWarmupDone = true;
+        logger.log(`🔥 PrecomputedGenres startup warmup completed in ${Date.now() - start}ms`);
+      } catch (error) { logger.error('PrecomputedGenres startup warmup failed:', error); }
+    });
+  } else {
+    genresWarmupDone = true;
+    logger.log('⚡ Genres cache warmup: Skipped in dev mode');
+  }
 
   cron.default.schedule('*/5 * * * *', async () => {
     // Skip first cron fire if startup warmup just ran (avoid double work)

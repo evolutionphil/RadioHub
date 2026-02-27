@@ -43,11 +43,9 @@ integrations = ["javascript_google_analytics:1.0.0", "javascript_openai_ai_integ
 
 [[ports]]
 localPort = 5000
-externalPort = 80
 
 [[ports]]
 localPort = 8080
-externalPort = 8080
 
 [userenv]
 

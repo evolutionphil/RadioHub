@@ -737,20 +737,8 @@ app.use((req, res, next) => {
   app.use(htmlLangMiddleware);
   
   // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (app.get("env") === "development") {
-    // Use computed path to prevent static bundler analysis of vite (devDependency)
-    // This ensures vite is never required in production builds
-    const viteSetupPath = "./vite";
-    const { setupVite } = await import(/* @vite-ignore */ viteSetupPath as any);
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
-
-  // CRITICAL DEPLOYMENT FIX: Bind port IMMEDIATELY to pass health checks
-  // All heavy async operations (cache warming, translations) run in background after this
+  // CRITICAL: Bind port IMMEDIATELY so workflow detection doesn't timeout
+  // Vite setup and heavy operations happen after port is open
   const port = parseInt(process.env.PORT || '5000', 10);
   server.listen({
     port,
@@ -760,6 +748,16 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
     logger.log(`🚀 DEPLOYMENT: Port ${port} bound successfully - health check should pass`);
   });
+
+  // setting up all the other routes so the catch-all route
+  // doesn't interfere with the other routes
+  if (app.get("env") === "development") {
+    const viteSetupPath = "./vite";
+    const { setupVite } = await import(/* @vite-ignore */ viteSetupPath as any);
+    await setupVite(app, server);
+  } else {
+    serveStatic(app);
+  }
 
   // Background tasks: Run cache warming and translation loading AFTER port binding
   // These operations no longer block deployment health checks
@@ -785,81 +783,79 @@ app.use((req, res, next) => {
         logger.warn('⚠️ Could not check for unfinished jobs:', (resumeError as Error).message);
       }
       
-      logger.log('🔥 BACKGROUND: Starting cache warmup (non-blocking)...');
-      
-      // Warm up performance caches for faster SEO response times
-      await performanceCache.warmupCaches();
-      
-      // Warm up precomputed stations cache for ALL countries (ultra-fast /radios page)
-      // Runs in background - doesn't block server startup
-      try {
-        const { PrecomputedStationsService } = await import('./services/precomputed-stations');
-        // Start full cache initialization in background (non-blocking)
-        PrecomputedStationsService.initializeFullCache().catch(err => 
-          console.error('Full precomputed cache initialization failed:', err)
-        );
-        logger.log('🚀 PRECOMPUTED: Full cache initialization started in background');
-      } catch (err) {
-        console.error('Precomputed stations warmup failed:', err);
-      }
-      
-      // Warm up similar stations cache (background, non-blocking for main server)
-      performanceCache.warmupSimilarStations().catch(err => 
-        console.error('Similar stations warmup failed:', err)
-      );
-      
-      // Warm up Community Favorites (public profiles) cache at startup
-      try {
-        const axios = (await import('axios')).default;
-        const warmupPort = process.env.PORT || '5000';
-        await axios.get(`http://localhost:${warmupPort}/api/public-profiles`, { timeout: 30000 });
-        logger.log('✅ CACHE: Public profiles (Community Favorites) warmed up');
-      } catch (err) {
-        logger.warn('⚠️ Public profiles warmup failed (will cache on first request)');
-      }
-      
-      // Warm up Discoverable Genres cache at startup (hero section)
-      try {
-        const { Genre } = await import('../shared/mongo-schemas');
-        const CacheManagerModule = (await import('./cache')).default;
-        const genres = await Genre.find({ isDiscoverable: true })
-          .sort({ stationCount: -1 })
-          .limit(13)
-          .lean();
-        await CacheManagerModule.set('genres:discoverable:all:13', genres, { ttl: 600 });
-        logger.log('✅ CACHE: Discoverable genres warmed up');
-      } catch (err) {
-        logger.warn('⚠️ Discoverable genres warmup failed (will cache on first request)');
-      }
-      
-      // Warmup sitemap translations for all enabled languages
-      logger.log('🔥 CACHE: Warming up sitemap translations...');
-      try {
-        const { SEO_LANGUAGES } = await import('../shared/seo-config');
-        const { loadSitemapTranslations } = await import('./utils/sitemap-translations');
-        const CacheManager = (await import('./cache')).default;
+      // In development, skip ALL heavy cache warmups to prevent OOM in Replit
+      // Production (Railway) has enough memory for full warmup
+      if (process.env.NODE_ENV === 'development') {
+        logger.log('⚡ DEV MODE: All heavy cache warmups skipped (saves ~500MB RAM)');
+        logger.log('⚡ Caches will be populated on-demand on first request');
+      } else {
+        logger.log('🔥 BACKGROUND: Starting cache warmup (non-blocking)...');
         
-        const enabledLanguages = SEO_LANGUAGES.filter(lang => lang.enabled);
-        let sitemapTranslationsWarmed = 0;
+        await performanceCache.warmupCaches();
         
-        for (const lang of enabledLanguages) {
-          try {
-            const sitemapTranslations = await loadSitemapTranslations(lang.code);
-            
-            await CacheManager.set(
-              `sitemap_translations:${lang.code}`, 
-              sitemapTranslations,
-              { ttl: 3600 } // 1 hour TTL
-            );
-            sitemapTranslationsWarmed++;
-          } catch (error: any) {
-            logger.warn(`⚠️ Failed to warm sitemap translations for ${lang.code}:`, error.message);
-          }
+        try {
+          const { PrecomputedStationsService } = await import('./services/precomputed-stations');
+          PrecomputedStationsService.initializeFullCache().catch(err => 
+            console.error('Full precomputed cache initialization failed:', err)
+          );
+          logger.log('🚀 PRECOMPUTED: Full cache initialization started in background');
+        } catch (err) {
+          console.error('Precomputed stations warmup failed:', err);
         }
         
-        logger.log(`🔥 CACHE: Warmed up sitemap translations for ${sitemapTranslationsWarmed} languages`);
-      } catch (error) {
-        console.error('❌ CACHE: Sitemap translation warmup failed:', error);
+        performanceCache.warmupSimilarStations().catch(err => 
+          console.error('Similar stations warmup failed:', err)
+        );
+        
+        try {
+          const axios = (await import('axios')).default;
+          const warmupPort = process.env.PORT || '5000';
+          await axios.get(`http://localhost:${warmupPort}/api/public-profiles`, { timeout: 30000 });
+          logger.log('✅ CACHE: Public profiles (Community Favorites) warmed up');
+        } catch (err) {
+          logger.warn('⚠️ Public profiles warmup failed (will cache on first request)');
+        }
+        
+        try {
+          const { Genre } = await import('../shared/mongo-schemas');
+          const CacheManagerModule = (await import('./cache')).default;
+          const genres = await Genre.find({ isDiscoverable: true })
+            .sort({ stationCount: -1 })
+            .limit(13)
+            .lean();
+          await CacheManagerModule.set('genres:discoverable:all:13', genres, { ttl: 600 });
+          logger.log('✅ CACHE: Discoverable genres warmed up');
+        } catch (err) {
+          logger.warn('⚠️ Discoverable genres warmup failed (will cache on first request)');
+        }
+        
+        logger.log('🔥 CACHE: Warming up sitemap translations...');
+        try {
+          const { SEO_LANGUAGES } = await import('../shared/seo-config');
+          const { loadSitemapTranslations } = await import('./utils/sitemap-translations');
+          const CacheManager = (await import('./cache')).default;
+          
+          const enabledLanguages = SEO_LANGUAGES.filter(lang => lang.enabled);
+          let sitemapTranslationsWarmed = 0;
+          
+          for (const lang of enabledLanguages) {
+            try {
+              const sitemapTranslations = await loadSitemapTranslations(lang.code);
+              await CacheManager.set(
+                `sitemap_translations:${lang.code}`, 
+                sitemapTranslations,
+                { ttl: 3600 }
+              );
+              sitemapTranslationsWarmed++;
+            } catch (error: any) {
+              logger.warn(`⚠️ Failed to warm sitemap translations for ${lang.code}:`, error.message);
+            }
+          }
+          
+          logger.log(`🔥 CACHE: Warmed up sitemap translations for ${sitemapTranslationsWarmed} languages`);
+        } catch (error) {
+          console.error('❌ CACHE: Sitemap translation warmup failed:', error);
+        }
       }
       
       // Load database country-language mappings for SEO routing
@@ -870,50 +866,49 @@ app.use((req, res, next) => {
       const { loadDatabaseUrlTranslations } = await import('../shared/url-translations');
       await loadDatabaseUrlTranslations();
       
-      // Auto-cleanup: Remove placeholder prefixes from descriptions using MongoDB-native regex
-      // Uses a 24h cooldown to avoid running on every restart (expensive on 40k+ stations)
-      try {
-        const CacheManagerModule = (await import('./cache')).default;
-        const CLEANUP_CACHE_KEY = 'startup:description_cleanup:last_run';
-        const lastRun = await CacheManagerModule.get(CLEANUP_CACHE_KEY);
-        if (lastRun) {
-          logger.log('🧹 CLEANUP: Skipping (already ran within 24h)');
-        } else {
-          const { Station } = await import('../shared/mongo-schemas');
-          let cleanedCount = 0;
-          const placeholderRegex = /^\[(TRANSLATED\s+)?(META|FULL\s+DESCRIPTION|SEO\s+META)[^\]]*\]\s*/i;
-          // Only fetch stations that have at least one description field matching the pattern
-          const cursor = Station.find({
-            $or: [
-              { 'descriptions': { $regex: /^\[(TRANSLATED\s+)?(META|FULL|SEO)[^\]]*\]/i } }
-            ]
-          }).select('_id descriptions').lean().cursor({ batchSize: 2000 });
+      if (process.env.NODE_ENV !== 'development') {
+        try {
+          const CacheManagerModule = (await import('./cache')).default;
+          const CLEANUP_CACHE_KEY = 'startup:description_cleanup:last_run';
+          const lastRun = await CacheManagerModule.get(CLEANUP_CACHE_KEY);
+          if (lastRun) {
+            logger.log('🧹 CLEANUP: Skipping (already ran within 24h)');
+          } else {
+            const { Station } = await import('../shared/mongo-schemas');
+            let cleanedCount = 0;
+            const placeholderRegex = /^\[(TRANSLATED\s+)?(META|FULL\s+DESCRIPTION|SEO\s+META)[^\]]*\]\s*/i;
+            const cursor = Station.find({
+              $or: [
+                { 'descriptions': { $regex: /^\[(TRANSLATED\s+)?(META|FULL|SEO)[^\]]*\]/i } }
+              ]
+            }).select('_id descriptions').lean().cursor({ batchSize: 2000 });
 
-          for await (const station of cursor) {
-            if (!station.descriptions || typeof station.descriptions !== 'object') continue;
-            const updatedDescriptions: any = {};
-            let hasChanges = false;
-            for (const [lang, desc] of Object.entries(station.descriptions as any)) {
-              if (typeof desc === 'object' && desc !== null) {
-                const d = desc as any;
-                const cleanedMeta = (d.meta || '').replace(placeholderRegex, '').trim();
-                const cleanedFull = (d.full || '').replace(placeholderRegex, '').trim();
-                if (cleanedMeta !== d.meta || cleanedFull !== d.full) hasChanges = true;
-                updatedDescriptions[lang] = { ...d, meta: cleanedMeta, full: cleanedFull };
-              } else {
-                updatedDescriptions[lang] = desc;
+            for await (const station of cursor) {
+              if (!station.descriptions || typeof station.descriptions !== 'object') continue;
+              const updatedDescriptions: any = {};
+              let hasChanges = false;
+              for (const [lang, desc] of Object.entries(station.descriptions as any)) {
+                if (typeof desc === 'object' && desc !== null) {
+                  const d = desc as any;
+                  const cleanedMeta = (d.meta || '').replace(placeholderRegex, '').trim();
+                  const cleanedFull = (d.full || '').replace(placeholderRegex, '').trim();
+                  if (cleanedMeta !== d.meta || cleanedFull !== d.full) hasChanges = true;
+                  updatedDescriptions[lang] = { ...d, meta: cleanedMeta, full: cleanedFull };
+                } else {
+                  updatedDescriptions[lang] = desc;
+                }
+              }
+              if (hasChanges) {
+                await Station.updateOne({ _id: station._id }, { $set: { descriptions: updatedDescriptions } });
+                cleanedCount++;
               }
             }
-            if (hasChanges) {
-              await Station.updateOne({ _id: station._id }, { $set: { descriptions: updatedDescriptions } });
-              cleanedCount++;
-            }
+            await CacheManagerModule.set(CLEANUP_CACHE_KEY, Date.now(), { ttl: 86400 });
+            if (cleanedCount > 0) logger.log(`🧹 CLEANUP: Cleaned placeholder prefixes from ${cleanedCount} stations`);
           }
-          await CacheManagerModule.set(CLEANUP_CACHE_KEY, Date.now(), { ttl: 86400 });
-          if (cleanedCount > 0) logger.log(`🧹 CLEANUP: Cleaned placeholder prefixes from ${cleanedCount} stations`);
+        } catch (error: any) {
+          logger.warn(`⚠️ Automatic cleanup failed:`, error.message);
         }
-      } catch (error: any) {
-        logger.warn(`⚠️ Automatic cleanup failed:`, error.message);
       }
       
       logger.log('✅ BACKGROUND: All cache warmup operations completed');
@@ -927,18 +922,19 @@ app.use((req, res, next) => {
         logger.warn('⚠️ BACKGROUND: Failed to initialize scheduled cache clear:', error.message);
       }
       
-      // Scan for new translation keys on startup (no auto-translation, just discovery)
-      try {
-        const { TranslationSyncService } = await import('./services/translation-sync');
-        logger.log('🌍 BACKGROUND: Scanning for new translation keys...');
-        const result = await TranslationSyncService.scanForNewKeys();
-        if (result.keysAdded > 0) {
-          logger.log(`✅ BACKGROUND: Found ${result.keysAdded} new translation keys (run 'Translate All Languages' in admin to translate)`);
-        } else {
-          logger.log('✅ BACKGROUND: All translation keys already synced');
+      if (process.env.NODE_ENV !== 'development') {
+        try {
+          const { TranslationSyncService } = await import('./services/translation-sync');
+          logger.log('🌍 BACKGROUND: Scanning for new translation keys...');
+          const result = await TranslationSyncService.scanForNewKeys();
+          if (result.keysAdded > 0) {
+            logger.log(`✅ BACKGROUND: Found ${result.keysAdded} new translation keys (run 'Translate All Languages' in admin to translate)`);
+          } else {
+            logger.log('✅ BACKGROUND: All translation keys already synced');
+          }
+        } catch (error: any) {
+          logger.warn('⚠️ BACKGROUND: Translation key scan failed:', error.message);
         }
-      } catch (error: any) {
-        logger.warn('⚠️ BACKGROUND: Translation key scan failed:', error.message);
       }
     } catch (error) {
       console.error('❌ BACKGROUND: Cache warmup failed:', error);
