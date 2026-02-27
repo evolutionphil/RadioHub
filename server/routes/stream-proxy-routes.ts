@@ -117,17 +117,16 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           method: 'GET',
           signal: controller.signal,
           headers: {
-            'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': req.headers['accept'] || 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
             'Cache-Control': 'no-cache',
-            'Connection': 'keep-alive',
-            'Referer': originalUrl,
             ...(req.headers.range && { 'Range': req.headers.range as string })
           }
         });
       } catch (fetchError: any) {
-        console.error(`❌ Image proxy fetch error: ${fetchError.message} for ${originalUrl}`);
+        // Downgrade network errors to warn (noisy in production)
+        console.warn(`Image proxy network error: ${fetchError.message}`);
         return res.status(404).json({ error: 'Image not accessible' });
       } finally {
         clearTimeout(timeoutId);

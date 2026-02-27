@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import os from 'os';
 import { Station, Country, Genre, Language } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
@@ -25,8 +26,11 @@ interface PerformanceMetrics {
   };
   systemHealth: {
     memoryUsage: number;
-    cpuUsage: number;
-    diskSpace: number;
+    systemMemoryUsage?: number;
+    heapUsedMB?: number;
+    heapTotalMB?: number;
+    cpuUsage: number | null;
+    diskSpace: number | null;
     connectionPool: number;
   };
   optimizationSuggestions: Array<{
@@ -119,13 +123,19 @@ class PerformanceService {
     const slowQueries = this.analyzeSlowQueries();
     const topQueries = this.analyzeTopEndpoints();
 
-    // System health (mock data for now - would integrate with actual system monitoring)
+    // System health — real data from Node.js process and OS
+    const memInfo = process.memoryUsage();
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
     const systemHealth = {
-      memoryUsage: Math.round(process.memoryUsage().heapUsed / process.memoryUsage().heapTotal * 100),
-      cpuUsage: Math.round(Math.random() * 30 + 10), // Mock CPU usage
-      diskSpace: Math.round(Math.random() * 20 + 50), // Mock disk usage
+      memoryUsage: Math.round(memInfo.heapUsed / memInfo.heapTotal * 100),
+      systemMemoryUsage: Math.round((totalMem - freeMem) / totalMem * 100),
+      heapUsedMB: Math.round(memInfo.heapUsed / 1024 / 1024),
+      heapTotalMB: Math.round(memInfo.heapTotal / 1024 / 1024),
+      cpuUsage: null, // Node.js has no synchronous CPU % — use process.cpuUsage() for delta
+      diskSpace: null, // Not available without fs.statfs or shell exec
       connectionPool: mongoose.connection.readyState === 1 ? 
-        Math.round(Math.random() * 10 + 5) : 0 // Mock connection count
+        (mongoose.connection as any).pool?.totalConnectionCount ?? 0 : 0
     };
 
     // Generate optimization suggestions

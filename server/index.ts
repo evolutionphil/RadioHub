@@ -33,6 +33,10 @@ import { stationCountryValidator } from './station-country-validator';
 
 const app = express();
 
+// Trust proxy: Required when deployed behind Cloudflare/Railway/nginx
+// Allows express-rate-limit to correctly identify real client IPs from X-Forwarded-For
+app.set('trust proxy', 1);
+
 // Security: Remove X-Powered-By header to prevent technology stack disclosure
 app.disable('x-powered-by');
 
