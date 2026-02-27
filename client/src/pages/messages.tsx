@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Send, Circle, CheckCheck, Users, MessageCircle } from "lucide-react";
+import { Search, Send, Circle, CheckCheck, Users, MessageCircle, ArrowLeft } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
@@ -189,6 +189,7 @@ export default function MessagesPage() {
   const qc = useQueryClient();
 
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [mobileView, setMobileView] = useState<'list' | 'chat'>('list');
   const [input, setInput] = useState("");
   const [searchQ, setSearchQ] = useState("");
   const [searchRes, setSearchRes] = useState<UserInfo[]>([]);
@@ -461,6 +462,7 @@ export default function MessagesPage() {
     setSearchQ("");
     setSearchRes([]);
     setTab("chats");
+    setMobileView('chat');
   };
 
   const partnerOnline = partner ? online.has(partner._id) : false;
@@ -485,10 +487,12 @@ export default function MessagesPage() {
         className="-mx-2 -my-8 md:-mx-8 flex"
         style={{ height: "calc(100vh - 70px)", overflow: "hidden" }}
       >
-        {/* ── Left: sidebar ── */}
+        {/* ── Left: conversation list ──
+            Mobile: full-width, hidden when chat is open
+            Desktop (md+): fixed 260px, always visible  */}
         <div
-          className="flex flex-col border-r flex-shrink-0"
-          style={{ width: 260, background: "#151515", borderColor: "#222" }}
+          className={`flex-col border-r flex-shrink-0 ${mobileView === 'list' ? 'flex' : 'hidden'} md:flex w-full md:w-[260px]`}
+          style={{ background: "#151515", borderColor: "#222" }}
         >
           {/* Header */}
           <div className="px-4 pt-4 pb-2 border-b flex-shrink-0" style={{ borderColor: "#222" }}>
@@ -611,15 +615,28 @@ export default function MessagesPage() {
           </div>
         </div>
 
-        {/* ── Right: chat ── */}
-        <div className="flex-1 flex flex-col min-w-0" style={{ background: "#0E0E0E" }}>
+        {/* ── Right: chat panel ──
+            Mobile: full-width, hidden when list is showing
+            Desktop (md+): flex-1, always visible  */}
+        <div
+          className={`flex-col min-w-0 ${mobileView === 'chat' ? 'flex' : 'hidden'} md:flex flex-1`}
+          style={{ background: "#0E0E0E" }}
+        >
           {activeId ? (
             <>
               {/* Chat header */}
               <div
-                className="flex items-center gap-3 px-5 py-3 border-b flex-shrink-0"
+                className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0"
                 style={{ background: "#151515", borderColor: "#222" }}
               >
+                {/* Back button — mobile only */}
+                <button
+                  onClick={() => setMobileView('list')}
+                  className="md:hidden flex items-center justify-center w-8 h-8 rounded-full flex-shrink-0 hover:bg-[#2D2D2D] transition-colors"
+                  aria-label="Back to conversations"
+                >
+                  <ArrowLeft size={18} className="text-white" />
+                </button>
                 <Avatar user={partner ? { ...partner, online: partnerOnline } : null} size={38} />
                 <div className="flex-1 min-w-0">
                   <div className="text-white font-semibold text-sm truncate">{activeName}</div>
@@ -633,7 +650,7 @@ export default function MessagesPage() {
               </div>
 
               {/* Messages area */}
-              <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="flex-1 overflow-y-auto px-4 py-4">
                 {chatLoading ? (
                   <div className="flex flex-col gap-3">
                     {[80, 140, 60, 110].map((w, i) => (
@@ -696,7 +713,8 @@ export default function MessagesPage() {
               </div>
             </>
           ) : (
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 opacity-40">
+            /* Desktop empty state — only shown on md+ (mobile always shows list or chat) */
+            <div className="flex-1 hidden md:flex flex-col items-center justify-center gap-4 opacity-40">
               <MessageCircle size={48} style={{ color: "#FF4199" }} />
               <div className="text-center">
                 <p className="text-white font-semibold text-base">Your Messages</p>
