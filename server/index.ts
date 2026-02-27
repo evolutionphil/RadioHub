@@ -883,7 +883,7 @@ app.use((req, res, next) => {
             $or: [
               { 'descriptions': { $regex: /^\[(TRANSLATED\s+)?(META|FULL|SEO)[^\]]*\]/i } }
             ]
-          }).select('_id descriptions').lean().cursor({ batchSize: BATCH });
+          }).select('_id descriptions').lean().cursor({ batchSize: 2000 });
 
           for await (const station of cursor) {
             if (!station.descriptions || typeof station.descriptions !== 'object') continue;
