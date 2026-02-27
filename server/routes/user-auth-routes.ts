@@ -466,6 +466,18 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     });
   });
 
+  // CRITICAL: Force Cloudflare to bypass cache and WAF security checks for all auth routes.
+  // Without this, Cloudflare caches OAuth redirects (with state params) causing 502 errors
+  // on subsequent login attempts, and WAF may flag OAuth code params as attacks.
+  app.use('/api/auth', (req, res, next) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Surrogate-Control', 'no-store');
+    res.setHeader('CDN-Cache-Control', 'no-store');
+    res.setHeader('Cloudflare-CDN-Cache-Control', 'no-store');
+    next();
+  });
+
   // Social authentication routes with passport integration
   app.get("/api/auth/google", async (req, res, next) => {
     const { getSocialAuthStatus } = deps;

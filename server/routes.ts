@@ -28,6 +28,7 @@ import {
 } from './routes/cache-refresh-utils';
 import { TV_GENRE_PROJECTION, TV_STATION_PROJECTION, tvSlimStation, tvSlimGenre } from './routes/shared-utils';
 import { requireAuth, requireAdmin, generateAuthToken } from './middleware/auth';
+import { getSocialAuthStatus } from './auth/social-auth-simple';
 import { registerCastRoutes } from './routes/cast-routes';
 import { registerOgImageRoutes } from './routes/og-image-routes';
 import { registerCacheDashboardRoutes } from './routes/cache-dashboard-routes';
@@ -53,7 +54,9 @@ const deps = {
   requireAdmin,
   generateAuthToken,
   apiKeyMiddleware,
-  seedDemoApiKey
+  seedDemoApiKey,
+  passport,
+  getSocialAuthStatus
 };
 
 export async function registerRoutes(app: Express): Promise<Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer>, chatWss: InstanceType<typeof WebSocketServer> }> {
