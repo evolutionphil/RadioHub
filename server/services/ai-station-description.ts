@@ -302,60 +302,15 @@ Response format (separate with "==="):
         logger.log(`⚠️ AI: Fallback generation failed for "${station.name}"`);
       }
       
-      // Last resort: use simple template in correct language if all else fails
-      // Build language-specific templates
-      const templateTexts: Record<string, {full: string, meta: string}> = {
-        'fr': {
-          full: `${station.name} est une station de radio de ${station.country} proposant ${tags}. Écoutez ${station.name} pour votre musique et divertissement préférés. Profitez d'une diffusion de qualité avec Mega Radio.`,
-          meta: `${station.name} - Écoutez cette station de radio de ${station.country}. Profitez de la musique ${tags}.`.substring(0, 160)
-        },
-        'es': {
-          full: `${station.name} es una estación de radio de ${station.country} que ofrece ${tags}. Escucha ${station.name} para tu música y entretenimiento favorito. Disfruta de transmisión de calidad con Mega Radio.`,
-          meta: `${station.name} - Escucha esta estación de radio de ${station.country}. Disfruta de la música ${tags}.`.substring(0, 160)
-        },
-        'de': {
-          full: `${station.name} ist ein Radiosender aus ${station.country} mit ${tags}. Höre ${station.name} für deine Lieblingsmusik und Unterhaltung. Genießen Sie qualitativ hochwertiges Broadcasting mit Mega Radio.`,
-          meta: `${station.name} - Höre diesen Radiosender aus ${station.country}. Genieße ${tags} Musik.`.substring(0, 160)
-        },
-        'it': {
-          full: `${station.name} è una stazione radio da ${station.country} che offre ${tags}. Ascolta ${station.name} per la tua musica e intrattenimento preferito. Goditi la trasmissione di qualità con Mega Radio.`,
-          meta: `${station.name} - Ascolta questa stazione radio da ${station.country}. Goditi la musica ${tags}.`.substring(0, 160)
-        },
-        'pt': {
-          full: `${station.name} é uma estação de rádio de ${station.country} oferecendo ${tags}. Ouça ${station.name} para sua música e entretenimento favorito. Desfrute de transmissão de qualidade com Mega Radio.`,
-          meta: `${station.name} - Ouça esta estação de rádio de ${station.country}. Aproveite a música ${tags}.`.substring(0, 160)
-        },
-        'tr': {
-          full: `${station.name}, ${station.country}'dan ${tags} sunan bir radyo istasyonudur. Favori müziğiniz ve eğlentiyi için ${station.name} dinleyin. Mega Radio ile kaliteli yayıncılığın tadını çıkarın.`,
-          meta: `${station.name} - ${station.country} radyo istasyonunu dinleyin. ${tags} müziğinin tadını çıkarın.`.substring(0, 160)
-        },
-        'ar': {
-          full: `${station.name} محطة إذاعية من ${station.country} تقدم ${tags}. استمع إلى ${station.name} لموسيقتك وترفيهك المفضل. استمتع بالبث عالي الجودة مع Mega Radio.`,
-          meta: `${station.name} - استمع إلى هذه المحطة الإذاعية من ${station.country}. استمتع بموسيقى ${tags}.`.substring(0, 160)
-        },
-        'zh': {
-          full: `${station.name}是来自${station.country}的广播电台，提供${tags}。现在就在Mega Radio上收听${station.name}，享受你最喜爱的音乐和娱乐。通过Mega Radio享受高质量的广播。`,
-          meta: `${station.name} - 来自${station.country}的广播电台。享受${tags}音乐。`.substring(0, 160)
-        },
-        'ja': {
-          full: `${station.name}は${station.country}からのラジオ局で、${tags}を提供しています。あなたのお気に入りの音楽とエンターテイメントのために${station.name}をMega Radioで聴きましょう。Mega Radioで高品質な放送をお楽しみください。`,
-          meta: `${station.name} - ${station.country}のラジオ局。${tags}音楽をお楽しみください。`.substring(0, 160)
-        },
-        'ko': {
-          full: `${station.name}은 ${station.country}의 라디오 방송국으로 ${tags}을 제공합니다. 당신이 가장 좋아하는 음악과 엔터테인먼트를 위해 Mega Radio에서 ${station.name}을 청취하세요. Mega Radio에서 고품질 방송을 즐기세요.`,
-          meta: `${station.name} - ${station.country}의 라디오 방송국. ${tags} 음악을 즐기세요.`.substring(0, 160)
-        }
-      };
-      
-      const templateFull = templateTexts[language]?.full || `${station.name} is a radio station from ${station.country} featuring ${tags}. Listen to ${station.name} for your favorite music and entertainment. Enjoy quality broadcasting with Mega Radio.`;
-      const templateMeta = templateTexts[language]?.meta || `${station.name} - Listen to this radio station from ${station.country}. Enjoy ${tags} music.`.substring(0, 160);
-      
+      // Both AI attempts failed — do NOT store thin template content in DB.
+      // The SSR renderer already shows station metadata (country, genres, website) for stations
+      // without descriptions, which is better than 2-3 generic template sentences.
+      logger.log(`⚠️ AI: Both attempts failed for "${station.name}" — skipping storage to avoid thin content`);
       return {
-        success: true,
-        fullDescription: templateFull,
-        metaDescription: templateMeta,
+        success: false,
         language,
-        usedFallback: true
+        usedFallback: true,
+        error: 'Both primary and fallback AI generation failed'
       };
     }
     
