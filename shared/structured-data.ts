@@ -38,13 +38,16 @@ export function generateOrganizationSchema(
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
+    "@id": `https://${domain}/#organization`,
     "name": "Mega Radio",
     "description": description,
-    "url": localizedUrl,
-    "logo": `https://${domain}/header-logo-80w.webp`,
-    "sameAs": [
-      // Add social media URLs when available
-    ],
+    "url": `https://${domain}`,
+    "logo": {
+      "@type": "ImageObject",
+      "url": `https://${domain}/images/logo-icon.webp`,
+      "width": 212,
+      "height": 212
+    },
     "contactPoint": {
       "@type": "ContactPoint",
       "contactType": "Customer Service",
@@ -209,9 +212,12 @@ export function generateWebSiteSchema(
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
+    "@id": `https://${domain}/#website`,
     "name": "Mega Radio",
+    "alternateName": "Mega Radio - Free Online Radio",
     "description": description,
-    "url": localizedUrl,
+    "url": `https://${domain}`,
+    "inLanguage": language,
     "potentialAction": {
       "@type": "SearchAction",
       "target": {

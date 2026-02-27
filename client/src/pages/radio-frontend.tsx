@@ -205,7 +205,7 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
                 height="56"
                 width="56"
                 src={user.profileImageUrl} 
-                alt="avatar"
+                alt={`${user.name || user.email?.split('@')[0] || 'User'} profile photo`}
                 className="h-12 w-12 md:h-14 md:w-14 rounded-full shadow-inner flex-shrink-0"
                 loading="lazy"
                 onError={(e) => {
@@ -217,7 +217,7 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
                 height="56"
                 width="56"
                 src="/assets/images/no-avatar.svg"
-                alt="avatar"
+                alt={`${user.name || user.email?.split('@')[0] || 'User'} profile photo`}
                 className="h-12 w-12 md:h-14 md:w-14 rounded-full shadow-inner flex-shrink-0"
                 loading="lazy"
               />

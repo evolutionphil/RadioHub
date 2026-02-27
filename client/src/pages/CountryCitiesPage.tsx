@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'wouter';
 import { ArrowLeft, MapPin, Search, Globe, Radio, Building2, Filter } from 'lucide-react';
@@ -60,6 +60,25 @@ export default function CountryCitiesPage() {
     
     return cities;
   }, [data?.cities, searchTerm, sortBy]);
+
+  // SEO: inject meta tags into document head when country data is loaded
+  useEffect(() => {
+    if (!data) return;
+    const country = data.country.name;
+    const cityCount = data.cities.length;
+    const totalStations = data.cities.reduce((sum, c) => sum + c.stationCount, 0);
+    const title = `${country} Cities - ${cityCount} Cities, ${totalStations} Radio Stations | Mega Radio`;
+    const description = `Explore ${cityCount} cities and ${totalStations} live radio stations from ${country}. Browse local FM/AM stations from ${country}'s major cities online for free.`;
+    document.title = title;
+    const descMeta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    if (descMeta) descMeta.setAttribute('content', description);
+    const ogTitleMeta = document.querySelector('meta[property="og:title"]') as HTMLMetaElement | null;
+    if (ogTitleMeta) ogTitleMeta.setAttribute('content', title);
+    const ogDescMeta = document.querySelector('meta[property="og:description"]') as HTMLMetaElement | null;
+    if (ogDescMeta) ogDescMeta.setAttribute('content', description);
+    const canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (canonicalLink) canonicalLink.setAttribute('href', window.location.href.split('?')[0]);
+  }, [data]);
 
   if (isLoading) {
     return (

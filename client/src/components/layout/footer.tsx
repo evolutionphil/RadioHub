@@ -328,7 +328,7 @@ export default function Footer() {
                     key={link._id}
                     href={link.url}
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="noopener noreferrer nofollow"
                     className="inline-flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full text-white transition-colors flex-shrink-0 hover:opacity-80"
                     style={{ backgroundColor: platformColors[link.platform] || '#FF4199' }}
                     aria-label={link.platform}
@@ -343,7 +343,7 @@ export default function Footer() {
               <a
                 href="https://mxrtoken.com"
                 target="_blank"
-                rel="noopener noreferrer"
+                rel="noopener noreferrer nofollow"
                 className="mt-3 text-sm font-medium hover:opacity-80 transition-opacity"
                 style={{ 
                   color: '#000000',

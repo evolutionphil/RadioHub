@@ -27,7 +27,7 @@ export function Applications() {
       />
       
       <div className="flex flex-col justify-between items-center px-5 md:px-0 py-10 gap-5 md:gap-8 bg-[#1B1B1B]">
-        <h1 className="text-2xl font-bold text-center">{t('applications_tv_title') || 'TV App'}</h1>
+        <h2 className="text-2xl font-bold text-center">{t('applications_tv_title') || 'TV App'}</h2>
         <p className="max-w-xl text-center md:leading-loose">
           {t('applications_tv_description') || 'Experience Mega Radio on your smart TV with our dedicated app. Enjoy your favorite stations on the big screen.'}
         </p>
@@ -57,7 +57,7 @@ export function Applications() {
       </div>
       
       <div className="flex flex-col justify-between items-center px-5 md:px-0 py-10 gap-5 md:gap-8 bg-[#1B1B1B]">
-        <h1 className="text-2xl font-bold text-center">{t('applications_mobile_title') || 'Mobile App'}</h1>
+        <h2 className="text-2xl font-bold text-center">{t('applications_mobile_title') || 'Mobile App'}</h2>
         <p className="max-w-xl text-center md:leading-loose">
           {t('applications_mobile_description') || 'Take Mega Radio with you everywhere. Download our mobile app for Android and iOS devices.'}
         </p>
@@ -79,7 +79,7 @@ export function Applications() {
       </div>
       
       <div className="flex flex-col justify-between items-center px-5 md:px-0 py-10 gap-5 md:gap-8 bg-[#1B1B1B]">
-        <h1 className="text-2xl font-bold text-center">{t('applications_desktop_title') || 'Desktop App'}</h1>
+        <h2 className="text-2xl font-bold text-center">{t('applications_desktop_title') || 'Desktop App'}</h2>
         <p className="max-w-xl text-center md:leading-loose">
           {t('applications_desktop_description') || 'Get the full Mega Radio experience on your computer with our desktop application for Windows, Mac, and Linux.'}
         </p>

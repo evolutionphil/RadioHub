@@ -225,6 +225,21 @@ export default function RegionStationsPage() {
 
   const seoTags = generateSeoTags();
 
+  // Inject SEO meta tags into document head when data is available
+  useEffect(() => {
+    if (!data) return;
+    const tags = generateSeoTags();
+    if (tags.title) document.title = tags.title;
+    const descMeta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
+    if (descMeta && tags.description) descMeta.setAttribute('content', tags.description);
+    const ogTitleMeta = document.querySelector('meta[property="og:title"]') as HTMLMetaElement | null;
+    if (ogTitleMeta && tags.title) ogTitleMeta.setAttribute('content', tags.title);
+    const ogDescMeta = document.querySelector('meta[property="og:description"]') as HTMLMetaElement | null;
+    if (ogDescMeta && tags.description) ogDescMeta.setAttribute('content', tags.description);
+    const canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (canonicalLink) canonicalLink.setAttribute('href', window.location.href.split('?')[0]);
+  }, [data]);
+
   // Generate structured data for region/country/city pages  
   const generateStructuredData = () => {
     if (!data || typeof window === 'undefined' || !filteredStations) return null;
