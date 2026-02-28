@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Image, RefreshCw, Play, Square, CheckCircle, XCircle, Clock, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -75,6 +75,8 @@ export default function LogoManagement() {
     refetchOnWindowFocus: false
   });
 
+  const [showReprocessConfirm, setShowReprocessConfirm] = useState(false);
+
   const startProcessingMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/admin/logos/process-all', { body: { limit: 1000 } });
@@ -95,6 +97,36 @@ export default function LogoManagement() {
       }
     },
     onError: (error: Error) => {
+      toast({
+        title: "Error",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const reprocessAllMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/admin/logos/reprocess-all', {});
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setShowReprocessConfirm(false);
+      if (data.success && data.jobId) {
+        setCurrentJobId(data.jobId);
+        toast({
+          title: "Full reprocessing started",
+          description: `Reprocessing ALL ${data.totalToProcess} station logos from scratch...`
+        });
+      } else {
+        toast({
+          title: data.message || "Info",
+          variant: data.success ? "default" : "destructive"
+        });
+      }
+    },
+    onError: (error: Error) => {
+      setShowReprocessConfirm(false);
       toast({
         title: "Error",
         description: error.message,
@@ -297,18 +329,33 @@ export default function LogoManagement() {
                   : `${stats?.stationsWithLogoAssets?.toLocaleString() ?? 0} stations have optimized logos.`}
                 {' '}This will download favicon images and create optimized WebP versions in S3.
               </p>
-              <Button 
-                onClick={() => startProcessingMutation.mutate()}
-                disabled={startProcessingMutation.isPending}
-                data-testid="button-start-processing"
-              >
-                {startProcessingMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Play className="w-4 h-4 mr-2" />
-                )}
-                {(stats?.stationsNeedingProcessing ?? 0) > 0 ? 'Start Processing' : 'Re-process All Logos'}
-              </Button>
+              <div className="flex gap-3">
+                <Button 
+                  onClick={() => startProcessingMutation.mutate()}
+                  disabled={startProcessingMutation.isPending || (stats?.stationsNeedingProcessing ?? 0) === 0}
+                  data-testid="button-start-processing"
+                >
+                  {startProcessingMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4 mr-2" />
+                  )}
+                  Process Remaining ({stats?.stationsNeedingProcessing?.toLocaleString() ?? 0})
+                </Button>
+                <Button 
+                  variant="destructive"
+                  onClick={() => setShowReprocessConfirm(true)}
+                  disabled={reprocessAllMutation.isPending}
+                  data-testid="button-reprocess-all"
+                >
+                  {reprocessAllMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
+                  Reprocess All Logos
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
@@ -448,6 +495,37 @@ export default function LogoManagement() {
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showReprocessConfirm} onOpenChange={setShowReprocessConfirm}>
+        <DialogContent className="max-w-md bg-white text-black">
+          <DialogHeader>
+            <DialogTitle>Reprocess All Logos</DialogTitle>
+            <DialogDescription>
+              This will reset ALL existing logo data and redownload + reprocess every station logo from scratch. 
+              This affects {stats?.stationsWithFavicon?.toLocaleString()} stations and may take a long time.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-800">
+            All existing S3 logo files will be replaced. This cannot be undone.
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setShowReprocessConfirm(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={() => reprocessAllMutation.mutate()}
+              disabled={reprocessAllMutation.isPending}
+            >
+              {reprocessAllMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 mr-2" />
+              )}
+              Yes, Reprocess All
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

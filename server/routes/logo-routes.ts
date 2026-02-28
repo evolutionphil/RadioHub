@@ -308,6 +308,159 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     }
   });
   
+  app.post("/api/admin/logos/reprocess-all", requireAdmin, async (req, res) => {
+    try {
+      for (const [id, job] of logoProcessingJobs.entries()) {
+        if (job.status === 'running') {
+          return res.json({ 
+            success: false, 
+            message: 'A logo processing job is already running',
+            jobId: id
+          });
+        }
+      }
+
+      const totalWithFavicon = await Station.countDocuments({
+        favicon: { $exists: true, $nin: ['', null, 'null'] },
+        slug: { $exists: true, $ne: null }
+      });
+
+      if (totalWithFavicon === 0) {
+        return res.json({ success: true, message: 'No stations with favicons found', processed: 0 });
+      }
+
+      await Station.updateMany(
+        { favicon: { $exists: true, $nin: ['', null, 'null'] } },
+        { $unset: { logoAssets: '' } }
+      );
+
+      logger.log(`🔄 REPROCESS ALL: Reset logoAssets for all stations. Starting fresh processing of ${totalWithFavicon} stations...`);
+
+      const jobId = `logo-reprocess-${Date.now()}`;
+
+      logoProcessingJobs.set(jobId, {
+        jobId,
+        status: 'running',
+        total: totalWithFavicon,
+        processed: 0,
+        successful: 0,
+        failed: 0,
+        startedAt: new Date(),
+        results: []
+      });
+
+      res.json({
+        success: true,
+        message: `Reprocessing ALL ${totalWithFavicon} station logos from scratch`,
+        jobId,
+        totalToProcess: totalWithFavicon
+      });
+
+      const needsProcessingFilter = {
+        favicon: { $exists: true, $nin: ['', null, 'null'] },
+        $or: [
+          { 'logoAssets.status': { $exists: false } },
+          { 'logoAssets.status': 'pending' },
+          { 'logoAssets.status': 'failed' },
+        ]
+      };
+
+      setImmediate(async () => {
+        const job = logoProcessingJobs.get(jobId)!;
+        const batchFetchSize = 500;
+        const concurrentSize = 10;
+        let totalProcessedOverall = 0;
+        let totalSuccessful = 0;
+        let totalFailed = 0;
+        let roundNumber = 0;
+
+        try {
+          while (true) {
+            const currentJob = logoProcessingJobs.get(jobId);
+            if (currentJob?.status === 'cancelled' || currentJob?.status === 'paused') {
+              logger.log(`⏹️ Logo reprocessing stopped by user after ${totalProcessedOverall} stations`);
+              break;
+            }
+
+            roundNumber++;
+            const stations = await Station.find(needsProcessingFilter)
+              .limit(batchFetchSize)
+              .lean();
+
+            if (stations.length === 0) {
+              logger.log(`🎉 ALL LOGOS REPROCESSED! Total: ${totalProcessedOverall} (${totalSuccessful} successful, ${totalFailed} failed)`);
+              break;
+            }
+
+            logger.log(`📦 Reprocess Round ${roundNumber}: Processing ${stations.length} stations...`);
+
+            for (let i = 0; i < stations.length; i += concurrentSize) {
+              const checkJob = logoProcessingJobs.get(jobId);
+              if (checkJob?.status === 'cancelled' || checkJob?.status === 'paused') break;
+
+              const batch = stations.slice(i, i + concurrentSize);
+              const batchPromises = batch.map(async (station) => {
+                try {
+                  if (!station.favicon || !station.slug) {
+                    return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: 'Missing favicon or slug' };
+                  }
+                  const result = await logoProcessor.processFromUrl(station._id.toString(), station.slug, station.favicon);
+                  if (result.success) {
+                    return { stationId: station._id.toString(), stationName: station.name, status: 'success' as const };
+                  } else {
+                    return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: result.error };
+                  }
+                } catch (error: any) {
+                  return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: error.message };
+                }
+              });
+
+              const results = await Promise.allSettled(batchPromises);
+              results.forEach(result => {
+                totalProcessedOverall++;
+                job.processed = totalProcessedOverall;
+                if (result.status === 'fulfilled') {
+                  job.results.push(result.value);
+                  if (result.value.status === 'success') {
+                    totalSuccessful++;
+                    job.successful = totalSuccessful;
+                  } else {
+                    totalFailed++;
+                    job.failed = totalFailed;
+                  }
+                } else {
+                  totalFailed++;
+                  job.failed = totalFailed;
+                  job.results.push({ stationId: 'unknown', stationName: 'unknown', status: 'failed', error: 'Promise rejected' });
+                }
+              });
+              logoProcessingJobs.set(jobId, job);
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            const remaining = await Station.countDocuments(needsProcessingFilter);
+            logger.log(`📊 Reprocess Round ${roundNumber} complete: ${totalProcessedOverall} processed, ${remaining} remaining`);
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
+
+          job.status = 'completed';
+          job.completedAt = new Date();
+          logoProcessingJobs.set(jobId, job);
+          logger.log(`✅ Logo REPROCESSING COMPLETE: ${totalSuccessful} successful, ${totalFailed} failed out of ${totalProcessedOverall} total`);
+        } catch (error: any) {
+          job.status = 'failed';
+          job.error = error.message;
+          job.completedAt = new Date();
+          logoProcessingJobs.set(jobId, job);
+          logger.log(`❌ Logo reprocessing job ${jobId} failed: ${error.message}`);
+        }
+      });
+    } catch (error: any) {
+      console.error('Error starting logo reprocessing:', error);
+      res.status(500).json({ error: 'Failed to start logo reprocessing' });
+    }
+  });
+
   // Get logo processing job status
   app.get("/api/admin/logos/job-status/:jobId", requireAdmin, async (req, res) => {
     const jobId = req.params.jobId;
