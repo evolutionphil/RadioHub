@@ -1055,8 +1055,8 @@ export default function RadioFrontend({
                                   <OptimizedImage
                                     src={
                                       // 1. Priority: Optimized logo assets
-                                      station.logoAssets?.status === 'completed' && station.logoAssets?.folder && station.logoAssets?.webp48
-                                        ? (station.logoAssets.webp48.startsWith('http') ? station.logoAssets.webp48 : `/station-logos/${station.logoAssets.folder}/${station.logoAssets.webp48}`)
+                                      station.logoAssets?.status === 'completed' && station.logoAssets?.folder && (station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.logoAssets?.webp48)
+                                        ? ((() => { const v = (station.logoAssets.webp256 || station.logoAssets.webp96 || station.logoAssets.webp48)!; return v.startsWith('http') ? v : `/station-logos/${station.logoAssets.folder}/${v}`; })())
                                         // 2. Local image path
                                         : station.localImagePath ? `/station-images/${station.localImagePath}` 
                                         // 3. External favicon

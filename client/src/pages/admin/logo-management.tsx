@@ -437,9 +437,9 @@ export default function LogoManagement() {
                 {optimizedStations.stations.map((station) => (
                   <div key={station._id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
                     <div className="w-12 h-12 flex-shrink-0 bg-muted rounded">
-                      {station.logoAssets?.webp96 ? (
+                      {(station.logoAssets?.webp256 || station.logoAssets?.webp96) ? (
                         <img 
-                          src={station.logoAssets.webp96.startsWith('http') ? station.logoAssets.webp96 : `/station-logos/${station.logoAssets.folder}/${station.logoAssets.webp96}`}
+                          src={(() => { const v = station.logoAssets!.webp256 || station.logoAssets!.webp96!; return v.startsWith('http') ? v : `/station-logos/${station.logoAssets!.folder}/${v}`; })()}
                           alt={station.name}
                           className="w-12 h-12 object-cover rounded"
                           onError={(e) => {

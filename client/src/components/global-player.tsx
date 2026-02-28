@@ -48,7 +48,7 @@ export default function GlobalPlayer() {
     if (!currentStation) return '/no-image.webp';
     
     if (currentStation.logoAssets?.status === 'completed' && currentStation.logoAssets.folder) {
-      const value = currentStation.logoAssets.webp96 || currentStation.logoAssets.webp256 || currentStation.logoAssets.webp48;
+      const value = currentStation.logoAssets.webp256 || currentStation.logoAssets.webp96 || currentStation.logoAssets.webp48;
       if (value) {
         return value.startsWith('http') ? value : `/station-logos/${currentStation.logoAssets.folder}/${value}`;
       }

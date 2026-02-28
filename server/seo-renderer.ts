@@ -1075,7 +1075,7 @@ export class SeoRenderer {
     if (additionalData?.popularStations && additionalData.popularStations.length > 0) {
       const stationItems = additionalData.popularStations.map((station: any, index: number) => {
         const stationUrl = `${baseDomain}${language === 'en' ? '' : '/' + language}/station/${station.slug || station._id}`;
-        const stationLogo = station.favicon || station.logoAssets?.webp96 || `${baseDomain}/images/default-station.png`;
+        const stationLogo = station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.favicon || `${baseDomain}/images/default-station.png`;
         
         return {
           "@type": "ListItem",
@@ -1107,7 +1107,7 @@ export class SeoRenderer {
     let radioStationSchema: any = null;
     if (stationData) {
       const stationUrl = `${baseDomain}${language === 'en' ? '' : '/' + language}/station/${stationData.slug || stationData._id}`;
-      const stationLogo = stationData.favicon || stationData.logoAssets?.webp96 || `${baseDomain}/images/default-station.png`;
+      const stationLogo = stationData.logoAssets?.webp256 || stationData.logoAssets?.webp96 || stationData.favicon || `${baseDomain}/images/default-station.png`;
       
       radioStationSchema = {
         "@context": "https://schema.org",

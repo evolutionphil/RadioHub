@@ -671,8 +671,8 @@ export class RecommendationEngine {
       }
       
       // ===== STEP 4: LOGO PRIORITY =====
-      const stationsWithLogo = pool.filter(s => s.logoAssets?.webp96);
-      const stationsWithoutLogo = pool.filter(s => !s.logoAssets?.webp96);
+      const stationsWithLogo = pool.filter(s => s.logoAssets?.webp256 || s.logoAssets?.webp96);
+      const stationsWithoutLogo = pool.filter(s => !s.logoAssets?.webp256 && !s.logoAssets?.webp96);
       
       const result = stationsWithLogo.length >= limit 
         ? stationsWithLogo.slice(0, limit)

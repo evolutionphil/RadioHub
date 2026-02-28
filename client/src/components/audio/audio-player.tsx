@@ -191,14 +191,11 @@ export function AudioPlayer({ station, onClose, onNext, onPrevious }: AudioPlaye
           const resolveArtwork = (val: string) =>
             val.startsWith('http') ? val : `/station-logos/${station.logoAssets!.folder}/${val}`;
           artworkArray = [];
-          if (station.logoAssets.webp256) {
-            artworkArray.push({ src: resolveArtwork(station.logoAssets.webp256), sizes: '256x256', type: 'image/webp' });
-          }
-          if (station.logoAssets.webp96) {
-            artworkArray.push({ src: resolveArtwork(station.logoAssets.webp96), sizes: '96x96', type: 'image/webp' });
-          }
-          if (station.logoAssets.webp48) {
-            artworkArray.push({ src: resolveArtwork(station.logoAssets.webp48), sizes: '48x48', type: 'image/webp' });
+          const bestLogo = station.logoAssets.webp256 || station.logoAssets.webp96 || station.logoAssets.webp48;
+          if (bestLogo) {
+            const resolved = resolveArtwork(bestLogo);
+            const size = station.logoAssets.webp256 ? '256x256' : station.logoAssets.webp96 ? '96x96' : '48x48';
+            artworkArray.push({ src: resolved, sizes: size, type: 'image/webp' });
           }
         } else if (station.localImagePath) {
           // Local image has priority

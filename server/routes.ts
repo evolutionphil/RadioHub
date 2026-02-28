@@ -320,11 +320,11 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       const BATCH = 2000;
       let skip = 0, totalUpdated = 0;
       while (true) {
-        const stations = await Station.find({}, { _id: 1, favicon: 1, logo: 1, 'logoAssets.webp96': 1 })
+        const stations = await Station.find({}, { _id: 1, favicon: 1, logo: 1, 'logoAssets.webp256': 1, 'logoAssets.webp96': 1 })
           .skip(skip).limit(BATCH).lean();
         if (stations.length === 0) break;
         const ops = stations.map((s: any) => ({
-          updateOne: { filter: { _id: s._id }, update: { $set: { hasLogo: !!(s.logoAssets?.webp96 || s.favicon || s.logo) } } }
+          updateOne: { filter: { _id: s._id }, update: { $set: { hasLogo: !!(s.logoAssets?.webp256 || s.logoAssets?.webp96 || s.favicon || s.logo) } } }
         }));
         await Station.bulkWrite(ops, { ordered: false });
         totalUpdated += ops.length;

@@ -136,7 +136,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // Helper to check if station has any valid image
       const hasValidImage = (station: any): boolean => {
         if (station.logoAssets?.status === 'completed' && 
-            (station.logoAssets?.webp96 || station.logoAssets?.webp256)) {
+            (station.logoAssets?.webp256 || station.logoAssets?.webp96)) {
           return true;
         }
         if (station.logoAssets?.status === 'failed') {

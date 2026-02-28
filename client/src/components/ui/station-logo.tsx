@@ -32,14 +32,14 @@ interface StationLogoProps {
 }
 
 const SIZES = {
-  xs: { px: 24, webp: 48, className: 'w-6 h-6' },
-  sm: { px: 32, webp: 48, className: 'w-8 h-8' },
-  md: { px: 48, webp: 48, className: 'w-12 h-12' },
-  lg: { px: 64, webp: 96, className: 'w-16 h-16' },
-  xl: { px: 96, webp: 96, className: 'w-24 h-24' },
-  card: { px: 90, webp: 96, className: 'w-[90px] h-[90px]' },
-  player: { px: 105, webp: 256, className: 'w-[105px] h-[105px]' },
-  hero: { px: 200, webp: 256, className: 'w-[200px] h-[200px]' },
+  xs: { px: 24, className: 'w-6 h-6' },
+  sm: { px: 32, className: 'w-8 h-8' },
+  md: { px: 48, className: 'w-12 h-12' },
+  lg: { px: 64, className: 'w-16 h-16' },
+  xl: { px: 96, className: 'w-24 h-24' },
+  card: { px: 90, className: 'w-[90px] h-[90px]' },
+  player: { px: 105, className: 'w-[105px] h-[105px]' },
+  hero: { px: 200, className: 'w-[200px] h-[200px]' },
 } as const;
 
 const FALLBACK_IMAGE = '/images/no-image.webp';
@@ -71,10 +71,9 @@ function resolveLogoUrl(folder: string, value: string): string {
   return `/station-logos/${folder}/${value}`;
 }
 
-function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 96): string {
-  // 1. First priority: Optimized logo assets (S3 or local WebP)
+function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 256): string {
   if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-    const value = station.logoAssets[`webp${preferredSize}` as keyof typeof station.logoAssets] as string | undefined;
+    const value = (station.logoAssets.webp256 || station.logoAssets[`webp${preferredSize}` as keyof typeof station.logoAssets]) as string | undefined;
     if (value) {
       return resolveLogoUrl(station.logoAssets.folder, value);
     }
@@ -114,15 +113,12 @@ export function StationLogo({
 }: StationLogoProps) {
   const { t } = useTranslation();
   const sizeConfig = SIZES[size];
-  const preferredWebp = sizeConfig.webp as 48 | 96 | 256;
 
-  // Build ordered list of image sources to try
   const sources = useMemo(() => {
     const list: string[] = [];
     
-    // 1. Optimized logoAssets (S3 URL or local WebP)
     if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-      const value = station.logoAssets[`webp${preferredWebp}` as keyof typeof station.logoAssets] as string | undefined;
+      const value = (station.logoAssets.webp256 || station.logoAssets.webp96 || station.logoAssets.webp48) as string | undefined;
       if (value) {
         list.push(resolveLogoUrl(station.logoAssets.folder, value));
       }
@@ -157,28 +153,7 @@ export function StationLogo({
   
   const logoUrl = sources[Math.min(sourceIndex, sources.length - 1)];
 
-  const srcSet = useMemo(() => {
-    // Only provide srcSet for logoAssets (first source and still trying it)
-    if (sourceIndex > 0) return undefined;
-    if (station.logoAssets?.status !== 'completed' || !station.logoAssets.folder) {
-      return undefined;
-    }
-
-    const folder = station.logoAssets.folder;
-    const parts: string[] = [];
-
-    if (station.logoAssets.webp48) {
-      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp48)} 48w`);
-    }
-    if (station.logoAssets.webp96) {
-      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp96)} 96w`);
-    }
-    if (station.logoAssets.webp256) {
-      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp256)} 256w`);
-    }
-
-    return parts.length > 0 ? parts.join(', ') : undefined;
-  }, [station, sourceIndex]);
+  const srcSet = undefined;
 
   const stationName = station.name || 'Radio Station';
   const altText = alt || t('station_logo_alt', `${stationName} logo`, { stationName });

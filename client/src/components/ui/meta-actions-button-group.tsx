@@ -76,7 +76,8 @@ export default function MetaActionsButtonGroup({ className, iconSize = 26, hideC
           ? `${window.location.origin}${proxyUrl}`
           : proxyUrl;
 
-        const imageUrl = currentStation.logoAssets?.webp96 
+        const imageUrl = currentStation.logoAssets?.webp256
+          || currentStation.logoAssets?.webp96
           || currentStation.favicon 
           || `${window.location.origin}/images/logo-icon.webp`;
 

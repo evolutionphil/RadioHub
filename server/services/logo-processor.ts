@@ -11,7 +11,7 @@ import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
 const gunzip = promisify(zlib.gunzip);
 const inflate = promisify(zlib.inflate);
 
-const LOGO_SIZES = [48, 96, 256] as const;
+const LOGO_SIZES = [256] as const;
 const LOGOS_DIR = path.join(process.cwd(), 'public', 'station-logos');
 
 type FailureType = 'http_error' | 'timeout' | 'invalid_format' | 'download_failed' | 'processing_failed';
@@ -861,9 +861,9 @@ export class LogoProcessor {
   /**
    * Get the logo URL for a station
    */
-  static getLogoUrl(station: any, size: 48 | 96 | 256 = 96): string {
+  static getLogoUrl(station: any, size: 48 | 96 | 256 = 256): string {
     if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-      const filename = station.logoAssets[`webp${size}`];
+      const filename = station.logoAssets.webp256 || station.logoAssets[`webp${size}`];
       if (filename) {
         return `/station-logos/${station.logoAssets.folder}/${filename}`;
       }

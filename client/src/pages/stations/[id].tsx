@@ -1155,9 +1155,7 @@ export default function StationDetails() {
                                 decoding="async"
                                 height={56}
                                 width={56}
-                                src={linkedStation.logoAssets?.webp96 
-                                  ? (linkedStation.logoAssets.webp96.startsWith('http') ? linkedStation.logoAssets.webp96 : `/station-logos/${linkedStation.logoAssets.folder}/${linkedStation.logoAssets.webp96}`)
-                                  : linkedStation.favicon || "/images/no-image.webp"}
+                                src={(() => { const v = linkedStation.logoAssets?.webp256 || linkedStation.logoAssets?.webp96; return v ? (v.startsWith('http') ? v : `/station-logos/${linkedStation.logoAssets?.folder}/${v}`) : linkedStation.favicon || "/images/no-image.webp"; })()}
                                 alt={`Listen ${linkedStation.name}`}
                                 className="w-14 h-14 rounded object-cover"
                                 onError={(e) => {
