@@ -472,6 +472,10 @@ export class LogoProcessor {
       const folderName = this.getFolderName(slug, stationId);
       const useS3 = isS3Configured();
 
+      if (!useS3) {
+        logger.warn(`⚠️ S3 NOT configured — BUCKET: ${process.env.AWS_BUCKET_NAME ? 'SET' : 'MISSING'}, KEY: ${process.env.AWS_ACCESS_KEY_ID ? 'SET' : 'MISSING'}, SECRET: ${process.env.AWS_SECRET_ACCESS_KEY ? 'SET' : 'MISSING'}`);
+      }
+
       await Station.updateOne(
         { _id: stationId },
         { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName } }
