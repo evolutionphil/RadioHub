@@ -65,7 +65,7 @@ CRITICAL STRUCTURED DATA RULE: WebSite schema has @id=`{domain}/#website` and al
 - **Background Audio Prevention System**: 5-layer protection against browser audio suspension.
 - **Geolocation & Country Detection System**: IP-based geolocation for auto-detection and personalization, including GPS-based nearby stations.
 - **SEO FAQ Content Management**: Admin-manageable, translatable FAQ for homepage SEO.
-- **Automatic Image Optimization**: Server-side image resizing and WebP conversion using Sharp for station favicons, integrated with S3 for storage.
+- **Automatic Image Optimization**: Server-side image resizing and WebP conversion using Sharp for station favicons, integrated with S3 for storage. Image proxy has memory-safe guards: 2MB download limit, 6-concurrent Sharp semaphore, content-type/magic-byte validation, 512px dimension cap, and proper cleanup to prevent OOM on Railway (768MB heap).
 - **API Key Management System**: Secure API key generation, validation, rate limiting, and usage tracking.
 - **Cast System (Mobile → TV)**: Dual cast architecture supporting WebSocket and polling-based communication for real-time command relay and now-playing status.
 - **TV Device Code Login**: Netflix/YouTube-style TV login flow for device activation.

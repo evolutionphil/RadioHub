@@ -39,10 +39,34 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     }
   });
 
+  const MAX_IMAGE_DOWNLOAD_BYTES = 2 * 1024 * 1024; // 2 MB max download
+  const MAX_CONCURRENT_SHARP = 6; // max simultaneous Sharp operations
+  const MAX_TARGET_DIMENSION = 512; // cap resize dimensions
+  let activeSharpOps = 0;
+  const sharpQueue: Array<() => void> = [];
+
+  function acquireSharpSlot(): Promise<void> {
+    if (activeSharpOps < MAX_CONCURRENT_SHARP) {
+      activeSharpOps++;
+      return Promise.resolve();
+    }
+    return new Promise<void>((resolve) => {
+      sharpQueue.push(() => { activeSharpOps++; resolve(); });
+    });
+  }
+
+  function releaseSharpSlot(): void {
+    activeSharpOps--;
+    if (sharpQueue.length > 0) {
+      const next = sharpQueue.shift()!;
+      next();
+    }
+  }
+
   // IMAGE PROXY: Serves optimized, resized images with WebP conversion
   app.get("/api/image/*", async (req, res) => {
+    let slotAcquired = false;
     try {
-      // Get the full path after /api/image/ and decode base64
       const urlPath = (req.params as any)[0];
       let originalUrl;
       
@@ -71,7 +95,6 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           throw new Error('URL must start with http:// or https://');
         }
       } catch (error: any) {
-        console.error('❌ Image proxy: URL decode error:', error.message, 'for path:', urlPath);
         return res.status(400).json({ error: 'Invalid image URL encoding' });
       }
 
@@ -79,15 +102,10 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       const height = req.query.h ? parseInt(req.query.h as string) : null;
       const size = req.query.size ? parseInt(req.query.size as string) : null;
       
-      let targetWidth = width || size || 180;
-      let targetHeight = height || size || 180;
+      let targetWidth = Math.min(width || size || 180, MAX_TARGET_DIMENSION);
+      let targetHeight = Math.min(height || size || 180, MAX_TARGET_DIMENSION);
 
       const acceptHeader = req.headers.accept || '';
-      const preferAVIF = acceptHeader.includes('image/avif');
-      // NOTE: Binary image buffers are NOT cached in NodeCache (memory leak risk).
-      // Cloudflare edge cache handles HTTP-level caching via Cache-Control headers.
-
-      logger.log(`🖼️ IMAGE PROXY: ${originalUrl} → ${targetWidth}x${targetHeight}px WebP`);
 
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
@@ -98,7 +116,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       let response;
       try {
@@ -107,61 +125,94 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           method: 'GET',
           signal: controller.signal,
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-            ...(req.headers.range && { 'Range': req.headers.range as string })
+            'Cache-Control': 'no-cache'
           }
         });
       } catch (fetchError: any) {
-        // Downgrade network errors to warn (noisy in production)
-        console.warn(`Image proxy network error: ${fetchError.message}`);
         return res.status(404).json({ error: 'Image not accessible' });
       } finally {
         clearTimeout(timeoutId);
       }
 
       if (!response.ok) {
-        if (response.status !== 404) {
-          console.warn(`⚠️ Image proxy: ${response.status} for ${originalUrl}`);
-        }
         return res.status(404).json({ error: 'Image not found or inaccessible' });
       }
 
-      let imageBuffer;
-      try {
-        imageBuffer = Buffer.from(await response.arrayBuffer());
-      } catch (bufferError: any) {
-        console.error(`❌ Image proxy buffer error: ${bufferError.message}`);
-        return res.status(404).json({ error: 'Failed to process image' });
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('text/html') || contentType.includes('text/xml') || 
+          contentType.includes('application/json') || contentType.includes('application/xml')) {
+        return res.status(404).json({ error: 'Not an image' });
       }
-      
+
+      const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+      if (contentLength > MAX_IMAGE_DOWNLOAD_BYTES) {
+        return res.status(413).json({ error: 'Image too large' });
+      }
+
+      let imageBuffer: Buffer | null = null;
+      try {
+        const chunks: Buffer[] = [];
+        let totalSize = 0;
+        for await (const chunk of response.body as any) {
+          totalSize += chunk.length;
+          if (totalSize > MAX_IMAGE_DOWNLOAD_BYTES) {
+            throw new Error('Image exceeds size limit');
+          }
+          chunks.push(Buffer.from(chunk));
+        }
+        imageBuffer = Buffer.concat(chunks);
+      } catch (bufferError: any) {
+        return res.status(413).json({ error: 'Image too large or download failed' });
+      }
+
+      if (!imageBuffer || imageBuffer.length < 8) {
+        return res.status(404).json({ error: 'Empty or invalid image' });
+      }
+
+      const header = imageBuffer.slice(0, 16).toString('hex');
+      const headerStr = imageBuffer.slice(0, 5).toString('ascii');
+      const isLikelyImage = (
+        header.startsWith('89504e47') ||    // PNG
+        header.startsWith('ffd8ff') ||      // JPEG
+        header.startsWith('47494638') ||    // GIF
+        header.startsWith('52494646') ||    // WEBP (RIFF)
+        header.startsWith('424d') ||        // BMP
+        header.startsWith('00000') ||       // ICO / AVIF
+        headerStr.startsWith('<?xml') ||    // SVG
+        headerStr.startsWith('<svg')         // SVG
+      );
+
+      if (!isLikelyImage && (headerStr.startsWith('<!DOC') || headerStr.startsWith('<html') || headerStr.startsWith('<HTML'))) {
+        imageBuffer = null;
+        return res.status(404).json({ error: 'HTML page returned instead of image' });
+      }
+
+      await acquireSharpSlot();
+      slotAcquired = true;
+
       const sharp = (await import('sharp')).default;
       
-      // Process ONLY the requested format — never both simultaneously (halves peak memory)
       const useAVIF = acceptHeader.includes('image/avif');
-      const contentType = useAVIF ? 'image/avif' : 'image/webp';
+      const outputContentType = useAVIF ? 'image/avif' : 'image/webp';
       
       let optimizedImage: Buffer;
       try {
-        const pipeline = sharp(imageBuffer).resize(targetWidth, targetHeight, { fit: 'cover', position: 'center' });
+        const pipeline = sharp(imageBuffer, { limitInputPixels: 50_000_000 })
+          .resize(targetWidth, targetHeight, { fit: 'cover', position: 'center' });
         optimizedImage = useAVIF
-          ? await pipeline.avif({ quality: 80, effort: 4 }).toBuffer()
-          : await pipeline.webp({ quality: 85, effort: 4 }).toBuffer();
+          ? await pipeline.avif({ quality: 75, effort: 2 }).toBuffer()
+          : await pipeline.webp({ quality: 80, effort: 3 }).toBuffer();
       } catch (sharpError: any) {
-        console.error(`Image proxy Sharp error: ${sharpError.message}`);
-        // Fall back to original image — send it but do NOT cache in memory
-        res.setHeader('Content-Type', 'application/octet-stream');
-        res.setHeader('Cache-Control', 'public, max-age=300'); // 5 min only for fallback
-        return res.send(imageBuffer);
+        imageBuffer = null;
+        return res.status(404).json({ error: 'Image format not supported' });
       }
 
-      // Free the raw download buffer immediately (GC hint)
-      (imageBuffer as any) = null;
+      imageBuffer = null;
 
-      res.setHeader('Content-Type', contentType);
-      // Long cache on Cloudflare edge — no server-side binary buffer caching needed
+      res.setHeader('Content-Type', outputContentType);
       res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
       res.setHeader('Vary', 'Accept');
       res.setHeader('Content-Length', optimizedImage.length);
@@ -171,8 +222,11 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       res.send(optimizedImage);
 
     } catch (error) {
-      console.error('❌ Image proxy error:', error);
-      res.status(500).json({ error: 'Image proxy failed' });
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Image proxy failed' });
+      }
+    } finally {
+      if (slotAcquired) releaseSharpSlot();
     }
   });
 
