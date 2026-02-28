@@ -176,43 +176,49 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         totalToProcess: stationsNeedingProcessing
       });
       
-      // Query filter for stations needing processing
       const needsProcessingFilter = {
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         $or: [
           { 'logoAssets.status': { $exists: false } },
           { 'logoAssets.status': 'pending' },
-          { 'logoAssets.status': 'failed' },
+          { 
+            'logoAssets.status': 'failed',
+            'logoAssets.failureType': { $nin: ['http_error', 'invalid_format'] }
+          },
+          {
+            'logoAssets.status': 'failed',
+            'logoAssets.failureType': { $exists: false }
+          }
         ]
       };
       
-      // Process in background with CONTINUOUS LOOP until all done
+      const MAX_RECENT_RESULTS = 50;
+      const CONCURRENT_SIZE = 3;
+      const BATCH_FETCH_SIZE = 200;
+      const DELAY_BETWEEN_BATCHES_MS = 800;
+      const DELAY_BETWEEN_ROUNDS_MS = 2000;
+
       setImmediate(async () => {
         const job = logoProcessingJobs.get(jobId)!;
-        const batchFetchSize = 500; // Fetch 500 at a time from DB
-        const concurrentSize = 10; // Process 10 concurrently
         let totalProcessedOverall = 0;
         let totalSuccessful = 0;
         let totalFailed = 0;
         let roundNumber = 0;
         
         try {
-          // CONTINUOUS LOOP - keep fetching batches until none remain
           while (true) {
-            // Check if job was cancelled
             const currentJob = logoProcessingJobs.get(jobId);
             if (currentJob?.status === 'cancelled' || currentJob?.status === 'paused') {
               logger.log(`⏹️ Logo processing stopped by user after ${totalProcessedOverall} stations`);
               break;
             }
             
-            // Fetch next batch of stations
             roundNumber++;
             const stations = await Station.find(needsProcessingFilter)
-              .limit(batchFetchSize)
+              .select('_id name slug favicon')
+              .limit(BATCH_FETCH_SIZE)
               .lean();
             
-            // If no more stations, we're done
             if (stations.length === 0) {
               logger.log(`🎉 ALL LOGOS PROCESSED! Total: ${totalProcessedOverall} (${totalSuccessful} successful, ${totalFailed} failed)`);
               break;
@@ -220,28 +226,17 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
             
             logger.log(`📦 Round ${roundNumber}: Processing ${stations.length} stations...`);
             
-            // Process stations in concurrent batches
-            for (let i = 0; i < stations.length; i += concurrentSize) {
-              // Check cancellation frequently
+            for (let i = 0; i < stations.length; i += CONCURRENT_SIZE) {
               const checkJob = logoProcessingJobs.get(jobId);
-              if (checkJob?.status === 'cancelled' || checkJob?.status === 'paused') {
-                break;
-              }
+              if (checkJob?.status === 'cancelled' || checkJob?.status === 'paused') break;
               
-              const batch = stations.slice(i, i + concurrentSize);
-              
+              const batch = stations.slice(i, i + CONCURRENT_SIZE);
               const batchPromises = batch.map(async (station) => {
                 try {
                   if (!station.favicon || !station.slug) {
                     return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: 'Missing favicon or slug' };
                   }
-                  
-                  const result = await logoProcessor.processFromUrl(
-                    station._id.toString(),
-                    station.slug,
-                    station.favicon
-                  );
-                  
+                  const result = await logoProcessor.processFromUrl(station._id.toString(), station.slug, station.favicon);
                   if (result.success) {
                     return { stationId: station._id.toString(), stationName: station.name, status: 'success' as const };
                   } else {
@@ -253,11 +248,13 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               });
               
               const results = await Promise.allSettled(batchPromises);
-              
-              results.forEach(result => {
+              for (const result of results) {
                 totalProcessedOverall++;
                 job.processed = totalProcessedOverall;
                 if (result.status === 'fulfilled') {
+                  if (job.results.length >= MAX_RECENT_RESULTS) {
+                    job.results.shift();
+                  }
                   job.results.push(result.value);
                   if (result.value.status === 'success') {
                     totalSuccessful++;
@@ -269,28 +266,24 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                 } else {
                   totalFailed++;
                   job.failed = totalFailed;
-                  job.results.push({ stationId: 'unknown', stationName: 'unknown', status: 'failed', error: 'Promise rejected' });
                 }
-              });
-              
+              }
               logoProcessingJobs.set(jobId, job);
-              
-              // Small delay between concurrent batches to prevent overwhelming
-              await new Promise(resolve => setTimeout(resolve, 500));
+              await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
             }
             
-            // Log progress after each round
-            const remaining = await Station.countDocuments(needsProcessingFilter);
-            logger.log(`📊 Round ${roundNumber} complete: ${totalProcessedOverall} processed so far, ${remaining} remaining`);
-            
-            // Brief pause between rounds
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (roundNumber % 5 === 0) {
+              const remaining = await Station.countDocuments(needsProcessingFilter);
+              const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+              logger.log(`📊 Round ${roundNumber}: ${totalProcessedOverall} done, ${remaining} remaining, heap: ${heapMB}MB`);
+              if (typeof global.gc === 'function') global.gc();
+            }
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ROUNDS_MS));
           }
           
           job.status = 'completed';
           job.completedAt = new Date();
           logoProcessingJobs.set(jobId, job);
-          
           logger.log(`✅ Logo processing COMPLETE: ${totalSuccessful} successful, ${totalFailed} failed out of ${totalProcessedOverall} total`);
           
         } catch (error: any) {
@@ -298,7 +291,6 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
           job.error = error.message;
           job.completedAt = new Date();
           logoProcessingJobs.set(jobId, job);
-          
           logger.log(`❌ Logo processing job ${jobId} failed: ${error.message}`);
         }
       });
@@ -329,12 +321,25 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         return res.json({ success: true, message: 'No stations with favicons found', processed: 0 });
       }
 
-      await Station.updateMany(
-        { favicon: { $exists: true, $nin: ['', null, 'null'] } },
-        { $unset: { logoAssets: '' } }
-      );
+      const RESET_BATCH = 5000;
+      let resetSkip = 0;
+      let totalReset = 0;
+      while (true) {
+        const stationIds = await Station.find(
+          { favicon: { $exists: true, $nin: ['', null, 'null'] } },
+          { _id: 1 }
+        ).skip(resetSkip).limit(RESET_BATCH).lean();
+        if (stationIds.length === 0) break;
+        await Station.updateMany(
+          { _id: { $in: stationIds.map((s: any) => s._id) } },
+          { $unset: { logoAssets: '' } }
+        );
+        totalReset += stationIds.length;
+        resetSkip += RESET_BATCH;
+        await new Promise(r => setTimeout(r, 100));
+      }
 
-      logger.log(`🔄 REPROCESS ALL: Reset logoAssets for all stations. Starting fresh processing of ${totalWithFavicon} stations...`);
+      logger.log(`🔄 REPROCESS ALL: Reset logoAssets for ${totalReset} stations. Starting fresh processing...`);
 
       const jobId = `logo-reprocess-${Date.now()}`;
 
@@ -358,17 +363,22 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
 
       const needsProcessingFilter = {
         favicon: { $exists: true, $nin: ['', null, 'null'] },
+        slug: { $exists: true, $ne: null },
         $or: [
           { 'logoAssets.status': { $exists: false } },
+          { logoAssets: { $exists: false } },
           { 'logoAssets.status': 'pending' },
-          { 'logoAssets.status': 'failed' },
         ]
       };
 
+      const MAX_RECENT_RESULTS = 50;
+      const CONCURRENT_SIZE = 3;
+      const BATCH_FETCH_SIZE = 200;
+      const DELAY_BETWEEN_BATCHES_MS = 800;
+      const DELAY_BETWEEN_ROUNDS_MS = 2000;
+
       setImmediate(async () => {
         const job = logoProcessingJobs.get(jobId)!;
-        const batchFetchSize = 500;
-        const concurrentSize = 10;
         let totalProcessedOverall = 0;
         let totalSuccessful = 0;
         let totalFailed = 0;
@@ -384,7 +394,8 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
 
             roundNumber++;
             const stations = await Station.find(needsProcessingFilter)
-              .limit(batchFetchSize)
+              .select('_id name slug favicon')
+              .limit(BATCH_FETCH_SIZE)
               .lean();
 
             if (stations.length === 0) {
@@ -394,11 +405,11 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
 
             logger.log(`📦 Reprocess Round ${roundNumber}: Processing ${stations.length} stations...`);
 
-            for (let i = 0; i < stations.length; i += concurrentSize) {
+            for (let i = 0; i < stations.length; i += CONCURRENT_SIZE) {
               const checkJob = logoProcessingJobs.get(jobId);
               if (checkJob?.status === 'cancelled' || checkJob?.status === 'paused') break;
 
-              const batch = stations.slice(i, i + concurrentSize);
+              const batch = stations.slice(i, i + CONCURRENT_SIZE);
               const batchPromises = batch.map(async (station) => {
                 try {
                   if (!station.favicon || !station.slug) {
@@ -416,10 +427,13 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               });
 
               const results = await Promise.allSettled(batchPromises);
-              results.forEach(result => {
+              for (const result of results) {
                 totalProcessedOverall++;
                 job.processed = totalProcessedOverall;
                 if (result.status === 'fulfilled') {
+                  if (job.results.length >= MAX_RECENT_RESULTS) {
+                    job.results.shift();
+                  }
                   job.results.push(result.value);
                   if (result.value.status === 'success') {
                     totalSuccessful++;
@@ -431,16 +445,19 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                 } else {
                   totalFailed++;
                   job.failed = totalFailed;
-                  job.results.push({ stationId: 'unknown', stationName: 'unknown', status: 'failed', error: 'Promise rejected' });
                 }
-              });
+              }
               logoProcessingJobs.set(jobId, job);
-              await new Promise(resolve => setTimeout(resolve, 500));
+              await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
             }
 
-            const remaining = await Station.countDocuments(needsProcessingFilter);
-            logger.log(`📊 Reprocess Round ${roundNumber} complete: ${totalProcessedOverall} processed, ${remaining} remaining`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            if (roundNumber % 5 === 0) {
+              const remaining = await Station.countDocuments(needsProcessingFilter);
+              const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+              logger.log(`📊 Reprocess Round ${roundNumber}: ${totalProcessedOverall} done, ${remaining} remaining, heap: ${heapMB}MB`);
+              if (typeof global.gc === 'function') global.gc();
+            }
+            await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_ROUNDS_MS));
           }
 
           job.status = 'completed';
