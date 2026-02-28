@@ -387,11 +387,19 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       if (stationIds.length > 50) {
         return res.status(400).json({ error: 'Maximum 50 stations per batch request' });
       }
+
+      const sortedIds = [...stationIds].sort();
+      const cacheKey = `stations:batch:${sortedIds.join(',')}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) return res.json(cached);
+
       const stations = await Station.find({ _id: { $in: stationIds } }).lean();
       const stationMap = stations.reduce((acc: any, station: any) => {
         acc[station._id.toString()] = station;
         return acc;
       }, {});
+
+      await CacheManager.set(cacheKey, stationMap, { ttl: 300 });
       res.json(stationMap);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch stations' });

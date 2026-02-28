@@ -33,6 +33,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   app.get("/api/station/:identifier", async (req, res) => {
     try {
       const { identifier } = req.params;
+
+      const cacheKey = `station:detail:${identifier}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) return res.json(cached);
+
       let station: any;
 
       station = await Station.findOne({ slug: identifier }).select('+descriptions').lean();
@@ -53,7 +58,9 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         station.slug = newSlug;
       }
 
-      res.json(stripPlaceholders(station));
+      const result = stripPlaceholders(station);
+      await CacheManager.set(cacheKey, result, { ttl: 300 });
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch station' });
     }
@@ -255,6 +262,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   app.get("/api/stations/with-geo", async (req, res) => {
     try {
       const { limit = 1000 } = req.query;
+      const cacheKey = `stations:with_geo:${limit}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) return res.json(cached);
+
       const stations = await Station.find({
         $and: [
           { geoLat: { $exists: true, $ne: null } },
@@ -268,7 +279,9 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       .limit(parseInt(limit as string))
       .lean();
       
-      res.json(stripPlaceholders(stations));
+      const result = stripPlaceholders(stations);
+      await CacheManager.set(cacheKey, result, { ttl: 1800 });
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch stations with geo coordinates' });
     }
@@ -646,6 +659,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   app.get("/api/stations/:stationId/linked", async (req, res) => {
     try {
       const { stationId } = req.params;
+
+      const cacheKey = `stations:linked:${stationId}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) return res.json(cached);
+
       const station = await Station.findById(stationId).lean() as any;
       if (!station) return res.status(404).json({ error: 'Station not found' });
 
@@ -659,7 +677,9 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         .limit(12)
         .lean();
 
-      res.json({ stations: linked });
+      const result = { stations: linked };
+      await CacheManager.set(cacheKey, result, { ttl: 1800 });
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch linked stations' });
     }
@@ -690,11 +710,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       };
       const { page, limit } = safeParams;
 
-      if (isTV && !search) {
-        const tvCacheKey = `tv:stations:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${timePeriod}`;
-        const cachedResult = await CacheManager.get(tvCacheKey);
-        if (cachedResult) return res.json(cachedResult);
-        (req as any)._tvCacheKey = tvCacheKey;
+      const webCacheKey = !search && !excludeStationIds
+        ? `stations:list:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${minVotes}:${timePeriod}:${isTV ? 'tv' : 'web'}`
+        : null;
+
+      if (webCacheKey) {
+        const cached = await CacheManager.get(webCacheKey);
+        if (cached) return res.json(cached);
       }
 
       const filter: any = {};
@@ -867,8 +889,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         }
       };
 
-      const tvCacheKey = (req as any)._tvCacheKey;
-      if (tvCacheKey) await CacheManager.set(tvCacheKey, response, { ttl: 300 });
+      if (webCacheKey) await CacheManager.set(webCacheKey, response, { ttl: 300 });
 
       res.json(response);
     } catch (error) {
