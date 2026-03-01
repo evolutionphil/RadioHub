@@ -478,13 +478,23 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
-  // Get logo processing job status
   app.get("/api/admin/logos/job-status/:jobId", requireAdmin, async (req, res) => {
     const jobId = req.params.jobId;
     const job = logoProcessingJobs.get(jobId);
     
     if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
+      const completedCount = await Station.countDocuments({ 'logoAssets.status': 'completed' });
+      const failedCount = await Station.countDocuments({ 'logoAssets.status': 'failed' });
+      return res.json({
+        jobId,
+        status: 'lost',
+        message: 'Job lost after server restart. Check stats for current progress.',
+        processed: completedCount + failedCount,
+        successful: completedCount,
+        failed: failedCount,
+        total: completedCount + failedCount,
+        results: []
+      });
     }
     
     res.json(job);
