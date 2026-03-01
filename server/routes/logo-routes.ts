@@ -482,6 +482,15 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  app.get("/api/admin/logos/active-job", requireAdmin, async (req, res) => {
+    for (const [id, job] of logoProcessingJobs.entries()) {
+      if (job.status === 'running') {
+        return res.json({ hasActiveJob: true, job });
+      }
+    }
+    return res.json({ hasActiveJob: false });
+  });
+
   app.get("/api/admin/logos/job-status/:jobId", requireAdmin, async (req, res) => {
     const jobId = req.params.jobId;
     const job = logoProcessingJobs.get(jobId);

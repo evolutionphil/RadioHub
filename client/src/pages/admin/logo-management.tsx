@@ -58,6 +58,17 @@ export default function LogoManagement() {
   const [showOptimizedModal, setShowOptimizedModal] = useState(false);
   const [optimizedPage, setOptimizedPage] = useState(1);
 
+  const { data: activeJobData } = useQuery<{ hasActiveJob: boolean; job?: LogoJob }>({
+    queryKey: ['/api/admin/logos/active-job'],
+    refetchInterval: currentJobId ? false : 5000,
+  });
+
+  useEffect(() => {
+    if (activeJobData?.hasActiveJob && activeJobData.job && !currentJobId) {
+      setCurrentJobId(activeJobData.job.jobId);
+    }
+  }, [activeJobData, currentJobId]);
+
   const { data: stats, isLoading: statsLoading, refetch: refetchStats } = useQuery<LogoStats>({
     queryKey: ['/api/admin/logos/stats'],
     refetchInterval: currentJobId ? 5000 : false
