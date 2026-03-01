@@ -28,7 +28,7 @@ interface StationResult {
 
 interface LogoJob {
   jobId: string;
-  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
+  status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled' | 'lost';
   total: number;
   processed: number;
   successful: number;
@@ -36,6 +36,7 @@ interface LogoJob {
   startedAt: string;
   completedAt?: string;
   error?: string;
+  message?: string;
   results?: StationResult[];
 }
 
@@ -151,7 +152,7 @@ export default function LogoManagement() {
   });
 
   useEffect(() => {
-    if (jobStatus?.status === 'completed' || jobStatus?.status === 'failed' || jobStatus?.status === 'cancelled') {
+    if (jobStatus?.status === 'completed' || jobStatus?.status === 'failed' || jobStatus?.status === 'cancelled' || jobStatus?.status === 'lost') {
       setTimeout(() => {
         setCurrentJobId(null);
         refetchStats();
@@ -169,12 +170,14 @@ export default function LogoManagement() {
         return <Badge className="bg-red-500" data-testid="badge-status-failed"><XCircle className="w-3 h-3 mr-1" />Failed</Badge>;
       case 'cancelled':
         return <Badge className="bg-yellow-500" data-testid="badge-status-cancelled"><Square className="w-3 h-3 mr-1" />Cancelled</Badge>;
+      case 'lost':
+        return <Badge className="bg-gray-500" data-testid="badge-status-lost"><XCircle className="w-3 h-3 mr-1" />Lost (Server Restarted)</Badge>;
       default:
         return <Badge data-testid="badge-status-unknown">{status}</Badge>;
     }
   };
 
-  const progressPercent = jobStatus ? Math.round((jobStatus.processed / jobStatus.total) * 100) : 0;
+  const progressPercent = jobStatus && jobStatus.total > 0 ? Math.round((jobStatus.processed / jobStatus.total) * 100) : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -319,6 +322,9 @@ export default function LogoManagement() {
 
               {jobStatus.error && (
                 <p className="text-sm text-red-500" data-testid="text-error">{jobStatus.error}</p>
+              )}
+              {jobStatus.message && (
+                <p className="text-sm text-amber-600" data-testid="text-message">{jobStatus.message}</p>
               )}
             </div>
           ) : (
