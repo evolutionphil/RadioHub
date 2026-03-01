@@ -28,6 +28,7 @@ import { connectToMongoDB } from "./db-mongo";
 import { performanceCache } from "./performance-cache";
 import { htmlLangMiddleware } from "./html-lang-middleware";
 import { logger } from './utils/logger';
+import { initLogCollector } from './services/log-collector';
 import { urlRedirectMiddleware } from './url-redirect-middleware';
 import { stationCountryValidator } from './station-country-validator';
 
@@ -488,6 +489,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  initLogCollector();
+  
   // CRITICAL: Connect to MongoDB FIRST (required for routes to work)
   await connectToMongoDB();
   
