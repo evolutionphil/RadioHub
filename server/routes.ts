@@ -13,7 +13,7 @@ import { userEngagementRouter } from './routes/user-engagement';
 import indexnowMonitoringRouter from './routes/indexnow-monitoring';
 import { IndexNowService } from './services/indexnow';
 import { COUNTRY_TO_LANGUAGE, CODE_TO_COUNTRY } from '@shared/seo-config';
-import CacheManager from './cache';
+import CacheManager, { CacheKeys } from './cache';
 import { normalizeCountryFilter } from './utils/normalize-country';
 import { StreamMetadataService } from './services/stream-metadata';
 import { RealtimeMetadataService } from './services/realtime-metadata';
@@ -439,6 +439,30 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     } catch (error: any) {
       logger.log('❌ IndexNow admin endpoint error:', error);
       res.status(500).json({ error: 'Failed to submit URLs to IndexNow' });
+    }
+  });
+
+  app.get("/api/translations/:lang", async (req, res) => {
+    const lang = req.params.lang;
+    if (!lang || lang.length > 10) {
+      return res.status(400).json({ error: 'Invalid language code' });
+    }
+
+    try {
+      const cacheKey = CacheKeys.translations(lang);
+      const cached = await CacheManager.get<Record<string, string>>(cacheKey);
+      if (cached) {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.json(cached);
+      }
+
+      const translations = await fetchTranslationsForLanguage(lang);
+      await CacheManager.set(cacheKey, translations, { ttl: 7200, useRedis: true });
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(translations);
+    } catch (error) {
+      logger.error(`Error fetching translations for ${lang}:`, error);
+      res.status(500).json({ error: 'Failed to fetch translations' });
     }
   });
 
