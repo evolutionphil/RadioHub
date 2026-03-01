@@ -388,7 +388,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       }
 
       const baseUrl = getBaseUrl(req);
-      const lastMod = new Date().toISOString().split('T')[0]; // Date-only for stability
 
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
@@ -396,22 +395,21 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
 
-      // Main pages to include (includes /regions to avoid orphan from sitemap-main.xml removal)
       const mainPages = ['', '/stations', '/genres', '/countries', '/about', '/regions',
         '/regions/europe', '/regions/asia', '/regions/africa',
         '/regions/north-america', '/regions/south-america', '/regions/oceania'];
 
       for (const page of mainPages) {
-        // Build localized URL for this language
         const localizedPath = buildLocalizedUrl(page, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
+        const priority = page === '' ? '1.0' : (page === '/stations' || page === '/genres' ? '0.9' : '0.8');
+        const changefreq = page === '' || page === '/stations' ? 'daily' : 'weekly';
 
         xml += `
   <url>
     <loc>${fullUrl}</loc>
-    <lastmod>${lastMod}</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>`;
+    <changefreq>${changefreq}</changefreq>
+    <priority>${priority}</priority>`;
 
         // Add hreflang tags for all active languages (plain codes only, no ISO)
         for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
@@ -588,14 +586,13 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       }
 
       const baseUrl = getBaseUrl(req);
-      const lastMod = new Date().toISOString().split('T')[0]; // Date-only for stability
 
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
       // Fetch all genres with slugs from Genre collection (not Station.distinct('tags'))
       const genres = await Genre.find({ slug: { $exists: true, $ne: '' } })
-        .select('slug _id')
+        .select('slug _id updatedAt')
         .sort({ stationCount: -1 })
         .lean();
 
@@ -603,7 +600,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
 
       for (const genre of genres) {
-        // Build localized genre URL for this language
         const genrePath = `/genres/${(genre as any).slug}`;
         const localizedPath = buildLocalizedUrl(genrePath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
@@ -611,7 +607,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         xml += `
   <url>
     <loc>${fullUrl}</loc>
-    <lastmod>${lastMod}</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>`;
 
@@ -671,8 +666,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   app.get("/sitemap-index.xml", async (req, res) => {
     try {
       const baseUrl = getBaseUrl(req);
-      // Use a stable date-only lastmod — updated only when structure changes
-      const lastMod = new Date().toISOString().split('T')[0];
 
       // Count only stations with slugs (the only ones we actually index)
       let totalStations = 0;
@@ -691,31 +684,25 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
 
-      // 1. Language-specific main page sitemaps (home, stations, genres, regions, about, countries)
       for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
         xml += `
   <sitemap>
     <loc>${baseUrl}/sitemap-main-${lang}.xml</loc>
-    <lastmod>${lastMod}</lastmod>
   </sitemap>`;
       }
 
-      // 2. Language-specific genre sitemaps (Genre collection, not Station.distinct)
       for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
         xml += `
   <sitemap>
     <loc>${baseUrl}/sitemap-genres-${lang}.xml</loc>
-    <lastmod>${lastMod}</lastmod>
   </sitemap>`;
       }
 
-      // 3. Language-specific station sitemaps — chunk count calculated from real DB count
       for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
         for (let i = 1; i <= stationChunks; i++) {
           xml += `
   <sitemap>
     <loc>${baseUrl}/sitemap-stations-${lang}-${i}.xml</loc>
-    <lastmod>${lastMod}</lastmod>
   </sitemap>`;
         }
       }

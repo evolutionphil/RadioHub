@@ -464,9 +464,7 @@ export class LogoProcessor {
 
     this.processingQueue.add(stationId);
     
-    // Log the URL being processed
     const shortUrl = faviconUrl.length > 80 ? faviconUrl.substring(0, 80) + '...' : faviconUrl;
-    logger.log(`🔄 Processing: ${shortUrl}`);
 
     try {
       const folderName = this.getFolderName(slug, stationId);
@@ -486,8 +484,7 @@ export class LogoProcessor {
         await fs.mkdir(folderPath, { recursive: true });
       }
 
-      // Download with detailed error reporting
-      const downloadResult = await this.downloadImageWithRetry(faviconUrl, 2);
+      const downloadResult = await this.downloadImageWithRetry(faviconUrl, 1);
       
       if (!downloadResult.buffer) {
         const errorMsg = downloadResult.error || 'Download failed';
@@ -514,7 +511,7 @@ export class LogoProcessor {
           const buf = await this.safeProcessImage(downloadResult.buffer, size);
           logoAssets[`webp${size}`] = await uploadToS3(s3Key(filename), buf, 'image/webp');
         }
-        logger.log(`☁️ S3 upload complete: ${folderName}`);
+        // S3 upload complete silently
       } else {
         // Fallback: local filesystem
         const folderPath = path.join(LOGOS_DIR, folderName);
@@ -541,7 +538,6 @@ export class LogoProcessor {
         }
       );
 
-      logger.log(`✅ Logo processed: ${folderName} (${useS3 ? 'S3' : 'local'})`);
       return { success: true, folder: folderName };
 
     } catch (error: any) {
@@ -743,8 +739,9 @@ export class LogoProcessor {
       const response = await axios.get(url, {
         responseType: 'arraybuffer',
         timeout: timeout,
-        maxContentLength: 10 * 1024 * 1024,
-        maxRedirects: 5,
+        maxContentLength: 2 * 1024 * 1024,
+        maxBodyLength: 2 * 1024 * 1024,
+        maxRedirects: 3,
         decompress: true,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

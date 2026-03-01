@@ -4,14 +4,19 @@ import { logger } from "../utils/logger";
 const BUCKET = process.env.AWS_BUCKET_NAME || "";
 const REGION = process.env.AWS_REGION || "eu-north-1";
 
+let _cachedClient: S3Client | null = null;
+
 function getClient(): S3Client {
-  return new S3Client({
+  if (_cachedClient) return _cachedClient;
+  _cachedClient = new S3Client({
     region: REGION,
     credentials: {
       accessKeyId: process.env.AWS_ACCESS_KEY_ID || "",
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || "",
     },
+    maxAttempts: 3,
   });
+  return _cachedClient;
 }
 
 export function getS3PublicUrl(key: string): string {
@@ -30,17 +35,24 @@ export async function uploadToS3(
   if (!BUCKET) throw new Error("AWS_BUCKET_NAME is not configured");
 
   const client = getClient();
-  await client.send(
-    new PutObjectCommand({
-      Bucket: BUCKET,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-      CacheControl: "public, max-age=31536000, immutable",
-    })
-  );
+  const abortController = new AbortController();
+  const uploadTimeout = setTimeout(() => abortController.abort(), 15000);
 
-  return getS3PublicUrl(key);
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        CacheControl: "public, max-age=31536000, immutable",
+      }),
+      { abortSignal: abortController.signal }
+    );
+    return getS3PublicUrl(key);
+  } finally {
+    clearTimeout(uploadTimeout);
+  }
 }
 
 export async function deleteFromS3(key: string): Promise<void> {

@@ -141,7 +141,7 @@ export function StationLogo({
     list.push(FALLBACK_IMAGE);
     
     return list;
-  }, [station, preferredWebp]);
+  }, [station]);
 
   // Track current source index - reset when station changes
   const [sourceIndex, setSourceIndex] = useState(0);
