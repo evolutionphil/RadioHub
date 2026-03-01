@@ -655,6 +655,39 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     }
   });
 
+  app.get("/api/now-playing/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const station = await Station.findOne(
+        { $or: [{ slug: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : undefined }].filter(Boolean) }
+      ).select('name url urlResolved').lean() as any;
+
+      if (!station) {
+        return res.status(404).json({ error: 'Station not found' });
+      }
+
+      const streamUrl = station.urlResolved || station.url;
+      if (!streamUrl) {
+        return res.json({ title: station.name, artist: '', station: station.name });
+      }
+
+      const { StreamMetadataService } = await import('../services/stream-metadata');
+      const metadataService = new StreamMetadataService();
+      const metadata = await metadataService.fetchAudioMeta(streamUrl);
+
+      res.json({
+        title: metadata.title || station.name,
+        artist: metadata.artist || '',
+        station: metadata.station || station.name,
+        genre: metadata.genre || ''
+      });
+    } catch (error) {
+      console.error('Error fetching now-playing:', error);
+      res.status(500).json({ error: 'Failed to fetch now-playing data' });
+    }
+  });
+
   // LINKED STATIONS - Related stations for station detail page
   app.get("/api/stations/:stationId/linked", async (req, res) => {
     try {

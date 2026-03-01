@@ -450,4 +450,59 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       res.status(500).json({ error: 'Failed to fetch discoverable genres' });
     }
   });
+
+  app.get("/api/genres/:slug/stations", async (req, res) => {
+    try {
+      const { slug } = req.params;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+      const skip = (page - 1) * limit;
+      const country = (req.query.country as string) || null;
+
+      const cacheKey = `genre-stations:${slug}:${country || 'all'}:${page}:${limit}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const genre = await Genre.findOne({ slug }).lean();
+      if (!genre) {
+        return res.status(404).json({ error: 'Genre not found' });
+      }
+
+      const filter: any = {
+        $or: [
+          { tags: { $regex: new RegExp(`(^|,)\\s*${(genre as any).name}\\s*(,|$)`, 'i') } },
+          { genre: { $regex: new RegExp((genre as any).name, 'i') } }
+        ]
+      };
+      if (country) {
+        filter.country = { $regex: new RegExp(`^${country}$`, 'i') };
+      }
+
+      const [stations, total] = await Promise.all([
+        Station.find(filter)
+          .select('name slug favicon url country language genre tags votes codec bitrate')
+          .sort({ votes: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Station.countDocuments(filter)
+      ]);
+
+      const result = {
+        genre: { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount },
+        stations,
+        total,
+        page,
+        pages: Math.ceil(total / limit)
+      };
+
+      await CacheManager.set(cacheKey, result, { ttl: 300 });
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching genre stations:', error);
+      res.status(500).json({ error: 'Failed to fetch genre stations' });
+    }
+  });
 }

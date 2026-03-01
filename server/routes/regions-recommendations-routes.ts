@@ -1,6 +1,7 @@
 import type { Express } from "express";
-import { Station, Country } from "../../shared/mongo-schemas";
+import { Station, Country, Genre } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
+import CacheManager from "../cache";
 
 // REGIONS DATA STRUCTURE
 const WORLD_REGIONS = {
@@ -598,6 +599,61 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
     } catch (error) {
       console.error('Error fetching dedicated recommendations:', error);
       res.status(500).json({ error: 'Failed to fetch recommendations' });
+    }
+  });
+
+  app.get("/api/recommendations/diverse", async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      const country = (req.query.country as string) || null;
+
+      const cacheKey = `recommendations:diverse:${country || 'all'}:${limit}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const topGenres = await Genre.find({ stationCount: { $gt: 5 } })
+        .sort({ stationCount: -1 })
+        .limit(10)
+        .select('name slug')
+        .lean();
+
+      const perGenre = Math.max(2, Math.ceil(limit / topGenres.length));
+      const stationPromises = topGenres.map(async (genre: any) => {
+        const filter: any = {
+          $or: [
+            { tags: { $regex: new RegExp(genre.name, 'i') } },
+            { genre: { $regex: new RegExp(genre.name, 'i') } }
+          ]
+        };
+        if (country) {
+          filter.country = { $regex: new RegExp(`^${country}$`, 'i') };
+        }
+        return Station.aggregate([
+          { $match: filter },
+          { $sample: { size: perGenre } },
+          { $project: { name: 1, slug: 1, favicon: 1, url: 1, country: 1, language: 1, genre: 1, tags: 1, votes: 1, codec: 1, bitrate: 1 } }
+        ]);
+      });
+
+      const genreResults = await Promise.all(stationPromises);
+      const allStations = genreResults.flat();
+
+      const seen = new Set<string>();
+      const uniqueStations = allStations.filter((s: any) => {
+        const id = s._id.toString();
+        if (seen.has(id)) return false;
+        seen.add(id);
+        return true;
+      }).slice(0, limit);
+
+      const result = { stations: uniqueStations, total: uniqueStations.length };
+      await CacheManager.set(cacheKey, result, { ttl: 300 });
+      res.json(result);
+    } catch (error) {
+      console.error('Error fetching diverse recommendations:', error);
+      res.status(500).json({ error: 'Failed to fetch diverse recommendations' });
     }
   });
 
