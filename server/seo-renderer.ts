@@ -625,43 +625,12 @@ export class SeoRenderer {
               </ul>
             </section>
             
-            <!-- About Mega Radio - SEO Rich Content Section -->
+            <!-- About Mega Radio -->
             <section class="about-section">
               <h2>${this.escapeHtml(getLocalizedText('faq_about_megaradio', 'About Mega Radio'))}</h2>
-              
               <p>${this.escapeHtml(getLocalizedText('faq_seo_intro', 'Mega Radio is your ultimate destination for discovering and streaming live radio stations from around the world. With over 60,000 free radio stations spanning 120+ countries, we deliver unlimited access to music, news, sports, and entertainment across every language and genre.'))}</p>
               
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_coverage_title', 'Global Radio Station Coverage'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_coverage', 'Listen to free live radio from every corner of the globe. Our extensive collection includes popular FM and AM radio stations, internet radio, online radio broadcasts, and web radio from major cities and local communities worldwide. Discover music radio playing pop, rock, classical, jazz, hip-hop, electronic, country, and world music, plus news radio, sports radio, and talk radio stations broadcasting in dozens of languages.'))}</p>
-              
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_features_title', 'Advanced Radio Streaming Features'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_features_1', 'Our platform features powerful search capabilities to instantly find radio stations by name, genre, country, or language. Browse curated collections of popular radio stations, explore trending live broadcasts, and discover personalized radio recommendations based on your listening preferences.'))}</p>
-              
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_features_2', 'Experience crystal-clear audio quality with reliable connections for uninterrupted radio streaming. Our advanced technology ensures smooth playback whether you are listening to music radio, news broadcasts, sports commentary, or talk shows from local and international radio stations. Enjoy seamless streaming with minimal buffering and automatic quality adjustment based on your internet connection speed.'))}</p>
-              
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_devices_title', 'Listen on Any Device'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_devices', 'Access your favorite radio stations anytime, anywhere with full compatibility across all platforms. Our responsive web player works flawlessly on smartphones, tablets, desktop computers, laptops, smart speakers, and smart TVs. Whether you are using iOS or Android mobile devices, Windows or Mac computers, Chrome, Firefox, Safari, or Edge browsers, Mega Radio delivers consistent performance. No downloads or app installations required - simply open your web browser and start streaming instantly.'))}</p>
-              
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_free_title', 'Completely Free Radio Streaming'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_free_access', 'Enjoy unlimited free access to live radio stations worldwide with no subscription fees, no registration required, and no hidden costs. Start listening to your favorite radio stations instantly in your web browser. Mega Radio brings the world of online radio to everyone, breaking down geographical barriers and making global radio broadcasting accessible to anyone with an internet connection.'))}</p>
-              
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_free_community', 'Join millions of radio listeners discovering new music, staying informed with breaking news, and enjoying live sports broadcasts from around the world. Whether you prefer mainstream pop music radio, classical music stations, jazz radio, hip-hop beats, rock anthems, or talk radio programs, our platform connects you to diverse content and global communities. Experience the joy of free radio streaming with Mega Radio today.'))}</p>
-              
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_quality_title', 'Superior Audio Quality'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_quality', 'Experience professional-grade audio streaming with our advanced infrastructure that delivers pristine sound quality across all genres. Whether you are tuning into classical symphony orchestras requiring nuanced high-fidelity reproduction, bass-heavy electronic music demanding powerful low-end response, or spoken word programming where clarity is paramount, our adaptive bitrate technology ensures optimal audio delivery matched to your internet connection. Our servers maintain consistent uptime with redundant backup systems, guaranteeing uninterrupted listening pleasure even during peak usage hours when millions of users worldwide access their favorite radio broadcasts simultaneously.'))}</p>
-              
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_discovery_title', 'Discover New Radio Stations'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_discovery', 'Explore our intelligent recommendation engine that learns your musical preferences and listening habits to suggest radio stations perfectly aligned with your tastes. Browse stations by specific genres ranging from ambient and downtempo to death metal and progressive trance. Filter by broadcasting language to find stations in your native tongue or practice foreign languages through immersive radio listening. Search by country to connect with local culture through regional radio programming, or discover international perspectives by exploring broadcasts from distant nations. Our comprehensive tagging system includes thousands of specialized categories including era-specific stations broadcasting exclusively 80s hits, 90s alternative, or contemporary chart-toppers.'))}</p>
-              
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_mobile_title', 'Seamless Mobile Experience'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_mobile', 'Enjoy flawless mobile radio streaming optimized for smartphones and tablets with responsive design that automatically adapts to screens of all sizes. Our progressive web application technology enables smooth performance comparable to native mobile apps while eliminating storage concerns and update hassles. Listen to radio while commuting via public transportation, exercising at the gym, relaxing at home, or traveling internationally. Background audio playback continues even when your phone screen is locked or you switch to other applications, allowing uninterrupted radio enjoyment during multitasking. Data-efficient streaming options minimize mobile bandwidth consumption for users with limited data plans.'))}</p>
-              
-              <h3>${this.escapeHtml(getLocalizedText('faq_seo_community_title', 'Global Radio Community'))}</h3>
-              <p>${this.escapeHtml(getLocalizedText('faq_seo_community', 'Become part of our thriving worldwide radio community connecting passionate listeners, broadcasting enthusiasts, and music lovers across continents. Share your favorite station discoveries with fellow users, leave reviews helping others find quality programming, and participate in discussions about radio culture, music trends, and broadcasting history. Follow other users with similar musical interests to expand your radio horizons through community-curated playlists of recommended stations. Track listening statistics to see which stations resonate most with audiences in different regions, and discover trending broadcasts gaining popularity in real-time.'))}</p>
-              
-              <!-- More Internal Links for SEO -->
-              <div class="footer-links">
-                <h3>${this.escapeHtml(getLocalizedText('more_information', 'More Information'))}</h3>
+              <nav class="footer-links">
                 <ul>
                   <li><a href="/${language === 'en' ? '' : language + '/'}about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
                   <li><a href="/${language === 'en' ? '' : language + '/'}contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
@@ -669,18 +638,7 @@ export class SeoRenderer {
                   <li><a href="/${language === 'en' ? '' : language + '/'}terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
                   <li><a href="/${language === 'en' ? '' : language + '/'}applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
                 </ul>
-              </div>
-              
-              <!-- External Links for SEO Authority -->
-              <div class="external-resources">
-                <h3>${this.escapeHtml(getLocalizedText('external_resources', 'External Resources'))}</h3>
-                <ul>
-                  <li><a href="https://flixapp.tv" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('flixapp_tv', 'FlixApp TV - Entertainment Platform'))}</a></li>
-                  <li><a href="https://www.radio-browser.info" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('radio_browser', 'Radio Browser - Open Radio Database'))}</a></li>
-                  <li><a href="https://musicbrainz.org" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('musicbrainz', 'MusicBrainz - Music Metadata'))}</a></li>
-                  <li><a href="https://www.last.fm" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(getLocalizedText('lastfm', 'Last.fm - Music Discovery'))}</a></li>
-                </ul>
-              </div>
+              </nav>
             </section>
           </main>
         `;
