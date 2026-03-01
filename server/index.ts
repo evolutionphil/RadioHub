@@ -941,5 +941,21 @@ app.use((req, res, next) => {
     } catch (error) {
       console.error('❌ BACKGROUND: Cache warmup failed:', error);
     }
+
+    if (process.env.NODE_ENV !== 'development') {
+      setInterval(() => {
+        const mem = process.memoryUsage();
+        const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+        const rssMB = Math.round(mem.rss / 1024 / 1024);
+        const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+        if (heapMB > 1500) {
+          console.warn(`⚠️ MEMORY WARNING: heap=${heapMB}MB/${heapTotalMB}MB, rss=${rssMB}MB`);
+          if (heapMB > 1800) {
+            console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing SEO caches to prevent OOM`);
+            performanceCache.clearSeoCaches();
+          }
+        }
+      }, 5 * 60 * 1000);
+    }
   })();
 })();

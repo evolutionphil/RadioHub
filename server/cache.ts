@@ -7,7 +7,7 @@ const memoryCache = new NodeCache({
   stdTTL: 600, // 10 minutes default TTL
   checkperiod: 60, // Check for expired keys every 1 minute (faster cleanup)
   useClones: false, // Don't clone objects for better performance
-  maxKeys: 2000 // Hard cap: prevents unbounded memory growth (OOM protection)
+  maxKeys: 3000 // Hard cap: safe with 2GB heap on Railway
 });
 
 // Redis client for production (optional)

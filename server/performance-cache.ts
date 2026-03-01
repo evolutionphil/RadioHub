@@ -23,7 +23,7 @@ export class PerformanceCache {
     this.seoHtmlCache = new NodeCache({ 
       stdTTL: 1200, // 20 minutes
       checkperiod: 120, // Check every 2 minutes
-      maxKeys: 10000, // Max 10000 cached pages
+      maxKeys: 2000, // Max 2000 cached pages (~100MB max with 2GB heap)
       useClones: false // Save memory
     });
     
@@ -31,7 +31,7 @@ export class PerformanceCache {
     this.pageDataCache = new NodeCache({ 
       stdTTL: 600, // 10 minutes
       checkperiod: 60, // Check every minute
-      maxKeys: 5000, // Max 5000 page data entries
+      maxKeys: 2000, // Max 2000 page data entries (~20MB max)
       useClones: false // Save memory
     });
     

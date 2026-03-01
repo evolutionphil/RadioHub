@@ -1,7 +1,8 @@
 import { uploadToS3 } from "./s3-storage";
 
 const FLUSH_INTERVAL_MS = 15 * 60 * 1000;
-const MAX_BUFFER_SIZE = 500;
+const MAX_BUFFER_SIZE = 300;
+const MAX_LINE_LENGTH = 500;
 const LOG_PREFIX = "logs";
 
 let logBuffer: string[] = [];
@@ -19,9 +20,18 @@ function getLogKey(): string {
 function formatLogLine(level: string, args: any[]): string {
   const ts = new Date().toISOString();
   const msg = args
-    .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+    .map((a) => {
+      if (typeof a === "string") return a;
+      try {
+        const s = JSON.stringify(a);
+        return s.length > MAX_LINE_LENGTH ? s.slice(0, MAX_LINE_LENGTH) + "..." : s;
+      } catch {
+        return String(a);
+      }
+    })
     .join(" ");
-  return `[${ts}] [${level}] ${msg}`;
+  const line = `[${ts}] [${level}] ${msg}`;
+  return line.length > 1000 ? line.slice(0, 1000) + "..." : line;
 }
 
 async function flushToS3(): Promise<void> {
@@ -35,9 +45,8 @@ async function flushToS3(): Promise<void> {
     await uploadToS3(key, Buffer.from(content, "utf-8"), "text/plain; charset=utf-8");
   } catch (err: any) {
     originalConsole.error(`[LogCollector] S3 flush failed: ${err.message}`);
-    logBuffer.unshift(...lines);
-    if (logBuffer.length > MAX_BUFFER_SIZE * 2) {
-      logBuffer.splice(0, logBuffer.length - MAX_BUFFER_SIZE);
+    if (logBuffer.length < MAX_BUFFER_SIZE) {
+      logBuffer.unshift(...lines.slice(-100));
     }
   }
 }
@@ -53,7 +62,9 @@ function interceptConsole(): void {
   const wrap = (level: string, original: (...args: any[]) => void) => {
     return (...args: any[]) => {
       original(...args);
-      logBuffer.push(formatLogLine(level, args));
+      if (logBuffer.length < MAX_BUFFER_SIZE * 2) {
+        logBuffer.push(formatLogLine(level, args));
+      }
       if (logBuffer.length >= MAX_BUFFER_SIZE) {
         flushToS3().catch(() => {});
       }
