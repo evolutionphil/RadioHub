@@ -196,10 +196,10 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       };
       
       const MAX_RECENT_RESULTS = 50;
-      const CONCURRENT_SIZE = 3;
-      const BATCH_FETCH_SIZE = 200;
-      const DELAY_BETWEEN_BATCHES_MS = 800;
-      const DELAY_BETWEEN_ROUNDS_MS = 2000;
+      const CONCURRENT_SIZE = 5;
+      const BATCH_FETCH_SIZE = 100;
+      const DELAY_BETWEEN_BATCHES_MS = 300;
+      const DELAY_BETWEEN_ROUNDS_MS = 500;
 
       setImmediate(async () => {
         const job = logoProcessingJobs.get(jobId)!;
@@ -237,6 +237,10 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               const batchPromises = batch.map(async (station) => {
                 try {
                   if (!station.favicon || !station.slug) {
+                    await Station.updateOne(
+                      { _id: station._id },
+                      { $set: { 'logoAssets.status': 'failed', 'logoAssets.error': 'Missing favicon or slug', 'logoAssets.failureType': 'invalid_format' } }
+                    );
                     return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: 'Missing favicon or slug' };
                   }
                   const result = await logoProcessor.processFromUrl(station._id.toString(), station.slug, station.favicon);
@@ -376,10 +380,10 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       };
 
       const MAX_RECENT_RESULTS = 50;
-      const CONCURRENT_SIZE = 3;
-      const BATCH_FETCH_SIZE = 200;
-      const DELAY_BETWEEN_BATCHES_MS = 800;
-      const DELAY_BETWEEN_ROUNDS_MS = 2000;
+      const CONCURRENT_SIZE = 5;
+      const BATCH_FETCH_SIZE = 100;
+      const DELAY_BETWEEN_BATCHES_MS = 300;
+      const DELAY_BETWEEN_ROUNDS_MS = 500;
 
       setImmediate(async () => {
         const job = logoProcessingJobs.get(jobId)!;
@@ -417,6 +421,10 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               const batchPromises = batch.map(async (station) => {
                 try {
                   if (!station.favicon || !station.slug) {
+                    await Station.updateOne(
+                      { _id: station._id },
+                      { $set: { 'logoAssets.status': 'failed', 'logoAssets.error': 'Missing favicon or slug', 'logoAssets.failureType': 'invalid_format' } }
+                    );
                     return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: 'Missing favicon or slug' };
                   }
                   const result = await logoProcessor.processFromUrl(station._id.toString(), station.slug, station.favicon);

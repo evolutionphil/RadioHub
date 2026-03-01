@@ -459,7 +459,7 @@ export class LogoProcessor {
     }
 
     if (this.processingQueue.has(stationId)) {
-      return { success: false, error: 'Already processing' };
+      return { success: false, error: 'Already processing', failureType: 'processing_failed' };
     }
 
     this.processingQueue.add(stationId);
@@ -705,7 +705,7 @@ export class LogoProcessor {
       
       const response = await axios.get(proxyUrl, {
         responseType: 'arraybuffer',
-        timeout: 30000,
+        timeout: 8000,
         maxContentLength: 10 * 1024 * 1024,
         validateStatus: (status) => status >= 200 && status < 300
       });
@@ -731,7 +731,7 @@ export class LogoProcessor {
    */
   private async downloadImage(url: string, attempt: number = 1): Promise<DownloadResult> {
     try {
-      const timeout = 10000 + (attempt * 5000); // 10s, 15s
+      const timeout = 5000 + (attempt * 3000); // 5s, 8s
       
       // Parse URL to get host for Referer header
       let referer = '';
