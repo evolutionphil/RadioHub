@@ -511,7 +511,7 @@ export class LogoProcessor {
           const buf = await this.safeProcessImage(downloadResult.buffer, size);
           logoAssets[`webp${size}`] = await uploadToS3(s3Key(filename), buf, 'image/webp');
         }
-        // S3 upload complete silently
+        logger.log(`☁️ S3 OK: ${folderName}`);
       } else {
         // Fallback: local filesystem
         const folderPath = path.join(LOGOS_DIR, folderName);

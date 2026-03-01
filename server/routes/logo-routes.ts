@@ -49,12 +49,14 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         stationsWithFavicon,
         stationsWithSlug,
         stationsWithLogoAssets,
-        stationsNeedingProcessing
+        stationsFailed,
+        stationsNotProcessed
       ] = await Promise.all([
         Station.countDocuments(),
         Station.countDocuments({ favicon: { $exists: true, $nin: ['', null, 'null'] } }),
         Station.countDocuments({ slug: { $exists: true, $ne: null } }),
         Station.countDocuments({ 'logoAssets.status': 'completed' }),
+        Station.countDocuments({ 'logoAssets.status': 'failed' }),
         Station.countDocuments({
           favicon: { $exists: true, $nin: ['', null, 'null'] },
           $or: [
@@ -62,7 +64,6 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
             { logoAssets: { $exists: false } },
             { 'logoAssets.status': 'pending' },
             { 'logoAssets.status': 'processing' },
-            { 'logoAssets.status': 'failed' },
           ]
         })
       ]);
@@ -72,8 +73,9 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         stationsWithFavicon,
         stationsWithSlug,
         stationsWithLogoAssets,
-        stationsNeedingProcessing,
-        processingComplete: stationsNeedingProcessing === 0
+        stationsFailed,
+        stationsNeedingProcessing: stationsNotProcessed,
+        processingComplete: stationsNotProcessed === 0
       });
     } catch (error: any) {
       console.error('Error getting logo stats:', error);
@@ -127,7 +129,6 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         }
       }
       
-      // Count stations needing processing (skip permanent failures like 404, invalid_format)
       const stationsNeedingProcessing = await Station.countDocuments({
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         slug: { $exists: true, $ne: null },
@@ -136,14 +137,6 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
           { logoAssets: { $exists: false } },
           { 'logoAssets.status': 'pending' },
           { 'logoAssets.status': 'processing' },
-          { 
-            'logoAssets.status': 'failed',
-            'logoAssets.failureType': { $nin: ['http_error', 'invalid_format'] }
-          },
-          {
-            'logoAssets.status': 'failed',
-            'logoAssets.failureType': { $exists: false }
-          }
         ]
       });
       
@@ -184,14 +177,6 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
           { logoAssets: { $exists: false } },
           { 'logoAssets.status': 'pending' },
           { 'logoAssets.status': 'processing' },
-          { 
-            'logoAssets.status': 'failed',
-            'logoAssets.failureType': { $nin: ['http_error', 'invalid_format'] }
-          },
-          {
-            'logoAssets.status': 'failed',
-            'logoAssets.failureType': { $exists: false }
-          }
         ]
       };
       

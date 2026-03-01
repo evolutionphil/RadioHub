@@ -15,6 +15,7 @@ interface LogoStats {
   stationsWithFavicon: number;
   stationsWithSlug: number;
   stationsWithLogoAssets: number;
+  stationsFailed: number;
   stationsNeedingProcessing: number;
   processingComplete: boolean;
 }
@@ -268,6 +269,17 @@ export default function LogoManagement() {
           <CardContent>
             <p className="text-2xl font-bold text-orange-600" data-testid="text-need-processing">
               {stats?.stationsNeedingProcessing?.toLocaleString() ?? '-'}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Failed</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-red-600">
+              {stats?.stationsFailed?.toLocaleString() ?? '-'}
             </p>
           </CardContent>
         </Card>
