@@ -59,7 +59,9 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
           favicon: { $exists: true, $nin: ['', null, 'null'] },
           $or: [
             { 'logoAssets.status': { $exists: false } },
+            { logoAssets: { $exists: false } },
             { 'logoAssets.status': 'pending' },
+            { 'logoAssets.status': 'processing' },
             { 'logoAssets.status': 'failed' },
           ]
         })
@@ -131,14 +133,13 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         slug: { $exists: true, $ne: null },
         $or: [
           { 'logoAssets.status': { $exists: false } },
+          { logoAssets: { $exists: false } },
           { 'logoAssets.status': 'pending' },
-          // Only retry temporary failures (timeout, download_failed, processing_failed)
-          // Skip permanent failures (http_error = 404/403, invalid_format = SVG/HTML)
+          { 'logoAssets.status': 'processing' },
           { 
             'logoAssets.status': 'failed',
             'logoAssets.failureType': { $nin: ['http_error', 'invalid_format'] }
           },
-          // Also retry old failures without failureType (legacy)
           {
             'logoAssets.status': 'failed',
             'logoAssets.failureType': { $exists: false }
@@ -180,7 +181,9 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         $or: [
           { 'logoAssets.status': { $exists: false } },
+          { logoAssets: { $exists: false } },
           { 'logoAssets.status': 'pending' },
+          { 'logoAssets.status': 'processing' },
           { 
             'logoAssets.status': 'failed',
             'logoAssets.failureType': { $nin: ['http_error', 'invalid_format'] }
@@ -368,6 +371,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
           { 'logoAssets.status': { $exists: false } },
           { logoAssets: { $exists: false } },
           { 'logoAssets.status': 'pending' },
+          { 'logoAssets.status': 'processing' },
         ]
       };
 
