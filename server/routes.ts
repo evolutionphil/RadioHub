@@ -364,8 +364,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     logger.log('⚡ Genres cache warmup: Skipped in dev mode');
   }
 
-  cron.default.schedule('*/5 * * * *', async () => {
-    // Skip first cron fire if startup warmup just ran (avoid double work)
+  cron.default.schedule('2,12,22,32,42,52 * * * *', async () => {
     if (!genresWarmupDone) { genresWarmupDone = true; return; }
     try {
       const start = Date.now();
@@ -373,10 +372,9 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       logger.log(`⏰ [Cron] Genres cache refreshed in ${Date.now() - start}ms`);
     } catch (error) { logger.error('[Cron] Genres cache refresh failed:', error); }
   });
-  logger.log('⏰ Genres cache auto-refresh scheduled: every 5 minutes');
+  logger.log('⏰ Genres cache auto-refresh scheduled: every 10 min at :02,:12,:22,:32,:42,:52');
 
-  // Popular stations: refresh every 15 minutes SEQUENTIALLY to avoid DB overload
-  cron.default.schedule('*/15 * * * *', async () => {
+  cron.default.schedule('7,22,37,52 * * * *', async () => {
     try {
       const start = Date.now();
       const topCountries: (string | undefined)[] = [undefined, 'Turkey', 'Germany', 'United States',
@@ -384,12 +382,12 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         'Brazil', 'Russia', 'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland'];
       for (const country of topCountries) {
         try { await refreshPopularStationsCache(country); } catch {}
-        await new Promise(r => setTimeout(r, 200)); // 200ms between each to avoid connection storm
+        await new Promise(r => setTimeout(r, 200));
       }
       logger.log(`⏰ [Cron] Popular stations cache refreshed in ${Date.now() - start}ms (${topCountries.length} countries, sequential)`);
     } catch (error) { logger.error('[Cron] Popular stations cache refresh failed:', error); }
   });
-  logger.log('⏰ Popular stations cache auto-refresh scheduled: every 15 minutes (sequential)');
+  logger.log('⏰ Popular stations cache auto-refresh scheduled: every 15 min at :07,:22,:37,:52');
 
   // === SEO REDIRECT ===
   app.get('/stations', (_req, res) => res.redirect(301, '/radios'));

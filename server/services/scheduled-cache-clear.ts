@@ -45,17 +45,15 @@ export class ScheduledCacheClearService {
 
     logger.log('⏰ Initializing scheduled cache clear service...');
     
-    // Daily SEO cache clear at 3 AM
     cron.schedule('0 3 * * *', async () => {
-      logger.log('🌙 Running scheduled nightly SEO cache clear at 3 AM...');
+      logger.log('🌙 Running scheduled nightly SEO cache clear at 3:00 AM...');
       await this.clearAllSeoCaches();
     }, {
       timezone: 'Europe/Berlin'
     });
 
-    // Weekly precomputed stations cache refresh - Sunday 3 AM
-    cron.schedule('0 3 * * 0', async () => {
-      logger.log('🔄 Running weekly precomputed stations cache refresh (Sunday 3 AM)...');
+    cron.schedule('30 4 * * 0', async () => {
+      logger.log('🔄 Running weekly precomputed stations cache refresh (Sunday 4:30 AM)...');
       try {
         await PrecomputedStationsService.refreshAllCountries();
         logger.log('✅ Precomputed stations cache refreshed successfully');
@@ -66,10 +64,8 @@ export class ScheduledCacheClearService {
       timezone: 'Europe/Berlin'
     });
 
-    // Monthly translation sync - 1st of each month at 4 AM (scans frontend for new keys)
-    // Manual sync recommended during development, automatic monthly for production
-    cron.schedule('0 4 1 * *', async () => {
-      logger.log('🌍 Running monthly translation key scan (1st of month at 4 AM)...');
+    cron.schedule('0 5 1 * *', async () => {
+      logger.log('🌍 Running monthly translation key scan (1st of month at 5:00 AM)...');
       try {
         const result = await TranslationSyncService.scanForNewKeys();
         logger.log(`✅ Monthly key scan complete: ${result.keysAdded} new keys found`);
@@ -81,7 +77,7 @@ export class ScheduledCacheClearService {
     });
 
     this.isInitialized = true;
-    logger.log('✅ Scheduled cache clear service initialized - SEO daily 3 AM, Translations monthly 1st 4 AM, Precomputed weekly Sunday 3 AM (Europe/Berlin)');
+    logger.log('✅ Scheduled cache clear service initialized — SEO daily 3:00, Precomputed Sunday 4:30, Translations monthly 1st 5:00 (Europe/Berlin)');
   }
 
   public async clearAllSeoCaches(): Promise<CacheClearResult> {
