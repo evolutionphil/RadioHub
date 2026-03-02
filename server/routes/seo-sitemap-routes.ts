@@ -504,15 +504,14 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         const stationPath = `/station/${(station as any).slug}`;
         const localizedPath = buildLocalizedUrl(stationPath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
-        // Use real updatedAt date for accurate lastmod
         const stationLastMod = (station as any).updatedAt
           ? new Date((station as any).updatedAt).toISOString().split('T')[0]
-          : new Date().toISOString().split('T')[0];
+          : undefined;
 
         xml += `
   <url>
-    <loc>${fullUrl}</loc>
-    <lastmod>${stationLastMod}</lastmod>
+    <loc>${fullUrl}</loc>${stationLastMod ? `
+    <lastmod>${stationLastMod}</lastmod>` : ''}
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`;
 

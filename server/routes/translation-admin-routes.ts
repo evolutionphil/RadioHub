@@ -1380,7 +1380,11 @@ ${keysText}`;
   app.post("/api/stations/:id/rate", async (req, res) => {
     try {
       const { id: stationId } = req.params;
-      const { rating, comment, userId, sessionId } = req.body;
+      const { rating, userId, sessionId } = req.body;
+      let comment = req.body.comment;
+      if (comment && typeof comment === 'string') {
+        comment = comment.replace(/<[^>]*>/g, '').trim().slice(0, 1000);
+      }
 
       // Validate rating
       if (!rating || rating < 1 || rating > 5) {
@@ -1478,12 +1482,17 @@ ${keysText}`;
       const limit = parseInt(req.query.limit as string) || 10;
       const skip = (page - 1) * limit;
 
-      // Get ratings with pagination
       const ratings = await StationRating.find({ stationId })
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
         .lean();
+
+      for (const r of ratings as any[]) {
+        if (r.comment && typeof r.comment === 'string') {
+          r.comment = r.comment.replace(/<[^>]*>/g, '').trim();
+        }
+      }
 
       // Get total count
       const total = await StationRating.countDocuments({ stationId });
