@@ -943,16 +943,28 @@ app.use((req, res, next) => {
     }
 
     if (process.env.NODE_ENV !== 'development') {
-      setInterval(() => {
+      const { CacheManager } = await import('./cache');
+      setInterval(async () => {
         const mem = process.memoryUsage();
         const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
-        if (heapMB > 1500) {
+        if (heapMB > 1200) {
           console.warn(`⚠️ MEMORY WARNING: heap=${heapMB}MB/${heapTotalMB}MB, rss=${rssMB}MB`);
-          if (heapMB > 1800) {
-            console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing SEO caches to prevent OOM`);
-            performanceCache.clearSeoCaches();
+          if (heapMB > 1500) {
+            console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing ALL caches to prevent OOM`);
+            performanceCache.clearAllForMemoryRelief();
+            await CacheManager.clearByPattern('precomputed_');
+            await CacheManager.clearByPattern('stations:');
+            await CacheManager.clearByPattern('genres:');
+            try {
+              const { clearOgCache } = await import('./og-image-generator');
+              clearOgCache();
+            } catch {}
+            if (global.gc) {
+              global.gc();
+              console.log('🗑️ Manual GC triggered');
+            }
           }
         }
       }, 5 * 60 * 1000);

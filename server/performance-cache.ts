@@ -21,18 +21,17 @@ export class PerformanceCache {
     
     // Rendered HTML cache - 20 minutes TTL (for SEO bot responses)
     this.seoHtmlCache = new NodeCache({ 
-      stdTTL: 1200, // 20 minutes
-      checkperiod: 120, // Check every 2 minutes
-      maxKeys: 2000, // Max 2000 cached pages (~100MB max with 2GB heap)
-      useClones: false // Save memory
+      stdTTL: 900, // 15 minutes
+      checkperiod: 120,
+      maxKeys: 500,
+      useClones: false
     });
     
-    // Page metadata cache - 10 minutes TTL
     this.pageDataCache = new NodeCache({ 
       stdTTL: 600, // 10 minutes
-      checkperiod: 60, // Check every minute
-      maxKeys: 2000, // Max 2000 page data entries (~20MB max)
-      useClones: false // Save memory
+      checkperiod: 60,
+      maxKeys: 500,
+      useClones: false
     });
     
     // Quick data cache - 5 minutes TTL (for frequently accessed data)
@@ -159,7 +158,6 @@ export class PerformanceCache {
     logger.log('🗑️ CACHE: Cleared all caches');
   }
   
-  // Clear only SEO-related caches (for nightly scheduled clear)
   clearSeoCaches(): { seoHtmlCleared: number; pageDataCleared: number } {
     const seoHtmlCount = this.seoHtmlCache.keys().length;
     const pageDataCount = this.pageDataCache.keys().length;
@@ -173,6 +171,22 @@ export class PerformanceCache {
       seoHtmlCleared: seoHtmlCount,
       pageDataCleared: pageDataCount
     };
+  }
+
+  clearAllForMemoryRelief(): void {
+    const seoCount = this.seoHtmlCache.keys().length;
+    const pageCount = this.pageDataCache.keys().length;
+    const quickCount = this.quickCache.keys().length;
+    const similarCount = this.similarStationsCache.keys().length;
+    const transCount = this.translationsCache.keys().length;
+
+    this.seoHtmlCache.flushAll();
+    this.pageDataCache.flushAll();
+    this.quickCache.flushAll();
+    this.similarStationsCache.flushAll();
+    this.translationsCache.flushAll();
+
+    logger.log(`🧹 MEMORY RELIEF: Cleared ALL performance caches — seo=${seoCount}, page=${pageCount}, quick=${quickCount}, similar=${similarCount}, trans=${transCount}`);
   }
   
   clearCountryLanguageMappings() {

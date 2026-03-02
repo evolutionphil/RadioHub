@@ -9,7 +9,6 @@ interface PrecomputedStation {
   url: string;
   url_resolved: string;
   favicon: string;
-  logo: string;
   country: string;
   state: string;
   votes: number;
@@ -19,8 +18,8 @@ interface PrecomputedStation {
   bitrate: number;
   logoAssets?: {
     webp96?: string;
-    webp192?: string;
-    webp384?: string;
+    webp256?: string;
+    folder?: string;
   };
 }
 
@@ -31,10 +30,10 @@ interface PrecomputedCountryData {
   countryName: string;
 }
 
-const CACHE_TTL = 604800; // 7 days in seconds (weekly refresh)
+const CACHE_TTL = 86400; // 24 hours
 const CACHE_KEY_PREFIX = 'precomputed_stations:';
 const GLOBAL_CACHE_KEY = 'precomputed_stations:global';
-const GLOBAL_STATIONS_LIMIT = 10000; // Cache top 10K global stations
+const GLOBAL_STATIONS_LIMIT = 5000;
 const BATCH_SIZE = 5; // Process 5 countries in parallel
 
 const COUNTRY_CODE_MAP: Record<string, string> = {
@@ -115,6 +114,7 @@ export class PrecomputedStationsService {
           votes: -1
         }
       },
+      { $limit: 3000 },
       {
         $project: {
           _id: 1,
@@ -123,7 +123,6 @@ export class PrecomputedStationsService {
           url: 1,
           url_resolved: 1,
           favicon: 1,
-          logo: 1,
           country: 1,
           state: 1,
           votes: 1,
@@ -131,7 +130,7 @@ export class PrecomputedStationsService {
           tags: 1,
           codec: 1,
           bitrate: 1,
-          logoAssets: 1
+          logoAssets: { webp96: 1, webp256: 1, folder: 1 }
         }
       }
     ]).exec();

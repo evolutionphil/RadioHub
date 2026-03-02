@@ -4,7 +4,13 @@ import fs from 'fs';
 import { Station } from '../shared/mongo-schemas';
 import NodeCache from 'node-cache';
 
-const ogImageCache = new NodeCache({ stdTTL: 86400, checkperiod: 3600 });
+const ogImageCache = new NodeCache({ stdTTL: 3600, checkperiod: 600, maxKeys: 100 });
+
+export function clearOgCache(): void {
+  const count = ogImageCache.keys().length;
+  ogImageCache.flushAll();
+  console.log(`🧹 OG image cache cleared: ${count} entries`);
+}
 
 const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;

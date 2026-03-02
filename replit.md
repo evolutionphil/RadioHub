@@ -65,7 +65,8 @@ CRITICAL STRUCTURED DATA RULE: WebSite schema has @id=`{domain}/#website` and al
 - **Background Audio Prevention System**: 5-layer protection against browser audio suspension.
 - **Geolocation & Country Detection System**: IP-based geolocation for auto-detection and personalization, including GPS-based nearby stations.
 - **SEO FAQ Content Management**: Admin-manageable, translatable FAQ for homepage SEO.
-- **Automatic Image Optimization**: Server-side image resizing and WebP conversion using Sharp for station favicons, integrated with S3 for storage. Image proxy has memory-safe guards: 2MB download limit, 6-concurrent Sharp semaphore, content-type/magic-byte validation, 512px dimension cap, and proper cleanup to prevent OOM on Railway (768MB heap).
+- **Automatic Image Optimization**: Server-side image resizing and WebP conversion using Sharp for station favicons, integrated with S3 for storage. Image proxy has memory-safe guards: 2MB download limit, 6-concurrent Sharp semaphore, content-type/magic-byte validation, 512px dimension cap, and proper cleanup to prevent OOM on Railway.
+- **Memory Management**: Multi-layer OOM prevention — heap monitor every 5min (warn >1200MB, critical >1500MB clears ALL caches: performance, precomputed, OG images, CacheManager patterns). Railway runs with `--max-old-space-size=1536 --expose-gc`. ogImageCache maxKeys=100/1hr TTL, seoHtmlCache maxKeys=500, memoryCache maxKeys=1500, precomputed TTLs=24hr. PrecomputedStations aggregate limited to 3000 per country.
 - **API Key Management System**: Secure API key generation, validation, rate limiting, and usage tracking.
 - **Cast System (Mobile → TV)**: Dual cast architecture supporting WebSocket and polling-based communication for real-time command relay and now-playing status.
 - **TV Device Code Login**: Netflix/YouTube-style TV login flow for device activation.
