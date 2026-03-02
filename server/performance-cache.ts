@@ -23,14 +23,14 @@ export class PerformanceCache {
     this.seoHtmlCache = new NodeCache({ 
       stdTTL: 900, // 15 minutes
       checkperiod: 120,
-      maxKeys: 500,
+      maxKeys: 2000,
       useClones: false
     });
     
     this.pageDataCache = new NodeCache({ 
       stdTTL: 600, // 10 minutes
       checkperiod: 60,
-      maxKeys: 500,
+      maxKeys: 2000,
       useClones: false
     });
     
@@ -38,7 +38,7 @@ export class PerformanceCache {
     this.quickCache = new NodeCache({ 
       stdTTL: 300, // 5 minutes
       checkperiod: 60, // Check every minute
-      maxKeys: 500, // Max 500 quick entries
+      maxKeys: 2000,
       useClones: false // Save memory
     });
     
@@ -108,7 +108,7 @@ export class PerformanceCache {
   private similarStationsCache: NodeCache = new NodeCache({
     stdTTL: 3600, // 1 hour TTL
     checkperiod: 300,
-    maxKeys: 200 // Max 200 countries
+    maxKeys: 500
   });
   
   getSimilarPool(country: string): any[] | null {

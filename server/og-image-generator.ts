@@ -4,7 +4,7 @@ import fs from 'fs';
 import { Station } from '../shared/mongo-schemas';
 import NodeCache from 'node-cache';
 
-const ogImageCache = new NodeCache({ stdTTL: 3600, checkperiod: 600, maxKeys: 100 });
+const ogImageCache = new NodeCache({ stdTTL: 3600, checkperiod: 600, maxKeys: 500 });
 
 export function clearOgCache(): void {
   const count = ogImageCache.keys().length;

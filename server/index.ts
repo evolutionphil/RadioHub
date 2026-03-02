@@ -949,9 +949,9 @@ app.use((req, res, next) => {
         const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
-        if (heapMB > 1200) {
+        if (heapMB > 6000) {
           console.warn(`⚠️ MEMORY WARNING: heap=${heapMB}MB/${heapTotalMB}MB, rss=${rssMB}MB`);
-          if (heapMB > 1500) {
+          if (heapMB > 7000) {
             console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing ALL caches to prevent OOM`);
             performanceCache.clearAllForMemoryRelief();
             await CacheManager.clearByPattern('precomputed_');

@@ -7,7 +7,7 @@ const memoryCache = new NodeCache({
   stdTTL: 600, // 10 minutes default TTL
   checkperiod: 60,
   useClones: false,
-  maxKeys: 1500
+  maxKeys: 5000
 });
 
 // Redis client for production (optional)
