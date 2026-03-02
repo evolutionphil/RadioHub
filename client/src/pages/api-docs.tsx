@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback, memo, useMemo } from "react";
+import { useRoute, useLocation } from "wouter";
+import { Copy, Check, ChevronRight, Search, Radio, Zap, Shield, Globe, Tv, Cast, Code, BookOpen, AlertTriangle, Users, Heart, Menu, X, ExternalLink, ArrowRight } from "lucide-react";
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-type Method = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
-type Plan = "demo" | "free" | "pro";
-type SdkLang = "curl" | "js" | "rn" | "swift" | "kotlin";
+type Method = "GET" | "POST" | "PUT" | "DELETE";
+type CodeLang = "curl" | "javascript" | "python" | "swift" | "kotlin";
 
 interface Param {
   name: string;
@@ -11,185 +11,209 @@ interface Param {
   required?: boolean;
   default?: string;
   description: string;
-  options?: string[];
-}
-
-interface CodeExample {
-  curl?: string;
-  js?: string;
-  rn?: string;
-  swift?: string;
-  kotlin?: string;
 }
 
 interface Endpoint {
   id: string;
   method: Method;
   path: string;
-  summary: string;
+  title: string;
   description: string;
-  auth?: boolean;
   params?: Param[];
-  queryParams?: Param[];
   bodyParams?: Param[];
-  response?: string;
-  code?: CodeExample;
+  responseExample: string;
+  codeExamples: Partial<Record<CodeLang, string>>;
 }
 
-interface Section {
+interface NavSection {
   id: string;
   label: string;
-  icon: string;
-  endpoints?: Endpoint[];
-  content?: string;
+  icon: any;
+  items: { id: string; label: string }[];
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const BASE_URL = "https://themegaradio.com";
-
-const PLANS: Record<Plan, { label: string; color: string; rpm: number; daily: number; monthly: number }> = {
-  demo: { label: "Demo", color: "#f97316", rpm: 10, daily: 100, monthly: 500 },
-  free: { label: "Free", color: "#3b82f6", rpm: 60, daily: 1000, monthly: 10000 },
-  pro: { label: "Pro", color: "#8b5cf6", rpm: 300, daily: 10000, monthly: 100000 },
+const METHOD_STYLES: Record<Method, { bg: string; text: string; border: string }> = {
+  GET: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
+  POST: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
+  PUT: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" },
+  DELETE: { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20" },
 };
 
-// ─── Method Badge ─────────────────────────────────────────────────────────────
-const METHOD_COLORS: Record<Method, string> = {
-  GET: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200",
-  POST: "bg-blue-50 text-blue-700 ring-1 ring-blue-200",
-  PUT: "bg-amber-50 text-amber-700 ring-1 ring-amber-200",
-  PATCH: "bg-violet-50 text-violet-700 ring-1 ring-violet-200",
-  DELETE: "bg-red-50 text-red-700 ring-1 ring-red-200",
-};
-
-function MethodBadge({ method }: { method: Method }) {
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-mono font-semibold tracking-wider ${METHOD_COLORS[method]}`}>
-      {method}
-    </span>
-  );
-}
-
-// ─── Copy Button ──────────────────────────────────────────────────────────────
-function CopyButton({ text }: { text: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(text).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  };
-  return (
-    <button
-      onClick={copy}
-      className="absolute top-3 right-3 px-2 py-1 rounded text-xs font-medium transition-all duration-200 bg-white/10 hover:bg-white/20 text-white/70 hover:text-white"
-    >
-      {copied ? "Copied!" : "Copy"}
-    </button>
-  );
-}
-
-// ─── Code Block ───────────────────────────────────────────────────────────────
-function CodeBlock({ code, lang = "bash" }: { code: string; lang?: string }) {
-  return (
-    <div className="relative group rounded-xl overflow-hidden bg-[#0d1117] border border-white/8">
-      <div className="flex items-center gap-1.5 px-4 py-2.5 border-b border-white/8 bg-white/4">
-        <div className="w-3 h-3 rounded-full bg-[#ff5f57]" />
-        <div className="w-3 h-3 rounded-full bg-[#febc2e]" />
-        <div className="w-3 h-3 rounded-full bg-[#28c840]" />
-        <span className="ml-2 text-xs text-white/40 font-mono">{lang}</span>
-      </div>
-      <div className="relative">
-        <pre className="p-4 text-sm font-mono leading-relaxed text-[#e6edf3] overflow-x-auto whitespace-pre">
-          <code>{code.trim()}</code>
-        </pre>
-        <CopyButton text={code.trim()} />
-      </div>
-    </div>
-  );
-}
-
-// ─── Multi-language Code Block ────────────────────────────────────────────────
-const LANG_LABELS: Record<SdkLang, string> = {
+const CODE_LANG_LABELS: Record<CodeLang, string> = {
   curl: "cURL",
-  js: "JavaScript",
-  rn: "React Native",
+  javascript: "JavaScript",
+  python: "Python",
   swift: "Swift",
   kotlin: "Kotlin",
 };
 
-function MultiLangCode({ examples }: { examples: CodeExample }) {
-  const langs = (Object.keys(examples) as SdkLang[]).filter(k => examples[k]);
-  const [active, setActive] = useState<SdkLang>(langs[0]);
+const BASE_URL = "https://themegaradio.com";
 
+const NAV_SECTIONS: NavSection[] = [
+  {
+    id: "overview",
+    label: "Getting Started",
+    icon: BookOpen,
+    items: [
+      { id: "introduction", label: "Introduction" },
+      { id: "authentication", label: "Authentication" },
+      { id: "rate-limits", label: "Rate Limits" },
+      { id: "errors", label: "Error Handling" },
+    ],
+  },
+  {
+    id: "stations",
+    label: "Stations",
+    icon: Radio,
+    items: [
+      { id: "list-stations", label: "List Stations" },
+      { id: "get-station", label: "Get Station" },
+      { id: "popular-stations", label: "Popular Stations" },
+      { id: "search-stations", label: "Search Stations" },
+      { id: "nearby-stations", label: "Nearby Stations" },
+      { id: "similar-stations", label: "Similar Stations" },
+      { id: "random-station", label: "Random Station" },
+      { id: "station-stats", label: "Station Statistics" },
+    ],
+  },
+  {
+    id: "discovery",
+    label: "Discovery",
+    icon: Globe,
+    items: [
+      { id: "list-genres", label: "List Genres" },
+      { id: "list-countries", label: "List Countries" },
+      { id: "list-languages", label: "List Languages" },
+      { id: "trending", label: "Trending Stations" },
+    ],
+  },
+  {
+    id: "streaming",
+    label: "Streaming",
+    icon: Zap,
+    items: [
+      { id: "resolve-stream", label: "Resolve Stream URL" },
+      { id: "now-playing", label: "Now Playing" },
+    ],
+  },
+  {
+    id: "engagement",
+    label: "Engagement",
+    icon: Heart,
+    items: [
+      { id: "favorite-station", label: "Favorite a Station" },
+      { id: "rate-station", label: "Rate a Station" },
+      { id: "user-profile", label: "User Profile" },
+    ],
+  },
+  {
+    id: "user-auth",
+    label: "User Authentication",
+    icon: Users,
+    items: [
+      { id: "web-login", label: "Web Login" },
+      { id: "mobile-login", label: "Mobile Login" },
+      { id: "register", label: "Register" },
+      { id: "current-user", label: "Current User" },
+    ],
+  },
+  {
+    id: "tv",
+    label: "TV & Cast",
+    icon: Tv,
+    items: [
+      { id: "tv-request-code", label: "TV: Request Code" },
+      { id: "tv-poll-status", label: "TV: Poll Status" },
+      { id: "tv-activate", label: "TV: Activate Device" },
+      { id: "cast-create", label: "Cast: Create Session" },
+      { id: "cast-command", label: "Cast: Send Command" },
+    ],
+  },
+  {
+    id: "sdks",
+    label: "SDKs & Guides",
+    icon: Code,
+    items: [
+      { id: "guide-javascript", label: "JavaScript / Web" },
+      { id: "guide-react-native", label: "React Native" },
+      { id: "guide-ios", label: "iOS (Swift)" },
+      { id: "guide-android", label: "Android (Kotlin)" },
+    ],
+  },
+];
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [text]);
   return (
-    <div className="rounded-xl overflow-hidden border border-white/8 bg-[#0d1117]">
-      <div className="flex items-center gap-0 border-b border-white/8 bg-white/4 overflow-x-auto">
-        <div className="flex items-center gap-1.5 px-4 py-2.5 border-r border-white/8">
-          <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
-          <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
-        </div>
-        {langs.map(lang => (
-          <button
-            key={lang}
-            onClick={() => setActive(lang)}
-            className={`px-4 py-2.5 text-xs font-medium transition-all border-r border-white/8 whitespace-nowrap ${
-              active === lang
-                ? "text-white bg-white/10"
-                : "text-white/50 hover:text-white/80 hover:bg-white/5"
-            }`}
-          >
-            {LANG_LABELS[lang]}
+    <button onClick={handleCopy} className="absolute top-3 right-3 p-1.5 rounded-md bg-white/5 hover:bg-white/10 transition-colors" aria-label="Copy">
+      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+    </button>
+  );
+}
+
+function MethodBadge({ method }: { method: Method }) {
+  const s = METHOD_STYLES[method];
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold tracking-wider ${s.bg} ${s.text} border ${s.border}`}>{method}</span>;
+}
+
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  return (
+    <div className="relative group rounded-lg bg-[#0d1117] border border-white/5 overflow-hidden">
+      {lang && <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-white/5 font-medium">{lang}</div>}
+      <CopyButton text={code} />
+      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed"><code className="text-slate-300 font-mono">{code}</code></pre>
+    </div>
+  );
+}
+
+function CodeTabs({ examples }: { examples: Partial<Record<CodeLang, string>> }) {
+  const langs = Object.keys(examples) as CodeLang[];
+  const [active, setActive] = useState<CodeLang>(langs[0]);
+  if (langs.length === 0) return null;
+  return (
+    <div className="rounded-lg bg-[#0d1117] border border-white/5 overflow-hidden">
+      <div className="flex border-b border-white/5 overflow-x-auto">
+        {langs.map((lang) => (
+          <button key={lang} onClick={() => setActive(lang)} className={`px-4 py-2 text-xs font-medium whitespace-nowrap transition-colors ${active === lang ? "text-white bg-white/5 border-b-2 border-blue-400" : "text-slate-500 hover:text-slate-300"}`}>
+            {CODE_LANG_LABELS[lang]}
           </button>
         ))}
       </div>
       <div className="relative">
-        <pre className="p-4 text-sm font-mono leading-relaxed text-[#e6edf3] overflow-x-auto whitespace-pre">
-          <code>{(examples[active] || "").trim()}</code>
-        </pre>
-        <CopyButton text={(examples[active] || "").trim()} />
+        <CopyButton text={examples[active] || ""} />
+        <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed"><code className="text-slate-300 font-mono">{examples[active]}</code></pre>
       </div>
     </div>
   );
 }
 
-// ─── Param Table ──────────────────────────────────────────────────────────────
 function ParamTable({ params, title }: { params: Param[]; title: string }) {
+  if (!params.length) return null;
   return (
-    <div className="mt-5">
-      <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">{title}</h4>
-      <div className="rounded-xl overflow-hidden border border-gray-100 dark:border-white/8">
+    <div className="mt-6">
+      <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">{title}</h4>
+      <div className="border border-white/5 rounded-lg overflow-hidden">
         <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 dark:bg-white/4 border-b border-gray-100 dark:border-white/8">
-              <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-white/60 w-40">Parameter</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-white/60 w-24">Type</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-white/60 w-20">Required</th>
-              <th className="text-left px-4 py-3 font-semibold text-gray-600 dark:text-white/60">Description</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-white/6">
+          <thead><tr className="bg-white/[0.02]">
+            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Parameter</th>
+            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Type</th>
+            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Description</th>
+          </tr></thead>
+          <tbody>
             {params.map((p, i) => (
-              <tr key={i} className="bg-white dark:bg-transparent hover:bg-gray-50/50 dark:hover:bg-white/4 transition-colors">
-                <td className="px-4 py-3">
-                  <code className="text-[#0071e3] dark:text-blue-400 font-mono text-xs font-semibold">{p.name}</code>
+              <tr key={p.name} className={i % 2 === 0 ? "bg-transparent" : "bg-white/[0.01]"}>
+                <td className="px-4 py-3 font-mono text-[13px]">
+                  <span className="text-sky-400">{p.name}</span>
+                  {p.required && <span className="ml-1.5 text-[10px] text-red-400 font-sans font-medium">required</span>}
+                  {p.default && <span className="ml-1.5 text-[10px] text-slate-500 font-sans">= {p.default}</span>}
                 </td>
-                <td className="px-4 py-3">
-                  <span className="font-mono text-xs text-gray-500 dark:text-white/50">{p.type}</span>
-                </td>
-                <td className="px-4 py-3">
-                  {p.required ? (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600 ring-1 ring-red-100">Required</span>
-                  ) : (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 dark:bg-white/8 dark:text-white/50">Optional</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-600 dark:text-white/70">
-                  {p.description}
-                  {p.default && <span className="ml-2 text-gray-400 dark:text-white/40">Default: <code className="font-mono text-xs">{p.default}</code></span>}
-                  {p.options && <span className="ml-2 text-gray-400 dark:text-white/40">Options: <code className="font-mono text-xs">{p.options.join(", ")}</code></span>}
-                </td>
+                <td className="px-4 py-3 text-amber-300/80 font-mono text-[13px]">{p.type}</td>
+                <td className="px-4 py-3 text-slate-400">{p.description}</td>
               </tr>
             ))}
           </tbody>
@@ -199,1953 +223,1270 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
   );
 }
 
-// ─── Endpoint Card ────────────────────────────────────────────────────────────
-function EndpointCard({ ep }: { ep: Endpoint }) {
-  const [open, setOpen] = useState(false);
-
+function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
   return (
-    <div
-      id={ep.id}
-      className={`rounded-2xl border transition-all duration-300 scroll-mt-20 ${
-        open
-          ? "border-gray-200 dark:border-white/12 shadow-lg shadow-gray-100/80 dark:shadow-black/20"
-          : "border-gray-100 dark:border-white/8 hover:border-gray-200 dark:hover:border-white/12 hover:shadow-md hover:shadow-gray-100/50 dark:hover:shadow-black/10"
-      } bg-white dark:bg-[#161b22] overflow-hidden`}
-    >
-      <button
-        onClick={() => setOpen(!open)}
-        className="w-full text-left p-5 flex items-start gap-4"
-      >
-        <MethodBadge method={ep.method} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <code className="text-[15px] font-mono font-medium text-gray-900 dark:text-white/90">{ep.path}</code>
-            {ep.auth && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-amber-50 text-amber-700 ring-1 ring-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:ring-amber-800/50">
-                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"/></svg>
-                Auth Required
-              </span>
-            )}
-          </div>
-          <p className="mt-1 text-sm font-medium text-gray-700 dark:text-white/60">{ep.summary}</p>
+    <div id={endpoint.id} className="scroll-mt-20 mb-12">
+      <div className="flex items-center gap-3 mb-3">
+        <MethodBadge method={endpoint.method} />
+        <code className="text-sm font-mono text-slate-300 bg-white/5 px-3 py-1 rounded-md">{endpoint.path}</code>
+      </div>
+      <h3 className="text-xl font-semibold text-white mb-2">{endpoint.title}</h3>
+      <p className="text-slate-400 leading-relaxed mb-6">{endpoint.description}</p>
+      {endpoint.params && <ParamTable params={endpoint.params} title="Query Parameters" />}
+      {endpoint.bodyParams && <ParamTable params={endpoint.bodyParams} title="Body Parameters" />}
+      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">Request</h4>
+          <CodeTabs examples={endpoint.codeExamples} />
         </div>
-        <svg
-          className={`w-5 h-5 text-gray-400 flex-shrink-0 mt-0.5 transition-transform duration-200 ${open ? "rotate-180" : ""}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {open && (
-        <div className="px-5 pb-6 space-y-5 border-t border-gray-100 dark:border-white/8 pt-5">
-          <p className="text-[15px] text-gray-600 dark:text-white/70 leading-relaxed">{ep.description}</p>
-
-          {ep.params && ep.params.length > 0 && (
-            <ParamTable params={ep.params} title="Path Parameters" />
-          )}
-          {ep.queryParams && ep.queryParams.length > 0 && (
-            <ParamTable params={ep.queryParams} title="Query Parameters" />
-          )}
-          {ep.bodyParams && ep.bodyParams.length > 0 && (
-            <ParamTable params={ep.bodyParams} title="Request Body" />
-          )}
-
-          {ep.code && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Code Examples</h4>
-              <MultiLangCode examples={ep.code} />
-            </div>
-          )}
-
-          {ep.response && (
-            <div>
-              <h4 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Response Example</h4>
-              <CodeBlock code={ep.response} lang="json" />
-            </div>
-          )}
+        <div>
+          <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">Response</h4>
+          <CodeBlock code={endpoint.responseExample} lang="JSON" />
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-// ─── All Endpoints Data ────────────────────────────────────────────────────────
-const ENDPOINTS: Record<string, Endpoint[]> = {
-  stations: [
-    {
-      id: "stations-list",
-      method: "GET",
-      path: "/api/stations",
-      summary: "List Stations",
-      description: "Browse all radio stations with powerful filtering options. Supports full-text search, country, language, genre, codec, and bitrate filters. Returns paginated results with total counts.",
-      queryParams: [
-        { name: "search", type: "string", description: "Full-text search across name, country, tags" },
-        { name: "country", type: "string", description: "Filter by country name or ISO code (e.g. Germany, DE)" },
-        { name: "language", type: "string", description: "Filter by language (e.g. english, turkish)" },
-        { name: "genre", type: "string", description: "Filter by genre/tag" },
-        { name: "codec", type: "string", description: "Filter by audio codec (MP3, AAC, OGG, HLS)" },
-        { name: "minBitrate", type: "number", description: "Minimum bitrate in kbps" },
-        { name: "page", type: "number", default: "1", description: "Page number" },
-        { name: "limit", type: "number", default: "25", description: "Results per page (max 100)" },
-        { name: "sort", type: "string", default: "votes", description: "Sort field", options: ["votes", "clickCount", "name", "bitrate"] },
-        { name: "tv", type: "string", description: "Slim response mode for TV/mobile", options: ["1"] },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/stations?country=Germany&limit=10&sort=votes" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        js: `const response = await fetch(
-  '${BASE_URL}/api/stations?country=Germany&limit=10',
-  { headers: { 'Authorization': 'Bearer mr_your_api_key' } }
-);
-const data = await response.json();
-console.log(data.stations);`,
-        rn: `import { useState, useEffect } from 'react';
+const IntroductionContent = memo(() => (
+  <div>
+    <div className="mb-12">
+      <h1 className="text-4xl font-bold text-white mb-4">Mega Radio API</h1>
+      <p className="text-lg text-slate-400 leading-relaxed max-w-2xl">Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences with our REST API.</p>
+    </div>
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+      {[
+        { icon: Radio, title: "40,000+ Stations", desc: "Global radio stations with metadata, logos, and stream URLs" },
+        { icon: Zap, title: "Real-time Streaming", desc: "HLS and direct stream resolution with now-playing metadata" },
+        { icon: Globe, title: "57 Languages", desc: "Multilingual support with localized content and search" },
+      ].map((f) => (
+        <div key={f.title} className="rounded-xl bg-white/[0.03] border border-white/5 p-5 hover:border-white/10 transition-colors">
+          <f.icon className="w-8 h-8 text-blue-400 mb-3" />
+          <h3 className="text-white font-semibold mb-1">{f.title}</h3>
+          <p className="text-sm text-slate-400">{f.desc}</p>
+        </div>
+      ))}
+    </div>
+    <h2 className="text-2xl font-bold text-white mb-4">Base URL</h2>
+    <CodeBlock code={`${BASE_URL}/api`} lang="Base URL" />
+    <div className="mt-8">
+      <h2 className="text-2xl font-bold text-white mb-4">Quick Start</h2>
+      <p className="text-slate-400 mb-4">Get a demo API key and make your first request in seconds:</p>
+      <CodeBlock code={`# 1. Get a free demo API key (valid 24h)\ncurl ${BASE_URL}/api/api-keys/demo\n\n# 2. Search for stations\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?search=jazz&limit=5"\n\n# 3. Get station details\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/bbc-radio-1"`} lang="Quick Start" />
+    </div>
+  </div>
+));
 
-export function useStations(country?: string) {
-  const [stations, setStations] = useState([]);
+const AuthenticationContent = memo(() => (
+  <div>
+    <h1 className="text-4xl font-bold text-white mb-4">Authentication</h1>
+    <p className="text-lg text-slate-400 leading-relaxed mb-8">All API requests require authentication via an API key. Include your key in every request using one of these methods:</p>
+    <div className="space-y-4 mb-8">
+      {[
+        { title: "X-API-Key Header (Recommended)", code: `curl -H "X-API-Key: mr_your_api_key" ${BASE_URL}/api/stations` },
+        { title: "Authorization Bearer", code: `curl -H "Authorization: Bearer mr_your_api_key" ${BASE_URL}/api/stations` },
+      ].map((m) => (
+        <div key={m.title}>
+          <h3 className="text-white font-semibold mb-2">{m.title}</h3>
+          <CodeBlock code={m.code} />
+        </div>
+      ))}
+    </div>
+    <h2 className="text-2xl font-bold text-white mb-4">Getting an API Key</h2>
+    <div className="space-y-6">
+      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
+        <h3 className="text-lg font-semibold text-white mb-2">Demo Key (Instant)</h3>
+        <p className="text-slate-400 mb-3">Get a temporary key instantly. Valid for 24 hours, limited to 10 req/min. One per IP address.</p>
+        <CodeBlock code={`curl -X GET ${BASE_URL}/api/api-keys/demo`} />
+      </div>
+      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
+        <h3 className="text-lg font-semibold text-white mb-2">Free Key (Register)</h3>
+        <p className="text-slate-400 mb-3">Register for a permanent key with higher limits. 60 req/min, 1,000 requests/day.</p>
+        <CodeBlock code={`curl -X POST ${BASE_URL}/api/api-keys/user/register \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "email": "dev@example.com",\n    "password": "securepassword",\n    "name": "Your Name",\n    "appName": "My Radio App",\n    "appDescription": "A radio streaming app"\n  }'`} />
+      </div>
+      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
+        <h3 className="text-lg font-semibold text-white mb-2">Developer Portal</h3>
+        <p className="text-slate-400 mb-3">Manage your API keys, view usage statistics, and upgrade your plan.</p>
+        <a href="/api-user" className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 font-medium transition-colors">
+          Open Developer Portal <ExternalLink className="w-4 h-4" />
+        </a>
+      </div>
+    </div>
+  </div>
+));
 
-  useEffect(() => {
-    const params = new URLSearchParams({ limit: '25' });
-    if (country) params.set('country', country);
+const RateLimitsContent = memo(() => (
+  <div>
+    <h1 className="text-4xl font-bold text-white mb-4">Rate Limits</h1>
+    <p className="text-lg text-slate-400 leading-relaxed mb-8">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
+    <div className="border border-white/5 rounded-xl overflow-hidden mb-8">
+      <table className="w-full text-sm">
+        <thead><tr className="bg-white/[0.03]">
+          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Plan</th>
+          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Requests/Min</th>
+          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Daily Quota</th>
+          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Monthly Quota</th>
+          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Price</th>
+        </tr></thead>
+        <tbody>
+          {[
+            { plan: "Demo", rpm: "10", daily: "100", monthly: "500", price: "Free (24h)", color: "text-slate-300" },
+            { plan: "Free", rpm: "60", daily: "1,000", monthly: "10,000", price: "Free", color: "text-emerald-400" },
+            { plan: "Pro", rpm: "300", daily: "10,000", monthly: "100,000", price: "Contact us", color: "text-blue-400" },
+            { plan: "Internal", rpm: "Unlimited", daily: "Unlimited", monthly: "Unlimited", price: "—", color: "text-purple-400" },
+          ].map((r, i) => (
+            <tr key={r.plan} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
+              <td className={`px-5 py-3.5 font-semibold ${r.color}`}>{r.plan}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.rpm}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.daily}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.monthly}</td>
+              <td className="px-5 py-3.5 text-slate-400">{r.price}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <h2 className="text-2xl font-bold text-white mb-4">Rate Limit Headers</h2>
+    <p className="text-slate-400 mb-4">Every API response includes these headers so you can track your usage:</p>
+    <CodeBlock code={`X-RateLimit-Limit: 60          # Max requests per minute\nX-RateLimit-Remaining: 58      # Remaining requests this minute\nX-RateLimit-Reset: 45          # Seconds until window resets\nX-Daily-Remaining: 950         # Remaining daily quota`} lang="Response Headers" />
+    <div className="mt-6 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
+      <div className="flex gap-3">
+        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+        <div>
+          <p className="text-amber-200 font-medium text-sm">Rate Limit Exceeded</p>
+          <p className="text-amber-200/60 text-sm mt-1">When you exceed your rate limit, the API returns <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs">429 Too Many Requests</code>. Back off and retry after the reset window.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+));
 
-    fetch(\`${BASE_URL}/api/stations?\${params}\`, {
-      headers: { 'Authorization': 'Bearer mr_your_api_key' }
-    })
-      .then(r => r.json())
-      .then(data => setStations(data.stations));
-  }, [country]);
+const ErrorsContent = memo(() => (
+  <div>
+    <h1 className="text-4xl font-bold text-white mb-4">Error Handling</h1>
+    <p className="text-lg text-slate-400 leading-relaxed mb-8">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
+    <div className="border border-white/5 rounded-xl overflow-hidden mb-8">
+      <table className="w-full text-sm">
+        <thead><tr className="bg-white/[0.03]">
+          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Code</th>
+          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Status</th>
+          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Description</th>
+        </tr></thead>
+        <tbody>
+          {[
+            { code: "200", status: "OK", desc: "Request succeeded", color: "text-emerald-400" },
+            { code: "400", status: "Bad Request", desc: "Invalid parameters or missing required fields", color: "text-amber-400" },
+            { code: "401", status: "Unauthorized", desc: "Missing or invalid API key", color: "text-red-400" },
+            { code: "403", status: "Forbidden", desc: "API key lacks permission for this action", color: "text-red-400" },
+            { code: "404", status: "Not Found", desc: "Resource not found", color: "text-amber-400" },
+            { code: "429", status: "Too Many Requests", desc: "Rate limit or quota exceeded", color: "text-red-400" },
+            { code: "500", status: "Internal Error", desc: "Server error — please retry or contact support", color: "text-red-400" },
+          ].map((e, i) => (
+            <tr key={e.code} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
+              <td className={`px-5 py-3 font-mono font-bold ${e.color}`}>{e.code}</td>
+              <td className="px-5 py-3 text-white font-medium">{e.status}</td>
+              <td className="px-5 py-3 text-slate-400">{e.desc}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <h2 className="text-2xl font-bold text-white mb-4">Error Response Format</h2>
+    <CodeBlock code={`{\n  "error": "Station not found",\n  "statusCode": 404\n}`} lang="JSON" />
+  </div>
+));
 
-  return stations;
-}`,
-        swift: `import Foundation
-
-struct StationResponse: Codable {
-    let stations: [Station]
-    let totalCount: Int
-    let count: Int
-}
-
-func fetchStations(country: String? = nil) async throws -> StationResponse {
-    var components = URLComponents(string: "${BASE_URL}/api/stations")!
-    var queryItems = [URLQueryItem(name: "limit", value: "25")]
-    if let country { queryItems.append(URLQueryItem(name: "country", value: country)) }
-    components.queryItems = queryItems
-
-    var request = URLRequest(url: components.url!)
-    request.setValue("Bearer mr_your_api_key", forHTTPHeaderField: "Authorization")
-
-    let (data, _) = try await URLSession.shared.data(for: request)
-    return try JSONDecoder().decode(StationResponse.self, from: data)
-}`,
-        kotlin: `import okhttp3.*
-import com.google.gson.Gson
-
-data class StationResponse(val stations: List<Station>, val totalCount: Int)
-
-fun fetchStations(country: String? = null): StationResponse {
-    val url = HttpUrl.Builder()
-        .scheme("https").host("themegaradio.com")
-        .addPathSegments("api/stations")
-        .addQueryParameter("limit", "25")
-        .apply { country?.let { addQueryParameter("country", it) } }
-        .build()
-
-    val request = Request.Builder()
-        .url(url)
-        .header("Authorization", "Bearer mr_your_api_key")
-        .build()
-
-    val response = OkHttpClient().newCall(request).execute()
-    return Gson().fromJson(response.body?.string(), StationResponse::class.java)
-}`,
-      },
-      response: `{
+const STATION_ENDPOINTS: Endpoint[] = [
+  {
+    id: "list-stations",
+    method: "GET",
+    path: "/api/stations",
+    title: "List Stations",
+    description: "Retrieve a paginated list of radio stations. Supports filtering by country, genre, language, codec, and more. Results can be sorted by popularity, name, bitrate, or click count.",
+    params: [
+      { name: "page", type: "number", default: "1", description: "Page number for pagination" },
+      { name: "limit", type: "number", default: "20", description: "Number of stations per page (max 100)" },
+      { name: "country", type: "string", description: "Filter by country name (e.g., 'Germany', 'Turkey')" },
+      { name: "genre", type: "string", description: "Filter by genre/tag (e.g., 'rock', 'jazz', 'pop')" },
+      { name: "language", type: "string", description: "Filter by language (e.g., 'english', 'turkish')" },
+      { name: "codec", type: "string", description: "Filter by audio codec (e.g., 'MP3', 'AAC', 'OGG')" },
+      { name: "sort", type: "string", default: "votes", description: "Sort field: votes, clickcount, name, bitrate, random" },
+      { name: "order", type: "string", default: "desc", description: "Sort order: asc or desc" },
+      { name: "search", type: "string", description: "Full-text search across station name and tags" },
+    ],
+    responseExample: `{
   "stations": [
     {
-      "_id": "507f1f77bcf86cd799439011",
-      "name": "Bayern 1",
-      "slug": "bayern-1",
-      "url": "https://stream.br.de/bayern1/eu/mp3/128/stream.mp3",
-      "favicon": "https://example.com/logo.png",
-      "logoAssets": { "webp48": "https://cdn.../48.webp", "webp96": "https://cdn.../96.webp" },
-      "country": "Germany",
-      "language": "german",
-      "tags": ["pop", "news", "talk"],
+      "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+      "name": "BBC Radio 1",
+      "slug": "bbc-radio-1",
+      "url": "https://stream.live.vc.bbcmedia.co.uk/bbc_radio_one",
+      "favicon": "https://cdn-radiotime-logos.tunein.com/s24939q.png",
+      "country": "United Kingdom",
+      "countryCode": "GB",
+      "tags": "pop,dance,electronic",
       "codec": "MP3",
       "bitrate": 128,
-      "votes": 9421,
-      "clickCount": 125000,
-      "hls": false,
+      "votes": 15234,
+      "clickCount": 89421,
       "lastCheckOk": true
     }
   ],
-  "totalCount": 47904,
-  "count": 25,
-  "pagination": { "page": 1, "limit": 25, "total": 47904, "pages": 1917 }
+  "total": 42150,
+  "page": 1,
+  "totalPages": 2108
 }`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" \\\n  "${BASE_URL}/api/stations?country=Germany&genre=rock&limit=10"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations?country=Germany&genre=rock&limit=10', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst data = await response.json();\nconsole.log(data.stations);`,
+      python: `import requests\n\nresponse = requests.get(\n    '${BASE_URL}/api/stations',\n    headers={'X-API-Key': 'YOUR_KEY'},\n    params={'country': 'Germany', 'genre': 'rock', 'limit': 10}\n)\nstations = response.json()['stations']`,
+      swift: `let url = URL(string: "${BASE_URL}/api/stations?country=Germany&genre=rock&limit=10")!\nvar request = URLRequest(url: url)\nrequest.setValue("YOUR_KEY", forHTTPHeaderField: "X-API-Key")\n\nlet (data, _) = try await URLSession.shared.data(for: request)\nlet result = try JSONDecoder().decode(StationsResponse.self, from: data)`,
+      kotlin: `val client = OkHttpClient()\nval request = Request.Builder()\n    .url("${BASE_URL}/api/stations?country=Germany&genre=rock&limit=10")\n    .header("X-API-Key", "YOUR_KEY")\n    .build()\n\nval response = client.newCall(request).execute()\nval json = JSONObject(response.body?.string() ?: "")`,
     },
-    {
-      id: "station-detail",
-      method: "GET",
-      path: "/api/station/:identifier",
-      summary: "Get Station by Slug or ID",
-      description: "Retrieve complete station details including multilingual AI-generated descriptions in 57 languages, logo assets, and stream metadata.",
-      params: [
-        { name: "identifier", type: "string", required: true, description: "Station slug (e.g. bbc-radio-1) or MongoDB ObjectId" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/station/bbc-radio-1" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        js: `const res = await fetch('${BASE_URL}/api/station/bbc-radio-1', {
-  headers: { 'Authorization': 'Bearer mr_your_api_key' }
-});
-const station = await res.json();
-console.log(station.descriptions.en); // English description`,
-        swift: `func fetchStation(slug: String) async throws -> Station {
-    var request = URLRequest(url: URL(string: "${BASE_URL}/api/station/\\(slug)")!)
-    request.setValue("Bearer mr_your_api_key", forHTTPHeaderField: "Authorization")
-    let (data, _) = try await URLSession.shared.data(for: request)
-    return try JSONDecoder().decode(Station.self, from: data)
-}`,
-        kotlin: `fun fetchStation(slug: String): Station {
-    val request = Request.Builder()
-        .url("${BASE_URL}/api/station/${'$'}slug")
-        .header("Authorization", "Bearer mr_your_api_key")
-        .build()
-    val response = OkHttpClient().newCall(request).execute()
-    return Gson().fromJson(response.body?.string(), Station::class.java)
-}`,
-      },
-      response: `{
-  "_id": "507f1f77bcf86cd799439011",
+  },
+  {
+    id: "get-station",
+    method: "GET",
+    path: "/api/station/:identifier",
+    title: "Get Station Details",
+    description: "Retrieve detailed information about a specific station by its ID or slug. Returns full metadata including stream URL, logo assets, ratings, and localized descriptions.",
+    params: [
+      { name: "identifier", type: "string", required: true, description: "Station ID (MongoDB ObjectId) or slug (e.g., 'bbc-radio-1')" },
+    ],
+    responseExample: `{
+  "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
   "name": "BBC Radio 1",
   "slug": "bbc-radio-1",
   "url": "https://stream.live.vc.bbcmedia.co.uk/bbc_radio_one",
-  "favicon": "https://cdn-profiles.tunein.com/s24939/images/logog.png",
+  "urlResolved": "https://stream.live.vc.bbcmedia.co.uk/bbc_radio_one",
+  "favicon": "https://cdn-radiotime-logos.tunein.com/s24939q.png",
   "logoAssets": {
-    "webp48": "https://s3.amazonaws.com/.../48.webp",
-    "webp96": "https://s3.amazonaws.com/.../96.webp",
-    "webp256": "https://s3.amazonaws.com/.../256.webp"
+    "webp256": "https://s3.amazonaws.com/megaradio/logos/bbc-radio-1-256.webp",
+    "status": "completed"
   },
+  "homepage": "https://www.bbc.co.uk/radio1",
   "country": "United Kingdom",
+  "countryCode": "GB",
+  "tags": "pop,dance,electronic,bbc",
   "language": "english",
-  "tags": ["pop", "rock", "dance"],
   "codec": "MP3",
   "bitrate": 128,
-  "votes": 15230,
   "hls": false,
+  "votes": 15234,
+  "clickCount": 89421,
+  "averageRating": 4.5,
+  "totalRatings": 312,
   "lastCheckOk": true,
+  "geoLat": 51.5074,
+  "geoLong": -0.1278,
   "descriptions": {
-    "en": "BBC Radio 1 is the UK's number one youth radio station...",
-    "tr": "BBC Radio 1, Birleşik Krallık'ın bir numaralı gençlik radyosu...",
-    "de": "BBC Radio 1 ist der führende Jugendsender des Vereinigten Königreichs..."
+    "en": "BBC Radio 1 is the BBC's popular music and youth culture station...",
+    "tr": "BBC Radio 1, BBC'nin popüler müzik ve gençlik kültürü istasyonudur..."
   }
 }`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/bbc-radio-1"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/station/bbc-radio-1', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst station = await response.json();`,
+      python: `response = requests.get(\n    '${BASE_URL}/api/station/bbc-radio-1',\n    headers={'X-API-Key': 'YOUR_KEY'}\n)\nstation = response.json()`,
     },
+  },
+  {
+    id: "popular-stations",
+    method: "GET",
+    path: "/api/stations/popular",
+    title: "Popular Stations",
+    description: "Get the most popular stations globally or filtered by country. Sorted by a combination of votes and recent click trends.",
+    params: [
+      { name: "country", type: "string", description: "Filter by country name" },
+      { name: "limit", type: "number", default: "20", description: "Number of stations to return (max 50)" },
+    ],
+    responseExample: `[
+  {
+    "name": "NRJ France",
+    "slug": "nrj-france",
+    "country": "France",
+    "votes": 28410,
+    "clickCount": 145200,
+    "favicon": "https://..."
+  }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations/popular?country=Turkey&limit=10"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations/popular?country=Turkey&limit=10', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst popular = await response.json();`,
+    },
+  },
+  {
+    id: "search-stations",
+    method: "GET",
+    path: "/api/stations?search=:query",
+    title: "Search Stations",
+    description: "Full-text search across station names, tags, and metadata. Combine with country, genre, and language filters for refined results.",
+    params: [
+      { name: "search", type: "string", required: true, description: "Search query (e.g., 'jazz', 'bbc', 'classical piano')" },
+      { name: "country", type: "string", description: "Narrow results to a specific country" },
+      { name: "genre", type: "string", description: "Narrow results to a specific genre" },
+      { name: "limit", type: "number", default: "20", description: "Number of results (max 100)" },
+    ],
+    responseExample: `{
+  "stations": [
     {
-      id: "stations-popular",
-      method: "GET",
-      path: "/api/stations/popular",
-      summary: "Popular Stations",
-      description: "Get top stations by vote count. Supports country filtering with intelligent deduplication and logo-priority sorting.",
-      queryParams: [
-        { name: "country", type: "string", description: "Country name or ISO code" },
-        { name: "limit", type: "number", default: "12", description: "Number of results (max 50)" },
-        { name: "excludeBroken", type: "boolean", default: "false", description: "Exclude stations with failed last check" },
-        { name: "tv", type: "string", description: "Slim response mode", options: ["1"] },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/stations/popular?country=Turkey&limit=20" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        js: `const res = await fetch('${BASE_URL}/api/stations/popular?country=Turkey', {
-  headers: { 'Authorization': 'Bearer mr_your_api_key' }
-});
-const { stations } = await res.json();`,
-      },
-      response: `{
-  "stations": [...],
-  "count": 12,
-  "country": "Turkey"
+      "name": "WBGO Jazz 88.3",
+      "slug": "wbgo-jazz-88-3",
+      "tags": "jazz,blues,soul",
+      "country": "United States",
+      "votes": 5420
+    }
+  ],
+  "total": 847,
+  "page": 1
 }`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?search=jazz&country=United%20States&limit=5"`,
+      javascript: `const response = await fetch(\n  '${BASE_URL}/api/stations?search=jazz&country=United%20States&limit=5',\n  { headers: { 'X-API-Key': 'YOUR_KEY' } }\n);\nconst results = await response.json();`,
     },
+  },
+  {
+    id: "nearby-stations",
+    method: "GET",
+    path: "/api/stations/nearby",
+    title: "Nearby Stations",
+    description: "Find radio stations near a geographic location using latitude and longitude coordinates. Perfect for location-based discovery in mobile apps.",
+    params: [
+      { name: "lat", type: "number", required: true, description: "Latitude coordinate (e.g., 41.0082)" },
+      { name: "lng", type: "number", required: true, description: "Longitude coordinate (e.g., 28.9784)" },
+      { name: "radius", type: "number", default: "100", description: "Search radius in kilometers" },
+      { name: "limit", type: "number", default: "20", description: "Max stations to return" },
+    ],
+    responseExample: `[
+  {
+    "name": "Power FM Turkey",
+    "slug": "power-fm-turkey",
+    "country": "Turkey",
+    "geoLat": 41.0082,
+    "geoLong": 28.9784,
+    "distance": 2.3,
+    "votes": 8920
+  }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" \\\n  "${BASE_URL}/api/stations/nearby?lat=41.0082&lng=28.9784&radius=50&limit=10"`,
+      javascript: `navigator.geolocation.getCurrentPosition(async (pos) => {\n  const { latitude, longitude } = pos.coords;\n  const response = await fetch(\n    \`${BASE_URL}/api/stations/nearby?lat=\${latitude}&lng=\${longitude}&radius=50\`,\n    { headers: { 'X-API-Key': 'YOUR_KEY' } }\n  );\n  const nearby = await response.json();\n});`,
+      swift: `import CoreLocation\n\nlet lat = location.coordinate.latitude\nlet lng = location.coordinate.longitude\nlet url = URL(string: "${BASE_URL}/api/stations/nearby?lat=\\(lat)&lng=\\(lng)&radius=50")!\nvar request = URLRequest(url: url)\nrequest.setValue("YOUR_KEY", forHTTPHeaderField: "X-API-Key")`,
+    },
+  },
+  {
+    id: "similar-stations",
+    method: "GET",
+    path: "/api/stations/similar/:id",
+    title: "Similar Stations",
+    description: "Find stations similar to a given station based on genre, country, and tags. Useful for building 'You might also like' features.",
+    params: [
+      { name: "id", type: "string", required: true, description: "Station ID" },
+      { name: "limit", type: "number", default: "10", description: "Number of similar stations to return" },
+    ],
+    responseExample: `[
+  {
+    "name": "Kiss FM UK",
+    "slug": "kiss-fm-uk",
+    "country": "United Kingdom",
+    "tags": "dance,pop,electronic",
+    "votes": 12500
+  }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations/similar/64a1b2c3d4e5f6a7b8c9d0e1?limit=5"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations/similar/64a1b2c3d4e5f6a7b8c9d0e1?limit=5', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst similar = await response.json();`,
+    },
+  },
+  {
+    id: "random-station",
+    method: "GET",
+    path: "/api/stations?sort=random&limit=1",
+    title: "Random Station",
+    description: "Get a random radio station. Use the sort=random parameter with limit=1 for a single random station, or higher limits for multiple random picks.",
+    params: [
+      { name: "sort", type: "string", required: true, description: "Set to 'random' for random selection" },
+      { name: "limit", type: "number", default: "1", description: "Number of random stations" },
+      { name: "country", type: "string", description: "Optional country filter for regional random picks" },
+    ],
+    responseExample: `{
+  "stations": [
     {
-      id: "stations-precomputed",
-      method: "GET",
-      path: "/api/stations/precomputed",
-      summary: "Precomputed Stations (Ultra-Fast)",
-      description: "Pre-sorted, server-cached station lists optimized for instant page loads. Logo-first, vote-sorted. 24-hour cache TTL. Recommended for homepage/browsing use cases.",
-      queryParams: [
-        { name: "country", type: "string", description: "ISO country code (DE, US, TR, GB...)" },
-        { name: "countryName", type: "string", description: "Country name or 'global' for worldwide" },
-        { name: "page", type: "number", default: "1", description: "Page number" },
-        { name: "limit", type: "number", default: "33", description: "Results per page" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/stations/precomputed?country=DE&page=1&limit=33" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        js: `const res = await fetch(
-  '${BASE_URL}/api/stations/precomputed?country=US&limit=33',
-  { headers: { 'Authorization': 'Bearer mr_your_api_key' } }
-);
-const data = await res.json();`,
-      },
-      response: `{
-  "success": true,
-  "data": [...station objects...],
-  "total": 1500,
-  "page": 1,
-  "limit": 33,
-  "totalPages": 46,
-  "country": "DE"
+      "name": "Radio Nova",
+      "slug": "radio-nova",
+      "country": "Finland",
+      "tags": "pop,rock",
+      "votes": 3200
+    }
+  ],
+  "total": 1
 }`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?sort=random&limit=1"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations?sort=random&limit=1', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst { stations: [randomStation] } = await response.json();`,
     },
-    {
-      id: "stations-nearby",
-      method: "GET",
-      path: "/api/stations/nearby",
-      summary: "Nearby Stations",
-      description: "Discover radio stations near a geographic coordinate. Calculates distance from user's GPS location and returns sorted by proximity.",
-      queryParams: [
-        { name: "lat", type: "number", required: true, description: "Latitude (-90 to 90)" },
-        { name: "lon", type: "number", required: true, description: "Longitude (-180 to 180)" },
-        { name: "limit", type: "number", default: "20", description: "Number of results" },
-        { name: "radius", type: "number", default: "500", description: "Search radius in km" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/stations/nearby?lat=48.8566&lon=2.3522&radius=200" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        rn: `import Geolocation from 'react-native-geolocation-service';
+  },
+  {
+    id: "station-stats",
+    method: "GET",
+    path: "/api/stations/stats",
+    title: "Station Statistics",
+    description: "Get aggregate statistics about the station database including total counts, top countries, popular genres, and codec distribution.",
+    responseExample: `{
+  "totalStations": 42150,
+  "activeStations": 38420,
+  "countries": 215,
+  "genres": 850,
+  "topCountries": [
+    { "country": "Germany", "count": 3450 },
+    { "country": "United States", "count": 3120 },
+    { "country": "France", "count": 2890 }
+  ]
+}`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations/stats"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations/stats', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst stats = await response.json();`,
+    },
+  },
+];
 
-function useNearbyStations() {
+const DISCOVERY_ENDPOINTS: Endpoint[] = [
+  {
+    id: "list-genres",
+    method: "GET",
+    path: "/api/genres",
+    title: "List Genres",
+    description: "Get all available radio genres with station counts. Results are sorted by station count descending.",
+    responseExample: `[
+  {
+    "name": "Pop",
+    "slug": "pop",
+    "stationCount": 8520,
+    "isDiscoverable": true
+  },
+  {
+    "name": "Rock",
+    "slug": "rock",
+    "stationCount": 6210,
+    "isDiscoverable": true
+  }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/genres"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/genres', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst genres = await response.json();`,
+    },
+  },
+  {
+    id: "list-countries",
+    method: "GET",
+    path: "/api/countries",
+    title: "List Countries",
+    description: "Get all countries that have radio stations, with station counts per country.",
+    responseExample: `[
+  {
+    "name": "Germany",
+    "code": "DE",
+    "stationCount": 3450
+  },
+  {
+    "name": "United States",
+    "code": "US",
+    "stationCount": 3120
+  }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/countries"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/countries', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst countries = await response.json();`,
+    },
+  },
+  {
+    id: "list-languages",
+    method: "GET",
+    path: "/api/languages",
+    title: "List Languages",
+    description: "Get all languages available across radio stations.",
+    responseExample: `[
+  { "name": "english", "stationCount": 12500 },
+  { "name": "german", "stationCount": 3200 },
+  { "name": "turkish", "stationCount": 1800 }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/languages"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/languages', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst languages = await response.json();`,
+    },
+  },
+  {
+    id: "trending",
+    method: "GET",
+    path: "/api/stations/trending",
+    title: "Trending Stations",
+    description: "Get stations that are currently trending based on recent user engagement — favorites, ratings, and click activity in the past 7 days.",
+    params: [
+      { name: "limit", type: "number", default: "20", description: "Number of trending stations" },
+      { name: "country", type: "string", description: "Filter trending by country" },
+    ],
+    responseExample: `[
+  {
+    "name": "Radio Energy",
+    "slug": "radio-energy",
+    "trendingScore": 95.4,
+    "weeklyFavorites": 120,
+    "votes": 9800
+  }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations/trending?limit=10"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations/trending?limit=10', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst trending = await response.json();`,
+    },
+  },
+];
+
+const STREAMING_ENDPOINTS: Endpoint[] = [
+  {
+    id: "resolve-stream",
+    method: "GET",
+    path: "/api/stream/resolve",
+    title: "Resolve Stream URL",
+    description: "Resolve the best available stream URL for a station. Handles redirects, playlist parsing (M3U/PLS), and returns the direct audio stream URL. Essential for building reliable audio players.",
+    params: [
+      { name: "stationId", type: "string", required: true, description: "Station ID to resolve" },
+    ],
+    responseExample: `{
+  "url": "https://stream.live.vc.bbcmedia.co.uk/bbc_radio_one",
+  "resolvedUrl": "https://stream.live.vc.bbcmedia.co.uk/bbc_radio_one",
+  "codec": "MP3",
+  "bitrate": 128,
+  "hls": false
+}`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stream/resolve?stationId=64a1b2c3d4e5f6a7b8c9d0e1"`,
+      javascript: `const response = await fetch(\n  '${BASE_URL}/api/stream/resolve?stationId=64a1b2c3d4e5f6a7b8c9d0e1',\n  { headers: { 'X-API-Key': 'YOUR_KEY' } }\n);\nconst stream = await response.json();\n\nconst audio = new Audio(stream.url);\naudio.play();`,
+      swift: `let url = URL(string: "${BASE_URL}/api/stream/resolve?stationId=STATION_ID")!\nvar request = URLRequest(url: url)\nrequest.setValue("YOUR_KEY", forHTTPHeaderField: "X-API-Key")\n\nlet (data, _) = try await URLSession.shared.data(for: request)\nlet stream = try JSONDecoder().decode(StreamInfo.self, from: data)\n\nlet player = AVPlayer(url: URL(string: stream.url)!)\nplayer.play()`,
+    },
+  },
+  {
+    id: "now-playing",
+    method: "GET",
+    path: "/api/now-playing/:stationId",
+    title: "Now Playing",
+    description: "Get the currently playing track information for a station. Returns artist, title, and artwork when available from the stream metadata.",
+    params: [
+      { name: "stationId", type: "string", required: true, description: "Station ID" },
+    ],
+    responseExample: `{
+  "title": "Blinding Lights",
+  "artist": "The Weeknd",
+  "station": "BBC Radio 1",
+  "artwork": "https://...",
+  "timestamp": "2025-03-02T22:00:00Z"
+}`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/now-playing/64a1b2c3d4e5f6a7b8c9d0e1"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/now-playing/STATION_ID', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst nowPlaying = await response.json();\nconsole.log(\`Now playing: \${nowPlaying.artist} - \${nowPlaying.title}\`);`,
+    },
+  },
+];
+
+const ENGAGEMENT_ENDPOINTS: Endpoint[] = [
+  {
+    id: "favorite-station",
+    method: "POST",
+    path: "/api/stations/:id/favorite",
+    title: "Favorite a Station",
+    description: "Add or remove a station from the authenticated user's favorites list. Requires user authentication (session or auth token).",
+    bodyParams: [
+      { name: "stationId", type: "string", required: true, description: "Station ID to favorite/unfavorite" },
+    ],
+    responseExample: `{
+  "success": true,
+  "favorited": true,
+  "totalFavorites": 12
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/stations/STATION_ID/favorite" \\\n  -H "Authorization: Bearer USER_AUTH_TOKEN" \\\n  -H "Content-Type: application/json"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations/STATION_ID/favorite', {\n  method: 'POST',\n  headers: {\n    'Authorization': 'Bearer USER_AUTH_TOKEN',\n    'Content-Type': 'application/json'\n  }\n});\nconst result = await response.json();`,
+    },
+  },
+  {
+    id: "rate-station",
+    method: "POST",
+    path: "/api/stations/:id/rate",
+    title: "Rate a Station",
+    description: "Submit a star rating (1-5) with an optional text comment for a station. Users can update their existing rating.",
+    bodyParams: [
+      { name: "rating", type: "number", required: true, description: "Star rating from 1 to 5" },
+      { name: "comment", type: "string", description: "Optional review text (max 1000 characters)" },
+    ],
+    responseExample: `{
+  "success": true,
+  "rating": {
+    "rating": 5,
+    "comment": "Amazing station!",
+    "createdAt": "2025-03-02T22:00:00Z"
+  },
+  "stats": {
+    "averageRating": 4.5,
+    "totalRatings": 312,
+    "ratingBreakdown": {
+      "stars1": 5, "stars2": 8,
+      "stars3": 25, "stars4": 89, "stars5": 185
+    }
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/stations/STATION_ID/rate" \\\n  -H "Content-Type: application/json" \\\n  -d '{"rating": 5, "comment": "Amazing station!"}'`,
+      javascript: `const response = await fetch('${BASE_URL}/api/stations/STATION_ID/rate', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ rating: 5, comment: 'Amazing station!' })\n});\nconst result = await response.json();`,
+    },
+  },
+  {
+    id: "user-profile",
+    method: "GET",
+    path: "/api/users/:id/profile",
+    title: "User Profile",
+    description: "Get a user's public profile including their favorite stations, listening history, and social connections.",
+    params: [
+      { name: "id", type: "string", required: true, description: "User ID" },
+    ],
+    responseExample: `{
+  "user": {
+    "name": "John Doe",
+    "avatar": "https://...",
+    "favoriteStations": 24,
+    "followers": 150,
+    "following": 89,
+    "joinedAt": "2024-06-15T10:00:00Z"
+  }
+}`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/users/USER_ID/profile"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/users/USER_ID/profile', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst profile = await response.json();`,
+    },
+  },
+];
+
+const USER_AUTH_ENDPOINTS: Endpoint[] = [
+  {
+    id: "web-login",
+    method: "POST",
+    path: "/api/auth/login",
+    title: "Web Login",
+    description: "Authenticate a user with email and password. Returns a session cookie for web clients.",
+    bodyParams: [
+      { name: "email", type: "string", required: true, description: "User's email address" },
+      { name: "password", type: "string", required: true, description: "User's password" },
+    ],
+    responseExample: `{
+  "success": true,
+  "user": {
+    "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "avatar": "https://..."
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/auth/login" \\\n  -H "Content-Type: application/json" \\\n  -d '{"email": "john@example.com", "password": "secret"}'`,
+      javascript: `const response = await fetch('${BASE_URL}/api/auth/login', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  credentials: 'include',\n  body: JSON.stringify({ email: 'john@example.com', password: 'secret' })\n});\nconst { user } = await response.json();`,
+    },
+  },
+  {
+    id: "mobile-login",
+    method: "POST",
+    path: "/api/auth/mobile/login",
+    title: "Mobile Login",
+    description: "Authenticate from a mobile app. Returns a long-lived auth token (mrt_...) instead of a session cookie. Use this token in the Authorization header for subsequent requests.",
+    bodyParams: [
+      { name: "email", type: "string", required: true, description: "User's email address" },
+      { name: "password", type: "string", required: true, description: "User's password" },
+      { name: "deviceInfo", type: "object", description: "Optional device metadata (platform, model, os)" },
+    ],
+    responseExample: `{
+  "success": true,
+  "token": "mrt_a1b2c3d4e5f6...",
+  "user": {
+    "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/auth/mobile/login" \\\n  -H "Content-Type: application/json" \\\n  -d '{"email": "john@example.com", "password": "secret"}'`,
+      swift: `let body = ["email": "john@example.com", "password": "secret"]\nlet jsonData = try JSONSerialization.data(withJSONObject: body)\n\nvar request = URLRequest(url: URL(string: "${BASE_URL}/api/auth/mobile/login")!)\nrequest.httpMethod = "POST"\nrequest.setValue("application/json", forHTTPHeaderField: "Content-Type")\nrequest.httpBody = jsonData\n\nlet (data, _) = try await URLSession.shared.data(for: request)\nlet result = try JSONDecoder().decode(LoginResponse.self, from: data)\nlet token = result.token  // Store securely in Keychain`,
+      kotlin: `val body = JSONObject().apply {\n    put("email", "john@example.com")\n    put("password", "secret")\n}\n\nval request = Request.Builder()\n    .url("${BASE_URL}/api/auth/mobile/login")\n    .post(body.toString().toRequestBody("application/json".toMediaType()))\n    .build()\n\nval response = client.newCall(request).execute()\nval token = JSONObject(response.body?.string() ?: "").getString("token")`,
+    },
+  },
+  {
+    id: "register",
+    method: "POST",
+    path: "/api/auth/register",
+    title: "Register",
+    description: "Create a new user account with email and password.",
+    bodyParams: [
+      { name: "name", type: "string", required: true, description: "Display name" },
+      { name: "email", type: "string", required: true, description: "Email address" },
+      { name: "password", type: "string", required: true, description: "Password (min 6 characters)" },
+    ],
+    responseExample: `{
+  "success": true,
+  "user": {
+    "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/auth/register" \\\n  -H "Content-Type: application/json" \\\n  -d '{"name": "John Doe", "email": "john@example.com", "password": "securepass"}'`,
+      javascript: `const response = await fetch('${BASE_URL}/api/auth/register', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    name: 'John Doe',\n    email: 'john@example.com',\n    password: 'securepass'\n  })\n});`,
+    },
+  },
+  {
+    id: "current-user",
+    method: "GET",
+    path: "/api/auth/me",
+    title: "Current User",
+    description: "Get the currently authenticated user's profile. Works with both session cookies (web) and auth tokens (mobile).",
+    responseExample: `{
+  "authenticated": true,
+  "user": {
+    "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "name": "John Doe",
+    "email": "john@example.com",
+    "avatar": "https://...",
+    "favoriteStations": ["id1", "id2"],
+    "role": "user"
+  }
+}`,
+    codeExamples: {
+      curl: `curl -H "Authorization: Bearer mrt_your_token" "${BASE_URL}/api/auth/me"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/auth/me', {\n  headers: { 'Authorization': 'Bearer mrt_your_token' }\n});\nconst { user, authenticated } = await response.json();`,
+    },
+  },
+];
+
+const TV_CAST_ENDPOINTS: Endpoint[] = [
+  {
+    id: "tv-request-code",
+    method: "POST",
+    path: "/api/cast/session/create",
+    title: "TV: Request Pairing Code",
+    description: "Generate a 6-digit pairing code for TV device login. Display this code on the TV screen for the user to enter on their mobile device. Netflix/YouTube-style device activation flow.",
+    responseExample: `{
+  "sessionId": "cast_abc123",
+  "pairingCode": "482915",
+  "expiresAt": "2025-03-03T22:00:00Z"
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/cast/session/create" \\\n  -H "Content-Type: application/json" \\\n  -d '{"deviceType": "tv", "deviceName": "Living Room TV"}'`,
+      kotlin: `val body = JSONObject().apply {\n    put("deviceType", "tv")\n    put("deviceName", "Living Room TV")\n}\n\nval request = Request.Builder()\n    .url("${BASE_URL}/api/cast/session/create")\n    .post(body.toString().toRequestBody("application/json".toMediaType()))\n    .build()`,
+    },
+  },
+  {
+    id: "tv-poll-status",
+    method: "GET",
+    path: "/api/cast/session/:sessionId/status",
+    title: "TV: Poll Activation Status",
+    description: "Poll from the TV device to check if the mobile user has entered the pairing code and activated the session. Poll every 2-3 seconds.",
+    params: [
+      { name: "sessionId", type: "string", required: true, description: "The session ID from the create step" },
+    ],
+    responseExample: `{
+  "status": "paired",
+  "userId": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "userName": "John Doe"
+}`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/cast/session/cast_abc123/status"`,
+      javascript: `const pollStatus = async (sessionId) => {\n  const response = await fetch(\`${BASE_URL}/api/cast/session/\${sessionId}/status\`);\n  const { status } = await response.json();\n  if (status === 'paired') {\n    console.log('TV activated!');\n  } else {\n    setTimeout(() => pollStatus(sessionId), 3000);\n  }\n};`,
+    },
+  },
+  {
+    id: "tv-activate",
+    method: "POST",
+    path: "/api/cast/session/pair",
+    title: "TV: Activate Device (Mobile)",
+    description: "Called from the mobile app to enter the pairing code displayed on TV. Links the user's account to the TV session.",
+    bodyParams: [
+      { name: "pairingCode", type: "string", required: true, description: "6-digit code displayed on TV" },
+    ],
+    responseExample: `{
+  "success": true,
+  "sessionId": "cast_abc123",
+  "message": "TV device paired successfully"
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/cast/session/pair" \\\n  -H "Authorization: Bearer mrt_your_token" \\\n  -H "Content-Type: application/json" \\\n  -d '{"pairingCode": "482915"}'`,
+      swift: `var request = URLRequest(url: URL(string: "${BASE_URL}/api/cast/session/pair")!)\nrequest.httpMethod = "POST"\nrequest.setValue("Bearer \\(authToken)", forHTTPHeaderField: "Authorization")\nrequest.setValue("application/json", forHTTPHeaderField: "Content-Type")\nrequest.httpBody = try JSONEncoder().encode(["pairingCode": code])`,
+    },
+  },
+  {
+    id: "cast-create",
+    method: "POST",
+    path: "/api/cast/session/create",
+    title: "Cast: Create Session",
+    description: "Create a Chromecast-style cast session to control playback on a remote device (TV, speaker). The mobile device becomes the controller.",
+    bodyParams: [
+      { name: "deviceType", type: "string", required: true, description: "'mobile' for the controller device" },
+      { name: "stationId", type: "string", description: "Optional: station to start playing immediately" },
+    ],
+    responseExample: `{
+  "sessionId": "cast_xyz789",
+  "pairingCode": "319847",
+  "wsUrl": "wss://themegaradio.com/ws/cast?session=cast_xyz789&role=mobile"
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/cast/session/create" \\\n  -H "Authorization: Bearer mrt_your_token" \\\n  -H "Content-Type: application/json" \\\n  -d '{"deviceType": "mobile"}'`,
+      javascript: `const response = await fetch('${BASE_URL}/api/cast/session/create', {\n  method: 'POST',\n  headers: {\n    'Authorization': 'Bearer mrt_your_token',\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({ deviceType: 'mobile' })\n});\nconst { sessionId, wsUrl } = await response.json();\n\nconst ws = new WebSocket(wsUrl);\nws.onopen = () => console.log('Connected to cast session');`,
+    },
+  },
+  {
+    id: "cast-command",
+    method: "POST",
+    path: "/api/cast/session/:id/command",
+    title: "Cast: Send Command",
+    description: "Send playback commands to the paired TV/receiver device through the cast session. Commands are relayed in real-time via WebSocket.",
+    bodyParams: [
+      { name: "command", type: "string", required: true, description: "Command: play, pause, stop, volume_up, volume_down, change_station" },
+      { name: "stationId", type: "string", description: "Station ID (required for change_station command)" },
+      { name: "volume", type: "number", description: "Volume level 0-100 (for volume commands)" },
+    ],
+    responseExample: `{
+  "success": true,
+  "command": "play",
+  "deliveredTo": "tv"
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/cast/session/cast_xyz789/command" \\\n  -H "Authorization: Bearer mrt_your_token" \\\n  -H "Content-Type: application/json" \\\n  -d '{"command": "change_station", "stationId": "STATION_ID"}'`,
+      javascript: `await fetch('${BASE_URL}/api/cast/session/SESSION_ID/command', {\n  method: 'POST',\n  headers: {\n    'Authorization': 'Bearer mrt_your_token',\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({\n    command: 'change_station',\n    stationId: 'STATION_ID'\n  })\n});`,
+    },
+  },
+];
+
+const GuidesContent = memo(({ guideId }: { guideId: string }) => {
+  const guides: Record<string, { title: string; lang: string; code: string }> = {
+    "guide-javascript": {
+      title: "JavaScript / Web Integration",
+      lang: "JavaScript",
+      code: `import MegaRadio from './mega-radio-client';
+
+const radio = new MegaRadio('YOUR_API_KEY');
+
+// Search for stations
+const results = await radio.stations.search('jazz', {
+  country: 'Germany',
+  limit: 10
+});
+
+// Play a station
+const station = results.stations[0];
+const stream = await radio.stream.resolve(station._id);
+
+const audio = new Audio(stream.url);
+audio.play();
+
+// Get now playing info
+setInterval(async () => {
+  const np = await radio.nowPlaying(station._id);
+  document.getElementById('now-playing').textContent =
+    \`\${np.artist} - \${np.title}\`;
+}, 10000);
+
+// Favorite a station (requires user auth)
+await radio.stations.favorite(station._id);`
+    },
+    "guide-react-native": {
+      title: "React Native Integration",
+      lang: "React Native",
+      code: `import React, { useState, useEffect } from 'react';
+import { View, Text, FlatList, TouchableOpacity } from 'react-native';
+import TrackPlayer from 'react-native-track-player';
+
+const API_KEY = 'YOUR_API_KEY';
+const BASE = 'https://themegaradio.com/api';
+
+function RadioApp() {
   const [stations, setStations] = useState([]);
 
   useEffect(() => {
-    Geolocation.getCurrentPosition(
-      async ({ coords: { latitude, longitude } }) => {
-        const url = \`${BASE_URL}/api/stations/nearby?lat=\${latitude}&lon=\${longitude}&radius=300\`;
-        const res = await fetch(url, {
-          headers: { 'Authorization': 'Bearer mr_your_api_key' }
-        });
-        const data = await res.json();
-        setStations(data.stations);
-      },
-      err => console.error(err)
-    );
+    fetch(\`\${BASE}/stations/popular?limit=20\`, {
+      headers: { 'X-API-Key': API_KEY }
+    })
+      .then(res => res.json())
+      .then(setStations);
   }, []);
 
-  return stations;
-}`,
-        swift: `import CoreLocation
+  const playStation = async (station) => {
+    const res = await fetch(
+      \`\${BASE}/stream/resolve?stationId=\${station._id}\`,
+      { headers: { 'X-API-Key': API_KEY } }
+    );
+    const { url } = await res.json();
 
-func fetchNearbyStations(location: CLLocation) async throws -> [Station] {
-    let lat = location.coordinate.latitude
-    let lon = location.coordinate.longitude
-    let url = URL(string: "${BASE_URL}/api/stations/nearby?lat=\\(lat)&lon=\\(lon)&radius=300")!
-    var request = URLRequest(url: url)
-    request.setValue("Bearer mr_your_api_key", forHTTPHeaderField: "Authorization")
-    let (data, _) = try await URLSession.shared.data(for: request)
-    let response = try JSONDecoder().decode(NearbyResponse.self, from: data)
-    return response.stations
-}`,
-        kotlin: `import android.location.Location
-
-fun fetchNearbyStations(location: Location): List<Station> {
-    val url = "${BASE_URL}/api/stations/nearby?lat=${'$'}{location.latitude}&lon=${'$'}{location.longitude}&radius=300"
-    val request = Request.Builder()
-        .url(url)
-        .header("Authorization", "Bearer mr_your_api_key")
-        .build()
-    val response = OkHttpClient().newCall(request).execute()
-    return Gson().fromJson(response.body?.string(), Array<Station>::class.java).toList()
-}`,
-      },
-      response: `{
-  "stations": [
-    {
-      "name": "Énergie Paris",
-      "slug": "energie-paris",
-      "country": "France",
-      "distance": 2.4,
-      "distanceUnit": "km"
-    }
-  ],
-  "count": 15,
-  "searchLocation": { "lat": 48.8566, "lon": 2.3522 }
-}`,
-    },
-    {
-      id: "stations-similar",
-      method: "GET",
-      path: "/api/stations/similar/:id",
-      summary: "Similar Stations",
-      description: "Find radio stations similar to a given station based on shared tags, country, language, and genre matching.",
-      params: [
-        { name: "id", type: "string", required: true, description: "Station slug or MongoDB ObjectId" },
-      ],
-      queryParams: [
-        { name: "limit", type: "number", default: "10", description: "Number of similar stations to return" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/stations/similar/bbc-radio-1?limit=6" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        js: `const res = await fetch('${BASE_URL}/api/stations/similar/bbc-radio-1', {
-  headers: { 'Authorization': 'Bearer mr_your_api_key' }
-});
-const { stations } = await res.json();`,
-      },
-      response: `{
-  "stations": [...],
-  "basedOn": { "name": "BBC Radio 1", "tags": ["pop", "rock"] },
-  "count": 10
-}`,
-    },
-    {
-      id: "stations-random",
-      method: "GET",
-      path: "/api/stations/country-random",
-      summary: "Random Station",
-      description: "Get a random radio station from a specific country. Uses MongoDB $sample aggregation for true randomness and high performance.",
-      queryParams: [
-        { name: "country", type: "string", required: true, description: "Country name or ISO code" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/stations/country-random?country=Japan" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        js: `const res = await fetch('${BASE_URL}/api/stations/country-random?country=Japan', {
-  headers: { 'Authorization': 'Bearer mr_your_api_key' }
-});
-const station = await res.json();`,
-      },
-      response: `{
-  "name": "FM Yokohama 84.7",
-  "slug": "fm-yokohama-847",
-  "country": "Japan",
-  "url": "https://...",
-  "votes": 3241
-}`,
-    },
-    {
-      id: "stations-stats",
-      method: "GET",
-      path: "/api/stations/stats",
-      summary: "Platform Statistics",
-      description: "Get aggregated platform statistics including total station counts by country, language, and genre.",
-      code: {
-        curl: `curl "${BASE_URL}/api/stations/stats" \\
-  -H "Authorization: Bearer mr_your_api_key"`,
-        js: `const res = await fetch('${BASE_URL}/api/stations/stats', {
-  headers: { 'Authorization': 'Bearer mr_your_api_key' }
-});
-const stats = await res.json();`,
-      },
-      response: `{
-  "totalStations": 47904,
-  "totalCountries": 196,
-  "totalLanguages": 120,
-  "totalGenres": 350,
-  "activeStations": 42108,
-  "stationsWithLogos": 18500
-}`,
-    },
-  ],
-
-  genres: [
-    {
-      id: "genres-list",
-      method: "GET",
-      path: "/api/genres",
-      summary: "List All Genres",
-      description: "Get all music genres available on the platform with station counts per country. Supports country filtering and translation.",
-      queryParams: [
-        { name: "country", type: "string", description: "Filter genres by country (only genres with stations in that country)" },
-        { name: "lang", type: "string", description: "Language code for translated genre names" },
-        { name: "limit", type: "number", default: "100", description: "Maximum number of genres" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/genres?country=France&lang=fr"`,
-        js: `const res = await fetch('${BASE_URL}/api/genres?country=Germany');
-const { genres } = await res.json();`,
-      },
-      response: `{
-  "genres": [
-    { "_id": "507f...", "name": "Pop", "slug": "pop", "stationCount": 4521 },
-    { "_id": "507f...", "name": "Rock", "slug": "rock", "stationCount": 3214 }
-  ],
-  "count": 350
-}`,
-    },
-    {
-      id: "genres-discoverable",
-      method: "GET",
-      path: "/api/genres/discoverable",
-      summary: "Discoverable Genres",
-      description: "Get genres that have enough stations to be worth browsing. Filters out genres with fewer than a threshold of stations.",
-      queryParams: [
-        { name: "country", type: "string", description: "Country filter" },
-        { name: "minStations", type: "number", default: "5", description: "Minimum station count" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/genres/discoverable?minStations=10"`,
-      },
-      response: `{
-  "genres": [...],
-  "count": 120
-}`,
-    },
-    {
-      id: "countries-list",
-      method: "GET",
-      path: "/api/countries",
-      summary: "List Countries",
-      description: "Get all countries available on the platform with station counts and metadata.",
-      code: {
-        curl: `curl "${BASE_URL}/api/countries"`,
-        js: `const res = await fetch('${BASE_URL}/api/countries');
-const { countries } = await res.json();`,
-      },
-      response: `{
-  "countries": [
-    {
-      "_id": "507f...",
-      "name": "Germany",
-      "code": "DE",
-      "stationCount": 3240,
-      "flag": "🇩🇪"
-    }
-  ],
-  "count": 196
-}`,
-    },
-  ],
-
-  auth: [
-    {
-      id: "auth-login",
-      method: "POST",
-      path: "/api/auth/login",
-      summary: "Web Login",
-      description: "Authenticate with email and password. Returns session cookie for web browsers. For mobile apps, use /api/auth/mobile/login to get a Bearer token.",
-      bodyParams: [
-        { name: "email", type: "string", required: true, description: "User email address" },
-        { name: "password", type: "string", required: true, description: "Password (min 8 characters)" },
-        { name: "rememberMe", type: "boolean", description: "Extend session to 30 days" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/auth/login" \\
-  -H "Content-Type: application/json" \\
-  -d '{"email":"user@example.com","password":"your_password"}'`,
-        js: `const res = await fetch('${BASE_URL}/api/auth/login', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  credentials: 'include',
-  body: JSON.stringify({ email: 'user@example.com', password: 'your_password' })
-});
-const user = await res.json();`,
-      },
-      response: `{
-  "authenticated": true,
-  "user": {
-    "_id": "507f...",
-    "email": "user@example.com",
-    "username": "johndoe",
-    "avatar": "https://..."
-  }
-}`,
-    },
-    {
-      id: "auth-mobile-login",
-      method: "POST",
-      path: "/api/auth/mobile/login",
-      summary: "Mobile Login (Bearer Token)",
-      description: "Authenticate from a mobile or TV app. Returns a persistent Bearer token with `mrt_` prefix. Store this token securely — it's valid for 90 days.",
-      bodyParams: [
-        { name: "email", type: "string", required: true, description: "User email address" },
-        { name: "password", type: "string", required: true, description: "Password" },
-        { name: "deviceName", type: "string", description: "Human-readable device name (e.g. iPhone 15 Pro)" },
-        { name: "platform", type: "string", description: "Platform identifier", options: ["ios", "android", "tv"] },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/auth/mobile/login" \\
-  -H "Content-Type: application/json" \\
-  -d '{"email":"user@example.com","password":"pass","platform":"ios","deviceName":"iPhone 15"}'`,
-        rn: `import AsyncStorage from '@react-native-async-storage/async-storage';
-
-async function loginUser(email: string, password: string) {
-  const res = await fetch('${BASE_URL}/api/auth/mobile/login', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      email,
-      password,
-      platform: Platform.OS,
-      deviceName: DeviceInfo.getDeviceNameSync()
-    })
-  });
-
-  const data = await res.json();
-  if (data.token) {
-    // Store token securely
-    await AsyncStorage.setItem('mrt_token', data.token);
-  }
-  return data;
-}`,
-        swift: `import Foundation
-import KeychainSwift
-
-struct LoginResponse: Codable {
-    let token: String
-    let user: User
-}
-
-func mobileLogin(email: String, password: String) async throws -> LoginResponse {
-    let url = URL(string: "${BASE_URL}/api/auth/mobile/login")!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try JSONSerialization.data(withJSONObject: [
-        "email": email,
-        "password": password,
-        "platform": "ios",
-        "deviceName": UIDevice.current.name
-    ])
-
-    let (data, _) = try await URLSession.shared.data(for: request)
-    let response = try JSONDecoder().decode(LoginResponse.self, from: data)
-
-    // Store securely in Keychain
-    let keychain = KeychainSwift()
-    keychain.set(response.token, forKey: "mrt_token")
-
-    return response
-}`,
-        kotlin: `import android.content.Context
-import androidx.security.crypto.EncryptedSharedPreferences
-
-fun mobileLogin(context: Context, email: String, password: String): LoginResponse {
-    val body = JSONObject().apply {
-        put("email", email); put("password", password)
-        put("platform", "android"); put("deviceName", Build.MODEL)
-    }
-    val request = Request.Builder()
-        .url("${BASE_URL}/api/auth/mobile/login")
-        .post(body.toString().toRequestBody("application/json".toMediaType()))
-        .build()
-
-    val response = OkHttpClient().newCall(request).execute()
-    val loginResponse = Gson().fromJson(response.body?.string(), LoginResponse::class.java)
-
-    // Store securely in EncryptedSharedPreferences
-    getEncryptedPrefs(context).edit()
-        .putString("mrt_token", loginResponse.token).apply()
-
-    return loginResponse
-}`,
-      },
-      response: `{
-  "token": "mrt_AbCdEfGhIjKlMnOpQrStUvWxYz1234567890",
-  "user": {
-    "_id": "507f...",
-    "email": "user@example.com",
-    "username": "johndoe",
-    "avatar": "https://..."
-  },
-  "expiresAt": "2025-07-01T00:00:00.000Z"
-}`,
-    },
-    {
-      id: "auth-signup",
-      method: "POST",
-      path: "/api/auth/signup",
-      summary: "Register Account",
-      description: "Create a new user account. Username must be 3-30 characters (alphanumeric, dash, dot, underscore). Email is normalized and validated.",
-      bodyParams: [
-        { name: "email", type: "string", required: true, description: "Valid email address" },
-        { name: "password", type: "string", required: true, description: "Password (min 8 characters)" },
-        { name: "username", type: "string", required: true, description: "Username (3-30 chars, alphanumeric/-/_/.)" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/auth/signup" \\
-  -H "Content-Type: application/json" \\
-  -d '{"email":"new@example.com","password":"securepass123","username":"johndoe"}'`,
-        js: `const res = await fetch('${BASE_URL}/api/auth/signup', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({
-    email: 'new@example.com',
-    password: 'securepass123',
-    username: 'johndoe'
-  })
-});
-const data = await res.json();`,
-      },
-      response: `{
-  "authenticated": true,
-  "user": {
-    "_id": "507f...",
-    "email": "new@example.com",
-    "username": "johndoe"
-  }
-}`,
-    },
-    {
-      id: "auth-me",
-      method: "GET",
-      path: "/api/auth/me",
-      summary: "Get Current User",
-      description: "Returns the authenticated user's profile. Works with both session cookies (web) and Bearer tokens (mobile).",
-      auth: true,
-      code: {
-        curl: `curl "${BASE_URL}/api/auth/me" \\
-  -H "Authorization: Bearer mrt_your_token"`,
-        rn: `async function getMe(token: string) {
-  const res = await fetch('${BASE_URL}/api/auth/me', {
-    headers: { 'Authorization': \`Bearer \${token}\` }
-  });
-  return res.json();
-}`,
-        swift: `func getMe(token: String) async throws -> User {
-    var request = URLRequest(url: URL(string: "${BASE_URL}/api/auth/me")!)
-    request.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")
-    let (data, _) = try await URLSession.shared.data(for: request)
-    return try JSONDecoder().decode(AuthResponse.self, from: data).user
-}`,
-      },
-      response: `{
-  "authenticated": true,
-  "user": {
-    "_id": "507f...",
-    "email": "user@example.com",
-    "username": "johndoe",
-    "avatar": "https://...",
-    "role": "user",
-    "createdAt": "2024-01-15T12:00:00.000Z"
-  }
-}`,
-    },
-    {
-      id: "auth-mobile-me",
-      method: "GET",
-      path: "/api/auth/mobile/me",
-      summary: "Get Mobile Auth Status",
-      description: "Check if a mobile Bearer token is still valid and get the associated user profile. Includes device information.",
-      auth: true,
-      code: {
-        curl: `curl "${BASE_URL}/api/auth/mobile/me" \\
-  -H "Authorization: Bearer mrt_your_token"`,
-        rn: `async function checkAuth(token: string) {
-  const res = await fetch('${BASE_URL}/api/auth/mobile/me', {
-    headers: { 'Authorization': \`Bearer \${token}\` }
-  });
-  if (!res.ok) {
-    // Token expired — redirect to login
-    await AsyncStorage.removeItem('mrt_token');
-    return null;
-  }
-  return res.json();
-}`,
-      },
-      response: `{
-  "valid": true,
-  "user": { "_id": "507f...", "username": "johndoe" },
-  "token": { "expiresAt": "2025-07-01T00:00:00.000Z", "deviceName": "iPhone 15" }
-}`,
-    },
-  ],
-
-  engagement: [
-    {
-      id: "engagement-favorite",
-      method: "POST",
-      path: "/api/user-engagement/stations/:stationId/favorite",
-      summary: "Favorite / Unfavorite Station",
-      description: "Toggle a station as a user favorite. Calling this endpoint on an already-favorited station will remove it (toggle behavior).",
-      auth: true,
-      params: [
-        { name: "stationId", type: "string", required: true, description: "Station MongoDB ObjectId" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/user-engagement/stations/507f1f77bcf86cd799439011/favorite" \\
-  -H "Authorization: Bearer mrt_your_token"`,
-        rn: `async function toggleFavorite(stationId: string, token: string) {
-  const res = await fetch(
-    \`${BASE_URL}/api/user-engagement/stations/\${stationId}/favorite\`,
-    {
-      method: 'POST',
-      headers: { 'Authorization': \`Bearer \${token}\` }
-    }
-  );
-  return res.json(); // { favorited: true } or { favorited: false }
-}`,
-      },
-      response: `{
-  "favorited": true,
-  "stationId": "507f1f77bcf86cd799439011"
-}`,
-    },
-    {
-      id: "engagement-rate",
-      method: "POST",
-      path: "/api/user-engagement/stations/:stationId/rate",
-      summary: "Rate a Station",
-      description: "Submit a 1-5 star rating for a radio station. Only one rating per user per station — submitting again updates the existing rating.",
-      auth: true,
-      params: [
-        { name: "stationId", type: "string", required: true, description: "Station MongoDB ObjectId" },
-      ],
-      bodyParams: [
-        { name: "rating", type: "number", required: true, description: "Rating from 1 to 5" },
-        { name: "review", type: "string", description: "Optional text review" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/user-engagement/stations/507f.../rate" \\
-  -H "Authorization: Bearer mrt_your_token" \\
-  -H "Content-Type: application/json" \\
-  -d '{"rating": 5, "review": "Amazing station!"}'`,
-      },
-      response: `{
-  "success": true,
-  "rating": 5,
-  "averageRating": 4.7,
-  "totalRatings": 1204
-}`,
-    },
-    {
-      id: "engagement-trending",
-      method: "GET",
-      path: "/api/user-engagement/trending",
-      summary: "Trending Stations",
-      description: "Get trending stations based on real user favorites and listening data. Powered by authentic engagement metrics.",
-      queryParams: [
-        { name: "limit", type: "number", default: "20", description: "Number of trending stations" },
-        { name: "country", type: "string", description: "Filter by country" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/user-engagement/trending?limit=10"`,
-        js: `const res = await fetch('${BASE_URL}/api/user-engagement/trending?limit=10');
-const { stations } = await res.json();`,
-      },
-      response: `{
-  "stations": [
-    {
-      "_id": "507f...",
-      "name": "TRT FM",
-      "slug": "trt-fm",
-      "trendingScore": 9.4,
-      "weeklyFavorites": 1203,
-      "totalFavorites": 45210
-    }
-  ],
-  "count": 10
-}`,
-    },
-    {
-      id: "engagement-profile",
-      method: "GET",
-      path: "/api/user-engagement/profile/:slug",
-      summary: "User Profile",
-      description: "Get a user's public profile including follower/following counts and biography.",
-      params: [
-        { name: "slug", type: "string", required: true, description: "Username or user ID" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/user-engagement/profile/johndoe"`,
-      },
-      response: `{
-  "user": {
-    "username": "johndoe",
-    "avatar": "https://...",
-    "bio": "Radio enthusiast",
-    "followersCount": 142,
-    "followingCount": 87,
-    "isPublic": true
-  }
-}`,
-    },
-  ],
-
-  tv: [
-    {
-      id: "tv-request-code",
-      method: "POST",
-      path: "/api/auth/tv/code",
-      summary: "Request TV Login Code",
-      description: "Netflix/YouTube-style TV login. TV app requests a 6-digit code, displays it on screen, and user enters it on mobile to authenticate.",
-      bodyParams: [
-        { name: "deviceId", type: "string", required: true, description: "Unique TV device identifier" },
-        { name: "deviceName", type: "string", description: "Human-readable TV name (e.g. Living Room Fire TV)" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/auth/tv/code" \\
-  -H "Content-Type: application/json" \\
-  -d '{"deviceId":"tv-unique-uuid","deviceName":"Living Room TV"}'`,
-        kotlin: `fun requestTVCode(deviceId: String): TVCodeResponse {
-    val body = JSONObject().apply {
-        put("deviceId", deviceId)
-        put("deviceName", "${'{'}android.os.Build.MODEL${'}'}")
-    }.toString().toRequestBody("application/json".toMediaType())
-
-    val request = Request.Builder()
-        .url("${BASE_URL}/api/auth/tv/code")
-        .post(body)
-        .build()
-
-    val response = OkHttpClient().newCall(request).execute()
-    return Gson().fromJson(response.body?.string(), TVCodeResponse::class.java)
-}
-
-// TVCodeResponse:
-data class TVCodeResponse(val code: String, val expiresIn: Int)
-// Display code on screen, poll /api/auth/tv/code/{code}/status every 3s`,
-        swift: `func requestTVCode(deviceId: String) async throws -> TVCodeResponse {
-    let url = URL(string: "${BASE_URL}/api/auth/tv/code")!
-    var request = URLRequest(url: url)
-    request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.httpBody = try JSONSerialization.data(withJSONObject: [
-        "deviceId": deviceId,
-        "deviceName": UIDevice.current.name
-    ])
-    let (data, _) = try await URLSession.shared.data(for: request)
-    return try JSONDecoder().decode(TVCodeResponse.self, from: data)
-}
-
-// Then display the code and poll status every 3 seconds`,
-      },
-      response: `{
-  "code": "847392",
-  "expiresIn": 600,
-  "message": "Display this code on your TV screen. Go to themegaradio.com/tv on mobile to activate."
-}`,
-    },
-    {
-      id: "tv-code-status",
-      method: "GET",
-      path: "/api/auth/tv/code/:code/status",
-      summary: "Poll TV Code Status",
-      description: "TV app polls this every 3 seconds to check if the user has entered the code on their mobile. Once activated, returns a long-lived Bearer token.",
-      params: [
-        { name: "code", type: "string", required: true, description: "6-digit TV login code" },
-      ],
-      code: {
-        curl: `curl "${BASE_URL}/api/auth/tv/code/847392/status"`,
-        kotlin: `// Poll every 3 seconds
-fun pollTVCodeStatus(code: String): TVStatusResponse {
-    val request = Request.Builder()
-        .url("${BASE_URL}/api/auth/tv/code/${'$'}code/status")
-        .build()
-    val response = OkHttpClient().newCall(request).execute()
-    return Gson().fromJson(response.body?.string(), TVStatusResponse::class.java)
-}
-
-// TVStatusResponse:
-data class TVStatusResponse(
-    val status: String, // "pending" | "activated" | "expired"
-    val token: String?, // mrt_tv_ token if activated
-    val user: User?
-)`,
-      },
-      response: `// Pending:
-{ "status": "pending" }
-
-// Activated:
-{
-  "status": "activated",
-  "token": "mrt_tv_AbCdEfGhIjKlMnOpQrStUv...",
-  "user": { "_id": "507f...", "username": "johndoe" }
-}
-
-// Expired:
-{ "status": "expired" }`,
-    },
-    {
-      id: "tv-activate",
-      method: "POST",
-      path: "/api/auth/tv/activate",
-      summary: "Activate TV Code (Mobile)",
-      description: "Mobile app activates a TV login code on behalf of the authenticated user. After this, the TV's polling will receive the token.",
-      auth: true,
-      bodyParams: [
-        { name: "code", type: "string", required: true, description: "6-digit code shown on TV" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/auth/tv/activate" \\
-  -H "Authorization: Bearer mrt_your_mobile_token" \\
-  -H "Content-Type: application/json" \\
-  -d '{"code":"847392"}'`,
-        rn: `async function activateTVCode(code: string, token: string) {
-  const res = await fetch('${BASE_URL}/api/auth/tv/activate', {
-    method: 'POST',
-    headers: {
-      'Authorization': \`Bearer \${token}\`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ code })
-  });
-  return res.json(); // { success: true }
-}`,
-      },
-      response: `{ "success": true, "message": "TV device authenticated successfully" }`,
-    },
-  ],
-
-  cast: [
-    {
-      id: "cast-create",
-      method: "POST",
-      path: "/api/cast/session/create",
-      summary: "Create Cast Session",
-      description: "Create a new casting session for Chromecast or AirPlay. Returns a sessionId that mobile and receiver apps use to exchange commands. Google Cast App ID: 94952E1F",
-      bodyParams: [
-        { name: "deviceId", type: "string", required: true, description: "Unique device identifier (mobile)" },
-        { name: "deviceName", type: "string", description: "Human-readable device name" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/cast/session/create" \\
-  -H "Content-Type: application/json" \\
-  -d '{"deviceId":"mobile-uuid","deviceName":"My iPhone"}'`,
-        rn: `async function createCastSession(deviceId: string) {
-  const res = await fetch('${BASE_URL}/api/cast/session/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceId, deviceName: 'My Phone' })
-  });
-  const { sessionId } = await res.json();
-  return sessionId; // Use for pairing and commands
-}`,
-      },
-      response: `{
-  "sessionId": "sess_AbCdEfGh",
-  "pairingCode": "4829",
-  "expiresAt": "2025-01-15T13:30:00.000Z"
-}`,
-    },
-    {
-      id: "cast-command",
-      method: "POST",
-      path: "/api/cast/command",
-      summary: "Send Cast Command",
-      description: "Send a playback command to a paired cast receiver. Commands are relayed in real-time via WebSocket.",
-      bodyParams: [
-        { name: "sessionId", type: "string", required: true, description: "Active cast session ID" },
-        { name: "command", type: "string", required: true, description: "Command type", options: ["play", "pause", "stop", "volume", "seek"] },
-        { name: "stationId", type: "string", description: "Station ID (for play command)" },
-        { name: "volume", type: "number", description: "Volume 0-100 (for volume command)" },
-      ],
-      code: {
-        curl: `curl -X POST "${BASE_URL}/api/cast/command" \\
-  -H "Content-Type: application/json" \\
-  -d '{"sessionId":"sess_AbCdEfGh","command":"play","stationId":"507f..."}'`,
-      },
-      response: `{ "success": true, "delivered": true }`,
-    },
-  ],
-};
-
-// ─── SDK Section Content ───────────────────────────────────────────────────────
-const SDK_EXAMPLES = {
-  web: {
-    install: `npm install @megaradio/sdk  # coming soon
-# OR use the REST API directly with fetch/axios`,
-    quickstart: `// Quick Start — no SDK needed, pure REST
-const BASE_URL = '${BASE_URL}';
-const API_KEY = 'mr_your_api_key';
-
-const headers = { 'Authorization': \`Bearer \${API_KEY}\` };
-
-// 1. Fetch popular stations
-const res = await fetch(\`\${BASE_URL}/api/stations/popular?country=Germany\`, { headers });
-const { stations } = await res.json();
-
-// 2. Get a station by slug
-const station = await fetch(\`\${BASE_URL}/api/station/bbc-radio-1\`, { headers }).then(r => r.json());
-
-// 3. Stream it (just use the URL directly in an <audio> element)
-const audio = new Audio(station.url);
-audio.play();`,
-    hls: `import Hls from 'hls.js';
-
-function playStation(station) {
-  const audio = document.getElementById('player');
-
-  if (station.hls || station.url.includes('.m3u8')) {
-    if (Hls.isSupported()) {
-      const hls = new Hls();
-      hls.loadSource(station.url);
-      hls.attachMedia(audio);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => audio.play());
-    } else if (audio.canPlayType('application/vnd.apple.mpegurl')) {
-      audio.src = station.url;
-      audio.play();
-    }
-  } else {
-    audio.src = station.url;
-    audio.play();
-  }
-}`,
-  },
-  rn: {
-    install: `# Install required packages
-npm install react-native-track-player
-npm install @react-native-async-storage/async-storage
-npm install react-native-geolocation-service
-
-# iOS
-cd ios && pod install`,
-    setup: `// megaradio.ts — API client setup
-const BASE_URL = '${BASE_URL}';
-
-class MegaRadioClient {
-  private token: string | null = null;
-
-  constructor(private apiKey: string) {}
-
-  setAuthToken(token: string) { this.token = token; }
-
-  private headers(): Record<string, string> {
-    const h: Record<string, string> = { 'Authorization': \`Bearer \${this.apiKey}\` };
-    if (this.token) h['X-User-Token'] = this.token;
-    return h;
-  }
-
-  async getStations(params?: { country?: string; limit?: number; search?: string }) {
-    const qs = new URLSearchParams(params as Record<string, string> || {}).toString();
-    const res = await fetch(\`\${BASE_URL}/api/stations?\${qs}\`, { headers: this.headers() });
-    return res.json();
-  }
-
-  async getStation(slug: string) {
-    const res = await fetch(\`\${BASE_URL}/api/station/\${slug}\`, { headers: this.headers() });
-    return res.json();
-  }
-
-  async getPopular(country?: string) {
-    const qs = country ? \`?country=\${encodeURIComponent(country)}\` : '';
-    const res = await fetch(\`\${BASE_URL}/api/stations/popular\${qs}\`, { headers: this.headers() });
-    return res.json();
-  }
-
-  async login(email: string, password: string, platform = 'react-native') {
-    const res = await fetch(\`\${BASE_URL}/api/auth/mobile/login\`, {
-      method: 'POST',
-      headers: { ...this.headers(), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password, platform })
+    await TrackPlayer.reset();
+    await TrackPlayer.add({
+      id: station._id,
+      url: url,
+      title: station.name,
+      artist: station.country,
+      artwork: station.favicon
     });
-    const data = await res.json();
-    if (data.token) this.setAuthToken(data.token);
-    return data;
-  }
-}
-
-export const megaRadio = new MegaRadioClient('mr_your_api_key');`,
-    player: `import TrackPlayer, { State, usePlaybackState } from 'react-native-track-player';
-
-// Setup player once at app launch
-export async function setupPlayer() {
-  await TrackPlayer.setupPlayer({
-    maxCacheSize: 1024 * 5, // 5MB buffer
-  });
-
-  await TrackPlayer.updateOptions({
-    capabilities: [
-      TrackPlayer.CAPABILITY_PLAY,
-      TrackPlayer.CAPABILITY_PAUSE,
-      TrackPlayer.CAPABILITY_STOP,
-    ],
-  });
-}
-
-// Play a MegaRadio station
-export async function playStation(station: any) {
-  await TrackPlayer.reset();
-  await TrackPlayer.add({
-    id: station.slug,
-    url: station.url,
-    title: station.name,
-    artist: station.country,
-    artwork: station.logoAssets?.webp256 || station.favicon,
-    isLiveStream: true,
-  });
-  await TrackPlayer.play();
-}
-
-// Usage in component:
-function PlayerButton({ station }) {
-  const state = usePlaybackState();
-  const isPlaying = state === State.Playing;
-
-  return (
-    <TouchableOpacity onPress={() => isPlaying ? TrackPlayer.pause() : playStation(station)}>
-      <Text>{isPlaying ? '⏸ Pause' : '▶ Play'}</Text>
-    </TouchableOpacity>
-  );
-}`,
-  },
-  ios: {
-    setup: `// MegaRadioAPI.swift
-import Foundation
-
-struct MegaRadioAPI {
-    static let baseURL = "${BASE_URL}"
-    static var apiKey = "mr_your_api_key"
-    static var userToken: String?
-
-    private static var headers: [String: String] {
-        var h = ["Authorization": "Bearer \\(apiKey)"]
-        if let token = userToken { h["X-User-Token"] = token }
-        return h
-    }
-
-    static func stations(country: String? = nil, limit: Int = 25) async throws -> StationResponse {
-        var components = URLComponents(string: "\\(baseURL)/api/stations")!
-        var items = [URLQueryItem(name: "limit", value: "\\(limit)")]
-        if let c = country { items.append(URLQueryItem(name: "country", value: c)) }
-        components.queryItems = items
-
-        var request = URLRequest(url: components.url!)
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(StationResponse.self, from: data)
-    }
-
-    static func station(slug: String) async throws -> Station {
-        var request = URLRequest(url: URL(string: "\\(baseURL)/api/station/\\(slug)")!)
-        headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
-        let (data, _) = try await URLSession.shared.data(for: request)
-        return try JSONDecoder().decode(Station.self, from: data)
-    }
-}`,
-    player: `// RadioPlayer.swift — AVFoundation streaming
-import AVFoundation
-
-class RadioPlayer: ObservableObject {
-    private var player: AVPlayer?
-    private var playerItem: AVPlayerItem?
-    @Published var isPlaying = false
-    @Published var currentStation: Station?
-
-    func play(_ station: Station) {
-        guard let url = URL(string: station.url) else { return }
-        currentStation = station
-
-        // Configure audio session for background playback
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
-        try? AVAudioSession.sharedInstance().setActive(true)
-
-        playerItem = AVPlayerItem(url: url)
-        player = AVPlayer(playerItem: playerItem)
-        player?.play()
-        isPlaying = true
-
-        // Now Playing Info Center
-        var info = [String: Any]()
-        info[MPMediaItemPropertyTitle] = station.name
-        info[MPMediaItemPropertyArtist] = station.country
-        info[MPNowPlayingInfoPropertyIsLiveStream] = true
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-    }
-
-    func pause() { player?.pause(); isPlaying = false }
-    func stop() { player?.replaceCurrentItem(with: nil); isPlaying = false; currentStation = nil }
-}
-
-// SwiftUI usage:
-struct PlayerView: View {
-    @StateObject var player = RadioPlayer()
-    let station: Station
-
-    var body: some View {
-        Button(player.isPlaying ? "Pause" : "Play") {
-            player.isPlaying ? player.pause() : player.play(station)
-        }
-    }
-}`,
-  },
-  android: {
-    setup: `// build.gradle (app)
-dependencies {
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.google.code.gson:gson:2.10.1'
-    implementation 'androidx.media3:media3-exoplayer:1.2.0'
-    implementation 'androidx.media3:media3-exoplayer-hls:1.2.0'
-    implementation 'androidx.media3:media3-ui:1.2.0'
-}`,
-    api: `// MegaRadioAPI.kt
-import okhttp3.*
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
-
-object MegaRadioAPI {
-    private const val BASE_URL = "${BASE_URL}"
-    var apiKey = "mr_your_api_key"
-    var userToken: String? = null
-
-    private val client = OkHttpClient.Builder().build()
-    private val gson = Gson()
-
-    private fun headers() = Headers.Builder().apply {
-        add("Authorization", "Bearer ${'$'}apiKey")
-        userToken?.let { add("X-User-Token", it) }
-    }.build()
-
-    suspend fun getStations(country: String? = null, limit: Int = 25): StationResponse {
-        val url = HttpUrl.Builder()
-            .scheme("https").host("themegaradio.com")
-            .addPathSegments("api/stations")
-            .addQueryParameter("limit", limit.toString())
-            .apply { country?.let { addQueryParameter("country", it) } }
-            .build()
-
-        val request = Request.Builder().url(url).headers(headers()).build()
-
-        return withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { response ->
-                gson.fromJson(response.body?.charStream(), StationResponse::class.java)
-            }
-        }
-    }
-
-    suspend fun getStation(slug: String): Station {
-        val request = Request.Builder()
-            .url("${'$'}BASE_URL/api/station/${'$'}slug")
-            .headers(headers()).build()
-
-        return withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { response ->
-                gson.fromJson(response.body?.charStream(), Station::class.java)
-            }
-        }
-    }
-}`,
-    player: `// RadioPlayerService.kt — ExoPlayer + MediaSession
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MediaMetadata
-
-class RadioPlayerService : MediaSessionService() {
-    private lateinit var player: ExoPlayer
-
-    override fun onCreate() {
-        super.onCreate()
-        player = ExoPlayer.Builder(this).build()
-    }
-
-    fun playStation(station: Station) {
-        val mediaItem = MediaItem.Builder()
-            .setUri(station.url)
-            .setMediaMetadata(
-                MediaMetadata.Builder()
-                    .setTitle(station.name)
-                    .setArtist(station.country)
-                    .setIsPlayable(true)
-                    .build()
-            )
-            .build()
-
-        player.setMediaItem(mediaItem)
-        player.prepare()
-        player.play()
-    }
-
-    fun pause() = player.pause()
-    fun stop() = player.stop()
-
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo) = mediaSession
-    override fun onDestroy() { player.release(); super.onDestroy() }
-}`,
-  },
-};
-
-// ─── Navigation Data ───────────────────────────────────────────────────────────
-const NAV_SECTIONS = [
-  { id: "introduction", label: "Introduction", icon: "⬡" },
-  { id: "authentication", label: "Authentication", icon: "🔐" },
-  { id: "rate-limits", label: "Rate Limits", icon: "⚡" },
-  {
-    id: "stations", label: "Stations", icon: "📻",
-    children: [
-      { id: "stations-list", label: "List Stations" },
-      { id: "station-detail", label: "Get Station" },
-      { id: "stations-popular", label: "Popular" },
-      { id: "stations-precomputed", label: "Precomputed (Fast)" },
-      { id: "stations-nearby", label: "Nearby" },
-      { id: "stations-similar", label: "Similar" },
-      { id: "stations-random", label: "Random" },
-      { id: "stations-stats", label: "Statistics" },
-    ]
-  },
-  {
-    id: "genres", label: "Genres & Countries", icon: "🌍",
-    children: [
-      { id: "genres-list", label: "List Genres" },
-      { id: "genres-discoverable", label: "Discoverable Genres" },
-      { id: "countries-list", label: "Countries" },
-    ]
-  },
-  {
-    id: "auth", label: "User Auth", icon: "👤",
-    children: [
-      { id: "auth-login", label: "Web Login" },
-      { id: "auth-mobile-login", label: "Mobile Login" },
-      { id: "auth-signup", label: "Register" },
-      { id: "auth-me", label: "Current User" },
-      { id: "auth-mobile-me", label: "Token Status" },
-    ]
-  },
-  {
-    id: "engagement", label: "Engagement", icon: "❤️",
-    children: [
-      { id: "engagement-favorite", label: "Favorite Station" },
-      { id: "engagement-rate", label: "Rate Station" },
-      { id: "engagement-trending", label: "Trending" },
-      { id: "engagement-profile", label: "User Profile" },
-    ]
-  },
-  {
-    id: "tv", label: "TV Auth", icon: "📺",
-    children: [
-      { id: "tv-request-code", label: "Request Code" },
-      { id: "tv-code-status", label: "Poll Status" },
-      { id: "tv-activate", label: "Activate (Mobile)" },
-    ]
-  },
-  {
-    id: "cast", label: "Chromecast", icon: "🎬",
-    children: [
-      { id: "cast-create", label: "Create Session" },
-      { id: "cast-command", label: "Send Command" },
-    ]
-  },
-  { id: "sdk-web", label: "Web / JS Guide", icon: "🌐" },
-  { id: "sdk-rn", label: "React Native", icon: "📱" },
-  { id: "sdk-ios", label: "iOS (Swift)", icon: "" },
-  { id: "sdk-android", label: "Android (Kotlin)", icon: "🤖" },
-];
-
-// ─── Main Component ────────────────────────────────────────────────────────────
-export default function ApiDocs() {
-  const [dark, setDark] = useState(true);
-  const [activeSection, setActiveSection] = useState("introduction");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(
-    new Set(["stations", "genres", "auth", "engagement", "tv", "cast"])
-  );
-  const contentRef = useRef<HTMLDivElement>(null);
-
-  const toggleSection = (id: string) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
+    await TrackPlayer.play();
   };
 
-  const scrollTo = useCallback((id: string) => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
-      setActiveSection(id);
-      setSidebarOpen(false);
+  return (
+    <FlatList
+      data={stations}
+      renderItem={({ item }) => (
+        <TouchableOpacity onPress={() => playStation(item)}>
+          <Text>{item.name}</Text>
+          <Text>{item.country}</Text>
+        </TouchableOpacity>
+      )}
+    />
+  );
+}`
+    },
+    "guide-ios": {
+      title: "iOS (Swift) Integration",
+      lang: "Swift",
+      code: `import Foundation
+import AVFoundation
+
+class MegaRadioClient {
+    private let apiKey: String
+    private let baseURL = "https://themegaradio.com/api"
+    private var player: AVPlayer?
+
+    init(apiKey: String) {
+        self.apiKey = apiKey
+        // Configure audio session for background playback
+        try? AVAudioSession.sharedInstance().setCategory(
+            .playback, mode: .default
+        )
+        try? AVAudioSession.sharedInstance().setActive(true)
     }
-  }, []);
 
-  // Filter nav items by search
-  const filteredNav = searchQuery
-    ? NAV_SECTIONS.filter(s =>
-        s.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (s as any).children?.some((c: any) => c.label.toLowerCase().includes(searchQuery.toLowerCase()))
-      )
-    : NAV_SECTIONS;
+    func searchStations(
+        query: String,
+        country: String? = nil,
+        limit: Int = 20
+    ) async throws -> [Station] {
+        var components = URLComponents(
+            string: "\\(baseURL)/stations"
+        )!
+        components.queryItems = [
+            URLQueryItem(name: "search", value: query),
+            URLQueryItem(name: "limit", value: "\\(limit)")
+        ]
+        if let country = country {
+            components.queryItems?.append(
+                URLQueryItem(name: "country", value: country)
+            )
+        }
 
-  const themeClass = dark
-    ? "bg-[#0d1117] text-white"
-    : "bg-[#f6f8fa] text-gray-900";
+        var request = URLRequest(url: components.url!)
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
 
-  const sidebarClass = dark
-    ? "bg-[#010409] border-r border-white/8"
-    : "bg-white border-r border-gray-200";
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let response = try JSONDecoder().decode(
+            StationsResponse.self, from: data
+        )
+        return response.stations
+    }
 
-  const cardClass = dark
-    ? "bg-[#161b22] border border-white/8"
-    : "bg-white border border-gray-200";
+    func play(stationId: String) async throws {
+        var request = URLRequest(
+            url: URL(string: "\\(baseURL)/stream/resolve?stationId=\\(stationId)")!
+        )
+        request.setValue(apiKey, forHTTPHeaderField: "X-API-Key")
 
-  const inputClass = dark
-    ? "bg-[#21262d] border border-white/10 text-white placeholder-white/40 focus:border-blue-500"
-    : "bg-gray-100 border border-gray-200 text-gray-900 placeholder-gray-400 focus:border-blue-500";
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let stream = try JSONDecoder().decode(StreamInfo.self, from: data)
+
+        let playerItem = AVPlayerItem(url: URL(string: stream.url)!)
+        player = AVPlayer(playerItem: playerItem)
+        player?.play()
+    }
+}`
+    },
+    "guide-android": {
+      title: "Android (Kotlin) Integration",
+      lang: "Kotlin",
+      code: `import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.json.JSONObject
+import android.media.MediaPlayer
+
+class MegaRadioClient(private val apiKey: String) {
+    private val client = OkHttpClient()
+    private val baseUrl = "https://themegaradio.com/api"
+    private var mediaPlayer: MediaPlayer? = null
+
+    suspend fun searchStations(
+        query: String,
+        country: String? = null,
+        limit: Int = 20
+    ): List<Station> {
+        val url = buildString {
+            append("$baseUrl/stations?search=$query&limit=$limit")
+            country?.let { append("&country=$it") }
+        }
+
+        val request = Request.Builder()
+            .url(url)
+            .header("X-API-Key", apiKey)
+            .build()
+
+        val response = client.newCall(request).execute()
+        val json = JSONObject(response.body?.string() ?: "")
+        val stations = json.getJSONArray("stations")
+
+        return (0 until stations.length()).map { i ->
+            val s = stations.getJSONObject(i)
+            Station(
+                id = s.getString("_id"),
+                name = s.getString("name"),
+                country = s.optString("country", ""),
+                favicon = s.optString("favicon", "")
+            )
+        }
+    }
+
+    suspend fun playStation(stationId: String) {
+        val request = Request.Builder()
+            .url("$baseUrl/stream/resolve?stationId=$stationId")
+            .header("X-API-Key", apiKey)
+            .build()
+
+        val response = client.newCall(request).execute()
+        val json = JSONObject(response.body?.string() ?: "")
+        val streamUrl = json.getString("url")
+
+        mediaPlayer?.release()
+        mediaPlayer = MediaPlayer().apply {
+            setDataSource(streamUrl)
+            prepareAsync()
+            setOnPreparedListener { start() }
+        }
+    }
+}`
+    },
+  };
+
+  const guide = guides[guideId];
+  if (!guide) return <div className="text-slate-400">Guide not found.</div>;
 
   return (
-    <div className={`min-h-screen font-sans ${themeClass} transition-colors duration-200`}
-      style={{ fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif" }}>
-
-      {/* Top Bar */}
-      <header className={`fixed top-0 left-0 right-0 z-50 h-14 flex items-center justify-between px-4 border-b ${dark ? "bg-[#010409]/90 border-white/8 backdrop-blur-xl" : "bg-white/90 border-gray-200 backdrop-blur-xl"}`}>
-        <div className="flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-2 rounded-lg hover:bg-white/10">
-            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
-            </svg>
-          </button>
-          <a href="/" className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-              <span className="text-white text-xs font-bold">M</span>
-            </div>
-            <div>
-              <span className={`text-sm font-semibold ${dark ? "text-white" : "text-gray-900"}`}>MegaRadio</span>
-              <span className={`ml-2 text-xs px-1.5 py-0.5 rounded-full font-medium ${dark ? "bg-blue-900/50 text-blue-300" : "bg-blue-100 text-blue-700"}`}>API v1</span>
-            </div>
-          </a>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <a href="/developer" className={`hidden sm:flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${dark ? "text-white/70 hover:text-white hover:bg-white/8" : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"}`}>
-            Get API Key
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
-          </a>
-          <button
-            onClick={() => setDark(!dark)}
-            className={`p-2 rounded-lg transition-colors ${dark ? "hover:bg-white/8 text-white/60" : "hover:bg-gray-100 text-gray-500"}`}
-          >
-            {dark ? (
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
-            )}
-          </button>
-        </div>
-      </header>
-
-      <div className="flex pt-14 min-h-screen">
-        {/* Sidebar */}
-        <aside className={`fixed left-0 top-14 bottom-0 w-64 z-40 flex flex-col overflow-hidden transition-transform duration-300 ${sidebarClass} ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
-          {/* Search */}
-          <div className="p-4 border-b border-inherit">
-            <div className="relative">
-              <svg className={`absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 ${dark ? "text-white/30" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-              </svg>
-              <input
-                type="search"
-                placeholder="Search docs..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className={`w-full pl-9 pr-3 py-2 rounded-lg text-sm outline-none transition-colors ${inputClass}`}
-              />
-            </div>
-          </div>
-
-          {/* Nav */}
-          <nav className="flex-1 overflow-y-auto py-4 px-2">
-            {filteredNav.map(section => (
-              <div key={section.id} className="mb-0.5">
-                {(section as any).children ? (
-                  <>
-                    <button
-                      onClick={() => toggleSection(section.id)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                        activeSection === section.id
-                          ? dark ? "text-white bg-white/10" : "text-gray-900 bg-gray-100"
-                          : dark ? "text-white/60 hover:text-white hover:bg-white/6" : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                      }`}
-                    >
-                      <span className="text-base leading-none">{section.icon}</span>
-                      <span className="flex-1 text-left">{section.label}</span>
-                      <svg className={`w-3.5 h-3.5 transition-transform ${expandedSections.has(section.id) ? "rotate-180" : ""} ${dark ? "text-white/30" : "text-gray-400"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7"/>
-                      </svg>
-                    </button>
-                    {expandedSections.has(section.id) && (
-                      <div className="ml-4 pl-3 border-l border-inherit mt-0.5 mb-1 space-y-0.5">
-                        {(section as any).children.map((child: any) => (
-                          <button
-                            key={child.id}
-                            onClick={() => scrollTo(child.id)}
-                            className={`w-full text-left px-3 py-1.5 rounded-lg text-[13px] transition-colors ${
-                              activeSection === child.id
-                                ? dark ? "text-blue-400 bg-blue-500/10" : "text-blue-600 bg-blue-50"
-                                : dark ? "text-white/50 hover:text-white/80 hover:bg-white/5" : "text-gray-500 hover:text-gray-800 hover:bg-gray-50"
-                            }`}
-                          >
-                            {child.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <button
-                    onClick={() => scrollTo(section.id)}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                      activeSection === section.id
-                        ? dark ? "text-blue-400 bg-blue-500/10" : "text-blue-600 bg-blue-50"
-                        : dark ? "text-white/60 hover:text-white hover:bg-white/6" : "text-gray-600 hover:text-gray-900 hover:bg-gray-50"
-                    }`}
-                  >
-                    <span className="text-base leading-none">{section.icon}</span>
-                    <span>{section.label}</span>
-                  </button>
-                )}
-              </div>
-            ))}
-          </nav>
-
-          {/* Base URL */}
-          <div className={`p-4 border-t border-inherit ${dark ? "bg-white/3" : "bg-gray-50"}`}>
-            <p className={`text-xs font-medium mb-1.5 ${dark ? "text-white/40" : "text-gray-400"}`}>Base URL</p>
-            <code className={`text-xs font-mono break-all ${dark ? "text-blue-400" : "text-blue-600"}`}>{BASE_URL}</code>
-          </div>
-        </aside>
-
-        {/* Overlay for mobile */}
-        {sidebarOpen && <div className="fixed inset-0 bg-black/50 z-30 lg:hidden" onClick={() => setSidebarOpen(false)} />}
-
-        {/* Main Content */}
-        <main ref={contentRef} className="flex-1 lg:ml-64 max-w-full">
-          <div className="max-w-4xl mx-auto px-4 sm:px-8 lg:px-12 py-12 space-y-20">
-
-            {/* ── Introduction ─────────────────────────────────────────── */}
-            <section id="introduction" className="scroll-mt-20">
-              <div className="mb-8">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold mb-6 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-blue-500/30 text-blue-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
-                  REST API · JSON · HTTPS
-                </div>
-                <h1 className={`text-4xl font-bold tracking-tight mb-4 ${dark ? "text-white" : "text-gray-900"}`}>
-                  MegaRadio API
-                </h1>
-                <p className={`text-lg leading-relaxed ${dark ? "text-white/60" : "text-gray-600"}`}>
-                  Stream and discover 40,000+ radio stations from 196 countries. Build radio apps, smart devices, and music experiences with our comprehensive REST API.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
-                {[
-                  { value: "40,000+", label: "Radio Stations", icon: "📻" },
-                  { value: "196", label: "Countries", icon: "🌍" },
-                  { value: "57", label: "Languages", icon: "🗣" },
-                ].map(stat => (
-                  <div key={stat.label} className={`rounded-2xl p-5 ${cardClass}`}>
-                    <div className="text-2xl mb-2">{stat.icon}</div>
-                    <p className={`text-2xl font-bold ${dark ? "text-white" : "text-gray-900"}`}>{stat.value}</p>
-                    <p className={`text-sm ${dark ? "text-white/50" : "text-gray-500"}`}>{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className={`rounded-2xl p-6 ${cardClass}`}>
-                <h2 className={`text-lg font-semibold mb-4 ${dark ? "text-white" : "text-gray-900"}`}>Quick Start</h2>
-                <CodeBlock code={`# Get popular stations in Germany
-curl "${BASE_URL}/api/stations/popular?country=Germany" \\
-  -H "Authorization: Bearer mr_your_api_key"`} lang="bash" />
-                <div className={`mt-4 p-4 rounded-xl text-sm ${dark ? "bg-blue-900/20 border border-blue-500/20 text-blue-300" : "bg-blue-50 border border-blue-100 text-blue-700"}`}>
-                  <strong>Get your API key</strong> at <a href="/developer" className="underline">/developer</a> — Free tier includes 1,000 requests/day.
-                </div>
-              </div>
-            </section>
-
-            {/* ── Authentication ────────────────────────────────────────── */}
-            <section id="authentication" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="🔐" title="Authentication" description="MegaRadio uses API keys for developer access and Bearer tokens for user authentication on mobile/TV apps." />
-
-              <div className="space-y-4 mt-6">
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-2 ${dark ? "text-white" : "text-gray-900"}`}>API Key Authentication</h3>
-                  <p className={`text-sm mb-4 ${dark ? "text-white/60" : "text-gray-600"}`}>Include your API key in every request as a Bearer token.</p>
-                  <CodeBlock code={`Authorization: Bearer mr_your_api_key`} lang="http" />
-                </div>
-
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-2 ${dark ? "text-white" : "text-gray-900"}`}>User Bearer Token (Mobile/TV)</h3>
-                  <p className={`text-sm mb-4 ${dark ? "text-white/60" : "text-gray-600"}`}>After mobile login, use the returned <code className="font-mono text-blue-400">mrt_</code> token for user-specific endpoints.</p>
-                  <CodeBlock code={`Authorization: Bearer mrt_AbCdEfGhIjKlMnOpQrStUvWxYz...`} lang="http" />
-                  <p className={`mt-3 text-xs ${dark ? "text-white/40" : "text-gray-400"}`}>TV tokens use <code className="font-mono">mrt_tv_</code> prefix and are valid for 90 days.</p>
-                </div>
-              </div>
-            </section>
-
-            {/* ── Rate Limits ───────────────────────────────────────────── */}
-            <section id="rate-limits" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="⚡" title="Rate Limits" description="Choose the plan that fits your use case. Rate limits are enforced per API key." />
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-                {(Object.entries(PLANS) as [Plan, typeof PLANS[Plan]][]).map(([key, plan]) => (
-                  <div key={key} className={`rounded-2xl p-5 border ${key === "pro" ? "border-purple-500/40 bg-purple-500/5" : dark ? "border-white/8 bg-[#161b22]" : "border-gray-200 bg-white"}`}>
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="font-semibold" style={{ color: plan.color }}>{plan.label}</span>
-                      {key === "pro" && <span className="text-xs px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-400 font-medium">Popular</span>}
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className={dark ? "text-white/50" : "text-gray-500"}>Rate limit</span>
-                        <span className={`font-mono font-medium ${dark ? "text-white" : "text-gray-900"}`}>{plan.rpm}/min</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className={dark ? "text-white/50" : "text-gray-500"}>Daily quota</span>
-                        <span className={`font-mono font-medium ${dark ? "text-white" : "text-gray-900"}`}>{plan.daily.toLocaleString()}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className={dark ? "text-white/50" : "text-gray-500"}>Monthly quota</span>
-                        <span className={`font-mono font-medium ${dark ? "text-white" : "text-gray-900"}`}>{plan.monthly.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className={`mt-4 rounded-2xl p-5 ${cardClass}`}>
-                <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Rate Limit Headers</h3>
-                <CodeBlock code={`RateLimit-Limit: 60
-RateLimit-Remaining: 47
-RateLimit-Reset: 1704067260
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 47`} lang="http" />
-              </div>
-            </section>
-
-            {/* ── Stations ─────────────────────────────────────────────── */}
-            <section id="stations" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="📻" title="Stations" description="Core endpoints for discovering and browsing radio stations." />
-              <div className="space-y-3 mt-6">
-                {ENDPOINTS.stations.map(ep => <EndpointCard key={ep.id} ep={ep} />)}
-              </div>
-            </section>
-
-            {/* ── Genres & Countries ────────────────────────────────────── */}
-            <section id="genres" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="🌍" title="Genres & Countries" description="Discover available music genres and supported countries." />
-              <div className="space-y-3 mt-6">
-                {ENDPOINTS.genres.map(ep => <EndpointCard key={ep.id} ep={ep} />)}
-              </div>
-            </section>
-
-            {/* ── User Auth ─────────────────────────────────────────────── */}
-            <section id="auth" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="👤" title="User Authentication" description="Register users, authenticate, and manage sessions across web and mobile platforms." />
-              <div className="space-y-3 mt-6">
-                {ENDPOINTS.auth.map(ep => <EndpointCard key={ep.id} ep={ep} />)}
-              </div>
-            </section>
-
-            {/* ── Engagement ────────────────────────────────────────────── */}
-            <section id="engagement" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="❤️" title="User Engagement" description="Favorites, ratings, follows, trending stations, and user profiles." />
-              <div className="space-y-3 mt-6">
-                {ENDPOINTS.engagement.map(ep => <EndpointCard key={ep.id} ep={ep} />)}
-              </div>
-            </section>
-
-            {/* ── TV Auth ───────────────────────────────────────────────── */}
-            <section id="tv" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="📺" title="TV Authentication" description="Netflix-style TV login flow using 6-digit codes. TV displays the code → user enters on mobile → TV gets a persistent token." />
-
-              <div className={`my-6 rounded-2xl p-5 ${cardClass} border-l-4 border-blue-500`}>
-                <h3 className={`font-semibold mb-2 ${dark ? "text-white" : "text-gray-900"}`}>TV Login Flow</h3>
-                <div className="flex items-start gap-4 flex-wrap">
-                  {["TV requests 6-digit code", "TV displays code on screen", "User enters code on mobile", "TV polls for token", "TV authenticated!"].map((step, i) => (
-                    <div key={i} className="flex items-center gap-2">
-                      <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${dark ? "bg-blue-500/20 text-blue-400" : "bg-blue-100 text-blue-700"}`}>{i + 1}</span>
-                      <span className={`text-sm ${dark ? "text-white/70" : "text-gray-600"}`}>{step}</span>
-                      {i < 4 && <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {ENDPOINTS.tv.map(ep => <EndpointCard key={ep.id} ep={ep} />)}
-              </div>
-            </section>
-
-            {/* ── Cast ─────────────────────────────────────────────────── */}
-            <section id="cast" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="🎬" title="Chromecast / Cast" description="Cast radio stations to TV or speakers. Supports both WebSocket real-time and HTTP polling modes. Google Cast App ID: 94952E1F" />
-              <div className="space-y-3 mt-6">
-                {ENDPOINTS.cast.map(ep => <EndpointCard key={ep.id} ep={ep} />)}
-              </div>
-            </section>
-
-            {/* ── Web SDK ───────────────────────────────────────────────── */}
-            <section id="sdk-web" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="🌐" title="Web / JavaScript Guide" description="Integrate MegaRadio into any web app, Next.js, Nuxt, or vanilla JavaScript." />
-              <div className="space-y-4 mt-6">
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Quick Start</h3>
-                  <CodeBlock code={SDK_EXAMPLES.web.quickstart} lang="javascript" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>HLS Stream Playback</h3>
-                  <p className={`text-sm mb-4 ${dark ? "text-white/60" : "text-gray-600"}`}>For stations with HLS streams (<code className="font-mono">hls: true</code> or <code className="font-mono">.m3u8</code> URL), use HLS.js for cross-browser support:</p>
-                  <CodeBlock code={SDK_EXAMPLES.web.hls} lang="javascript" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Error Handling</h3>
-                  <CodeBlock code={`async function getStations(params) {
-  const res = await fetch(\`${BASE_URL}/api/stations?\${new URLSearchParams(params)}\`, {
-    headers: { 'Authorization': 'Bearer mr_your_key' }
-  });
-
-  if (res.status === 429) {
-    const reset = res.headers.get('RateLimit-Reset');
-    throw new Error(\`Rate limit exceeded. Retry after \${reset}\`);
-  }
-  if (!res.ok) throw new Error(\`API error: \${res.status}\`);
-
-  return res.json();
-}`} lang="javascript" />
-                </div>
-              </div>
-            </section>
-
-            {/* ── React Native SDK ──────────────────────────────────────── */}
-            <section id="sdk-rn" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="📱" title="React Native & Expo" description="Complete integration guide for React Native and Expo apps with audio playback and background audio support." />
-              <div className="space-y-4 mt-6">
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Installation</h3>
-                  <CodeBlock code={SDK_EXAMPLES.rn.install} lang="bash" />
-                  <div className={`mt-4 p-4 rounded-xl text-sm ${dark ? "bg-amber-900/20 border border-amber-500/20 text-amber-300" : "bg-amber-50 border border-amber-200 text-amber-700"}`}>
-                    <strong>Expo:</strong> Use <code className="font-mono">expo-av</code> instead of <code className="font-mono">react-native-track-player</code> for managed workflow.
-                  </div>
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>API Client Setup</h3>
-                  <CodeBlock code={SDK_EXAMPLES.rn.setup} lang="typescript" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Audio Player with Background Playback</h3>
-                  <CodeBlock code={SDK_EXAMPLES.rn.player} lang="typescript" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Expo AV Alternative</h3>
-                  <CodeBlock code={`// For Expo managed workflow
-import { Audio } from 'expo-av';
-
-async function playStation(station) {
-  await Audio.setAudioModeAsync({
-    playsInSilentModeIOS: true,
-    staysActiveInBackground: true,
-    shouldDuckAndroid: true,
-  });
-
-  const { sound } = await Audio.Sound.createAsync(
-    { uri: station.url },
-    { shouldPlay: true, isLooping: false }
+    <div>
+      <h1 className="text-4xl font-bold text-white mb-4">{guide.title}</h1>
+      <p className="text-lg text-slate-400 leading-relaxed mb-8">Complete example showing how to integrate Mega Radio API into your {guide.lang} application.</p>
+      <CodeBlock code={guide.code} lang={guide.lang} />
+    </div>
   );
+});
 
-  return sound; // store reference to control playback
-}`} lang="typescript" />
-                </div>
-              </div>
-            </section>
-
-            {/* ── iOS SDK ───────────────────────────────────────────────── */}
-            <section id="sdk-ios" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="" title="iOS (Swift)" description="Native iOS integration with AVFoundation, background audio, Now Playing Info Center, and Siri support." />
-              <div className="space-y-4 mt-6">
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-2 ${dark ? "text-white" : "text-gray-900"}`}>Required Capabilities</h3>
-                  <p className={`text-sm mb-4 ${dark ? "text-white/60" : "text-gray-600"}`}>Add these to your <code className="font-mono">Info.plist</code>:</p>
-                  <CodeBlock code={`<key>UIBackgroundModes</key>
-<array>
-    <string>audio</string>
-</array>
-<key>NSMicrophoneUsageDescription</key>
-<string>For audio playback controls</string>`} lang="xml" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>API Client</h3>
-                  <CodeBlock code={SDK_EXAMPLES.ios.setup} lang="swift" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>AVFoundation Radio Player</h3>
-                  <CodeBlock code={SDK_EXAMPLES.ios.player} lang="swift" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Remote Control (Lock Screen)</h3>
-                  <CodeBlock code={`// Handle remote control events (lock screen / AirPods)
-func setupRemoteControls(player: RadioPlayer) {
-    let commandCenter = MPRemoteCommandCenter.shared()
-
-    commandCenter.playCommand.addTarget { _ in
-        player.resume(); return .success
-    }
-    commandCenter.pauseCommand.addTarget { _ in
-        player.pause(); return .success
-    }
-    commandCenter.stopCommand.addTarget { _ in
-        player.stop(); return .success
-    }
-    commandCenter.nextTrackCommand.isEnabled = false
-    commandCenter.previousTrackCommand.isEnabled = false
-}`} lang="swift" />
-                </div>
-              </div>
-            </section>
-
-            {/* ── Android SDK ───────────────────────────────────────────── */}
-            <section id="sdk-android" className="scroll-mt-20">
-              <SectionHeader dark={dark} icon="🤖" title="Android (Kotlin)" description="Native Android integration with ExoPlayer, MediaSession, notification controls, and background playback." />
-              <div className="space-y-4 mt-6">
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>Gradle Dependencies</h3>
-                  <CodeBlock code={SDK_EXAMPLES.android.setup} lang="groovy" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>API Client</h3>
-                  <CodeBlock code={SDK_EXAMPLES.android.api} lang="kotlin" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>ExoPlayer Service</h3>
-                  <CodeBlock code={SDK_EXAMPLES.android.player} lang="kotlin" />
-                </div>
-                <div className={`rounded-2xl p-6 ${cardClass}`}>
-                  <h3 className={`font-semibold mb-3 ${dark ? "text-white" : "text-gray-900"}`}>AndroidManifest.xml</h3>
-                  <CodeBlock code={`<service
-    android:name=".RadioPlayerService"
-    android:exported="true"
-    android:foregroundServiceType="mediaPlayback">
-    <intent-filter>
-        <action android:name="androidx.media3.session.MediaSessionService" />
-    </intent-filter>
-</service>
-
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
-<uses-permission android:name="android.permission.INTERNET" />`} lang="xml" />
-                </div>
-              </div>
-            </section>
-
-            {/* ── Footer ────────────────────────────────────────────────── */}
-            <footer className={`pt-12 border-t text-sm ${dark ? "border-white/8 text-white/40" : "border-gray-200 text-gray-400"}`}>
-              <div className="flex flex-wrap gap-6 justify-between items-center">
-                <div>
-                  <p className={`font-semibold mb-1 ${dark ? "text-white/60" : "text-gray-600"}`}>MegaRadio API</p>
-                  <p>© {new Date().getFullYear()} MegaRadio. All rights reserved.</p>
-                </div>
-                <div className="flex gap-4">
-                  <a href="/developer" className={`hover:underline ${dark ? "hover:text-white" : "hover:text-gray-900"}`}>Developer Portal</a>
-                  <a href="/" className={`hover:underline ${dark ? "hover:text-white" : "hover:text-gray-900"}`}>Website</a>
-                </div>
-              </div>
-            </footer>
-          </div>
-        </main>
-      </div>
+function EndpointSection({ title, description, endpoints }: { title: string; description: string; endpoints: Endpoint[] }) {
+  return (
+    <div>
+      <h1 className="text-4xl font-bold text-white mb-4">{title}</h1>
+      <p className="text-lg text-slate-400 leading-relaxed mb-10">{description}</p>
+      {endpoints.map((ep) => <EndpointCard key={ep.id} endpoint={ep} />)}
     </div>
   );
 }
 
-// ─── Section Header ────────────────────────────────────────────────────────────
-function SectionHeader({ dark, icon, title, description }: { dark: boolean; icon: string; title: string; description: string }) {
-  return (
-    <div className="mb-2">
-      <div className="flex items-center gap-3 mb-2">
-        <span className="text-2xl">{icon}</span>
-        <h2 className={`text-2xl font-bold tracking-tight ${dark ? "text-white" : "text-gray-900"}`}>{title}</h2>
+function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen, onMobileClose }: {
+  activeId: string;
+  onNavigate: (id: string) => void;
+  searchQuery: string;
+  onSearchChange: (q: string) => void;
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+}) {
+  const filteredSections = useMemo(() => {
+    if (!searchQuery) return NAV_SECTIONS;
+    const q = searchQuery.toLowerCase();
+    return NAV_SECTIONS.map((section) => ({
+      ...section,
+      items: section.items.filter((item) => item.label.toLowerCase().includes(q) || section.label.toLowerCase().includes(q)),
+    })).filter((s) => s.items.length > 0);
+  }, [searchQuery]);
+
+  const content = (
+    <>
+      <div className="p-4 border-b border-white/5">
+        <a href="/en" className="flex items-center gap-2 mb-4">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <Radio className="w-4 h-4 text-white" />
+          </div>
+          <div>
+            <div className="text-white font-bold text-sm leading-none">Mega Radio</div>
+            <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">API Reference</div>
+          </div>
+        </a>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => onSearchChange(e.target.value)}
+            placeholder="Search docs..."
+            className="w-full bg-white/5 border border-white/5 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+          />
+        </div>
       </div>
-      <p className={`text-base leading-relaxed ${dark ? "text-white/60" : "text-gray-600"}`}>{description}</p>
+      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+        {filteredSections.map((section) => (
+          <div key={section.id} className="mb-3">
+            <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] text-slate-500 font-semibold">
+              <section.icon className="w-3.5 h-3.5" />
+              {section.label}
+            </div>
+            {section.items.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => { onNavigate(item.id); onMobileClose(); }}
+                className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-colors ${
+                  activeId === item.id
+                    ? "bg-blue-500/10 text-blue-400 font-medium"
+                    : "text-slate-400 hover:text-white hover:bg-white/5"
+                }`}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
+        ))}
+      </nav>
+      <div className="p-4 border-t border-white/5">
+        <a href="/api-user" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 text-blue-400 text-sm font-medium hover:bg-blue-500/20 transition-colors">
+          <Shield className="w-4 h-4" />
+          Developer Portal
+          <ArrowRight className="w-3.5 h-3.5 ml-auto" />
+        </a>
+      </div>
+    </>
+  );
+
+  return (
+    <>
+      <aside className="hidden lg:flex flex-col w-[260px] h-screen sticky top-0 bg-[#0a0a14] border-r border-white/5 shrink-0">
+        {content}
+      </aside>
+      {mobileOpen && (
+        <div className="lg:hidden fixed inset-0 z-50">
+          <div className="absolute inset-0 bg-black/60" onClick={onMobileClose} />
+          <aside className="absolute left-0 top-0 bottom-0 w-[280px] bg-[#0a0a14] flex flex-col shadow-2xl">
+            <div className="flex items-center justify-end p-2 border-b border-white/5">
+              <button onClick={onMobileClose} className="p-2 text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            {content}
+          </aside>
+        </div>
+      )}
+    </>
+  );
+}
+
+const SECTION_CONTENT: Record<string, () => JSX.Element> = {
+  introduction: () => <IntroductionContent />,
+  authentication: () => <AuthenticationContent />,
+  "rate-limits": () => <RateLimitsContent />,
+  errors: () => <ErrorsContent />,
+  "list-stations": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations from our database of 40,000+ stations worldwide." endpoints={STATION_ENDPOINTS} />,
+  "get-station": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations." endpoints={STATION_ENDPOINTS} />,
+  "popular-stations": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations." endpoints={STATION_ENDPOINTS} />,
+  "search-stations": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations." endpoints={STATION_ENDPOINTS} />,
+  "nearby-stations": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations." endpoints={STATION_ENDPOINTS} />,
+  "similar-stations": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations." endpoints={STATION_ENDPOINTS} />,
+  "random-station": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations." endpoints={STATION_ENDPOINTS} />,
+  "station-stats": () => <EndpointSection title="Stations" description="Browse, search, and discover radio stations." endpoints={STATION_ENDPOINTS} />,
+  "list-genres": () => <EndpointSection title="Discovery" description="Explore genres, countries, languages, and trending stations to help users discover new content." endpoints={DISCOVERY_ENDPOINTS} />,
+  "list-countries": () => <EndpointSection title="Discovery" description="Explore genres, countries, languages, and trending stations." endpoints={DISCOVERY_ENDPOINTS} />,
+  "list-languages": () => <EndpointSection title="Discovery" description="Explore genres, countries, languages, and trending stations." endpoints={DISCOVERY_ENDPOINTS} />,
+  trending: () => <EndpointSection title="Discovery" description="Explore genres, countries, languages, and trending stations." endpoints={DISCOVERY_ENDPOINTS} />,
+  "resolve-stream": () => <EndpointSection title="Streaming" description="Resolve stream URLs and get real-time now-playing metadata for live radio playback." endpoints={STREAMING_ENDPOINTS} />,
+  "now-playing": () => <EndpointSection title="Streaming" description="Resolve stream URLs and get real-time now-playing metadata." endpoints={STREAMING_ENDPOINTS} />,
+  "favorite-station": () => <EndpointSection title="Engagement" description="User engagement features including favorites, ratings, and profile management." endpoints={ENGAGEMENT_ENDPOINTS} />,
+  "rate-station": () => <EndpointSection title="Engagement" description="User engagement features." endpoints={ENGAGEMENT_ENDPOINTS} />,
+  "user-profile": () => <EndpointSection title="Engagement" description="User engagement features." endpoints={ENGAGEMENT_ENDPOINTS} />,
+  "web-login": () => <EndpointSection title="User Authentication" description="Authenticate users via web sessions, mobile tokens, or account registration." endpoints={USER_AUTH_ENDPOINTS} />,
+  "mobile-login": () => <EndpointSection title="User Authentication" description="Authenticate users via web sessions, mobile tokens, or account registration." endpoints={USER_AUTH_ENDPOINTS} />,
+  register: () => <EndpointSection title="User Authentication" description="Authenticate users." endpoints={USER_AUTH_ENDPOINTS} />,
+  "current-user": () => <EndpointSection title="User Authentication" description="Authenticate users." endpoints={USER_AUTH_ENDPOINTS} />,
+  "tv-request-code": () => <EndpointSection title="TV & Cast" description="Control playback on TV devices and Chromecast receivers. Supports Netflix-style device pairing and real-time command relay via WebSocket." endpoints={TV_CAST_ENDPOINTS} />,
+  "tv-poll-status": () => <EndpointSection title="TV & Cast" description="TV device pairing and cast control." endpoints={TV_CAST_ENDPOINTS} />,
+  "tv-activate": () => <EndpointSection title="TV & Cast" description="TV device pairing and cast control." endpoints={TV_CAST_ENDPOINTS} />,
+  "cast-create": () => <EndpointSection title="TV & Cast" description="TV device pairing and cast control." endpoints={TV_CAST_ENDPOINTS} />,
+  "cast-command": () => <EndpointSection title="TV & Cast" description="TV device pairing and cast control." endpoints={TV_CAST_ENDPOINTS} />,
+  "guide-javascript": () => <GuidesContent guideId="guide-javascript" />,
+  "guide-react-native": () => <GuidesContent guideId="guide-react-native" />,
+  "guide-ios": () => <GuidesContent guideId="guide-ios" />,
+  "guide-android": () => <GuidesContent guideId="guide-android" />,
+};
+
+export default function ApiDocs() {
+  const [, params] = useRoute("/api-docs/:category");
+  const [, navigate] = useLocation();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  const activeId = params?.category || "introduction";
+
+  const handleNavigate = useCallback((id: string) => {
+    navigate(`/api-docs/${id}`);
+    window.scrollTo(0, 0);
+  }, [navigate]);
+
+  useEffect(() => {
+    if (activeId && SECTION_CONTENT[activeId]) {
+      const el = document.getElementById(activeId);
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }, [activeId]);
+
+  const ContentComponent = SECTION_CONTENT[activeId] || SECTION_CONTENT["introduction"];
+
+  const breadcrumbSection = NAV_SECTIONS.find((s) => s.items.some((i) => i.id === activeId));
+  const breadcrumbItem = breadcrumbSection?.items.find((i) => i.id === activeId);
+
+  return (
+    <div className="flex min-h-screen bg-[#0d0d1a] text-white">
+      <Sidebar
+        activeId={activeId}
+        onNavigate={handleNavigate}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        mobileOpen={mobileOpen}
+        onMobileClose={() => setMobileOpen(false)}
+      />
+      <main className="flex-1 min-w-0">
+        <header className="sticky top-0 z-10 bg-[#0d0d1a]/80 backdrop-blur-xl border-b border-white/5">
+          <div className="flex items-center gap-3 px-6 py-3">
+            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1.5 text-slate-400 hover:text-white">
+              <Menu className="w-5 h-5" />
+            </button>
+            {breadcrumbSection && breadcrumbItem && (
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-slate-500">{breadcrumbSection.label}</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
+                <span className="text-white font-medium">{breadcrumbItem.label}</span>
+              </div>
+            )}
+            <div className="ml-auto flex items-center gap-3">
+              <a href="/api-user" className="text-xs text-slate-400 hover:text-white transition-colors">Dashboard</a>
+              <a href="/en" className="text-xs text-slate-400 hover:text-white transition-colors">Back to Radio</a>
+            </div>
+          </div>
+        </header>
+        <div className="max-w-4xl mx-auto px-6 py-10">
+          <ContentComponent />
+        </div>
+        <footer className="border-t border-white/5 mt-20">
+          <div className="max-w-4xl mx-auto px-6 py-8 text-center">
+            <p className="text-sm text-slate-500">Mega Radio API v1.0 — Need help? Contact <a href="mailto:api@themegaradio.com" className="text-blue-400 hover:text-blue-300">api@themegaradio.com</a></p>
+          </div>
+        </footer>
+      </main>
     </div>
   );
 }
