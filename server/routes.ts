@@ -341,11 +341,11 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   // === CRON JOBS ===
   const cron = await import('node-cron');
 
-  cron.default.schedule('0 2 * * *', async () => {
-    logger.log('📱 Scheduled TV/Mobile cache refresh (daily 2 AM)...');
+  cron.default.schedule('0 2 */2 * *', async () => {
+    logger.log('📱 Scheduled TV/Mobile cache refresh (every 2 days at 2:00 AM)...');
     await warmupTvMobileCache();
   }, { timezone: 'Europe/Berlin' });
-  logger.log('⏰ TV/Mobile cache auto-refresh scheduled: daily 2 AM (Europe/Berlin)');
+  logger.log('⏰ TV/Mobile cache refresh scheduled: every 2 days at 2:00 AM (Europe/Berlin)');
 
   // Genres cache: refresh every 5 minutes (NOT immediate - startup warmup handles initial load)
   // Using a flag to skip the first fire if startup warmup already ran
@@ -364,17 +364,16 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     logger.log('⚡ Genres cache warmup: Skipped in dev mode');
   }
 
-  cron.default.schedule('2,12,22,32,42,52 * * * *', async () => {
-    if (!genresWarmupDone) { genresWarmupDone = true; return; }
+  cron.default.schedule('0 5 * * *', async () => {
     try {
       const start = Date.now();
       await PrecomputedGenresService.warmupCache();
       logger.log(`⏰ [Cron] Genres cache refreshed in ${Date.now() - start}ms`);
     } catch (error) { logger.error('[Cron] Genres cache refresh failed:', error); }
-  });
-  logger.log('⏰ Genres cache auto-refresh scheduled: every 10 min at :02,:12,:22,:32,:42,:52');
+  }, { timezone: 'Europe/Berlin' });
+  logger.log('⏰ Genres cache refresh scheduled: daily 5:00 AM (on-demand for first request)');
 
-  cron.default.schedule('7,22,37,52 * * * *', async () => {
+  cron.default.schedule('30 6 * * *', async () => {
     try {
       const start = Date.now();
       const topCountries: (string | undefined)[] = [undefined, 'Turkey', 'Germany', 'United States',
@@ -382,12 +381,12 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         'Brazil', 'Russia', 'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland'];
       for (const country of topCountries) {
         try { await refreshPopularStationsCache(country); } catch {}
-        await new Promise(r => setTimeout(r, 200));
+        await new Promise(r => setTimeout(r, 500));
       }
       logger.log(`⏰ [Cron] Popular stations cache refreshed in ${Date.now() - start}ms (${topCountries.length} countries, sequential)`);
     } catch (error) { logger.error('[Cron] Popular stations cache refresh failed:', error); }
-  });
-  logger.log('⏰ Popular stations cache auto-refresh scheduled: every 15 min at :07,:22,:37,:52');
+  }, { timezone: 'Europe/Berlin' });
+  logger.log('⏰ Popular stations cache refresh scheduled: daily 6:30 AM (on-demand for first request)');
 
   // === SEO REDIRECT ===
   app.get('/stations', (_req, res) => res.redirect(301, '/radios'));

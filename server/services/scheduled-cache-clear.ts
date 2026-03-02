@@ -52,8 +52,8 @@ export class ScheduledCacheClearService {
       timezone: 'Europe/Berlin'
     });
 
-    cron.schedule('30 4 * * 0', async () => {
-      logger.log('🔄 Running weekly precomputed stations cache refresh (Sunday 4:30 AM)...');
+    cron.schedule('30 4 * * 1', async () => {
+      logger.log('🔄 Running weekly precomputed stations cache refresh (Monday 4:30 AM)...');
       try {
         await PrecomputedStationsService.refreshAllCountries();
         logger.log('✅ Precomputed stations cache refreshed successfully');
@@ -77,7 +77,7 @@ export class ScheduledCacheClearService {
     });
 
     this.isInitialized = true;
-    logger.log('✅ Scheduled cache clear service initialized — SEO daily 3:00, Precomputed Sunday 4:30, Translations monthly 1st 5:00 (Europe/Berlin)');
+    logger.log('✅ Scheduled cache clear service initialized — SEO daily 3:00, Precomputed Monday 4:30, Translations monthly 1st 5:00 (Europe/Berlin)');
   }
 
   public async clearAllSeoCaches(): Promise<CacheClearResult> {

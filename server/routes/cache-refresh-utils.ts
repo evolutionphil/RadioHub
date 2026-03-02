@@ -139,7 +139,7 @@ export async function refreshPopularStationsCache(country?: string): Promise<voi
   const popularStations = [...featuredStations, ...regularStations];
 
   const cacheKey = `popular_stations:${country || 'all'}:all:20`;
-  await CacheManager.set(cacheKey, popularStations, { ttl: 600 });
+  await CacheManager.set(cacheKey, popularStations, { ttl: 86400 });
 
   const tvSlimAll = popularStations
     .filter((s: any) => s.logoAssets?.status === 'completed' || (s.favicon && /^https?:\/\/.+/i.test(s.favicon?.trim())))

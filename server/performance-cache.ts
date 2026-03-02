@@ -290,45 +290,38 @@ export class PerformanceCache {
   
   // Warm up similar stations pools for all countries (called in background after boot)
   async warmupSimilarStations(): Promise<void> {
-    logger.log('🔥 CACHE: Warming up similar stations pools...');
+    logger.log('🔥 CACHE: Warming up similar stations pools (top 10 countries + global)...');
     
     try {
       const { Station } = await import('../shared/mongo-schemas');
       
-      // Get distinct countries
-      const countries = await Station.distinct('country', { lastCheckOk: true });
+      const selectFields = '_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets url url_resolved';
       
-      // Select fields needed for playback
-      const selectFields = '_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets localImagePath url url_resolved';
-      
-      // Warm up top 50 countries by station count
       const countryStationCounts = await Station.aggregate([
         { $match: { lastCheckOk: true } },
         { $group: { _id: '$country', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
-        { $limit: 50 }
+        { $limit: 10 }
       ]);
       
       const topCountries = countryStationCounts.map((c: any) => c._id).filter(Boolean);
       
       for (const country of topCountries) {
-        // Get top 50 stations per country (enough for multiple refreshes)
         const stations = await Station.find({ 
           country, 
           lastCheckOk: true 
         })
         .sort({ votes: -1, clickCount: -1 })
-        .limit(50)
+        .limit(30)
         .select(selectFields)
         .lean();
         
         this.setSimilarPool(country, stations);
       }
       
-      // Also cache global top 100
       const globalStations = await Station.find({ lastCheckOk: true })
         .sort({ votes: -1, clickCount: -1 })
-        .limit(100)
+        .limit(50)
         .select(selectFields)
         .lean();
       

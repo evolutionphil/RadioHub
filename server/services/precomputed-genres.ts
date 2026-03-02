@@ -19,7 +19,7 @@ interface PrecomputedGenresData {
   countryName: string;
 }
 
-const CACHE_TTL = 86400; // 24 hours
+const CACHE_TTL = 604800; // 7 days
 const CACHE_KEY_PREFIX = 'precomputed_genres:v5:';
 const GLOBAL_CACHE_KEY = 'precomputed_genres:v5:global';
 
