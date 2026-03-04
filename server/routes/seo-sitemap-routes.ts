@@ -666,16 +666,22 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     try {
       const baseUrl = getBaseUrl(req);
 
-      // Count only stations with slugs (the only ones we actually index)
       let totalStations = 0;
-      try {
-        totalStations = await Promise.race([
-          Station.countDocuments({ slug: { $exists: true, $ne: '' } }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000))
-        ]) as number;
-      } catch {
-        logger.warn('⚠️ Sitemap Index: Station count timed out — using safe fallback');
-        totalStations = 50000; // Conservative fallback; generates more chunks, none will 404 (they just return empty)
+      const countCacheKey = 'sitemap:stationCount';
+      const cachedCount = await CacheManager.get<number>(countCacheKey);
+      if (cachedCount) {
+        totalStations = cachedCount;
+      } else {
+        try {
+          totalStations = await Promise.race([
+            Station.countDocuments({ slug: { $exists: true, $ne: '' } }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
+          ]) as number;
+          await CacheManager.set(countCacheKey, totalStations, { ttl: 86400 });
+        } catch {
+          logger.warn('⚠️ Sitemap Index: Station count timed out — using safe fallback');
+          totalStations = 50000;
+        }
       }
 
       const stationChunks = Math.max(1, Math.ceil(totalStations / SITEMAP_CONFIG.stationsPerChunk));

@@ -8,6 +8,8 @@ const LOG_PREFIX = "logs";
 let logBuffer: string[] = [];
 let flushTimer: NodeJS.Timeout | null = null;
 let isInitialized = false;
+let consecutiveFailures = 0;
+const MAX_CONSECUTIVE_FAILURES = 3;
 
 function getLogKey(): string {
   const now = new Date();
@@ -36,6 +38,10 @@ function formatLogLine(level: string, args: any[]): string {
 
 async function flushToS3(): Promise<void> {
   if (logBuffer.length === 0) return;
+  if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+    logBuffer.length = 0;
+    return;
+  }
 
   const lines = logBuffer.splice(0);
   const content = lines.join("\n") + "\n";
@@ -43,10 +49,11 @@ async function flushToS3(): Promise<void> {
 
   try {
     await uploadToS3(key, Buffer.from(content, "utf-8"), "text/plain; charset=utf-8");
+    consecutiveFailures = 0;
   } catch (err: any) {
-    originalConsole.error(`[LogCollector] S3 flush failed: ${err.message}`);
-    if (logBuffer.length < MAX_BUFFER_SIZE) {
-      logBuffer.unshift(...lines.slice(-100));
+    consecutiveFailures++;
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      originalConsole.error(`[LogCollector] S3 flush failed ${consecutiveFailures}x — disabling until next successful flush`);
     }
   }
 }
@@ -62,6 +69,7 @@ function interceptConsole(): void {
   const wrap = (level: string, original: (...args: any[]) => void) => {
     return (...args: any[]) => {
       original(...args);
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return;
       if (logBuffer.length < MAX_BUFFER_SIZE * 2) {
         logBuffer.push(formatLogLine(level, args));
       }
@@ -105,6 +113,7 @@ export function initLogCollector(): void {
 }
 
 export async function forceFlushLogs(): Promise<{ flushed: number }> {
+  consecutiveFailures = 0;
   const count = logBuffer.length;
   await flushToS3();
   return { flushed: count };

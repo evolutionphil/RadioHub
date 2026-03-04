@@ -218,6 +218,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       let cachedCount = 0;
       for (const lang of orderedLanguages) {
         try { await refreshTranslationsCache(lang); cachedCount++; } catch {}
+        await new Promise(r => setTimeout(r, 50));
       }
       logger.log(`✅ Cached ${cachedCount}/${orderedLanguages.length} language translations`);
 
@@ -233,6 +234,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           await refreshPopularStationsCache(country === 'all' ? undefined : country);
           await refreshCommunityFavoritesCache(country === 'all' ? undefined : country);
         } catch {}
+        await new Promise(r => setTimeout(r, 100));
       }
 
       try {
@@ -273,6 +275,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
           const translations = await fetchTranslationsForLanguage(lang);
           await CacheManager.set(`tv:translations:${lang}`, translations, { ttl: 604800 });
         } catch {}
+        await new Promise(r => setTimeout(r, 50));
       }
       logger.log(`📱 TV translations cached: ${tvLangs.length} languages`);
 
@@ -295,6 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
             pagination: { page: 1, limit: 20, total, pages: Math.ceil(total / 20) }
           }, { ttl: 86400 });
         } catch {}
+        await new Promise(r => setTimeout(r, 200));
       }
 
       logger.log(`📱 TV/Mobile cache warmup completed: ${topCountries.length} countries, ${tvLangs.length} languages (24h TTL)`);
@@ -304,14 +308,24 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   }
 
   if (process.env.NODE_ENV !== 'development') {
-    setImmediate(() => warmupPopularStationsCache());
-    setImmediate(() => warmupTvMobileCache());
+    setTimeout(async () => {
+      try {
+        logger.log('⚡ Starting staged cache warmup (web first, then TV/Mobile)...');
+        await warmupPopularStationsCache();
+        logger.log('⏳ Web warmup done — waiting 10s before TV/Mobile warmup...');
+        await new Promise(r => setTimeout(r, 10000));
+        await warmupTvMobileCache();
+        logger.log('✅ All cache warmups completed successfully');
+      } catch (err) {
+        logger.log('⚠️ Cache warmup error (non-critical):', err);
+      }
+    }, 5000);
   } else {
     logger.log('⚡ Popular stations & TV/Mobile cache warmup: Skipped in dev mode');
   }
 
   // === HALOGO MIGRATION (one-time background, production only) ===
-  if (process.env.NODE_ENV !== 'development') setImmediate(async () => {
+  if (process.env.NODE_ENV !== 'development') setTimeout(async () => {
     try {
       const migrationKey = 'migration:hasLogo:v1';
       const alreadyDone = await CacheManager.get(migrationKey);
@@ -336,7 +350,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
     } catch (err: any) {
       logger.error(`❌ MIGRATION: hasLogo migration failed: ${err.message}`);
     }
-  });
+  }, 30000);
 
   // === CRON JOBS ===
   const cron = await import('node-cron');
@@ -351,14 +365,14 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   // Using a flag to skip the first fire if startup warmup already ran
   let genresWarmupDone = false;
   if (process.env.NODE_ENV !== 'development') {
-    setImmediate(async () => {
+    setTimeout(async () => {
       try {
         const start = Date.now();
         await PrecomputedGenresService.warmupCache();
         genresWarmupDone = true;
         logger.log(`🔥 PrecomputedGenres startup warmup completed in ${Date.now() - start}ms`);
       } catch (error) { logger.error('PrecomputedGenres startup warmup failed:', error); }
-    });
+    }, 15000);
   } else {
     genresWarmupDone = true;
     logger.log('⚡ Genres cache warmup: Skipped in dev mode');
