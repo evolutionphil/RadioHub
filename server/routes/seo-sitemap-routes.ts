@@ -648,11 +648,23 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   });
 
   // sitemap-main.xml: Redirect to the English language-specific sitemap.
-  // All pages are now covered by sitemap-main-{lang}.xml (listed in sitemap-index.xml).
-  // This redirect keeps backward compatibility for any direct bookmarks or cached references.
   app.get("/sitemap-main.xml", (req, res) => {
     const baseUrl = getBaseUrl(req);
     res.redirect(301, `${baseUrl}/sitemap-main-en.xml`);
+  });
+
+  // 410 Gone for deprecated/removed sitemaps — prevents "soft 404" from SPA catch-all
+  app.get("/sitemap-news.xml", (_req, res) => {
+    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+  });
+  app.get("/sitemap-videos.xml", (_req, res) => {
+    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+  });
+  app.get("/sitemap-images-:i.xml", (_req, res) => {
+    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+  });
+  app.get(/^\/sitemap-stations-(\d+)\.xml$/, (_req, res) => {
+    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
   });
 
 
@@ -716,7 +728,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 </sitemapindex>`;
 
       res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
       res.send(xml);
 
     } catch (error) {

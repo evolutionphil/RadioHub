@@ -511,8 +511,10 @@ export class SeoRenderer {
       case 'station':
         if (stationData) {
           const stationName = this.escapeHtml(stationData.name || 'Radio Station');
-          const country = stationData.country ? ` from ${this.escapeHtml(stationData.country)}` : '';
-          return `${stationName}${country} — Listen Live Online | Mega Radio`;
+          const fromText = getLocalizedText('seo_from', 'from');
+          const listenLiveText = getLocalizedText('seo_listen_live_online', 'Listen Live Online');
+          const country = stationData.country ? ` ${fromText} ${this.escapeHtml(stationData.country)}` : '';
+          return `${stationName}${country} — ${listenLiveText} | Mega Radio`;
         }
         return getLocalizedText('stations_page_title');
       
@@ -927,6 +929,8 @@ export class SeoRenderer {
           });
         }
       }
+
+      breadcrumbItems.forEach((item, idx) => { item.position = idx + 1; });
 
       breadcrumbSchema = {
         "@context": "https://schema.org",

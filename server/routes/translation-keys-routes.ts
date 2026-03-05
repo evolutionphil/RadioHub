@@ -726,3 +726,31 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
     }
   });
 }
+
+export async function seedSeoTranslationKeys(): Promise<void> {
+  const seoKeys = [
+    { key: 'seo_from', defaultValue: 'from', category: 'seo' },
+    { key: 'seo_listen_live_online', defaultValue: 'Listen Live Online', category: 'seo' },
+  ];
+
+  for (const item of seoKeys) {
+    const existing = await TranslationKey.findOne({ key: item.key });
+    if (!existing) {
+      const translationKey = await TranslationKey.create({
+        key: item.key,
+        defaultValue: item.defaultValue,
+        category: item.category,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+      await Translation.create({
+        keyId: translationKey._id,
+        language: 'en',
+        value: item.defaultValue,
+        isCompleted: true,
+        lastModified: new Date()
+      });
+      logger.log(`✅ Seeded SEO translation key: ${item.key}`);
+    }
+  }
+}

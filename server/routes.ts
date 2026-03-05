@@ -42,7 +42,7 @@ import { registerGenresCountriesRoutes } from './routes/genres-countries-routes'
 import { registerTranslationAdminRoutes } from './routes/translation-admin-routes';
 import { registerUserAuthRoutes } from './routes/user-auth-routes';
 import { registerMobileTvRoutes } from './routes/mobile-tv-routes';
-import { registerTranslationKeyRoutes } from './routes/translation-keys-routes';
+import { registerTranslationKeyRoutes, seedSeoTranslationKeys } from './routes/translation-keys-routes';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
@@ -481,6 +481,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   app.use('/api/user-engagement', userEngagementRouter);
   app.use('/api/api-keys', apiKeysRouter);
   seedDemoApiKey();
+  seedSeoTranslationKeys();
   app.use('/api', apiKeyMiddleware);
   app.use('/api/admin/url-translations', urlTranslationsRouter);
   app.use('/api/admin/performance', performanceRouter);

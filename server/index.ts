@@ -679,17 +679,14 @@ app.use((req, res, next) => {
     ${pageType === 'station' && seoData.pageData?.station ? `
     <!-- Structured Data (JSON-LD) for Radio Station Page -->
     <script type="application/ld+json">
-    {
+    ${JSON.stringify({
       "@context": "https://schema.org",
       "@type": "BroadcastService",
-      "name": "${seoData.pageData.station.name}",
-      "url": "${seoData.seoTags.canonical || ''}",
-      "description": "${seoData.seoTags.description}",
+      "name": seoData.pageData.station.name,
+      "url": seoData.seoTags.canonical || '',
+      "description": seoData.seoTags.description,
       "broadcastFrequency": "Internet Streaming",
-      ${seoData.pageData.station.country ? `"areaServed": {
-        "@type": "Country",
-        "name": "${seoData.pageData.station.country}"
-      },` : ''}
+      ...(seoData.pageData.station.country ? { "areaServed": { "@type": "Country", "name": seoData.pageData.station.country } } : {}),
       "provider": {
         "@type": "Organization",
         "name": "Mega Radio",
@@ -697,9 +694,9 @@ app.use((req, res, next) => {
       },
       "potentialAction": {
         "@type": "ListenAction",
-        "target": "${seoData.seoTags.canonical || ''}"
+        "target": seoData.seoTags.canonical || ''
       }
-    }
+    })}
     </script>` : ''}
   </head>
   <body>

@@ -1,0 +1,729 @@
+Şimdi backend developer için detaylı silent push dokümantasyonu oluşturayım:
+Action: file_editor create /app/frontend/docs/BACKEND_SILENT_PUSH_GUIDE.md --file-text "# 🔔 MegaRadio Silent Push Notification - Backend Entegrasyon Kılavuzu
+
+Bu doküman, MegaRadio mobil uygulamasına silent push notification göndermek için backend developer'ın ihtiyaç duyduğu tüm bilgileri içerir.
+
+---
+
+## 📋 İçindekiler
+
+1. [Genel Bakış](#genel-bakış)
+2. [iOS - APNs Silent Push](#ios---apns-silent-push)
+3. [Android - FCM Data Messages](#android---fcm-data-messages)
+4. [Desteklenen Aksiyonlar](#desteklenen-aksiyonlar)
+5. [Kullanım Senaryoları](#kullanım-senaryoları)
+6. [Node.js Örnek Kod](#nodejs-örnek-kod)
+7. [API Endpoint Önerisi](#api-endpoint-önerisi)
+8. [Test ve Debug](#test-ve-debug)
+
+---
+
+## 🎯 Genel Bakış
+
+Silent push notification, kullanıcıya bildirim göstermeden arka planda cache güncellemesi tetiklemek için kullanılır. Bu özellik sayesinde:
+
+- CarPlay/Android Auto kullanıcıları **cold-start'ta anında veri** görebilir
+- Yeni istasyonlar eklendiğinde cache otomatik güncellenir
+- Kritik güncellemeler (API değişiklikleri) hızla yayılır
+
+### Ne Zaman Kullanılmalı?
+
+| Senaryo | Aksiyon |
+|---------|---------|
+| Yeni popüler istasyonlar | `cache_refresh` veya `popular_update` |
+| Yeni genre eklendi | `genres_update` |
+| Kullanıcı favorileri değişti (web'den) | `favorites_sync` |
+| API şeması değişti | `clear_cache` |
+| Günlük düzenli güncelleme | `cache_refresh` |
+
+---
+
+## 🍎 iOS - APNs Silent Push
+
+### Gereksinimler
+
+- APNs Auth Key (.p8 dosyası) VEYA APNs Certificate (.pem)
+- Team ID
+- Bundle ID: `com.visiongo.megaradio`
+- Device Token (cihaz kayıt olduğunda gönderilir)
+
+### Payload Formatı
+
+```json
+{
+  \"aps\": {
+    \"content-available\": 1
+  },
+  \"action\": \"cache_refresh\",
+  \"country\": \"Turkey\",
+  \"timestamp\": \"2025-12-15T10:00:00Z\"
+}
+```
+
+### Kritik Kurallar
+
+| Alan | Değer | Açıklama |
+|------|-------|----------|
+| `content-available` | `1` | **ZORUNLU** - Silent push için gerekli |
+| `priority` | `5` | Normal öncelik (pil dostu) |
+| `apns-push-type` | `background` | HTTP/2 header |
+| `apns-priority` | `5` | HTTP/2 header |
+| `apns-topic` | `com.visiongo.megaradio` | Bundle ID |
+
+### HTTP/2 Request Örneği
+
+```http
+POST /3/device/{deviceToken} HTTP/2
+Host: api.push.apple.com
+Authorization: bearer {JWT_TOKEN}
+apns-push-type: background
+apns-priority: 5
+apns-topic: com.visiongo.megaradio
+
+{
+  \"aps\": {
+    \"content-available\": 1
+  },
+  \"action\": \"cache_refresh\",
+  \"country\": \"Turkey\"
+}
+```
+
+### JWT Token Oluşturma (Node.js)
+
+```javascript
+const jwt = require('jsonwebtoken');
+const fs = require('fs');
+
+function createAPNsJWT() {
+  const privateKey = fs.readFileSync('AuthKey_XXXXXXXXXX.p8');
+  const teamId = 'YOUR_TEAM_ID';
+  const keyId = 'YOUR_KEY_ID';
+  
+  return jwt.sign(
+    {},
+    privateKey,
+    {
+      algorithm: 'ES256',
+      issuer: teamId,
+      header: {
+        alg: 'ES256',
+        kid: keyId
+      },
+      expiresIn: '1h'
+    }
+  );
+}
+```
+
+---
+
+## 🤖 Android - FCM Data Messages
+
+### Gereksinimler
+
+- Firebase Service Account JSON
+- FCM Device Token (cihaz kayıt olduğunda gönderilir)
+
+### Payload Formatı (Legacy FCM API)
+
+```json
+{
+  \"to\": \"{FCM_DEVICE_TOKEN}\",
+  \"data\": {
+    \"action\": \"cache_refresh\",
+    \"country\": \"Turkey\",
+    \"timestamp\": \"2025-12-15T10:00:00Z\"
+  },
+  \"android\": {
+    \"priority\": \"normal\"
+  }
+}
+```
+
+### Payload Formatı (FCM HTTP v1 API - Önerilen)
+
+```json
+{
+  \"message\": {
+    \"token\": \"{FCM_DEVICE_TOKEN}\",
+    \"data\": {
+      \"action\": \"cache_refresh\",
+      \"country\": \"Turkey\",
+      \"timestamp\": \"2025-12-15T10:00:00Z\"
+    },
+    \"android\": {
+      \"priority\": \"normal\"
+    }
+  }
+}
+```
+
+### Kritik Kurallar
+
+| Alan | Değer | Açıklama |
+|------|-------|----------|
+| `notification` | **OLMAMALI** | Notification alanı yoksa silent olur |
+| `data` | object | Tüm veriler burada |
+| `priority` | `normal` | Silent için normal kullan |
+
+### HTTP Request Örneği (v1 API)
+
+```http
+POST https://fcm.googleapis.com/v1/projects/{PROJECT_ID}/messages:send
+Authorization: Bearer {ACCESS_TOKEN}
+Content-Type: application/json
+
+{
+  \"message\": {
+    \"token\": \"dL7z...\",
+    \"data\": {
+      \"action\": \"cache_refresh\",
+      \"country\": \"Turkey\"
+    },
+    \"android\": {
+      \"priority\": \"normal\"
+    }
+  }
+}
+```
+
+---
+
+## 🎬 Desteklenen Aksiyonlar
+
+### `cache_refresh` (En Sık Kullanılan)
+
+Tam cache yenileme - popüler istasyonlar + türler
+
+```json
+{
+  \"action\": \"cache_refresh\",
+  \"country\": \"Turkey\"  // Opsiyonel, null = global
+}
+```
+
+**Ne Zaman:** Günlük güncelleme, yeni içerik eklendi
+
+---
+
+### `popular_update`
+
+Sadece popüler istasyonları güncelle
+
+```json
+{
+  \"action\": \"popular_update\",
+  \"country\": \"Turkey\"
+}
+```
+
+**Ne Zaman:** Yeni popüler istasyon eklendi, sıralama değişti
+
+---
+
+### `genres_update`
+
+Sadece türleri güncelle
+
+```json
+{
+  \"action\": \"genres_update\",
+  \"country\": \"Turkey\"
+}
+```
+
+**Ne Zaman:** Yeni genre eklendi, genre silinedi
+
+---
+
+### `favorites_sync`
+
+Kullanıcı favorilerini senkronize et (auth token gerekir)
+
+```json
+{
+  \"action\": \"favorites_sync\"
+}
+```
+
+**Ne Zaman:** Kullanıcı web'den favori ekledi/sildi
+
+---
+
+### `clear_cache`
+
+Tüm cache'i temizle (dikkatli kullan!)
+
+```json
+{
+  \"action\": \"clear_cache\"
+}
+```
+
+**Ne Zaman:** API şeması değişti, major güncelleme
+
+---
+
+## 📊 Kullanım Senaryoları
+
+### Senaryo 1: Günlük Otomatik Güncelleme
+
+Her gün saat 04:00'da tüm cihazlara:
+
+```json
+{
+  \"action\": \"cache_refresh\"
+}
+```
+
+### Senaryo 2: Yeni İstasyon Eklendi (Türkiye)
+
+Türkiye için yeni popüler istasyon:
+
+```json
+{
+  \"action\": \"popular_update\",
+  \"country\": \"Turkey\"
+}
+```
+
+### Senaryo 3: Kullanıcı Favorileri (Bireysel)
+
+Belirli bir kullanıcının favorileri değişti:
+
+```json
+{
+  \"action\": \"favorites_sync\"
+}
+```
+
+### Senaryo 4: Acil Cache Temizleme
+
+API breaking change yapıldı:
+
+```json
+{
+  \"action\": \"clear_cache\"
+}
+```
+
+---
+
+## 💻 Node.js Örnek Kod
+
+### APNs (iOS) Service
+
+```javascript
+const apn = require('apn');
+const path = require('path');
+
+class APNsService {
+  constructor() {
+    this.provider = new apn.Provider({
+      token: {
+        key: path.join(__dirname, 'AuthKey_XXXXXXXXXX.p8'),
+        keyId: 'YOUR_KEY_ID',
+        teamId: 'YOUR_TEAM_ID'
+      },
+      production: true  // false for sandbox
+    });
+  }
+
+  /**
+   * Send silent push to iOS device
+   * @param {string} deviceToken - APNs device token
+   * @param {string} action - cache_refresh, popular_update, etc.
+   * @param {string|null} country - Optional country filter
+   */
+  async sendSilentPush(deviceToken, action, country = null) {
+    const notification = new apn.Notification();
+    
+    // Silent push configuration
+    notification.pushType = 'background';
+    notification.priority = 5;
+    notification.topic = 'com.visiongo.megaradio';
+    notification.contentAvailable = true;
+    
+    // Custom payload
+    notification.payload = {
+      action: action,
+      timestamp: new Date().toISOString()
+    };
+    
+    if (country) {
+      notification.payload.country = country;
+    }
+    
+    try {
+      const result = await this.provider.send(notification, deviceToken);
+      console.log('APNs send result:', result);
+      return result;
+    } catch (error) {
+      console.error('APNs send error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send to multiple devices
+   */
+  async sendToMultiple(deviceTokens, action, country = null) {
+    const promises = deviceTokens.map(token => 
+      this.sendSilentPush(token, action, country)
+    );
+    return Promise.allSettled(promises);
+  }
+}
+
+module.exports = new APNsService();
+```
+
+### FCM (Android) Service
+
+```javascript
+const admin = require('firebase-admin');
+
+class FCMService {
+  constructor() {
+    // Initialize with service account
+    admin.initializeApp({
+      credential: admin.credential.cert(require('./firebase-service-account.json'))
+    });
+    
+    this.messaging = admin.messaging();
+  }
+
+  /**
+   * Send silent push to Android device
+   * @param {string} fcmToken - FCM device token
+   * @param {string} action - cache_refresh, popular_update, etc.
+   * @param {string|null} country - Optional country filter
+   */
+  async sendSilentPush(fcmToken, action, country = null) {
+    const message = {
+      token: fcmToken,
+      data: {
+        action: action,
+        timestamp: new Date().toISOString()
+      },
+      android: {
+        priority: 'normal'
+      }
+    };
+    
+    if (country) {
+      message.data.country = country;
+    }
+    
+    try {
+      const result = await this.messaging.send(message);
+      console.log('FCM send result:', result);
+      return result;
+    } catch (error) {
+      console.error('FCM send error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Send to multiple devices
+   */
+  async sendToMultiple(fcmTokens, action, country = null) {
+    const message = {
+      data: {
+        action: action,
+        timestamp: new Date().toISOString()
+      },
+      android: {
+        priority: 'normal'
+      }
+    };
+    
+    if (country) {
+      message.data.country = country;
+    }
+    
+    // sendEachForMulticast for up to 500 tokens
+    return this.messaging.sendEachForMulticast({
+      tokens: fcmTokens,
+      ...message
+    });
+  }
+
+  /**
+   * Send to topic (all devices subscribed)
+   */
+  async sendToTopic(topic, action, country = null) {
+    const message = {
+      topic: topic,
+      data: {
+        action: action,
+        timestamp: new Date().toISOString()
+      },
+      android: {
+        priority: 'normal'
+      }
+    };
+    
+    if (country) {
+      message.data.country = country;
+    }
+    
+    return this.messaging.send(message);
+  }
+}
+
+module.exports = new FCMService();
+```
+
+### Combined Service (Her İki Platform)
+
+```javascript
+const apnsService = require('./apnsService');
+const fcmService = require('./fcmService');
+
+class PushNotificationService {
+  
+  /**
+   * Send cache refresh to all devices
+   * @param {Object} options
+   * @param {string} options.action - Action type
+   * @param {string|null} options.country - Optional country
+   * @param {string|null} options.userId - Optional specific user
+   */
+  async sendCacheRefresh(options = {}) {
+    const { action = 'cache_refresh', country = null, userId = null } = options;
+    
+    // Get device tokens from database
+    let devices;
+    if (userId) {
+      devices = await this.getDevicesByUserId(userId);
+    } else if (country) {
+      devices = await this.getDevicesByCountry(country);
+    } else {
+      devices = await this.getAllDevices();
+    }
+    
+    const iosTokens = devices.filter(d => d.platform === 'ios').map(d => d.token);
+    const androidTokens = devices.filter(d => d.platform === 'android').map(d => d.token);
+    
+    const results = await Promise.allSettled([
+      iosTokens.length > 0 ? apnsService.sendToMultiple(iosTokens, action, country) : null,
+      androidTokens.length > 0 ? fcmService.sendToMultiple(androidTokens, action, country) : null
+    ]);
+    
+    console.log(`Sent to ${iosTokens.length} iOS, ${androidTokens.length} Android devices`);
+    
+    return {
+      ios: results[0],
+      android: results[1],
+      totalDevices: iosTokens.length + androidTokens.length
+    };
+  }
+  
+  // Database helper methods (implement based on your DB)
+  async getAllDevices() {
+    // SELECT * FROM device_tokens WHERE active = true
+    return [];
+  }
+  
+  async getDevicesByCountry(country) {
+    // SELECT * FROM device_tokens WHERE country = ? AND active = true
+    return [];
+  }
+  
+  async getDevicesByUserId(userId) {
+    // SELECT * FROM device_tokens WHERE user_id = ? AND active = true
+    return [];
+  }
+}
+
+module.exports = new PushNotificationService();
+```
+
+---
+
+## 🌐 API Endpoint Önerisi
+
+### Device Token Kayıt Endpoint
+
+```javascript
+// POST /api/devices/register
+{
+  \"platform\": \"ios\",           // \"ios\" veya \"android\"
+  \"token\": \"abc123...\",        // APNs veya FCM token
+  \"userId\": \"user_id\",         // Opsiyonel - login olduysa
+  \"country\": \"Turkey\",         // Kullanıcının ülkesi
+  \"language\": \"tr\"             // Kullanıcının dili
+}
+```
+
+### Admin Silent Push Endpoint
+
+```javascript
+// POST /api/admin/push/silent
+// Authorization: Bearer {ADMIN_TOKEN}
+{
+  \"action\": \"cache_refresh\",
+  \"country\": \"Turkey\",         // Opsiyonel - null = tüm cihazlar
+  \"userId\": \"specific_user\"    // Opsiyonel - tek kullanıcı
+}
+```
+
+### Cron Job için Internal Endpoint
+
+```javascript
+// POST /api/internal/daily-cache-refresh
+// X-Internal-Key: {SECRET_KEY}
+// Günlük 04:00'da çalışır
+```
+
+---
+
+## 🧪 Test ve Debug
+
+### iOS Simulator'da Test
+
+APNs simulator'da çalışmaz. Test için:
+
+1. Gerçek cihaz kullan
+2. TestFlight build oluştur
+3. Development certificate ile sandbox APNs kullan
+
+### Android Emulator'da Test
+
+FCM emulator'da çalışır:
+
+```bash
+# ADB ile test
+adb shell am broadcast -a com.google.firebase.MESSAGING_EVENT \
+  --es action \"cache_refresh\" \
+  --es country \"Turkey\" \
+  com.visiongo.megaradio
+```
+
+### Logging Kontrol
+
+Mobil tarafta loglar:
+
+```
+iOS:  [SilentPush] ...
+Android: SilentPushService: ...
+```
+
+### Başarı Kontrolü
+
+- iOS: APNs response status 200
+- Android: FCM response message_id
+
+---
+
+## 📌 Özet Checklist
+
+Backend developer'ın yapması gerekenler:
+
+- [ ] APNs Auth Key (.p8) al veya Certificate oluştur
+- [ ] Firebase Service Account JSON al
+- [ ] Device token kayıt endpoint'i oluştur
+- [ ] Silent push gönderim servisi yaz
+- [ ] Admin panel'e push gönderme UI'ı ekle
+- [ ] Günlük cron job için `cache_refresh` zamanla
+- [ ] Test et (gerçek cihazda)
+
+---
+
+## 🆘 Destek
+
+Sorular için:
+- iOS APNs: Apple Developer Documentation
+- Android FCM: Firebase Documentation
+- MegaRadio Mobile: Bu doküman + kaynak kodlar
+
+Son güncelleme: Aralık 2025
+"
+Observation: Create successful: /app/frontend/docs/BACKEND_SILENT_PUSH_GUIDE.md
+
+Fetching debug logs for expo
+
+==> /var/log/supervisor/expo.err.log <==
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+
+==> /var/log/supervisor/expo.out.log <==
+Web Bundled 5424ms index.ts (1593 modules)
+λ Bundled 34ms node_modules/expo-router/node/render.js (1 module)
+[WatchService] Not available (non-iOS or no native module)
+[NativeCast] Google Cast not available: Error: Cannot find module 'react-native-google-cast'
+    at require (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:56:19)
+    at factory (/app/frontend/src/components/NativeCastModal.tsx:35:28)
+    at loadModuleImplementation (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:248:36)
+    at guardedLoadModule (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:163:16)
+    at require (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:74:75)
+    at factory (/app/frontend/src/components/UniversalCastButton.tsx:5:1)
+    at loadModuleImplementation (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:248:36)
+    at guardedLoadModule (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:163:16)
+    at require (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:74:75)
+    at /app/frontend/app/player.tsx:35:1
+λ  LOG  [CarPlayHandler] Component rendering, playStation: true
+[Onboarding] All images preloaded
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 878ms index.ts (1 module)
+Web Bundled 687ms index.ts (1597 modules)
+ LOG  [web] Logs will appear in the browser console
+
+
+Fetching debug logs for backend
+
+==> /var/log/supervisor/backend.err.log <==
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [171] using WatchFiles
+INFO:     Started server process [214]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [194] using WatchFiles
+INFO:     Started server process [231]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [167] using WatchFiles
+INFO:     Started server process [205]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+
+==> /var/log/supervisor/backend.out.log <==
+INFO:     127.0.0.1:44320 - "GET /api/stations/popular?limit=10 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:44334 - "GET /api/genres/precomputed HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38882 - "GET /api/stations/popular?limit=10 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38898 - "GET /api/genres/precomputed HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38912 - "GET /api/stations?limit=10 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:38928 - "GET /health HTTP/1.1" 404 Not Found
+
+
+Fetching debug logs for mongodb
+
+tail: cannot open '/var/log/supervisor/mongodb*.log' for reading: No such file or directory
