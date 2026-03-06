@@ -47,6 +47,7 @@ import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
 import { registerMiscRoutes } from './routes/misc-routes';
+import { registerSilentPushRoutes } from './routes/silent-push-routes';
 import { registerMessagesRoutes } from './routes/messages-routes';
 
 const deps = {
@@ -504,6 +505,7 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   registerStreamProxyRoutes(app, deps);
   registerRegionsRecommendationsRoutes(app, deps);
   registerMiscRoutes(app, deps);
+  registerSilentPushRoutes(app, deps);
   registerMessagesRoutes(app, chatWss, deps);
 
   // === RETURN SERVER WITH WEBSOCKET REFERENCES ===

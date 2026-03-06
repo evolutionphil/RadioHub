@@ -81,6 +81,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Input Validation**: Robust validation for user authentication endpoints.
 - **Random Station Performance**: Optimized random station selection using MongoDB `$sample`.
 - **Logo Optimization System**: MongoDB schema for `logoAssets`, LogoProcessor service for WebP conversion, unified StationLogo component, SSR-safe helpers, admin UI for bulk processing, S3 integration for logo storage.
+- **Silent Push Notification System**: Native APNs (iOS) + FCM (Android) + Expo silent push support for background cache refresh. PushToken model stores token, userId, platform, tokenType (expo/apns/fcm), country, language. Admin endpoint `POST /api/admin/push/silent` with actions: cache_refresh, popular_update, genres_update, favorites_sync, clear_cache. Daily cron at 04:00 Europe/Berlin. Env vars: APNS_AUTH_KEY, APNS_KEY_ID, APNS_TEAM_ID, FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.

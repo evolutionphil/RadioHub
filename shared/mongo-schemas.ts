@@ -2433,7 +2433,10 @@ export interface IPushToken {
   token: string;
   userId?: mongoose.Types.ObjectId | null;
   platform: 'ios' | 'android';
+  tokenType: 'expo' | 'apns' | 'fcm';
   deviceName?: string;
+  country?: string;
+  language?: string;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -2443,13 +2446,18 @@ const PushTokenSchema = new Schema<IPushToken>({
   token: { type: String, required: true, unique: true },
   userId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
   platform: { type: String, enum: ['ios', 'android'], required: true },
+  tokenType: { type: String, enum: ['expo', 'apns', 'fcm'], default: 'expo' },
   deviceName: { type: String, default: '' },
+  country: { type: String, default: '' },
+  language: { type: String, default: '' },
   isActive: { type: Boolean, default: true },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
 
-PushTokenSchema.index({ userId: 1 }); // token already indexed via unique: true on field
+PushTokenSchema.index({ userId: 1 });
+PushTokenSchema.index({ platform: 1, isActive: 1 });
+PushTokenSchema.index({ country: 1, isActive: 1 });
 
 export const PushToken = mongoose.model<IPushToken>('PushToken', PushTokenSchema);
 

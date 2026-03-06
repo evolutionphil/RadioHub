@@ -194,7 +194,7 @@ If you have any questions about this privacy policy or our data practices, pleas
 
   app.post("/api/user/push-token", async (req, res) => {
     try {
-      const { token, platform, deviceName } = req.body;
+      const { token, platform, deviceName, country, language, tokenType } = req.body;
 
       if (!token || !platform) {
         return res.status(400).json({ success: false, message: "token and platform are required" });
@@ -214,13 +214,27 @@ If you have any questions about this privacy policy or our data practices, pleas
         resolvedUserId = (req as any).session.passport.user;
       }
 
+      let detectedTokenType = tokenType || 'expo';
+      if (!tokenType) {
+        if (token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken[')) {
+          detectedTokenType = 'expo';
+        } else if (platform === 'ios') {
+          detectedTokenType = 'apns';
+        } else {
+          detectedTokenType = 'fcm';
+        }
+      }
+
       await PushToken.findOneAndUpdate(
         { token },
         {
           token,
           userId: resolvedUserId,
           platform,
+          tokenType: detectedTokenType,
           deviceName: deviceName || '',
+          country: country || '',
+          language: language || '',
           isActive: true,
           updatedAt: new Date()
         },
