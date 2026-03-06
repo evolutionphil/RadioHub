@@ -1,7 +1,11 @@
 import type { Express } from "express";
 import mongoose from 'mongoose';
-import { TvLoginCode, UserDevice, CastCommand, CastNowPlaying, PushToken, AuthToken, User, CastSession, UserFollow } from '../../shared/mongo-schemas';
+import { TvLoginCode, UserDevice, CastCommand, CastNowPlaying, PushToken, AuthToken, User, CastSession, UserFollow, Station, Genre } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { TV_STATION_PROJECTION, tvSlimStation, tvSlimGenre } from './shared-utils';
+import { normalizeCountryFilter } from '../utils/normalize-country';
+import CacheManager from '../cache';
+import { PrecomputedGenresService } from '../services/precomputed-genres';
 
 export function registerMobileTvRoutes(app: Express, deps: any) {
   const { requireAuth, generateAuthToken } = deps;
@@ -685,6 +689,98 @@ If you have any questions about this privacy policy or our data practices, pleas
       res.json({ success: true, message: 'Device unpaired' });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to unpair device' });
+    }
+  });
+
+  app.get("/api/tv/init", async (req, res) => {
+    try {
+      const country = (req.query.country as string) || null;
+      const countryCode = (req.query.countryCode as string) || (req.query.countrycode as string) || null;
+      const limit = Math.min(Math.max(1, parseInt(req.query.limit as string) || 20), 50);
+      const genreLimit = Math.min(Math.max(1, parseInt(req.query.genreLimit as string) || 20), 50);
+
+      const cacheKey = `tv:init:${country || countryCode || 'global'}:${limit}:${genreLimit}:v2`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      let stationFilter: any = { lastCheckOk: true };
+      if (country && country !== 'all' && country !== 'null') {
+        Object.assign(stationFilter, normalizeCountryFilter(country));
+      } else if (countryCode && countryCode !== 'all' && countryCode !== 'null') {
+        stationFilter.countrycode = countryCode.toUpperCase();
+      }
+
+      const genreIdentifier = country || (countryCode ? countryCode : 'global');
+
+      const [popularStations, trendingStations, genresRaw, countries] = await Promise.all([
+        Station.find(stationFilter)
+          .sort({ votes: -1, clickCount: -1 })
+          .limit(limit * 2)
+          .select(TV_STATION_PROJECTION)
+          .lean(),
+
+        Station.find({ ...stationFilter, clickTrend: { $gt: 0 } })
+          .sort({ clickTrend: -1 })
+          .limit(limit)
+          .select(TV_STATION_PROJECTION)
+          .lean()
+          .catch(() => []),
+
+        PrecomputedGenresService.getGenres(genreIdentifier).catch(() => ({ genres: [] })),
+
+        Station.aggregate([
+          { $match: { country: { $nin: [null, ''] } } },
+          { $group: { _id: '$country', count: { $sum: 1 }, code: { $first: '$countrycode' } } },
+          { $sort: { count: -1 } },
+          { $limit: 200 }
+        ]).catch(() => [])
+      ]);
+
+      const seenNames = new Set<string>();
+      const dedupedPopular: any[] = [];
+      for (const s of popularStations) {
+        const key = s.name?.toLowerCase().replace(/\s*(radio|fm|am|online|live)\s*/gi, '').replace(/[^a-z0-9]/gi, '');
+        if (key && seenNames.has(key)) continue;
+        if (key) seenNames.add(key);
+        dedupedPopular.push(tvSlimStation(s));
+        if (dedupedPopular.length >= limit) break;
+      }
+
+      const genres = (genresRaw.genres || []).slice(0, genreLimit).map((g: any) => ({
+        name: g.name,
+        slug: g.slug,
+        stationCount: g.stationCount || 0,
+        posterImage: g.posterImage || g.discoverableImage || ''
+      }));
+
+      const countryList = countries.map((c: any) => ({
+        name: c._id,
+        code: c.code || '',
+        stationCount: c.count
+      }));
+
+      const result = {
+        popularStations: dedupedPopular,
+        trendingStations: trendingStations.map(tvSlimStation),
+        genres,
+        countries: countryList,
+        meta: {
+          country: country || null,
+          countryCode: countryCode || null,
+          totalPopular: dedupedPopular.length,
+          totalGenres: genres.length,
+          totalCountries: countryList.length,
+          generatedAt: new Date().toISOString()
+        }
+      };
+
+      await CacheManager.set(cacheKey, result, { ttl: 600 });
+      res.json(result);
+    } catch (error: any) {
+      logger.error('TV init error:', error);
+      res.status(500).json({ error: 'Failed to fetch init data' });
     }
   });
 }
