@@ -82,6 +82,7 @@ const ALIAS_TO_DB: Record<string, string> = {
   'turquía': 'Türkiye',
   'turchia': 'Türkiye',
   'türkiye': 'Türkiye',
+  'turkiye': 'Türkiye',
 
   'russia': 'The Russian Federation',
   'russland': 'The Russian Federation',
@@ -167,144 +168,187 @@ const ALIAS_TO_DB: Record<string, string> = {
   'allemagne': 'Germany',
   'alemania': 'Germany',
   'germania': 'Germany',
+  'almanya': 'Germany',
 
   'österreich': 'Austria',
   'autriche': 'Austria',
+  'avusturya': 'Austria',
 
   'schweiz': 'Switzerland',
   'suisse': 'Switzerland',
   'suiza': 'Switzerland',
   'svizzera': 'Switzerland',
+  'isviçre': 'Switzerland',
+  'isvicre': 'Switzerland',
 
   'frankreich': 'France',
   'francia': 'France',
+  'fransa': 'France',
 
   'spanien': 'Spain',
   'espagne': 'Spain',
   'españa': 'Spain',
   'spagna': 'Spain',
+  'ispanya': 'Spain',
 
   'italien': 'Italy',
   'italie': 'Italy',
   'italia': 'Italy',
+  'italya': 'Italy',
 
   'belgien': 'Belgium',
   'belgique': 'Belgium',
   'bélgica': 'Belgium',
   'belgio': 'Belgium',
+  'belçika': 'Belgium',
 
   'polen': 'Poland',
   'pologne': 'Poland',
   'polonia': 'Poland',
+  'polonya': 'Poland',
 
   'schweden': 'Sweden',
   'suède': 'Sweden',
   'suecia': 'Sweden',
+  'isveç': 'Sweden',
+  'isvec': 'Sweden',
 
   'norwegen': 'Norway',
   'norvège': 'Norway',
   'noruega': 'Norway',
+  'norveç': 'Norway',
+  'norvec': 'Norway',
 
   'dänemark': 'Denmark',
   'danemark': 'Denmark',
   'dinamarca': 'Denmark',
+  'danimarka': 'Denmark',
 
   'finnland': 'Finland',
   'finlande': 'Finland',
   'finlandia': 'Finland',
+  'finlandiya': 'Finland',
 
   'griechenland': 'Greece',
   'grèce': 'Greece',
   'grecia': 'Greece',
+  'yunanistan': 'Greece',
 
   'ungarn': 'Hungary',
   'hongrie': 'Hungary',
   'hungría': 'Hungary',
+  'macaristan': 'Hungary',
 
   'rumänien': 'Romania',
   'roumanie': 'Romania',
   'rumanía': 'Romania',
+  'romanya': 'Romania',
 
   'bulgarien': 'Bulgaria',
   'bulgarie': 'Bulgaria',
+  'bulgaristan': 'Bulgaria',
 
   'serbien': 'Serbia',
   'serbie': 'Serbia',
+  'sırbistan': 'Serbia',
+  'sirbistan': 'Serbia',
 
   'kroatien': 'Croatia',
   'croatie': 'Croatia',
   'croacia': 'Croatia',
+  'hırvatistan': 'Croatia',
+  'hirvatistan': 'Croatia',
 
   'slowakei': 'Slovakia',
   'slovaquie': 'Slovakia',
   'eslovaquia': 'Slovakia',
+  'slovakya': 'Slovakia',
 
   'slowenien': 'Slovenia',
   'slovénie': 'Slovenia',
   'eslovenia': 'Slovenia',
+  'slovenya': 'Slovenia',
 
   'irland': 'Ireland',
   'irlande': 'Ireland',
   'irlanda': 'Ireland',
 
   'portugal': 'Portugal',
+  'portekiz': 'Portugal',
 
   'ägypten': 'Egypt',
   'égypte': 'Egypt',
   'egipto': 'Egypt',
   'egitto': 'Egypt',
+  'mısır': 'Egypt',
+  'misir': 'Egypt',
 
   'südafrika': 'South Africa',
   'afrique du sud': 'South Africa',
   'sudáfrica': 'South Africa',
+  'güney afrika': 'South Africa',
+  'guney afrika': 'South Africa',
 
   'indien': 'India',
   'inde': 'India',
+  'hindistan': 'India',
 
   'indonesien': 'Indonesia',
   'indonésie': 'Indonesia',
+  'endonezya': 'Indonesia',
 
   'japan': 'Japan',
   'japon': 'Japan',
   'japón': 'Japan',
   'giappone': 'Japan',
+  'japonya': 'Japan',
 
   'china': 'China',
   'chine': 'China',
+  'çin': 'China',
+  'cin': 'China',
 
   'brasilien': 'Brazil',
   'brésil': 'Brazil',
   'brasil': 'Brazil',
   'brasile': 'Brazil',
+  'brezilya': 'Brazil',
 
   'mexiko': 'Mexico',
   'mexique': 'Mexico',
   'méxico': 'Mexico',
   'messico': 'Mexico',
+  'meksika': 'Mexico',
 
   'argentinien': 'Argentina',
   'argentine': 'Argentina',
+  'arjantin': 'Argentina',
 
   'kanada': 'Canada',
 
   'australien': 'Australia',
   'australie': 'Australia',
+  'avustralya': 'Australia',
 
   'neuseeland': 'New Zealand',
   'nouvelle-zélande': 'New Zealand',
   'nueva zelanda': 'New Zealand',
+  'yeni zelanda': 'New Zealand',
 
   'bosnien': 'Bosnia And Herzegovina',
   'bosnie': 'Bosnia And Herzegovina',
   'bosnia': 'Bosnia And Herzegovina',
+  'bosna hersek': 'Bosnia And Herzegovina',
 
   'ukraine': 'Ukraine',
   'ucrania': 'Ukraine',
+  'ukrayna': 'Ukraine',
 
   'saudi': 'Saudi Arabia',
   'saudi-arabien': 'Saudi Arabia',
   'arabie saoudite': 'Saudi Arabia',
   'arabia saudita': 'Saudi Arabia',
+  'suudi arabistan': 'Saudi Arabia',
 
   'singapur': 'Singapore',
   'singapour': 'Singapore',
@@ -312,6 +356,7 @@ const ALIAS_TO_DB: Record<string, string> = {
   'thailand': 'Thailand',
   'thaïlande': 'Thailand',
   'tailandia': 'Thailand',
+  'tayland': 'Thailand',
 
   'vietnam': 'Vietnam',
   'viêt nam': 'Vietnam',
@@ -319,19 +364,344 @@ const ALIAS_TO_DB: Record<string, string> = {
   'malaysia': 'Malaysia',
   'malaisie': 'Malaysia',
   'malasia': 'Malaysia',
+  'malezya': 'Malaysia',
 
   'kolumbien': 'Colombia',
   'colombie': 'Colombia',
+  'kolombiya': 'Colombia',
 
   'chile': 'Chile',
+  'şili': 'Chile',
+  'sili': 'Chile',
 
   'peru': 'Peru',
   'pérou': 'Peru',
   'perú': 'Peru',
+
+  'hollanda': 'The Netherlands',
+  'nederland': 'The Netherlands',
+
+  'rusya': 'The Russian Federation',
+
+  'gürcistan': 'Georgia',
+  'gurcistan': 'Georgia',
+
+  'ermenistan': 'Armenia',
+
+  'azerbaycan': 'Azerbaijan',
+
+  'güney kore': 'The Republic Of Korea',
+  'guney kore': 'The Republic Of Korea',
+  'kuzey kore': 'The Democratic Peoples Republic Of Korea',
+
+  'irak': 'Iraq',
+
+  'lübnan': 'Lebanon',
+  'lubnan': 'Lebanon',
+
+  'filistin': 'State Of Palestine',
+
+  'fas': 'Morocco',
+
+  'tunus': 'Tunisia',
+
+  'cezayir': 'Algeria',
+
+  'küba': 'Cuba',
+  'kuba': 'Cuba',
+
+  'izlanda': 'Iceland',
+
+  'litvanya': 'Lithuania',
+  'letonya': 'Latvia',
+  'estonya': 'Estonia',
+
+  'karadağ': 'Montenegro',
+  'karadag': 'Montenegro',
+
+  'arnavutluk': 'Albania',
+
+  'kosova': 'Kosovo',
+
+  'kıbrıs': 'Cyprus',
+  'kibris': 'Cyprus',
+
+  'lüksemburg': 'Luxembourg',
+  'luksemburg': 'Luxembourg',
+
+  'abd': 'The United States Of America',
+  'amerika': 'The United States Of America',
+  'amerika birleşik devletleri': 'The United States Of America',
+
+  'birleşik krallık': 'The United Kingdom Of Great Britain And Northern Ireland',
+  'ingiltere': 'The United Kingdom Of Great Britain And Northern Ireland',
+
+  'birleşik arap emirlikleri': 'The United Arab Emirates',
+  'bae': 'The United Arab Emirates',
+
+  'afganistan': 'Afghanistan',
+  'arnavutluk': 'Albania',
+  'angola': 'Angola',
+  'andorra': 'Andorra',
+  'antigua ve barbuda': 'Antigua And Barbuda',
+  'bahreyn': 'Bahrain',
+  'bangladeş': 'Bangladesh',
+  'banglades': 'Bangladesh',
+  'barbados': 'Barbados',
+  'belarus': 'Belarus',
+  'beyaz rusya': 'Belarus',
+  'belize': 'Belize',
+  'benin': 'Benin',
+  'bermuda': 'Bermuda',
+  'butan': 'Bhutan',
+  'bolivya': 'Bolivia',
+  'botsvana': 'Botswana',
+  'brunei': 'Brunei Darussalam',
+  'burkina faso': 'Burkina Faso',
+  'burundi': 'Burundi',
+  'kamboçya': 'Cambodia',
+  'kambocya': 'Cambodia',
+  'kamerun': 'Cameroon',
+  'yeşil burun adaları': 'Cabo Verde',
+  'yesil burun adalari': 'Cabo Verde',
+  'çad': 'Chad',
+  'cad': 'Chad',
+  'komorlar': 'The Comoros',
+  'kongo': 'The Congo',
+  'demokratik kongo cumhuriyeti': 'The Democratic Republic Of The Congo',
+  'kosta rika': 'Costa Rica',
+  'fildişi sahili': 'Coted Ivoire',
+  'fildisi sahili': 'Coted Ivoire',
+  'cibuti': 'Djibouti',
+  'dominika': 'Dominica',
+  'dominik cumhuriyeti': 'The Dominican Republic',
+  'ekvador': 'Ecuador',
+  'el salvador': 'El Salvador',
+  'ekvator ginesi': 'Equatorial Guinea',
+  'eritre': 'Eritrea',
+  'etiyopya': 'Ethiopia',
+  'falkland adaları': 'The Falkland Islands Malvinas',
+  'falkland adalari': 'The Falkland Islands Malvinas',
+  'faroe adaları': 'The Faroe Islands',
+  'faroe adalari': 'The Faroe Islands',
+  'fiji': 'Fiji',
+  'fransız guyanası': 'French Guiana',
+  'fransiz guyanasi': 'French Guiana',
+  'fransız polinezyası': 'French Polynesia',
+  'fransiz polinezyasi': 'French Polynesia',
+  'gabon': 'Gabon',
+  'gambiya': 'Gambia',
+  'gana': 'Ghana',
+  'cebelitarık': 'Gibraltar',
+  'cebelitarik': 'Gibraltar',
+  'grönland': 'Greenland',
+  'gronland': 'Greenland',
+  'grenada': 'Grenada',
+  'guadeloupe': 'Guadeloupe',
+  'guam': 'Guam',
+  'guatemala': 'Guatemala',
+  'gine': 'Guinea',
+  'gine-bissau': 'Guinea Bissau',
+  'guyana': 'Guyana',
+  'haiti': 'Haiti',
+  'vatikan': 'The Holy See',
+  'honduras': 'Honduras',
+  'hong kong': 'Hong Kong',
+  'man adası': 'Isle Of Man',
+  'man adasi': 'Isle Of Man',
+  'israil': 'Israel',
+  'jamaika': 'Jamaica',
+  'ürdün': 'Jordan',
+  'urdun': 'Jordan',
+  'kazakistan': 'Kazakhstan',
+  'kenya': 'Kenya',
+  'kiribati': 'Kiribati',
+  'kuveyt': 'Kuwait',
+  'kırgızistan': 'Kyrgyzstan',
+  'kirgizistan': 'Kyrgyzstan',
+  'laos': 'The Lao Peoples Democratic Republic',
+  'lesoto': 'Lesotho',
+  'liberya': 'Liberia',
+  'libya': 'Libya',
+  'lihtenştayn': 'Liechtenstein',
+  'lihtenstay': 'Liechtenstein',
+  'madagaskar': 'Madagascar',
+  'malavi': 'Malawi',
+  'maldivler': 'Maldives',
+  'mali': 'Mali',
+  'malta': 'Malta',
+  'marshall adaları': 'Marshall Islands',
+  'marshall adalari': 'Marshall Islands',
+  'martinik': 'Martinique',
+  'moritanya': 'Mauritania',
+  'mauritius': 'Mauritius',
+  'mikronezya': 'Micronesia',
+  'moldovya': 'The Republic Of Moldova',
+  'monako': 'Monaco',
+  'moğolistan': 'Mongolia',
+  'mogolistan': 'Mongolia',
+  'montserrat': 'Montserrat',
+  'mozambik': 'Mozambique',
+  'myanmar': 'Myanmar',
+  'namibya': 'Namibia',
+  'nauru': 'Nauru',
+  'nepal': 'Nepal',
+  'yeni kaledonya': 'New Caledonia',
+  'nikaragua': 'Nicaragua',
+  'nijer': 'The Niger',
+  'nijerya': 'Nigeria',
+  'umman': 'Oman',
+  'pakistan': 'Pakistan',
+  'palau': 'Palau',
+  'panama': 'Panama',
+  'papua yeni gine': 'Papua New Guinea',
+  'paraguay': 'Paraguay',
+  'filipinler': 'The Philippines',
+  'porto riko': 'Puerto Rico',
+  'katar': 'Qatar',
+  'reunion': 'Reunion',
+  'ruanda': 'Rwanda',
+  'saint kitts ve nevis': 'Saint Kitts And Nevis',
+  'saint lucia': 'Saint Lucia',
+  'saint vincent ve grenadinler': 'Saint Vincent And The Grenadines',
+  'samoa': 'Samoa',
+  'san marino': 'San Marino',
+  'são tomé ve príncipe': 'Sao Tome And Principe',
+  'sao tome ve principe': 'Sao Tome And Principe',
+  'senegal': 'Senegal',
+  'seyşeller': 'Seychelles',
+  'seyseller': 'Seychelles',
+  'sierra leone': 'Sierra Leone',
+  'solomon adaları': 'Solomon Islands',
+  'solomon adalari': 'Solomon Islands',
+  'somali': 'Somalia',
+  'güney sudan': 'South Sudan',
+  'guney sudan': 'South Sudan',
+  'sri lanka': 'Sri Lanka',
+  'sudan': 'The Sudan',
+  'surinam': 'Suriname',
+  'suriye': 'Syrian Arab Republic',
+  'tacikistan': 'Tajikistan',
+  'doğu timor': 'Timor Leste',
+  'dogu timor': 'Timor Leste',
+  'togo': 'Togo',
+  'tonga': 'Tonga',
+  'trinidad ve tobago': 'Trinidad And Tobago',
+  'türkmenistan': 'Turkmenistan',
+  'tuvalu': 'Tuvalu',
+  'uganda': 'Uganda',
+  'uruguay': 'Uruguay',
+  'özbekistan': 'Uzbekistan',
+  'ozbekistan': 'Uzbekistan',
+  'vanuatu': 'Vanuatu',
+  'venezuela': 'Bolivarian Republic Of Venezuela',
+  'yemen': 'Yemen',
+  'zambiya': 'Zambia',
+  'zimbabve': 'Zimbabwe',
+  'makedonya': 'Republic Of North Macedonia',
+  'kuzey makedonya': 'Republic Of North Macedonia',
+  'tanzanya': 'United Republic Of Tanzania',
+  'çekya': 'Czechia',
+  'cekya': 'Czechia',
+  'çek cumhuriyeti': 'Czechia',
+  'cek cumhuriyeti': 'Czechia',
+  'bahamalar': 'The Bahamas',
+  'orta afrika cumhuriyeti': 'The Central African Republic',
+  'cook adaları': 'The Cook Islands',
+  'cook adalari': 'The Cook Islands',
+  'tayvan': 'Taiwan, Republic Of China',
+
+  'afg': 'Afghanistan', 'alb': 'Albania', 'dza': 'Algeria', 'asm': 'American Samoa',
+  'and': 'Andorra', 'ago': 'Angola', 'aia': 'Anguilla', 'atg': 'Antigua And Barbuda',
+  'arg': 'Argentina', 'arm': 'Armenia', 'abw': 'Aruba', 'aus': 'Australia',
+  'aut': 'Austria', 'aze': 'Azerbaijan',
+  'bhs': 'The Bahamas', 'bhr': 'Bahrain', 'bgd': 'Bangladesh', 'brb': 'Barbados',
+  'blr': 'Belarus', 'bel': 'Belgium', 'blz': 'Belize', 'ben': 'Benin', 'bmu': 'Bermuda',
+  'btn': 'Bhutan', 'bol': 'Bolivia', 'bih': 'Bosnia And Herzegovina',
+  'bwa': 'Botswana', 'bra': 'Brazil', 'brn': 'Brunei Darussalam', 'bgr': 'Bulgaria',
+  'bfa': 'Burkina Faso', 'bdi': 'Burundi',
+  'khm': 'Cambodia', 'cmr': 'Cameroon', 'can': 'Canada', 'cpv': 'Cabo Verde',
+  'cym': 'The Cayman Islands', 'caf': 'The Central African Republic', 'tcd': 'Chad',
+  'chl': 'Chile', 'chn': 'China', 'col': 'Colombia', 'com': 'The Comoros',
+  'cog': 'The Congo', 'cod': 'The Democratic Republic Of The Congo',
+  'cok': 'The Cook Islands', 'cri': 'Costa Rica', 'civ': 'Coted Ivoire',
+  'hrv': 'Croatia', 'cub': 'Cuba', 'cuw': 'Curacao', 'cyp': 'Cyprus', 'cze': 'Czechia',
+  'dnk': 'Denmark', 'dji': 'Djibouti', 'dma': 'Dominica', 'dom': 'The Dominican Republic',
+  'ecu': 'Ecuador', 'egy': 'Egypt', 'slv': 'El Salvador', 'gnq': 'Equatorial Guinea',
+  'eri': 'Eritrea', 'est': 'Estonia', 'eth': 'Ethiopia',
+  'flk': 'The Falkland Islands Malvinas', 'fro': 'The Faroe Islands', 'fji': 'Fiji',
+  'fin': 'Finland', 'fra': 'France', 'guf': 'French Guiana', 'pyf': 'French Polynesia',
+  'gab': 'Gabon', 'gmb': 'Gambia', 'geo': 'Georgia', 'deu': 'Germany', 'gha': 'Ghana',
+  'gib': 'Gibraltar', 'grc': 'Greece', 'grl': 'Greenland', 'grd': 'Grenada',
+  'glp': 'Guadeloupe', 'gum': 'Guam', 'gtm': 'Guatemala', 'ggy': 'Guernsey',
+  'gin': 'Guinea', 'gnb': 'Guinea Bissau', 'guy': 'Guyana',
+  'hti': 'Haiti', 'vat': 'The Holy See', 'hnd': 'Honduras', 'hkg': 'Hong Kong',
+  'hun': 'Hungary',
+  'isl': 'Iceland', 'ind': 'India', 'idn': 'Indonesia', 'irn': 'Islamic Republic Of Iran',
+  'irq': 'Iraq', 'irl': 'Ireland', 'imn': 'Isle Of Man', 'isr': 'Israel', 'ita': 'Italy',
+  'jam': 'Jamaica', 'jpn': 'Japan', 'jey': 'Jersey', 'jor': 'Jordan',
+  'kaz': 'Kazakhstan', 'ken': 'Kenya', 'kir': 'Kiribati',
+  'prk': 'The Democratic Peoples Republic Of Korea', 'kor': 'The Republic Of Korea',
+  'kwt': 'Kuwait', 'kgz': 'Kyrgyzstan',
+  'lao': 'The Lao Peoples Democratic Republic', 'lva': 'Latvia', 'lbn': 'Lebanon',
+  'lso': 'Lesotho', 'lbr': 'Liberia', 'lby': 'Libya', 'lie': 'Liechtenstein',
+  'ltu': 'Lithuania', 'lux': 'Luxembourg',
+  'mac': 'Macao', 'mkd': 'Republic Of North Macedonia', 'mdg': 'Madagascar',
+  'mwi': 'Malawi', 'mys': 'Malaysia', 'mdv': 'Maldives', 'mli': 'Mali', 'mlt': 'Malta',
+  'mhl': 'Marshall Islands', 'mtq': 'Martinique', 'mrt': 'Mauritania', 'mus': 'Mauritius',
+  'myt': 'Mayotte', 'mex': 'Mexico', 'fsm': 'Micronesia', 'mda': 'The Republic Of Moldova',
+  'mco': 'Monaco', 'mng': 'Mongolia', 'mne': 'Montenegro', 'msr': 'Montserrat',
+  'mar': 'Morocco', 'moz': 'Mozambique', 'mmr': 'Myanmar',
+  'nam': 'Namibia', 'nru': 'Nauru', 'npl': 'Nepal', 'nld': 'The Netherlands',
+  'ncl': 'New Caledonia', 'nzl': 'New Zealand', 'nic': 'Nicaragua', 'ner': 'The Niger',
+  'nga': 'Nigeria', 'niu': 'Niue', 'nfk': 'Norfolk Island', 'nor': 'Norway',
+  'omn': 'Oman',
+  'pak': 'Pakistan', 'plw': 'Palau', 'pse': 'State Of Palestine', 'pan': 'Panama',
+  'png': 'Papua New Guinea', 'pry': 'Paraguay', 'per': 'Peru', 'phl': 'The Philippines',
+  'pol': 'Poland', 'prt': 'Portugal', 'pri': 'Puerto Rico',
+  'qat': 'Qatar',
+  'reu': 'Reunion', 'rou': 'Romania', 'rus': 'The Russian Federation', 'rwa': 'Rwanda',
+  'kna': 'Saint Kitts And Nevis', 'lca': 'Saint Lucia',
+  'spm': 'Saint Pierre And Miquelon', 'vct': 'Saint Vincent And The Grenadines',
+  'wsm': 'Samoa', 'smr': 'San Marino', 'stp': 'Sao Tome And Principe',
+  'sau': 'Saudi Arabia', 'sen': 'Senegal', 'srb': 'Serbia', 'syc': 'Seychelles',
+  'sle': 'Sierra Leone', 'sgp': 'Singapore', 'svk': 'Slovakia', 'svn': 'Slovenia',
+  'slb': 'Solomon Islands', 'som': 'Somalia', 'zaf': 'South Africa', 'ssd': 'South Sudan',
+  'esp': 'Spain', 'lka': 'Sri Lanka', 'sdn': 'The Sudan', 'sur': 'Suriname',
+  'swe': 'Sweden', 'che': 'Switzerland', 'syr': 'Syrian Arab Republic',
+  'twn': 'Taiwan, Republic Of China', 'tjk': 'Tajikistan',
+  'tza': 'United Republic Of Tanzania', 'tha': 'Thailand', 'tls': 'Timor Leste',
+  'tgo': 'Togo', 'tkl': 'Tokelau', 'ton': 'Tonga', 'tto': 'Trinidad And Tobago',
+  'tun': 'Tunisia', 'tur': 'Türkiye', 'tkm': 'Turkmenistan', 'tca': 'Turks And Caicos',
+  'tuv': 'Tuvalu',
+  'uga': 'Uganda', 'ukr': 'Ukraine', 'are': 'The United Arab Emirates',
+  'gbr': 'The United Kingdom Of Great Britain And Northern Ireland',
+  'usa': 'The United States Of America',
+  'ury': 'Uruguay', 'uzb': 'Uzbekistan',
+  'vut': 'Vanuatu', 'ven': 'Bolivarian Republic Of Venezuela', 'vnm': 'Vietnam',
+  'vgb': 'British Virgin Islands', 'vir': 'US Virgin Islands',
+  'wlf': 'Wallis And Futuna', 'yem': 'Yemen', 'zmb': 'Zambia', 'zwe': 'Zimbabwe',
+  'xkx': 'Kosovo',
+
+  'ata': 'Antarctica',
+  'atf': 'The French Southern Territories',
+  'umi': 'The United States Minor Outlying Islands',
+  'ala': 'Aland Islands',
+  'shn': 'Ascension And Tristan Da Cunha Saint Helena',
+  'bes': 'Bonaire',
+  'iot': 'British Indian Ocean Territory',
 };
 
 function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeTurkishLower(str: string): string {
+  return str
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'ı')
+    .replace(/i̇/g, 'i')
+    .toLowerCase();
 }
 
 export function normalizeCountryFilter(input: string | undefined | null): Record<string, any> {
@@ -343,14 +713,20 @@ export function normalizeCountryFilter(input: string | undefined | null): Record
   if (!trimmed) return {};
 
   const upper = trimmed.toUpperCase();
-  if (upper.length === 2 && ISO_TO_DB[upper]) {
+  if ((upper.length === 2 || upper.length === 3) && ISO_TO_DB[upper]) {
     const dbName = ISO_TO_DB[upper];
     return { country: { $regex: new RegExp(escapeRegex(dbName), 'i') } };
   }
 
-  const lower = trimmed.toLowerCase();
+  const lower = normalizeTurkishLower(trimmed);
   if (ALIAS_TO_DB[lower]) {
     const dbName = ALIAS_TO_DB[lower];
+    return { country: { $regex: new RegExp(escapeRegex(dbName), 'i') } };
+  }
+
+  const stdLower = trimmed.toLowerCase();
+  if (stdLower !== lower && ALIAS_TO_DB[stdLower]) {
+    const dbName = ALIAS_TO_DB[stdLower];
     return { country: { $regex: new RegExp(escapeRegex(dbName), 'i') } };
   }
 
@@ -365,13 +741,18 @@ export function resolveToDbName(input: string | undefined | null): string | null
   if (!trimmed) return null;
 
   const upper = trimmed.toUpperCase();
-  if (upper.length === 2 && ISO_TO_DB[upper]) {
+  if ((upper.length === 2 || upper.length === 3) && ISO_TO_DB[upper]) {
     return ISO_TO_DB[upper];
   }
 
-  const lower = trimmed.toLowerCase();
+  const lower = normalizeTurkishLower(trimmed);
   if (ALIAS_TO_DB[lower]) {
     return ALIAS_TO_DB[lower];
+  }
+
+  const stdLower = trimmed.toLowerCase();
+  if (stdLower !== lower && ALIAS_TO_DB[stdLower]) {
+    return ALIAS_TO_DB[stdLower];
   }
 
   return trimmed;
