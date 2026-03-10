@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, memo, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
-import { Copy, Check, ChevronRight, Search, Radio, Zap, Shield, Globe, Tv, Cast, Code, BookOpen, AlertTriangle, Users, Heart, Menu, X, ExternalLink, ArrowRight, Bell, Clock, Music } from "lucide-react";
+import { Copy, Check, ChevronRight, Search, Radio, Zap, Shield, Globe, Tv, Cast, Code, BookOpen, AlertTriangle, Users, Heart, Menu, X, ExternalLink, ArrowRight, Bell, Clock, Music, MessageSquare } from "lucide-react";
 
 type Method = "GET" | "POST" | "PUT" | "DELETE";
 type CodeLang = "curl" | "javascript" | "python" | "swift" | "kotlin";
@@ -110,6 +110,8 @@ const NAV_SECTIONS: NavSection[] = [
       { id: "signup", label: "Sign Up" },
       { id: "web-login", label: "Web Login" },
       { id: "mobile-login", label: "Mobile Login" },
+      { id: "google-login", label: "Google Sign-In" },
+      { id: "apple-login", label: "Apple Sign-In" },
       { id: "current-user", label: "Current User" },
     ],
   },
@@ -139,6 +141,22 @@ const NAV_SECTIONS: NavSection[] = [
       { id: "tv-activate", label: "TV: Activate Device" },
       { id: "cast-create", label: "Cast: Create Session" },
       { id: "cast-command", label: "Cast: Send Command" },
+    ],
+  },
+  {
+    id: "messaging",
+    label: "Messaging",
+    icon: MessageSquare,
+    items: [
+      { id: "msg-conversations", label: "List Conversations" },
+      { id: "msg-conversation", label: "Get Conversation" },
+      { id: "msg-send", label: "Send Message" },
+      { id: "msg-contacts", label: "List Contacts" },
+      { id: "msg-unread", label: "Unread Count" },
+      { id: "msg-search-users", label: "Search Users" },
+      { id: "msg-online-status", label: "Online Status" },
+      { id: "msg-upload-image", label: "Upload Image" },
+      { id: "msg-websocket", label: "WebSocket (Real-time)" },
     ],
   },
   {
@@ -1171,6 +1189,94 @@ const USER_AUTH_ENDPOINTS: Endpoint[] = [
     },
   },
   {
+    id: "google-login",
+    method: "POST",
+    path: "/api/auth/google",
+    title: "Google Sign-In (Mobile)",
+    description: "Authenticate with Google using an ID token from the Google Sign-In SDK. Verifies the token server-side using Google's auth library. Creates a new account or links to an existing one. Returns an auth token for mobile/TV use.",
+    bodyParams: [
+      { name: "idToken", type: "string", required: true, description: "Google ID token from GoogleSignin.signIn()" },
+      { name: "email", type: "string", description: "User's email (not used for linking - only token email is trusted)" },
+      { name: "name", type: "string", description: "Fallback display name if not present in token" },
+      { name: "googleId", type: "string", description: "Google user ID (not used - verified from token)" },
+      { name: "platform", type: "string", default: "mobile", description: "'mobile' or 'tv'" },
+    ],
+    headers: [
+      { name: "X-Device-Type", type: "string", description: "Set to 'mobile' for mobile apps" },
+    ],
+    notes: [
+      "The idToken is verified server-side using google-auth-library. Body email/googleId are NOT trusted for security.",
+      "If a user with this Google ID exists, they are logged in. If email matches an existing account, Google ID is linked.",
+      "New users are created automatically with emailVerified=true.",
+      "Suspended/inactive accounts are rejected with 403.",
+      "Token type (mobile/tv) is determined by the 'platform' body param, not X-Device-Type header.",
+    ],
+    responseExample: `{
+  "success": true,
+  "token": "mrt_a1b2c3d4e5f6...",
+  "expiresIn": "90 days",
+  "user": {
+    "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "fullName": "John Doe",
+    "username": "user_1702234567890_abc123def",
+    "email": "john@gmail.com",
+    "role": "user",
+    "avatar": "https://lh3.googleusercontent.com/..."
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/auth/google" \\\n  -H "Content-Type: application/json" \\\n  -H "X-Device-Type: mobile" \\\n  -d '{\n    "idToken": "GOOGLE_ID_TOKEN_FROM_SDK",\n    "platform": "mobile"\n  }'`,
+      javascript: `import { GoogleSignin } from '@react-native-google-signin/google-signin';\n\nconst userInfo = await GoogleSignin.signIn();\nconst response = await fetch('${BASE_URL}/api/auth/google', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-Device-Type': 'mobile'\n  },\n  body: JSON.stringify({\n    idToken: userInfo.idToken,\n    platform: 'mobile'\n  })\n});\nconst { success, token, user } = await response.json();\n// Store token securely (SecureStore, Keychain)`,
+      swift: `// After Google Sign-In SDK returns idToken\nlet body: [String: Any] = [\n    "idToken": googleIdToken,\n    "platform": "mobile"\n]\nlet jsonData = try JSONSerialization.data(withJSONObject: body)\n\nvar request = URLRequest(url: URL(string: "${BASE_URL}/api/auth/google")!)\nrequest.httpMethod = "POST"\nrequest.setValue("application/json", forHTTPHeaderField: "Content-Type")\nrequest.setValue("mobile", forHTTPHeaderField: "X-Device-Type")\nrequest.httpBody = jsonData\n\nlet (data, _) = try await URLSession.shared.data(for: request)\nlet result = try JSONDecoder().decode(AuthResponse.self, from: data)\n// Store result.token in Keychain`,
+      kotlin: `// After Google Sign-In SDK returns idToken\nval body = JSONObject().apply {\n    put("idToken", googleIdToken)\n    put("platform", "mobile")\n}\n\nval request = Request.Builder()\n    .url("${BASE_URL}/api/auth/google")\n    .header("X-Device-Type", "mobile")\n    .post(body.toString().toRequestBody("application/json".toMediaType()))\n    .build()\n\nval response = client.newCall(request).execute()\nval result = JSONObject(response.body?.string() ?: "")\nval token = result.getString("token")\n// Store token in EncryptedSharedPreferences`,
+    },
+  },
+  {
+    id: "apple-login",
+    method: "POST",
+    path: "/api/auth/apple",
+    title: "Apple Sign-In (Mobile)",
+    description: "Authenticate with Apple using an identity token from Apple Sign-In. Verifies the JWT server-side using Apple's JWKS endpoint. Creates a new account or links to an existing one. Returns an auth token for mobile/TV use.",
+    bodyParams: [
+      { name: "identityToken", type: "string", required: true, description: "Apple identity token (JWT) from AppleAuthentication.signInAsync()" },
+      { name: "authorizationCode", type: "string", description: "Apple authorization code (reserved for future use)" },
+      { name: "fullName", type: "object", description: "{ givenName, familyName } - Apple only provides this on FIRST sign-in" },
+      { name: "email", type: "string", description: "User's email (not used for linking - only token email is trusted)" },
+      { name: "user", type: "string", description: "Apple user identifier" },
+      { name: "platform", type: "string", default: "mobile", description: "'mobile' or 'tv'" },
+    ],
+    headers: [
+      { name: "X-Device-Type", type: "string", description: "Set to 'mobile' for mobile apps" },
+    ],
+    notes: [
+      "The identityToken JWT is verified against Apple's JWKS (https://appleid.apple.com/auth/keys).",
+      "Apple provides fullName and email ONLY on first sign-in. On subsequent sign-ins, these will be null.",
+      "Apple does NOT provide profile photos. New Apple-only accounts will have null avatar. Existing accounts linked via email may retain their previous avatar.",
+      "If user selects 'Hide My Email', a relay address (xxx@privaterelay.appleid.com) is used.",
+      "Audience is verified against APPLE_CLIENT_ID env var or defaults to com.visiongo.megaradio.",
+      "Suspended/inactive accounts are rejected with 403.",
+    ],
+    responseExample: `{
+  "success": true,
+  "token": "mrt_a1b2c3d4e5f6...",
+  "expiresIn": "90 days",
+  "user": {
+    "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "fullName": "John Doe",
+    "username": "user_1702234567890_abc123def",
+    "email": "john@icloud.com",
+    "role": "user",
+    "avatar": null
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/auth/apple" \\\n  -H "Content-Type: application/json" \\\n  -H "X-Device-Type: mobile" \\\n  -d '{\n    "identityToken": "APPLE_IDENTITY_TOKEN_JWT",\n    "fullName": { "givenName": "John", "familyName": "Doe" },\n    "platform": "mobile"\n  }'`,
+      javascript: `import * as AppleAuthentication from 'expo-apple-authentication';\n\nconst credential = await AppleAuthentication.signInAsync({\n  requestedScopes: [\n    AppleAuthentication.AppleAuthenticationScope.FULL_NAME,\n    AppleAuthentication.AppleAuthenticationScope.EMAIL,\n  ],\n});\n\nconst response = await fetch('${BASE_URL}/api/auth/apple', {\n  method: 'POST',\n  headers: {\n    'Content-Type': 'application/json',\n    'X-Device-Type': 'mobile'\n  },\n  body: JSON.stringify({\n    identityToken: credential.identityToken,\n    authorizationCode: credential.authorizationCode,\n    fullName: credential.fullName,\n    email: credential.email,\n    user: credential.user,\n    platform: 'mobile'\n  })\n});\nconst { success, token, user } = await response.json();\n// Store token securely`,
+      swift: `// After ASAuthorizationAppleIDCredential is received\nlet body: [String: Any] = [\n    "identityToken": String(data: credential.identityToken!, encoding: .utf8)!,\n    "authorizationCode": String(data: credential.authorizationCode!, encoding: .utf8)!,\n    "fullName": [\n        "givenName": credential.fullName?.givenName ?? "",\n        "familyName": credential.fullName?.familyName ?? ""\n    ],\n    "email": credential.email ?? "",\n    "user": credential.user,\n    "platform": "mobile"\n]\n\nvar request = URLRequest(url: URL(string: "${BASE_URL}/api/auth/apple")!)\nrequest.httpMethod = "POST"\nrequest.setValue("application/json", forHTTPHeaderField: "Content-Type")\nrequest.httpBody = try JSONSerialization.data(withJSONObject: body)`,
+      kotlin: `// After Apple Sign-In returns credentials\nval body = JSONObject().apply {\n    put("identityToken", appleIdentityToken)\n    put("authorizationCode", appleAuthCode)\n    put("fullName", JSONObject().apply {\n        put("givenName", givenName)\n        put("familyName", familyName)\n    })\n    put("platform", "mobile")\n}\n\nval request = Request.Builder()\n    .url("${BASE_URL}/api/auth/apple")\n    .header("X-Device-Type", "mobile")\n    .post(body.toString().toRequestBody("application/json".toMediaType()))\n    .build()`,
+    },
+  },
+  {
     id: "current-user",
     method: "GET",
     path: "/api/auth/me",
@@ -1629,6 +1735,305 @@ const MISC_ENDPOINTS: Endpoint[] = [
   },
 ];
 
+const MESSAGING_ENDPOINTS: Endpoint[] = [
+  {
+    id: "msg-conversations",
+    method: "GET",
+    path: "/api/messages/conversations",
+    title: "List Conversations",
+    description: "Get a list of all conversations for the authenticated user, sorted by most recent. Returns the last message, unread count, partner info, and online status for each conversation. Limited to 50 most recent conversations.",
+    notes: [
+      "Requires authentication (Bearer token or session).",
+      "Conversations are grouped by partner - one entry per unique chat partner.",
+      "Unread count shows messages from that partner you haven't read yet.",
+    ],
+    responseExample: `{
+  "conversations": [
+    {
+      "partnerId": "64a1b2c3d4e5f6a7b8c9d0e1",
+      "partner": {
+        "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+        "username": "johndoe",
+        "fullName": "John Doe",
+        "avatar": "https://..."
+      },
+      "lastMessage": "Hey, are you listening to Jazz FM?",
+      "lastMessageAt": "2026-03-10T15:30:00.000Z",
+      "unreadCount": 2,
+      "online": true
+    }
+  ]
+}`,
+    codeExamples: {
+      curl: `curl -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/conversations"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/messages/conversations', {\n  headers: { 'Authorization': 'Bearer ' + token }\n});\nconst { conversations } = await response.json();`,
+      swift: `var request = URLRequest(url: URL(string: "${BASE_URL}/api/messages/conversations")!)\nrequest.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")\nlet (data, _) = try await URLSession.shared.data(for: request)`,
+      kotlin: `val request = Request.Builder()\n    .url("${BASE_URL}/api/messages/conversations")\n    .header("Authorization", "Bearer $token")\n    .build()`,
+    },
+  },
+  {
+    id: "msg-conversation",
+    method: "GET",
+    path: "/api/messages/conversation/:partnerId",
+    title: "Get Conversation Messages",
+    description: "Get messages in a conversation with a specific user. Returns messages in chronological order. Automatically marks received messages as read. Supports pagination with cursor-based loading.",
+    params: [
+      { name: "partnerId", type: "string", required: true, description: "The user ID of the conversation partner (URL path)" },
+      { name: "limit", type: "number", default: "50", description: "Number of messages to return (max 100) - query param" },
+      { name: "before", type: "string", description: "Message ID cursor - load messages before this ID (for pagination) - query param" },
+    ],
+    notes: [
+      "Requires authentication (Bearer token or session).",
+      "Messages from the partner are automatically marked as read when you fetch them.",
+      "The partner is notified via WebSocket that their messages were read (chat:read event).",
+      "Related new_message notifications from this partner are also marked as read.",
+    ],
+    responseExample: `{
+  "messages": [
+    {
+      "_id": "64b2c3d4e5f6a7b8c9d0e1f2",
+      "fromUserId": "64a1b2c3d4e5f6a7b8c9d0e1",
+      "toUserId": "64a9b8c7d6e5f4a3b2c1d0e9",
+      "content": "Hey, are you listening to Jazz FM?",
+      "messageType": "text",
+      "read": true,
+      "createdAt": "2026-03-10T15:30:00.000Z"
+    },
+    {
+      "_id": "64b2c3d4e5f6a7b8c9d0e1f3",
+      "fromUserId": "64a9b8c7d6e5f4a3b2c1d0e9",
+      "toUserId": "64a1b2c3d4e5f6a7b8c9d0e1",
+      "content": "Yes! Great station!",
+      "messageType": "text",
+      "read": false,
+      "createdAt": "2026-03-10T15:31:00.000Z"
+    }
+  ],
+  "partner": {
+    "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "username": "johndoe",
+    "fullName": "John Doe",
+    "avatar": "https://...",
+    "online": true
+  },
+  "hasMore": false
+}`,
+    codeExamples: {
+      curl: `# Get latest messages\ncurl -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/conversation/PARTNER_ID?limit=50"\n\n# Load older messages (pagination)\ncurl -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/conversation/PARTNER_ID?limit=50&before=LAST_MESSAGE_ID"`,
+      javascript: `// Get latest messages\nconst response = await fetch(\n  '${BASE_URL}/api/messages/conversation/' + partnerId + '?limit=50',\n  { headers: { 'Authorization': 'Bearer ' + token } }\n);\nconst { messages, partner, hasMore } = await response.json();\n\n// Load more (pagination)\nif (hasMore) {\n  const oldestId = messages[0]._id;\n  const older = await fetch(\n    '${BASE_URL}/api/messages/conversation/' + partnerId + '?before=' + oldestId,\n    { headers: { 'Authorization': 'Bearer ' + token } }\n  );\n}`,
+    },
+  },
+  {
+    id: "msg-send",
+    method: "POST",
+    path: "/api/messages/send",
+    title: "Send Message",
+    description: "Send a direct message to another user. You can only message users you follow or who follow you (mutual follow not required, one-way is enough). Messages are delivered in real-time via WebSocket and stored in the database.",
+    bodyParams: [
+      { name: "toUserId", type: "string", required: true, description: "Recipient's user ID" },
+      { name: "content", type: "string", required: true, description: "Message text (max 2000 characters)" },
+      { name: "messageType", type: "string", default: "text", description: "Message type: 'text', 'image', or 'emoji'" },
+      { name: "imageUrl", type: "string", description: "Image URL (only used when messageType is 'image'). Upload via /api/messages/upload-image first." },
+    ],
+    notes: [
+      "Requires authentication (Bearer token or session).",
+      "You can only message users you follow or who follow you.",
+      "Cannot send messages to yourself.",
+      "Message is delivered in real-time via WebSocket (chat:message event).",
+      "A notification is created for the recipient if they're not currently viewing the conversation.",
+      "Max message length: 2000 characters.",
+    ],
+    responseExample: `{
+  "success": true,
+  "message": {
+    "_id": "64b2c3d4e5f6a7b8c9d0e1f4",
+    "fromUserId": "64a9b8c7d6e5f4a3b2c1d0e9",
+    "toUserId": "64a1b2c3d4e5f6a7b8c9d0e1",
+    "content": "Hey, check out this station!",
+    "messageType": "text",
+    "read": false,
+    "createdAt": "2026-03-10T16:00:00.000Z"
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/messages/send" \\\n  -H "Authorization: Bearer mrt_your_token" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "toUserId": "64a1b2c3d4e5f6a7b8c9d0e1",\n    "content": "Hey, check out this station!",\n    "messageType": "text"\n  }'`,
+      javascript: `const response = await fetch('${BASE_URL}/api/messages/send', {\n  method: 'POST',\n  headers: {\n    'Authorization': 'Bearer ' + token,\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({\n    toUserId: partnerId,\n    content: 'Hey, check out this station!',\n    messageType: 'text'\n  })\n});\nconst { success, message } = await response.json();`,
+      swift: `let body: [String: Any] = [\n    "toUserId": partnerId,\n    "content": "Hey, check out this station!",\n    "messageType": "text"\n]\n\nvar request = URLRequest(url: URL(string: "${BASE_URL}/api/messages/send")!)\nrequest.httpMethod = "POST"\nrequest.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")\nrequest.setValue("application/json", forHTTPHeaderField: "Content-Type")\nrequest.httpBody = try JSONSerialization.data(withJSONObject: body)`,
+      kotlin: `val body = JSONObject().apply {\n    put("toUserId", partnerId)\n    put("content", "Hey, check out this station!")\n    put("messageType", "text")\n}\n\nval request = Request.Builder()\n    .url("${BASE_URL}/api/messages/send")\n    .header("Authorization", "Bearer $token")\n    .post(body.toString().toRequestBody("application/json".toMediaType()))\n    .build()`,
+    },
+  },
+  {
+    id: "msg-contacts",
+    method: "GET",
+    path: "/api/messages/contacts",
+    title: "List Contacts",
+    description: "Get a list of users you can chat with. Returns all users you follow and who follow you, with their online status and follow relationship details.",
+    notes: [
+      "Requires authentication.",
+      "Returns users from both your following list and your followers list.",
+      "Each contact includes iFollow (you follow them) and followsMe (they follow you) flags.",
+    ],
+    responseExample: `{
+  "contacts": [
+    {
+      "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+      "username": "johndoe",
+      "fullName": "John Doe",
+      "avatar": "https://...",
+      "iFollow": true,
+      "followsMe": true,
+      "online": false
+    }
+  ]
+}`,
+    codeExamples: {
+      curl: `curl -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/contacts"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/messages/contacts', {\n  headers: { 'Authorization': 'Bearer ' + token }\n});\nconst { contacts } = await response.json();`,
+    },
+  },
+  {
+    id: "msg-unread",
+    method: "GET",
+    path: "/api/messages/unread-count",
+    title: "Unread Message Count",
+    description: "Get the total number of unread messages for the authenticated user across all conversations. Useful for showing a badge on the messages tab.",
+    responseExample: `{
+  "count": 5
+}`,
+    codeExamples: {
+      curl: `curl -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/unread-count"`,
+      javascript: `const response = await fetch('${BASE_URL}/api/messages/unread-count', {\n  headers: { 'Authorization': 'Bearer ' + token }\n});\nconst { count } = await response.json();\n// Show badge: count > 0`,
+    },
+  },
+  {
+    id: "msg-search-users",
+    method: "GET",
+    path: "/api/messages/search-users",
+    title: "Search Users to Chat",
+    description: "Search for users you can start a conversation with. Only searches among your contacts (people you follow or who follow you). Minimum 2 characters required for search query.",
+    params: [
+      { name: "q", type: "string", required: true, description: "Search query (min 2 characters). Searches username and fullName." },
+    ],
+    responseExample: `{
+  "users": [
+    {
+      "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+      "username": "johndoe",
+      "fullName": "John Doe",
+      "avatar": "https://...",
+      "online": true
+    }
+  ]
+}`,
+    codeExamples: {
+      curl: `curl -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/search-users?q=john"`,
+      javascript: `const response = await fetch(\n  '${BASE_URL}/api/messages/search-users?q=' + encodeURIComponent(query),\n  { headers: { 'Authorization': 'Bearer ' + token } }\n);\nconst { users } = await response.json();`,
+    },
+  },
+  {
+    id: "msg-online-status",
+    method: "GET",
+    path: "/api/messages/online-status",
+    title: "Online Status",
+    description: "Check the online/offline status of multiple users at once. Pass a comma-separated list of user IDs. Returns a map of userId to boolean online status.",
+    params: [
+      { name: "userIds", type: "string", required: true, description: "Comma-separated list of user IDs to check" },
+    ],
+    responseExample: `{
+  "status": {
+    "64a1b2c3d4e5f6a7b8c9d0e1": true,
+    "64a9b8c7d6e5f4a3b2c1d0e9": false
+  }
+}`,
+    codeExamples: {
+      curl: `curl -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/online-status?userIds=USER_ID_1,USER_ID_2"`,
+      javascript: `const userIds = ['id1', 'id2'].join(',');\nconst response = await fetch(\n  '${BASE_URL}/api/messages/online-status?userIds=' + userIds,\n  { headers: { 'Authorization': 'Bearer ' + token } }\n);\nconst { status } = await response.json();\n// status['id1'] === true means online`,
+    },
+  },
+  {
+    id: "msg-upload-image",
+    method: "POST",
+    path: "/api/messages/upload-image",
+    title: "Upload Chat Image",
+    description: "Upload an image to send in a chat message. Returns the image URL to use when sending a message with messageType='image'. Max file size: 5MB. Only image files are accepted.",
+    bodyParams: [
+      { name: "image", type: "file", required: true, description: "Image file (multipart/form-data). Max 5MB. Supported: jpg, png, gif, webp." },
+    ],
+    notes: [
+      "Use multipart/form-data encoding (not JSON).",
+      "After uploading, use the returned imageUrl in POST /api/messages/send with messageType='image'.",
+      "Max file size: 5MB.",
+    ],
+    responseExample: `{
+  "imageUrl": "/uploads/chat/1709654321-a1b2c3d4e5f6.jpg"
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/messages/upload-image" \\\n  -H "Authorization: Bearer mrt_your_token" \\\n  -F "image=@/path/to/photo.jpg"`,
+      javascript: `const formData = new FormData();\nformData.append('image', {\n  uri: imageUri,\n  type: 'image/jpeg',\n  name: 'photo.jpg',\n});\n\nconst response = await fetch('${BASE_URL}/api/messages/upload-image', {\n  method: 'POST',\n  headers: { 'Authorization': 'Bearer ' + token },\n  body: formData\n});\nconst { imageUrl } = await response.json();\n\n// Now send the image as a message\nawait fetch('${BASE_URL}/api/messages/send', {\n  method: 'POST',\n  headers: {\n    'Authorization': 'Bearer ' + token,\n    'Content-Type': 'application/json'\n  },\n  body: JSON.stringify({\n    toUserId: partnerId,\n    content: 'Photo',\n    messageType: 'image',\n    imageUrl: imageUrl\n  })\n});`,
+    },
+  },
+  {
+    id: "msg-websocket",
+    method: "GET",
+    path: "/ws/chat?ticket=TICKET",
+    title: "WebSocket Connection (Real-time)",
+    description: "Connect to the real-time messaging WebSocket for live message delivery, typing indicators, read receipts, and online status updates. First obtain a one-time ticket via GET /api/messages/ws-ticket, then connect to the WebSocket with that ticket.",
+    notes: [
+      "Step 1: GET /api/messages/ws-ticket to get a one-time ticket (expires in 60 seconds).",
+      "Step 2: Connect to wss://themegaradio.com/ws/chat?ticket=TICKET",
+      "On connect, you receive a chat:connected event with your userId and online users list.",
+      "Send chat:ping periodically to keep the connection alive (server responds with chat:pong).",
+      "Send chat:typing { toUserId } when user is typing.",
+      "Send chat:read { fromUserId } to mark messages as read.",
+      "Send chat:active { withUserId } when user opens/closes a conversation (suppresses duplicate notifications).",
+      "Receive chat:message for new messages, chat:typing for typing indicators, chat:read for read receipts.",
+      "Receive chat:online_status for contact online/offline changes.",
+      "Receive notification:new_message for message notifications (when not viewing that conversation).",
+    ],
+    responseExample: `// Events you RECEIVE:
+
+// On connection
+{ "type": "chat:connected", "userId": "YOUR_ID", "onlineUsers": ["id1", "id2"] }
+
+// New message
+{
+  "type": "chat:message",
+  "message": {
+    "_id": "msg_id",
+    "fromUserId": "sender_id",
+    "toUserId": "your_id",
+    "content": "Hello!",
+    "messageType": "text",
+    "read": false,
+    "createdAt": "2026-03-10T16:00:00Z"
+  },
+  "sender": { "username": "johndoe", "fullName": "John Doe", "avatar": "..." }
+}
+
+// Typing indicator
+{ "type": "chat:typing", "fromUserId": "sender_id" }
+
+// Read receipt
+{ "type": "chat:read", "byUserId": "reader_id" }
+
+// Online status change
+{ "type": "chat:online_status", "userId": "user_id", "online": true }
+
+// Events you SEND:
+// { "type": "chat:typing", "toUserId": "partner_id" }
+// { "type": "chat:read", "fromUserId": "partner_id" }
+// { "type": "chat:active", "withUserId": "partner_id" }  // opened conversation
+// { "type": "chat:active", "withUserId": null }           // closed conversation
+// { "type": "chat:ping" }                                  // keepalive`,
+    codeExamples: {
+      curl: `# Step 1: Get ticket\nTICKET=$(curl -s -H "Authorization: Bearer mrt_your_token" \\\n  "${BASE_URL}/api/messages/ws-ticket" | jq -r '.ticket')\n\n# Step 2: Connect (use wscat or similar tool)\nwscat -c "wss://themegaradio.com/ws/chat?ticket=$TICKET"`,
+      javascript: `// Step 1: Get ticket\nconst ticketRes = await fetch('${BASE_URL}/api/messages/ws-ticket', {\n  headers: { 'Authorization': 'Bearer ' + token }\n});\nconst { ticket } = await ticketRes.json();\n\n// Step 2: Connect WebSocket\nconst ws = new WebSocket('wss://themegaradio.com/ws/chat?ticket=' + ticket);\n\nws.onopen = () => console.log('Connected!');\n\nws.onmessage = (event) => {\n  const data = JSON.parse(event.data);\n  switch (data.type) {\n    case 'chat:connected':\n      console.log('Online users:', data.onlineUsers);\n      break;\n    case 'chat:message':\n      console.log('New message:', data.message.content);\n      // Show message in UI\n      break;\n    case 'chat:typing':\n      // Show typing indicator for data.fromUserId\n      break;\n    case 'chat:read':\n      // Mark messages as read for data.byUserId\n      break;\n    case 'chat:online_status':\n      // Update online status for data.userId\n      break;\n  }\n};\n\n// Send typing indicator\nws.send(JSON.stringify({ type: 'chat:typing', toUserId: partnerId }));\n\n// Mark messages as read\nws.send(JSON.stringify({ type: 'chat:read', fromUserId: partnerId }));\n\n// Keepalive ping every 30s\nsetInterval(() => ws.send(JSON.stringify({ type: 'chat:ping' })), 30000);`,
+      swift: `// Step 1: Get ticket\nvar ticketReq = URLRequest(url: URL(string: "${BASE_URL}/api/messages/ws-ticket")!)\nticketReq.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")\nlet (ticketData, _) = try await URLSession.shared.data(for: ticketReq)\nlet ticket = try JSONDecoder().decode(TicketResponse.self, from: ticketData).ticket\n\n// Step 2: Connect WebSocket\nlet wsURL = URL(string: "wss://themegaradio.com/ws/chat?ticket=\\(ticket)")!\nlet wsTask = URLSession.shared.webSocketTask(with: wsURL)\nwsTask.resume()\n\n// Receive messages\nfunc receiveMessage() {\n    wsTask.receive { result in\n        switch result {\n        case .success(let message):\n            if case .string(let text) = message {\n                // Parse JSON and handle event types\n            }\n            receiveMessage() // Continue listening\n        case .failure(let error):\n            print("WS error: \\(error)")\n        }\n    }\n}\nreceiveMessage()`,
+      kotlin: `// Step 1: Get ticket\nval ticketReq = Request.Builder()\n    .url("${BASE_URL}/api/messages/ws-ticket")\n    .header("Authorization", "Bearer $token")\n    .build()\nval ticketRes = client.newCall(ticketReq).execute()\nval ticket = JSONObject(ticketRes.body?.string() ?: "").getString("ticket")\n\n// Step 2: Connect WebSocket\nval wsReq = Request.Builder()\n    .url("wss://themegaradio.com/ws/chat?ticket=$ticket")\n    .build()\n\nclient.newWebSocket(wsReq, object : WebSocketListener() {\n    override fun onMessage(ws: WebSocket, text: String) {\n        val data = JSONObject(text)\n        when (data.getString("type")) {\n            "chat:message" -> { /* Handle new message */ }\n            "chat:typing" -> { /* Show typing indicator */ }\n            "chat:read" -> { /* Update read status */ }\n            "chat:online_status" -> { /* Update online status */ }\n        }\n    }\n})`,
+    },
+  },
+];
+
 const GuidesContent = memo(({ guideId }: { guideId: string }) => {
   const guides: Record<string, { title: string; lang: string; code: string }> = {
     "guide-javascript": {
@@ -2073,6 +2478,19 @@ const SECTION_CONTENT: Record<string, () => JSX.Element> = {
   "tv-activate": () => <EndpointSection title="TV & Cast" description="TV device pairing and cast control." endpoints={TV_CAST_ENDPOINTS} />,
   "cast-create": () => <EndpointSection title="TV & Cast" description="TV device pairing and cast control." endpoints={TV_CAST_ENDPOINTS} />,
   "cast-command": () => <EndpointSection title="TV & Cast" description="TV device pairing and cast control." endpoints={TV_CAST_ENDPOINTS} />,
+
+  "google-login": () => <EndpointSection title="User Authentication" description="Authenticate users via web sessions, mobile tokens, or social login (Google, Apple)." endpoints={USER_AUTH_ENDPOINTS} />,
+  "apple-login": () => <EndpointSection title="User Authentication" description="Authenticate users via web sessions, mobile tokens, or social login (Google, Apple)." endpoints={USER_AUTH_ENDPOINTS} />,
+
+  "msg-conversations": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users. Send messages, share images, get typing indicators and read receipts via WebSocket. Users can message anyone they follow or who follows them." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-conversation": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-send": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-contacts": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-unread": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-search-users": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-online-status": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-upload-image": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
+  "msg-websocket": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users. Connect via WebSocket for live updates." endpoints={MESSAGING_ENDPOINTS} />,
 
   translations: () => <EndpointSection title="Misc" description="Utility endpoints for app localization and other features." endpoints={MISC_ENDPOINTS} />,
 
