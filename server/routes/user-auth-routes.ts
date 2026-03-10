@@ -618,6 +618,231 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }
   });
 
+  // MOBILE AUTH: Google Sign-In with idToken (POST - for mobile apps)
+  app.post("/api/auth/google", async (req, res) => {
+    try {
+      const { idToken, email, name, googleId, platform = 'mobile' } = req.body;
+
+      if (!idToken) {
+        return res.status(400).json({ success: false, error: 'idToken is required' });
+      }
+
+      const { OAuth2Client } = await import('google-auth-library');
+      const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+      let payload: any;
+      try {
+        const ticket = await client.verifyIdToken({
+          idToken,
+          audience: process.env.GOOGLE_CLIENT_ID,
+        });
+        payload = ticket.getPayload();
+      } catch (verifyErr) {
+        logger.error('Google idToken verification failed:', verifyErr);
+        return res.status(401).json({ success: false, error: 'Invalid or expired Google token' });
+      }
+
+      if (!payload || !payload.sub) {
+        return res.status(401).json({ success: false, error: 'Invalid token payload' });
+      }
+
+      const verifiedGoogleId = payload.sub;
+      const verifiedEmail = payload.email;
+      const verifiedName = payload.name || name;
+      const avatar = payload.picture;
+
+      if (!verifiedEmail) {
+        return res.status(400).json({ success: false, error: 'Google account does not have a verified email' });
+      }
+
+      let user = await User.findOne({ googleId: verifiedGoogleId });
+
+      if (user) {
+        if (user.status !== 'active') {
+          return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+        }
+        user.lastLoginAt = new Date();
+        if (avatar && !user.avatar) {
+          (user as any).avatar = avatar;
+        }
+        await user.save();
+      } else {
+        user = await User.findOne({ email: verifiedEmail });
+
+        if (user) {
+          if (user.status !== 'active') {
+            return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+          }
+          user.googleId = verifiedGoogleId;
+          user.lastLoginAt = new Date();
+          if (avatar && !(user as any).avatar) {
+            (user as any).avatar = avatar;
+          }
+          if (!user.fullName && verifiedName) {
+            user.fullName = verifiedName;
+          }
+          await user.save();
+        } else {
+          const generateSlug = (displayName: string, emailStr: string): string => {
+            let slugSource = displayName || emailStr.split('@')[0];
+            return slugSource.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim().replace(/^-+|-+$/g, '');
+          };
+
+          const baseSlug = generateSlug(verifiedName || '', verifiedEmail);
+          let userSlug = baseSlug;
+          let counter = 1;
+          while (await User.findOne({ slug: userSlug })) {
+            userSlug = `${baseSlug}-${counter}`;
+            counter++;
+          }
+
+          user = new User({
+            googleId: verifiedGoogleId,
+            email: verifiedEmail,
+            fullName: verifiedName || verifiedEmail.split('@')[0],
+            avatar,
+            username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            slug: userSlug,
+            passwordHash: '',
+            emailVerified: true,
+            lastLoginAt: new Date()
+          });
+          await user.save();
+          logger.log(`✅ New Google mobile user created: "${userSlug}" (${verifiedEmail})`);
+        }
+      }
+
+      const deviceType = platform === 'tv' ? 'tv' : 'mobile';
+      const token = await generateAuthToken(user._id.toString(), deviceType);
+
+      res.json({
+        success: true,
+        token,
+        expiresIn: '90 days',
+        user: {
+          _id: user._id,
+          fullName: user.fullName,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          avatar: (user as any).avatar,
+        }
+      });
+    } catch (error) {
+      logger.error('Mobile Google auth error:', error);
+      res.status(500).json({ success: false, error: 'Authentication failed' });
+    }
+  });
+
+  // MOBILE AUTH: Apple Sign-In with identityToken (POST - for mobile apps)
+  app.post("/api/auth/apple", async (req, res) => {
+    try {
+      const { identityToken, authorizationCode, fullName, email, user: appleUserId, platform = 'mobile' } = req.body;
+
+      if (!identityToken) {
+        return res.status(400).json({ success: false, error: 'identityToken is required' });
+      }
+
+      const jose = await import('jose');
+
+      let applePayload: any;
+      try {
+        const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
+        const { payload } = await jose.jwtVerify(identityToken, JWKS, {
+          issuer: 'https://appleid.apple.com',
+          audience: process.env.APPLE_CLIENT_ID || process.env.APPLE_SERVICE_ID || 'com.visiongo.megaradio',
+        });
+        applePayload = payload;
+      } catch (verifyErr) {
+        logger.error('Apple identityToken verification failed:', verifyErr);
+        return res.status(401).json({ success: false, error: 'Invalid or expired Apple token' });
+      }
+
+      if (!applePayload || !applePayload.sub) {
+        return res.status(401).json({ success: false, error: 'Invalid token payload' });
+      }
+
+      const verifiedAppleId = applePayload.sub;
+      const verifiedEmail = applePayload.email;
+      const displayName = fullName
+        ? [fullName.givenName, fullName.familyName].filter(Boolean).join(' ')
+        : undefined;
+
+      let user = await User.findOne({ appleId: verifiedAppleId });
+
+      if (user) {
+        if (user.status !== 'active') {
+          return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+        }
+        user.lastLoginAt = new Date();
+        if (displayName && !user.fullName) {
+          user.fullName = displayName;
+        }
+        await user.save();
+      } else {
+        user = verifiedEmail ? await User.findOne({ email: verifiedEmail }) : null;
+
+        if (user) {
+          if (user.status !== 'active') {
+            return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+          }
+          (user as any).appleId = verifiedAppleId;
+          user.lastLoginAt = new Date();
+          if (displayName && !user.fullName) {
+            user.fullName = displayName;
+          }
+          await user.save();
+        } else {
+          const generateSlug = (name: string, emailStr: string): string => {
+            let slugSource = name || emailStr?.split('@')[0] || 'apple-user';
+            return slugSource.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim().replace(/^-+|-+$/g, '');
+          };
+
+          const baseSlug = generateSlug(displayName || '', verifiedEmail || '');
+          let userSlug = baseSlug || 'apple-user';
+          let counter = 1;
+          while (await User.findOne({ slug: userSlug })) {
+            userSlug = `${baseSlug || 'apple-user'}-${counter}`;
+            counter++;
+          }
+
+          user = new User({
+            appleId: verifiedAppleId,
+            email: verifiedEmail || undefined,
+            fullName: displayName || 'Apple User',
+            username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            slug: userSlug,
+            passwordHash: '',
+            emailVerified: !!verifiedEmail,
+            lastLoginAt: new Date()
+          });
+          await user.save();
+          logger.log(`✅ New Apple mobile user created: "${userSlug}" (${verifiedEmail || 'no-email'})`);
+        }
+      }
+
+      const deviceType = platform === 'tv' ? 'tv' : 'mobile';
+      const token = await generateAuthToken(user._id.toString(), deviceType);
+
+      res.json({
+        success: true,
+        token,
+        expiresIn: '90 days',
+        user: {
+          _id: user._id,
+          fullName: user.fullName,
+          username: user.username,
+          email: user.email,
+          role: user.role,
+          avatar: (user as any).avatar,
+        }
+      });
+    } catch (error) {
+      logger.error('Mobile Apple auth error:', error);
+      res.status(500).json({ success: false, error: 'Authentication failed' });
+    }
+  });
+
   // MOBILE AUTH: Login with token response
   app.post("/api/auth/mobile/login", async (req, res) => {
     try {
