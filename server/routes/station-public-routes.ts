@@ -274,7 +274,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           { geoLong: { $ne: '' } }
         ]
       })
-      .select('name country geoLat geoLong votes clickCount tags homepage favicon hasExtendedInfo url')
+      .select('name slug country geoLat geoLong votes clickCount tags homepage favicon hasExtendedInfo url logoAssets')
       .sort({ votes: -1 }) 
       .limit(parseInt(limit as string))
       .lean();
@@ -407,7 +407,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           stations = await Station.find(fallbackFilter)
           .sort({ votes: -1 })
           .limit(resultLimit)
-          .select('name country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk')
+          .select('name slug country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets')
           .lean();
           
           stations = stations.map((station: any) => ({

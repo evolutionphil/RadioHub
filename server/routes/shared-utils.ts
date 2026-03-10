@@ -32,7 +32,7 @@ export const TV_STATION_FIELDS = {
   _id: 1, name: 1, slug: 1, url: 1, urlResolved: 1, url_resolved: 1,
   favicon: 1, tags: 1, country: 1, countrycode: 1,
   state: 1, language: 1, votes: 1, clickcount: 1, clickCount: 1,
-  codec: 1, bitrate: 1, hls: 1
+  codec: 1, bitrate: 1, hls: 1, logoAssets: 1
 };
 
 export const TV_STATION_PROJECTION = TV_STATION_FIELDS;
@@ -48,7 +48,8 @@ export function tvSlimStation(s: any) {
     favicon: s.favicon, tags: s.tags, country: s.country,
     countrycode: s.countrycode || '', state: s.state, language: s.language,
     votes: s.votes || 0, clickCount: s.clickCount || s.clickcount || 0,
-    codec: s.codec, bitrate: s.bitrate, hls: s.hls
+    codec: s.codec, bitrate: s.bitrate, hls: s.hls,
+    logoAssets: s.logoAssets || null
   };
 }
 

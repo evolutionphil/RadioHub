@@ -482,7 +482,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       const [stations, total] = await Promise.all([
         Station.find(filter)
-          .select('name slug favicon url country language genre tags votes codec bitrate')
+          .select('name slug favicon url country language genre tags votes codec bitrate logoAssets')
           .sort({ votes: -1 })
           .skip(skip)
           .limit(limit)
