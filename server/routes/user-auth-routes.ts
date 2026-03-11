@@ -315,59 +315,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }
   });
 
-  // Follow/Unfollow user functionality
-  app.post("/api/users/:userId/follow-OLD", async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const { followerId } = req.body; // ID of user doing the following
-      
-      // logger.log(` OLD ENDPOINT - User ${followerId} following ${userId}...`);
-
-      // Add to follower's following list
-      await User.findByIdAndUpdate(followerId, {
-        $addToSet: { following: userId },
-        $inc: { followingCount: 1 }
-      });
-
-      // Add to target user's followers list
-      await User.findByIdAndUpdate(userId, {
-        $addToSet: { followers: followerId },
-        $inc: { followersCount: 1 }
-      });
-
-      // logger.log(` Follow relationship created`);
-      res.json({ success: true, message: 'User followed successfully' });
-    } catch (error) {
-      // console.error('Error following user:', error);
-      res.status(500).json({ error: 'Failed to follow user' });
-    }
+  // Legacy follow/unfollow endpoints — DEPRECATED, return 410 Gone
+  app.post("/api/users/:userId/follow-OLD", (_req, res) => {
+    res.status(410).json({ error: 'Deprecated. Use POST /api/user/follow/:userId with Bearer auth.' });
   });
-
-  app.delete("/api/users/:userId/follow", async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const { followerId } = req.body;
-      
-      // logger.log(` User ${followerId} unfollowing ${userId}...`);
-
-      // Remove from follower's following list
-      await User.findByIdAndUpdate(followerId, {
-        $pull: { following: userId },
-        $inc: { followingCount: -1 }
-      });
-
-      // Remove from target user's followers list
-      await User.findByIdAndUpdate(userId, {
-        $pull: { followers: followerId },
-        $inc: { followersCount: -1 }
-      });
-
-      // logger.log(` Follow relationship removed`);
-      res.json({ success: true, message: 'User unfollowed successfully' });
-    } catch (error) {
-      // console.error('Error unfollowing user:', error);
-      res.status(500).json({ error: 'Failed to unfollow user' });
-    }
+  app.delete("/api/users/:userId/follow", (_req, res) => {
+    res.status(410).json({ error: 'Deprecated. Use DELETE /api/user/unfollow/:userId with Bearer auth.' });
   });
 
   // AUTHENTICATION API ENDPOINTS
@@ -1302,6 +1255,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const followingUserId = req.params.userId;
       const currentUserId = (req.session as any).userId;
 
+      if (!mongoose.Types.ObjectId.isValid(followingUserId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+
       if (followingUserId === currentUserId) {
         return res.status(400).json({ error: "You cannot follow yourself" });
       }
@@ -1356,6 +1313,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const followingUserId = req.params.userId;
       const currentUserId = (req.session as any).userId;
 
+      if (!mongoose.Types.ObjectId.isValid(followingUserId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+
       const deleted = await UserFollow.findOneAndDelete({
         userId: currentUserId,
         followingUserId: followingUserId
@@ -1389,6 +1350,26 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       res.json({ success: true, message: "User unfollowed successfully" });
     } catch (error) {
       res.status(500).json({ error: 'Failed to unfollow user' });
+    }
+  });
+
+  app.get("/api/user/is-following/:userId", requireAuth, async (req, res) => {
+    try {
+      const targetUserId = req.params.userId;
+      const currentUserId = (req.session as any).userId;
+
+      if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+
+      const follow = await UserFollow.findOne({
+        userId: currentUserId,
+        followingUserId: targetUserId
+      }).lean();
+
+      res.json({ isFollowing: !!follow });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to check follow status' });
     }
   });
 
