@@ -110,10 +110,27 @@ function getHstsHeader(): string {
   return hstsConfigs[hstsPhase] || hstsConfigs.confident;
 }
 
+// Global process crash prevention — log and survive instead of dying
+process.on('uncaughtException', (err) => {
+  console.error('🚨 UNCAUGHT EXCEPTION (process survived):', err.message);
+  console.error(err.stack?.split('\n').slice(0, 5).join('\n'));
+});
+process.on('unhandledRejection', (reason: any) => {
+  const msg = reason?.message || reason || 'unknown';
+  console.error('🚨 UNHANDLED REJECTION (process survived):', msg);
+  if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
+});
+
 // CRITICAL: Health check endpoint BEFORE all middleware
 // Must respond immediately for Replit deployment health checks
 app.get('/health', (req, res) => {
-  res.status(200).send('OK');
+  const mem = process.memoryUsage();
+  const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+  const rssMB = Math.round(mem.rss / 1024 / 1024);
+  if (heapMB > 7500) {
+    return res.status(503).json({ status: 'unhealthy', heapMB, rssMB });
+  }
+  res.status(200).json({ status: 'ok', heapMB, rssMB, uptime: Math.round(process.uptime()) });
 });
 
 // Apply global API rate limiting to all /api routes
@@ -517,18 +534,21 @@ app.use((req, res, next) => {
     // Other paths (like Vite HMR) are handled by Vite's own upgrade handler
   });
 
-  // Configure server timeouts for streaming - EXTENDED FOR RADIO STREAMS
-  server.timeout = 0; // Disable timeout for continuous radio streaming
-  server.keepAliveTimeout = 14400000; // 4 hours (14400 seconds) keep alive for persistent connections
-  server.headersTimeout = 14410000; // Must be longer than keepAliveTimeout (4 hours + 10s)
+  // Server timeouts — keep reasonable defaults for normal requests
+  // Stream endpoints (/api/stream/*) manage their own connection lifecycle
+  server.timeout = 300000; // 5 minutes for normal requests (streams override via res.setTimeout(0))
+  server.keepAliveTimeout = 65000; // 65 seconds (slightly above typical LB 60s idle timeout)
+  server.headersTimeout = 66000; // Must be longer than keepAliveTimeout
 
   // Error handler middleware
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
-    res.status(status).json({ message });
-    throw err;
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
+    console.error(`❌ Express error [${status}]: ${message}`);
   });
 
   // SEO middleware for all pages BEFORE Vite catch-all

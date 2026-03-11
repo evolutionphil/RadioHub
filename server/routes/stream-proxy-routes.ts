@@ -320,6 +320,10 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
   // RADIOLISE-STYLE SIMPLE PROXY: Direct streaming without complex multiplexing
   app.get("/api/stream/*", async (req, res) => {
+    // Override server timeout for stream connections — these are long-lived by design
+    req.setTimeout(0);
+    res.setTimeout(0);
+
     let originalUrl: string | undefined;
     try {
       const urlPath = (req.params as any)[0];
@@ -439,10 +443,17 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               logger.log(`✅ Shoutcast VLC streaming: ${contentType}`);
             }
             proxyRes.pipe(res);
-            
+
+            const cleanup = () => {
+              try { proxyRes.destroy(); } catch {}
+              try { proxyReq.destroy(); } catch {}
+              try { if (!res.writableEnded) res.end(); } catch {}
+            };
+
             proxyRes.on('error', (e) => {
               console.error('❌ Shoutcast stream error:', e.message);
               if (!res.headersSent) res.status(500).json({ error: 'Stream failed' });
+              cleanup();
             });
           });
           
@@ -452,8 +463,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           });
           
           req.on('close', () => {
-            logger.log('🔌 Client disconnected from Shoutcast proxy');
-            proxyReq.destroy();
+            try { proxyReq.destroy(); } catch {}
           });
           
           proxyReq.end();
@@ -491,6 +501,12 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
       if (streamResponse.body) {
         streamResponse.body.pipe(res);
+        
+        streamResponse.body.on('error', (e: any) => {
+          console.error('❌ Stream body error:', e.message);
+          controller.abort();
+          try { if (!res.writableEnded) res.end(); } catch {}
+        });
       } else {
         throw new Error('Response body is null');
       }
@@ -499,11 +515,18 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         controller.abort();
       });
 
+      res.on('close', () => {
+        controller.abort();
+      });
+
     } catch (error: any) {
-      console.error('❌ Simple stream error:', error.message);
+      if (error.name !== 'AbortError') {
+        console.error('❌ Simple stream error:', error.message);
+      }
       if (!res.headersSent) {
         res.status(500).json({ error: 'Streaming failed' });
       }
+      try { if (!res.writableEnded) res.end(); } catch {}
     }
   });
 }

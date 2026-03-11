@@ -80,6 +80,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Cast System (Mobile → TV)**: Dual cast architecture supporting WebSocket and polling-based communication for real-time command relay and now-playing status.
 - **TV Device Code Login**: Netflix/YouTube-style TV login flow for device activation.
 - **Security Hardening**: Rate limiting, X-Powered-By removal, security headers (HSTS, CSP, X-Frame-Options), suppressed internal error messages.
+- **Process Stability**: Global `uncaughtException`/`unhandledRejection` handlers prevent process crash. Error middleware logs without re-throwing. Server timeouts: 5min normal requests, 65s keepAlive; stream endpoints override with `setTimeout(0)`. Health endpoint returns heap/RSS metrics and 503 if heap > 7500MB.
 - **Input Validation**: Robust validation for user authentication endpoints.
 - **Random Station Performance**: Optimized random station selection using MongoDB `$sample`.
 - **Logo Optimization System**: MongoDB schema for `logoAssets`, LogoProcessor service for WebP conversion, unified StationLogo component, SSR-safe helpers, admin UI for bulk processing, S3 integration for logo storage.
