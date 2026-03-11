@@ -14,14 +14,24 @@ class ChatService {
   // userId → partnerId they are currently viewing (null = not in chat)
   private activeConversations = new Map<string, string>();
 
+  private static MAX_CONNECTIONS_PER_USER = 5;
+
   /** Register a new WebSocket connection for a user */
   addClient(userId: string, ws: WebSocket): ChatClient {
     const client: ChatClient = { ws, userId, connectedAt: new Date() };
     if (!this.clients.has(userId)) {
       this.clients.set(userId, new Set());
     }
-    this.clients.get(userId)!.add(client);
-    logger.log(`💬 CHAT: User ${userId} connected (${this.clients.get(userId)!.size} tabs)`);
+    const set = this.clients.get(userId)!;
+    if (set.size >= ChatService.MAX_CONNECTIONS_PER_USER) {
+      const oldest = [...set].sort((a, b) => a.connectedAt.getTime() - b.connectedAt.getTime())[0];
+      if (oldest) {
+        try { oldest.ws.close(4003, "Too many connections"); } catch {}
+        set.delete(oldest);
+      }
+    }
+    set.add(client);
+    logger.log(`💬 CHAT: User ${userId} connected (${set.size} tabs)`);
     return client;
   }
 

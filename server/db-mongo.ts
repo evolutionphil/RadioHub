@@ -8,6 +8,7 @@ const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/radios
 logger.log('🔗 MongoDB: Connecting to', MONGODB_URI.replace(/\/\/.*@/, '//<credentials>@'));
 
 let isConnected = false;
+let listenersRegistered = false;
 
 // Cleanup placeholder text from existing descriptions
 async function cleanupDescriptionPlaceholders() {
@@ -119,61 +120,54 @@ async function cleanupDescriptionPlaceholders() {
       /\s*\]+$/,
     ];
 
-    const cursor = collection.find({ descriptions: { $exists: true, $ne: null } });
-    const docs = await cursor.toArray();
-    
-    if (docs.length === 0) return;
+    const cursor = collection.find({ descriptions: { $exists: true, $ne: null } }).batchSize(500);
     
     let cleaned = 0;
-    for (const doc of docs) {
+    const bulkOps: any[] = [];
+
+    for await (const doc of cursor) {
       let changed = false;
 
-      if (doc.descriptions && typeof doc.descriptions === 'object') {
+      if (doc.descriptions && typeof doc.descriptions === 'object' && doc.descriptions !== null) {
         for (const lang of Object.keys(doc.descriptions)) {
           const desc = doc.descriptions[lang];
           
-          // Handle BOTH formats:
-          // 1. Object format: { full: string, meta: string }
-          // 2. Simple string format: "string"
-          
-          if (desc && typeof desc === 'object' && desc.full && typeof desc.full === 'string') {
-            // Object format with .full property
+          if (desc && typeof desc === 'object' && desc !== null && desc.full && typeof desc.full === 'string') {
             const original = desc.full;
             let text = original;
-
-            // Apply all cleanup patterns
             for (const pattern of placeholderPatterns) {
               text = text.replace(pattern, '').trim();
             }
-
             if (text !== original && text.length > 0) {
               doc.descriptions[lang].full = text;
               changed = true;
-              logger.log(`🧹 Cleanup: Removed placeholder from "${doc.name}" (${lang})`);
             }
           } else if (typeof desc === 'string') {
-            // Simple string format
             const original = desc;
             let text = original;
-
-            // Apply all cleanup patterns
             for (const pattern of placeholderPatterns) {
               text = text.replace(pattern, '').trim();
             }
-
             if (text !== original && text.length > 0) {
               doc.descriptions[lang] = text;
               changed = true;
-              logger.log(`🧹 Cleanup: Removed placeholder from "${doc.name}" (${lang})`);
             }
           }
         }
       }
 
       if (changed) {
-        await collection.updateOne({ _id: doc._id }, { $set: { descriptions: doc.descriptions } });
+        bulkOps.push({ updateOne: { filter: { _id: doc._id }, update: { $set: { descriptions: doc.descriptions } } } });
         cleaned++;
+        if (bulkOps.length >= 500) {
+          await collection.bulkWrite(bulkOps, { ordered: false });
+          bulkOps.length = 0;
+        }
       }
+    }
+
+    if (bulkOps.length > 0) {
+      await collection.bulkWrite(bulkOps, { ordered: false });
     }
     
     if (cleaned > 0) {
@@ -240,16 +234,26 @@ export async function connectToMongoDB() {
     });
     isConnected = true;
     logger.log('✅ MongoDB: Connected successfully');
+
+    if (!listenersRegistered) {
+      listenersRegistered = true;
+      mongoose.connection.on('error', (err) => {
+        logger.error('❌ MongoDB connection error (runtime):', err.message);
+      });
+      mongoose.connection.on('disconnected', () => {
+        isConnected = false;
+        logger.error('⚠️ MongoDB disconnected — Mongoose will auto-reconnect');
+      });
+      mongoose.connection.on('reconnected', () => {
+        isConnected = true;
+        logger.log('✅ MongoDB reconnected successfully');
+      });
+    }
     
-    // Seed default languages after connection (this is critical, so we await it)
     await seedDefaultLanguages();
-    
-    // Description placeholder cleanup is handled by index.ts background tasks
-    // (runs once per 24h with cursor-based processing to avoid memory issues)
   } catch (error) {
     console.error('❌ MongoDB connection error:', error);
     logger.log('💡 MongoDB: Using in-memory fallback for development');
-    // Don't throw error, let app continue with basic functionality
   }
 }
 

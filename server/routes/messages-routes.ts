@@ -403,10 +403,15 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
 
   // ── GET /api/messages/online-status ─────────────────────────────────────────
   app.get("/api/messages/online-status", requireAuth, async (req, res) => {
-    const userIds = ((req.query.userIds as string) || "").split(",").filter(Boolean);
-    const status: Record<string, boolean> = {};
-    for (const uid of userIds) status[uid] = chatService.isOnline(uid);
-    res.json({ status });
+    try {
+      const userIds = ((req.query.userIds as string) || "").split(",").filter(Boolean);
+      const status: Record<string, boolean> = {};
+      for (const uid of userIds) status[uid] = chatService.isOnline(uid);
+      res.json({ status });
+    } catch (error) {
+      logger.error("Failed to check online status:", error);
+      res.status(500).json({ error: "Failed to check online status" });
+    }
   });
 
   // ── WebSocket Handler at /ws/chat ────────────────────────────────────────────

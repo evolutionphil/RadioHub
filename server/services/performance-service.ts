@@ -288,8 +288,8 @@ class PerformanceService {
     };
 
     this.optimizationJobs.set(jobId, job);
+    this.pruneCompletedJobs();
 
-    // Run optimization in background
     this.executeOptimization(jobId, type, action);
 
     return {
@@ -609,6 +609,24 @@ class PerformanceService {
       tasksCompleted: 5,
       message: 'General maintenance completed successfully'
     };
+  }
+
+  private pruneCompletedJobs() {
+    const MAX_JOBS = 100;
+    const JOB_TTL = 6 * 60 * 60 * 1000;
+    const now = Date.now();
+    for (const [id, job] of this.optimizationJobs) {
+      if (job.status !== 'running' && job.completedAt && (now - job.completedAt.getTime() > JOB_TTL)) {
+        this.optimizationJobs.delete(id);
+      }
+    }
+    if (this.optimizationJobs.size > MAX_JOBS) {
+      const sorted = [...this.optimizationJobs.entries()]
+        .filter(([, j]) => j.status !== 'running')
+        .sort((a, b) => (a[1].completedAt?.getTime() || 0) - (b[1].completedAt?.getTime() || 0));
+      const toRemove = sorted.slice(0, this.optimizationJobs.size - MAX_JOBS);
+      for (const [id] of toRemove) this.optimizationJobs.delete(id);
+    }
   }
 
   getOptimizationJob(jobId: string): OptimizationJob | null {

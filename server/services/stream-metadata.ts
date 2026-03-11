@@ -106,6 +106,11 @@ export class StreamMetadataService {
           }
 
           const metaInterval = parseInt(icyMetaint as string);
+          if (!Number.isFinite(metaInterval) || metaInterval <= 0 || metaInterval > 65536) {
+            req.destroy();
+            resolve({});
+            return;
+          }
           let buffer = Buffer.alloc(0);
           let bytesRead = 0;
 
