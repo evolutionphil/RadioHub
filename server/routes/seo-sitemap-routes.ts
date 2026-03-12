@@ -307,6 +307,13 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any) {
 Allow: /
 
 # Block API endpoints — JSON responses, not useful for Google
+# BUT allow endpoints needed for client-side rendering (Google WRS fetches these during JS render)
+Allow: /api/station/
+Allow: /api/stations/
+Allow: /api/genres
+Allow: /api/translations
+Allow: /api/location
+Allow: /api/advertisements
 Disallow: /api/
 
 # Block admin and auth-only pages — requires login, not indexable

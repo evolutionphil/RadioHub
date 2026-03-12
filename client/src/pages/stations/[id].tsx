@@ -580,6 +580,15 @@ export default function StationDetails() {
   }
 
   if (!station) {
+    const errorMessage = error?.message || '';
+    const is404 = errorMessage.startsWith('404');
+    if (error && !is404) {
+      return (
+        <div className="min-h-screen bg-[#101010] flex items-center justify-center">
+          <div className="text-white text-xl">{t('station_details_loading', 'Loading station...')}</div>
+        </div>
+      );
+    }
     return (
       <div className="min-h-screen bg-[#101010] text-white flex justify-center items-center pt-10">
         <div className="text-2xl">{t('station_details_not_found', 'Station not found.')}</div>
