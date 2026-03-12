@@ -444,25 +444,40 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             }
             proxyRes.pipe(res);
 
-            const cleanup = () => {
+            let cleaned = false;
+            const cleanup = (reason: string) => {
+              if (cleaned) return;
+              cleaned = true;
+              try { proxyRes.unpipe(res); } catch {}
               try { proxyRes.destroy(); } catch {}
               try { proxyReq.destroy(); } catch {}
               try { if (!res.writableEnded) res.end(); } catch {}
             };
 
             proxyRes.on('error', (e) => {
-              console.error('❌ Shoutcast stream error:', e.message);
+              if (e.message !== 'aborted') {
+                console.error('❌ Shoutcast stream error:', e.message);
+              }
               if (!res.headersSent) res.status(500).json({ error: 'Stream failed' });
-              cleanup();
+              cleanup('proxyRes-error');
             });
+
+            proxyRes.on('end', () => cleanup('proxyRes-end'));
+            proxyRes.on('close', () => cleanup('proxyRes-close'));
           });
           
           proxyReq.on('error', (e: any) => {
-            console.error('❌ Shoutcast request error:', e.message);
+            if (e.message !== 'aborted') {
+              console.error('❌ Shoutcast request error:', e.message);
+            }
             if (!res.headersSent) res.status(500).json({ error: 'Connection failed' });
           });
           
           req.on('close', () => {
+            try { proxyReq.destroy(); } catch {}
+          });
+          
+          res.on('close', () => {
             try { proxyReq.destroy(); } catch {}
           });
           
@@ -500,24 +515,34 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       res.setHeader('Cache-Control', 'no-cache');
 
       if (streamResponse.body) {
-        streamResponse.body.pipe(res);
-        
-        streamResponse.body.on('error', (e: any) => {
-          console.error('❌ Stream body error:', e.message);
+        const body = streamResponse.body;
+        body.pipe(res);
+
+        let cleaned = false;
+        const cleanup = (reason: string) => {
+          if (cleaned) return;
+          cleaned = true;
           controller.abort();
+          try { body.unpipe(res); } catch {}
+          try { body.destroy(); } catch {}
           try { if (!res.writableEnded) res.end(); } catch {}
+        };
+        
+        body.on('error', (e: any) => {
+          if (e.message !== 'The operation was aborted') {
+            console.error('❌ Stream body error:', e.message);
+          }
+          cleanup('body-error');
         });
+
+        body.on('end', () => cleanup('body-end'));
+        body.on('close', () => cleanup('body-close'));
+
+        req.on('close', () => cleanup('req-close'));
+        res.on('close', () => cleanup('res-close'));
       } else {
         throw new Error('Response body is null');
       }
-
-      req.on('close', () => {
-        controller.abort();
-      });
-
-      res.on('close', () => {
-        controller.abort();
-      });
 
     } catch (error: any) {
       if (error.name !== 'AbortError') {

@@ -60,7 +60,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Local Font Hosting**: Ubuntu font served locally.
 - **Instant Location Detection**: Cloudflare CF-IPCountry headers for geolocation.
 - **Web Push Notifications**: VAPID keys and service workers.
-- **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy.
+- **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy. Stream proxy has idempotent cleanup (unpipe+destroy body/proxyRes/proxyReq on all terminal events) to prevent memory leaks from abandoned connections.
 - **Comprehensive Auto-Reconnect & Server Timeout Optimization**: Client-side auto-reconnect; optimized server-side timeouts.
 - **Vote-Based Station Ordering**: Defaults to popularity.
 - **Google OAuth Authentication**: Fully operational Google login with avatar management.
