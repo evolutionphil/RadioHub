@@ -1,4 +1,4 @@
-import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle } from '@shared/seo-config';
 import { Translation, Station, SeoMetadata } from '../shared/mongo-schemas';
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
@@ -510,25 +510,25 @@ export class SeoRenderer {
       
       case 'station':
         if (stationData) {
-          const stationName = this.escapeHtml(stationData.name || 'Radio Station');
-          const fromText = getLocalizedText('seo_from', 'from');
-          const listenLiveText = getLocalizedText('seo_listen_live_online', 'Listen Live Online');
-          const country = stationData.country ? ` ${fromText} ${this.escapeHtml(stationData.country)}` : '';
-          return `${stationName}${country} — ${listenLiveText} | Mega Radio`;
+          return seoTags?.title || this.escapeHtml(generateLocalizedStationTitle(stationData, language, translations));
         }
         return getLocalizedText('stations_page_title');
       
       case 'genres':
         if (additionalData?.genreName) {
           const genreName = this.escapeHtml(additionalData.genreName);
-          return `${genreName} Radio Stations — Listen Live Online | Mega Radio`;
+          const radioStationsText = translations['seo_radio_stations'] || 'Radio Stations';
+          const listenLiveText = translations['seo_listen_live_online'] || 'Listen Live Online';
+          return `${genreName} ${radioStationsText} — ${listenLiveText} | Mega Radio`;
         }
         return getLocalizedText('genres_page_title');
       
       case 'regions':
         if (additionalData?.regionName) {
           const regionName = this.escapeHtml(additionalData.regionName);
-          return `${regionName} Radio Stations — Listen Live Online | Mega Radio`;
+          const radioStationsText = translations['seo_radio_stations'] || 'Radio Stations';
+          const listenLiveText = translations['seo_listen_live_online'] || 'Listen Live Online';
+          return `${regionName} ${radioStationsText} — ${listenLiveText} | Mega Radio`;
         }
         return getLocalizedText('regions_page_title');
       

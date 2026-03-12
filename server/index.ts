@@ -734,13 +734,7 @@ app.use((req, res, next) => {
         })}
       </div>
     </div>
-    <!-- CRITICAL: Inject language script to prevent geo-detection override -->
-    <script id="initial-translations">
-      window.__INITIAL_LANGUAGE__ = "${seoData.language}";
-      window.__INITIAL_TRANSLATIONS__ = ${JSON.stringify(seoData.translations || {})};
-      window.__PRELOADED__ = true;
-    </script>
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- SSR-only: No React script for bots — pure HTML for reliable indexing -->
   </body>
 </html>`;
 

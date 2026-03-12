@@ -1260,45 +1260,45 @@ export function generateLocalizedStationTitle(station: any, language: string, tr
   // Use native country name based on language
   const nativeCountry = station.country ? getNativeCountryName(station.country, language) : null;
   
-  // Language-specific translations for "from" preposition
-  const fromTranslations: Record<string, string> = {
-    'tr': 'dan',  // Turkish: Avusturyadan (from Austria → Avusturya + dan)
-    'de': 'aus',  // German: aus Deutschland
-    'fr': 'de',   // French: de France
-    'es': 'de',   // Spanish: de España
-    'it': 'da',   // Italian: da Italia
-    'pt': 'de',   // Portuguese: de Portugal
-    'nl': 'uit',  // Dutch: uit
-    'ru': 'из',   // Russian: из России
-    'pl': 'z',    // Polish: z Polski
-    'ar': 'من',   // Arabic: من
-    'ja': 'から', // Japanese: から日本
-    'zh': '来自', // Chinese: 来自中国
-    'ko': '에서', // Korean: 에서 한국
-    'hi': 'से',   // Hindi: से
+  // Use DB translation key 'seo_from' first, then hardcoded fallbacks per language
+  const fromFallbacks: Record<string, string> = {
+    'tr': 'den',
+    'de': 'aus',
+    'fr': 'de',
+    'es': 'de',
+    'it': 'da',
+    'pt': 'de',
+    'nl': 'uit',
+    'ru': 'из',
+    'pl': 'z',
+    'ar': 'من',
+    'ja': 'から',
+    'zh': '来自',
+    'ko': '에서',
+    'hi': 'से',
   };
   
   let countryPart = '';
   if (nativeCountry) {
-    const fromWord = fromTranslations[language];
+    const fromWord = translations['seo_from'] || fromFallbacks[language] || 'from';
     if (language === 'tr') {
-      // Turkish: Suffix style "Avusturyadan" instead of "from Austria"
-      countryPart = ` ${nativeCountry}${fromWord}`;
-    } else if (fromWord) {
-      countryPart = ` ${fromWord} ${nativeCountry}`;
+      countryPart = ` ${nativeCountry}'${fromWord}`;
     } else {
-      countryPart = ` from ${nativeCountry}`;
+      countryPart = ` ${fromWord} ${nativeCountry}`;
     }
   }
   
+  // Use DB key 'seo_listen_live_online' for "Listen Live" text, with fallback
+  const listenLiveText = translations['seo_listen_live_online'] || translations['listen_live'] || 'Listen Live';
+  
   // Use database translation for the page title format, fallback to default
-  const pageTitle = translations['radio_playing_page.title'] || '{station_name} — {listen_live}';
+  const pageTitle = translations['radio_playing_page.title'] || '{station_name}{country_part} — {listen_live}';
   
   // Replace placeholders with actual values (handle both lowercase and uppercase)
   let title = pageTitle
     .replace(/{STATION_NAME}|{station_name}/g, stationName)
     .replace(/{COUNTRY_PART}|{country_part}/g, countryPart)
-    .replace(/{LISTEN_LIVE}|{listen_live}/g, translations['listen_live'] || 'Listen Live');
+    .replace(/{LISTEN_LIVE}|{listen_live}/g, listenLiveText);
   
   return title;
 }

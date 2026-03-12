@@ -309,6 +309,7 @@ Allow: /
 # Block API endpoints — JSON responses, not useful for Google
 # BUT allow endpoints needed for client-side rendering (Google WRS fetches these during JS render)
 Allow: /api/station/
+Allow: /api/stations
 Allow: /api/stations/
 Allow: /api/genres
 Allow: /api/translations

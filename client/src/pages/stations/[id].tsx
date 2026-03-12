@@ -208,7 +208,7 @@ export default function StationDetails() {
     }
   }, [stationSlug, stationId, setLocation]);
 
-  const { data: station, isLoading: stationLoading, error } = useQuery({
+  const { data: station, isLoading: stationLoading, error, refetch: refetchStation } = useQuery({
     queryKey: [`/api/station/${identifier}`],
     enabled: !!identifier,
   });
@@ -584,8 +584,14 @@ export default function StationDetails() {
     const is404 = errorMessage.startsWith('404');
     if (error && !is404) {
       return (
-        <div className="min-h-screen bg-[#101010] flex items-center justify-center">
-          <div className="text-white text-xl">{t('station_details_loading', 'Loading station...')}</div>
+        <div className="min-h-screen bg-[#101010] flex items-center justify-center flex-col gap-4">
+          <div className="text-white text-xl">{t('error_connection', 'Connection error. Please try again.')}</div>
+          <button 
+            onClick={() => refetchStation()} 
+            className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+          >
+            {t('retry', 'Retry')}
+          </button>
         </div>
       );
     }
