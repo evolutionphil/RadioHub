@@ -518,6 +518,11 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
 
     socket.on("error", (err) => {
       logger.error(`CHAT WS error for user ${userId}:`, err);
+      chatService.setActiveConversation(userId, null);
+      chatService.removeClient(userId, client);
+      if (!chatService.isOnline(userId)) {
+        broadcastOnlineStatus(userId, false);
+      }
     });
   });
 

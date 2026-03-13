@@ -10,6 +10,7 @@ interface MetadataClient {
 }
 
 export class RealtimeMetadataService {
+  private static readonly MAX_CLIENTS = 200;
   private clients: Map<string, MetadataClient> = new Map();
   private streamMetadataService: StreamMetadataService;
   private metadataIntervals: Map<string, NodeJS.Timeout> = new Map();
@@ -19,7 +20,13 @@ export class RealtimeMetadataService {
   }
 
   addClient(clientId: string, socket: WebSocket) {
-    logger.log(`🎵 REALTIME METADATA: Client connected ${clientId}`);
+    if (this.clients.size >= RealtimeMetadataService.MAX_CLIENTS) {
+      logger.log(`⚠️ REALTIME METADATA: Max clients (${RealtimeMetadataService.MAX_CLIENTS}) reached, rejecting ${clientId}`);
+      socket.close(1013, 'Server at capacity');
+      return;
+    }
+
+    logger.log(`🎵 REALTIME METADATA: Client connected ${clientId} (total: ${this.clients.size + 1})`);
     
     const client: MetadataClient = {
       id: clientId,
@@ -28,13 +35,11 @@ export class RealtimeMetadataService {
     
     this.clients.set(clientId, client);
     
-    // Send welcome message
     this.sendToClient(clientId, {
       action: 'connected',
       data: { message: 'Real-time metadata service ready' }
     });
 
-    // Handle client messages
     socket.on('message', (data) => {
       try {
         const message = JSON.parse(data.toString());
@@ -44,8 +49,12 @@ export class RealtimeMetadataService {
       }
     });
 
-    // Handle client disconnect
     socket.on('close', () => {
+      this.removeClient(clientId);
+    });
+
+    socket.on('error', (err) => {
+      logger.log(`❌ REALTIME METADATA: Socket error for ${clientId}:`, err.message);
       this.removeClient(clientId);
     });
   }

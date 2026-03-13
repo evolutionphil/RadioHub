@@ -386,9 +386,25 @@ export function registerMiscRoutes(app: Express, deps: any) {
 
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
-      const users = await User.find().select('_id email fullName avatar profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive').lean();
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 100));
+      const skip = (page - 1) * limit;
+      const search = req.query.search as string;
+
+      const filter: any = {};
+      if (search) {
+        filter.$or = [
+          { email: { $regex: search, $options: 'i' } },
+          { fullName: { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      const [users, totalCount] = await Promise.all([
+        User.find(filter).select('_id email fullName avatar profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive').skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
+        User.countDocuments(filter)
+      ]);
       const userIds = users.map(u => u._id.toString());
-      const favoriteCounts = await UserFavorite.aggregate([{ $match: { userId: { $in: userIds } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]);
+      const favoriteCounts = await UserFavorite.aggregate([{ $match: { userId: { $in: userIds } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]).maxTimeMS(10000);
       const favoriteMap: Record<string, number> = {};
       favoriteCounts.forEach(doc => { favoriteMap[doc._id] = doc.count; });
       const usersWithDetails = users.map(user => {
@@ -410,7 +426,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
           isActive: user.isActive !== false
         };
       });
-      res.json(usersWithDetails);
+      res.json({ users: usersWithDetails, total: totalCount, page, limit, totalPages: Math.ceil(totalCount / limit) });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch users' });
     }

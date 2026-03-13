@@ -40,10 +40,11 @@ export default function AdminUsers() {
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
   const { toast } = useToast();
 
-  const { data: users = [], isLoading: isLoadingUsers } = useQuery<UserProfile[]>({
+  const { data: usersResponse, isLoading: isLoadingUsers } = useQuery<{ users: UserProfile[]; total: number }>({
     queryKey: ["/api/admin/users"],
     staleTime: 30000,
   });
+  const users = usersResponse?.users || [];
 
   const filteredUsers = users.filter((user) =>
     user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||

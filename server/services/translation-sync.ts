@@ -1,4 +1,5 @@
 import * as fs from 'fs';
+import * as fsp from 'fs/promises';
 import * as path from 'path';
 import { TranslationKey, Translation, TranslationLanguage } from '../../shared/mongo-schemas';
 import { bumpTranslationVersion } from './translation-version';
@@ -22,17 +23,17 @@ export class TranslationSyncService {
     const clientDir = path.join(process.cwd(), 'client', 'src');
     const extractedKeys: ExtractedKey[] = [];
     
-    const scanDirectory = (dir: string) => {
+    const scanDirectory = async (dir: string) => {
       try {
-        const files = fs.readdirSync(dir);
+        const files = await fsp.readdir(dir);
         for (const file of files) {
           const filePath = path.join(dir, file);
-          const stat = fs.statSync(filePath);
+          const stat = await fsp.stat(filePath);
           
           if (stat.isDirectory()) {
-            scanDirectory(filePath);
+            await scanDirectory(filePath);
           } else if (file.endsWith('.tsx') || file.endsWith('.ts')) {
-            const content = fs.readFileSync(filePath, 'utf-8');
+            const content = await fsp.readFile(filePath, 'utf-8');
             const lines = content.split('\n');
             
             lines.forEach((line, index) => {
@@ -58,7 +59,7 @@ export class TranslationSyncService {
       }
     };
 
-    scanDirectory(clientDir);
+    await scanDirectory(clientDir);
     
     const uniqueKeys = new Map<string, ExtractedKey>();
     for (const extracted of extractedKeys) {

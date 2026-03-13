@@ -76,6 +76,22 @@ export class ScheduledCacheClearService {
       timezone: 'Europe/Berlin'
     });
 
+    if (process.env.NODE_ENV === 'production') {
+      cron.schedule('0 4 * * *', () => {
+        logger.log('🔄 NIGHTLY RESTART: Performing scheduled daily restart at 4:00 AM for memory hygiene...');
+        const mem = process.memoryUsage();
+        const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+        const rssMB = Math.round(mem.rss / 1024 / 1024);
+        logger.log(`📊 Pre-restart memory: heap=${heapMB}MB, rss=${rssMB}MB, uptime=${Math.round(process.uptime())}s`);
+        setTimeout(() => {
+          process.exit(0);
+        }, 3000);
+      }, {
+        timezone: 'Europe/Berlin'
+      });
+      logger.log('⏰ Nightly restart scheduled: daily 4:00 AM (Europe/Berlin) — Railway auto-restarts the container');
+    }
+
     this.isInitialized = true;
     logger.log('✅ Scheduled cache clear service initialized — SEO daily 3:00, Precomputed Monday 4:30, Translations monthly 1st 5:00 (Europe/Berlin)');
   }

@@ -392,13 +392,12 @@ export class StreamMetadataService {
       
       let result: MetadataResult;
       
-      // Check if it's an HLS stream
+      const hardDeadline = new Promise<MetadataResult>((resolve) => setTimeout(() => resolve({}), 20000));
+
       if (station.hls || streamUrl.includes('.m3u8') || streamUrl.includes('playlist')) {
-        // Fetching HLS metadata for station
-        result = await this.fetchPlaylistMeta(streamUrl);
+        result = await Promise.race([this.fetchPlaylistMeta(streamUrl), hardDeadline]);
       } else {
-        // Fetching ICY metadata for station
-        result = await this.fetchAudioMeta(streamUrl);
+        result = await Promise.race([this.fetchAudioMeta(streamUrl), hardDeadline]);
       }
       
       // Cache the result if it's meaningful

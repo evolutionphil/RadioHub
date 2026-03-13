@@ -123,14 +123,14 @@ process.on('unhandledRejection', (reason: any) => {
 
 // CRITICAL: Health check endpoint BEFORE all middleware
 // Must respond immediately for Replit deployment health checks
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
   const mem = process.memoryUsage();
   const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);
   const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
-  const mongoose = require('mongoose');
+  const { default: mongoose } = await import('mongoose');
   const mongoState = mongoose.connection.readyState;
-  const mongoStateLabel = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' }[mongoState] || 'unknown';
+  const mongoStateLabel = ({ 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' } as Record<number, string>)[mongoState] || 'unknown';
 
   if (heapMB > 7500 || mongoState === 0) {
     return res.status(503).json({
