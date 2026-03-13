@@ -132,7 +132,7 @@ function ProfileContent() {
   });
 
   const unfollowMutation = useMutation({
-    mutationFn: (targetUserId: string) => apiRequest(`/api/user/unfollow/${targetUserId}`, 'POST'),
+    mutationFn: (targetUserId: string) => apiRequest(`/api/user/unfollow/${targetUserId}`, 'DELETE'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/user/social'] });
       toast({ title: t('general_success', 'Success'), description: t('success_user_unfollowed', 'User unfollowed successfully') });

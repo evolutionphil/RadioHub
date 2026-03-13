@@ -110,7 +110,7 @@ export default function UserProfile() {
   // Follow mutation
   const followMutation = useMutation({
     mutationFn: async (targetUserId: string) => {
-      const response = await fetch(`/api/users/${targetUserId}/follow`, {
+      const response = await fetch(`/api/user/follow/${targetUserId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -151,8 +151,8 @@ export default function UserProfile() {
   // Unfollow mutation
   const unfollowMutation = useMutation({
     mutationFn: async (targetUserId: string) => {
-      const response = await fetch(`/api/users/${targetUserId}/unfollow`, {
-        method: 'POST',
+      const response = await fetch(`/api/user/unfollow/${targetUserId}`, {
+        method: 'DELETE',
         headers: {
           'Content-Type': 'application/json',
         },

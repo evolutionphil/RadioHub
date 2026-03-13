@@ -106,7 +106,7 @@ function PublicUsersSection({ inViewFromParent }: { inViewFromParent: boolean })
     setAnimatingUsers(prev => new Map(prev).set(userId, isCurrentlyFollowing ? 'unfollowing' : 'following'));
     
     try {
-      const response = await fetch(`/api/users/${userId}/follow`, {
+      const response = await fetch(isCurrentlyFollowing ? `/api/user/unfollow/${userId}` : `/api/user/follow/${userId}`, {
         method: isCurrentlyFollowing ? 'DELETE' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include'
