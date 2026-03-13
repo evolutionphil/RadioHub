@@ -216,8 +216,11 @@ export class iTunesApiService {
         tracks: tracks
       };
     } catch (error: any) {
-      console.error('Error fetching artist details:', error.message);
-      throw new Error(`Failed to fetch artist details: ${error.message}`);
+      const msg = error.message || 'Unknown error';
+      if (!msg.includes('timeout') && !msg.includes('ECONNREFUSED')) {
+        console.error('Error fetching artist details:', msg);
+      }
+      throw new Error(`Failed to fetch artist details: ${msg}`);
     }
   }
 }

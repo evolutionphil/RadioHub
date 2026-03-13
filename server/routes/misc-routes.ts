@@ -248,7 +248,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
         cached: false
       });
     } catch (error: any) {
-      console.error('Artist lookup error:', error);
+      console.error('Artist lookup error:', error.message || error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });

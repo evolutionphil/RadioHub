@@ -529,7 +529,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         };
         
         body.on('error', (e: any) => {
-          if (e.message !== 'The operation was aborted') {
+          if (!e.message?.includes('aborted')) {
             console.error('❌ Stream body error:', e.message);
           }
           cleanup('body-error');
