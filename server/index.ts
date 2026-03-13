@@ -127,10 +127,25 @@ app.get('/health', (req, res) => {
   const mem = process.memoryUsage();
   const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);
-  if (heapMB > 7500) {
-    return res.status(503).json({ status: 'unhealthy', heapMB, rssMB });
+  const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+  const mongoose = require('mongoose');
+  const mongoState = mongoose.connection.readyState;
+  const mongoStateLabel = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' }[mongoState] || 'unknown';
+
+  if (heapMB > 7500 || mongoState === 0) {
+    return res.status(503).json({
+      status: 'unhealthy',
+      heapMB, heapTotalMB, rssMB,
+      mongo: mongoStateLabel,
+      uptime: Math.round(process.uptime())
+    });
   }
-  res.status(200).json({ status: 'ok', heapMB, rssMB, uptime: Math.round(process.uptime()) });
+  res.status(200).json({
+    status: 'ok',
+    heapMB, heapTotalMB, rssMB,
+    mongo: mongoStateLabel,
+    uptime: Math.round(process.uptime())
+  });
 });
 
 // Apply global API rate limiting to all /api routes
@@ -313,8 +328,8 @@ app.use(stationCountryValidator);
 
 // Enable compression for all responses - SEO optimization for faster page loads
 app.use(compression({
-  level: process.env.NODE_ENV === 'production' ? 9 : 6, // Max compression in production for SEO
-  threshold: 512, // Compress responses > 512 bytes (more aggressive)
+  level: process.env.NODE_ENV === 'production' ? 6 : 4, // Level 6 balances compression ratio with CPU usage (9 blocks event loop)
+  threshold: 1024, // Compress responses > 1KB
   filter: (req, res) => {
     // Compress all responses except WebSocket upgrades
     if (req.headers['upgrade']) {
@@ -539,6 +554,44 @@ app.use((req, res, next) => {
   server.timeout = 300000; // 5 minutes for normal requests (streams override via res.setTimeout(0))
   server.keepAliveTimeout = 65000; // 65 seconds (slightly above typical LB 60s idle timeout)
   server.headersTimeout = 66000; // Must be longer than keepAliveTimeout
+
+  let isShuttingDown = false;
+  const gracefulShutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\n🛑 ${signal} received — starting graceful shutdown...`);
+    const shutdownTimeout = setTimeout(() => {
+      console.error('🚨 Graceful shutdown timed out (15s) — forcing exit');
+      process.exit(1);
+    }, 15000);
+
+    try {
+      await new Promise<void>((resolve) => {
+        server.close(() => {
+          console.log('✅ HTTP server closed');
+          resolve();
+        });
+        setTimeout(resolve, 10000);
+      });
+
+      const mongooseModule = (await import('mongoose')).default;
+      if (mongooseModule.connection.readyState === 1) {
+        await mongooseModule.connection.close(false);
+        console.log('✅ MongoDB connection closed');
+      }
+
+      clearTimeout(shutdownTimeout);
+      console.log('✅ Graceful shutdown complete');
+      process.exit(0);
+    } catch (err: any) {
+      console.error('❌ Error during shutdown:', err.message);
+      clearTimeout(shutdownTimeout);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   // Error handler middleware
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -955,6 +1008,7 @@ app.use((req, res, next) => {
 
     if (process.env.NODE_ENV !== 'development') {
       const { CacheManager } = await import('./cache');
+
       setInterval(async () => {
         const mem = process.memoryUsage();
         const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
@@ -979,6 +1033,29 @@ app.use((req, res, next) => {
           }
         }
       }, 5 * 60 * 1000);
+
+      let lastEventLoopCheck = Date.now();
+      setInterval(() => {
+        const now = Date.now();
+        const lag = now - lastEventLoopCheck - 5000;
+        lastEventLoopCheck = now;
+        if (lag > 2000) {
+          console.warn(`⚠️ EVENT LOOP LAG: ${lag}ms (>2s indicates blocking operation)`);
+        }
+        if (lag > 10000) {
+          console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms — possible freeze detected`);
+        }
+      }, 5000);
+
+      const mongoose = (await import('mongoose')).default;
+      setInterval(() => {
+        const state = mongoose.connection.readyState;
+        if (state !== 1) {
+          const stateNames: Record<number, string> = { 0: 'disconnected', 2: 'connecting', 3: 'disconnecting' };
+          console.error(`🚨 MONGODB STATE: ${stateNames[state] || 'unknown'} (readyState=${state})`);
+        }
+      }, 30000);
     }
+
   })();
 })();

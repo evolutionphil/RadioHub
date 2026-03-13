@@ -399,6 +399,17 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         const https = await import('https');
         const urlModule = await import('url');
         
+        let activeProxyReq: any = null;
+        let activeCleanup: (() => void) | null = null;
+
+        const destroyActiveProxy = () => {
+          if (activeCleanup) activeCleanup();
+          else if (activeProxyReq) { try { activeProxyReq.destroy(); } catch {} }
+        };
+
+        req.once('close', destroyActiveProxy);
+        res.once('close', destroyActiveProxy);
+
         const makeShoutcastRequest = (targetUrl: string, redirectCount = 0): void => {
           if (redirectCount > 5) {
             if (!res.headersSent) res.status(500).json({ error: 'Too many redirects' });
@@ -445,7 +456,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             proxyRes.pipe(res);
 
             let cleaned = false;
-            const cleanup = (reason: string) => {
+            const cleanup = () => {
               if (cleaned) return;
               cleaned = true;
               try { proxyRes.unpipe(res); } catch {}
@@ -453,32 +464,27 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               try { proxyReq.destroy(); } catch {}
               try { if (!res.writableEnded) res.end(); } catch {}
             };
+            activeCleanup = cleanup;
 
             proxyRes.on('error', (e) => {
-              if (e.message !== 'aborted') {
+              if (!e.message?.includes('aborted')) {
                 console.error('❌ Shoutcast stream error:', e.message);
               }
               if (!res.headersSent) res.status(500).json({ error: 'Stream failed' });
-              cleanup('proxyRes-error');
+              cleanup();
             });
 
-            proxyRes.on('end', () => cleanup('proxyRes-end'));
-            proxyRes.on('close', () => cleanup('proxyRes-close'));
+            proxyRes.on('end', cleanup);
+            proxyRes.on('close', cleanup);
           });
+
+          activeProxyReq = proxyReq;
           
           proxyReq.on('error', (e: any) => {
-            if (e.message !== 'aborted') {
+            if (!e.message?.includes('aborted')) {
               console.error('❌ Shoutcast request error:', e.message);
             }
             if (!res.headersSent) res.status(500).json({ error: 'Connection failed' });
-          });
-          
-          req.on('close', () => {
-            try { proxyReq.destroy(); } catch {}
-          });
-          
-          res.on('close', () => {
-            try { proxyReq.destroy(); } catch {}
           });
           
           proxyReq.end();
@@ -545,7 +551,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       }
 
     } catch (error: any) {
-      if (error.name !== 'AbortError') {
+      try { controller.abort(); } catch {}
+      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
         console.error('❌ Simple stream error:', error.message);
       }
       if (!res.headersSent) {

@@ -218,19 +218,18 @@ export async function connectToMongoDB() {
 
   try {
     await mongoose.connect(MONGODB_URI, {
-      // Connection pool: default 5 is too low for heavy startup warmup
       maxPoolSize: isProd ? 25 : 10,
       minPoolSize: isProd ? 5 : 2,
-      // Timeout settings: production needs more time for cold starts
       serverSelectionTimeoutMS: isProd ? 30000 : 15000,
-      socketTimeoutMS: isProd ? 60000 : 45000,
+      socketTimeoutMS: isProd ? 45000 : 30000,
       connectTimeoutMS: isProd ? 30000 : 15000,
-      // Buffer queries while reconnecting (don't fail immediately on transient disconnect)
       bufferCommands: true,
-      // Use IPv4 to avoid IPv6 routing issues on some cloud providers
+      maxIdleTimeMS: 30000,
       family: 4,
-      // Heartbeat to keep connection alive
       heartbeatFrequencyMS: 10000,
+      retryWrites: true,
+      retryReads: true,
+      w: 'majority',
     });
     isConnected = true;
     logger.log('✅ MongoDB: Connected successfully');
