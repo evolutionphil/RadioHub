@@ -1303,7 +1303,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       ]);
 
       res.json({ success: true, message: "User followed successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      logger.error('Follow error:', error?.message || error);
       res.status(500).json({ error: 'Failed to follow user' });
     }
   });
@@ -1348,7 +1349,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       ]);
 
       res.json({ success: true, message: "User unfollowed successfully" });
-    } catch (error) {
+    } catch (error: any) {
+      logger.error('Unfollow error:', error?.message || error);
       res.status(500).json({ error: 'Failed to unfollow user' });
     }
   });

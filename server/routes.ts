@@ -13,7 +13,7 @@ import { userEngagementRouter } from './routes/user-engagement';
 import indexnowMonitoringRouter from './routes/indexnow-monitoring';
 import { IndexNowService } from './services/indexnow';
 import { COUNTRY_TO_LANGUAGE, CODE_TO_COUNTRY } from '@shared/seo-config';
-import CacheManager, { CacheKeys } from './cache';
+import CacheManager, { CacheKeys, invalidateSocialCacheForUser } from './cache';
 import { normalizeCountryFilter } from './utils/normalize-country';
 import { StreamMetadataService } from './services/stream-metadata';
 import { RealtimeMetadataService } from './services/realtime-metadata';
@@ -57,7 +57,8 @@ const deps = {
   apiKeyMiddleware,
   seedDemoApiKey,
   passport,
-  getSocialAuthStatus
+  getSocialAuthStatus,
+  invalidateSocialCacheForUser
 };
 
 export async function registerRoutes(app: Express): Promise<Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer>, chatWss: InstanceType<typeof WebSocketServer> }> {
