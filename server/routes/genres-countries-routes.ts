@@ -3,7 +3,7 @@ import { Genre, Country, Station, UserProfile, UserListeningHistory } from '../.
 import { RecommendationEngine } from '../services/recommendation-engine';
 import CacheManager, { CacheKeys } from '../cache';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
-import { normalizeCountryFilter, getAllCountryInfoFromDb } from '../utils/normalize-country';
+import { normalizeCountryFilter, resolveToDbName, getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { tvValidateParams, tvSlimGenre, stripPlaceholders } from './shared-utils';
 import { logger } from '../utils/logger';
 
@@ -457,7 +457,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const page = parseInt(req.query.page as string) || 1;
       const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
       const skip = (page - 1) * limit;
-      const country = (req.query.country as string) || null;
+      const rawCountry = (req.query.country as string) || null;
+      const country = (rawCountry && rawCountry !== 'undefined' && rawCountry !== 'null')
+        ? (resolveToDbName(rawCountry) || rawCountry)
+        : null;
 
       const cacheKey = `genre-stations:${slug}:${country || 'all'}:${page}:${limit}`;
       const cached = await CacheManager.get(cacheKey);
