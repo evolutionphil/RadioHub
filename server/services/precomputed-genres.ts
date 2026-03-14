@@ -72,7 +72,7 @@ export class PrecomputedGenresService {
       { $unwind: '$allTags' },
       { $match: { allTags: { $ne: '' } } },
       { $group: { _id: '$allTags', count: { $sum: 1 } } }
-    ]);
+    ]).option({ maxTimeMS: 30000, allowDiskUse: true });
 
     const tagCounts = new Map<string, number>();
     
@@ -168,12 +168,14 @@ export class PrecomputedGenresService {
     logger.log('🔥 Warming up genres cache...');
     
     await this.getGenres('global');
+    await new Promise(resolve => setTimeout(resolve, 200));
     
     const topCountries = ['DE', 'US', 'TR', 'FR', 'IT', 'ES', 'GB', 'BR', 'RU', 'JP', 'NL', 'AT', 'CH', 'PL', 'AU', 'CA', 'MX', 'IN', 'KR'];
     
     for (const country of topCountries) {
       try {
         await this.getGenres(country);
+        await new Promise(resolve => setTimeout(resolve, 150));
       } catch (error) {
         logger.error(`Failed to warmup genres for ${country}:`, error);
       }
@@ -188,16 +190,19 @@ export class PrecomputedGenresService {
     await CacheManager.del(GLOBAL_CACHE_KEY);
     await this.getGenres('global');
     
-    const countries = await Station.distinct('country').lean();
+    const topCountries = ['DE', 'US', 'TR', 'FR', 'IT', 'ES', 'GB', 'BR', 'RU', 'JP', 'NL', 'AT', 'CH', 'PL', 'AU', 'CA', 'MX', 'IN', 'KR'];
     
-    for (const country of countries) {
-      if (country && typeof country === 'string') {
+    for (const country of topCountries) {
+      try {
         const cacheKey = this.getCacheKey(country);
         await CacheManager.del(cacheKey);
         await this.getGenres(country);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      } catch (error) {
+        logger.error(`Failed to refresh genres for ${country}:`, error);
       }
     }
     
-    logger.log('✅ All genres caches refreshed');
+    logger.log('✅ Top genres caches refreshed (other countries refresh on-demand)');
   }
 }

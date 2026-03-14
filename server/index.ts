@@ -1035,15 +1035,29 @@ app.use((req, res, next) => {
       }, 5 * 60 * 1000);
 
       let lastEventLoopCheck = Date.now();
-      setInterval(() => {
+      let consecutiveHighLag = 0;
+      setInterval(async () => {
         const now = Date.now();
         const lag = now - lastEventLoopCheck - 5000;
         lastEventLoopCheck = now;
         if (lag > 2000) {
           console.warn(`⚠️ EVENT LOOP LAG: ${lag}ms (>2s indicates blocking operation)`);
         }
+        if (lag > 3000) {
+          consecutiveHighLag++;
+        } else {
+          consecutiveHighLag = 0;
+        }
         if (lag > 10000) {
           console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms — possible freeze detected`);
+        }
+        if (consecutiveHighLag >= 5) {
+          console.error(`🚨 LOAD SHEDDING: ${consecutiveHighLag} consecutive >3s lag intervals — clearing caches to recover`);
+          try {
+            performanceCache.clearAllForMemoryRelief();
+            if (global.gc) global.gc();
+          } catch {}
+          consecutiveHighLag = 0;
         }
       }, 5000);
 

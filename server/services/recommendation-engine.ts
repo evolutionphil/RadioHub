@@ -28,8 +28,9 @@ interface PersonalizedSimilarStationsOptions {
 }
 
 export class RecommendationEngine {
+  private static activeRecommendations = 0;
+  private static readonly MAX_CONCURRENT_RECOMMENDATIONS = 3;
   
-  // Track user listening behavior for ML learning
   static async recordUserInteraction(interaction: UserInteraction): Promise<void> {
     try {
       const station = await Station.findById(interaction.stationId).lean();
@@ -67,36 +68,52 @@ export class RecommendationEngine {
     }
   }
 
-  // Get personalized similar stations using ML
   static async getPersonalizedSimilarStations(options: PersonalizedSimilarStationsOptions): Promise<RecommendationResult[]> {
     const { sourceStationId, sessionId, limit = 10, minConfidence = 0.3 } = options;
     
+    if (this.activeRecommendations >= this.MAX_CONCURRENT_RECOMMENDATIONS) {
+      return this.getFallbackRecommendations(sourceStationId, limit);
+    }
+    
+    this.activeRecommendations++;
+    let settled = false;
     try {
-      // Get user profile for personalization
-      const userProfile = await this.getUserProfile(sessionId);
-      const sourceStation = await Station.findById(sourceStationId).lean();
-      
-      if (!sourceStation) return [];
+      const computePromise = (async () => {
+        const userProfile = await this.getUserProfile(sessionId);
+        const sourceStation = await Station.findById(sourceStationId).lean();
+        
+        if (!sourceStation) return [];
 
-      // Try multiple recommendation strategies and blend them
-      const strategies = await Promise.all([
-        this.getCollaborativeRecommendations(sourceStationId, sessionId, userProfile),
-        this.getContentBasedRecommendations(sourceStationId, userProfile),
-        this.getPopularityBasedRecommendations(sourceStation, userProfile)
-      ]);
+        const strategies = await Promise.all([
+          this.getCollaborativeRecommendations(sourceStationId, sessionId, userProfile),
+          this.getContentBasedRecommendations(sourceStationId, userProfile),
+          this.getPopularityBasedRecommendations(sourceStation, userProfile)
+        ]);
 
-      // Blend recommendation strategies with weights based on user profile strength
-      const recommendations = this.blendRecommendations(strategies, userProfile?.profileStrength || 0);
+        const recommendations = this.blendRecommendations(strategies, userProfile?.profileStrength || 0);
+        
+        return recommendations
+          .filter(rec => rec.confidence >= minConfidence)
+          .slice(0, limit);
+      })();
       
-      // Filter by confidence and limit
-      return recommendations
-        .filter(rec => rec.confidence >= minConfidence)
-        .slice(0, limit);
+      const timeoutPromise = new Promise<RecommendationResult[]>((resolve) => 
+        setTimeout(() => resolve([]), 8000)
+      );
+      
+      const result = await Promise.race([computePromise, timeoutPromise]);
+      settled = true;
+      return result.length > 0 ? result : await this.getFallbackRecommendations(sourceStationId, limit);
         
     } catch (error) {
-      console.error('Failed to get personalized recommendations:', error);
-      // Fallback to basic similar stations
+      settled = true;
       return this.getFallbackRecommendations(sourceStationId, limit);
+    } finally {
+      if (settled) {
+        this.activeRecommendations--;
+      } else {
+        setTimeout(() => { this.activeRecommendations = Math.max(0, this.activeRecommendations - 1); }, 15000);
+      }
     }
   }
 
@@ -154,7 +171,6 @@ export class RecommendationEngine {
 
     if (userStationIds.length < 3) return []; // Need enough data
 
-    // Find other users who listened to the same stations
     const similarUsers = await UserListeningHistory.aggregate([
       { $match: { stationId: { $in: userStationIds }, sessionId: { $ne: sessionId } } },
       { 
@@ -166,8 +182,8 @@ export class RecommendationEngine {
       },
       { $match: { $expr: { $gte: [{ $size: '$commonStations' }, 2] } } },
       { $sort: { totalListenDuration: -1 } },
-      { $limit: 100 }
-    ]);
+      { $limit: 50 }
+    ]).option({ maxTimeMS: 5000 });
 
     if (similarUsers.length === 0) return [];
 
@@ -192,7 +208,7 @@ export class RecommendationEngine {
       { $match: { listenerCount: { $gte: 2 } } },
       { $sort: { score: -1, listenerCount: -1 } },
       { $limit: 20 }
-    ]);
+    ]).option({ maxTimeMS: 5000 });
 
     return recommendations.map(rec => ({
       stationId: rec._id,

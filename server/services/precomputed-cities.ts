@@ -114,7 +114,7 @@ export class PrecomputedCitiesService {
     ];
 
     try {
-      const result = await Station.aggregate(pipeline).exec();
+      const result = await Station.aggregate(pipeline).option({ maxTimeMS: 15000 }).exec();
       const totalCountryStations = result[0]?.totalCount[0]?.count || 0;
       const cityCountsRaw = result[0]?.cityCounts || [];
 
@@ -169,6 +169,7 @@ export class PrecomputedCitiesService {
     for (const country of countries) {
       try {
         await this.computeCitiesForCountry(country);
+        await new Promise(resolve => setTimeout(resolve, 150));
       } catch (error) {
         logger.error(`Failed to warmup cities cache for ${country}:`, error);
       }

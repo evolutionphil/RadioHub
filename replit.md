@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-This project is a full-stack radio station management application offering streaming and management capabilities for radio stations. It features a comprehensive admin interface, real-time monitoring, robust audio format compatibility, and a slug-based URL system for SEO. The system supports user management, social interactions, geolocation, advanced search, authentic user engagement data, trending stations, and machine learning-powered recommendations. The core vision is to establish a leading platform in digital audio, utilizing AI-driven content delivery and advanced HLS session management for global reach and uninterrupted streaming.
+This project is a full-stack radio station management application providing streaming and management capabilities. It features a comprehensive admin interface, real-time monitoring, broad audio format compatibility, and SEO-friendly URL structures. Key capabilities include user management, social interactions, geolocation, advanced search, authentic user engagement data, trending stations, and machine learning-powered recommendations. The vision is to establish a leading platform in digital audio with AI-driven content delivery and advanced HLS session management for global reach and uninterrupted streaming.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -30,73 +30,68 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 
 ## System Architecture
 
-### Backend Architecture
+### Backend
 - **Framework**: Express.js with TypeScript
-- **Database**: MongoDB with Mongoose ODM
-- **API Style**: REST API
-- **Session Management**: MemoryStore
-- **Caching**: Multi-layer caching with NodeCache and Redis.
-- **Core Services**: Data synchronization, user management, station requests/submissions, advertisement management, CMS, duplicate detection, merging.
+- **Database**: MongoDB with Mongoose
+- **API**: REST API
+- **Caching**: Multi-layer (NodeCache, Redis)
+- **Core Services**: Data sync, user/station management, advertising, CMS, duplicate detection.
 
-### Frontend Architecture
+### Frontend
 - **Framework**: React with TypeScript
 - **Routing**: Wouter
 - **State Management**: TanStack Query
-- **UI Framework**: Tailwind CSS with shadcn/ui components
+- **UI**: Tailwind CSS with shadcn/ui
 - **Build Tool**: Vite
-- **Audio Streaming**: Advanced HLS.js integration with Plyr.
-- **UI/UX Decisions**: Pixel-perfect, responsive mobile-first design, consistent design system, functional audio player.
+- **Audio Streaming**: HLS.js with Plyr
+- **UI/UX**: Responsive mobile-first design, consistent design system, functional audio player.
 
 ### Database Design
-- **Collections**: Stations, Countries, Languages, Genres, Codecs, Sync Logs, Users, StationComment, UserSession, Notification, AdvancedSearch.
-- **Key Fields**: Slugs for navigation, poster images, detailed metadata, activity logs.
-- **Enhanced User Model**: `favoriteStations`, `recentlyPlayedStations`, user preferences, authentication.
+- **Collections**: Stations, Countries, Languages, Genres, Codecs, Sync Logs, Users, Comments, Sessions, Notifications, AdvancedSearch.
+- **Key Fields**: Slugs, poster images, metadata, activity logs.
+- **User Model**: `favoriteStations`, `recentlyPlayedStations`, preferences, authentication.
 
 ### Key Architectural Decisions
-- **Monorepo Structure**: Frontend, backend, and shared types in a single repository.
-- **Type Safety**: End-to-end TypeScript with Zod validation.
-- **Rate Limiting**: Global and auth-specific rate limiting using `express-rate-limit`.
-- **SEO-Friendly URLs**: Slug-based navigation, dynamic sitemap, robots.txt, structured data (JSON-LD), multilingual support with hreflang, unified language URL prefix system.
-- **Audio Continuity**: URL updates and page navigation preserve audio playback.
-- **Performance Optimizations**: Caching, database indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed station caches, optimized user profile data fetching.
-- **Local Font Hosting**: Ubuntu font served locally.
-- **Instant Location Detection**: Cloudflare CF-IPCountry headers for geolocation.
-- **Web Push Notifications**: VAPID keys and service workers.
-- **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy. Stream proxy has idempotent cleanup (unpipe+destroy body/proxyRes/proxyReq on all terminal events) to prevent memory leaks from abandoned connections.
-- **Comprehensive Auto-Reconnect & Server Timeout Optimization**: Client-side auto-reconnect; optimized server-side timeouts.
-- **Vote-Based Station Ordering**: Defaults to popularity.
-- **Google OAuth Authentication**: Fully operational Google login with avatar management.
-- **Radio Station Sync System**: Robust synchronization with automated index migration, duplicate prevention, and blacklist checking.
-- **Authentic User Engagement**: Real user favorites power trending stations and recommendations, real station ratings.
-- **Listening Timer Feature**: Real-time listening timer displays duration on station detail pages.
-- **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation, country-specific URL translations, centralized country normalization.
-- **Background Audio Prevention System**: 5-layer protection against browser audio suspension.
-- **Geolocation & Country Detection System**: IP-based geolocation for auto-detection and personalization, including GPS-based nearby stations.
-- **Universal Country Normalization**: `normalizeCountryFilter()` accepts ISO-2 (AT), ISO-3 (AUT), English (Austria), native (Österreich), Turkish (Avusturya), German/French/Spanish/Italian names, and ASCII-stripped variants. Turkish İ/I dotted-i handling via `normalizeTurkishLower()`. All 219 countries covered.
-- **TV/Mobile Init Endpoint**: `GET /api/tv/init` returns popularStations, trendingStations, genres, countries in a single request for app startup. Params: country, countryCode, limit, genreLimit. Cached 10min.
-- **SEO FAQ Content Management**: Admin-manageable, translatable FAQ for homepage SEO.
-- **Automatic Image Optimization**: Server-side image resizing and WebP conversion using Sharp for station favicons, integrated with S3 for storage. Image proxy has memory-safe guards: 2MB download limit, 6-concurrent Sharp semaphore, content-type/magic-byte validation, 512px dimension cap, and proper cleanup to prevent OOM on Railway.
-- **Memory Management**: Multi-layer OOM prevention — heap monitor every 5min (warn >6000MB, critical >7000MB clears ALL caches: performance, precomputed, OG images, CacheManager patterns). Railway runs with `--max-old-space-size=8192 --expose-gc` (32GB server). ogImageCache maxKeys=500/1hr TTL, seoHtmlCache maxKeys=2000, pageDataCache maxKeys=2000, quickCache maxKeys=2000, memoryCache maxKeys=5000, similarStationsCache maxKeys=500, precomputed TTLs=24hr. PrecomputedStations aggregate limited to 3000 per country.
-- **Startup Stability**: Staged cache warmup — web warmup first (5s delay), then TV/Mobile (10s gap), PrecomputedGenres (15s), hasLogo migration (30s). All warmup loops have intra-iteration delays (50-200ms) to prevent event loop blocking. LogCollector auto-disables after 3 consecutive S3 flush failures. Sitemap station count cached 24h to avoid MongoDB timeouts. Nightly auto-restart at 4:00 AM Europe/Berlin (production only) for memory hygiene — Railway auto-restarts the container after clean exit.
-- **API Key Management System**: Secure API key generation, validation, rate limiting, and usage tracking.
-- **Cast System (Mobile → TV)**: Dual cast architecture supporting WebSocket and polling-based communication for real-time command relay and now-playing status.
-- **TV Device Code Login**: Netflix/YouTube-style TV login flow for device activation.
-- **Security Hardening**: Rate limiting, X-Powered-By removal, security headers (HSTS, CSP, X-Frame-Options), suppressed internal error messages.
-- **Process Stability**: Global `uncaughtException`/`unhandledRejection` handlers prevent process crash. Graceful shutdown (SIGTERM/SIGINT) with `isShuttingDown` guard, awaited `server.close()`, and MongoDB connection close before exit (15s timeout). Event loop lag monitoring (warns >2s, alerts >10s). MongoDB readyState monitoring every 30s. Error middleware logs without re-throwing. Server timeouts: 5min normal requests, 65s keepAlive; stream endpoints override with `setTimeout(0)`. Health endpoint returns heap/RSS/heapTotal/mongo metrics and 503 if heap > 7500MB or MongoDB disconnected. MongoDB connection event listeners (error/disconnected/reconnected) with dedup guard. Per-user WebSocket connection limit (max 5, oldest evicted). optimizationJobs Map auto-pruned (max 100, 6h TTL). ICY metaInterval strict validation (finite, >0, ≤65536). Description cleanup uses cursor streaming + bulkWrite batches (500). Compression level 6 (not 9) to prevent event loop blocking.
-- **Input Validation**: Robust validation for user authentication endpoints.
-- **Random Station Performance**: Optimized random station selection using MongoDB `$sample`.
-- **Logo Optimization System**: MongoDB schema for `logoAssets`, LogoProcessor service for WebP conversion, unified StationLogo component, SSR-safe helpers, admin UI for bulk processing, S3 integration for logo storage.
-- **Silent Push Notification System**: Native APNs (iOS) + FCM (Android) + Expo silent push support for background cache refresh. PushToken model stores token, userId, platform, tokenType (expo/apns/fcm), country, language. Admin endpoint `POST /api/admin/push/silent` with actions: cache_refresh, popular_update, genres_update, favorites_sync, clear_cache. Daily cron at 04:00 Europe/Berlin. Env vars: APNS_AUTH_KEY, APNS_KEY_ID, APNS_TEAM_ID, FIREBASE_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID.
+- **Monorepo Structure**: Unified repository for frontend, backend, and shared types.
+- **Type Safety**: End-to-end TypeScript with Zod.
+- **Rate Limiting**: Global and auth-specific.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, robots.txt, structured data (JSON-LD), multilingual hreflang support, unified language URL prefixes.
+- **Audio Continuity**: Preserves playback during navigation.
+- **Performance**: Caching, indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed caches, optimized profile data fetching.
+- **Geolocation**: Cloudflare CF-IPCountry headers, GPS-based nearby stations.
+- **Web Push Notifications**: VAPID keys and service workers for silent pushes.
+- **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy and idempotent cleanup for memory leak prevention.
+- **Auto-Reconnect & Server Timeout**: Client-side auto-reconnect, optimized server-side timeouts.
+- **Vote-Based Ordering**: Stations ordered by popularity.
+- **Google OAuth**: Integrated login and avatar management.
+- **Radio Station Sync System**: Robust synchronization with automated index migration, duplicate prevention.
+- **User Engagement**: Real user favorites/ratings drive trends and recommendations.
+- **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation, country-specific URL translations, universal country normalization.
+- **Background Audio Protection**: 5-layer system to prevent browser audio suspension.
+- **Image Optimization**: Server-side image resizing and WebP conversion using Sharp, stored on S3. Includes memory-safe guards for image proxy.
+- **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing.
+- **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards, nightly auto-restart.
+- **API Key Management**: Secure generation, validation, rate limiting, and usage tracking.
+- **Cast System**: Dual architecture (WebSocket/polling) for real-time command and now-playing status.
+- **TV Device Code Login**: Netflix/YouTube-style activation.
+- **Security**: Rate limiting, X-Powered-By removal, security headers, suppressed internal error messages.
+- **Process Stability**: Global error handlers, graceful shutdown, event loop lag monitoring, MongoDB readyState monitoring, per-user WebSocket limits, strict ICY metaInterval validation, streaming for description cleanup, compression level optimization.
+- **External API Resilience**: iTunes API circuit breaker, recommendation engine guard against concurrent computations.
+- **MongoDB Aggregate Timeouts**: Limits on heavy aggregates, `allowDiskUse` for genre aggregates, inter-iteration delays for warmup loops.
+- **Precomputed Genres Optimization**: Only top 19 countries refreshed automatically.
+- **Input Validation**: Robust for user authentication.
+- **Random Station Selection**: Optimized using MongoDB `$sample`.
+- **Logo Optimization**: MongoDB schema, LogoProcessor service, unified component, S3 integration.
 
 ## External Dependencies
-- **MongoDB Atlas**: Cloud database service.
-- **Radio-Browser API**: External radio station database.
+- **MongoDB Atlas**: Cloud database.
+- **Radio-Browser API**: External radio station data.
 - **ip-api.com**: Geolocation service.
-- **Cloudflare**: Cache management and RUM Web Vitals data.
-- **mongoose**: MongoDB object modeling.
+- **Cloudflare**: Cache management and RUM Web Vitals.
+- **mongoose**: MongoDB ODM.
 - **@tanstack/react-query**: Server state management.
 - **axios**: HTTP client.
-- **node-cron**: Scheduled task management.
+- **node-cron**: Scheduled tasks.
 - **@radix-ui/***: Accessible UI primitives.
 - **tailwindcss**: CSS framework.
 - **wouter**: React router.
@@ -105,7 +100,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **typescript**: Type safety.
 - **bcrypt**: Password hashing.
 - **zod**: Schema validation.
-- **hls.js**: Professional HLS streaming library.
-- **plyr**: Lightweight media player.
-- **sharp**: High-performance image processing library.
-- **AWS S3**: Cloud storage for station logos.
+- **hls.js**: HLS streaming library.
+- **plyr**: Media player.
+- **sharp**: Image processing.
+- **AWS S3**: Cloud storage for logos.

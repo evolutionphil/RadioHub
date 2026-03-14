@@ -47,10 +47,40 @@ export interface iTunesSearchParams {
 export class iTunesApiService {
   private baseUrl = 'https://itunes.apple.com/search';
   private userAgent = 'MegaRadio-Discover/1.0';
+  
+  private circuitOpen = false;
+  private failureCount = 0;
+  private lastFailureTime = 0;
+  private readonly FAILURE_THRESHOLD = 5;
+  private readonly CIRCUIT_RESET_MS = 60000;
+
+  private checkCircuit(): void {
+    if (this.circuitOpen && Date.now() - this.lastFailureTime > this.CIRCUIT_RESET_MS) {
+      this.circuitOpen = false;
+      this.failureCount = 0;
+    }
+    if (this.circuitOpen) {
+      throw new Error('iTunes API circuit breaker open — too many failures');
+    }
+  }
+
+  private recordFailure(): void {
+    this.failureCount++;
+    this.lastFailureTime = Date.now();
+    if (this.failureCount >= this.FAILURE_THRESHOLD) {
+      this.circuitOpen = true;
+      console.warn(`⚡ iTunes API circuit breaker OPEN after ${this.failureCount} failures — pausing for ${this.CIRCUIT_RESET_MS / 1000}s`);
+    }
+  }
+
+  private recordSuccess(): void {
+    this.failureCount = 0;
+    this.circuitOpen = false;
+  }
 
   async search(params: iTunesSearchParams): Promise<iTunesSearchResponse> {
+    this.checkCircuit();
     try {
-      // Build query parameters
       const searchParams = new URLSearchParams();
       searchParams.append('term', params.term);
       searchParams.append('media', params.media || 'music');
@@ -66,12 +96,13 @@ export class iTunesApiService {
         headers: {
           'User-Agent': this.userAgent,
         },
-        timeout: 15000, // 15 second timeout
+        timeout: 8000,
       });
 
+      this.recordSuccess();
       return response.data;
     } catch (error: any) {
-      console.error('iTunes Search API error:', error.message);
+      this.recordFailure();
       throw new Error(`Failed to search iTunes API: ${error.message}`);
     }
   }
@@ -120,107 +151,70 @@ export class iTunesApiService {
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
   }
 
-  // Get detailed track information by ID
   async getTrackById(trackId: string, country: string = 'US'): Promise<any> {
+    this.checkCircuit();
     try {
       const lookupUrl = 'https://itunes.apple.com/lookup';
-      const searchParams = new URLSearchParams({
-        id: trackId,
-        country,
-        entity: 'song'
-      });
+      const searchParams = new URLSearchParams({ id: trackId, country, entity: 'song' });
 
       const response = await axios.get(`${lookupUrl}?${searchParams.toString()}`, {
-        headers: {
-          'User-Agent': this.userAgent,
-        },
-        timeout: 15000,
+        headers: { 'User-Agent': this.userAgent },
+        timeout: 8000,
       });
 
-      if (!response.data.results || response.data.results.length === 0) {
-        return null;
-      }
-
+      this.recordSuccess();
+      if (!response.data.results || response.data.results.length === 0) return null;
       return response.data.results[0];
     } catch (error: any) {
-      console.error('Error fetching track details:', error.message);
+      this.recordFailure();
       throw new Error(`Failed to fetch track details: ${error.message}`);
     }
   }
 
-  // Get detailed album information and its tracks
   async getAlbumById(collectionId: string, country: string = 'US'): Promise<any> {
+    this.checkCircuit();
     try {
       const lookupUrl = 'https://itunes.apple.com/lookup';
-      const searchParams = new URLSearchParams({
-        id: collectionId,
-        country,
-        entity: 'song'
-      });
+      const searchParams = new URLSearchParams({ id: collectionId, country, entity: 'song' });
 
       const response = await axios.get(`${lookupUrl}?${searchParams.toString()}`, {
-        headers: {
-          'User-Agent': this.userAgent,
-        },
-        timeout: 15000,
+        headers: { 'User-Agent': this.userAgent },
+        timeout: 8000,
       });
 
-      if (!response.data.results || response.data.results.length === 0) {
-        return null;
-      }
+      this.recordSuccess();
+      if (!response.data.results || response.data.results.length === 0) return null;
 
-      // First result is usually the album, rest are tracks
       const album = response.data.results.find((item: any) => item.wrapperType === 'collection');
       const tracks = response.data.results.filter((item: any) => item.wrapperType === 'track');
-
-      return {
-        album: album || response.data.results[0],
-        tracks: tracks
-      };
+      return { album: album || response.data.results[0], tracks };
     } catch (error: any) {
-      console.error('Error fetching album details:', error.message);
+      this.recordFailure();
       throw new Error(`Failed to fetch album details: ${error.message}`);
     }
   }
 
-  // Get detailed artist information, albums, and tracks
   async getArtistById(artistId: string, country: string = 'US', limit: number = 25): Promise<any> {
+    this.checkCircuit();
     try {
       const lookupUrl = 'https://itunes.apple.com/lookup';
-      const searchParams = new URLSearchParams({
-        id: artistId,
-        country,
-        entity: 'album,song',
-        limit: limit.toString()
-      });
+      const searchParams = new URLSearchParams({ id: artistId, country, entity: 'album,song', limit: limit.toString() });
 
       const response = await axios.get(`${lookupUrl}?${searchParams.toString()}`, {
-        headers: {
-          'User-Agent': this.userAgent,
-        },
-        timeout: 15000,
+        headers: { 'User-Agent': this.userAgent },
+        timeout: 8000,
       });
 
-      if (!response.data.results || response.data.results.length === 0) {
-        return null;
-      }
+      this.recordSuccess();
+      if (!response.data.results || response.data.results.length === 0) return null;
 
-      // Separate artist, albums, and tracks
       const artist = response.data.results.find((item: any) => item.wrapperType === 'artist');
       const albums = response.data.results.filter((item: any) => item.wrapperType === 'collection');
       const tracks = response.data.results.filter((item: any) => item.wrapperType === 'track');
-
-      return {
-        artist: artist || response.data.results[0],
-        albums: albums,
-        tracks: tracks
-      };
+      return { artist: artist || response.data.results[0], albums, tracks };
     } catch (error: any) {
-      const msg = error.message || 'Unknown error';
-      if (!msg.includes('timeout') && !msg.includes('ECONNREFUSED')) {
-        console.error('Error fetching artist details:', msg);
-      }
-      throw new Error(`Failed to fetch artist details: ${msg}`);
+      this.recordFailure();
+      throw new Error(`Failed to fetch artist details: ${error.message}`);
     }
   }
 }

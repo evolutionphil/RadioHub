@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
+import fsp from 'fs/promises';
 import { Station } from '../shared/mongo-schemas';
 import NodeCache from 'node-cache';
 
@@ -48,7 +49,7 @@ async function getStationLogoBuffer(station: any): Promise<Buffer | null> {
       if (buf) return buf;
     } else {
       // Local file path
-      try { return fs.readFileSync(resolved); } catch {}
+      try { return await fsp.readFile(resolved); } catch {}
     }
   }
   if (station.favicon?.startsWith('http')) return await downloadImage(station.favicon);

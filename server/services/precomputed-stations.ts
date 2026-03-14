@@ -133,7 +133,7 @@ export class PrecomputedStationsService {
           logoAssets: { webp96: 1, webp256: 1, folder: 1 }
         }
       }
-    ]).exec();
+    ]).option({ maxTimeMS: 15000 }).exec();
 
     const data: PrecomputedCountryData = {
       stations: stations as PrecomputedStation[],
@@ -279,6 +279,7 @@ export class PrecomputedStationsService {
       if (progress % 20 === 0 || i + batch.length === allCountries.length) {
         logger.log(`📊 Precomputation progress: ${progress}% (${i + batch.length}/${allCountries.length})`);
       }
+      await new Promise(resolve => setTimeout(resolve, 300));
     }
     
     const duration = Math.round((Date.now() - startTime) / 1000);
@@ -375,7 +376,7 @@ export class PrecomputedStationsService {
           logoAssets: 1
         }
       }
-    ]).exec();
+    ]).option({ maxTimeMS: 30000 }).exec();
 
     // Get total count for pagination info
     const totalCount = await Station.countDocuments({ lastCheckOk: true });
