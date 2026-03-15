@@ -911,32 +911,12 @@ app.use((req, res, next) => {
         logger.log('⚡ DEV MODE: All heavy cache warmups skipped (saves ~500MB RAM)');
         logger.log('⚡ Caches will be populated on-demand on first request');
       } else {
-        logger.log('🔥 BACKGROUND: Starting cache warmup (non-blocking)...');
+        logger.log('🔥 BACKGROUND: Starting LIGHTWEIGHT cache warmup (on-demand for heavy caches)...');
         
         await performanceCache.warmupCaches();
         
-        try {
-          const { PrecomputedStationsService } = await import('./services/precomputed-stations');
-          PrecomputedStationsService.initializeFullCache().catch(err => 
-            console.error('Full precomputed cache initialization failed:', err)
-          );
-          logger.log('🚀 PRECOMPUTED: Full cache initialization started in background');
-        } catch (err) {
-          console.error('Precomputed stations warmup failed:', err);
-        }
-        
-        performanceCache.warmupSimilarStations().catch(err => 
-          console.error('Similar stations warmup failed:', err)
-        );
-        
-        try {
-          const axios = (await import('axios')).default;
-          const warmupPort = process.env.PORT || '5000';
-          await axios.get(`http://localhost:${warmupPort}/api/public-profiles`, { timeout: 30000 });
-          logger.log('✅ CACHE: Public profiles (Community Favorites) warmed up');
-        } catch (err) {
-          logger.warn('⚠️ Public profiles warmup failed (will cache on first request)');
-        }
+        logger.log('⚡ SKIPPED: PrecomputedStations full cache — will populate on-demand per country');
+        logger.log('⚡ SKIPPED: Similar stations warmup — will populate on-demand');
         
         try {
           const { Genre } = await import('../shared/mongo-schemas');
@@ -951,33 +931,7 @@ app.use((req, res, next) => {
           logger.warn('⚠️ Discoverable genres warmup failed (will cache on first request)');
         }
         
-        logger.log('🔥 CACHE: Warming up sitemap translations...');
-        try {
-          const { SEO_LANGUAGES } = await import('../shared/seo-config');
-          const { loadSitemapTranslations } = await import('./utils/sitemap-translations');
-          const CacheManager = (await import('./cache')).default;
-          
-          const enabledLanguages = SEO_LANGUAGES.filter(lang => lang.enabled);
-          let sitemapTranslationsWarmed = 0;
-          
-          for (const lang of enabledLanguages) {
-            try {
-              const sitemapTranslations = await loadSitemapTranslations(lang.code);
-              await CacheManager.set(
-                `sitemap_translations:${lang.code}`, 
-                sitemapTranslations,
-                { ttl: 3600 }
-              );
-              sitemapTranslationsWarmed++;
-            } catch (error: any) {
-              logger.warn(`⚠️ Failed to warm sitemap translations for ${lang.code}:`, error.message);
-            }
-          }
-          
-          logger.log(`🔥 CACHE: Warmed up sitemap translations for ${sitemapTranslationsWarmed} languages`);
-        } catch (error) {
-          console.error('❌ CACHE: Sitemap translation warmup failed:', error);
-        }
+        logger.log('⚡ SKIPPED: Sitemap translations warmup — will populate on-demand per language');
       }
       
       // Load database country-language mappings for SEO routing

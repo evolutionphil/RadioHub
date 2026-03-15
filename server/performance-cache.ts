@@ -258,13 +258,9 @@ export class PerformanceCache {
   
   // Warm up critical caches on startup
   async warmupCaches(): Promise<void> {
-    logger.log('🔥 CACHE: Starting cache warmup...');
+    logger.log('🔥 CACHE: Starting lightweight cache warmup (top 10 languages only)...');
     
-    // Dynamically load all enabled languages from SEO_LANGUAGES config
-    const { SEO_LANGUAGES } = await import('../shared/seo-config');
-    const criticalLanguages = SEO_LANGUAGES
-      .filter(lang => lang.enabled)
-      .map(lang => lang.code);
+    const criticalLanguages = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
     
     try {
       const { Translation } = await import('../shared/mongo-schemas');
@@ -282,7 +278,7 @@ export class PerformanceCache {
         this.setTranslations(language, translationMap);
       }
       
-      logger.log(`🔥 CACHE: Warmed up translations for ${criticalLanguages.length} languages`);
+      logger.log(`🔥 CACHE: Warmed up translations for ${criticalLanguages.length} languages (others loaded on-demand)`);
     } catch (error) {
       console.error('❌ CACHE: Warmup failed:', error);
     }

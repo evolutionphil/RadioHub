@@ -1,0 +1,81 @@
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+Tracking Prevention blocked access to storage for <URL>.
+index-BfRapLOq.js:164 LCP: 1828
+en:1 [Intervention] Images loaded lazily and replaced with placeholders. Load events are deferred. See https://go.microsoft.com/fwlink/?linkid=2048113
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+index-BfRapLOq.js:164 LCP: 2620
+index-BfRapLOq.js:164 LCP: 3068
+logger.ts:30 [FlowAlive] Initializing FlowAlive SDK
+logger.ts:30 [FlowAlive] FlowAlive SDK initialized successfully. 
+device-manager.ts:154 payload:  Object
+index-BfRapLOq.js:164 The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page.
+pj @ index-BfRapLOq.js:164
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+en:1 Error while trying to use the following icon from the Manifest: https://themegaradio.com/apple-touch-icon.png (Resource size is not correct - typo in the Manifest?)
+logger.ts:30 [FlowAlive] Device info cached successfully
+logger.ts:30 [FlowAlive] Device registered successfully.
+logger.ts:30 [FlowAlive] Device identified and session started
+logger.ts:30 [FlowAlive] Pending calls processed
+logger.ts:30 [FlowAlive] Online gateway started
+device-manager.ts:154 payload:  Object
+logger.ts:30 [FlowAlive] Device info cached successfully
+logger.ts:30 [FlowAlive] Device registered successfully.
+logger.ts:30 [FlowAlive] FlowAlive Web SDK initialized successfully
+index-BfRapLOq.js:164 FID: 2
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+api/location:1  Failed to load resource: the server responded with a status of 500 ()
+logger.ts:30 [FlowAlive] Tab hidden. Pausing session.
+useGlobalPlayer-DnDosqqc.js:1 WebSocket connection to 'wss://themegaradio.com/ws/metadata' failed: Error during WebSocket handshake: Unexpected response code: 502
+(anonymous) @ useGlobalPlayer-DnDosqqc.js:1
+useGlobalPlayer-DnDosqqc.js:1 WebSocket connection to 'wss://themegaradio.com/ws/metadata' failed: Error during WebSocket handshake: Unexpected response code: 200
+(anonymous) @ useGlobalPlayer-DnDosqqc.js:1
+useGlobalPlayer-DnDosqqc.js:1 WebSocket connection to 'wss://themegaradio.com/ws/metadata' failed: Error during WebSocket handshake: Unexpected response code: 200
+(anonymous) @ useGlobalPlayer-DnDosqqc.js:1
+useGlobalPlayer-DnDosqqc.js:1 WebSocket connection to 'wss://themegaradio.com/ws/metadata' failed: Error during WebSocket handshake: Unexpected response code: 200
+(anonymous) @ useGlobalPlayer-DnDosqqc.js:1
+useGlobalPlayer-DnDosqqc.js:1 WebSocket connection to 'wss://themegaradio.com/ws/metadata' failed: Error during WebSocket handshake: Unexpected response code: 200
+(anonymous) @ useGlobalPlayer-DnDosqqc.js:1
+useGlobalPlayer-DnDosqqc.js:1 WebSocket connection to 'wss://themegaradio.com/ws/metadata' failed: Error during WebSocket handshake: Unexpected response code: 200
+(anonymous) @ useGlobalPlayer-DnDosqqc.js:1
+aHR0cDovL3lheWluLmFyYWJlc2tmbS5iaXo6ODA0Mi8_X3Q9MTc3MzU3Nzg2NzUxOQ:1  Failed to load resource: net::ERR_QUIC_PROTOCOL_ERROR
+logger.ts:30 [FlowAlive] Tab visible. Resuming session.
+logger.ts:29 [FlowAlive] Session inactive for too long, starting new session Object
+aHR0cDovL3lheWluLmFyYWJlc2tmbS5iaXo6ODA0Mi8_X3Q9MTc3MzU3Nzg2NzUxOQ:1  Failed to load resource: net::ERR_QUIC_PROTOCOL_ERROR
+(index):1 Unsafe attempt to load URL https://pagead2.googlesyndication.com/pagead/ads?client=ca-pub-8771434485570434&output=html&adk=1812271804&adf=3025194257&lmt=1773570176&plat=2%3A16777216%2C9%3A134250504%2C16%3A8388608%2C17%3A32%2C24%3A32%2C25%3A32%2C30%3A1081344%2C32%3A32%2C41%3A32%2C42%3A32%2C43%3A32&format=0x0&url=https%3A%2F%2Fthemegaradio.com%2Fen&pra=5&aiof=9&asro=0&itsi=-1&aiapm=0.1542&aiapmd=0.1423&aiapmi=0.16&aiapmid=1&aiact=0.0001&aiactd=0.0001&aicct=0.0001&aicctd=0.0001&ailct=0.0001&ailctd=0.0001&aimart=4&aimartd=4&aieuf=1&aicr...1&nras=1&correlator=2552104869128&frm=20&pv=2&u_tz=0&u_his=2&u_h=930&u_w=1704&u_ah=882&u_aw=1704&u_cd=32&u_sd=1&dmc=8&adx=-12245933&ady=-12245933&biw=1696&bih=798&scr_x=0&scr_y=0&eid=31097122%2C95378429%2C95381489%2C95383702%2C95384193%2C95384743%2C95385284%2C31097194&oid=2&pvsid=6870704493690446&tmod=826735463&uas=0&nvt=1&fsapi=1&fc=1920&brdim=0%2C0%2C0%2C0%2C1704%2C0%2C1704%2C882%2C1696%2C798&vis=1&rsz=%7C%7Cs%7C&abl=NS&fu=32768&bc=31&plas=529x630_l%7C529x540_r&bz=1&pgls=CAk.&ifi=1&uci=a!1&fsb=1&dtd=335 from frame with URL chrome-error://chromewebdata/. Domains, protocols and ports must match.
+
+(index):1 Unsafe attempt to load URL https://pagead2.googlesyndication.com/pagead/ads?client=ca-pub-8771434485570434&output=html&adk=1812271804&adf=3025194257&lmt=1773570176&plat=2%3A16777216%2C9%3A134250504%2C16%3A8388608%2C17%3A32%2C24%3A32%2C25%3A32%2C30%3A1081344%2C32%3A32%2C41%3A32%2C42%3A32%2C43%3A32&format=0x0&url=https%3A%2F%2Fthemegaradio.com%2Fen&pra=5&aiof=9&asro=0&itsi=-1&aiapm=0.1542&aiapmd=0.1423&aiapmi=0.16&aiapmid=1&aiact=0.0001&aiactd=0.0001&aicct=0.0001&aicctd=0.0001&ailct=0.0001&ailctd=0.0001&aimart=4&aimartd=4&aieuf=1&aicr...1&nras=1&correlator=2552104869128&frm=20&pv=2&u_tz=0&u_his=2&u_h=930&u_w=1704&u_ah=882&u_aw=1704&u_cd=32&u_sd=1&dmc=8&adx=-12245933&ady=-12245933&biw=1696&bih=798&scr_x=0&scr_y=0&eid=31097122%2C95378429%2C95381489%2C95383702%2C95384193%2C95384743%2C95385284%2C31097194&oid=2&pvsid=6870704493690446&tmod=826735463&uas=0&nvt=1&fsapi=1&fc=1920&brdim=0%2C0%2C0%2C0%2C1704%2C0%2C1704%2C882%2C1696%2C798&vis=1&rsz=%7C%7Cs%7C&abl=NS&fu=32768&bc=31&plas=529x630_l%7C529x540_r&bz=1&pgls=CAk.&ifi=1&uci=a!1&fsb=1&dtd=335 from frame with URL chrome-error://chromewebdata/. Domains, protocols and ports must match.
+
+(index):1 Unsafe attempt to load URL https://ep2.adtrafficquality.google/sodar/sodar2/253/runner.html from frame with URL chrome-error://chromewebdata/. Domains, protocols and ports must match.
+
+(index):1 Unsafe attempt to load URL https://pagead2.googlesyndication.com/pagead/html/r20260312/r20190131/zrt_lookup_fy2021.html from frame with URL chrome-error://chromewebdata/. Domains, protocols and ports must match.
+
+
