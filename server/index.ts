@@ -123,7 +123,7 @@ process.on('unhandledRejection', (reason: any) => {
 
 // CRITICAL: Health check endpoint BEFORE all middleware
 // Must respond immediately for Replit deployment health checks
-app.get('/health', async (req, res) => {
+app.get(['/health', '/api/health'], async (req, res) => {
   const mem = process.memoryUsage();
   const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);

@@ -84,7 +84,7 @@ export class ScheduledCacheClearService {
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         logger.log(`📊 Pre-restart memory: heap=${heapMB}MB, rss=${rssMB}MB, uptime=${Math.round(process.uptime())}s`);
         setTimeout(() => {
-          process.exit(0);
+          process.kill(process.pid, 'SIGTERM');
         }, 3000);
       }, {
         timezone: 'Europe/Berlin'

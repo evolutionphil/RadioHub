@@ -70,7 +70,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Background Audio Protection**: 5-layer system to prevent browser audio suspension.
 - **Image Optimization**: Server-side image resizing and WebP conversion using Sharp, stored on S3. Includes memory-safe guards for image proxy.
 - **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing.
-- **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards, nightly auto-restart.
+- **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards. Nightly auto-restart at 4:00 AM Europe/Berlin via SIGTERM (graceful shutdown) — Railway `restartPolicyType=ALWAYS` ensures container always restarts. Health check at `/health` AND `/api/health`.
 - **API Key Management**: Secure generation, validation, rate limiting, and usage tracking.
 - **Cast System**: Dual architecture (WebSocket/polling) for real-time command and now-playing status.
 - **TV Device Code Login**: Netflix/YouTube-style activation.
