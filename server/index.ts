@@ -65,7 +65,7 @@ const globalApiLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
   skip: (req) => {
     // Skip rate limiting for health checks and non-API routes
-    return !req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health';
+    return !req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health' || req.path === '/healthz';
   }
 });
 
@@ -121,29 +121,17 @@ process.on('unhandledRejection', (reason: any) => {
   if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
 });
 
-// CRITICAL: Health check endpoint BEFORE all middleware
-// Must respond immediately for Replit deployment health checks
-app.get(['/health', '/api/health'], async (req, res) => {
+app.get(['/healthz', '/health', '/api/health'], (req, res) => {
+  if (req.path === '/healthz') {
+    return res.status(200).send('ok');
+  }
   const mem = process.memoryUsage();
   const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);
   const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
-  const { default: mongoose } = await import('mongoose');
-  const mongoState = mongoose.connection.readyState;
-  const mongoStateLabel = ({ 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' } as Record<number, string>)[mongoState] || 'unknown';
-
-  if (heapMB > 7500 || mongoState === 0) {
-    return res.status(503).json({
-      status: 'unhealthy',
-      heapMB, heapTotalMB, rssMB,
-      mongo: mongoStateLabel,
-      uptime: Math.round(process.uptime())
-    });
-  }
   res.status(200).json({
     status: 'ok',
     heapMB, heapTotalMB, rssMB,
-    mongo: mongoStateLabel,
     uptime: Math.round(process.uptime())
   });
 });
@@ -249,7 +237,7 @@ app.use((req, res, next) => {
   }
 
   // Skip HTTPS redirect for health check endpoints (Railway/internal probes use HTTP)
-  if (req.path === '/api/health' || req.path === '/health') {
+  if (req.path === '/api/health' || req.path === '/health' || req.path === '/healthz') {
     return next();
   }
   
