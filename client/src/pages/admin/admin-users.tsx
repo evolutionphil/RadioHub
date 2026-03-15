@@ -143,6 +143,11 @@ export default function AdminUsers() {
             <div className="flex justify-center py-8">
               <Loader2 className="animate-spin" size={32} />
             </div>
+          ) : usersError ? (
+            <div className="text-center py-8">
+              <p className="text-red-600 font-medium mb-2">Failed to load users</p>
+              <p className="text-gray-500 text-sm">{(usersError as Error).message}</p>
+            </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-gray-500">No users found</div>
           ) : (

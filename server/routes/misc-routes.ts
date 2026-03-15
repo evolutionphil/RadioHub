@@ -403,10 +403,21 @@ export function registerMiscRoutes(app: Express, deps: any) {
         User.find(filter).select('_id email fullName avatar profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive').skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
         User.countDocuments(filter)
       ]);
-      const userIds = users.map(u => u._id.toString());
-      const favoriteCounts = await UserFavorite.aggregate([{ $match: { userId: { $in: userIds } } }, { $group: { _id: '$userId', count: { $sum: 1 } } }]).maxTimeMS(10000);
-      const favoriteMap: Record<string, number> = {};
-      favoriteCounts.forEach(doc => { favoriteMap[doc._id] = doc.count; });
+
+      let favoriteMap: Record<string, number> = {};
+      try {
+        const userIds = users.map(u => u._id.toString());
+        if (userIds.length > 0) {
+          const favoriteCounts = await UserFavorite.aggregate([
+            { $match: { userId: { $in: userIds } } },
+            { $group: { _id: '$userId', count: { $sum: 1 } } }
+          ]).maxTimeMS(10000);
+          favoriteCounts.forEach(doc => { favoriteMap[doc._id] = doc.count; });
+        }
+      } catch (favErr: any) {
+        console.error('Admin users: favorite count query failed (non-fatal):', favErr.message);
+      }
+
       const usersWithDetails = users.map(user => {
         const fullNameParts = (user.fullName || 'User').split(' ');
         return {
