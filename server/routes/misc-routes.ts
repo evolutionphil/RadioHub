@@ -484,9 +484,14 @@ export function registerMiscRoutes(app: Express, deps: any) {
 
   app.delete("/api/admin/users/:id", requireAdmin, async (req, res) => {
     try {
-      const user = await User.findByIdAndDelete(req.params.id);
+      const userId = req.params.id;
+      const user = await User.findByIdAndDelete(userId);
       if (!user) return res.status(404).json({ error: 'User not found' });
-      res.json({ success: true });
+
+      const deletedFavs = await UserFavorite.deleteMany({ userId });
+      console.log(`Deleted user ${userId} and ${deletedFavs.deletedCount} associated favorites`);
+
+      res.json({ success: true, deletedFavorites: deletedFavs.deletedCount });
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete user' });
     }
