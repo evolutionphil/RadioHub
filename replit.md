@@ -103,7 +103,8 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **hls.js**: HLS streaming library.
 - **plyr**: Media player.
 - **sharp**: Image processing.
-- **AWS S3**: Cloud storage for logos.
+- **AWS S3**: Cloud storage for logos and user avatars.
+- **multer**: Multipart form-data handling for file uploads.
 
 ## Performance Optimization Notes
 - **Font Preloading**: Preload ubuntu-400, ubuntu-500, ubuntu-700 (actual critical fonts per PageSpeed analysis). ubuntu-600 removed from preload.

@@ -63,9 +63,8 @@ export default function AdminUsers() {
 
   const updateUserMutation = useMutation({
     mutationFn: (data: { userId: string; updates: Partial<UserProfile> }) =>
-      apiRequest(`/api/admin/users/${data.userId}`, {
-        method: "PATCH",
-        body: JSON.stringify(data.updates),
+      apiRequest("PATCH", `/api/admin/users/${data.userId}`, {
+        body: data.updates,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
@@ -79,7 +78,7 @@ export default function AdminUsers() {
 
   const deleteUserMutation = useMutation({
     mutationFn: (userId: string) =>
-      apiRequest(`/api/admin/users/${userId}`, { method: "DELETE" }),
+      apiRequest("DELETE", `/api/admin/users/${userId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       toast({ title: "Success", description: "User deleted successfully" });

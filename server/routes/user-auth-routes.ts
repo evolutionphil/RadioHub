@@ -1446,4 +1446,106 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       res.status(500).json({ error: 'Failed to get following' });
     }
   });
+
+  // ============================================================
+  // AVATAR UPLOAD & DELETE
+  // ============================================================
+
+  app.post("/api/user/avatar", requireAuth, async (req, res) => {
+    try {
+      const multer = (await import('multer')).default;
+      const sharp = (await import('sharp')).default;
+      const { uploadToS3, deleteFromS3 } = await import('../services/s3-storage');
+
+      const upload = multer({
+        storage: multer.memoryStorage(),
+        limits: { fileSize: 5 * 1024 * 1024 },
+        fileFilter: (_req, file, cb) => {
+          const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+          if (allowed.includes(file.mimetype)) cb(null, true);
+          else cb(new Error('Invalid file type. Allowed: jpeg, png, webp'));
+        }
+      }).single('avatar');
+
+      upload(req, res, async (uploadErr: any) => {
+        if (uploadErr) {
+          if (uploadErr.code === 'LIMIT_FILE_SIZE') {
+            return res.status(413).json({ error: 'File too large. Maximum size: 5MB' });
+          }
+          return res.status(400).json({ error: uploadErr.message || 'Upload failed' });
+        }
+
+        if (!req.file) {
+          return res.status(400).json({ error: 'No avatar file provided' });
+        }
+
+        const userId = (req.session as any)?.user?.userId || (req as any).user?._id?.toString();
+        if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+        const metadata = await sharp(req.file.buffer).metadata();
+        if (!metadata.width || !metadata.height || metadata.width < 100 || metadata.height < 100) {
+          return res.status(400).json({ error: 'Image too small. Minimum size: 100x100px' });
+        }
+
+        const webpBuffer = await sharp(req.file.buffer)
+          .resize(400, 400, { fit: 'cover', position: 'centre' })
+          .webp({ quality: 80 })
+          .toBuffer();
+
+        const shortId = userId.slice(-8);
+        const s3Key = `avatars/user_${shortId}_${Date.now()}.webp`;
+        const avatarUrl = await uploadToS3(s3Key, webpBuffer, 'image/webp');
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ error: 'User not found' });
+
+        const oldAvatar = user.avatar;
+        user.avatar = avatarUrl;
+        user.updatedAt = new Date();
+        await user.save();
+
+        if (oldAvatar && oldAvatar.includes('.s3.') && oldAvatar.includes('/avatars/')) {
+          try {
+            const oldKey = oldAvatar.split('.amazonaws.com/')[1];
+            if (oldKey) await deleteFromS3(oldKey);
+          } catch {}
+        }
+
+        res.json({ success: true, avatar: avatarUrl });
+      });
+    } catch (error: any) {
+      logger.log('Avatar upload error:', error.message);
+      res.status(500).json({ error: 'Avatar upload failed' });
+    }
+  });
+
+  app.delete("/api/user/avatar", requireAuth, async (req, res) => {
+    try {
+      const { deleteFromS3 } = await import('../services/s3-storage');
+
+      const userId = (req.session as any)?.user?.userId || (req as any).user?._id?.toString();
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const user = await User.findById(userId);
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const oldAvatar = user.avatar;
+
+      if (oldAvatar && oldAvatar.includes('.s3.') && oldAvatar.includes('/avatars/')) {
+        try {
+          const oldKey = oldAvatar.split('.amazonaws.com/')[1];
+          if (oldKey) await deleteFromS3(oldKey);
+        } catch {}
+      }
+
+      user.avatar = undefined;
+      user.updatedAt = new Date();
+      await user.save();
+
+      res.json({ success: true, message: 'Avatar removed' });
+    } catch (error: any) {
+      logger.log('Avatar delete error:', error.message);
+      res.status(500).json({ error: 'Avatar delete failed' });
+    }
+  });
 }
