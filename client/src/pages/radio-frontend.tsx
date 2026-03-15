@@ -1563,8 +1563,8 @@ export default function RadioFrontend({
           listName="Popular Radio Stations"
           listDescription="Discover the most popular radio stations from around the world on Mega Radio"
           breadcrumbs={[
-            { name: "Home", url: "/" },
-            { name: "Popular Stations", url: "/" }
+            { name: "Home", url: `/${window.location.pathname.match(/^\/([a-z]{2})(?:\/|$)/)?.[1] || 'en'}/` },
+            { name: "Popular Stations", url: `/${window.location.pathname.match(/^\/([a-z]{2})(?:\/|$)/)?.[1] || 'en'}/` }
           ]}
         />
       )}
