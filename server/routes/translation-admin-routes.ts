@@ -1014,20 +1014,22 @@ ${keysText}`;
       }
 
       // 🔄 FALLBACK: ip-api.com for any environment when Cloudflare detection fails
-      const isLocalhost = !clientIP || 
-          clientIP === '127.0.0.1' || 
-          clientIP === '::1' || 
-          clientIP.includes('192.168.') || 
-          clientIP.includes('10.0.') ||
-          clientIP.includes('10.81.') ||
-          clientIP.includes(',') ||
-          clientIP === '::ffff:127.0.0.1';
+      const ipStr = typeof clientIP === 'string' ? clientIP : '';
+      const isLocalhost = !ipStr || 
+          ipStr === '127.0.0.1' || 
+          ipStr === '::1' || 
+          ipStr.includes('192.168.') || 
+          ipStr.includes('10.0.') ||
+          ipStr.includes('10.81.') ||
+          ipStr === '::ffff:127.0.0.1';
+
+      const cleanIP = ipStr.includes(',') ? ipStr.split(',')[0].trim() : ipStr;
 
       if (!isLocalhost) {
         try {
           const fetch = (await import('node-fetch')).default;
           const response = await Promise.race([
-            fetch(`http://ip-api.com/json/${clientIP}?fields=status,message,country,countryCode,region,city,lat,lon`),
+            fetch(`http://ip-api.com/json/${cleanIP}?fields=status,message,country,countryCode,region,city,lat,lon`),
             new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 2000))
           ]) as any;
           const data = await response.json() as any;
@@ -1054,7 +1056,19 @@ ${keysText}`;
         source: isLocalhost ? 'localhost' : 'ip-api'
       });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch location' });
+      res.json({
+        location: {
+          country: 'all',
+          countryCode: 'all',
+          city: null,
+          region: null,
+          lat: null,
+          lng: null,
+          detected: false
+        },
+        ip: null,
+        source: 'fallback'
+      });
     }
   });
 

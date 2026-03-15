@@ -44,6 +44,8 @@ export function createMetadataClient(options: MetadataClientOptions): MetadataCl
   let currentStreamUrl: string | undefined;
   const subscribers = new Set<MetadataCallback>();
   let reconnectTimeoutId: number | null = null;
+  let reconnectAttempts = 0;
+  const maxReconnectDelay = 30000;
 
   function getWebSocketUrl(): string {
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -77,6 +79,7 @@ export function createMetadataClient(options: MetadataClientOptions): MetadataCl
         socket.onopen = () => {
           logger.log('✅ METADATA: WebSocket connected');
           isConnecting = false;
+          reconnectAttempts = 0;
           
           // If we have a current stream, start tracking it
           if (currentStreamUrl) {
@@ -131,12 +134,15 @@ export function createMetadataClient(options: MetadataClientOptions): MetadataCl
       clearTimeout(reconnectTimeoutId);
     }
     
+    reconnectAttempts++;
+    const delay = Math.min(reconnectDelay * Math.pow(2, reconnectAttempts - 1), maxReconnectDelay);
+    
     reconnectTimeoutId = window.setTimeout(() => {
       if (shouldReconnect) {
-        logger.log('🔄 METADATA: Attempting to reconnect...');
+        logger.log(`🔄 METADATA: Reconnect attempt ${reconnectAttempts} (delay: ${delay}ms)`);
         connect().catch(console.error);
       }
-    }, reconnectDelay);
+    }, delay);
   }
 
   function handleMessage(message: any) {
