@@ -35,6 +35,9 @@ task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
 
+[workflows.workflow.metadata]
+outputType = "webview"
+
 [objectStorage]
 defaultBucketID = "replit-objstore-8f5e4f39-25ed-4879-8ca1-85d6f335f5fe"
 

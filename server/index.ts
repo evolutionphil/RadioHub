@@ -44,15 +44,13 @@ app.disable('x-powered-by');
 // Clickjacking Protection: Configurable X-Frame-Options strategy
 // DENY = Most secure (page cannot be embedded anywhere)
 // SAMEORIGIN = Allow embedding only on same domain (if needed)
-function getFrameOptionsHeader(): string {
-  // Allow manual override via CLICKJACKING_MITIGATION environment variable
+function getFrameOptionsHeader(): string | null {
   if (process.env.CLICKJACKING_MITIGATION) {
     return process.env.CLICKJACKING_MITIGATION;
   }
-  
-  // Default to DENY (most secure) - pages cannot be embedded in iframes
-  // This is the strongest protection against clickjacking attacks
-  // Change to 'SAMEORIGIN' if you need to allow embedding on same domain
+  if (process.env.REPLIT_DOMAINS) {
+    return null;
+  }
   return 'DENY';
 }
 
@@ -240,7 +238,8 @@ app.use((req, res, next) => {
   
   // Security headers that improve SEO ranking
   res.header('X-Content-Type-Options', 'nosniff');
-  res.header('X-Frame-Options', getFrameOptionsHeader()); // Clickjacking protection (DENY = most secure)
+  const frameOptions = getFrameOptionsHeader();
+  if (frameOptions) res.header('X-Frame-Options', frameOptions);
   res.header('X-XSS-Protection', '1; mode=block');
   res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
@@ -269,7 +268,7 @@ app.use((req, res, next) => {
     "media-src 'self' https: blob:",
     "connect-src 'self' https: wss:",
     "frame-src 'self' https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://*.adtrafficquality.google https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com",
-    "frame-ancestors 'none'",
+    process.env.REPLIT_DOMAINS ? "frame-ancestors 'self' https://*.replit.com https://*.replit.dev https://*.riker.replit.dev" : "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
     "upgrade-insecure-requests"
