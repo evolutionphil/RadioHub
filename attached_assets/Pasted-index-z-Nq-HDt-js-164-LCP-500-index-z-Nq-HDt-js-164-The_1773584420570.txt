@@ -1,0 +1,46 @@
+index-z_Nq_HDt.js:164 LCP: 500
+index-z_Nq_HDt.js:164 The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio
+pj @ index-z_Nq_HDt.js:164
+index-z_Nq_HDt.js:164 LCP: 804
+index-z_Nq_HDt.js:164 LCP: 832
+/api/admin/users:1  Failed to load resource: the server responded with a status of 500 ()
+index-z_Nq_HDt.js:164 The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio
+(anonymous) @ index-z_Nq_HDt.js:164
+users:1 Error while trying to use the following icon from the Manifest: https://themegaradio.com/apple-touch-icon.png (Resource size is not correct - typo in the Manifest?)
+/api/admin/users:1  Failed to load resource: the server responded with a status of 500 ()
+index-z_Nq_HDt.js:164 The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio
+(anonymous) @ index-z_Nq_HDt.js:164
+/api/admin/users:1  Failed to load resource: the server responded with a status of 500 ()
+index-z_Nq_HDt.js:164 FID: 0
+users:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+fi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+li @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Yr @ clarity.js:2
+Ci @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Ii @ clarity.js:2
+Ie @ clarity.js:2
+(anonymous) @ clarity.js:2
+users:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.

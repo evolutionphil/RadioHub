@@ -427,8 +427,9 @@ export function registerMiscRoutes(app: Express, deps: any) {
         };
       });
       res.json({ users: usersWithDetails, total: totalCount, page, limit, totalPages: Math.ceil(totalCount / limit) });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch users' });
+    } catch (error: any) {
+      console.error('Admin users fetch error:', error.message || error);
+      res.status(500).json({ error: 'Failed to fetch users', details: error.message });
     }
   });
 

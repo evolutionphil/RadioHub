@@ -13,13 +13,13 @@
   "icons": [
     {
       "src": "/favicon.png",
-      "sizes": "64x64",
+      "sizes": "32x32",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
       "src": "/apple-touch-icon.png",
-      "sizes": "64x64",
+      "sizes": "180x180",
       "type": "image/png",
       "purpose": "any"
     }
@@ -33,7 +33,7 @@
       "icons": [
         {
           "src": "/favicon.png",
-          "sizes": "64x64"
+          "sizes": "32x32"
         }
       ]
     },
@@ -45,7 +45,7 @@
       "icons": [
         {
           "src": "/favicon.png",
-          "sizes": "64x64"
+          "sizes": "32x32"
         }
       ]
     },
@@ -57,7 +57,7 @@
       "icons": [
         {
           "src": "/favicon.png",
-          "sizes": "64x64"
+          "sizes": "32x32"
         }
       ]
     }
