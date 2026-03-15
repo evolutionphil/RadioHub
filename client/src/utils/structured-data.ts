@@ -207,6 +207,7 @@ export const generateRadioStationData = (station: Station, currentUrl: string): 
 
 // Generate BreadcrumbList structured data
 export const generateBreadcrumbData = (breadcrumbs: Array<{name: string, url: string}>): BreadcrumbData => {
+  const domain = getCurrentDomain();
   return {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -214,7 +215,7 @@ export const generateBreadcrumbData = (breadcrumbs: Array<{name: string, url: st
       "@type": "ListItem",
       position: index + 1,
       name: breadcrumb.name,
-      item: breadcrumb.url
+      item: breadcrumb.url.startsWith('http') ? breadcrumb.url : domain + breadcrumb.url
     }))
   };
 };
