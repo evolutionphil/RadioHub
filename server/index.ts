@@ -259,7 +259,8 @@ app.use((req, res, next) => {
 
   // Content Security Policy - Protects against XSS, injection attacks
   // Allows: self (same domain), trusted CDNs for fonts/images, analytics
-  const csp = [
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cspDirectives = [
     "default-src 'self'",
     "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms https://analytics.ahrefs.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://www.gstatic.com https://adservice.google.com https://tpc.googlesyndication.com https://*.adtrafficquality.google https://partner.googleadservices.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com https://www.google.com https://flowalive-sdk.s3.eu-central-1.amazonaws.com",
     "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
@@ -271,11 +272,13 @@ app.use((req, res, next) => {
     process.env.REPLIT_DOMAINS ? "frame-ancestors 'self' https://*.replit.com https://*.replit.dev https://*.riker.replit.dev" : "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "upgrade-insecure-requests"
-  ].join('; ');
+  ];
+  if (isProduction) {
+    cspDirectives.push("upgrade-insecure-requests");
+  }
+  const csp = cspDirectives.join('; ');
   
-  // Only enforce CSP in production; report-only in development
-  if (process.env.NODE_ENV === 'production') {
+  if (isProduction) {
     res.header('Content-Security-Policy', csp);
   } else {
     res.header('Content-Security-Policy-Report-Only', csp);
