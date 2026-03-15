@@ -104,3 +104,14 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **plyr**: Media player.
 - **sharp**: Image processing.
 - **AWS S3**: Cloud storage for logos.
+
+## Performance Optimization Notes
+- **Font Preloading**: Preload ubuntu-400, ubuntu-500, ubuntu-700 (actual critical fonts per PageSpeed analysis). ubuntu-600 removed from preload.
+- **cast_sender.js**: Loaded with `async` attribute (was render-blocking 750ms mobile). Chromecast still works via `__onGCastApiAvailable` callback.
+- **FloWAlive SDK**: DISABLED — WebSocket endpoint (flowalive-api.esimfo.com) unreachable (ERR_NAME_NOT_RESOLVED). Saves 121KB download. Re-enable when service restored.
+- **Ahrefs Analytics**: DISABLED — analytics.ahrefs.com returns ERR_FAILED. Re-enable when endpoint verified.
+- **Station Logos**: Size-aware asset selection — webp96 for cards/small (≤96px display), webp256 for hero/player/xl (>96px display). Reduces bandwidth ~60% for listing pages.
+- **Hero Images**: heroleft.png converted to responsive WebP (300w mobile, 500w desktop). Saves ~20KB per page load.
+- **Logo Icon**: Header/footer use 100w optimized version (2.4KB vs 34.7KB original). Full size kept for structured data/og:image.
+- **Hero Background**: Explicit width/height attributes added to prevent CLS, decoding="async" for non-blocking decode.
+- **Memory Management**: `/api/location` returns graceful fallback instead of 500 error. WebSocket metadata reconnect uses exponential backoff (2s→30s max).

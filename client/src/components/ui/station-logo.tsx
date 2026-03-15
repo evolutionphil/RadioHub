@@ -71,9 +71,10 @@ function resolveLogoUrl(folder: string, value: string): string {
   return `/station-logos/${folder}/${value}`;
 }
 
-function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 256): string {
+function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 96): string {
   if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-    const value = (station.logoAssets.webp256 || station.logoAssets[`webp${preferredSize}` as keyof typeof station.logoAssets]) as string | undefined;
+    const sizeKey = `webp${preferredSize}` as keyof typeof station.logoAssets;
+    const value = (station.logoAssets[sizeKey] || station.logoAssets.webp96 || station.logoAssets.webp256) as string | undefined;
     if (value) {
       return resolveLogoUrl(station.logoAssets.folder, value);
     }
@@ -114,11 +115,15 @@ export function StationLogo({
   const { t } = useTranslation();
   const sizeConfig = SIZES[size];
 
+  const preferredAssetSize = sizeConfig.px > 96 ? 'webp256' : 'webp96';
+
   const sources = useMemo(() => {
     const list: string[] = [];
     
     if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-      const value = (station.logoAssets.webp256 || station.logoAssets.webp96 || station.logoAssets.webp48) as string | undefined;
+      const preferred = station.logoAssets[preferredAssetSize as keyof typeof station.logoAssets] as string | undefined;
+      const fallback = (station.logoAssets.webp96 || station.logoAssets.webp256 || station.logoAssets.webp48) as string | undefined;
+      const value = preferred || fallback;
       if (value) {
         list.push(resolveLogoUrl(station.logoAssets.folder, value));
       }
@@ -141,7 +146,7 @@ export function StationLogo({
     list.push(FALLBACK_IMAGE);
     
     return list;
-  }, [station]);
+  }, [station, preferredAssetSize]);
 
   // Track current source index - reset when station changes
   const [sourceIndex, setSourceIndex] = useState(0);

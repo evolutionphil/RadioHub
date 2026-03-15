@@ -1,0 +1,182 @@
+Hemen backend developer'a avatar spec'ini hazırlıyorum ve cache implementasyonuna başlıyorum:
+Action: file_editor create /app/frontend/AVATAR_API_SPEC.md --file-text "# Avatar API Specification — Backend Developer Guide
+
+## Gerekli Endpoint'ler
+
+### 1. Avatar Upload
+```
+POST /api/user/avatar
+Authorization: Bearer {token}
+Content-Type: multipart/form-data
+
+Body (form-data):
+  avatar: <file> (image/jpeg, image/png, image/webp - max 5MB)
+```
+
+**Response (200):**
+```json
+{
+  \"success\": true,
+  \"avatar\": \"https://themegaradio.com/uploads/avatars/user_6933572f_1234567890.jpg\"
+}
+```
+
+**Response (400 - validation):**
+```json
+{
+  \"error\": \"Invalid file type. Allowed: jpeg, png, webp\"
+}
+```
+
+**Response (413 - too large):**
+```json
+{
+  \"error\": \"File too large. Maximum size: 5MB\"
+}
+```
+
+### 2. Avatar Delete
+```
+DELETE /api/user/avatar
+Authorization: Bearer {token}
+```
+
+**Response (200):**
+```json
+{
+  \"success\": true,
+  \"message\": \"Avatar removed\"
+}
+```
+
+## Login Response Guncelleme
+
+`POST /api/auth/mobile/login` ve `POST /api/auth/login` response'larinda user objesine `avatar` alani eklenmeli:
+
+```json
+{
+  \"success\": true,
+  \"token\": \"mrt_...\",
+  \"user\": {
+    \"_id\": \"...\",
+    \"fullName\": \"Test User\",
+    \"username\": \"testuser2026\",
+    \"email\": \"testuser2026@megaradio.test\",
+    \"role\": \"user\",
+    \"avatar\": \"https://themegaradio.com/uploads/avatars/user_xxx.jpg\"  // <-- YENi
+  }
+}
+```
+
+Ayni sekilde `GET /api/auth/me` response'unda da `avatar` alani olmali.
+
+## Backend Implementation Notes
+
+1. **Storage:** Avatar dosyalari S3, Cloudinary veya local disk'e kaydedilebilir
+2. **Resize:** Upload sirasinda 400x400px'e resize yapilmali (bandwidth tasarrufu)
+3. **Format:** WebP'ye convert edilirse boyut %60 kuculur
+4. **Old avatar:** Yeni avatar yuklendiginde eski dosya silinmeli
+5. **DB:** User collection'ina `avatar` field'i (String, URL) eklenmeli
+6. **Validation:**
+   - Sadece image/* MIME type
+   - Max 5MB
+   - Min 100x100px
+7. **URL:** Tam URL dondurun (relative path degil). Ornek: `https://themegaradio.com/uploads/avatars/xxx.jpg`
+
+## Test
+
+```bash
+# Upload
+curl -X POST https://themegaradio.com/api/user/avatar \
+  -H \"Authorization: Bearer {token}\" \
+  -F \"avatar=@/path/to/photo.jpg\"
+
+# Verify
+curl https://themegaradio.com/api/auth/me \
+  -H \"Authorization: Bearer {token}\"
+# Response should include \"avatar\": \"https://...\"
+
+# Delete
+curl -X DELETE https://themegaradio.com/api/user/avatar \
+  -H \"Authorization: Bearer {token}\"
+```
+"
+Observation: Create successful: /app/frontend/AVATAR_API_SPEC.md
+
+Fetching debug logs for expo
+
+==> /var/log/supervisor/expo.err.log <==
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+CommandError: TypeError: Cannot read properties of undefined (reading 'body')
+Check the Ngrok status page for outages: https://status.ngrok.com/
+error Command failed with exit code 1.
+CommandError: TypeError: Cannot read properties of undefined (reading 'body')
+Check the Ngrok status page for outages: https://status.ngrok.com/
+error Command failed with exit code 1.
+
+==> /var/log/supervisor/expo.out.log <==
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+yarn run v1.22.22
+$ /app/frontend/node_modules/.bin/expo start --tunnel --port 3000
+env: load .env
+env: export EXPO_TUNNEL_SUBDOMAIN EXPO_PACKAGER_HOSTNAME EXPO_PUBLIC_BACKEND_URL EXPO_USE_FAST_RESOLVER METRO_CACHE_ROOT
+Starting project at /app/frontend
+[withAndroidAuto] Applying full Android Auto configuration...
+[withAndroidAuto] Applying full Android Auto configuration...
+[withAndroidAuto] Applying full Android Auto configuration...
+Fast resolver is enabled.
+Metro is running in CI mode, reloads are disabled. Remove CI=true to enable watch mode.
+Starting Metro Bundler
+[withAndroidAuto] Applying full Android Auto configuration...
+Tunnel connected.
+Tunnel ready.
+[withAndroidAuto] Applying full Android Auto configuration...
+[withAndroidAuto] Applying full Android Auto configuration...
+[withAndroidAuto] Applying full Android Auto configuration...
+Waiting on http://localhost:3000
+Logs for your project will appear below.
+
+
+Fetching debug logs for backend
+
+==> /var/log/supervisor/backend.err.log <==
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [173] using WatchFiles
+INFO:     Started server process [204]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [182] using WatchFiles
+INFO:     Started server process [213]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [181] using WatchFiles
+INFO:     Started server process [218]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+
+==> /var/log/supervisor/backend.out.log <==
+
+
+Fetching debug logs for mongodb
+
+tail: cannot open '/var/log/supervisor/mongodb*.log' for reading: No such file or directory
