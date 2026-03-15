@@ -45,9 +45,13 @@ export class ScheduledCacheClearService {
 
     logger.log('⏰ Initializing scheduled cache clear service...');
     
-    cron.schedule('0 3 * * *', async () => {
-      logger.log('🌙 Running scheduled nightly SEO cache clear at 3:00 AM...');
-      await this.clearAllSeoCaches();
+    cron.schedule('0 3 1 * *', async () => {
+      logger.log('🌙 Running monthly SEO cache clear (1st of month, 3:00 AM)...');
+      try {
+        await this.clearAllSeoCaches();
+      } catch (error) {
+        logger.error('❌ SEO cache clear failed:', error);
+      }
     }, {
       timezone: 'Europe/Berlin'
     });
@@ -93,7 +97,7 @@ export class ScheduledCacheClearService {
     }
 
     this.isInitialized = true;
-    logger.log('✅ Scheduled cache clear service initialized — SEO daily 3:00, Precomputed Monday 4:30, Translations monthly 1st 5:00 (Europe/Berlin)');
+    logger.log('✅ Scheduled cache clear service initialized — SEO monthly 1st 3:00, Precomputed Monday 4:30, Translations monthly 1st 5:00, Nightly restart 4:00 (Europe/Berlin)');
   }
 
   public async clearAllSeoCaches(): Promise<CacheClearResult> {
@@ -102,20 +106,19 @@ export class ScheduledCacheClearService {
 
     const serverResult = performanceCache.clearSeoCaches();
     
-    const cloudflareResult = await this.purgeCloudflareCache();
+    logger.log(`✅ SEO server cache cleared: ${serverResult.seoHtmlCleared} HTML + ${serverResult.pageDataCleared} page data entries`);
+    logger.log(`ℹ️ Cloudflare full purge skipped during nightly clear — prevents cache stampede from bot traffic`);
 
     const result: CacheClearResult = {
       timestamp,
       serverCache: serverResult,
-      cloudflare: cloudflareResult
+      cloudflare: {
+        success: true,
+        message: 'Skipped — full purge disabled for nightly clear to prevent traffic spike'
+      }
     };
 
     this.lastClearResult = result;
-
-    logger.log(`✅ SEO cache clear completed:
-      - Server: ${serverResult.seoHtmlCleared} HTML + ${serverResult.pageDataCleared} page data entries
-      - Cloudflare: ${cloudflareResult.success ? 'Success' : 'Failed'} - ${cloudflareResult.message}`);
-
     return result;
   }
 
