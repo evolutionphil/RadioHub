@@ -121,18 +121,85 @@ process.on('unhandledRejection', (reason: any) => {
   if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
 });
 
-app.get(['/healthz', '/health', '/api/health'], (req, res) => {
+app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   if (req.path === '/healthz') {
     return res.status(200).send('ok');
   }
+
   const mem = process.memoryUsage();
   const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);
   const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+  const externalMB = Math.round(mem.external / 1024 / 1024);
+  const arrayBuffersMB = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
+
+  const uptimeSeconds = Math.round(process.uptime());
+  const days = Math.floor(uptimeSeconds / 86400);
+  const hours = Math.floor((uptimeSeconds % 86400) / 3600);
+  const minutes = Math.floor((uptimeSeconds % 3600) / 60);
+  const seconds = uptimeSeconds % 60;
+  const uptimeFormatted = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+
+  let mongoStatus = 'unknown';
+  let mongoLatency = -1;
+  try {
+    const { default: mongoose } = await import('mongoose');
+    const mongoState = mongoose.connection.readyState;
+    mongoStatus = ({ 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' } as Record<number, string>)[mongoState] || 'unknown';
+    if (mongoState === 1) {
+      const start = Date.now();
+      await mongoose.connection.db!.admin().ping();
+      mongoLatency = Date.now() - start;
+    }
+  } catch {}
+
+  const cpus = require('os').cpus();
+  const loadAvg = require('os').loadavg();
+  const totalMemGB = Math.round(require('os').totalmem() / 1024 / 1024 / 1024 * 10) / 10;
+  const freeMemGB = Math.round(require('os').freemem() / 1024 / 1024 / 1024 * 10) / 10;
+
+  const heapPercent = Math.round((heapMB / 4096) * 100);
+  let memoryHealth = 'healthy';
+  if (heapMB > 3500) memoryHealth = 'critical';
+  else if (heapMB > 3000) memoryHealth = 'warning';
+
   res.status(200).json({
     status: 'ok',
-    heapMB, heapTotalMB, rssMB,
-    uptime: Math.round(process.uptime())
+    version: '1.0.0',
+    environment: process.env.NODE_ENV || 'development',
+    timestamp: new Date().toISOString(),
+    memory: {
+      heapUsed: `${heapMB}MB`,
+      heapTotal: `${heapTotalMB}MB`,
+      heapLimit: '4096MB',
+      heapUsagePercent: `${heapPercent}%`,
+      rss: `${rssMB}MB`,
+      external: `${externalMB}MB`,
+      arrayBuffers: `${arrayBuffersMB}MB`,
+      health: memoryHealth
+    },
+    uptime: {
+      seconds: uptimeSeconds,
+      formatted: uptimeFormatted
+    },
+    database: {
+      status: mongoStatus,
+      latencyMs: mongoLatency
+    },
+    system: {
+      cpuCores: cpus.length,
+      loadAverage: {
+        '1min': Math.round(loadAvg[0] * 100) / 100,
+        '5min': Math.round(loadAvg[1] * 100) / 100,
+        '15min': Math.round(loadAvg[2] * 100) / 100
+      },
+      totalMemory: `${totalMemGB}GB`,
+      freeMemory: `${freeMemGB}GB`
+    },
+    node: {
+      version: process.version,
+      maxOldSpaceSize: '4096MB'
+    }
   });
 });
 
