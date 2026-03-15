@@ -238,61 +238,123 @@ export default function AdminUsers() {
         </CardContent>
       </Card>
 
-      {/* Edit Modal Dialog - Simple inline form */}
-      {editingUserId && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Edit User Information</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium mb-1">Full Name</label>
-                <Input
-                  value={editData.fullName || ""}
-                  onChange={(e) =>
-                    setEditData({ ...editData, fullName: e.target.value })
-                  }
-                  placeholder="Full name"
-                />
+      {editingUserId && (() => {
+        const editUser = users.find(u => u._id === editingUserId);
+        return (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditingUserId(null)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="bg-white border-b px-6 py-4 rounded-t-lg">
+                <h2 className="text-xl font-bold text-gray-900">Edit User Information</h2>
+                <p className="text-sm text-gray-500 mt-1">User ID: {editingUserId}</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">Email</label>
-                <Input
-                  value={editData.email || ""}
-                  onChange={(e) =>
-                    setEditData({ ...editData, email: e.target.value })
-                  }
-                  placeholder="Email"
-                  type="email"
-                />
+              <div className="bg-white px-6 py-5 space-y-5">
+                <div className="flex items-center gap-4 pb-4 border-b border-gray-200">
+                  <img
+                    src={getAvatarUrl(editUser || editData as UserProfile)}
+                    alt="Avatar"
+                    className="w-16 h-16 rounded-full object-cover border-2 border-gray-200"
+                  />
+                  <div>
+                    <p className="font-semibold text-gray-900">{editData.fullName || "No name"}</p>
+                    <p className="text-sm text-gray-500">{editData.email}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                    <Input
+                      value={editData.fullName || ""}
+                      onChange={(e) => setEditData({ ...editData, fullName: e.target.value })}
+                      placeholder="Full name"
+                      className="bg-white text-gray-900 border-gray-300"
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <Input
+                      value={editData.email || ""}
+                      onChange={(e) => setEditData({ ...editData, email: e.target.value })}
+                      placeholder="Email"
+                      type="email"
+                      className="bg-white text-gray-900 border-gray-300"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">User Details</h3>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-500">Auth Method</span>
+                      <p className="font-medium text-gray-900">{editUser?.authProvider || "email"}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Status</span>
+                      <p className="font-medium">
+                        <span className={editUser?.isActive !== false ? "text-green-600" : "text-red-600"}>
+                          {editUser?.isActive !== false ? "Active" : "Inactive"}
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Followers</span>
+                      <p className="font-medium text-gray-900">{editUser?.followers || 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Favorites</span>
+                      <p className="font-medium text-gray-900">{editUser?.favorites || 0}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Created</span>
+                      <p className="font-medium text-gray-900">{formatDate(editUser?.createdAt)}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Last Update</span>
+                      <p className="font-medium text-gray-900">{formatDate(editUser?.updatedAt)}</p>
+                    </div>
+                    {editUser?.googleId && (
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Google ID</span>
+                        <p className="font-medium text-gray-900 font-mono text-xs">{editUser.googleId}</p>
+                      </div>
+                    )}
+                    <div className="col-span-2">
+                      <span className="text-gray-500">User ID</span>
+                      <p className="font-medium text-gray-900 font-mono text-xs">{editingUserId}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 justify-end pt-4 border-t border-gray-200">
+                  <Button
+                    variant="outline"
+                    onClick={() => setEditingUserId(null)}
+                    disabled={updateUserMutation.isPending}
+                    className="bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => handleSaveEdit(editingUserId)}
+                    disabled={updateUserMutation.isPending}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    {updateUserMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 animate-spin" size={16} />
+                        Saving...
+                      </>
+                    ) : (
+                      "Save Changes"
+                    )}
+                  </Button>
+                </div>
               </div>
-              <div className="flex gap-2 justify-end pt-4 border-t">
-                <Button
-                  variant="outline"
-                  onClick={() => setEditingUserId(null)}
-                  disabled={updateUserMutation.isPending}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => handleSaveEdit(editingUserId)}
-                  disabled={updateUserMutation.isPending}
-                >
-                  {updateUserMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 animate-spin" size={16} />
-                      Saving...
-                    </>
-                  ) : (
-                    "Save Changes"
-                  )}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
