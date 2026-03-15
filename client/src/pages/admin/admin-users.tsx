@@ -40,9 +40,18 @@ export default function AdminUsers() {
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
   const { toast } = useToast();
 
-  const { data: usersResponse, isLoading: isLoadingUsers } = useQuery<{ users: UserProfile[]; total: number }>({
+  const { data: usersResponse, isLoading: isLoadingUsers, error: usersError } = useQuery<{ users: UserProfile[]; total: number }>({
     queryKey: ["/api/admin/users"],
     staleTime: 30000,
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users", { credentials: "include" });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status}: ${text}`);
+      }
+      return res.json();
+    },
+    retry: 2,
   });
   const users = usersResponse?.users || [];
 
