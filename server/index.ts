@@ -153,10 +153,11 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
     }
   } catch {}
 
-  const cpus = require('os').cpus();
-  const loadAvg = require('os').loadavg();
-  const totalMemGB = Math.round(require('os').totalmem() / 1024 / 1024 / 1024 * 10) / 10;
-  const freeMemGB = Math.round(require('os').freemem() / 1024 / 1024 / 1024 * 10) / 10;
+  const os = await import('os');
+  const cpus = os.cpus();
+  const loadAvg = os.loadavg();
+  const totalMemGB = Math.round(os.totalmem() / 1024 / 1024 / 1024 * 10) / 10;
+  const freeMemGB = Math.round(os.freemem() / 1024 / 1024 / 1024 * 10) / 10;
 
   const heapPercent = Math.round((heapMB / 4096) * 100);
   let memoryHealth = 'healthy';
