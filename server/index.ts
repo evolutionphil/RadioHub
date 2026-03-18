@@ -1043,6 +1043,10 @@ app.use((req, res, next) => {
               const { clearOgCache } = await import('./og-image-generator');
               clearOgCache();
             } catch {}
+            if (global.gc) {
+              global.gc();
+              console.log('🗑️ Manual GC triggered after memory-critical cleanup');
+            }
           }
         }
       }, 5 * 60 * 1000);

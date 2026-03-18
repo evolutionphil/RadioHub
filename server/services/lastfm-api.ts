@@ -53,10 +53,14 @@ class LastFmApiService {
   private baseUrl = 'https://ws.audioscrobbler.com/2.0/';
   private apiKey = process.env.LASTFM_API_KEY;
   private userAgent = 'MegaRadio/1.0';
+  private missingKeyLogged = false;
 
   async getArtistInfo(artistName: string, language: string = 'en'): Promise<LastFmArtistInfo | null> {
     if (!this.apiKey) {
-      console.warn('Last.fm API key not configured - artist bios unavailable');
+      if (!this.missingKeyLogged) {
+        console.warn('Last.fm API key not configured - artist bios unavailable');
+        this.missingKeyLogged = true;
+      }
       return null;
     }
 
