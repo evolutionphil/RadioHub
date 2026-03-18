@@ -65,16 +65,22 @@ const originalConsole = {
   info: console.info.bind(console),
 };
 
+const SKIP_PATTERNS = ['EVENT LOOP LAG:', 'LOAD SHEDDING:', 'EVENT LOOP BLOCKED:'];
+let isFlushingToS3 = false;
+
 function interceptConsole(): void {
   const wrap = (level: string, original: (...args: any[]) => void) => {
     return (...args: any[]) => {
       original(...args);
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return;
+      const firstArg = typeof args[0] === 'string' ? args[0] : '';
+      if (SKIP_PATTERNS.some(p => firstArg.includes(p))) return;
       if (logBuffer.length < MAX_BUFFER_SIZE * 2) {
         logBuffer.push(formatLogLine(level, args));
       }
-      if (logBuffer.length >= MAX_BUFFER_SIZE) {
-        flushToS3().catch(() => {});
+      if (logBuffer.length >= MAX_BUFFER_SIZE && !isFlushingToS3) {
+        isFlushingToS3 = true;
+        flushToS3().catch(() => {}).finally(() => { isFlushingToS3 = false; });
       }
     };
   };
@@ -103,9 +109,7 @@ export function initLogCollector(): void {
   });
 
   process.on("SIGTERM", () => {
-    flushToS3()
-      .catch(() => {})
-      .finally(() => process.exit(0));
+    flushToS3().catch(() => {});
   });
 
   isInitialized = true;

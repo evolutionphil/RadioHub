@@ -69,7 +69,8 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation, country-specific URL translations, universal country normalization.
 - **Background Audio Protection**: 5-layer system to prevent browser audio suspension.
 - **Image Optimization**: Server-side image resizing and WebP conversion using Sharp, stored on S3. Includes memory-safe guards for image proxy.
-- **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing.
+- **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing. Memory-critical GC has 15-minute cooldown to prevent GC death spiral. `global.gc()` REMOVED from event loop load shedding (was causing synchronous freeze spiral).
+- **Event Loop Protection**: Load shedding has 10-minute cooldown (prevents repeated cache clearing). Lag logging rate-limited to max 1 per minute (prevents log collector feedback loop). Log collector skips EVENT LOOP LAG/LOAD SHEDDING/BLOCKED messages to prevent S3 flush storms.
 - **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards. Nightly auto-restart at 4:00 AM Europe/Berlin via SIGTERM (graceful shutdown) — Railway `restartPolicyType=ALWAYS` ensures container always restarts. Health check at `/health` AND `/api/health`.
 - **API Key Management**: Secure generation, validation, rate limiting, and usage tracking.
 - **Cast System**: Dual architecture (WebSocket/polling) for real-time command and now-playing status.
