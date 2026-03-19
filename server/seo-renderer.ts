@@ -145,9 +145,11 @@ export class SeoRenderer {
       }
     }
     
-    // CRITICAL: Cache key includes preferredLanguage to avoid language collision
+    // CRITICAL: Cache key uses cleanUrl (query/hash stripped) + preferredLanguage to avoid collision
     // Without this, /de/ cached in German would be served to Turkish users
-    const cacheKey = preferredLanguage ? `${url}|lang=${preferredLanguage}` : url;
+    // Using cleanUrl prevents unbounded cache key cardinality from query params
+    const normalizedLang = preferredLanguage?.toLowerCase();
+    const cacheKey = normalizedLang ? `${cleanUrl}|lang=${normalizedLang}` : cleanUrl;
     
     // Check cache for complete page data first
     const cachedPageData = performanceCache.getPageData(cacheKey);

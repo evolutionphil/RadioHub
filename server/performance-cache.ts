@@ -10,6 +10,9 @@ export class PerformanceCache {
   private seoHtmlCache: NodeCache; 
   private pageDataCache: NodeCache;
   private quickCache: NodeCache;
+
+  private lastCacheFullWarnTime: Record<string, number> = {};
+  private static CACHE_FULL_WARN_COOLDOWN = 60_000;
   
   private constructor() {
     this.translationsCache = new NodeCache({ 
@@ -42,6 +45,38 @@ export class PerformanceCache {
     
     logger.log('🚀 CACHE: Performance cache system initialized');
   }
+
+  private safeSet(cache: NodeCache, cacheName: string, key: string, value: any, ttl?: number): boolean {
+    try {
+      if (ttl !== undefined) {
+        cache.set(key, value, ttl);
+      } else {
+        cache.set(key, value);
+      }
+      return true;
+    } catch (err: any) {
+      if (err?.errorcode === 'ECACHEFULL') {
+        const now = Date.now();
+        const lastWarn = this.lastCacheFullWarnTime[cacheName] || 0;
+        if (now - lastWarn > PerformanceCache.CACHE_FULL_WARN_COOLDOWN) {
+          this.lastCacheFullWarnTime[cacheName] = now;
+          logger.warn(`⚠️ CACHE FULL: ${cacheName} hit maxKeys — flushing and retrying`);
+        }
+        cache.flushAll();
+        try {
+          if (ttl !== undefined) {
+            cache.set(key, value, ttl);
+          } else {
+            cache.set(key, value);
+          }
+          return true;
+        } catch {
+          return false;
+        }
+      }
+      return false;
+    }
+  }
   
   public static getInstance(): PerformanceCache {
     if (!PerformanceCache.instance) {
@@ -58,7 +93,7 @@ export class PerformanceCache {
   }
   
   setTranslations(language: string, translations: Record<string, string>): void {
-    this.translationsCache.set(`translations:${language}`, translations);
+    this.safeSet(this.translationsCache, 'translationsCache', `translations:${language}`, translations);
   }
   
   // === SEO HTML CACHING ===
@@ -71,7 +106,7 @@ export class PerformanceCache {
   
   setSeoHtml(url: string, html: string, userAgent: string = 'bot'): void {
     const cacheKey = `seo:${userAgent}:${url}`;
-    this.seoHtmlCache.set(cacheKey, html);
+    this.safeSet(this.seoHtmlCache, 'seoHtmlCache', cacheKey, html);
   }
   
   // === PAGE DATA CACHING ===
@@ -82,7 +117,7 @@ export class PerformanceCache {
   }
   
   setPageData(url: string, data: any): void {
-    this.pageDataCache.set(`page:${url}`, data);
+    this.safeSet(this.pageDataCache, 'pageDataCache', `page:${url}`, data);
   }
   
   // === QUICK CACHING ===
@@ -93,11 +128,7 @@ export class PerformanceCache {
   }
   
   setQuick(key: string, data: any, ttl?: number): void {
-    if (ttl) {
-      this.quickCache.set(key, data, ttl);
-    } else {
-      this.quickCache.set(key, data);
-    }
+    this.safeSet(this.quickCache, 'quickCache', key, data, ttl);
   }
   
   // === SIMILAR STATIONS CACHE (Always Hot) ===
@@ -116,7 +147,7 @@ export class PerformanceCache {
   }
   
   setSimilarPool(country: string, stations: any[]): void {
-    this.similarStationsCache.set(`similar:${country}`, stations);
+    this.safeSet(this.similarStationsCache, 'similarStationsCache', `similar:${country}`, stations);
   }
   
   getGlobalPopularPool(): any[] | null {
@@ -125,7 +156,7 @@ export class PerformanceCache {
   }
   
   setGlobalPopularPool(stations: any[]): void {
-    this.similarStationsCache.set('similar:global', stations);
+    this.safeSet(this.similarStationsCache, 'similarStationsCache', 'similar:global', stations);
   }
   
   isSimilarPoolWarmed(): boolean {
@@ -215,7 +246,7 @@ export class PerformanceCache {
     const map = new Map<string, string>();
     mappings.forEach((m: any) => map.set(m.countryCode, m.languageCode));
     
-    this.quickCache.set('country_language_mappings', map);
+    this.safeSet(this.quickCache, 'quickCache', 'country_language_mappings', map);
     
     return map;
   }
@@ -239,7 +270,7 @@ export class PerformanceCache {
       map.set(key, t.translatedPath);
     });
     
-    this.quickCache.set('url_translations', map);
+    this.safeSet(this.quickCache, 'quickCache', 'url_translations', map);
     
     return map;
   }
