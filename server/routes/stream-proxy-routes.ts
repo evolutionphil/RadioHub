@@ -39,19 +39,23 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     }
   });
 
-  const MAX_IMAGE_DOWNLOAD_BYTES = 2 * 1024 * 1024; // 2 MB max download
-  const MAX_CONCURRENT_SHARP = 6; // max simultaneous Sharp operations
-  const MAX_TARGET_DIMENSION = 512; // cap resize dimensions
+  const MAX_IMAGE_DOWNLOAD_BYTES = 2 * 1024 * 1024;
+  const MAX_CONCURRENT_SHARP = 6;
+  const MAX_SHARP_QUEUE = 20;
+  const MAX_TARGET_DIMENSION = 512;
   let activeSharpOps = 0;
-  const sharpQueue: Array<() => void> = [];
+  const sharpQueue: Array<{ resolve: () => void; reject: (err: Error) => void }> = [];
 
   function acquireSharpSlot(): Promise<void> {
     if (activeSharpOps < MAX_CONCURRENT_SHARP) {
       activeSharpOps++;
       return Promise.resolve();
     }
-    return new Promise<void>((resolve) => {
-      sharpQueue.push(() => { activeSharpOps++; resolve(); });
+    if (sharpQueue.length >= MAX_SHARP_QUEUE) {
+      return Promise.reject(new Error('Image processing queue full'));
+    }
+    return new Promise<void>((resolve, reject) => {
+      sharpQueue.push({ resolve: () => { activeSharpOps++; resolve(); }, reject });
     });
   }
 
@@ -59,7 +63,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     activeSharpOps--;
     if (sharpQueue.length > 0) {
       const next = sharpQueue.shift()!;
-      next();
+      next.resolve();
     }
   }
 
@@ -551,6 +555,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       }
 
     } catch (error: any) {
+      try { clearTimeout(timeoutId); } catch {}
       try { controller.abort(); } catch {}
       if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
         console.error('❌ Simple stream error:', error.message);

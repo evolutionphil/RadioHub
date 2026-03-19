@@ -14,11 +14,10 @@ export class StreamMetadataService {
   private cacheTimeout = 10000; // 10 seconds cache
   // Simplified metadata fetch using axios for redirects
   async fetchAudioMetaWithAxios(streamUrl: string): Promise<MetadataResult> {
+    let stream: any = null;
     try {
-      // Fetching ICY metadata with axios
-      
       const response = await axios.get(streamUrl, {
-        timeout: 10000, // Increased from 3s to 10s for better reliability
+        timeout: 10000,
         headers: {
           'Icy-MetaData': '1',
           'User-Agent': 'MegaRadio/1.0'
@@ -27,24 +26,24 @@ export class StreamMetadataService {
         maxRedirects: 5
       });
 
+      stream = response.data;
+
       const icyName = response.headers['icy-name'];
       const icyGenre = response.headers['icy-genre'];
-      const icyMetaint = response.headers['icy-metaint'];
 
-      // ICY headers received from axios
+      const result: MetadataResult = icyName ? {
+        title: icyName as string,
+        station: icyName as string,
+        genre: icyGenre as string || undefined
+      } : {};
 
-      if (icyName) {
-        return {
-          title: icyName as string,
-          station: icyName as string,
-          genre: icyGenre as string || undefined
-        };
-      }
-
-      return {};
+      return result;
     } catch (error: any) {
-      // ICY metadata fetch failed
       return {};
+    } finally {
+      if (stream) {
+        try { stream.destroy(); } catch {}
+      }
     }
   }
 
@@ -78,10 +77,9 @@ export class StreamMetadataService {
         const req = httpModule.request(options, (res) => {
           // ICY headers found and processed
 
-          // Handle redirects (301, 302, 307, 308)
           if ([301, 302, 307, 308].includes(res.statusCode || 0) && res.headers['location']) {
-            // Following redirect
-            // Use axios for redirect to avoid context issues
+            res.destroy();
+            req.destroy();
             this.fetchAudioMetaWithAxios(res.headers['location'] as string).then(resolve);
             return;
           }
@@ -91,8 +89,7 @@ export class StreamMetadataService {
           const icyGenre = res.headers['icy-genre'];
 
           if (!icyMetaint || parseInt(icyMetaint as string) <= 0) {
-            // No ICY metadata interval, using station info
-            // Return station info even without live metadata
+            res.destroy();
             if (icyName) {
               resolve({
                 title: icyName as string,
@@ -392,21 +389,29 @@ export class StreamMetadataService {
       
       let result: MetadataResult;
       
-      const hardDeadline = new Promise<MetadataResult>((resolve) => setTimeout(() => resolve({}), 20000));
+      let deadlineTimer: NodeJS.Timeout;
+      const hardDeadline = new Promise<MetadataResult>((resolve) => {
+        deadlineTimer = setTimeout(() => resolve({}), 20000);
+      });
 
-      if (station.hls || streamUrl.includes('.m3u8') || streamUrl.includes('playlist')) {
-        result = await Promise.race([this.fetchPlaylistMeta(streamUrl), hardDeadline]);
-      } else {
-        result = await Promise.race([this.fetchAudioMeta(streamUrl), hardDeadline]);
+      try {
+        if (station.hls || streamUrl.includes('.m3u8') || streamUrl.includes('playlist')) {
+          result = await Promise.race([this.fetchPlaylistMeta(streamUrl), hardDeadline]);
+        } else {
+          result = await Promise.race([this.fetchAudioMeta(streamUrl), hardDeadline]);
+        }
+      } finally {
+        clearTimeout(deadlineTimer!);
       }
       
-      // Cache the result if it's meaningful
       if (result && (result.title || result.artist)) {
         this.metadataCache.set(cacheKey, { data: result, timestamp: now });
         
-        // Clean old cache entries periodically
-        if (this.metadataCache.size > 100) {
+        if (this.metadataCache.size > 50) {
           this.cleanCache();
+        }
+        if (this.metadataCache.size > 200) {
+          this.metadataCache.clear();
         }
       }
       

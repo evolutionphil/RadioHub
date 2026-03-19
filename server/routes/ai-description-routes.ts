@@ -9,7 +9,6 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   // AI STATION DESCRIPTION GENERATION ENDPOINTS
   const { generateStationDescription, detectStationLanguage, translateDescription } = await import('../services/ai-station-description');
   
-  // In-memory storage for AI description generation jobs
   const descriptionJobs = new Map<string, {
     jobId: string;
     status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -32,6 +31,16 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     lastProcessedSkip?: number;
     updatedAt?: Date;
   }>();
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [jobId, job] of descriptionJobs) {
+      if ((job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled') &&
+          job.completedAt && (now - job.completedAt.getTime()) > 30 * 60 * 1000) {
+        descriptionJobs.delete(jobId);
+      }
+    }
+  }, 10 * 60 * 1000);
 
   // Single station AI description generation
   app.post("/api/admin/stations/:id/generate-description", requireAdmin, async (req, res) => {
@@ -537,10 +546,10 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
             skip += batchSize;
           }
           
-          // Mark job as completed
           const job = descriptionJobs.get(jobId);
           if (job) {
             job.status = 'completed';
+            job.completedAt = new Date();
             job.processed = processed;
             job.successful = successful;
             job.failed = failed;
@@ -555,6 +564,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
           const job = descriptionJobs.get(jobId);
           if (job) {
             job.status = 'failed';
+            job.completedAt = new Date();
             job.error = error.message;
             descriptionJobs.set(jobId, job);
           }
