@@ -60,9 +60,13 @@ export class PerformanceCache {
         const lastWarn = this.lastCacheFullWarnTime[cacheName] || 0;
         if (now - lastWarn > PerformanceCache.CACHE_FULL_WARN_COOLDOWN) {
           this.lastCacheFullWarnTime[cacheName] = now;
-          logger.warn(`⚠️ CACHE FULL: ${cacheName} hit maxKeys — flushing and retrying`);
+          const keyCount = cache.keys().length;
+          logger.warn(`⚠️ CACHE FULL: ${cacheName} hit maxKeys (${keyCount} keys) — evicting oldest 30% and retrying`);
         }
-        cache.flushAll();
+        const allKeys = cache.keys();
+        const evictCount = Math.max(Math.floor(allKeys.length * 0.3), 50);
+        const keysToEvict = allKeys.slice(0, evictCount);
+        cache.del(keysToEvict);
         try {
           if (ttl !== undefined) {
             cache.set(key, value, ttl);

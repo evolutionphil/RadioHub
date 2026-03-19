@@ -383,8 +383,12 @@ export class SeoRenderer {
       pageData: { pageType, station: stationData, seoTags, ...additionalData, additionalData }
     };
     
-    // Cache the page data for future requests (using cacheKey that includes preferredLanguage)
-    performanceCache.setPageData(cacheKey, pageData);
+    // Only cache low-cardinality pages (home, genres, about, etc.)
+    // Station detail pages have 40k+ slugs × 57 languages = unbounded cardinality,
+    // thrashing the 500-key cache and wiping hot entries every ~7 minutes
+    if (pageType !== 'station') {
+      performanceCache.setPageData(cacheKey, pageData);
+    }
     
     return pageData;
   }
