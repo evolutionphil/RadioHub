@@ -1023,15 +1023,27 @@ app.use((req, res, next) => {
 
       let lastMemoryGcTime = 0;
       const MEMORY_GC_COOLDOWN = 15 * 60 * 1000;
+      let lastProactiveClearTime = 0;
+      const PROACTIVE_CLEAR_COOLDOWN = 30 * 60 * 1000;
+      let lastMemoryWarningTime = 0;
+      const MEMORY_WARNING_INTERVAL = 15 * 60 * 1000;
       setInterval(async () => {
         const mem = process.memoryUsage();
         const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+        const now = Date.now();
+        if (heapMB > 2500 && heapMB <= 3000 && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
+          console.log(`🧹 PROACTIVE MEMORY RELIEF: heap=${heapMB}MB — clearing SEO & quick caches`);
+          performanceCache.clearSeoAndQuickCaches();
+          lastProactiveClearTime = now;
+        }
         if (heapMB > 3000) {
-          console.warn(`⚠️ MEMORY WARNING: heap=${heapMB}MB/${heapTotalMB}MB, rss=${rssMB}MB`);
+          if ((now - lastMemoryWarningTime) > MEMORY_WARNING_INTERVAL) {
+            console.warn(`⚠️ MEMORY WARNING: heap=${heapMB}MB/${heapTotalMB}MB, rss=${rssMB}MB`);
+            lastMemoryWarningTime = now;
+          }
           if (heapMB > 3500) {
-            const now = Date.now();
             if ((now - lastMemoryGcTime) < MEMORY_GC_COOLDOWN) return;
             lastMemoryGcTime = now;
             console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing ALL caches to prevent OOM`);
@@ -1055,13 +1067,18 @@ app.use((req, res, next) => {
       let consecutiveHighLag = 0;
       let lastLoadShedTime = 0;
       let lastLagLogTime = 0;
+      let lastBlockedLogTime = 0;
       const LOAD_SHED_COOLDOWN = 10 * 60 * 1000;
       const LAG_LOG_INTERVAL = 60 * 1000;
       setInterval(() => {
         const now = Date.now();
         const lag = now - lastEventLoopCheck - 5000;
         lastEventLoopCheck = now;
-        if (lag > 2000 && (now - lastLagLogTime) > LAG_LOG_INTERVAL) {
+        if (lag > 10000 && (now - lastBlockedLogTime) > LAG_LOG_INTERVAL) {
+          console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms — possible freeze detected`);
+          lastBlockedLogTime = now;
+          lastLagLogTime = now;
+        } else if (lag > 2000 && (now - lastLagLogTime) > LAG_LOG_INTERVAL) {
           console.warn(`⚠️ EVENT LOOP LAG: ${lag}ms (>2s indicates blocking operation)`);
           lastLagLogTime = now;
         }
@@ -1069,10 +1086,6 @@ app.use((req, res, next) => {
           consecutiveHighLag++;
         } else {
           consecutiveHighLag = 0;
-        }
-        if (lag > 10000 && (now - lastLagLogTime) > LAG_LOG_INTERVAL) {
-          console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms — possible freeze detected`);
-          lastLagLogTime = now;
         }
         if (consecutiveHighLag >= 5 && (now - lastLoadShedTime) > LOAD_SHED_COOLDOWN) {
           console.error(`🚨 LOAD SHEDDING: ${consecutiveHighLag} consecutive >3s lag intervals — clearing caches to recover`);

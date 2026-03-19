@@ -12,34 +12,32 @@ export class PerformanceCache {
   private quickCache: NodeCache;
   
   private constructor() {
-    // Translations cache - 1 hour TTL (rarely change)
     this.translationsCache = new NodeCache({ 
-      stdTTL: 3600, // 1 hour
-      checkperiod: 600, // Check every 10 minutes
-      maxKeys: 100 // Max 100 language translation sets
+      stdTTL: 3600,
+      checkperiod: 600,
+      maxKeys: 100,
+      useClones: false
     });
     
-    // Rendered HTML cache - 20 minutes TTL (for SEO bot responses)
     this.seoHtmlCache = new NodeCache({ 
-      stdTTL: 900, // 15 minutes
+      stdTTL: 900,
       checkperiod: 120,
-      maxKeys: 2000,
+      maxKeys: 500,
       useClones: false
     });
     
     this.pageDataCache = new NodeCache({ 
-      stdTTL: 600, // 10 minutes
+      stdTTL: 600,
       checkperiod: 60,
-      maxKeys: 2000,
+      maxKeys: 500,
       useClones: false
     });
     
-    // Quick data cache - 5 minutes TTL (for frequently accessed data)
     this.quickCache = new NodeCache({ 
-      stdTTL: 300, // 5 minutes
-      checkperiod: 60, // Check every minute
-      maxKeys: 2000,
-      useClones: false // Save memory
+      stdTTL: 300,
+      checkperiod: 60,
+      maxKeys: 500,
+      useClones: false
     });
     
     logger.log('🚀 CACHE: Performance cache system initialized');
@@ -106,9 +104,10 @@ export class PerformanceCache {
   // Pre-computed pools of popular stations per country for instant Similar Radios
   
   private similarStationsCache: NodeCache = new NodeCache({
-    stdTTL: 3600, // 1 hour TTL
+    stdTTL: 3600,
     checkperiod: 300,
-    maxKeys: 500
+    maxKeys: 500,
+    useClones: false
   });
   
   getSimilarPool(country: string): any[] | null {
@@ -171,6 +170,18 @@ export class PerformanceCache {
       seoHtmlCleared: seoHtmlCount,
       pageDataCleared: pageDataCount
     };
+  }
+
+  clearSeoAndQuickCaches(): void {
+    const seoCount = this.seoHtmlCache.keys().length;
+    const pageCount = this.pageDataCache.keys().length;
+    const quickCount = this.quickCache.keys().length;
+
+    this.seoHtmlCache.flushAll();
+    this.pageDataCache.flushAll();
+    this.quickCache.flushAll();
+
+    logger.log(`🧹 PROACTIVE: Cleared SEO + quick caches — seo=${seoCount}, page=${pageCount}, quick=${quickCount}`);
   }
 
   clearAllForMemoryRelief(): void {
