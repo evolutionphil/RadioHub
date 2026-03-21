@@ -1033,7 +1033,7 @@ app.use((req, res, next) => {
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
         const now = Date.now();
-        if (heapMB > 2500 && heapMB <= 3000 && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
+        if (heapMB > 3000 && heapMB <= 3500 && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
           console.log(`🧹 PROACTIVE MEMORY RELIEF: heap=${heapMB}MB — clearing SEO & quick caches`);
           performanceCache.clearSeoAndQuickCaches();
           lastProactiveClearTime = now;
