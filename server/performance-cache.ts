@@ -224,15 +224,13 @@ export class PerformanceCache {
     const pageCount = this.pageDataCache.keys().length;
     const quickCount = this.quickCache.keys().length;
     const similarCount = this.similarStationsCache.keys().length;
-    const transCount = this.translationsCache.keys().length;
 
     this.seoHtmlCache.flushAll();
     this.pageDataCache.flushAll();
     this.quickCache.flushAll();
     this.similarStationsCache.flushAll();
-    this.translationsCache.flushAll();
 
-    logger.log(`🧹 MEMORY RELIEF: Cleared ALL performance caches — seo=${seoCount}, page=${pageCount}, quick=${quickCount}, similar=${similarCount}, trans=${transCount}`);
+    logger.log(`🧹 MEMORY RELIEF: Cleared caches (translations preserved) — seo=${seoCount}, page=${pageCount}, quick=${quickCount}, similar=${similarCount}`);
   }
   
   clearCountryLanguageMappings() {

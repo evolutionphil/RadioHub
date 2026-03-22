@@ -23,9 +23,22 @@ const CRITICAL_TRANSLATION_KEYS = [
   'home', 'about', 'contact', 'login', 'register', 'logout'
 ];
 
-const precomputedTranslationScripts = new Map<string, string>();
+const HTML_REGEX = {
+  htmlLang: /<html lang="en">/,
+  scriptTag: /(<script type="module" src="\/(?:src\/main\.tsx|assets\/[^"]+\.js)"[^>]*><\/script>)/,
+  headClose: /<\/head>/,
+  metaDesc: /<meta name="description" content="[^"]*" \/>/,
+  title: /<title>[^<]*<\/title>/,
+};
 
-function getPrecomputedScript(lang: string): string | null {
+interface PrecomputedLangData {
+  script: string;
+  metaTitle: string;
+  metaDescription: string;
+}
+const precomputedTranslationScripts = new Map<string, PrecomputedLangData>();
+
+function getPrecomputedScript(lang: string): PrecomputedLangData | null {
   return precomputedTranslationScripts.get(lang) || null;
 }
 
@@ -49,7 +62,7 @@ export function precomputeTranslationScripts(): void {
 
     const script = `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${JSON.stringify(critical)};window.__PRELOADED__=true;</script>`;
 
-    precomputedTranslationScripts.set(lang, JSON.stringify({ script, metaTitle, metaDescription }));
+    precomputedTranslationScripts.set(lang, { script, metaTitle, metaDescription });
   }
   if (precomputedTranslationScripts.size > 0) {
     logger.log(`🌐 Precomputed translation scripts for ${precomputedTranslationScripts.size} languages`);
@@ -97,7 +110,7 @@ export function htmlLangMiddleware(req: Request, res: Response, next: NextFuncti
     res.send = originalSend;
     
     if (buffer && buffer.includes('<!DOCTYPE html>')) {
-      buffer = buffer.replace(/<html lang="en">/, `<html lang="${lang}">`);
+      buffer = buffer.replace(HTML_REGEX.htmlLang, `<html lang="${lang}">`);
       
       const cached = getPrecomputedScript(lang);
       let translationsScript: string;
@@ -105,10 +118,9 @@ export function htmlLangMiddleware(req: Request, res: Response, next: NextFuncti
       let metaDescription: string;
 
       if (cached) {
-        const parsed = JSON.parse(cached);
-        translationsScript = parsed.script;
-        metaTitle = parsed.metaTitle;
-        metaDescription = parsed.metaDescription;
+        translationsScript = cached.script;
+        metaTitle = cached.metaTitle;
+        metaDescription = cached.metaDescription;
       } else {
         const translations = performanceCache.getTranslations(lang);
         const critical: Record<string, string> = {};
@@ -127,23 +139,23 @@ export function htmlLangMiddleware(req: Request, res: Response, next: NextFuncti
       }
       
       const scriptInjected = buffer.replace(
-        /(<script type="module" src="\/(?:src\/main\.tsx|assets\/[^"]+\.js)"[^>]*><\/script>)/,
+        HTML_REGEX.scriptTag,
         `${translationsScript}\n    $1`
       );
       
       if (scriptInjected === buffer) {
-        buffer = buffer.replace(/<\/head>/, `${translationsScript}\n  </head>`);
+        buffer = buffer.replace(HTML_REGEX.headClose, `${translationsScript}\n  </head>`);
       } else {
         buffer = scriptInjected;
       }
       
       buffer = buffer.replace(
-        /<meta name="description" content="[^"]*" \/>/,
+        HTML_REGEX.metaDesc,
         `<meta name="description" content="${metaDescription}" />`
       );
       
       buffer = buffer.replace(
-        /<title>[^<]*<\/title>/,
+        HTML_REGEX.title,
         `<title>${metaTitle}</title>`
       );
     }

@@ -666,6 +666,17 @@ app.use((req, res, next) => {
   const { SeoRenderer } = await import('./seo-renderer');
   const seoRenderer = new SeoRenderer();
 
+  const SEO_PRECOMPILED_REGEX = {
+    stationPage: /^\/([a-z]{2}\/)?(?:stations?|istasyons?|istasyonlar|senders?|staziones?|stazioni|estacions?|estaciones|estaçoes?|estacoes?|mahtas?|mahtat|stansiya|stansiyas?|stantsiya|stantsii|radiostations?|radyo-istasyonu|taçhana|tachana|tachanot|stacja|stacje|stanice|statie|statii|stanica|stanice|stacija|stacijas|stotis|stotys|jaam|jaamad|postaja|postaje|asema|asemat|stasjon|stasjoner|stasiun|stasiun-stasiun|dai|stesen|stasie|stasies|radio|isiteshi|nilayam|steshan|stesheni|ραδιόφωνο|σταθμος|σταθμοι|станція|станции|ստdelays|ステーション|라디오|스테이션|电台|電台|محطات|محطة|اسٹیشن|ایستگاه|স্টেশন|સ્ટેશન|ஸ்டேஷன்|நிலையம்|స్టేషన్|ನಿಲ್ದಾಣ|സ്റ്റേഷൻ|ราดียว|สถานี)\//u,
+    homepage: /^\/([a-z]{2}\/?)?$/,
+    regionsPage: /^\/([a-z]{2}\/?)?(?:regions|bolgeler|regionen|regioni|regioes|regiones|manatiq|regionlar|regioni)(\/.*)?$/u,
+    genresPage: /^\/([a-z]{2}\/?)?(?:genres|turler|zhanroves|anwaa|janrlar|zhanroves|genres|generos|generi|generos|anwaa)\/?/u,
+    aboutPage: /^\/([a-z]{2}\/?)?(?:about|hakkinda|uber|sobre|a-propos|chi-siamo|an|haqqinda|za-nas)\/?/u,
+    contactPage: /^\/([a-z]{2}\/?)?(?:contact|iletisim|kontakt|contacto|contatto|ittisal|elaqe|kontakti)\/?/u,
+    stationsPage: /^\/([a-z]{2}\/?)?(?:stations|istasyonlar|istasyonlar|sender|stazioni|estacoes|emisoras|mahtat|stansiyalar|stantsii|电台|محطات)$/u,
+    botDetect: /\b(googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase)\b/i
+  };
+
   app.use(async (req, res, next) => {
     const url = req.originalUrl;
     const userAgent = req.get('user-agent') || '';
@@ -679,20 +690,16 @@ app.use((req, res, next) => {
     // CRITICAL FIX: Match both English AND all translated URL segments for multilingual SEO
     // Turkish: istasyon/istasyonlar, turler | German: sender, genres | Spanish: estacion, generos | etc.
     // IMPORTANT: Match both singular and plural forms (istasyon AND istasyonlar, station AND stations, etc.)
-    // COMPREHENSIVE station URL matching - includes ALL 57 language translations
-    // Latin scripts: station, sender, estacion, stazione, estacao, stacja, stanice, etc.
-    // Non-Latin: Chinese (电台), Japanese (ステーション), Korean (라디오/스테이션), Arabic (محطات), etc.
-    const isStationPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/)?(?:stations?|istasyons?|istasyonlar|senders?|staziones?|stazioni|estacions?|estaciones|estaçoes?|estacoes?|mahtas?|mahtat|stansiya|stansiyas?|stantsiya|stantsii|radiostations?|radyo-istasyonu|taçhana|tachana|tachanot|stacja|stacje|stanice|statie|statii|stanica|stanice|stacija|stacijas|stotis|stotys|jaam|jaamad|postaja|postaje|asema|asemat|stasjon|stasjoner|stasiun|stasiun-stasiun|dai|stesen|stasie|stasies|radio|isiteshi|nilayam|steshan|stesheni|ραδιόφωνο|σταθμος|σταθμοι|станція|станции|ստdelays|ステーション|라디오|스테이션|电台|電台|محطات|محطة|اسٹیشن|ایستگاه|স্টেশন|સ્ટેશન|ஸ்டேஷன்|நிலையம்|స్టేషన్|ನಿಲ್ದಾಣ|സ്റ്റേഷൻ|ราดียว|สถานี)\//u);
-    const isHomepage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?$/);
-    const isRegionsPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:regions|bolgeler|regionen|regioni|regioes|regiones|manatiq|regionlar|regioni)(\/.*)?$/u);
-    const isGenresPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:genres|turler|zhanroves|anwaa|janrlar|zhanroves|genres|generos|generi|generos|anwaa)\/?/u);
-    const isAboutPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:about|hakkinda|uber|sobre|a-propos|chi-siamo|an|haqqinda|za-nas)\/?/u);
-    const isContactPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:contact|iletisim|kontakt|contacto|contatto|ittisal|elaqe|kontakti)\/?/u);
-    const isStationsPage = cleanUrlForMatching.match(/^\/([a-z]{2}\/?)?(?:stations|istasyonlar|istasyonlar|sender|stazioni|estacoes|emisoras|mahtat|stansiyalar|stantsii|电台|محطات)$/u);
+    const isStationPage = SEO_PRECOMPILED_REGEX.stationPage.test(cleanUrlForMatching);
+    const isHomepage = SEO_PRECOMPILED_REGEX.homepage.test(cleanUrlForMatching);
+    const isRegionsPage = SEO_PRECOMPILED_REGEX.regionsPage.test(cleanUrlForMatching);
+    const isGenresPage = SEO_PRECOMPILED_REGEX.genresPage.test(cleanUrlForMatching);
+    const isAboutPage = SEO_PRECOMPILED_REGEX.aboutPage.test(cleanUrlForMatching);
+    const isContactPage = SEO_PRECOMPILED_REGEX.contactPage.test(cleanUrlForMatching);
+    const isStationsPage = SEO_PRECOMPILED_REGEX.stationsPage.test(cleanUrlForMatching);
     
     const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isStationsPage;
-    // Extended bot detection with word boundaries to prevent false positives (Mozilla shouldn't match)
-    const isBot = /\b(googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase)\b/i.test(userAgent);
+    const isBot = SEO_PRECOMPILED_REGEX.botDetect.test(userAgent);
 
     // Only intercept SEO-eligible pages
     if (!isSeoEligiblePage) {
@@ -1049,7 +1056,7 @@ app.use((req, res, next) => {
           if (heapMB > 3500) {
             if ((now - lastMemoryGcTime) < MEMORY_GC_COOLDOWN) return;
             lastMemoryGcTime = now;
-            console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing ALL caches to prevent OOM`);
+            console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing caches (except translations) to prevent OOM`);
             performanceCache.clearAllForMemoryRelief();
             await CacheManager.clearByPattern('precomputed_');
             await CacheManager.clearByPattern('stations:');
@@ -1058,20 +1065,13 @@ app.use((req, res, next) => {
               const { clearOgCache } = await import('./og-image-generator');
               clearOgCache();
             } catch {}
-            if (global.gc) {
-              global.gc();
-              console.log('🗑️ Manual GC triggered after memory-critical cleanup');
-            }
           }
         }
       }, 5 * 60 * 1000);
 
       let lastEventLoopCheck = Date.now();
-      let consecutiveHighLag = 0;
-      let lastLoadShedTime = 0;
       let lastLagLogTime = 0;
       let lastBlockedLogTime = 0;
-      const LOAD_SHED_COOLDOWN = 10 * 60 * 1000;
       const LAG_LOG_INTERVAL = 60 * 1000;
       setInterval(() => {
         const now = Date.now();
@@ -1084,21 +1084,6 @@ app.use((req, res, next) => {
         } else if (lag > 2000 && (now - lastLagLogTime) > LAG_LOG_INTERVAL) {
           console.warn(`⚠️ EVENT LOOP LAG: ${lag}ms (>2s indicates blocking operation)`);
           lastLagLogTime = now;
-        }
-        if (lag > 3000) {
-          consecutiveHighLag++;
-        } else {
-          consecutiveHighLag = 0;
-        }
-        if (consecutiveHighLag >= 5 && (now - lastLoadShedTime) > LOAD_SHED_COOLDOWN) {
-          console.error(`🚨 LOAD SHEDDING: ${consecutiveHighLag} consecutive >3s lag intervals — clearing caches to recover`);
-          try {
-            performanceCache.clearAllForMemoryRelief();
-          } catch {}
-          lastLoadShedTime = now;
-          consecutiveHighLag = 0;
-        } else if (consecutiveHighLag >= 5) {
-          consecutiveHighLag = 0;
         }
       }, 5000);
 

@@ -2,6 +2,9 @@ import type { Express } from "express";
 import { Station } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 
+const MAX_CONCURRENT_STREAMS = 100;
+let activeStreamCount = 0;
+
 export function registerStreamProxyRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
 
@@ -324,7 +327,19 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
   // RADIOLISE-STYLE SIMPLE PROXY: Direct streaming without complex multiplexing
   app.get("/api/stream/*", async (req, res) => {
-    // Override server timeout for stream connections — these are long-lived by design
+    if (activeStreamCount >= MAX_CONCURRENT_STREAMS) {
+      return res.status(503).json({ error: 'Server at stream capacity, try again later' });
+    }
+    activeStreamCount++;
+    let streamReleased = false;
+    const decrementStream = () => {
+      if (!streamReleased) {
+        streamReleased = true;
+        if (activeStreamCount > 0) activeStreamCount--;
+      }
+    };
+    res.once('close', decrementStream);
+
     req.setTimeout(0);
     res.setTimeout(0);
 
