@@ -917,6 +917,9 @@ app.use((req, res, next) => {
         
         await performanceCache.warmupCaches();
         
+        const { precomputeTranslationScripts } = await import('./html-lang-middleware');
+        precomputeTranslationScripts();
+        
         logger.log('⚡ SKIPPED: PrecomputedStations full cache — will populate on-demand per country');
         logger.log('⚡ SKIPPED: Similar stations warmup — will populate on-demand');
         
