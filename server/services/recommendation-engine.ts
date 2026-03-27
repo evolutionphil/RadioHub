@@ -555,12 +555,29 @@ export class RecommendationEngine {
   }
 
   private static async getFallbackRecommendations(sourceStationId: string, limit: number): Promise<RecommendationResult[]> {
-    const sourceStation = await Station.findById(sourceStationId).lean();
+    const sourceStation = await Station.findById(sourceStationId).select('country').lean();
     if (!sourceStation) return [];
+
+    const country = sourceStation.country;
+    const pool = performanceCache.getSimilarPool(country) || performanceCache.getGlobalPopularPool();
+
+    if (pool && pool.length > 0) {
+      const filtered = pool
+        .filter((s: any) => s._id?.toString() !== sourceStationId)
+        .slice(0, limit);
+
+      return filtered.map((station: any, index: number) => ({
+        stationId: station._id.toString(),
+        score: (limit - index) / limit,
+        reasons: [`Popular in ${country}`],
+        confidence: 0.3,
+        type: 'popularity' as const
+      }));
+    }
 
     const fallbackStations = await Station.find({
       _id: { $ne: sourceStationId },
-      country: sourceStation.country,
+      country,
       lastCheckOk: true
     })
     .sort({ votes: -1, clickCount: -1 })
@@ -570,7 +587,7 @@ export class RecommendationEngine {
     return fallbackStations.map((station, index) => ({
       stationId: station._id.toString(),
       score: (limit - index) / limit,
-      reasons: [`Popular in ${station.country}`],
+      reasons: [`Popular in ${country}`],
       confidence: 0.3,
       type: 'popularity' as const
     }));

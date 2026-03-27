@@ -928,7 +928,15 @@ app.use((req, res, next) => {
         precomputeTranslationScripts();
         
         logger.log('⚡ SKIPPED: PrecomputedStations full cache — will populate on-demand per country');
-        logger.log('⚡ SKIPPED: Similar stations warmup — will populate on-demand');
+        
+        setImmediate(async () => {
+          try {
+            await performanceCache.warmupSimilarStations();
+            logger.log('✅ BACKGROUND: Similar stations warmup completed');
+          } catch (err) {
+            logger.warn('⚠️ Similar stations warmup failed (will use MongoDB fallback)');
+          }
+        });
         
         try {
           const { Genre } = await import('../shared/mongo-schemas');

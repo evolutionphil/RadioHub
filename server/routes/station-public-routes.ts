@@ -536,28 +536,40 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     try {
       const { id } = req.params;
       const { limit = 6 } = req.query;
+      const limitNum = Number(limit);
 
-      const cacheKey = `similar_stations:${id}:${limit}`;
+      const cacheKey = `similar_stations:${id}:${limitNum}`;
       const cachedResult = await CacheManager.get(cacheKey);
       if (cachedResult) return res.json(cachedResult);
 
-      const sourceStation = await Station.findById(id).lean();
+      const sourceStation = await Station.findById(id).select('country tags').lean();
       if (!sourceStation) return res.status(404).json({ error: 'Station not found' });
 
-      const similarStations = await RecommendationEngine.getPersonalizedSimilarStations({
-        sourceStationId: id,
-        limit: Number(limit)
-      });
+      const { performanceCache } = await import('../performance-cache');
+      const pool = performanceCache.getSimilarPool(sourceStation.country) || performanceCache.getGlobalPopularPool();
 
-      const stationIds = similarStations.map(s => s.stationId);
-      const stations = await Station.find({ _id: { $in: stationIds } }).lean();
+      let resultStations: any[];
 
-      const orderedStations = similarStations
-        .map(sim => stations.find(s => s._id.toString() === sim.stationId))
-        .filter(Boolean);
+      if (pool && pool.length > 0) {
+        resultStations = pool
+          .filter((s: any) => s._id?.toString() !== id)
+          .slice(0, limitNum);
+      } else {
+        const similarStations = await RecommendationEngine.getPersonalizedSimilarStations({
+          sourceStationId: id,
+          limit: limitNum
+        });
 
-      await CacheManager.set(cacheKey, orderedStations, { ttl: 3600 });
-      res.json(stripPlaceholders(orderedStations));
+        const stationIds = similarStations.map(s => s.stationId);
+        const stations = await Station.find({ _id: { $in: stationIds } }).lean();
+
+        resultStations = similarStations
+          .map(sim => stations.find(s => s._id.toString() === sim.stationId))
+          .filter(Boolean);
+      }
+
+      await CacheManager.set(cacheKey, resultStations, { ttl: 3600 });
+      res.json(stripPlaceholders(resultStations));
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch similar stations' });
     }
