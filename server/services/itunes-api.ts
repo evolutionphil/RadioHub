@@ -51,25 +51,29 @@ export class iTunesApiService {
   private circuitOpen = false;
   private failureCount = 0;
   private lastFailureTime = 0;
+  private lastCircuitLogTime = 0;
   private readonly FAILURE_THRESHOLD = 5;
-  private readonly CIRCUIT_RESET_MS = 60000;
+  private readonly CIRCUIT_RESET_MS = 5 * 60 * 1000;
+  private readonly CIRCUIT_LOG_COOLDOWN = 10 * 60 * 1000;
 
-  private checkCircuit(): void {
+  private isCircuitOpen(): boolean {
     if (this.circuitOpen && Date.now() - this.lastFailureTime > this.CIRCUIT_RESET_MS) {
       this.circuitOpen = false;
       this.failureCount = 0;
     }
-    if (this.circuitOpen) {
-      throw new Error('iTunes API circuit breaker open — too many failures');
-    }
+    return this.circuitOpen;
   }
 
   private recordFailure(): void {
     this.failureCount++;
     this.lastFailureTime = Date.now();
-    if (this.failureCount >= this.FAILURE_THRESHOLD) {
+    if (this.failureCount >= this.FAILURE_THRESHOLD && !this.circuitOpen) {
       this.circuitOpen = true;
-      console.warn(`⚡ iTunes API circuit breaker OPEN after ${this.failureCount} failures — pausing for ${this.CIRCUIT_RESET_MS / 1000}s`);
+      const now = Date.now();
+      if (now - this.lastCircuitLogTime > this.CIRCUIT_LOG_COOLDOWN) {
+        console.warn(`⚡ iTunes API circuit breaker OPEN — pausing for ${this.CIRCUIT_RESET_MS / 1000}s`);
+        this.lastCircuitLogTime = now;
+      }
     }
   }
 
@@ -78,8 +82,12 @@ export class iTunesApiService {
     this.circuitOpen = false;
   }
 
+  isAvailable(): boolean {
+    return !this.isCircuitOpen();
+  }
+
   async search(params: iTunesSearchParams): Promise<iTunesSearchResponse> {
-    this.checkCircuit();
+    if (this.isCircuitOpen()) return { resultCount: 0, results: [] };
     try {
       const searchParams = new URLSearchParams();
       searchParams.append('term', params.term);
@@ -152,7 +160,7 @@ export class iTunesApiService {
   }
 
   async getTrackById(trackId: string, country: string = 'US'): Promise<any> {
-    this.checkCircuit();
+    if (this.isCircuitOpen()) return null;
     try {
       const lookupUrl = 'https://itunes.apple.com/lookup';
       const searchParams = new URLSearchParams({ id: trackId, country, entity: 'song' });
@@ -167,12 +175,12 @@ export class iTunesApiService {
       return response.data.results[0];
     } catch (error: any) {
       this.recordFailure();
-      throw new Error(`Failed to fetch track details: ${error.message}`);
+      return null;
     }
   }
 
   async getAlbumById(collectionId: string, country: string = 'US'): Promise<any> {
-    this.checkCircuit();
+    if (this.isCircuitOpen()) return null;
     try {
       const lookupUrl = 'https://itunes.apple.com/lookup';
       const searchParams = new URLSearchParams({ id: collectionId, country, entity: 'song' });
@@ -190,12 +198,12 @@ export class iTunesApiService {
       return { album: album || response.data.results[0], tracks };
     } catch (error: any) {
       this.recordFailure();
-      throw new Error(`Failed to fetch album details: ${error.message}`);
+      return null;
     }
   }
 
   async getArtistById(artistId: string, country: string = 'US', limit: number = 25): Promise<any> {
-    this.checkCircuit();
+    if (this.isCircuitOpen()) return null;
     try {
       const lookupUrl = 'https://itunes.apple.com/lookup';
       const searchParams = new URLSearchParams({ id: artistId, country, entity: 'album,song', limit: limit.toString() });
@@ -214,7 +222,7 @@ export class iTunesApiService {
       return { artist: artist || response.data.results[0], albums, tracks };
     } catch (error: any) {
       this.recordFailure();
-      throw new Error(`Failed to fetch artist details: ${error.message}`);
+      return null;
     }
   }
 }

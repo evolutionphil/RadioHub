@@ -157,6 +157,9 @@ export function registerMiscRoutes(app: Express, deps: any) {
         return res.json({ track: cachedTrack, cached: true });
       }
       const { itunesApiService } = await import('../services/itunes-api');
+      if (!itunesApiService.isAvailable()) {
+        return res.status(503).json({ error: 'Music service temporarily unavailable' });
+      }
       const trackDetails = await itunesApiService.getTrackById(id, country as string);
       if (!trackDetails) {
         return res.status(404).json({ error: 'Track not found' });
@@ -164,7 +167,6 @@ export function registerMiscRoutes(app: Express, deps: any) {
       await CacheManager.set(cacheKey, trackDetails, { ttl: 7200 });
       res.json({ track: trackDetails, cached: false });
     } catch (error: any) {
-      console.error('Track lookup error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -181,6 +183,9 @@ export function registerMiscRoutes(app: Express, deps: any) {
         return res.json({ album: cachedAlbum.album, tracks: cachedAlbum.tracks, cached: true });
       }
       const { itunesApiService } = await import('../services/itunes-api');
+      if (!itunesApiService.isAvailable()) {
+        return res.status(503).json({ error: 'Music service temporarily unavailable' });
+      }
       const albumData = await itunesApiService.getAlbumById(id, country as string);
       if (!albumData) {
         return res.status(404).json({ error: 'Album not found' });
@@ -188,7 +193,6 @@ export function registerMiscRoutes(app: Express, deps: any) {
       await CacheManager.set(cacheKey, albumData, { ttl: 7200 });
       res.json({ album: albumData.album, tracks: albumData.tracks, cached: false });
     } catch (error: any) {
-      console.error('Album lookup error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
@@ -212,6 +216,9 @@ export function registerMiscRoutes(app: Express, deps: any) {
         });
       }
       const { itunesApiService } = await import('../services/itunes-api');
+      if (!itunesApiService.isAvailable()) {
+        return res.status(503).json({ error: 'Music service temporarily unavailable' });
+      }
       const artistData = await itunesApiService.getArtistById(id, country as string, Number(limit));
       if (!artistData) {
         return res.status(404).json({ error: 'Artist not found' });
@@ -248,7 +255,6 @@ export function registerMiscRoutes(app: Express, deps: any) {
         cached: false
       });
     } catch (error: any) {
-      console.error('Artist lookup error:', error.message || error);
       res.status(500).json({ error: 'Internal server error' });
     }
   });
