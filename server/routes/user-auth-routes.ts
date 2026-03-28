@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import mongoose from 'mongoose';
-import { User, UserFollow, AuthToken, UserNotification } from '../../shared/mongo-schemas';
+import { User, UserFollow, AuthToken, UserNotification, UserFavorite, StationRating, StationComment, UserListeningHistory, UserProfile, PublicUserProfile, ListeningSession, Recommendation, UserMusicProfile, PushToken, UserDevice, CastSession, DirectMessage, UserSession, Notification, AdvancedSearch, AnalyticsEvent, CastCommand, CastNowPlaying, TvLoginCode } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 export function registerUserAuthRoutes(app: Express, deps: any) {
@@ -1546,6 +1546,79 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     } catch (error: any) {
       logger.log('Avatar delete error:', error.message);
       res.status(500).json({ error: 'Avatar delete failed' });
+    }
+  });
+
+  app.delete("/api/user/delete-account", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
+      if (!userId) {
+        return res.status(401).json({ success: false, message: 'Authentication required' });
+      }
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'User not found' });
+      }
+
+      const userIdStr = userId.toString();
+      const userObjectId = new mongoose.Types.ObjectId(userIdStr);
+
+      const deleteResults = await Promise.allSettled([
+        UserFavorite.deleteMany({ userId: userIdStr }),
+        StationRating.deleteMany({ userId: userIdStr }),
+        StationComment.deleteMany({ userId: userIdStr }),
+        UserListeningHistory.deleteMany({ $or: [{ sessionId: userIdStr }, { userId: userIdStr }] }),
+        UserProfile.deleteMany({ userId: userIdStr }),
+        PublicUserProfile.deleteMany({ userId: userIdStr }),
+        ListeningSession.deleteMany({ userId: userIdStr }),
+        Recommendation.deleteMany({ userId: userIdStr }),
+        UserMusicProfile.deleteMany({ userId: userIdStr }),
+        UserFollow.deleteMany({ $or: [{ userId: userObjectId }, { followingUserId: userObjectId }] }),
+        UserNotification.deleteMany({ userId: userIdStr }),
+        Notification.deleteMany({ userId: userIdStr }),
+        UserSession.deleteMany({ userId: userIdStr }),
+        AuthToken.deleteMany({ userId: userObjectId }),
+        PushToken.deleteMany({ userId: userIdStr }),
+        UserDevice.deleteMany({ userId: userIdStr }),
+        CastSession.deleteMany({ userId: userIdStr }),
+        CastCommand.deleteMany({ userId: userIdStr }),
+        CastNowPlaying.deleteMany({ userId: userIdStr }),
+        TvLoginCode.deleteMany({ userId: userIdStr }),
+        DirectMessage.deleteMany({ $or: [{ fromUserId: userObjectId }, { toUserId: userObjectId }] }),
+        AdvancedSearch.deleteMany({ userId: userIdStr }),
+        AnalyticsEvent.deleteMany({ userId: userIdStr }),
+      ]);
+
+      const failures = deleteResults.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        logger.warn(`⚠️ Account deletion: ${failures.length} sub-deletions failed for user ${userIdStr}`);
+      }
+
+      if (user.avatar) {
+        try {
+          const { deleteFromS3 } = await import('../services/s3-service');
+          const avatarKey = user.avatar.replace(/^https?:\/\/[^/]+\//, '');
+          if (avatarKey) await deleteFromS3(avatarKey);
+        } catch {}
+      }
+
+      await User.findByIdAndDelete(userId);
+
+      const CacheManagerModule = (await import('../cache')).default;
+      await CacheManagerModule.clearByPattern(`user-favorites:${userIdStr}`);
+      await CacheManagerModule.del(`user_profile_${userIdStr}`);
+
+      logger.log(`🗑️ Account deleted: user ${userIdStr} (${failures.length} sub-deletion failures)`);
+
+      if (req.session) {
+        req.session.destroy(() => {});
+      }
+
+      res.json({ success: true, message: 'Account deleted successfully' });
+    } catch (error: any) {
+      logger.error('Account deletion error:', error.message);
+      res.status(500).json({ success: false, message: 'Could not delete account' });
     }
   });
 }
