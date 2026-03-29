@@ -14,7 +14,7 @@ export function registerMobileTvRoutes(app: Express, deps: any) {
 
   // GET /api/app/pages - Returns all static page content for mobile apps
   app.get("/api/app/pages", (req, res) => {
-    const lastUpdated = "2025-02-17";
+    const lastUpdated = "2026-03-28";
     
     const aboutContent = `About Mega Radio
 
@@ -79,8 +79,37 @@ We may terminate or suspend your account and bar access to the service immediate
 11. Changes to Terms
 We reserve the right, at our sole discretion, to modify or replace these Terms at any time. If a revision is material, we will provide at least 30 days notice prior to any new terms taking effect.
 
-12. Contact Information
-If you have any questions about these Terms and Conditions, please contact us at legal@themegaradio.com`;
+12. Subscriptions & Auto-Renewal
+
+MegaRadio offers the following auto-renewable subscriptions:
+
+MegaRadio Premium (Monthly)
+- Price: €3.99/month
+- Includes: Ad-free listening, HD audio quality, Spotify/YouTube integration, and all premium features
+- Free Trial: 7-day free trial for first-time subscribers
+- After the trial period ends, the subscription automatically renews at €3.99/month
+- Any unused portion of the free trial period will be forfeited when purchasing a subscription
+
+Remove Ads (Yearly)
+- Price: €5.99/year
+- Includes: Removes all advertisements from the app
+- Auto-renews at €5.99/year
+
+Payment & Cancellation
+- Payment will be charged to your Apple ID / Google Play account at the confirmation of purchase
+- Subscriptions automatically renew unless auto-renew is turned off at least 24 hours before the end of the current period
+- Your account will be charged for renewal within 24 hours prior to the end of the current period
+- You can manage and cancel your subscriptions by going to your device's account settings:
+  - iOS: Settings > Apple ID > Subscriptions
+  - Android: Google Play Store > Subscriptions
+- No cancellation of the current subscription is allowed during the active subscription period
+
+13. Contact Information
+If you have any questions about these Terms and Conditions, please contact us at legal@themegaradio.com
+
+Links
+- Privacy Policy: https://themegaradio.com/en/pages/privacy-policy
+- Terms and Conditions: https://themegaradio.com/en/pages/terms-and-conditions`;
 
     const privacyContent = `Privacy Policy
 Last updated: ${lastUpdated}
@@ -127,10 +156,11 @@ We implement appropriate technical and organizational measures to protect your p
 You have the right to:
 - Access your personal data
 - Correct inaccurate information
-- Delete your account and data
+- Delete your account and all associated data (available in app under Profile > Delete Account)
 - Export your data
 - Opt out of certain communications
 - Restrict processing of your data
+- Upon account deletion, all personal data is removed within 30 days in compliance with GDPR
 
 7. Cookies and Tracking
 We use cookies and similar technologies to enhance your experience, analyze usage, and provide personalized content. You can control cookie settings through your browser preferences.

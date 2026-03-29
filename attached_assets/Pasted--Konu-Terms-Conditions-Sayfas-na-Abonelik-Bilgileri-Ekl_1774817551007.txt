@@ -1,0 +1,35 @@
+
+Konu: Terms & Conditions Sayfasına Abonelik Bilgileri Eklenmesi (Apple App Store Zorunluluğu)
+Merhaba,
+Apple App Store Review (Guideline 3.1.2c) gereği, Terms & Conditions sayfasına aşağıdaki abonelik bilgilerinin eklenmesi gerekiyor. Hem web sitesindeki sayfaya (/en/pages/terms-and-conditions) hem de API'den dönen terms içeriğine eklenmelidir.
+Eklenecek bölüm (mevcut Terms sayfasına yeni section olarak):
+## Subscriptions & Auto-Renewal
+
+MegaRadio offers the following auto-renewable subscriptions:
+
+### MegaRadio Premium (Monthly)
+- Price: €3.99/month
+- Includes: Ad-free listening, HD audio quality, Spotify/YouTube integration, and all premium features
+- Free Trial: 7-day free trial for first-time subscribers
+- After the trial period ends, the subscription automatically renews at €3.99/month
+- Any unused portion of the free trial period will be forfeited when purchasing a subscription
+
+### Remove Ads (Yearly)
+- Price: €5.99/year
+- Includes: Removes all advertisements from the app
+- Auto-renews at €5.99/year
+
+### Payment & Cancellation
+- Payment will be charged to your Apple ID / Google Play account at the confirmation of purchase
+- Subscriptions automatically renew unless auto-renew is turned off at least 24 hours before the end of the current period
+- Your account will be charged for renewal within 24 hours prior to the end of the current period
+- You can manage and cancel your subscriptions by going to your device's account settings:
+  - iOS: Settings > Apple ID > Subscriptions
+  - Android: Google Play Store > Subscriptions
+- No cancellation of the current subscription is allowed during the active subscription period
+
+### Links
+- Privacy Policy: https://themegaradio.com/en/pages/privacy-policy
+- Terms and Conditions: https://themegaradio.com/en/pages/terms-and-conditions
+Ayrıca API (GET /api/app/pages) response'unda terms ve privacy content'inin dolu dönmesi gerekiyor. Şu an boş dönüyor, bu yüzden uygulama içinde fallback içerik kullanmak zorunda kaldık.
+Teşekkürler.
