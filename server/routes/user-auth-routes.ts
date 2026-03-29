@@ -583,11 +583,17 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { OAuth2Client } = await import('google-auth-library');
       const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+      const GOOGLE_AUDIENCES = [
+        process.env.GOOGLE_CLIENT_ID,
+        '246210957471-18662dh38h9tmlk7nppdk15ucbha4emk.apps.googleusercontent.com',
+        '246210957471-4dmnb95bcduaocr8toiphv3guq9a8htl.apps.googleusercontent.com',
+      ].filter(Boolean) as string[];
+
       let payload: any;
       try {
         const ticket = await client.verifyIdToken({
           idToken,
-          audience: process.env.GOOGLE_CLIENT_ID,
+          audience: GOOGLE_AUDIENCES,
         });
         payload = ticket.getPayload();
       } catch (verifyErr) {
