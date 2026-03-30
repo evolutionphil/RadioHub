@@ -1590,8 +1590,7 @@ export function generateSeoTags(
       'external_resources': 'Dış Kaynaklar',
       'flixapp_tv': 'FlixApp TV - Eğlence Platformu',
       'radio_browser': 'Radio Browser - Açık Radyo Veritabanı',
-      'musicbrainz': 'MusicBrainz - Müzik Metadata',
-      'lastfm': 'Last.fm - Müzik Keşfi'
+      'musicbrainz': 'MusicBrainz - Müzik Metadata'
     },
     de: {
       'home_page.title': 'Mega Radio: Kostenlos Live-Radio & Musik aus 120 Ländern hören',
@@ -1647,8 +1646,7 @@ export function generateSeoTags(
       'external_resources': 'Externe Ressourcen',
       'flixapp_tv': 'FlixApp TV - Entertainment-Plattform',
       'radio_browser': 'Radio Browser - Offene Radio-Datenbank',
-      'musicbrainz': 'MusicBrainz - Musik-Metadaten',
-      'lastfm': 'Last.fm - Musik-Entdeckung'
+      'musicbrainz': 'MusicBrainz - Musik-Metadaten'
     },
     fr: {
       'home_page.title': 'Mega Radio: Écoutez la Radio en Direct et la Musique Gratuite de 120 Pays',
@@ -1704,8 +1702,7 @@ export function generateSeoTags(
       'external_resources': 'Ressources Externes',
       'flixapp_tv': 'FlixApp TV - Plateforme de Divertissement',
       'radio_browser': 'Radio Browser - Base de Données Radio Ouverte',
-      'musicbrainz': 'MusicBrainz - Métadonnées Musicales',
-      'lastfm': 'Last.fm - Découverte Musicale'
+      'musicbrainz': 'MusicBrainz - Métadonnées Musicales'
     },
     es: {
       'home_page.title': 'Mega Radio: Escucha Radio en Vivo y Música Gratis de 120 Países',
@@ -1761,8 +1758,7 @@ export function generateSeoTags(
       'external_resources': 'Recursos Externos',
       'flixapp_tv': 'FlixApp TV - Plataforma de Entretenimiento',
       'radio_browser': 'Radio Browser - Base de Datos Radio Abierta',
-      'musicbrainz': 'MusicBrainz - Metadatos Musicales',
-      'lastfm': 'Last.fm - Descubrimiento Musical'
+      'musicbrainz': 'MusicBrainz - Metadatos Musicales'
     },
     en: {
       // About section content for English
@@ -1810,8 +1806,7 @@ export function generateSeoTags(
       'external_resources': 'External Resources',
       'flixapp_tv': 'FlixApp TV - Entertainment Platform',
       'radio_browser': 'Radio Browser - Open Radio Database',
-      'musicbrainz': 'MusicBrainz - Music Metadata',
-      'lastfm': 'Last.fm - Music Discovery'
+      'musicbrainz': 'MusicBrainz - Music Metadata'
     }
   };
 

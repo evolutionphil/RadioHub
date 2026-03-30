@@ -52,12 +52,8 @@ export const TermsAndConditions = lazy(() => import("@/pages/terms-and-condition
 export const PrivacyPolicy = lazy(() => import("@/pages/privacy-policy").then(mod => ({ default: mod.PrivacyPolicy })));
 export const LLMsPage = lazy(() => import("@/pages/llms-page"));
 
-// Genres and music discovery - can be lazy loaded
+// Genres - can be lazy loaded
 export const GenresPage = lazy(() => import("@/pages/genres"));
-export const DiscoverMusic = lazy(() => import("@/pages/discover-music"));
-export const SongDetail = lazy(() => import("@/pages/song-detail"));
-export const AlbumDetail = lazy(() => import("@/pages/album-detail"));
-export const ArtistDetail = lazy(() => import("@/pages/artist-detail"));
 export const Radios = lazy(() => import("@/pages/radios"));
 
 // Station requests

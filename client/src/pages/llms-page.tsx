@@ -45,11 +45,6 @@ export default function LLMsPage() {
             <li><a href={`${baseUrl}/trending`} className="text-[#FF4199] hover:underline">Trending</a>: Most popular stations worldwide</li>
           </ul>
 
-          <h3 className="text-xl font-semibold mt-6 mb-3 text-gray-900 dark:text-white">Discover Music</h3>
-          <ul className="space-y-2 mb-6">
-            <li><a href={`${baseUrl}/discover-music`} className="text-[#FF4199] hover:underline">Discover Music</a>: Explore songs, albums, and artists from iTunes</li>
-          </ul>
-
           <h3 className="text-xl font-semibold mt-6 mb-3 text-gray-900 dark:text-white">Information Pages</h3>
           <ul className="space-y-2 mb-6">
             <li><a href={`${baseUrl}/about`} className="text-[#FF4199] hover:underline">About</a>: Platform mission and company information</li>

@@ -26,7 +26,6 @@ const OLD_ENGLISH_PATHS = [
   'regions',
   'genres',
   'discover',
-  'discover-music',
   'favorites',
   'trending',
   'about',
@@ -91,7 +90,7 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
   if (!isLanguageCode && !isCountryCode) {
     // Check if this is a known route segment (not a random path)
     const knownRoutes = ['radios', 'genres', 'station', 'stations', 'regions', 'discover', 
-      'discover-music', 'favorites', 'trending', 'about', 'contact', 'privacy-policy',
+      'favorites', 'trending', 'about', 'contact', 'privacy-policy',
       'terms-and-conditions', 'feedback', 'profile', 'settings', 'notifications',
       'login', 'signup', 'forgot-password', 'change-password', 'request-station',
       'recommendations', 'users', 'pages', 'applications', 'album', 'artist', 'song', 'records', 'tv'];

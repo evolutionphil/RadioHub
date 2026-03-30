@@ -73,57 +73,6 @@ export const api = {
     return response.json();
   },
 
-  // iTunes Music Discovery API
-  searchMusic: async (query: string, type: 'song' | 'album' | 'artist' = 'song', limit: number = 50, country: string = 'US') => {
-    const params = new URLSearchParams({
-      q: query,
-      type,
-      limit: limit.toString(),
-      country
-    });
-    const response = await apiRequest('GET', `/api/discover/search?${params}`);
-    return response.json();
-  },
-
-  getTop100Songs: async (country: string = 'US', limit: number = 100) => {
-    const params = new URLSearchParams({
-      country,
-      limit: limit.toString()
-    });
-    const response = await apiRequest('GET', `/api/discover/top100?${params}`);
-    return response.json();
-  },
-
-  getHighQualityArtwork: async (artworkUrl: string, size: number = 300) => {
-    const params = new URLSearchParams({
-      url: artworkUrl,
-      size: size.toString()
-    });
-    const response = await apiRequest('GET', `/api/discover/artwork/0?${params}`);
-    return response.json();
-  },
-
-  getTrackDetails: async (trackId: string, country: string = 'US') => {
-    const params = new URLSearchParams({ country });
-    const response = await apiRequest('GET', `/api/discover/track/${trackId}?${params}`);
-    return response.json();
-  },
-
-  getAlbumDetails: async (albumId: string, country: string = 'US') => {
-    const params = new URLSearchParams({ country });
-    const response = await apiRequest('GET', `/api/discover/album/${albumId}?${params}`);
-    return response.json();
-  },
-
-  getArtistDetails: async (artistId: string, country: string = 'US', limit: number = 25) => {
-    const params = new URLSearchParams({ 
-      country,
-      limit: limit.toString()
-    });
-    const response = await apiRequest('GET', `/api/discover/artist/${artistId}?${params}`);
-    return response.json();
-  },
-
   deleteStation: async (id: string | number) => {
     await apiRequest('DELETE', `/api/stations/${id}`);
   },

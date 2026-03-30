@@ -225,9 +225,6 @@ export default function Footer() {
                       <Link to={getLocalizedUrl("/pages/privacy-policy")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_privacy', 'Privacy')}
                       </Link>
-                      <Link to={getLocalizedUrl("/discover-music")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_discover_music', 'Discover Music')}
-                      </Link>
                       <div 
                         className="cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
                         onClick={() => setShowAddStationModal(true)}

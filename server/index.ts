@@ -1078,7 +1078,6 @@ app.use((req, res, next) => {
       }, 5 * 60 * 1000);
 
       let lastEventLoopCheck = Date.now();
-      let lastLagLogTime = 0;
       let lastBlockedLogTime = 0;
       const LAG_LOG_INTERVAL = 60 * 1000;
       setInterval(() => {
@@ -1088,10 +1087,6 @@ app.use((req, res, next) => {
         if (lag > 10000 && (now - lastBlockedLogTime) > LAG_LOG_INTERVAL) {
           console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms — possible freeze detected`);
           lastBlockedLogTime = now;
-          lastLagLogTime = now;
-        } else if (lag > 2000 && (now - lastLagLogTime) > LAG_LOG_INTERVAL) {
-          console.warn(`⚠️ EVENT LOOP LAG: ${lag}ms (>2s indicates blocking operation)`);
-          lastLagLogTime = now;
         }
       }, 5000);
 

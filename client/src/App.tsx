@@ -306,11 +306,6 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     if (pathToUse === '/recommendations') return <LazyRoutes.RecommendationsPage />;
     if (pathToUse === '/privacy-policy' || pathToUse === '/pages/privacy-policy') return <LazyRoutes.PrivacyPolicy />;
     if (pathToUse === '/notifications') return <LazyRoutes.NotificationSettings />;
-    if (pathToUse === '/discover-music') return <LazyRoutes.DiscoverMusic />;
-    if (pathToUse.match(/^\/discover-music\/song\/[^\/]+/)) return <LazyRoutes.SongDetail />;
-    if (pathToUse.match(/^\/discover-music\/album\/[^\/]+/)) return <LazyRoutes.AlbumDetail />;
-    if (pathToUse.match(/^\/discover-music\/artist\/[^\/]+/)) return <LazyRoutes.ArtistDetail />;
-    
     // Regions routing system - TuneIn style navigation
     if (pathToUse === '/regions') return <LazyRoutes.RegionsPage />;
     if (pathToUse.match(/^\/regions\/[^\/]+$/) && !pathToUse.includes('/stations')) return <LazyRoutes.RegionCountriesPage />;
@@ -661,17 +656,6 @@ const SeoMainRouter = React.memo(() => {
                 {translations['favorites'] && (
                   <Route path={`/${langConfig.code}/${translations['favorites']}`} component={PlayerWrapper} />
                 )}
-                {translations['discover-music'] && (
-                  <>
-                    <Route path={`/${langConfig.code}/${translations['discover-music']}`} component={PlayerWrapper} />
-                    <Route path={`/${langConfig.code}/${translations['discover-music']}/${translations['song'] || 'song'}/:id`} component={PlayerWrapper} />
-                    <Route path={`/${langConfig.code}/${translations['discover-music']}/${translations['song'] || 'song'}/:id/:slug`} component={PlayerWrapper} />
-                    <Route path={`/${langConfig.code}/${translations['discover-music']}/${translations['album'] || 'album'}/:id`} component={PlayerWrapper} />
-                    <Route path={`/${langConfig.code}/${translations['discover-music']}/${translations['album'] || 'album'}/:id/:slug`} component={PlayerWrapper} />
-                    <Route path={`/${langConfig.code}/${translations['discover-music']}/${translations['artist'] || 'artist'}/:id`} component={PlayerWrapper} />
-                    <Route path={`/${langConfig.code}/${translations['discover-music']}/${translations['artist'] || 'artist'}/:id/:slug`} component={PlayerWrapper} />
-                  </>
-                )}
                 {translations['about'] && (
                   <Route path={`/${langConfig.code}/${translations['about']}`} component={PlayerWrapper} />
                 )}
@@ -757,13 +741,6 @@ const SeoMainRouter = React.memo(() => {
           })()}
           
           <Route path={`/${langConfig.code}/privacy-policy`} component={PlayerWrapper} />
-          <Route path={`/${langConfig.code}/discover-music`} component={PlayerWrapper} />
-          <Route path={`/${langConfig.code}/discover-music/song/:id`} component={PlayerWrapper} />
-          <Route path={`/${langConfig.code}/discover-music/song/:id/:slug`} component={PlayerWrapper} />
-          <Route path={`/${langConfig.code}/discover-music/album/:id`} component={PlayerWrapper} />
-          <Route path={`/${langConfig.code}/discover-music/album/:id/:slug`} component={PlayerWrapper} />
-          <Route path={`/${langConfig.code}/discover-music/artist/:id`} component={PlayerWrapper} />
-          <Route path={`/${langConfig.code}/discover-music/artist/:id/:slug`} component={PlayerWrapper} />
           <Route path={`/${langConfig.code}/applications`} component={ApplicationsWrapper} />
           <Route path={`/${langConfig.code}/pages/privacy-policy`} component={PlayerWrapper} />
           <Route path={`/${langConfig.code}/pages/terms-and-conditions`} component={PlayerWrapper} />
@@ -896,42 +873,6 @@ const SeoMainRouter = React.memo(() => {
             <Route path={`/${countryCode}/privacy-policy`} component={PlayerWrapper} />
             {translations['privacy-policy'] && (
               <Route path={`/${countryCode}/${translations['privacy-policy']}`} component={PlayerWrapper} />
-            )}
-            
-            {/* Discover Music - English + Translated */}
-            <Route path={`/${countryCode}/discover-music`} component={PlayerWrapper} />
-            {translations['discover-music'] && (
-              <Route path={`/${countryCode}/${translations['discover-music']}`} component={PlayerWrapper} />
-            )}
-            
-            {/* Song routes - English + Translated */}
-            <Route path={`/${countryCode}/discover-music/song/:id`} component={PlayerWrapper} />
-            <Route path={`/${countryCode}/discover-music/song/:id/:slug`} component={PlayerWrapper} />
-            {translations['discover-music'] && translations['song'] && (
-              <>
-                <Route path={`/${countryCode}/${translations['discover-music']}/${translations['song']}/:id`} component={PlayerWrapper} />
-                <Route path={`/${countryCode}/${translations['discover-music']}/${translations['song']}/:id/:slug`} component={PlayerWrapper} />
-              </>
-            )}
-            
-            {/* Album routes - English + Translated */}
-            <Route path={`/${countryCode}/discover-music/album/:id`} component={PlayerWrapper} />
-            <Route path={`/${countryCode}/discover-music/album/:id/:slug`} component={PlayerWrapper} />
-            {translations['discover-music'] && translations['album'] && (
-              <>
-                <Route path={`/${countryCode}/${translations['discover-music']}/${translations['album']}/:id`} component={PlayerWrapper} />
-                <Route path={`/${countryCode}/${translations['discover-music']}/${translations['album']}/:id/:slug`} component={PlayerWrapper} />
-              </>
-            )}
-            
-            {/* Artist routes - English + Translated */}
-            <Route path={`/${countryCode}/discover-music/artist/:id`} component={PlayerWrapper} />
-            <Route path={`/${countryCode}/discover-music/artist/:id/:slug`} component={PlayerWrapper} />
-            {translations['discover-music'] && translations['artist'] && (
-              <>
-                <Route path={`/${countryCode}/${translations['discover-music']}/${translations['artist']}/:id`} component={PlayerWrapper} />
-                <Route path={`/${countryCode}/${translations['discover-music']}/${translations['artist']}/:id/:slug`} component={PlayerWrapper} />
-              </>
             )}
             
             {/* Applications - English + Translated */}
@@ -1081,13 +1022,6 @@ const SeoMainRouter = React.memo(() => {
       <Route path="/:countryCode/request-station" component={PlayerWrapper} />
       <Route path="/:countryCode/recommendations" component={PlayerWrapper} />
       <Route path="/:countryCode/privacy-policy" component={PlayerWrapper} />
-      <Route path="/:countryCode/discover-music" component={PlayerWrapper} />
-      <Route path="/:countryCode/discover-music/song/:id" component={PlayerWrapper} />
-      <Route path="/:countryCode/discover-music/song/:id/:slug" component={PlayerWrapper} />
-      <Route path="/:countryCode/discover-music/album/:id" component={PlayerWrapper} />
-      <Route path="/:countryCode/discover-music/album/:id/:slug" component={PlayerWrapper} />
-      <Route path="/:countryCode/discover-music/artist/:id" component={PlayerWrapper} />
-      <Route path="/:countryCode/discover-music/artist/:id/:slug" component={PlayerWrapper} />
       <Route path="/:countryCode/applications" component={ApplicationsWrapper} />
       <Route path="/:countryCode/pages/privacy-policy" component={PlayerWrapper} />
       <Route path="/:countryCode/pages/terms-and-conditions" component={PlayerWrapper} />
@@ -1136,14 +1070,6 @@ const SeoMainRouter = React.memo(() => {
       <Route path="/request-station" component={PlayerWrapper} />
       <Route path="/recommendations" component={PlayerWrapper} />
       <Route path="/privacy-policy" component={PlayerWrapper} />
-      <Route path="/discover-music" component={PlayerWrapper} />
-      <Route path="/discover-music/song/:id" component={PlayerWrapper} />
-      <Route path="/discover-music/song/:id/:slug" component={PlayerWrapper} />
-      <Route path="/discover-music/album/:id" component={PlayerWrapper} />
-      <Route path="/discover-music/album/:id/:slug" component={PlayerWrapper} />
-      <Route path="/discover-music/artist/:id" component={PlayerWrapper} />
-      <Route path="/discover-music/artist/:id/:slug" component={PlayerWrapper} />
-
       <Route path="/station/:rest*" component={PlayerWrapper} />
       <Route path="/stations/:rest*" component={PlayerWrapper} />
       <Route path="/" component={PlayerWrapper} />
