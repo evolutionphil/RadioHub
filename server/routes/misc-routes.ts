@@ -251,10 +251,17 @@ export function registerMiscRoutes(app: Express, deps: any) {
   });
 
   app.get("/ads.txt", (req, res) => {
-    const adsTxt = `# ads.txt file for themegaradio.com\nCONTACT=support@themegaradio.com\n# No authorized sellers`;
+    const adsTxt = `google.com, pub-8771434485570434, DIRECT, f08c47fec0942fa0`;
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.send(adsTxt);
+  });
+
+  app.get("/app-ads.txt", (req, res) => {
+    const appAdsTxt = `google.com, pub-8771434485570434, DIRECT, f08c47fec0942fa0`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.send(appAdsTxt);
   });
 
   // api-keys, user-engagement, and apiKeyMiddleware are registered by the thin routes.ts orchestrator
