@@ -232,7 +232,16 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
         .filter(Boolean);
       logger.log(`📍 Found ${countriesWithSeoTranslations.length} countries with SEO translations for cache warmup`);
 
-      const countriesToWarmup = ['all', ...countriesWithSeoTranslations];
+      const popularEnglishCountries = [
+        'The United States Of America', 'The United Kingdom Of Great Britain And Northern Ireland',
+        'Canada', 'Australia', 'India', 'South Africa', 'Ireland', 'New Zealand',
+        'Mexico', 'Argentina', 'Colombia', 'Japan', 'South Korea', 'Indonesia',
+        'Philippines', 'Thailand', 'Malaysia', 'Egypt', 'Nigeria', 'Kenya',
+        'Saudi Arabia', 'The United Arab Emirates', 'Israel', 'Pakistan'
+      ];
+      const warmupSet = new Set(['all', ...countriesWithSeoTranslations, ...popularEnglishCountries]);
+      const countriesToWarmup = Array.from(warmupSet);
+      logger.log(`📍 Total countries for popular stations warmup: ${countriesToWarmup.length} (${countriesWithSeoTranslations.length} SEO + ${popularEnglishCountries.length} popular EN)`);
       for (const country of countriesToWarmup) {
         try {
           await refreshPopularStationsCache(country === 'all' ? undefined : country);
@@ -394,9 +403,13 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   cron.default.schedule('30 6 * * *', async () => {
     try {
       const start = Date.now();
-      const topCountries: (string | undefined)[] = [undefined, 'Turkey', 'Germany', 'United States',
-        'United Kingdom', 'France', 'Spain', 'Italy', 'Netherlands', 'Austria', 'Switzerland',
-        'Brazil', 'Russia', 'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland'];
+      const topCountries: (string | undefined)[] = [undefined, 'Turkey', 'Germany',
+        'The United States Of America', 'The United Kingdom Of Great Britain And Northern Ireland',
+        'France', 'Spain', 'Italy', 'Netherlands', 'Austria', 'Switzerland',
+        'Brazil', 'Russia', 'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland',
+        'South Africa', 'Ireland', 'New Zealand', 'Argentina', 'Colombia',
+        'Indonesia', 'Philippines', 'Thailand', 'Malaysia', 'Egypt', 'Nigeria', 'Kenya',
+        'Saudi Arabia', 'The United Arab Emirates', 'Israel', 'Pakistan'];
       for (const country of topCountries) {
         try { await refreshPopularStationsCache(country); } catch {}
         await new Promise(r => setTimeout(r, 500));
