@@ -164,7 +164,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
           const favoriteCounts = await UserFavorite.aggregate([
             { $match: { userId: { $in: userIds } } },
             { $group: { _id: '$userId', count: { $sum: 1 } } }
-          ]).maxTimeMS(10000);
+          ]).option({ maxTimeMS: 10000 });
           favoriteCounts.forEach(doc => { favoriteMap[doc._id] = doc.count; });
         }
       } catch (favErr: any) {
