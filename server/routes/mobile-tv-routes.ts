@@ -732,6 +732,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const cacheKey = `tv:init:${country || countryCode || 'global'}:${limit}:${genreLimit}:v2`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
         return res.json(cached);
       }
 
@@ -806,7 +807,8 @@ If you have any questions about this privacy policy or our data practices, pleas
         }
       };
 
-      await CacheManager.set(cacheKey, result, { ttl: 600 });
+      await CacheManager.set(cacheKey, result, { ttl: 3600 });
+      res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
       res.json(result);
     } catch (error: any) {
       logger.error('TV init error:', error);

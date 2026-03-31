@@ -1,6 +1,6 @@
 import { Station, UserFavorite, Translation } from '../../shared/mongo-schemas';
 import CacheManager, { CacheKeys } from '../cache';
-import { normalizeCountryFilter } from '../utils/normalize-country';
+import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import { logger } from '../utils/logger';
 import { TV_STATION_PROJECTION, tvSlimStation } from './shared-utils';
 
@@ -114,6 +114,9 @@ export async function refreshCommunityFavoritesCache(country?: string): Promise<
 
 export async function refreshPopularStationsCache(country?: string): Promise<void> {
   const countryFilter = normalizeCountryFilter(country);
+  const resolvedName = country && country !== 'all' && country !== 'null'
+    ? (resolveToDbName(country) || country)
+    : 'all';
 
   let featuredFilter: any = { ...countryFilter, isFeatured: true };
   if (!country || country === 'all' || country === 'null') {
@@ -138,7 +141,7 @@ export async function refreshPopularStationsCache(country?: string): Promise<voi
 
   const popularStations = [...featuredStations, ...regularStations];
 
-  const cacheKey = `popular_stations:${country || 'all'}:all:20`;
+  const cacheKey = `popular_stations:${resolvedName}:all:20`;
   await CacheManager.set(cacheKey, popularStations, { ttl: 86400 });
 
   const tvSlimAll = popularStations
@@ -146,7 +149,8 @@ export async function refreshPopularStationsCache(country?: string): Promise<voi
     .map(tvSlimStation);
 
   for (const tvLimit of [4, 10, 12]) {
-    const tvCacheKey = `popular_stations:${country || 'all'}:all:${tvLimit}:false:tv:v2`;
+    const tvCacheKey = `popular_stations:${resolvedName}:all:${tvLimit}:false:tv:v2`;
     await CacheManager.set(tvCacheKey, tvSlimAll.slice(0, tvLimit), { ttl: 86400 });
   }
+
 }

@@ -177,6 +177,8 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
       await Station.collection.createIndex({ createdAt: -1 });
       await Station.collection.createIndex({ country: 1, votes: -1 });
       await Station.collection.createIndex({ lastCheckOk: -1, votes: -1 });
+      await Station.collection.createIndex({ lastCheckOk: 1, isFeatured: 1, votes: -1, clickCount: -1 });
+      await Station.collection.createIndex({ lastCheckOk: 1, country: 1, isFeatured: 1, votes: -1, clickCount: -1 });
       await Station.collection.createIndex({ playbackSuccessCount: -1 });
       await Station.collection.createIndex({ state: 1, country: 1 });
       await Station.collection.createIndex({ tags: 1 });

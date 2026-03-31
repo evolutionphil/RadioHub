@@ -57,7 +57,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Rate Limiting**: Global and auth-specific.
 - **SEO Optimization**: Slug-based URLs, dynamic sitemaps, robots.txt, structured data (JSON-LD), multilingual hreflang support, unified language URL prefixes.
 - **Audio Continuity**: Preserves playback during navigation.
-- **Performance**: Caching, indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed caches, optimized profile data fetching.
+- **Performance**: Caching, indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed caches, optimized profile data fetching. Popular stations cache keys normalized via `resolveToDbName` (AT→Austria) so warmup cache is shared across ISO/name variants. Compound indexes `{ lastCheckOk, isFeatured, votes, clickCount }` and `{ lastCheckOk, country, isFeatured, votes, clickCount }` for popular queries. Popular stations + TV init TTL increased to 3600s with `Cache-Control: public, max-age=600, s-maxage=3600` for HTTP-level caching. Featured + regular aggregations run in `Promise.all`.
 - **Geolocation**: Cloudflare CF-IPCountry headers, GPS-based nearby stations.
 - **Web Push Notifications**: VAPID keys and service workers for silent pushes.
 - **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy and idempotent cleanup for memory leak prevention.

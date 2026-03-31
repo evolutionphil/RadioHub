@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { Station, UserProfile, UserListeningHistory, User, UserFollow, Country, Genre } from '../../shared/mongo-schemas';
 import { deduplicatedFetch, calculateDistance, stripPlaceholders, tvValidateParams, tvSlimStation, tvSlimGenre, tvSlimProjection } from './shared-utils';
-import { normalizeCountryFilter } from '../utils/normalize-country';
+import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import CacheManager, { CacheKeys } from '../cache';
 import { logger } from '../utils/logger';
 import { RecommendationEngine } from '../services/recommendation-engine';
@@ -72,32 +72,18 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const { country, state, limit = 12, excludeBroken = 'false' } = req.query;
       const isTV = req.query.tv === '1';
       
-      // Generate cache key that includes country, state filters, broken status, and TV mode
-      const cacheKey = `popular_stations:${country || 'all'}:${state || 'all'}:${limit}:${excludeBroken}:${isTV ? 'tv' : 'web'}:v2`;
+      const resolvedCountry = resolveToDbName(country as string) || (country as string) || 'all';
+      const normalizedState = (state as string) || 'all';
+      const cacheKey = `popular_stations:${resolvedCountry}:${normalizedState}:${limit}:${excludeBroken}:${isTV ? 'tv' : 'web'}:v2`;
       
       const popularRequestStart = Date.now();
-      // Try cache first
       const cachedResult = await CacheManager.get(cacheKey);
       if (cachedResult) {
-        logger.log(`[Cache HIT] /api/stations/popular country=${country || 'all'} (${Date.now() - popularRequestStart}ms)`);
-        // Check if cache needs background refresh (30 seconds before expiry for popular stations)
-        if (CacheManager.needsRefresh(cacheKey, 30)) {
-          setImmediate(async () => {
-            try {
-              // Note: refreshPopularStationsCache was not found in global scope in routes.ts, 
-              // it might be defined inside registerRoutes or as a helper.
-              // For now, we'll skip background refresh or implement it if available.
-              // In routes.ts it was: await refreshPopularStationsCache(country as string);
-            } catch (error) {
-              // Background refresh failed silently
-            }
-          });
-        }
-        
+        logger.log(`[Cache HIT] /api/stations/popular country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
         return res.json(cachedResult);
       }
 
-      // TV/Mobile fast path: small limits (<=10) use simple query for speed
       if (isTV && Number(limit) <= 10) {
         let tvFilter: any = { lastCheckOk: true };
         if (country && country !== 'all' && country !== 'null') {
@@ -111,7 +97,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         const fastStations = await Station.find(tvFilter)
           .sort({ votes: -1, clickCount: -1 })
           .limit(Number(limit) * 2)
-          .select(deps.TV_STATION_PROJECTION || {}) // Fallback if projection not in deps
+          .select(deps.TV_STATION_PROJECTION || {})
           .lean();
 
         const seen = new Set<string>();
@@ -124,23 +110,23 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           if (unique.length >= Number(limit)) break;
         }
 
-        await CacheManager.set(cacheKey, unique, { ttl: 600 });
+        await CacheManager.set(cacheKey, unique, { ttl: 3600 });
+        logger.log(`[Cache MISS] /api/stations/popular TV fast-path country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
         return res.json(unique);
       }
       
-      // Helper function to normalize station name for duplicate detection
       const normalizeStationName = (name: string): string => {
         if (!name) return '';
         return name
           .toLowerCase()
-          .replace(/[''`´]/g, '') // Remove apostrophes
+          .replace(/[''`´]/g, '')
           .replace(/\s*(radio|fm|am|digital|online|live|stream|web|internet|music|hits?)\s*/gi, ' ')
-          .replace(/\s*\d+(\.\d+)?\s*(fm|am|mhz|khz)?\s*/gi, ' ') // Remove frequencies
-          .replace(/[^a-z0-9\u00C0-\u024F]/gi, '') // Keep only alphanumeric and accented chars
+          .replace(/\s*\d+(\.\d+)?\s*(fm|am|mhz|khz)?\s*/gi, ' ')
+          .replace(/[^a-z0-9\u00C0-\u024F]/gi, '')
           .trim();
       };
       
-      // Helper to check if station has any valid image
       const hasValidImage = (station: any): boolean => {
         if (station.logoAssets?.status === 'completed' && 
             (station.logoAssets?.webp256 || station.logoAssets?.webp96)) {
@@ -159,7 +145,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       };
       
       let countryFilter: any = {
-        lastCheckOk: true  // Only working stations
+        lastCheckOk: true
       };
       
       if (country && country !== 'all' && country !== 'null') {
@@ -170,7 +156,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       }
       
       const requestedLimit = Number(limit);
-      const fetchMultiplier = 5; // Fetch 5x to ensure enough after filtering
+      const fetchMultiplier = 4;
       
       let featuredFilter: any = {
         ...countryFilter,
@@ -181,37 +167,27 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         featuredFilter.showInGlobalPopular = true;
       }
       
-      const featuredPipeline = [
-        { $match: featuredFilter },
-        { $sort: { votes: -1, clickCount: -1 } },
-        {
-          $project: {
-            _id: 1, name: 1, url: 1, urlResolved: 1, favicon: 1, country: 1,
-            countrycode: 1, state: 1, genre: 1, codec: 1, bitrate: 1,
-            homepage: 1, tags: 1, slug: 1, hls: 1, votes: 1, clickCount: 1,
-            lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1
-          }
-        },
-        { $limit: requestedLimit * fetchMultiplier }
-      ];
-      
-      const featuredStations = await Station.aggregate(featuredPipeline);
-      
-      const regularPipeline = [
-        { $match: { ...countryFilter, isFeatured: { $ne: true } } },
-        { $sort: { votes: -1, clickCount: -1 } },
-        {
-          $project: {
-            _id: 1, name: 1, url: 1, urlResolved: 1, favicon: 1, country: 1,
-            countrycode: 1, state: 1, genre: 1, codec: 1, bitrate: 1,
-            homepage: 1, tags: 1, slug: 1, hls: 1, votes: 1, clickCount: 1,
-            lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1
-          }
-        },
-        { $limit: requestedLimit * fetchMultiplier }
-      ];
-      
-      const regularStations = await Station.aggregate(regularPipeline);
+      const POPULAR_PROJECTION = {
+        _id: 1, name: 1, url: 1, urlResolved: 1, favicon: 1, country: 1,
+        countrycode: 1, state: 1, genre: 1, codec: 1, bitrate: 1,
+        homepage: 1, tags: 1, slug: 1, hls: 1, votes: 1, clickCount: 1,
+        lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1
+      };
+
+      const [featuredStations, regularStations] = await Promise.all([
+        Station.aggregate([
+          { $match: featuredFilter },
+          { $sort: { votes: -1, clickCount: -1 } },
+          { $project: POPULAR_PROJECTION },
+          { $limit: requestedLimit * fetchMultiplier }
+        ]),
+        Station.aggregate([
+          { $match: { ...countryFilter, isFeatured: { $ne: true } } },
+          { $sort: { votes: -1, clickCount: -1 } },
+          { $project: POPULAR_PROJECTION },
+          { $limit: requestedLimit * fetchMultiplier }
+        ])
+      ]);
       
       const allCandidates = [...featuredStations, ...regularStations];
       
@@ -245,13 +221,18 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         stations = [...stationsWithLogo, ...stationsWithoutLogo.slice(0, remaining)];
       }
 
+      const elapsed = Date.now() - popularRequestStart;
+      logger.log(`[Cache MISS] /api/stations/popular country=${resolvedCountry} limit=${requestedLimit} (${elapsed}ms)`);
+
       if (isTV) {
         const slimStations = stations.map(tvSlimStation);
-        await CacheManager.set(cacheKey, slimStations, { ttl: 600 });
+        await CacheManager.set(cacheKey, slimStations, { ttl: 3600 });
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
         return res.json(slimStations);
       }
 
-      await CacheManager.set(cacheKey, stations, { ttl: 600 });
+      await CacheManager.set(cacheKey, stations, { ttl: 3600 });
+      res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
       res.json(stripPlaceholders(stations));
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch popular stations' });
