@@ -6,3 +6,9 @@ id = "TzN3FmhLhOONF2OsVacjD"
 uri = "file://mobile-subscription-integration.md"
 type = "text"
 title = "MegaRadio - Mobile Subscription Integration Guide (Updated)"
+
+[[outputs]]
+id = "GIubXCReyDgUyKFtlA6iM"
+uri = "file://mobile-developer-gorev-listesi.md"
+type = "text"
+title = "Mobil Developer Gorev Listesi - IAP Backend Entegrasyonu"
