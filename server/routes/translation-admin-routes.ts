@@ -5,6 +5,7 @@ import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
 import { refreshCommunityFavoritesCache, fetchTranslationsForLanguage, refreshTranslationsCache } from "./cache-refresh-utils";
 import { syncService } from "../services/sync";
+import { isQuotaExceeded, isQuotaError, handleQuotaError, safeWrite } from "../utils/quota-guard";
 
 export function registerTranslationAdminRoutes(app: Express, deps: any) {
   const { requireAuth, requireAdmin } = deps;
@@ -1996,31 +1997,43 @@ ${keysText}`;
         return res.status(400).json({ error: 'Station ID is required' });
       }
 
-      // Check if station exists
+      if (isQuotaExceeded()) {
+        return res.status(503).json({ error: 'Database temporarily unavailable' });
+      }
+
       const station = await Station.findById(stationId);
       if (!station) {
         return res.status(404).json({ error: 'Station not found' });
       }
 
-      // Update user's recentlyPlayedStations - remove if exists, then add to beginning
-      await User.findByIdAndUpdate(currentUserId, {
-        $pull: { recentlyPlayedStations: { stationId: stationId } }
-      });
+      const pullResult = await safeWrite('recently-played:pull', () =>
+        User.findByIdAndUpdate(currentUserId, {
+          $pull: { recentlyPlayedStations: { stationId: stationId } }
+        })
+      );
+      if (pullResult === null && isQuotaExceeded()) {
+        return res.status(503).json({ error: 'Database temporarily unavailable' });
+      }
 
-      await User.findByIdAndUpdate(currentUserId, {
-        $push: {
-          recentlyPlayedStations: {
-            $each: [{ stationId: stationId, playedAt: new Date() }],
-            $position: 0,
-            $slice: 12 // Keep only last 12 stations
+      await safeWrite('recently-played:push', () =>
+        User.findByIdAndUpdate(currentUserId, {
+          $push: {
+            recentlyPlayedStations: {
+              $each: [{ stationId: stationId, playedAt: new Date() }],
+              $position: 0,
+              $slice: 12
+            }
           }
-        }
-      });
+        })
+      );
 
       await CacheManager.clearByPattern(`recently-played:${currentUserId}`);
       res.json({ success: true });
-    } catch (error) {
-      console.error('Error adding to recently played:', error);
+    } catch (error: any) {
+      handleQuotaError('recently-played', error);
+      if (isQuotaError(error)) {
+        return res.status(503).json({ error: 'Database temporarily unavailable' });
+      }
       res.status(500).json({ error: 'Failed to add to recently played' });
     }
   });
@@ -2039,15 +2052,15 @@ ${keysText}`;
         return res.status(400).json({ error: 'Station ID is required' });
       }
 
-      // logger.log(`🌟 Adding station ${stationId} to favorites for user ${currentUserId}`);
-      
-      // Check if station exists
+      if (isQuotaExceeded()) {
+        return res.status(503).json({ error: 'Database temporarily unavailable' });
+      }
+
       const station = await Station.findById(stationId);
       if (!station) {
         return res.status(404).json({ error: 'Station not found' });
       }
 
-      // Check if already favorited
       const existingFavorite = await UserFavorite.findOne({
         userId: currentUserId,
         stationId: stationId
@@ -2057,32 +2070,43 @@ ${keysText}`;
         return res.status(400).json({ error: 'Station already in favorites' });
       }
 
-      // Add to favorites
-      const favorite = await UserFavorite.create({
-        userId: currentUserId,
-        stationId: stationId,
-        createdAt: new Date()
-      });
+      const favorite = await safeWrite('favorites:create', () =>
+        UserFavorite.create({
+          userId: currentUserId,
+          stationId: stationId,
+          createdAt: new Date()
+        })
+      );
 
-      // Create notification for the user about the favorite action
-      await UserNotification.create({
-        userId: currentUserId,
-        type: 'favorite_station',
-        title: '🌟 Station Added to Favorites',
-        message: `You added "${station.name}" to your favorites`,
-        data: { 
-          stationId: station._id,
-          stationName: station.name,
-          stationCountry: station.country,
-          stationGenre: station.genre
-        },
-        read: false,
-        createdAt: new Date()
-      });
+      if (favorite === null && isQuotaExceeded()) {
+        return res.status(503).json({ error: 'Database temporarily unavailable' });
+      }
+
+      await safeWrite('favorites:notification', () =>
+        UserNotification.create({
+          userId: currentUserId,
+          type: 'favorite_station',
+          title: '🌟 Station Added to Favorites',
+          message: `You added "${station.name}" to your favorites`,
+          data: { 
+            stationId: station._id,
+            stationName: station.name,
+            stationCountry: station.country,
+            stationGenre: station.genre
+          },
+          read: false,
+          createdAt: new Date()
+        }),
+        true
+      );
 
       await CacheManager.clearByPattern(`user-favorites:${currentUserId}`);
       res.json({ success: true, message: 'Station added to favorites', favorite });
-    } catch (error) {
+    } catch (error: any) {
+      handleQuotaError('favorites', error);
+      if (isQuotaError(error)) {
+        return res.status(503).json({ error: 'Database temporarily unavailable' });
+      }
       res.status(500).json({ error: 'Failed to add station to favorites' });
     }
   });

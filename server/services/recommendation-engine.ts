@@ -1,6 +1,7 @@
 import { Station, UserListeningHistory, StationSimilarity, UserProfile } from '@shared/mongo-schemas';
 import { CacheManager, CacheKeys } from '../cache';
 import { performanceCache } from '../performance-cache';
+import { isQuotaExceeded, handleQuotaError } from '../utils/quota-guard';
 
 interface UserInteraction {
   sessionId: string;
@@ -55,16 +56,14 @@ export class RecommendationEngine {
         rating: this.calculateImplicitRating(interaction.listenDuration, interaction.interactionType)
       });
 
+      if (isQuotaExceeded()) return;
       await listenHistory.save();
       
-      // Update user profile asynchronously
       setImmediate(() => this.updateUserProfile(interaction.sessionId));
-      
-      // Cache invalidation
       await CacheManager.del(`user_profile_${interaction.sessionId}`);
       
-    } catch (error) {
-      console.error('Failed to record user interaction:', error);
+    } catch (error: any) {
+      handleQuotaError('recommendation:interaction', error);
     }
   }
 

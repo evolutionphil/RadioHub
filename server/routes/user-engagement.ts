@@ -3,6 +3,7 @@ import { UserEngagementService } from '../services/user-engagement-service';
 import CacheManager from '../cache';
 import { User, UserFollow, UserNotification, AuthToken } from '../../shared/mongo-schemas';
 import { PushNotificationService } from '../services/pushNotificationService';
+import { isQuotaExceeded, handleQuotaError, isQuotaError, safeWrite } from '../utils/quota-guard';
 
 const router = express.Router();
 const userEngagementService = new UserEngagementService();
@@ -280,22 +281,27 @@ router.post('/follow/:userId', async (req, res) => {
     const existing = await UserFollow.findOne({ userId: currentUserId, followingUserId: targetUserId });
     if (existing) return res.json({ success: true, message: 'Already following' });
 
-    await UserFollow.create({ userId: currentUserId, followingUserId: targetUserId });
+    if (isQuotaExceeded()) return res.status(503).json({ error: 'Database temporarily unavailable' });
 
-    // Get follower info for notification
+    await safeWrite('follow:create', () =>
+      UserFollow.create({ userId: currentUserId, followingUserId: targetUserId })
+    );
+
     const follower = await User.findById(currentUserId).select('fullName username slug').lean();
     const followerName = (follower as any)?.fullName || (follower as any)?.username || 'Someone';
     const followerSlug = (follower as any)?.slug;
 
-    // Create in-app notification (non-blocking)
-    UserNotification.create({
-      userId: targetUserId,
-      fromUserId: currentUserId,
-      type: 'follow',
-      title: 'New Follower',
-      message: `${followerName} started following you`,
-      data: { followerId: currentUserId, followerSlug }
-    }).catch(() => {});
+    safeWrite('follow:notification', () =>
+      UserNotification.create({
+        userId: targetUserId,
+        fromUserId: currentUserId,
+        type: 'follow',
+        title: 'New Follower',
+        message: `${followerName} started following you`,
+        data: { followerId: currentUserId, followerSlug }
+      }),
+      true
+    ).catch(() => {});
 
     // Send push notification (web + mobile, non-blocking)
     PushNotificationService.sendFollowNotification(targetUserId, followerName, followerSlug).catch(() => {});

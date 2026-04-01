@@ -1,5 +1,6 @@
 import type { Express } from "express";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification } from "../../shared/mongo-schemas";
+import mongoose from "mongoose";
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -8,6 +9,7 @@ import { logoProcessor } from "../services/logo-processor";
 import { IndexNowService } from "../services/indexnow";
 import { ObjectStorageService } from "../objectStorage";
 import CacheManager from "../cache";
+import { getQuotaStatus } from "../utils/quota-guard";
 
 interface RouteDeps {
   requireAuth: any;
@@ -734,6 +736,107 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       res.json({ success: true, message: 'Station restored successfully with cached data', station: restoredStation });
     } catch (error) {
       res.status(500).json({ error: 'Failed to restore station' });
+    }
+  });
+
+  app.get("/api/admin/db-status", requireAdmin, async (req, res) => {
+    try {
+      const db = mongoose.connection.db;
+      if (!db) {
+        return res.status(500).json({ error: 'Database not connected' });
+      }
+      const stats = await db.stats();
+      const collections = await db.listCollections().toArray();
+      const collectionStats: any[] = [];
+      for (const col of collections) {
+        try {
+          const cStats = await db.collection(col.name).stats();
+          collectionStats.push({
+            name: col.name,
+            count: cStats.count,
+            sizeMB: Math.round((cStats.size / 1024 / 1024) * 100) / 100,
+            storageSizeMB: Math.round((cStats.storageSize / 1024 / 1024) * 100) / 100,
+            indexSizeMB: Math.round((cStats.totalIndexSize / 1024 / 1024) * 100) / 100,
+          });
+        } catch {}
+      }
+      collectionStats.sort((a, b) => b.storageSizeMB - a.storageSizeMB);
+      res.json({
+        totalSizeMB: Math.round((stats.dataSize / 1024 / 1024) * 100) / 100,
+        storageSizeMB: Math.round((stats.storageSize / 1024 / 1024) * 100) / 100,
+        indexSizeMB: Math.round((stats.indexSize / 1024 / 1024) * 100) / 100,
+        collections: collectionStats,
+        quotaStatus: getQuotaStatus()
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to get DB status', details: error.message });
+    }
+  });
+
+  app.post("/api/admin/db-cleanup", requireAdmin, async (req, res) => {
+    try {
+      const { collections: targetCollections } = req.body;
+      const cleanableCollections: Record<string, { model: any; keepDays?: number }> = {
+        'analyticsevent': { model: AnalyticsEvent, keepDays: 0 },
+        'analyticsevents': { model: AnalyticsEvent, keepDays: 0 },
+        'synclogs': { model: SyncLog, keepDays: 7 },
+        'stationdebuglogs': { model: StationDebugLog, keepDays: 3 },
+        'bulkdescriptionjobs': { model: BulkDescriptionJob, keepDays: 1 },
+      };
+
+      const results: any[] = [];
+      const targets = targetCollections || [...Object.keys(cleanableCollections), 'applogs', 'visitorsessions', 'userlisteninghistories'];
+
+      for (const name of targets) {
+        const key = name.toLowerCase().replace(/[_-]/g, '');
+        const config = cleanableCollections[key];
+        if (!config) {
+          continue;
+        }
+        try {
+          let deleteResult;
+          if (config.keepDays === 0) {
+            deleteResult = await config.model.deleteMany({});
+          } else {
+            const cutoff = new Date(Date.now() - config.keepDays! * 24 * 60 * 60 * 1000);
+            deleteResult = await config.model.deleteMany({
+              $or: [
+                { createdAt: { $lt: cutoff } },
+                { timestamp: { $lt: cutoff } }
+              ]
+            });
+          }
+          results.push({ collection: name, status: 'cleaned', deletedCount: deleteResult.deletedCount });
+        } catch (err: any) {
+          results.push({ collection: name, status: 'error', error: err.message });
+        }
+      }
+
+      const db = mongoose.connection.db;
+
+      const rawCollections: Record<string, { field: string; keepDays: number }> = {
+        'applogs': { field: 'createdAt', keepDays: 7 },
+        'visitorsessions': { field: 'createdAt', keepDays: 7 },
+        'userlisteninghistories': { field: 'listenedAt', keepDays: 30 },
+      };
+
+      for (const name of targets) {
+        const key = name.toLowerCase().replace(/[_-]/g, '');
+        const rawConfig = rawCollections[key];
+        if (!rawConfig || !db) continue;
+        try {
+          const col = db.collection(key);
+          const cutoff = new Date(Date.now() - rawConfig.keepDays * 24 * 60 * 60 * 1000);
+          const r = await col.deleteMany({ [rawConfig.field]: { $lt: cutoff } });
+          results.push({ collection: key, status: 'cleaned', deletedCount: r.deletedCount });
+        } catch (err: any) {
+          results.push({ collection: key, status: 'error', error: err.message });
+        }
+      }
+
+      res.json({ success: true, results });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Cleanup failed', details: error.message });
     }
   });
 }

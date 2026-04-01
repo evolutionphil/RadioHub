@@ -163,6 +163,7 @@ function AdminRouterContent() {
         
         {/* Home & Homepage Management */}
         <Route path="/admin/home-settings" component={LazyAdminRoutes.HomeSettings} />
+        <Route path="/admin/db-management" component={LazyAdminRoutes.DbManagement} />
 
         {/* Content & Media Management */}
         <Route path="/admin/advertisements" component={LazyAdminRoutes.Advertisements} />

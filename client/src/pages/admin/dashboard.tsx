@@ -138,6 +138,13 @@ export default function AdminDashboard() {
       icon: Settings,
       href: "/admin/settings",
       color: "bg-gray-500"
+    },
+    {
+      title: "Database",
+      description: "Monitor storage & cleanup collections",
+      icon: Database,
+      href: "/admin/db-management",
+      color: "bg-red-600"
     }
   ];
 

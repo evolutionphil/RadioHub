@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-This project is a full-stack radio station management application providing streaming and management capabilities. It features a comprehensive admin interface, real-time monitoring, broad audio format compatibility, and SEO-friendly URL structures. Key capabilities include user management, social interactions, geolocation, advanced search, authentic user engagement data, trending stations, and machine learning-powered recommendations. The vision is to establish a leading platform in digital audio with AI-driven content delivery and advanced HLS session management for global reach and uninterrupted streaming.
+This project is a comprehensive full-stack radio station management application designed for streaming and administration. It offers an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key features include user management, social interaction capabilities, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The overarching goal is to establish a leading platform in digital audio, leveraging AI for content delivery and advanced HLS session management to achieve global reach and uninterrupted streaming.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -48,7 +48,6 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 
 ### Database Design
 - **Collections**: Stations, Countries, Languages, Genres, Codecs, Sync Logs, Users, Comments, Sessions, Notifications, AdvancedSearch.
-- **Key Fields**: Slugs, poster images, metadata, activity logs.
 - **User Model**: `favoriteStations`, `recentlyPlayedStations`, preferences, authentication.
 
 ### Key Architectural Decisions
@@ -57,10 +56,10 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Rate Limiting**: Global and auth-specific.
 - **SEO Optimization**: Slug-based URLs, dynamic sitemaps, robots.txt, structured data (JSON-LD), multilingual hreflang support, unified language URL prefixes.
 - **Audio Continuity**: Preserves playback during navigation.
-- **Performance**: Caching, indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed caches, optimized profile data fetching. Popular stations cache keys normalized via `resolveToDbName` (AT→Austria) so warmup cache is shared across ISO/name variants. Compound indexes `{ lastCheckOk, isFeatured, votes, clickCount }` and `{ lastCheckOk, country, isFeatured, votes, clickCount }` for popular queries. Popular stations + TV init TTL increased to 3600s with `Cache-Control: public, max-age=600, s-maxage=3600` for HTTP-level caching. Featured + regular aggregations run in `Promise.all`.
+- **Performance**: Caching, indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed caches, optimized profile data fetching.
 - **Geolocation**: Cloudflare CF-IPCountry headers, GPS-based nearby stations.
 - **Web Push Notifications**: VAPID keys and service workers for silent pushes.
-- **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy and idempotent cleanup for memory leak prevention.
+- **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy.
 - **Auto-Reconnect & Server Timeout**: Client-side auto-reconnect, optimized server-side timeouts.
 - **Vote-Based Ordering**: Stations ordered by popularity.
 - **Google OAuth**: Integrated login and avatar management.
@@ -68,17 +67,17 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **User Engagement**: Real user favorites/ratings drive trends and recommendations.
 - **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation, country-specific URL translations, universal country normalization.
 - **Background Audio Protection**: 5-layer system to prevent browser audio suspension.
-- **Image Optimization**: Server-side image resizing and WebP conversion using Sharp, stored on S3. Includes memory-safe guards for image proxy.
-- **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing. Memory-critical GC has 15-minute cooldown to prevent GC death spiral. `global.gc()` REMOVED from event loop load shedding (was causing synchronous freeze spiral). Proactive cache clearing at 3000MB (30-min cooldown). Memory warnings rate-limited to 15-min intervals. Cache maxKeys reduced (seoHtml/pageData/quick: 500, memoryCache: 2000) with useClones=false everywhere. All NodeCache `.set()` calls wrapped in `safeSet()` — catches `ECACHEFULL`, evicts oldest 30% of keys (not full flush) and retries once, with rate-limited warnings (60s cooldown per cache). SEO cache key uses `cleanUrl` (query/hash stripped) to prevent unbounded key cardinality. Station detail pages excluded from pageDataCache (high cardinality: 40k+ stations × 57 langs) — only low-cardinality pages (home, genres, about) are cached.
-- **Event Loop Protection**: Load shedding has 10-minute cooldown (prevents repeated cache clearing). Lag logging rate-limited to max 1 per minute (prevents log collector feedback loop). Log collector skips EVENT LOOP LAG/LOAD SHEDDING/BLOCKED messages to prevent S3 flush storms.
-- **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards. Daily auto-restart at 4:00 AM Europe/Berlin via SIGTERM (graceful shutdown) — Railway `restartPolicyType=ALWAYS` ensures container always restarts. Health check at `/health` AND `/api/health`.
+- **Image Optimization**: Server-side image resizing and WebP conversion using Sharp, stored on S3.
+- **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing with rate-limiting and intelligent key eviction.
+- **Event Loop Protection**: Load shedding with cooldowns, rate-limited lag logging, and log collector safeguards.
+- **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards, daily auto-restart via SIGTERM.
 - **API Key Management**: Secure generation, validation, rate limiting, and usage tracking.
 - **Cast System**: Dual architecture (WebSocket/polling) for real-time command and now-playing status.
 - **TV Device Code Login**: Netflix/YouTube-style activation.
 - **Security**: Rate limiting, X-Powered-By removal, security headers, suppressed internal error messages.
-- **Process Stability**: Global error handlers, graceful shutdown, event loop lag monitoring, MongoDB readyState monitoring, per-user WebSocket limits, strict ICY metaInterval validation, streaming for description cleanup, compression level optimization. Axios stream `destroy()` in finally blocks, native HTTP redirect path cleanup, hardDeadline timer cleanup via `clearTimeout`, bounded Sharp queue (MAX_SHARP_QUEUE=20 rejects when full), AI description job auto-cleanup (30-min TTL after completion). HTML lang middleware optimized: precomputed translation scripts (only critical keys, not full dictionary) prevent per-request JSON.stringify that caused 107s event loop blocks. Load shedding REMOVED (was causing feedback loop: cache clear → cache miss → more lag → more clearing). SEO regex precompiled at startup. `global.gc()` removed from auto-triggered paths. Translation cache preserved during memory relief. Stream proxy limited to 100 concurrent connections.
+- **Process Stability**: Global error handlers, graceful shutdown, event loop lag monitoring, MongoDB readyState monitoring, per-user WebSocket limits, strict ICY metaInterval validation, streaming for description cleanup, compression level optimization.
 - **External API Resilience**: Recommendation engine guard against concurrent computations.
-- **Account Deletion**: `DELETE /api/user/delete-account` — Apple Guideline 5.1.1 compliant. Deletes all user data across 23 collections (favorites, ratings, comments, listening history, profiles, follows, notifications, sessions, tokens, devices, cast data, DMs, search history, analytics). Also removes S3 avatar. Uses `Promise.allSettled` for resilient parallel deletion with failure logging.
+- **Account Deletion**: Apple Guideline 5.1.1 compliant, deleting all user data across 23 collections with `Promise.allSettled`.
 - **MongoDB Aggregate Timeouts**: Limits on heavy aggregates, `allowDiskUse` for genre aggregates, inter-iteration delays for warmup loops.
 - **Precomputed Genres Optimization**: Only top 19 countries refreshed automatically.
 - **Input Validation**: Robust for user authentication.
@@ -107,14 +106,3 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **sharp**: Image processing.
 - **AWS S3**: Cloud storage for logos and user avatars.
 - **multer**: Multipart form-data handling for file uploads.
-
-## Performance Optimization Notes
-- **Font Preloading**: Preload ubuntu-400, ubuntu-500, ubuntu-700 (actual critical fonts per PageSpeed analysis). ubuntu-600 removed from preload.
-- **cast_sender.js**: Loaded with `async` attribute (was render-blocking 750ms mobile). Chromecast still works via `__onGCastApiAvailable` callback.
-- **FloWAlive SDK**: DISABLED — WebSocket endpoint (flowalive-api.esimfo.com) unreachable (ERR_NAME_NOT_RESOLVED). Saves 121KB download. Re-enable when service restored.
-- **Ahrefs Analytics**: DISABLED — analytics.ahrefs.com returns ERR_FAILED. Re-enable when endpoint verified.
-- **Station Logos**: Size-aware asset selection — webp96 for cards/small (≤96px display), webp256 for hero/player/xl (>96px display). Reduces bandwidth ~60% for listing pages.
-- **Hero Images**: heroleft.png converted to responsive WebP (300w mobile, 500w desktop). Saves ~20KB per page load.
-- **Logo Icon**: Header/footer use 100w optimized version (2.4KB vs 34.7KB original). Full size kept for structured data/og:image.
-- **Hero Background**: Explicit width/height attributes added to prevent CLS, decoding="async" for non-blocking decode.
-- **Memory Management**: `/api/location` returns graceful fallback instead of 500 error. WebSocket metadata reconnect uses exponential backoff (2s→30s max).

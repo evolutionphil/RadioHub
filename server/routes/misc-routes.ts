@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppLog, UserListeningHistory, AuthToken, ApiKey as ApiKeyModel } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import crypto from 'crypto';
+import { isQuotaExceeded, safeWrite, handleQuotaError, isQuotaError } from "../utils/quota-guard";
 
 export function registerMiscRoutes(app: Express, deps: any) {
   const { requireAdmin, requireAuth, apiKeyMiddleware, seedDemoApiKey } = deps;
@@ -284,7 +285,12 @@ export function registerMiscRoutes(app: Express, deps: any) {
         data: log.data && typeof log.data === 'object' ? JSON.parse(JSON.stringify(log.data).substring(0, 5000)) : {},
       }));
       const isCarPlayLog = sanitizedLogs.some((log: any) => /CarPlay|Template/i.test(log.message));
-      await AppLog.create({ deviceId, platform, appVersion: String(appVersion), buildNumber: String(buildNumber), logs: sanitizedLogs, apiKeyHash: keyHash, isCarPlayLog });
+      if (isQuotaExceeded()) {
+        return res.json({ success: true, received: sanitizedLogs.length, note: 'storage_limited' });
+      }
+      await safeWrite('applog:create', () =>
+        AppLog.create({ deviceId, platform, appVersion: String(appVersion), buildNumber: String(buildNumber), logs: sanitizedLogs, apiKeyHash: keyHash, isCarPlayLog })
+      );
       res.json({ success: true, received: sanitizedLogs.length });
     } catch (error) {
       res.status(500).json({ error: 'Failed to store logs' });

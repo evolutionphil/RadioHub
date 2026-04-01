@@ -9,6 +9,7 @@ import MongoStore from "connect-mongo";
 import compression from "compression";
 import crypto from "crypto";
 import { rateLimit } from 'express-rate-limit';
+import { markQuotaExceeded as markQuotaExceededFn } from './utils/quota-guard';
 
 // Extend session type to include user data
 declare module "express-session" {
@@ -115,6 +116,11 @@ process.on('uncaughtException', (err) => {
 });
 process.on('unhandledRejection', (reason: any) => {
   const msg = reason?.message || reason || 'unknown';
+  if (typeof msg === 'string' && msg.includes('over your space quota')) {
+    markQuotaExceededFn();
+    console.warn('⚠️ MongoDB quota exceeded (unhandled rejection) — writes paused for 10min');
+    return;
+  }
   console.error('🚨 UNHANDLED REJECTION (process survived):', msg);
   if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
 });
