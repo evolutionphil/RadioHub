@@ -272,28 +272,14 @@ export function registerMiscRoutes(app: Express, deps: any) {
       const apiKey = req.headers['x-api-key'] as string;
       if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
       const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
-      
+
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
       if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
-      const { logs, deviceId, platform, appVersion = '1.0.0', buildNumber = '' } = req.body;
+      const { logs, deviceId, platform } = req.body;
       if (!logs || !Array.isArray(logs) || !deviceId || !platform) return res.status(400).json({ error: 'logs, deviceId, and platform are required' });
-      if (!['ios', 'android'].includes(platform)) return res.status(400).json({ error: 'platform must be "ios" or "android"' });
-      const sanitizedLogs = logs.slice(0, 100).map((log: any) => ({
-        level: ['info', 'warn', 'error', 'debug', 'fatal'].includes(log.level) ? log.level : 'info',
-        message: String(log.message || '').substring(0, 500),
-        timestamp: log.timestamp || new Date().toISOString(),
-        data: log.data && typeof log.data === 'object' ? JSON.parse(JSON.stringify(log.data).substring(0, 5000)) : {},
-      }));
-      const isCarPlayLog = sanitizedLogs.some((log: any) => /CarPlay|Template/i.test(log.message));
-      if (isQuotaExceeded()) {
-        return res.json({ success: true, received: sanitizedLogs.length, note: 'storage_limited' });
-      }
-      await safeWrite('applog:create', () =>
-        AppLog.create({ deviceId, platform, appVersion: String(appVersion), buildNumber: String(buildNumber), logs: sanitizedLogs, apiKeyHash: keyHash, isCarPlayLog })
-      );
-      res.json({ success: true, received: sanitizedLogs.length });
+      res.json({ success: true, received: Math.min(logs.length, 100), note: 'db_logging_disabled' });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to store logs' });
+      res.status(500).json({ error: 'Failed to process logs' });
     }
   });
 

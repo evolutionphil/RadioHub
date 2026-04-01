@@ -839,4 +839,29 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       res.status(500).json({ error: 'Cleanup failed', details: error.message });
     }
   });
+
+  app.post("/api/admin/db-drop-collection", requireAdmin, async (req, res) => {
+    try {
+      const { collection } = req.body;
+      if (!collection) return res.status(400).json({ error: 'Collection name required' });
+
+      const droppable = ['applogs', 'analyticsevents', 'stationdebuglogs', 'bulkdescriptionjobs'];
+      if (!droppable.includes(collection.toLowerCase())) {
+        return res.status(400).json({ error: `Collection "${collection}" cannot be dropped. Allowed: ${droppable.join(', ')}` });
+      }
+
+      const db = mongoose.connection.db;
+      if (!db) return res.status(500).json({ error: 'Database not connected' });
+
+      const collections = await db.listCollections({ name: collection }).toArray();
+      if (collections.length === 0) {
+        return res.json({ success: true, message: `Collection "${collection}" does not exist` });
+      }
+
+      await db.dropCollection(collection);
+      res.json({ success: true, message: `Collection "${collection}" dropped successfully` });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to drop collection', details: error.message });
+    }
+  });
 }

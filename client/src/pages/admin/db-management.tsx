@@ -45,6 +45,17 @@ export default function DbManagement() {
     },
   });
 
+  const dropMutation = useMutation({
+    mutationFn: async (collection: string) => {
+      const res = await apiRequest("POST", "/api/admin/db-drop-collection", { collection });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setCleanupResult(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/db-status"] });
+    },
+  });
+
   const usagePct = dbStatus ? Math.round((dbStatus.storageSizeMB / 512) * 100) : 0;
 
   return (
@@ -132,6 +143,9 @@ export default function DbManagement() {
                         'bulkdescriptionjobs', 'visitorsessions', 'userlisteninghistories',
                         'applogs'
                       ].includes(col.name.toLowerCase());
+                      const droppable = [
+                        'applogs', 'analyticsevents', 'stationdebuglogs', 'bulkdescriptionjobs'
+                      ].includes(col.name.toLowerCase());
                       return (
                         <tr key={col.name} className="border-b hover:bg-gray-50">
                           <td className="py-2 px-3 text-gray-900 font-medium">{col.name}</td>
@@ -139,7 +153,7 @@ export default function DbManagement() {
                           <td className="py-2 px-3 text-right text-gray-700">{col.sizeMB}</td>
                           <td className="py-2 px-3 text-right text-gray-700">{col.storageSizeMB}</td>
                           <td className="py-2 px-3 text-right text-gray-700">{col.indexSizeMB}</td>
-                          <td className="py-2 px-3 text-right">
+                          <td className="py-2 px-3 text-right space-x-1">
                             {cleanable && (
                               <Button
                                 variant="outline"
@@ -149,6 +163,20 @@ export default function DbManagement() {
                                 onClick={() => cleanupMutation.mutate([col.name])}
                               >
                                 Clean
+                              </Button>
+                            )}
+                            {droppable && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                disabled={dropMutation.isPending}
+                                onClick={() => {
+                                  if (confirm(`"${col.name}" collection tamamen silinecek. Emin misin?`)) {
+                                    dropMutation.mutate(col.name);
+                                  }
+                                }}
+                              >
+                                Drop
                               </Button>
                             )}
                           </td>
