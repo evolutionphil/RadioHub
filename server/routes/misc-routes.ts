@@ -154,7 +154,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
       }
 
       const [users, totalCount] = await Promise.all([
-        User.find(filter).select('_id email fullName avatar profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive').skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
+        User.find(filter).select('_id email fullName avatar profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive subscription').skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
         User.countDocuments(filter)
       ]);
 
@@ -186,6 +186,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
           googleId: user.googleId || '',
           followers: user.followersCount || 0,
           favorites: favoriteMap[user._id.toString()] || 0,
+          subscription: (user as any).subscription || null,
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           isActive: user.isActive !== false
@@ -248,6 +249,173 @@ export function registerMiscRoutes(app: Express, deps: any) {
       res.json({ success: true, deletedFavorites: deletedFavs.deletedCount });
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete user' });
+    }
+  });
+
+  // ===== SUBSCRIPTION MANAGEMENT =====
+
+  app.post("/api/user/subscription", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session?.user?.userId || req.session?.userId;
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const { plan, platform, productId, transactionId, originalTransactionId, expiresAt, isTrial } = req.body;
+
+      if (!plan || !platform) {
+        return res.status(400).json({ error: 'plan and platform are required' });
+      }
+      if (!['free', 'premium', 'pro'].includes(plan)) {
+        return res.status(400).json({ error: 'plan must be free, premium, or pro' });
+      }
+      if (!['ios', 'android', 'web'].includes(platform)) {
+        return res.status(400).json({ error: 'platform must be ios, android, or web' });
+      }
+
+      if (!productId || !transactionId) {
+        return res.status(400).json({ error: 'productId and transactionId are required for paid plans' });
+      }
+
+      const existingUser = await User.findById(userId).select('subscription').lean();
+      if (existingUser) {
+        const existingSub = (existingUser as any).subscription;
+        if (existingSub?.transactionId === transactionId && existingSub?.isActive) {
+          return res.json({ success: true, subscription: existingSub, note: 'already_active' });
+        }
+      }
+
+      let parsedExpiry: Date | undefined;
+      if (expiresAt) {
+        parsedExpiry = new Date(expiresAt);
+        if (isNaN(parsedExpiry.getTime())) {
+          return res.status(400).json({ error: 'expiresAt must be a valid ISO 8601 date' });
+        }
+      }
+
+      const subscriptionData: any = {
+        'subscription.plan': plan,
+        'subscription.platform': platform,
+        'subscription.isActive': plan !== 'free',
+        'subscription.lastVerifiedAt': new Date(),
+        'subscription.startedAt': new Date(),
+      };
+
+      subscriptionData['subscription.productId'] = productId;
+      subscriptionData['subscription.transactionId'] = transactionId;
+      if (originalTransactionId) subscriptionData['subscription.originalTransactionId'] = originalTransactionId;
+      if (parsedExpiry) subscriptionData['subscription.expiresAt'] = parsedExpiry;
+      if (typeof isTrial === 'boolean') subscriptionData['subscription.isTrial'] = isTrial;
+
+      if (plan === 'free') {
+        subscriptionData['subscription.cancelledAt'] = new Date();
+        subscriptionData['subscription.isActive'] = false;
+      }
+
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { $set: subscriptionData },
+        { new: true }
+      ).select('subscription');
+
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      res.json({
+        success: true,
+        subscription: user.subscription,
+      });
+    } catch (error: any) {
+      console.error('Subscription update error:', error.message);
+      res.status(500).json({ error: 'Failed to update subscription' });
+    }
+  });
+
+  app.get("/api/user/subscription", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session?.user?.userId || req.session?.userId;
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const user = await User.findById(userId).select('subscription').lean();
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const sub = (user as any).subscription;
+      if (sub?.expiresAt && new Date(sub.expiresAt) < new Date() && sub.isActive) {
+        await User.findByIdAndUpdate(userId, {
+          $set: {
+            'subscription.isActive': false,
+            'subscription.plan': 'free',
+          }
+        });
+        return res.json({
+          subscription: { ...sub, isActive: false, plan: 'free', expired: true },
+        });
+      }
+
+      res.json({
+        subscription: sub || { plan: 'free', isActive: false },
+      });
+    } catch (error: any) {
+      console.error('Subscription fetch error:', error.message);
+      res.status(500).json({ error: 'Failed to fetch subscription' });
+    }
+  });
+
+  app.post("/api/user/subscription/cancel", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session?.user?.userId || req.session?.userId;
+      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const user = await User.findByIdAndUpdate(
+        userId,
+        {
+          $set: {
+            'subscription.isActive': false,
+            'subscription.plan': 'free',
+            'subscription.cancelledAt': new Date(),
+          }
+        },
+        { new: true }
+      ).select('subscription');
+
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      res.json({ success: true, subscription: user.subscription });
+    } catch (error: any) {
+      console.error('Subscription cancel error:', error.message);
+      res.status(500).json({ error: 'Failed to cancel subscription' });
+    }
+  });
+
+  app.patch("/api/admin/users/:id/subscription", requireAdmin, async (req, res) => {
+    try {
+      const { plan, isActive, expiresAt } = req.body;
+      const updateData: any = { 'subscription.lastVerifiedAt': new Date(), 'subscription.platform': 'admin' };
+
+      if (plan) {
+        if (!['free', 'premium', 'pro'].includes(plan)) {
+          return res.status(400).json({ error: 'plan must be free, premium, or pro' });
+        }
+        updateData['subscription.plan'] = plan;
+      }
+      if (typeof isActive === 'boolean') updateData['subscription.isActive'] = isActive;
+      if (expiresAt) {
+        const parsed = new Date(expiresAt);
+        if (isNaN(parsed.getTime())) {
+          return res.status(400).json({ error: 'expiresAt must be a valid date' });
+        }
+        updateData['subscription.expiresAt'] = parsed;
+      }
+      if (!expiresAt && plan) updateData['subscription.startedAt'] = new Date();
+
+      const user = await User.findByIdAndUpdate(
+        req.params.id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      ).select('subscription fullName email');
+
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      res.json({ success: true, user: { _id: user._id, fullName: user.fullName, email: user.email, subscription: user.subscription } });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Failed to update subscription', details: error.message });
     }
   });
 

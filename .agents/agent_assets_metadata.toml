@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "TzN3FmhLhOONF2OsVacjD"
+uri = "file://mobile-subscription-integration.md"
+type = "text"
+title = "Mobile Subscription Integration Guide"

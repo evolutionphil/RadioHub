@@ -17,6 +17,18 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getAvatarUrl } from "@/lib/utils";
 
+interface UserSubscription {
+  plan: 'free' | 'premium' | 'pro';
+  platform: 'ios' | 'android' | 'web' | 'admin';
+  productId?: string;
+  transactionId?: string;
+  expiresAt?: string;
+  startedAt?: string;
+  isTrial?: boolean;
+  isActive: boolean;
+  cancelledAt?: string;
+}
+
 interface UserProfile {
   _id: string;
   email: string;
@@ -29,6 +41,7 @@ interface UserProfile {
   googleId?: string;
   followers?: number;
   favorites?: number;
+  subscription?: UserSubscription | null;
   createdAt?: string;
   updatedAt?: string;
   isActive?: boolean;
@@ -97,6 +110,21 @@ export default function AdminUsers() {
     return new Date(dateString).toLocaleDateString();
   };
 
+  const getSubscriptionBadge = (sub?: UserSubscription | null) => {
+    if (!sub || !sub.isActive || sub.plan === 'free') return null;
+    const colors: Record<string, string> = {
+      premium: "bg-yellow-100 text-yellow-800 border-yellow-300",
+      pro: "bg-purple-100 text-purple-800 border-purple-300",
+    };
+    const icons: Record<string, string> = { premium: "⭐", pro: "💎" };
+    return (
+      <Badge className={`${colors[sub.plan] || ''} border text-xs`}>
+        {icons[sub.plan] || ''} {sub.plan.toUpperCase()}
+        {sub.isTrial && " (Trial)"}
+      </Badge>
+    );
+  };
+
   const getAuthMethodBadge = (authProvider?: string) => {
     const provider = authProvider || "Email";
     const variants: Record<string, string> = {
@@ -159,6 +187,7 @@ export default function AdminUsers() {
                     <TableHead className="font-bold">Email</TableHead>
                     <TableHead className="font-bold text-center">Followers</TableHead>
                     <TableHead className="font-bold">Auth Method</TableHead>
+                    <TableHead className="font-bold text-center">Plan</TableHead>
                     <TableHead className="font-bold text-center">Favorites</TableHead>
                     <TableHead className="font-bold">Created</TableHead>
                     <TableHead className="font-bold">Last Update</TableHead>
@@ -189,6 +218,11 @@ export default function AdminUsers() {
                         <Badge className={getAuthMethodBadge(user.authProvider)}>
                           {user.authProvider || "Email"}
                         </Badge>
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {getSubscriptionBadge(user.subscription) || (
+                          <span className="text-gray-400 text-xs">Free</span>
+                        )}
                       </TableCell>
                       <TableCell className="text-center">
                         <Badge variant="outline">{user.favorites || 0}</Badge>
@@ -313,6 +347,24 @@ export default function AdminUsers() {
                       <span className="text-gray-500">Last Update</span>
                       <p className="font-medium text-gray-900">{formatDate(editUser?.updatedAt)}</p>
                     </div>
+                    <div>
+                      <span className="text-gray-500">Subscription</span>
+                      <p className="font-medium">
+                        {getSubscriptionBadge(editUser?.subscription) || (
+                          <span className="text-gray-400">Free</span>
+                        )}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Platform</span>
+                      <p className="font-medium text-gray-900">{editUser?.subscription?.platform || "-"}</p>
+                    </div>
+                    {editUser?.subscription?.expiresAt && (
+                      <div>
+                        <span className="text-gray-500">Expires</span>
+                        <p className="font-medium text-gray-900">{formatDate(editUser.subscription.expiresAt)}</p>
+                      </div>
+                    )}
                     {editUser?.googleId && (
                       <div className="col-span-2">
                         <span className="text-gray-500">Google ID</span>

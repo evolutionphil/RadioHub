@@ -299,6 +299,19 @@ export interface IUser extends Document {
     lastActiveDate: Date;
     streakDays: number;
   };
+  subscription?: {
+    plan: 'free' | 'premium' | 'pro';
+    platform: 'ios' | 'android' | 'web' | 'admin';
+    productId?: string;
+    transactionId?: string;
+    originalTransactionId?: string;
+    expiresAt?: Date;
+    startedAt?: Date;
+    isTrial?: boolean;
+    isActive: boolean;
+    cancelledAt?: Date;
+    lastVerifiedAt?: Date;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1057,6 +1070,19 @@ const UserSchema = new Schema<IUser>({
     joinDate: { type: Date, default: Date.now },
     lastActiveDate: { type: Date, default: Date.now },
     streakDays: { type: Number, default: 0 }
+  },
+  subscription: {
+    plan: { type: String, enum: ['free', 'premium', 'pro'], default: 'free' },
+    platform: { type: String, enum: ['ios', 'android', 'web', 'admin'] },
+    productId: String,
+    transactionId: String,
+    originalTransactionId: String,
+    expiresAt: Date,
+    startedAt: Date,
+    isTrial: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: false },
+    cancelledAt: Date,
+    lastVerifiedAt: Date,
   },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

@@ -106,3 +106,10 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **sharp**: Image processing.
 - **AWS S3**: Cloud storage for logos and user avatars.
 - **multer**: Multipart form-data handling for file uploads.
+
+### Subscription System
+- **User Model Fields**: `subscription.plan` (free/premium/pro), `subscription.platform` (ios/android/web/admin), `subscription.productId`, `subscription.transactionId`, `subscription.originalTransactionId`, `subscription.expiresAt`, `subscription.startedAt`, `subscription.isTrial`, `subscription.isActive`, `subscription.cancelledAt`, `subscription.lastVerifiedAt`.
+- **Mobile API**: `POST /api/user/subscription` (report purchase, requires productId+transactionId), `GET /api/user/subscription` (check status, auto-expires), `POST /api/user/subscription/cancel`.
+- **Admin API**: `PATCH /api/admin/users/:id/subscription` (admin override).
+- **Admin UI**: Premium/Pro badge in `/admin/users` table + edit dialog.
+- **Integration Doc**: `mobile-subscription-integration.md` for React Native developer.
