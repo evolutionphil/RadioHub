@@ -18,11 +18,11 @@ import { useToast } from "@/hooks/use-toast";
 import { getAvatarUrl } from "@/lib/utils";
 
 interface UserSubscription {
-  plan: 'free' | 'premium' | 'pro';
+  plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
   platform: 'ios' | 'android' | 'web' | 'admin';
   productId?: string;
   transactionId?: string;
-  expiresAt?: string;
+  expiresAt?: string | null;
   startedAt?: string;
   isTrial?: boolean;
   isActive: boolean;
@@ -111,15 +111,28 @@ export default function AdminUsers() {
   };
 
   const getSubscriptionBadge = (sub?: UserSubscription | null) => {
-    if (!sub || !sub.isActive || sub.plan === 'free') return null;
+    if (!sub || !sub.isActive || sub.plan === 'none') return null;
     const colors: Record<string, string> = {
-      premium: "bg-yellow-100 text-yellow-800 border-yellow-300",
-      pro: "bg-purple-100 text-purple-800 border-purple-300",
+      remove_ads: "bg-blue-100 text-blue-800 border-blue-300",
+      premium_monthly: "bg-yellow-100 text-yellow-800 border-yellow-300",
+      premium_yearly: "bg-orange-100 text-orange-800 border-orange-300",
+      premium_lifetime: "bg-purple-100 text-purple-800 border-purple-300",
     };
-    const icons: Record<string, string> = { premium: "⭐", pro: "💎" };
+    const labels: Record<string, string> = {
+      remove_ads: "No Ads",
+      premium_monthly: "Premium (M)",
+      premium_yearly: "Premium (Y)",
+      premium_lifetime: "Lifetime",
+    };
+    const icons: Record<string, string> = {
+      remove_ads: "🚫",
+      premium_monthly: "⭐",
+      premium_yearly: "⭐",
+      premium_lifetime: "💎",
+    };
     return (
       <Badge className={`${colors[sub.plan] || ''} border text-xs`}>
-        {icons[sub.plan] || ''} {sub.plan.toUpperCase()}
+        {icons[sub.plan] || ''} {labels[sub.plan] || sub.plan}
         {sub.isTrial && " (Trial)"}
       </Badge>
     );
@@ -221,7 +234,7 @@ export default function AdminUsers() {
                       </TableCell>
                       <TableCell className="text-center">
                         {getSubscriptionBadge(user.subscription) || (
-                          <span className="text-gray-400 text-xs">Free</span>
+                          <span className="text-gray-400 text-xs">-</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center">
@@ -351,7 +364,7 @@ export default function AdminUsers() {
                       <span className="text-gray-500">Subscription</span>
                       <p className="font-medium">
                         {getSubscriptionBadge(editUser?.subscription) || (
-                          <span className="text-gray-400">Free</span>
+                          <span className="text-gray-400">None</span>
                         )}
                       </p>
                     </div>

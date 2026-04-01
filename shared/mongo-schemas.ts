@@ -300,12 +300,14 @@ export interface IUser extends Document {
     streakDays: number;
   };
   subscription?: {
-    plan: 'free' | 'premium' | 'pro';
+    plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
     platform: 'ios' | 'android' | 'web' | 'admin';
     productId?: string;
     transactionId?: string;
     originalTransactionId?: string;
-    expiresAt?: Date;
+    receipt?: string;
+    purchaseToken?: string;
+    expiresAt?: Date | null;
     startedAt?: Date;
     isTrial?: boolean;
     isActive: boolean;
@@ -1072,12 +1074,14 @@ const UserSchema = new Schema<IUser>({
     streakDays: { type: Number, default: 0 }
   },
   subscription: {
-    plan: { type: String, enum: ['free', 'premium', 'pro'], default: 'free' },
+    plan: { type: String, enum: ['none', 'remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'], default: 'none' },
     platform: { type: String, enum: ['ios', 'android', 'web', 'admin'] },
     productId: String,
     transactionId: String,
     originalTransactionId: String,
-    expiresAt: Date,
+    receipt: String,
+    purchaseToken: String,
+    expiresAt: { type: Date, default: null },
     startedAt: Date,
     isTrial: { type: Boolean, default: false },
     isActive: { type: Boolean, default: false },

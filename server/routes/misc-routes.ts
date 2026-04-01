@@ -254,61 +254,100 @@ export function registerMiscRoutes(app: Express, deps: any) {
 
   // ===== SUBSCRIPTION MANAGEMENT =====
 
+  const VALID_PLANS = ['none', 'remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'] as const;
+  type PremiumPlan = typeof VALID_PLANS[number];
+
+  const PRODUCT_TO_PLAN: Record<string, PremiumPlan> = {
+    'megaradio_remove_ads_yearly1': 'remove_ads',
+    'megaradio_premium_monthly1': 'premium_monthly',
+    'megaradio_premium_yearly': 'premium_yearly',
+    'megaradio_premium_lifetime': 'premium_lifetime',
+  };
+
+  const PLAN_FEATURES: Record<PremiumPlan, string[]> = {
+    'none': [],
+    'remove_ads': ['remove_ads'],
+    'premium_monthly': ['remove_ads', 'song_info', 'spotify_link', 'youtube_link', 'hd_stream', 'song_history', 'stream_record'],
+    'premium_yearly': ['remove_ads', 'song_info', 'spotify_link', 'youtube_link', 'hd_stream', 'song_history', 'stream_record'],
+    'premium_lifetime': ['remove_ads', 'song_info', 'spotify_link', 'youtube_link', 'hd_stream', 'song_history', 'stream_record'],
+  };
+
+  const PLAN_RANK: Record<PremiumPlan, number> = {
+    'none': 0, 'remove_ads': 1, 'premium_monthly': 2, 'premium_yearly': 3, 'premium_lifetime': 4,
+  };
+
+  function getExpiryForPlan(plan: PremiumPlan): Date | null {
+    const now = new Date();
+    switch (plan) {
+      case 'remove_ads':
+      case 'premium_yearly':
+        return new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
+      case 'premium_monthly':
+        return new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      case 'premium_lifetime':
+        return null;
+      default:
+        return null;
+    }
+  }
+
   app.post("/api/user/subscription", requireAuth, async (req, res) => {
     try {
       const userId = req.session?.user?.userId || req.session?.userId;
       if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-      const { plan, platform, productId, transactionId, originalTransactionId, expiresAt, isTrial } = req.body;
+      const { plan, platform, productId, transactionId, originalTransactionId, receipt, purchaseToken, expiresAt, isTrial } = req.body;
 
-      if (!plan || !platform) {
-        return res.status(400).json({ error: 'plan and platform are required' });
+      if (!platform || !['ios', 'android'].includes(platform)) {
+        return res.status(400).json({ error: 'platform must be ios or android' });
       }
-      if (!['free', 'premium', 'pro'].includes(plan)) {
-        return res.status(400).json({ error: 'plan must be free, premium, or pro' });
-      }
-      if (!['ios', 'android', 'web'].includes(platform)) {
-        return res.status(400).json({ error: 'platform must be ios, android, or web' });
-      }
-
       if (!productId || !transactionId) {
-        return res.status(400).json({ error: 'productId and transactionId are required for paid plans' });
+        return res.status(400).json({ error: 'productId and transactionId are required' });
+      }
+
+      const resolvedPlan = plan && VALID_PLANS.includes(plan) ? plan : PRODUCT_TO_PLAN[productId];
+      if (!resolvedPlan || resolvedPlan === 'none') {
+        return res.status(400).json({ error: `Unknown productId: ${productId}. Valid: ${Object.keys(PRODUCT_TO_PLAN).join(', ')}` });
       }
 
       const existingUser = await User.findById(userId).select('subscription').lean();
       if (existingUser) {
         const existingSub = (existingUser as any).subscription;
         if (existingSub?.transactionId === transactionId && existingSub?.isActive) {
-          return res.json({ success: true, subscription: existingSub, note: 'already_active' });
+          return res.json({
+            success: true,
+            plan: existingSub.plan,
+            expiryDate: existingSub.expiresAt || null,
+            isActive: true,
+            features: PLAN_FEATURES[existingSub.plan as PremiumPlan] || [],
+            note: 'already_active',
+          });
         }
       }
 
-      let parsedExpiry: Date | undefined;
+      let parsedExpiry: Date | null;
       if (expiresAt) {
-        parsedExpiry = new Date(expiresAt);
-        if (isNaN(parsedExpiry.getTime())) {
-          return res.status(400).json({ error: 'expiresAt must be a valid ISO 8601 date' });
-        }
+        const d = new Date(expiresAt);
+        parsedExpiry = isNaN(d.getTime()) ? getExpiryForPlan(resolvedPlan) : d;
+      } else {
+        parsedExpiry = getExpiryForPlan(resolvedPlan);
       }
 
       const subscriptionData: any = {
-        'subscription.plan': plan,
+        'subscription.plan': resolvedPlan,
         'subscription.platform': platform,
-        'subscription.isActive': plan !== 'free',
+        'subscription.productId': productId,
+        'subscription.transactionId': transactionId,
+        'subscription.isActive': true,
         'subscription.lastVerifiedAt': new Date(),
         'subscription.startedAt': new Date(),
+        'subscription.expiresAt': parsedExpiry,
       };
 
-      subscriptionData['subscription.productId'] = productId;
-      subscriptionData['subscription.transactionId'] = transactionId;
       if (originalTransactionId) subscriptionData['subscription.originalTransactionId'] = originalTransactionId;
-      if (parsedExpiry) subscriptionData['subscription.expiresAt'] = parsedExpiry;
+      if (receipt) subscriptionData['subscription.receipt'] = receipt;
+      if (purchaseToken) subscriptionData['subscription.purchaseToken'] = purchaseToken;
       if (typeof isTrial === 'boolean') subscriptionData['subscription.isTrial'] = isTrial;
-
-      if (plan === 'free') {
-        subscriptionData['subscription.cancelledAt'] = new Date();
-        subscriptionData['subscription.isActive'] = false;
-      }
 
       const user = await User.findByIdAndUpdate(
         userId,
@@ -320,7 +359,10 @@ export function registerMiscRoutes(app: Express, deps: any) {
 
       res.json({
         success: true,
-        subscription: user.subscription,
+        plan: resolvedPlan,
+        expiryDate: parsedExpiry,
+        isActive: true,
+        features: PLAN_FEATURES[resolvedPlan],
       });
     } catch (error: any) {
       console.error('Subscription update error:', error.message);
@@ -337,20 +379,22 @@ export function registerMiscRoutes(app: Express, deps: any) {
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       const sub = (user as any).subscription;
-      if (sub?.expiresAt && new Date(sub.expiresAt) < new Date() && sub.isActive) {
+      if (!sub || sub.plan === 'none') {
+        return res.json({ plan: 'none', expiryDate: null, isActive: false, features: [] });
+      }
+
+      if (sub.plan !== 'premium_lifetime' && sub.expiresAt && new Date(sub.expiresAt) < new Date() && sub.isActive) {
         await User.findByIdAndUpdate(userId, {
-          $set: {
-            'subscription.isActive': false,
-            'subscription.plan': 'free',
-          }
+          $set: { 'subscription.isActive': false, 'subscription.plan': 'none' }
         });
-        return res.json({
-          subscription: { ...sub, isActive: false, plan: 'free', expired: true },
-        });
+        return res.json({ plan: 'none', expiryDate: null, isActive: false, features: [], expired: true });
       }
 
       res.json({
-        subscription: sub || { plan: 'free', isActive: false },
+        plan: sub.plan,
+        expiryDate: sub.expiresAt || null,
+        isActive: sub.isActive,
+        features: PLAN_FEATURES[sub.plan as PremiumPlan] || [],
       });
     } catch (error: any) {
       console.error('Subscription fetch error:', error.message);
@@ -368,7 +412,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
         {
           $set: {
             'subscription.isActive': false,
-            'subscription.plan': 'free',
+            'subscription.plan': 'none',
             'subscription.cancelledAt': new Date(),
           }
         },
@@ -377,7 +421,7 @@ export function registerMiscRoutes(app: Express, deps: any) {
 
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      res.json({ success: true, subscription: user.subscription });
+      res.json({ success: true, plan: 'none', isActive: false, features: [] });
     } catch (error: any) {
       console.error('Subscription cancel error:', error.message);
       res.status(500).json({ error: 'Failed to cancel subscription' });
@@ -390,18 +434,23 @@ export function registerMiscRoutes(app: Express, deps: any) {
       const updateData: any = { 'subscription.lastVerifiedAt': new Date(), 'subscription.platform': 'admin' };
 
       if (plan) {
-        if (!['free', 'premium', 'pro'].includes(plan)) {
-          return res.status(400).json({ error: 'plan must be free, premium, or pro' });
+        if (!VALID_PLANS.includes(plan)) {
+          return res.status(400).json({ error: `plan must be one of: ${VALID_PLANS.join(', ')}` });
         }
         updateData['subscription.plan'] = plan;
+        updateData['subscription.isActive'] = plan !== 'none';
       }
       if (typeof isActive === 'boolean') updateData['subscription.isActive'] = isActive;
-      if (expiresAt) {
-        const parsed = new Date(expiresAt);
-        if (isNaN(parsed.getTime())) {
-          return res.status(400).json({ error: 'expiresAt must be a valid date' });
+      if (expiresAt !== undefined) {
+        if (expiresAt === null) {
+          updateData['subscription.expiresAt'] = null;
+        } else {
+          const parsed = new Date(expiresAt);
+          if (isNaN(parsed.getTime())) {
+            return res.status(400).json({ error: 'expiresAt must be a valid date or null' });
+          }
+          updateData['subscription.expiresAt'] = parsed;
         }
-        updateData['subscription.expiresAt'] = parsed;
       }
       if (!expiresAt && plan) updateData['subscription.startedAt'] = new Date();
 
@@ -413,7 +462,17 @@ export function registerMiscRoutes(app: Express, deps: any) {
 
       if (!user) return res.status(404).json({ error: 'User not found' });
 
-      res.json({ success: true, user: { _id: user._id, fullName: user.fullName, email: user.email, subscription: user.subscription } });
+      const activePlan = user.subscription?.plan as PremiumPlan || 'none';
+      res.json({
+        success: true,
+        user: {
+          _id: user._id,
+          fullName: user.fullName,
+          email: user.email,
+          subscription: user.subscription,
+          features: PLAN_FEATURES[activePlan] || [],
+        },
+      });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to update subscription', details: error.message });
     }

@@ -108,8 +108,11 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **multer**: Multipart form-data handling for file uploads.
 
 ### Subscription System
-- **User Model Fields**: `subscription.plan` (free/premium/pro), `subscription.platform` (ios/android/web/admin), `subscription.productId`, `subscription.transactionId`, `subscription.originalTransactionId`, `subscription.expiresAt`, `subscription.startedAt`, `subscription.isTrial`, `subscription.isActive`, `subscription.cancelledAt`, `subscription.lastVerifiedAt`.
-- **Mobile API**: `POST /api/user/subscription` (report purchase, requires productId+transactionId), `GET /api/user/subscription` (check status, auto-expires), `POST /api/user/subscription/cancel`.
+- **Plans**: `none` | `remove_ads` | `premium_monthly` | `premium_yearly` | `premium_lifetime` (matches mobile app exactly).
+- **Product IDs**: `megaradio_remove_ads_yearly1`, `megaradio_premium_monthly1`, `megaradio_premium_yearly`, `megaradio_premium_lifetime`.
+- **Feature Matrix**: `remove_ads` plan only removes ads. Premium plans (monthly/yearly/lifetime) unlock all features: remove_ads, song_info, spotify_link, youtube_link, hd_stream, song_history, stream_record.
+- **User Model Fields**: `subscription.plan`, `subscription.platform` (ios/android/web/admin), `subscription.productId`, `subscription.transactionId`, `subscription.originalTransactionId`, `subscription.receipt`, `subscription.purchaseToken`, `subscription.expiresAt` (null for lifetime), `subscription.startedAt`, `subscription.isTrial`, `subscription.isActive`, `subscription.cancelledAt`, `subscription.lastVerifiedAt`.
+- **Mobile API**: `POST /api/user/subscription` (report purchase, requires productId+transactionId, auto-resolves plan from productId), `GET /api/user/subscription` (check status with features array, auto-expires non-lifetime), `POST /api/user/subscription/cancel`.
 - **Admin API**: `PATCH /api/admin/users/:id/subscription` (admin override).
-- **Admin UI**: Premium/Pro badge in `/admin/users` table + edit dialog.
+- **Admin UI**: Badges in `/admin/users` — No Ads (blue), Premium M/Y (yellow/orange), Lifetime (purple).
 - **Integration Doc**: `mobile-subscription-integration.md` for React Native developer.

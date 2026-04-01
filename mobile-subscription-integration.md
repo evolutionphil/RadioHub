@@ -1,9 +1,35 @@
-# MegaRadio - Mobile Subscription Integration Guide
+# MegaRadio - Mobile Subscription Integration Guide (React Native)
 
 ## Overview
-Backend API endpoints for managing user subscriptions from iOS/Android (React Native) apps.
+Backend API endpoints for managing user subscriptions from iOS/Android React Native apps.
 
 **Base URL:** `https://themegaradio.com`
+
+---
+
+## Plan Structure
+
+### Product ID to Plan Mapping
+| Product ID (Store) | Plan Name | Type | Duration |
+|---|---|---|---|
+| `megaradio_remove_ads_yearly1` | `remove_ads` | Subscription (auto-renewable) | 1 Year |
+| `megaradio_premium_monthly1` | `premium_monthly` | Subscription (auto-renewable) | 1 Month (7 day free trial) |
+| `megaradio_premium_yearly` | `premium_yearly` | Subscription (auto-renewable) | 1 Year |
+| `megaradio_premium_lifetime` | `premium_lifetime` | In-App Purchase (non-consumable) | Lifetime |
+
+### Plan Feature Matrix
+| Feature | none | remove_ads | premium_monthly | premium_yearly | premium_lifetime |
+|---|---|---|---|---|---|
+| remove_ads | - | YES | YES | YES | YES |
+| song_info | - | - | YES | YES | YES |
+| spotify_link | - | - | YES | YES | YES |
+| youtube_link | - | - | YES | YES | YES |
+| hd_stream | - | - | YES | YES | YES |
+| song_history | - | - | YES | YES | YES |
+| stream_record | - | - | YES | YES | YES |
+
+### Plan Rank (for restore, highest wins)
+`none(0) < remove_ads(1) < premium_monthly(2) < premium_yearly(3) < premium_lifetime(4)`
 
 ---
 
@@ -13,8 +39,6 @@ All subscription endpoints require the user to be logged in. Send the auth token
 ```
 Authorization: Bearer <user_auth_token>
 ```
-
-The auth token is obtained after login (Google OAuth or email/password login).
 
 ---
 
@@ -34,11 +58,13 @@ Authorization: Bearer <token>
 **Request Body:**
 ```json
 {
-  "plan": "premium",
   "platform": "ios",
-  "productId": "com.megaradio.premium.monthly",
+  "productId": "megaradio_premium_monthly1",
+  "plan": "premium_monthly",
   "transactionId": "1000000123456789",
   "originalTransactionId": "1000000123456789",
+  "receipt": "<base64_receipt_data>",
+  "purchaseToken": "<google_play_purchase_token>",
   "expiresAt": "2026-05-01T00:00:00.000Z",
   "isTrial": false
 }
@@ -48,65 +74,80 @@ Authorization: Bearer <token>
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `plan` | string | YES | `"premium"` or `"pro"` |
 | `platform` | string | YES | `"ios"` or `"android"` |
-| `productId` | string | YES | Store product ID (e.g., `com.megaradio.premium.monthly`) |
+| `productId` | string | YES | Store product ID (e.g., `megaradio_premium_monthly1`) |
 | `transactionId` | string | YES | Transaction ID from Apple/Google |
+| `plan` | string | no | Plan name. If omitted, auto-resolved from productId |
 | `originalTransactionId` | string | no | Original transaction ID (for renewals, iOS) |
-| `expiresAt` | string (ISO 8601) | no | When the subscription expires |
-| `isTrial` | boolean | no | `true` if this is a free trial |
+| `receipt` | string | no | Apple receipt data (base64) or Google receipt |
+| `purchaseToken` | string | no | Android only - Google Play purchase token |
+| `expiresAt` | string (ISO 8601) | no | When the subscription expires. Auto-calculated if omitted |
+| `isTrial` | boolean | no | `true` if this is a free trial period |
+
+**Note:** If `plan` is not sent, the backend automatically resolves it from `productId` using the mapping table above.
 
 **Response (200):**
 ```json
 {
   "success": true,
-  "subscription": {
-    "plan": "premium",
-    "platform": "ios",
-    "productId": "com.megaradio.premium.monthly",
-    "transactionId": "1000000123456789",
-    "expiresAt": "2026-05-01T00:00:00.000Z",
-    "startedAt": "2026-04-01T12:00:00.000Z",
-    "isTrial": false,
-    "isActive": true,
-    "lastVerifiedAt": "2026-04-01T12:00:00.000Z"
-  }
+  "plan": "premium_monthly",
+  "expiryDate": "2026-05-01T00:00:00.000Z",
+  "isActive": true,
+  "features": ["remove_ads", "song_info", "spotify_link", "youtube_link", "hd_stream", "song_history", "stream_record"]
+}
+```
+
+**For lifetime purchases, `expiryDate` is `null`:**
+```json
+{
+  "success": true,
+  "plan": "premium_lifetime",
+  "expiryDate": null,
+  "isActive": true,
+  "features": ["remove_ads", "song_info", "spotify_link", "youtube_link", "hd_stream", "song_history", "stream_record"]
 }
 ```
 
 ---
 
-### 2. Check Current Subscription
+### 2. Check Current Subscription (App Launch)
 **`GET /api/user/subscription`**
 
-Call this on app launch and periodically to verify subscription status. The server automatically marks expired subscriptions as inactive.
+Call this on every app launch to sync subscription status. The server automatically marks expired subscriptions as inactive (except lifetime).
 
 **Headers:**
 ```
 Authorization: Bearer <token>
 ```
 
-**Response (200):**
+**Response (active subscription):**
 ```json
 {
-  "subscription": {
-    "plan": "premium",
-    "platform": "ios",
-    "isActive": true,
-    "expiresAt": "2026-05-01T00:00:00.000Z",
-    "isTrial": false
-  }
+  "plan": "premium_monthly",
+  "expiryDate": "2026-05-01T00:00:00.000Z",
+  "isActive": true,
+  "features": ["remove_ads", "song_info", "spotify_link", "youtube_link", "hd_stream", "song_history", "stream_record"]
 }
 ```
 
-**If expired:**
+**Response (no subscription):**
 ```json
 {
-  "subscription": {
-    "plan": "free",
-    "isActive": false,
-    "expired": true
-  }
+  "plan": "none",
+  "expiryDate": null,
+  "isActive": false,
+  "features": []
+}
+```
+
+**Response (expired):**
+```json
+{
+  "plan": "none",
+  "expiryDate": null,
+  "isActive": false,
+  "features": [],
+  "expired": true
 }
 ```
 
@@ -115,7 +156,7 @@ Authorization: Bearer <token>
 ### 3. Cancel Subscription
 **`POST /api/user/subscription/cancel`**
 
-Call this when the user cancels their subscription from within the app. Note: This only updates the backend record. The actual App Store/Play Store cancellation must be handled separately by the user.
+Call when the user cancels. Note: Actual App Store/Play Store cancellation is handled by the user through their device settings.
 
 **Headers:**
 ```
@@ -126,60 +167,33 @@ Authorization: Bearer <token>
 ```json
 {
   "success": true,
-  "subscription": {
-    "plan": "free",
-    "isActive": false,
-    "cancelledAt": "2026-04-01T12:00:00.000Z"
-  }
+  "plan": "none",
+  "isActive": false,
+  "features": []
 }
 ```
 
 ---
 
-## React Native Integration Example
+## React Native Integration
 
-### 1. Install `react-native-iap`
-```bash
-npm install react-native-iap
-# or
-yarn add react-native-iap
-```
-
-### 2. Purchase Flow (iOS & Android)
+### Purchase Flow
 ```typescript
 import * as RNIap from 'react-native-iap';
 import { Platform } from 'react-native';
 
-// Product IDs (define these in App Store Connect / Google Play Console)
-const PRODUCT_IDS = {
-  premium_monthly: 'com.megaradio.premium.monthly',
-  premium_yearly: 'com.megaradio.premium.yearly',
-  pro_monthly: 'com.megaradio.pro.monthly',
-  pro_yearly: 'com.megaradio.pro.yearly',
+const PRODUCT_TO_PLAN: Record<string, string> = {
+  'megaradio_remove_ads_yearly1': 'remove_ads',
+  'megaradio_premium_monthly1': 'premium_monthly',
+  'megaradio_premium_yearly': 'premium_yearly',
+  'megaradio_premium_lifetime': 'premium_lifetime',
 };
 
-// Initialize on app start
-await RNIap.initConnection();
-
-// Get available products
-const products = await RNIap.getSubscriptions({
-  skus: Object.values(PRODUCT_IDS),
-});
-
-// Purchase
-const purchase = await RNIap.requestSubscription({
-  sku: PRODUCT_IDS.premium_monthly,
-});
-```
-
-### 3. Report Purchase to Backend
-```typescript
 const reportSubscription = async (
   purchase: RNIap.Purchase,
-  plan: 'premium' | 'pro',
   authToken: string
 ) => {
-  const platform = Platform.OS; // 'ios' or 'android'
+  const plan = PRODUCT_TO_PLAN[purchase.productId] || 'premium_monthly';
 
   const response = await fetch('https://themegaradio.com/api/user/subscription', {
     method: 'POST',
@@ -188,14 +202,13 @@ const reportSubscription = async (
       'Authorization': `Bearer ${authToken}`,
     },
     body: JSON.stringify({
-      plan,
-      platform,
+      platform: Platform.OS,
       productId: purchase.productId,
+      plan,
       transactionId: purchase.transactionId,
       originalTransactionId: purchase.originalTransactionIdIOS || purchase.transactionId,
-      expiresAt: purchase.transactionDate
-        ? new Date(Number(purchase.transactionDate) + 30 * 24 * 60 * 60 * 1000).toISOString()
-        : undefined,
+      receipt: Platform.OS === 'ios' ? purchase.transactionReceipt : undefined,
+      purchaseToken: Platform.OS === 'android' ? purchase.purchaseToken : undefined,
       isTrial: false,
     }),
   });
@@ -203,13 +216,10 @@ const reportSubscription = async (
   const data = await response.json();
 
   if (data.success) {
-    // Acknowledge the purchase (important!)
     if (Platform.OS === 'ios') {
       await RNIap.finishTransaction({ purchase });
     } else {
-      await RNIap.acknowledgePurchaseAndroid({
-        token: purchase.purchaseToken!,
-      });
+      await RNIap.acknowledgePurchaseAndroid({ token: purchase.purchaseToken! });
     }
   }
 
@@ -217,54 +227,37 @@ const reportSubscription = async (
 };
 ```
 
-### 4. Check Subscription on App Launch
+### Check on App Launch
 ```typescript
 const checkSubscription = async (authToken: string) => {
   const response = await fetch('https://themegaradio.com/api/user/subscription', {
-    headers: {
-      'Authorization': `Bearer ${authToken}`,
-    },
+    headers: { 'Authorization': `Bearer ${authToken}` },
   });
-
   const data = await response.json();
-  // data.subscription.plan => 'free' | 'premium' | 'pro'
-  // data.subscription.isActive => true | false
-  return data.subscription;
+  // data.plan => 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime'
+  // data.isActive => true | false
+  // data.features => ['remove_ads', 'song_info', ...] or []
+  return data;
 };
 ```
 
-### 5. Listen for Subscription Updates (Renewals/Cancellations)
+### Listen for Renewals
 ```typescript
 useEffect(() => {
-  const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(
-    async (purchase) => {
-      const plan = purchase.productId.includes('pro') ? 'pro' : 'premium';
-      await reportSubscription(purchase, plan, authToken);
-    }
-  );
+  const purchaseUpdateSub = RNIap.purchaseUpdatedListener(async (purchase) => {
+    await reportSubscription(purchase, authToken);
+  });
 
-  const purchaseErrorSubscription = RNIap.purchaseErrorListener(
-    (error) => {
-      console.warn('Purchase error:', error);
-    }
-  );
+  const purchaseErrorSub = RNIap.purchaseErrorListener((error) => {
+    console.warn('Purchase error:', error);
+  });
 
   return () => {
-    purchaseUpdateSubscription.remove();
-    purchaseErrorSubscription.remove();
+    purchaseUpdateSub.remove();
+    purchaseErrorSub.remove();
   };
 }, []);
 ```
-
----
-
-## Subscription Plans
-
-| Plan | Features |
-|------|----------|
-| `free` | Default. Ads shown, basic features. |
-| `premium` | No ads, higher audio quality, offline favorites. |
-| `pro` | All premium features + unlimited skips, exclusive content. |
 
 ---
 
@@ -272,26 +265,29 @@ useEffect(() => {
 
 | Status | Body | Meaning |
 |--------|------|---------|
-| 400 | `{ "error": "plan and platform are required" }` | Missing required fields |
-| 400 | `{ "error": "plan must be free, premium, or pro" }` | Invalid plan value |
+| 400 | `{ "error": "platform must be ios or android" }` | Invalid platform |
+| 400 | `{ "error": "productId and transactionId are required" }` | Missing required fields |
+| 400 | `{ "error": "Unknown productId: ..." }` | productId not in mapping table |
 | 401 | `{ "error": "Not authenticated" }` | Auth token missing or invalid |
 | 404 | `{ "error": "User not found" }` | User deleted or invalid token |
 | 500 | `{ "error": "Failed to update subscription" }` | Server error |
 
 ---
 
-## Important Notes for Mobile Developer
+## Important Notes
 
-1. **Always report after purchase**: Call `POST /api/user/subscription` immediately after a successful in-app purchase, before calling `finishTransaction`.
+1. **productId and transactionId are required** for all purchase reports.
 
-2. **Check on every app launch**: Call `GET /api/user/subscription` on app start to sync status. The server auto-expires subscriptions past their `expiresAt` date.
+2. **plan field is optional** - if omitted, auto-resolved from productId. If sent, must match: `none`, `remove_ads`, `premium_monthly`, `premium_yearly`, `premium_lifetime`.
 
-3. **Handle renewals**: Use `purchaseUpdatedListener` to catch automatic renewals and report them to the backend.
+3. **Lifetime purchases** have `expiryDate: null` and never expire.
 
-4. **Cancellation**: When a user cancels via App Store/Play Store settings, the subscription stays active until `expiresAt`. On next check, the server marks it as expired.
+4. **Auto-expiry**: Server automatically marks non-lifetime subscriptions as expired when `expiresAt` is past. Check on every app launch with `GET /api/user/subscription`.
 
-5. **Transaction IDs are important**: Send `transactionId` and `originalTransactionId` so the backend can track renewals and prevent duplicate entries.
+5. **Duplicate prevention**: If the same `transactionId` is reported twice, the second call returns the existing subscription without modification.
 
-6. **Product IDs**: You need to create these subscription products in App Store Connect (iOS) and Google Play Console (Android) with matching IDs.
+6. **Restore purchases**: After `getAvailablePurchases()`, report each purchase to the backend. The backend stores the latest state.
 
-7. **Testing**: Use sandbox accounts on iOS and test accounts on Android for testing purchases without real charges.
+7. **remove_ads plan**: Only removes ads. Does NOT unlock premium features (song_info, hd_stream, etc.).
+
+8. **Default prices** (fallback): Remove Ads = 5.99/yr, Premium Monthly = 3.99/mo, Premium Yearly = 29.99/yr, Lifetime = 59.99 one-time.
