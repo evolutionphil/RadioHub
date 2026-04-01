@@ -12,3 +12,9 @@ id = "GIubXCReyDgUyKFtlA6iM"
 uri = "file://mobile-developer-gorev-listesi.md"
 type = "text"
 title = "Mobil Developer Gorev Listesi - IAP Backend Entegrasyonu"
+
+[[outputs]]
+id = "hzQ2N032lGr8CAdy8Fyn6"
+uri = "file://mobile-favorites-integration.md"
+type = "text"
+title = "Mobil Favori Sistemi — Developer Entegrasyon Dokumani"
