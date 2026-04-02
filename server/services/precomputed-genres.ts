@@ -3,6 +3,7 @@ import { Station, Genre } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import { sleep } from '../utils/event-loop-yield';
+import { trackOperation } from '../utils/operation-tracker';
 
 interface PrecomputedGenre {
   _id: string;
@@ -44,6 +45,7 @@ export class PrecomputedGenresService {
     const dbName = this.resolveCountry(countryIdentifier);
     const isGlobal = !dbName;
     
+    return trackOperation('compute-genres', async () => {
     const stationFilter: any = isGlobal ? {} : normalizeCountryFilter(dbName);
 
     const genreCounts = await Station.aggregate([
@@ -144,6 +146,7 @@ export class PrecomputedGenresService {
       computedAt: Date.now(),
       countryName: dbName || 'global'
     };
+    }, countryIdentifier || 'global');
   }
 
   static async getGenres(countryIdentifier?: string): Promise<PrecomputedGenresData> {

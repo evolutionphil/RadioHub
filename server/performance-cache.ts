@@ -1,6 +1,7 @@
 import NodeCache from 'node-cache';
 import { logger } from './utils/logger';
 import { sleep } from './utils/event-loop-yield';
+import { trackOperation } from './utils/operation-tracker';
 
 // High-performance caching system for SEO optimization
 export class PerformanceCache {
@@ -303,6 +304,7 @@ export class PerformanceCache {
   
   // Warm up critical caches on startup
   async warmupCaches(): Promise<void> {
+    return trackOperation('warmup-translations', async () => {
     logger.log('🔥 CACHE: Starting lightweight cache warmup (top 10 languages only)...');
     
     const criticalLanguages = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
@@ -327,10 +329,12 @@ export class PerformanceCache {
     } catch (error) {
       console.error('❌ CACHE: Warmup failed:', error);
     }
+    });
   }
   
   // Warm up similar stations pools for all countries (called in background after boot)
   async warmupSimilarStations(): Promise<void> {
+    return trackOperation('warmup-similar-stations', async () => {
     logger.log('🔥 CACHE: Warming up similar stations pools (top 10 countries + global)...');
     
     try {
@@ -374,6 +378,7 @@ export class PerformanceCache {
     } catch (error) {
       console.error('❌ CACHE: Similar stations warmup failed:', error);
     }
+    });
   }
 }
 

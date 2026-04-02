@@ -3,6 +3,7 @@ import { Translation, Station, SeoMetadata } from '../shared/mongo-schemas';
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@shared/url-translations';
+import { trackOperation } from './utils/operation-tracker';
 
 export interface StaticPageData {
   language: string;
@@ -125,8 +126,7 @@ export class SeoRenderer {
   }
   
   async renderStaticPage(url: string, domain: string = '', preferredLanguage?: string): Promise<StaticPageData> {
-    // CRITICAL SEO FIX: Strip query string before language detection
-    // Prevents /en?page=2 → canonical /en/en double-prefix bug
+    return trackOperation('seo-render', async () => {
     const cleanUrl = url.split('?')[0].split('#')[0];
 
     // Get language from URL path, but prefer user's stored preference if available
@@ -391,6 +391,7 @@ export class SeoRenderer {
     }
     
     return pageData;
+    }, url);
   }
 
   generateEnhancedSeoTags(

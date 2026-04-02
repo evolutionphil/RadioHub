@@ -2,6 +2,7 @@ import { CacheManager } from '../cache';
 import { Station } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { sleep } from '../utils/event-loop-yield';
+import { trackOperation } from '../utils/operation-tracker';
 
 interface PrecomputedStation {
   _id: string;
@@ -102,6 +103,7 @@ export class PrecomputedStationsService {
       return { stations: [], total: 0, computedAt: Date.now(), countryName: '' };
     }
 
+    return trackOperation('precompute-country', async () => {
     const stations = await Station.aggregate([
       {
         $match: {
@@ -146,6 +148,7 @@ export class PrecomputedStationsService {
     await CacheManager.set(this.getCacheKey(countryName), data, { ttl: CACHE_TTL });
 
     return data;
+    }, countryName);
   }
 
   static async computeCountryStations(countryCode: string): Promise<PrecomputedCountryData> {

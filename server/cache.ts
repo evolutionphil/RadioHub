@@ -1,6 +1,7 @@
 import NodeCache from 'node-cache';
 import { createClient } from 'redis';
 import { logger } from './utils/logger';
+import { startOperation, endOperation } from './utils/operation-tracker';
 
 // In-memory cache with TTL
 const memoryCache = new NodeCache({ 
@@ -77,20 +78,22 @@ export class CacheManager {
     }
   }
 
-  // Set cached data
   static async set<T>(key: string, value: T, options: CacheOptions = {}): Promise<void> {
     try {
-      const ttl = options.ttl || 600; // 10 minutes default
+      const ttl = options.ttl || 600;
 
-      // Always store in memory cache
       memoryCache.set(key, value, ttl);
 
-      // Store in Redis if available
       if (redisClient && redisClient.isOpen && (!options.useRedis || options.useRedis)) {
-        await redisClient.setEx(key, ttl, JSON.stringify(value));
+        const opId = startOperation('cache-stringify', key);
+        try {
+          const serialized = JSON.stringify(value);
+          await redisClient.setEx(key, ttl, serialized);
+        } finally {
+          endOperation(opId);
+        }
       }
     } catch (error) {
-      // console.error('Cache set error:', error);
     }
   }
 
