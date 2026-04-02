@@ -8,6 +8,9 @@ import { Station } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
 
+sharp.cache({ memory: 50, files: 20, items: 100 });
+sharp.concurrency(1);
+
 const gunzip = promisify(zlib.gunzip);
 const inflate = promisify(zlib.inflate);
 

@@ -203,7 +203,9 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
     },
     node: {
       version: process.version,
-      maxOldSpaceSize: '4096MB'
+      maxOldSpaceSize: '4096MB',
+      execArgv: process.execArgv,
+      gcAvailable: typeof (globalThis as any).gc === 'function'
     },
     diagnostics: (() => {
       try {
@@ -425,8 +427,8 @@ app.use(compression({
   }
 }));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: false, limit: '50mb' }));
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 
 // Cache headers middleware for static assets optimization
 app.use((req, res, next) => {

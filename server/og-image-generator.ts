@@ -5,6 +5,9 @@ import fsp from 'fs/promises';
 import { Station } from '../shared/mongo-schemas';
 import NodeCache from 'node-cache';
 
+sharp.cache({ memory: 50, files: 20, items: 100 });
+sharp.concurrency(1);
+
 const ogImageCache = new NodeCache({ stdTTL: 3600, checkperiod: 600, maxKeys: 500 });
 
 export function clearOgCache(): void {

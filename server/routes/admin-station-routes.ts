@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import express from "express";
 import mongoose from "mongoose";
 import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
@@ -409,7 +410,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   });
 
   // BULK IMPORT ENDPOINT - Import stations from Radio Browser API (Admin Only)
-  app.post("/api/admin/bulk-import-stations", requireAdmin, async (req, res) => {
+  app.post("/api/admin/bulk-import-stations", express.json({ limit: '50mb' }), requireAdmin, async (req, res) => {
     try {
       logger.log('🔄 Starting bulk station import...');
       const { stations, append = false, skipIndexes = false } = req.body;
