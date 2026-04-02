@@ -1,8 +1,13 @@
 const activeOperations = new Map<string, { name: string; startedAt: number; details?: string }>();
 let opCounter = 0;
+const MAX_TRACKED = 500;
 
 export function startOperation(name: string, details?: string): string {
   const id = `op_${++opCounter}`;
+  if (activeOperations.size >= MAX_TRACKED) {
+    const oldest = activeOperations.keys().next().value;
+    if (oldest) activeOperations.delete(oldest);
+  }
   activeOperations.set(id, { name, startedAt: Date.now(), details });
   return id;
 }

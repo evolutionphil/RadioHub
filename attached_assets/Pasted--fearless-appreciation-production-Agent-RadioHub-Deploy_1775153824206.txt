@@ -1,0 +1,55 @@
+
+
+fearless-appreciation
+
+production
+
+
+
+Agent
+
+
+RadioHub
+Deployments
+Variables
+Metrics
+Settings
+themegaradio.com
+europe-west4-drams3a
+1 Replica
+
+HISTORY
+RadioHub
+/
+3eb34dfd
+Active
+
+Apr 2, 2026 at 7:00 PM GMT+2
+themegaradio.com
+Details
+Build Logs
+Deploy Logs
+HTTP Logs
+Network Flow Logs
+Filter and search logs
+
+You reached the start of the range
+Apr 2, 2026 at 7:00 PM
+Starting Container
+🔐 Google OAuth configured with callback URL: https://themegaradio.com/api/auth/google/callback
+📋 LOG COLLECTOR: Initialized — flushing to S3 every 15 min
+✅ Demo API keys: per-IP generation enabled (24h cooldown)
+⚠️ GC tracking not available (need --expose-gc)
+🚨 EVENT LOOP BLOCKED: 5794ms | heap=99MB rss=9163MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 5870ms | heap=98MB rss=9798MB | GC: count=0 max=0ms total=0ms | Active: [seo-render 5824ms (/cs/stanice/fluxfm-fluxforward-2)]
+🚨 EVENT LOOP BLOCKED: 11279ms | heap=99MB rss=10625MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 5363ms | heap=96MB rss=8616MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 6609ms | heap=96MB rss=9557MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 8568ms | heap=94MB rss=9626MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 5730ms | heap=94MB rss=9131MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 7263ms | heap=94MB rss=9150MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 8262ms | heap=94MB rss=9098MB | GC: count=0 max=0ms total=0ms | Active: No active operations
+🚨 EVENT LOOP BLOCKED: 6125ms | heap=93MB rss=7849MB | GC: count=0 max=0ms total=0ms | Active: [seo-render 6216ms (/ru/stantsiya/r2rock)]
+🚨 EVENT LOOP BLOCKED: 5597ms | heap=95MB rss=8208MB | GC: count=0 max=0ms total=0ms | Active: [seo-render 28210ms (/hr/stanice/edm-radio)]
+
+

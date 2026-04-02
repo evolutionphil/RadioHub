@@ -389,9 +389,19 @@ app.use((req, res, next) => {
   return res.redirect(301, redirectPath);
 });
 
-// Redirects old English paths to new translated paths for all languages
-// Examples: /de/station/xyz → /de/sender/xyz, /tr/station/xyz → /tr/istasyon/xyz
-// Must run BEFORE stationCountryValidator so old URLs get translated first
+import { startOperation, endOperation } from './utils/operation-tracker';
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/ws') || req.path.startsWith('/healthz') || req.path.startsWith('/health') || /\.(js|css|png|jpg|jpeg|gif|webp|svg|ico|woff|woff2|map|json)$/i.test(req.path)) {
+    return next();
+  }
+  const opId = startOperation('http-request', `${req.method} ${req.path}`);
+  let cleaned = false;
+  const cleanup = () => { if (!cleaned) { cleaned = true; endOperation(opId); } };
+  res.on('finish', cleanup);
+  res.on('close', cleanup);
+  next();
+});
+
 app.use(urlRedirectMiddleware);
 
 // CRITICAL SEO FIX: Station country code validation middleware
@@ -401,18 +411,12 @@ app.use(stationCountryValidator);
 
 // Enable compression for all responses - SEO optimization for faster page loads
 app.use(compression({
-  level: process.env.NODE_ENV === 'production' ? 6 : 4, // Level 6 balances compression ratio with CPU usage (9 blocks event loop)
-  threshold: 1024, // Compress responses > 1KB
+  level: 1,
+  threshold: 1024,
   filter: (req, res) => {
-    // Compress all responses except WebSocket upgrades
     if (req.headers['upgrade']) {
       return false;
     }
-    
-    // Samsung TV Chromium 76 supports gzip - enable compression for slim TV responses
-    // Slim response + gzip gives best performance (e.g. 132KB genres → ~15KB compressed)
-    
-    // Compress HTML, JSON, CSS, JS, SVG, XML for better SEO performance
     const contentType = res.getHeader('Content-Type') as string;
     if (contentType && /text|json|javascript|xml|svg/.test(contentType)) {
       return true;
