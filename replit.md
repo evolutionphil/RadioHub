@@ -68,7 +68,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation, country-specific URL translations, universal country normalization.
 - **Background Audio Protection**: 5-layer system to prevent browser audio suspension.
 - **Image Optimization**: Server-side image resizing and WebP conversion using Sharp, stored on S3.
-- **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing with rate-limiting and intelligent key eviction.
+- **Memory Management**: Multi-layer OOM prevention including heap monitoring and cache clearing with rate-limiting and intelligent key eviction. Heap limit: 2048MB (was 4096MB). Thresholds: 1400MB=proactive clearSeoAndQuickCaches; 1700MB=critical clearAllForMemoryRelief. Semi-space: 64MB for reduced minor GC pauses.
 - **Event Loop Protection**: Load shedding with cooldowns, rate-limited lag logging, and log collector safeguards.
 - **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards, daily auto-restart via SIGTERM.
 - **API Key Management**: Secure generation, validation, rate limiting, and usage tracking.

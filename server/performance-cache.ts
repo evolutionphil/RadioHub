@@ -1,5 +1,6 @@
 import NodeCache from 'node-cache';
 import { logger } from './utils/logger';
+import { sleep } from './utils/event-loop-yield';
 
 // High-performance caching system for SEO optimization
 export class PerformanceCache {
@@ -24,22 +25,22 @@ export class PerformanceCache {
     
     this.seoHtmlCache = new NodeCache({ 
       stdTTL: 900,
-      checkperiod: 120,
-      maxKeys: 500,
+      checkperiod: 180,
+      maxKeys: 300,
       useClones: false
     });
     
     this.pageDataCache = new NodeCache({ 
       stdTTL: 600,
-      checkperiod: 60,
-      maxKeys: 500,
+      checkperiod: 120,
+      maxKeys: 300,
       useClones: false
     });
     
     this.quickCache = new NodeCache({ 
       stdTTL: 300,
-      checkperiod: 60,
-      maxKeys: 500,
+      checkperiod: 120,
+      maxKeys: 300,
       useClones: false
     });
     
@@ -141,7 +142,7 @@ export class PerformanceCache {
   private similarStationsCache: NodeCache = new NodeCache({
     stdTTL: 3600,
     checkperiod: 300,
-    maxKeys: 500,
+    maxKeys: 200,
     useClones: false
   });
   
@@ -346,7 +347,8 @@ export class PerformanceCache {
       
       const topCountries = countryStationCounts.map((c: any) => c._id).filter(Boolean);
       
-      for (const country of topCountries) {
+      for (let i = 0; i < topCountries.length; i++) {
+        const country = topCountries[i];
         const stations = await Station.find({ 
           country, 
           lastCheckOk: true 
@@ -357,6 +359,7 @@ export class PerformanceCache {
         .lean();
         
         this.setSimilarPool(country, stations);
+        if (i < topCountries.length - 1) await sleep(100);
       }
       
       const globalStations = await Station.find({ lastCheckOk: true })

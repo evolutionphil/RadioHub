@@ -1,6 +1,7 @@
 import { CacheManager } from '../cache';
 import { Station } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { sleep } from '../utils/event-loop-yield';
 
 interface PrecomputedStation {
   _id: string;
@@ -33,8 +34,8 @@ interface PrecomputedCountryData {
 const CACHE_TTL = 86400; // 24 hours
 const CACHE_KEY_PREFIX = 'precomputed_stations:';
 const GLOBAL_CACHE_KEY = 'precomputed_stations:global';
-const GLOBAL_STATIONS_LIMIT = 5000;
-const BATCH_SIZE = 5; // Process 5 countries in parallel
+const GLOBAL_STATIONS_LIMIT = 2000;
+const BATCH_SIZE = 3;
 
 const COUNTRY_CODE_MAP: Record<string, string> = {
   'DE': 'Germany', 'IT': 'Italy', 'FR': 'France', 'ES': 'Spain', 'GB': 'United Kingdom',
@@ -114,7 +115,7 @@ export class PrecomputedStationsService {
           votes: -1
         }
       },
-      { $limit: 3000 },
+      { $limit: 1500 },
       {
         $project: {
           _id: 1,
@@ -279,7 +280,7 @@ export class PrecomputedStationsService {
       if (progress % 20 === 0 || i + batch.length === allCountries.length) {
         logger.log(`📊 Precomputation progress: ${progress}% (${i + batch.length}/${allCountries.length})`);
       }
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await sleep(500);
     }
     
     const duration = Math.round((Date.now() - startTime) / 1000);
@@ -302,6 +303,7 @@ export class PrecomputedStationsService {
     for (const code of popularCountries) {
       try {
         await this.computeCountryStations(code);
+        await sleep(200);
       } catch (error) {
         logger.error(`Failed to warmup ${code}:`, error);
       }
@@ -336,7 +338,7 @@ export class PrecomputedStationsService {
 
   /**
    * Compute and cache global stations (all countries, sorted by hasLogo + votes)
-   * Stores top 10,000 stations for pagination
+   * Stores top stations for pagination (limit: GLOBAL_STATIONS_LIMIT)
    */
   static async computeGlobalStations(): Promise<PrecomputedCountryData> {
     logger.log('🌍 Computing global stations cache...');

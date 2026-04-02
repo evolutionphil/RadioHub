@@ -5,9 +5,9 @@ import { logger } from './utils/logger';
 // In-memory cache with TTL
 const memoryCache = new NodeCache({ 
   stdTTL: 600,
-  checkperiod: 60,
+  checkperiod: 120,
   useClones: false,
-  maxKeys: 2000
+  maxKeys: 1000
 });
 
 // Redis client for production (optional)

@@ -163,10 +163,10 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   const totalMemGB = Math.round(os.totalmem() / 1024 / 1024 / 1024 * 10) / 10;
   const freeMemGB = Math.round(os.freemem() / 1024 / 1024 / 1024 * 10) / 10;
 
-  const heapPercent = Math.round((heapMB / 4096) * 100);
+  const heapPercent = Math.round((heapMB / 2048) * 100);
   let memoryHealth = 'healthy';
-  if (heapMB > 3500) memoryHealth = 'critical';
-  else if (heapMB > 3000) memoryHealth = 'warning';
+  if (heapMB > 1700) memoryHealth = 'critical';
+  else if (heapMB > 1400) memoryHealth = 'warning';
 
   res.status(200).json({
     status: 'ok',
@@ -176,7 +176,7 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
     memory: {
       heapUsed: `${heapMB}MB`,
       heapTotal: `${heapTotalMB}MB`,
-      heapLimit: '4096MB',
+      heapLimit: '2048MB',
       heapUsagePercent: `${heapPercent}%`,
       rss: `${rssMB}MB`,
       external: `${externalMB}MB`,
@@ -203,7 +203,7 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
     },
     node: {
       version: process.version,
-      maxOldSpaceSize: '4096MB'
+      maxOldSpaceSize: '2048MB'
     }
   });
 });
@@ -1057,17 +1057,17 @@ app.use((req, res, next) => {
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
         const now = Date.now();
-        if (heapMB > 3000 && heapMB <= 3500 && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
+        if (heapMB > 1400 && heapMB <= 1700 && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
           console.log(`🧹 PROACTIVE MEMORY RELIEF: heap=${heapMB}MB — clearing SEO & quick caches`);
           performanceCache.clearSeoAndQuickCaches();
           lastProactiveClearTime = now;
         }
-        if (heapMB > 3000) {
+        if (heapMB > 1400) {
           if ((now - lastMemoryWarningTime) > MEMORY_WARNING_INTERVAL) {
             console.warn(`⚠️ MEMORY WARNING: heap=${heapMB}MB/${heapTotalMB}MB, rss=${rssMB}MB`);
             lastMemoryWarningTime = now;
           }
-          if (heapMB > 3500) {
+          if (heapMB > 1700) {
             if ((now - lastMemoryGcTime) < MEMORY_GC_COOLDOWN) return;
             lastMemoryGcTime = now;
             console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing caches (except translations) to prevent OOM`);

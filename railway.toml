@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "node --max-old-space-size=4096 --expose-gc dist/index.js"
+startCommand = "node --max-old-space-size=2048 --max-semi-space-size=64 --expose-gc dist/index.js"
 healthcheckPath = "/healthz"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"

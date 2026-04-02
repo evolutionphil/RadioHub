@@ -2,6 +2,7 @@ import { CacheManager } from '../cache';
 import { Station, Genre } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
+import { sleep } from '../utils/event-loop-yield';
 
 interface PrecomputedGenre {
   _id: string;
@@ -175,7 +176,7 @@ export class PrecomputedGenresService {
     for (const country of topCountries) {
       try {
         await this.getGenres(country);
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await sleep(300);
       } catch (error) {
         logger.error(`Failed to warmup genres for ${country}:`, error);
       }
@@ -197,7 +198,7 @@ export class PrecomputedGenresService {
         const cacheKey = this.getCacheKey(country);
         await CacheManager.del(cacheKey);
         await this.getGenres(country);
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await sleep(300);
       } catch (error) {
         logger.error(`Failed to refresh genres for ${country}:`, error);
       }
