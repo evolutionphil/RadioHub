@@ -587,6 +587,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         process.env.GOOGLE_CLIENT_ID,
         '246210957471-18662dh38h9tmlk7nppdk15ucbha4emk.apps.googleusercontent.com',
         '246210957471-4dmnb95bcduaocr8toiphv3guq9a8htl.apps.googleusercontent.com',
+        '957628580421-1gj9mmbq20o9jva6olb28t2un6vb6jqh.apps.googleusercontent.com',
       ].filter(Boolean) as string[];
 
       let payload: any;
