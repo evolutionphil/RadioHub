@@ -305,19 +305,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any) {
     const baseUrl = getBaseUrl(req);
     const robots = `User-agent: *
 Allow: /
-
-# Block API endpoints — JSON responses, not useful for Google
-# BUT allow endpoints needed for client-side rendering (Google WRS fetches these during JS render)
-Allow: /api/station/
-Allow: /api/stations
-Allow: /api/stations/
-Allow: /api/genres
-Allow: /api/translations
-Allow: /api/location
-Allow: /api/advertisements
 Disallow: /api/
-
-# Block admin and auth-only pages — requires login, not indexable
 Disallow: /*/admin/
 Disallow: /*/admin
 Disallow: /*/login
@@ -326,11 +314,20 @@ Disallow: /*/settings
 Disallow: /*/forgot-password
 Disallow: /*/import-export
 Disallow: /*/analytics
-
-# Block OG image generator — internal image generation endpoint
+Disallow: /*/search*
+Disallow: /*/messages
+Disallow: /*/profile
 Disallow: /og-image
 
-# Sitemap index — all individual sitemaps are listed inside
+User-agent: Bingbot
+Crawl-delay: 10
+
+User-agent: Yandex
+Crawl-delay: 10
+
+User-agent: Baiduspider
+Crawl-delay: 10
+
 Sitemap: ${baseUrl}/sitemap-index.xml`;
 
     res.setHeader('Content-Type', 'text/plain');

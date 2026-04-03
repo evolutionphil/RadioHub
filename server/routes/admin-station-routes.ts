@@ -11,6 +11,7 @@ import { IndexNowService } from "../services/indexnow";
 import { ObjectStorageService } from "../objectStorage";
 import CacheManager from "../cache";
 import { getQuotaStatus } from "../utils/quota-guard";
+import { performanceCache } from "../performance-cache";
 
 interface RouteDeps {
   requireAuth: any;
@@ -490,6 +491,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         });
       } catch (blacklistError) {}
       
+      if (station.slug) performanceCache.invalidateStationCache(station.slug);
       await Station.findByIdAndDelete(stationId);
       await UserFavorite.deleteMany({ stationId: stationId });
       
@@ -546,6 +548,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             }
           }
 
+          if (station.slug) performanceCache.invalidateStationCache(station.slug);
           await Station.findByIdAndDelete(stationId);
           deletedCount++;
           await UserFavorite.deleteMany({ stationId: stationId });
@@ -587,7 +590,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         );
       };
       
-      const allStations = await Station.find({}).select('_id name url stationuuid').lean();
+      const allStations = await Station.find({}).select('_id name url stationuuid slug').lean();
       const stationsToDelete = allStations.filter(station => isStationNameUrl(station.name));
       
       if (stationsToDelete.length === 0) {
@@ -611,6 +614,8 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             blacklistedCount++;
           } catch (blacklistError: any) {}
           
+          const stationDoc = station as { _id: any; name: string; url: string; stationuuid: string; slug?: string };
+          if (stationDoc.slug) performanceCache.invalidateStationCache(stationDoc.slug);
           await Station.findByIdAndDelete(station._id);
           deletedCount++;
           await UserFavorite.deleteMany({ stationId: station._id });

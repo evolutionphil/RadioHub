@@ -5,10 +5,34 @@ import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
 
-const SEO_RENDER_MAX_CONCURRENT = 3;
-const SEO_RENDER_TIMEOUT_MS = 8000;
+const SEO_RENDER_MAX_CONCURRENT = 5;
+const SEO_RENDER_TIMEOUT_MS = 5000;
 let seoRenderActive = 0;
 let seoRenderRejected = 0;
+
+const DB_QUERY_TIMEOUT_MS = SEO_RENDER_TIMEOUT_MS - 500;
+
+function withSignal<T>(query: any, signal?: AbortSignal): Promise<T> {
+  if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
+  if (!signal) return query;
+  
+  query.setOptions({ maxTimeMS: DB_QUERY_TIMEOUT_MS });
+  
+  return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const onAbort = () => {
+      if (!settled) {
+        settled = true;
+        reject(new DOMException('Aborted', 'AbortError'));
+      }
+    };
+    signal.addEventListener('abort', onAbort, { once: true });
+    (query as Promise<T>).then(
+      (val) => { if (!settled) { settled = true; signal.removeEventListener('abort', onAbort); resolve(val); } },
+      (err) => { if (!settled) { settled = true; signal.removeEventListener('abort', onAbort); reject(err); } }
+    );
+  });
+}
 
 export function getSeoRenderStats() {
   return { active: seoRenderActive, rejected: seoRenderRejected };
@@ -64,15 +88,14 @@ export function buildLocalizedUrl(
 
 export class SeoRenderer {
   
-  async getTranslationsForLanguage(language: string): Promise<Record<string, string>> {
-    // Check cache first for instant response
+  async getTranslationsForLanguage(language: string, signal?: AbortSignal): Promise<Record<string, string>> {
     const cached = performanceCache.getTranslations(language);
     if (cached) {
       return cached;
     }
     
     try {
-      const translations = await Translation.find({ language }).populate('keyId').lean();
+      const translations = await withSignal(Translation.find({ language }).populate('keyId').lean(), signal);
       const translationMap: Record<string, string> = {};
       
       translations.forEach((t: any) => {
@@ -85,7 +108,8 @@ export class SeoRenderer {
       performanceCache.setTranslations(language, translationMap);
       
       return translationMap;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'AbortError' || signal?.aborted) throw error;
       console.error(`❌ Failed to fetch translations for ${language}:`, error);
       return {};
     }
@@ -95,17 +119,18 @@ export class SeoRenderer {
    * Fetch custom SEO metadata from database for a specific page
    * Returns null if no published metadata exists
    */
-  async getCustomSeoMetadata(pageType: string, routeKey: string, language: string): Promise<any | null> {
+  async getCustomSeoMetadata(pageType: string, routeKey: string, language: string, signal?: AbortSignal): Promise<any | null> {
     try {
-      const metadata = await SeoMetadata.findOne({
+      const metadata = await withSignal(SeoMetadata.findOne({
         pageType,
-        routeKey: routeKey || '', // Empty string for pages without route key
+        routeKey: routeKey || '',
         language,
         status: 'published'
-      }).lean();
+      }).lean(), signal);
       
       return metadata;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'AbortError' || signal?.aborted) throw error;
       logger.error(`❌ Failed to fetch custom SEO metadata:`, error);
       return null;
     }
@@ -143,27 +168,36 @@ export class SeoRenderer {
 
     seoRenderActive++;
 
+    const abortController = new AbortController();
     let timerId: ReturnType<typeof setTimeout> | undefined;
 
     try {
       const result = await Promise.race([
-        this._doRenderStaticPage(url, domain, preferredLanguage),
+        this._doRenderStaticPage(url, domain, preferredLanguage, abortController.signal),
         new Promise<never>((_, reject) => {
-          timerId = setTimeout(() => reject(new Error('SEO_RENDER_TIMEOUT')), SEO_RENDER_TIMEOUT_MS);
+          timerId = setTimeout(() => {
+            abortController.abort();
+            reject(new Error('SEO_RENDER_TIMEOUT'));
+          }, SEO_RENDER_TIMEOUT_MS);
         })
       ]);
       clearTimeout(timerId);
       return result;
-    } catch (err) {
+    } catch (err: any) {
       clearTimeout(timerId);
+      if (!abortController.signal.aborted) abortController.abort();
+      if (err?.message === 'SEO_RENDER_TIMEOUT' || err?.name === 'AbortError') {
+        throw new Error('SEO_RENDER_TIMEOUT');
+      }
       throw err;
     } finally {
       seoRenderActive--;
     }
   }
 
-  private async _doRenderStaticPage(url: string, domain: string = '', preferredLanguage?: string): Promise<StaticPageData> {
+  private async _doRenderStaticPage(url: string, domain: string = '', preferredLanguage?: string, signal?: AbortSignal): Promise<StaticPageData> {
     return trackOperation('seo-render', async () => {
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     const cleanUrl = url.split('?')[0].split('#')[0];
 
     // Get language from URL path, but prefer user's stored preference if available
@@ -194,11 +228,11 @@ export class SeoRenderer {
       return cachedPageData;
     }
     
-    // Get translations for this language (this will be cached)
-    const translations = await this.getTranslationsForLanguage(language);
+    const translations = await this.getTranslationsForLanguage(language, signal);
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     
-    // Load URL translations from database for canonical URL generation
     const urlTranslations = await performanceCache.getUrlTranslations();
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     
     // Detect if this is a country-specific URL (e.g., /al/zhanret)
     const urlParts = url.split('/').filter(Boolean);
@@ -262,12 +296,10 @@ export class SeoRenderer {
       const stationSlug = stationCheck.stationSlug;
       if (stationSlug) {
         try {
-          // First try to find by slug
-          stationData = await Station.findOne({ slug: stationSlug }).lean();
+          stationData = await withSignal(Station.findOne({ slug: stationSlug }).lean(), signal);
           
-          // If not found and the slug looks like an ObjectId, try finding by _id
           if (!stationData && stationSlug.match(/^[0-9a-fA-F]{24}$/)) {
-            stationData = await Station.findById(stationSlug).lean();
+            stationData = await withSignal(Station.findById(stationSlug).lean(), signal);
           }
           
           // DEFENSIVE GUARD: If station not found, create minimal placeholder data
@@ -288,9 +320,8 @@ export class SeoRenderer {
               description: ''
             };
           }
-        } catch (error) {
-          // console.error('Error fetching station for SEO:', error);
-          // Create fallback on error as well
+        } catch (error: any) {
+          if (error?.name === 'AbortError' || signal?.aborted) throw error;
           const stationName = stationSlug
             .replace(/-/g, ' ')
             .replace(/\b\w/g, (l: string) => l.toUpperCase());
@@ -348,25 +379,27 @@ export class SeoRenderer {
       pageType = 'privacy';
     } else if (cleanPath === '/' || cleanPath === '') {
       pageType = 'home';
-      // Fetch popular stations for homepage ItemList schema (limit to 10 for schema)
       try {
-        const popularStations = await Station.find({ votes: { $gt: 0 } })
-          .sort({ votes: -1 })
-          .limit(10)
-          .select('name slug favicon logoAssets country tags votes')
-          .lean();
+        const popularStations = await withSignal(
+          Station.find({ votes: { $gt: 0 } })
+            .sort({ votes: -1 })
+            .limit(10)
+            .select('name slug favicon logoAssets country tags votes')
+            .lean(),
+          signal
+        );
         additionalData.popularStations = popularStations;
-      } catch (error) {
-        // Silently fail - popular stations schema is optional
+      } catch (error: any) {
+        if (error?.name === 'AbortError' || signal?.aborted) throw error;
       }
     }
     
     // Generate enhanced SEO tags with additional context
     // Pass localized path to use translated paths in canonical URL
     // Also pass urlTranslations map for hreflang tags with translated paths
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     let seoTags = this.generateEnhancedSeoTags(pageType, language, translations, cleanPath, domain, stationData, additionalData, cleanUrl, localizedPath, urlTranslations);
-    
-    // Check for custom SEO metadata from admin (database override)
+    if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     // Map internal pageTypes to database format
     const dbPageTypeMap: Record<string, string> = {
       'home': 'homepage',
@@ -403,8 +436,7 @@ export class SeoRenderer {
       routeKey = pageType;
     }
     
-    // Fetch and apply custom SEO metadata if available
-    const customMetadata = await this.getCustomSeoMetadata(dbPageType, routeKey, language);
+    const customMetadata = await this.getCustomSeoMetadata(dbPageType, routeKey, language, signal);
     if (customMetadata) {
       logger.log(`🎯 Using custom SEO metadata for ${dbPageType}/${routeKey}/${language}`);
       seoTags = this.applyCustomSeoMetadata(seoTags, customMetadata);
@@ -420,12 +452,7 @@ export class SeoRenderer {
       pageData: { pageType, station: stationData, seoTags, ...additionalData, additionalData }
     };
     
-    // Only cache low-cardinality pages (home, genres, about, etc.)
-    // Station detail pages have 40k+ slugs × 57 languages = unbounded cardinality,
-    // thrashing the 500-key cache and wiping hot entries every ~7 minutes
-    if (pageType !== 'station') {
-      performanceCache.setPageData(cacheKey, pageData);
-    }
+    performanceCache.setPageData(cacheKey, pageData);
     
     return pageData;
     }, url);
@@ -827,13 +854,6 @@ export class SeoRenderer {
   }
 
   generateHtmlHead(seoTags: any, language: string = 'en', translations: Record<string, string> = {}, cleanPath: string = '', stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any): string {
-    const hreflangs = seoTags.hreflangs
-      ? seoTags.hreflangs.map((h: any) => 
-          `<link rel="alternate" hreflang="${h.hreflang}" href="${h.url}">`
-        ).join('\n    ')
-      : '';
-    
-    // x-default is already included in hreflangs array (added by generateLanguageUrls)
     
     // Enhanced social media meta tags
     // CRITICAL: WhatsApp requires minimum 600x315px images for preview
@@ -1185,7 +1205,7 @@ export class SeoRenderer {
     <meta name="msapplication-TileColor" content="#000000">
     
     ${seoTags.canonical ? `<link rel="canonical" href="${seoTags.canonical}">` : ''}
-    ${hreflangs}
+    ${seoTags.hreflangs ? seoTags.hreflangs.filter((h: any) => h.hreflang === 'x-default').map((h: any) => `<link rel="alternate" hreflang="x-default" href="${h.url}">`).join('') : ''}
     
     <!-- JSON-LD Structured Data for Rich Snippets -->
     <script type="application/ld+json">

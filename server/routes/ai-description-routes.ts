@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { Station, BulkDescriptionJob } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { stripPlaceholders, TV_STATION_PROJECTION } from "./shared-utils";
+import { performanceCache } from "../performance-cache";
 
 export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
@@ -82,6 +83,9 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
           }
         );
         
+        if (updateResult.modifiedCount > 0 && station.slug) {
+          performanceCache.invalidateStationCache(station.slug);
+        }
         res.json({
           success: true,
           fullDescriptionLength: result.fullDescription.length,
@@ -142,6 +146,9 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
           }
         );
         
+        if (updateResult.modifiedCount > 0 && station.slug) {
+          performanceCache.invalidateStationCache(station.slug);
+        }
         res.json({
           success: true,
           fullDescriptionLength: result.fullDescription.length,

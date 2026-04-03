@@ -27,14 +27,14 @@ export class PerformanceCache {
     this.seoHtmlCache = new NodeCache({ 
       stdTTL: 900,
       checkperiod: 180,
-      maxKeys: 300,
+      maxKeys: 2000,
       useClones: false
     });
     
     this.pageDataCache = new NodeCache({ 
       stdTTL: 600,
       checkperiod: 120,
-      maxKeys: 300,
+      maxKeys: 2000,
       useClones: false
     });
     
@@ -179,6 +179,16 @@ export class PerformanceCache {
   clearSeoHtml(): void {
     this.seoHtmlCache.flushAll();
     logger.log('🗑️ CACHE: Cleared SEO HTML cache');
+  }
+  
+  invalidateStationCache(stationSlug: string): void {
+    const seoKeys = this.seoHtmlCache.keys().filter(k => k.includes(`/station/${stationSlug}`) || k.includes(`/${stationSlug}`));
+    const pageKeys = this.pageDataCache.keys().filter(k => k.includes(`/station/${stationSlug}`) || k.includes(`/${stationSlug}`));
+    seoKeys.forEach(k => this.seoHtmlCache.del(k));
+    pageKeys.forEach(k => this.pageDataCache.del(k));
+    if (seoKeys.length || pageKeys.length) {
+      logger.log(`🗑️ CACHE: Invalidated ${seoKeys.length + pageKeys.length} cache entries for station: ${stationSlug}`);
+    }
   }
   
   clearPageData(): void {

@@ -6,6 +6,7 @@ import { stripPlaceholders } from "./shared-utils";
 import { refreshCommunityFavoritesCache, fetchTranslationsForLanguage, refreshTranslationsCache } from "./cache-refresh-utils";
 import { syncService } from "../services/sync";
 import { isQuotaExceeded, isQuotaError, handleQuotaError, safeWrite } from "../utils/quota-guard";
+import { performanceCache } from "../performance-cache";
 
 export function registerTranslationAdminRoutes(app: Express, deps: any) {
   const { requireAuth, requireAdmin } = deps;
@@ -750,10 +751,11 @@ ${keysText}`;
         }, primaryStation.lastChangedTime)
       };
 
-      // Update primary station with merged data
       await Station.findByIdAndUpdate(primaryStationId, mergedData);
-      
-      // Delete duplicate stations
+      if (primaryStation.slug) performanceCache.invalidateStationCache(primaryStation.slug);
+      for (const dup of duplicateStations) {
+        if (dup.slug) performanceCache.invalidateStationCache(dup.slug);
+      }
       await Station.deleteMany({ _id: { $in: duplicateStationIds } });
       
       // logger.log(`✅ Successfully merged ${duplicateStationIds.length} duplicate stations`);
@@ -3029,6 +3031,8 @@ ${keysText}`;
       const blacklistResult = await BlacklistedStation.deleteMany({});
       logger.log(`✅ Deleted ${blacklistResult.deletedCount} blacklisted stations`);
       
+      performanceCache.clearSeoHtml();
+      performanceCache.clearPageData();
       logger.log('🎯 Station data flush complete! Database is now empty and ready for fresh sync.');
       
       res.json({ 

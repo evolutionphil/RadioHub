@@ -710,19 +710,26 @@ app.use((req, res, next) => {
     botDetect: /\b(googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase)\b/i
   };
 
+  const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const BOT_RATE_LIMIT_WINDOW = 60_000;
+  const BOT_RATE_LIMIT_MAX_MINOR = 12;
+  const BOT_RATE_LIMIT_MAX_MAJOR = 15;
+  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of botRateLimitMap) {
+      if (now > entry.resetAt) botRateLimitMap.delete(ip);
+    }
+  }, 60_000);
+
   app.use(async (req, res, next) => {
     const url = req.originalUrl;
     const userAgent = req.get('user-agent') || '';
     const acceptsHtml = req.headers.accept?.includes('text/html');
     
-    // Strip query parameters and hash for pattern matching (but keep original URL for rendering)
-    // CRITICAL FIX: Decode URL-encoded paths (e.g., %E7%94%B5%E5%8F%B0 → 电台) for non-Latin language matching
     const cleanUrlForMatching = decodeURIComponent(url.split('?')[0].split('#')[0]);
     
-    // Expanded SEO page matching - now includes all major page types
-    // CRITICAL FIX: Match both English AND all translated URL segments for multilingual SEO
-    // Turkish: istasyon/istasyonlar, turler | German: sender, genres | Spanish: estacion, generos | etc.
-    // IMPORTANT: Match both singular and plural forms (istasyon AND istasyonlar, station AND stations, etc.)
     const isStationPage = SEO_PRECOMPILED_REGEX.stationPage.test(cleanUrlForMatching);
     const isHomepage = SEO_PRECOMPILED_REGEX.homepage.test(cleanUrlForMatching);
     const isRegionsPage = SEO_PRECOMPILED_REGEX.regionsPage.test(cleanUrlForMatching);
@@ -734,15 +741,40 @@ app.use((req, res, next) => {
     const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isStationsPage;
     const isBot = SEO_PRECOMPILED_REGEX.botDetect.test(userAgent);
 
-    // Only intercept SEO-eligible pages
     if (!isSeoEligiblePage) {
       return next();
     }
 
-    // Only serve server-rendered HTML to bots for SEO
-    // Regular users get the full React app for best UX
     if (!isBot) {
       return next();
+    }
+
+    const isMajorBot = MAJOR_SEARCH_BOT_RE.test(userAgent);
+    const maxRequests = isMajorBot ? BOT_RATE_LIMIT_MAX_MAJOR : BOT_RATE_LIMIT_MAX_MINOR;
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    let botEntry = botRateLimitMap.get(clientIp);
+    if (!botEntry || now > botEntry.resetAt) {
+      botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
+      botRateLimitMap.set(clientIp, botEntry);
+    }
+    botEntry.count++;
+    if (botEntry.count > maxRequests) {
+      logger.log(`🚫 SEO: Bot rate limited (IP=${clientIp}, count=${botEntry.count}, major=${isMajorBot}): ${url}`);
+      res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
+      return;
+    }
+
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const cachedHtml = performanceCache.getSeoHtml(cleanUrl);
+    if (cachedHtml) {
+      logger.log(`⚡ SEO: Cache HIT for: ${url}`);
+      res.status(200).set({
+        'Content-Type': 'text/html',
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
+        'X-SEO-Cache': 'HIT'
+      }).send(cachedHtml);
+      return;
     }
 
     logger.log(`🤖 SEO: Bot detected, rendering server-side SEO page: ${url}`);
@@ -906,11 +938,51 @@ app.use((req, res, next) => {
       if (!responded && !res.headersSent) {
         responded = true;
         clearTimeout(reqTimeout);
-        res.status(200).set({ 'Content-Type': 'text/html' }).send(htmlContent);
+        performanceCache.setSeoHtml(cleanUrl, htmlContent);
+        res.status(200).set({
+          'Content-Type': 'text/html',
+          'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
+          'X-SEO-Cache': 'MISS'
+        }).send(htmlContent);
       }
     } catch (error: any) {
       if (error?.message === 'SEO_RENDER_OVERLOADED' || error?.message === 'SEO_RENDER_TIMEOUT') {
-        logger.log(`⚠️ SEO render ${error.message}, falling back to SPA: ${url}`);
+        logger.log(`⚠️ SEO render ${error.message}, serving minimal HTML: ${url}`);
+        if (!responded && !res.headersSent) {
+          responded = true;
+          clearTimeout(reqTimeout);
+          const fallbackJsonLd = JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "Mega Radio",
+            "url": "https://themegaradio.com",
+            "description": "Listen to 60,000+ free online radio stations from 120+ countries.",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://themegaradio.com/search?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          });
+          const minimalHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mega Radio - Free Online Radio</title>
+    <meta name="description" content="Listen to 60,000+ free online radio stations from 120+ countries. Stream live radio on Mega Radio.">
+    <link rel="canonical" href="https://themegaradio.com${cleanUrl}">
+    <script type="application/ld+json">${fallbackJsonLd}</script>
+  </head>
+  <body>
+    <div id="root"><h1>Mega Radio</h1><p>Loading...</p></div>
+  </body>
+</html>`;
+          res.status(200).set({
+            'Content-Type': 'text/html',
+            'Cache-Control': 'public, max-age=60, s-maxage=300'
+          }).send(minimalHtml);
+          return;
+        }
       } else {
         console.error('❌ SEO rendering error:', error);
       }
