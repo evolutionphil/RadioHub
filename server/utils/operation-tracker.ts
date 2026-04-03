@@ -51,7 +51,7 @@ export async function initGcTracking(): Promise<void> {
   console.log(`🔧 Node flags: execArgv=${JSON.stringify(process.execArgv)}, gc exposed=${gcExposed}`);
 
   try {
-    const perfHooks = await import('perf_hooks');
+    const perfHooks = await import(/* @vite-ignore */ 'node:perf_hooks');
     const obs = new perfHooks.PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         const durationMs = Math.round(entry.duration);

@@ -5,6 +5,15 @@ import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
 
+const SEO_RENDER_MAX_CONCURRENT = 3;
+const SEO_RENDER_TIMEOUT_MS = 8000;
+let seoRenderActive = 0;
+let seoRenderRejected = 0;
+
+export function getSeoRenderStats() {
+  return { active: seoRenderActive, rejected: seoRenderRejected };
+}
+
 export interface StaticPageData {
   language: string;
   cleanPath: string;
@@ -126,6 +135,34 @@ export class SeoRenderer {
   }
   
   async renderStaticPage(url: string, domain: string = '', preferredLanguage?: string): Promise<StaticPageData> {
+    if (seoRenderActive >= SEO_RENDER_MAX_CONCURRENT) {
+      seoRenderRejected++;
+      logger.log(`⚠️ SEO render rejected (active=${seoRenderActive}, rejected=${seoRenderRejected}): ${url}`);
+      throw new Error('SEO_RENDER_OVERLOADED');
+    }
+
+    seoRenderActive++;
+
+    let timerId: ReturnType<typeof setTimeout> | undefined;
+
+    try {
+      const result = await Promise.race([
+        this._doRenderStaticPage(url, domain, preferredLanguage),
+        new Promise<never>((_, reject) => {
+          timerId = setTimeout(() => reject(new Error('SEO_RENDER_TIMEOUT')), SEO_RENDER_TIMEOUT_MS);
+        })
+      ]);
+      clearTimeout(timerId);
+      return result;
+    } catch (err) {
+      clearTimeout(timerId);
+      throw err;
+    } finally {
+      seoRenderActive--;
+    }
+  }
+
+  private async _doRenderStaticPage(url: string, domain: string = '', preferredLanguage?: string): Promise<StaticPageData> {
     return trackOperation('seo-render', async () => {
     const cleanUrl = url.split('?')[0].split('#')[0];
 

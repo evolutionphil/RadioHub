@@ -10,6 +10,7 @@ import compression from "compression";
 import crypto from "crypto";
 import { rateLimit } from 'express-rate-limit';
 import { markQuotaExceeded as markQuotaExceededFn } from './utils/quota-guard';
+import { getSeoRenderStats } from './seo-renderer';
 
 // Extend session type to include user data
 declare module "express-session" {
@@ -207,15 +208,11 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
       execArgv: process.execArgv,
       gcAvailable: typeof (globalThis as any).gc === 'function'
     },
-    diagnostics: (() => {
-      try {
-        const { getActiveOperations, getGcStats } = require('./utils/operation-tracker');
-        return {
-          activeOperations: getActiveOperations().slice(0, 10),
-          gcStats: getGcStats()
-        };
-      } catch { return {}; }
-    })()
+    diagnostics: {
+      activeOperations: (() => { try { return getActiveOperations().slice(0, 10); } catch { return []; } })(),
+      gcStats: (() => { try { return getGcStats(); } catch { return {}; } })(),
+      seoRender: getSeoRenderStats()
+    }
   });
 });
 
@@ -391,7 +388,22 @@ app.use((req, res, next) => {
   return res.redirect(301, redirectPath);
 });
 
-import { startOperation, endOperation } from './utils/operation-tracker';
+import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
+
+app.use((req, res, next) => {
+  if (/\.(js|css|png|jpg|jpeg|gif|webp|svg|ico|woff|woff2|map|json)$/i.test(req.path)) {
+    return next();
+  }
+
+  req.setTimeout(30000, () => {
+    if (!res.headersSent) {
+      console.error(`⏰ Request timeout (30s): ${req.method} ${req.path}`);
+      res.status(504).send('Gateway Timeout');
+    }
+  });
+  next();
+});
+
 app.use((req, res, next) => {
   if (req.path.startsWith('/api') || req.path.startsWith('/ws') || req.path.startsWith('/healthz') || req.path.startsWith('/health') || /\.(js|css|png|jpg|jpeg|gif|webp|svg|ico|woff|woff2|map|json)$/i.test(req.path)) {
     return next();
@@ -735,6 +747,20 @@ app.use((req, res, next) => {
 
     logger.log(`🤖 SEO: Bot detected, rendering server-side SEO page: ${url}`);
 
+    let responded = false;
+    const safeNext = () => {
+      if (!responded && !res.headersSent) {
+        responded = true;
+        clearTimeout(reqTimeout);
+        next();
+      }
+    };
+
+    const reqTimeout = setTimeout(() => {
+      logger.log(`⏰ SEO request timeout, falling back to SPA: ${url}`);
+      safeNext();
+    }, 15000);
+
     try {
       // Detect production domain based on environment
       const getProductionDomain = (requestHost: string = ''): string => {
@@ -877,11 +903,18 @@ app.use((req, res, next) => {
   </body>
 </html>`;
 
-      res.status(200).set({ 'Content-Type': 'text/html' }).send(htmlContent);
-    } catch (error) {
-      console.error('❌ SEO rendering error:', error);
-      // Fall back to default behavior
-      next();
+      if (!responded && !res.headersSent) {
+        responded = true;
+        clearTimeout(reqTimeout);
+        res.status(200).set({ 'Content-Type': 'text/html' }).send(htmlContent);
+      }
+    } catch (error: any) {
+      if (error?.message === 'SEO_RENDER_OVERLOADED' || error?.message === 'SEO_RENDER_TIMEOUT') {
+        logger.log(`⚠️ SEO render ${error.message}, falling back to SPA: ${url}`);
+      } else {
+        console.error('❌ SEO rendering error:', error);
+      }
+      safeNext();
     }
   });
 
