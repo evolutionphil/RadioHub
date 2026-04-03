@@ -47,6 +47,9 @@ let gcPauseCount = 0;
 let gcPauseMax = 0;
 
 export function initGcTracking(): void {
+  const gcExposed = typeof (globalThis as any).gc === 'function';
+  console.log(`🔧 Node flags: execArgv=${JSON.stringify(process.execArgv)}, gc exposed=${gcExposed}`);
+
   try {
     const { PerformanceObserver } = require('perf_hooks');
     const obs = new PerformanceObserver((list: any) => {
@@ -66,10 +69,20 @@ export function initGcTracking(): void {
         }
       }
     });
-    obs.observe({ entryTypes: ['gc'] });
-    console.log('✅ GC tracking enabled via PerformanceObserver');
-  } catch (err) {
-    console.warn('⚠️ GC tracking not available (need --expose-gc)');
+
+    try {
+      obs.observe({ type: 'gc', buffered: true });
+      console.log('✅ GC tracking enabled (type: gc, buffered)');
+    } catch {
+      try {
+        obs.observe({ entryTypes: ['gc'] });
+        console.log('✅ GC tracking enabled (entryTypes: gc)');
+      } catch (e2: any) {
+        console.warn(`⚠️ GC PerformanceObserver not supported: ${e2.message}`);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`⚠️ GC tracking init failed: ${err.message}`);
   }
 }
 
