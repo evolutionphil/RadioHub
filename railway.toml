@@ -3,7 +3,7 @@ builder = "nixpacks"
 buildCommand = "npm run build"
 
 [deploy]
-startCommand = "MALLOC_ARENA_MAX=2 MALLOC_MMAP_THRESHOLD_=131072 node --max-old-space-size=4096 --max-semi-space-size=64 --expose-gc dist/index.js"
+startCommand = "node --max-old-space-size=4096 --max-semi-space-size=64 --expose-gc dist/index.js"
 healthcheckPath = "/healthz"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"
