@@ -211,7 +211,18 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
     diagnostics: {
       activeOperations: (() => { try { return getActiveOperations().slice(0, 10); } catch { return []; } })(),
       gcStats: (() => { try { return getGcStats(); } catch { return {}; } })(),
-      seoRender: getSeoRenderStats()
+      seoRender: getSeoRenderStats(),
+      nativeMemoryMB: rssMB - heapTotalMB,
+      activeHandles: (() => {
+        try {
+          const handles = (process as any)._getActiveHandles();
+          const tc: Record<string, number> = {};
+          for (const h of handles) { const n = h?.constructor?.name || 'Unknown'; tc[n] = (tc[n] || 0) + 1; }
+          return tc;
+        } catch { return {}; }
+      })(),
+      mallocArenaMax: process.env.MALLOC_ARENA_MAX || 'not set',
+      mallocMmapThreshold: process.env.MALLOC_MMAP_THRESHOLD_ || 'not set'
     }
   });
 });
@@ -644,6 +655,7 @@ app.use((req, res, next) => {
   server.keepAliveTimeout = 10000;
   server.headersTimeout = 15000;
   server.maxConnections = 500;
+  (app as any)._httpServer = server;
 
   let isShuttingDown = false;
   const gracefulShutdown = async (signal: string) => {
@@ -1184,6 +1196,32 @@ app.use((req, res, next) => {
         } catch {}
       };
 
+      const getHandleDiagnostics = () => {
+        try {
+          const handles = (process as any)._getActiveHandles();
+          const typeCounts: Record<string, number> = {};
+          for (const h of handles) {
+            const name = h?.constructor?.name || 'Unknown';
+            typeCounts[name] = (typeCounts[name] || 0) + 1;
+          }
+          return typeCounts;
+        } catch { return {}; }
+      };
+
+      const getConnectionCount = (): Promise<number> => {
+        return new Promise((resolve) => {
+          const srv = (app as any)._httpServer;
+          if (srv && typeof srv.getConnections === 'function') {
+            srv.getConnections((err: any, count: number) => resolve(err ? -1 : count));
+          } else {
+            resolve(-1);
+          }
+        });
+      };
+
+      let lastDiagLogTime = 0;
+      const DIAG_LOG_INTERVAL = 5 * 60 * 1000;
+
       setInterval(() => { tryGc(); }, 60_000);
 
       setInterval(async () => {
@@ -1191,16 +1229,30 @@ app.use((req, res, next) => {
         const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+        const externalMB = Math.round(mem.external / 1024 / 1024);
+        const abMB = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
+        const nativeMB = rssMB - heapTotalMB;
         const now = Date.now();
 
+        if ((now - lastDiagLogTime) > DIAG_LOG_INTERVAL) {
+          lastDiagLogTime = now;
+          const conns = await getConnectionCount();
+          const handles = getHandleDiagnostics();
+          const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
+          console.log(`📊 DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${externalMB}MB ab=${abMB}MB native≈${nativeMB}MB | conns=${conns} | handles: ${handleStr}`);
+        }
+
         if (rssMB > RSS_RESTART_MB) {
-          console.error(`🔄 RSS RESTART: rss=${rssMB}MB exceeds ${RSS_RESTART_MB}MB — initiating graceful restart`);
+          const conns = await getConnectionCount();
+          const handles = getHandleDiagnostics();
+          const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
+          console.error(`🔄 RSS RESTART: rss=${rssMB}MB heap=${heapMB}MB ext=${externalMB}MB native≈${nativeMB}MB | conns=${conns} | handles: ${handleStr}`);
           process.kill(process.pid, 'SIGTERM');
           return;
         }
 
         if (rssMB > RSS_WARNING_MB && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
-          console.log(`🧹 RSS MEMORY RELIEF: rss=${rssMB}MB heap=${heapMB}MB — clearing SEO & quick caches`);
+          console.log(`🧹 RSS MEMORY RELIEF: rss=${rssMB}MB heap=${heapMB}MB native≈${nativeMB}MB — clearing SEO & quick caches`);
           performanceCache.clearSeoAndQuickCaches();
           tryGc();
           lastProactiveClearTime = now;
@@ -1208,7 +1260,8 @@ app.use((req, res, next) => {
 
         if (rssMB > RSS_CRITICAL_MB || heapMB > 3500) {
           if ((now - lastMemoryWarningTime) > MEMORY_WARNING_INTERVAL) {
-            console.warn(`⚠️ MEMORY WARNING: rss=${rssMB}MB heap=${heapMB}MB/${heapTotalMB}MB`);
+            const conns = await getConnectionCount();
+            console.warn(`⚠️ MEMORY WARNING: rss=${rssMB}MB heap=${heapMB}MB/${heapTotalMB}MB ext=${externalMB}MB native≈${nativeMB}MB conns=${conns}`);
             lastMemoryWarningTime = now;
           }
           if ((now - lastMemoryGcTime) > MEMORY_GC_COOLDOWN) {
@@ -1243,9 +1296,13 @@ app.use((req, res, next) => {
             const mem = process.memoryUsage();
             const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
             const rssMB = Math.round(mem.rss / 1024 / 1024);
+            const extMB = Math.round(mem.external / 1024 / 1024);
+            const nativeMB = rssMB - Math.round(mem.heapTotal / 1024 / 1024);
             const gcStats = getGcStats();
             const ops = getActiveOperationsSummary();
-            console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms | heap=${heapMB}MB rss=${rssMB}MB | GC: count=${gcStats.count} max=${gcStats.maxMs}ms total=${gcStats.totalMs}ms | Active: ${ops}`);
+            const handles = getHandleDiagnostics();
+            const socketCount = (handles['Socket'] || 0) + (handles['TLSSocket'] || 0);
+            console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms | heap=${heapMB}MB rss=${rssMB}MB ext=${extMB}MB native≈${nativeMB}MB sockets=${socketCount} | GC: count=${gcStats.count} max=${gcStats.maxMs}ms total=${gcStats.totalMs}ms | Active: ${ops}`);
             resetGcStats();
           }
         }
