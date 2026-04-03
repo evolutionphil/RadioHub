@@ -36,4 +36,4 @@ ENV NODE_ENV=production
 
 EXPOSE ${PORT:-5000}
 
-CMD ["node", "dist/index.js"]
+CMD ["node", "--max-old-space-size=4096", "--max-semi-space-size=64", "--expose-gc", "dist/index.js"]
