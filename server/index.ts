@@ -640,11 +640,10 @@ app.use((req, res, next) => {
     // Other paths (like Vite HMR) are handled by Vite's own upgrade handler
   });
 
-  // Server timeouts — keep reasonable defaults for normal requests
-  // Stream endpoints (/api/stream/*) manage their own connection lifecycle
-  server.timeout = 300000; // 5 minutes for normal requests (streams override via res.setTimeout(0))
-  server.keepAliveTimeout = 65000; // 65 seconds (slightly above typical LB 60s idle timeout)
-  server.headersTimeout = 66000; // Must be longer than keepAliveTimeout
+  server.timeout = 300000;
+  server.keepAliveTimeout = 10000;
+  server.headersTimeout = 15000;
+  server.maxConnections = 500;
 
   let isShuttingDown = false;
   const gracefulShutdown = async (signal: string) => {
@@ -1165,14 +1164,17 @@ app.use((req, res, next) => {
     if (process.env.NODE_ENV !== 'development') {
       const { CacheManager } = await import('./cache');
 
+      console.log(`🔧 MALLOC_ARENA_MAX=${process.env.MALLOC_ARENA_MAX || 'not set'}, MALLOC_MMAP_THRESHOLD_=${process.env.MALLOC_MMAP_THRESHOLD_ || 'not set'}`);
+
       let lastMemoryGcTime = 0;
-      const MEMORY_GC_COOLDOWN = 5 * 60 * 1000;
+      const MEMORY_GC_COOLDOWN = 2 * 60 * 1000;
       let lastProactiveClearTime = 0;
-      const PROACTIVE_CLEAR_COOLDOWN = 10 * 60 * 1000;
+      const PROACTIVE_CLEAR_COOLDOWN = 5 * 60 * 1000;
       let lastMemoryWarningTime = 0;
-      const MEMORY_WARNING_INTERVAL = 5 * 60 * 1000;
-      const RSS_WARNING_MB = 4000;
-      const RSS_CRITICAL_MB = 6000;
+      const MEMORY_WARNING_INTERVAL = 3 * 60 * 1000;
+      const RSS_WARNING_MB = 3000;
+      const RSS_CRITICAL_MB = 4000;
+      const RSS_RESTART_MB = 5000;
 
       const tryGc = () => {
         try {
@@ -1190,6 +1192,12 @@ app.use((req, res, next) => {
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
         const now = Date.now();
+
+        if (rssMB > RSS_RESTART_MB) {
+          console.error(`🔄 RSS RESTART: rss=${rssMB}MB exceeds ${RSS_RESTART_MB}MB — initiating graceful restart`);
+          process.kill(process.pid, 'SIGTERM');
+          return;
+        }
 
         if (rssMB > RSS_WARNING_MB && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
           console.log(`🧹 RSS MEMORY RELIEF: rss=${rssMB}MB heap=${heapMB}MB — clearing SEO & quick caches`);
@@ -1217,7 +1225,7 @@ app.use((req, res, next) => {
             tryGc();
           }
         }
-      }, 60_000);
+      }, 30_000);
 
       const { getActiveOperationsSummary, getGcStats, resetGcStats, initGcTracking } = await import('./utils/operation-tracker');
       await initGcTracking();
