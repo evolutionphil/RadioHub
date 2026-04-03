@@ -46,13 +46,13 @@ let gcPauseTotal = 0;
 let gcPauseCount = 0;
 let gcPauseMax = 0;
 
-export function initGcTracking(): void {
+export async function initGcTracking(): Promise<void> {
   const gcExposed = typeof (globalThis as any).gc === 'function';
   console.log(`🔧 Node flags: execArgv=${JSON.stringify(process.execArgv)}, gc exposed=${gcExposed}`);
 
   try {
-    const { PerformanceObserver } = require('perf_hooks');
-    const obs = new PerformanceObserver((list: any) => {
+    const perfHooks = await import('perf_hooks');
+    const obs = new perfHooks.PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
         const durationMs = Math.round(entry.duration);
         gcPauseCount++;

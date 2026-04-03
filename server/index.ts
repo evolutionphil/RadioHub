@@ -1099,7 +1099,7 @@ app.use((req, res, next) => {
       }, 5 * 60 * 1000);
 
       const { getActiveOperationsSummary, getGcStats, resetGcStats, initGcTracking } = await import('./utils/operation-tracker');
-      initGcTracking();
+      await initGcTracking();
 
       let lastEventLoopCheck = Date.now();
       let lastBlockedLogTime = 0;
