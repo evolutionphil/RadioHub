@@ -60,3 +60,7 @@ GOOGLE_IOS_CLIENT_ID = "246210957471-18662dh38h9tmlk7nppdk15ucbha4emk.apps.googl
 APPLE_CLIENT_ID = "com.visiongo.megaradio"
 APPLE_TEAM_ID = "M6T85HP76P"
 VITE_FLOWALIVE_API_KEY = "flowalive_b42f8188aad215f2250e5f0889adcbf4"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000

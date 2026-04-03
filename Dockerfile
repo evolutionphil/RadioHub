@@ -33,6 +33,8 @@ COPY --from=base /app/public ./public
 COPY --from=base /app/attached_assets ./attached_assets
 
 ENV NODE_ENV=production
+ENV MALLOC_ARENA_MAX=2
+ENV MALLOC_MMAP_THRESHOLD_=131072
 
 EXPOSE ${PORT:-5000}
 

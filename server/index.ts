@@ -1166,31 +1166,46 @@ app.use((req, res, next) => {
       const { CacheManager } = await import('./cache');
 
       let lastMemoryGcTime = 0;
-      const MEMORY_GC_COOLDOWN = 15 * 60 * 1000;
+      const MEMORY_GC_COOLDOWN = 5 * 60 * 1000;
       let lastProactiveClearTime = 0;
-      const PROACTIVE_CLEAR_COOLDOWN = 30 * 60 * 1000;
+      const PROACTIVE_CLEAR_COOLDOWN = 10 * 60 * 1000;
       let lastMemoryWarningTime = 0;
-      const MEMORY_WARNING_INTERVAL = 15 * 60 * 1000;
+      const MEMORY_WARNING_INTERVAL = 5 * 60 * 1000;
+      const RSS_WARNING_MB = 4000;
+      const RSS_CRITICAL_MB = 6000;
+
+      const tryGc = () => {
+        try {
+          if (typeof (globalThis as any).gc === 'function') {
+            (globalThis as any).gc();
+          }
+        } catch {}
+      };
+
+      setInterval(() => { tryGc(); }, 60_000);
+
       setInterval(async () => {
         const mem = process.memoryUsage();
         const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
         const rssMB = Math.round(mem.rss / 1024 / 1024);
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
         const now = Date.now();
-        if (heapMB > 3000 && heapMB <= 3500 && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
-          console.log(`🧹 PROACTIVE MEMORY RELIEF: heap=${heapMB}MB — clearing SEO & quick caches`);
+
+        if (rssMB > RSS_WARNING_MB && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
+          console.log(`🧹 RSS MEMORY RELIEF: rss=${rssMB}MB heap=${heapMB}MB — clearing SEO & quick caches`);
           performanceCache.clearSeoAndQuickCaches();
+          tryGc();
           lastProactiveClearTime = now;
         }
-        if (heapMB > 3000) {
+
+        if (rssMB > RSS_CRITICAL_MB || heapMB > 3500) {
           if ((now - lastMemoryWarningTime) > MEMORY_WARNING_INTERVAL) {
-            console.warn(`⚠️ MEMORY WARNING: heap=${heapMB}MB/${heapTotalMB}MB, rss=${rssMB}MB`);
+            console.warn(`⚠️ MEMORY WARNING: rss=${rssMB}MB heap=${heapMB}MB/${heapTotalMB}MB`);
             lastMemoryWarningTime = now;
           }
-          if (heapMB > 3500) {
-            if ((now - lastMemoryGcTime) < MEMORY_GC_COOLDOWN) return;
+          if ((now - lastMemoryGcTime) > MEMORY_GC_COOLDOWN) {
             lastMemoryGcTime = now;
-            console.error(`🚨 MEMORY CRITICAL: heap=${heapMB}MB — clearing caches (except translations) to prevent OOM`);
+            console.error(`🚨 MEMORY CRITICAL: rss=${rssMB}MB heap=${heapMB}MB — clearing caches + forcing GC`);
             performanceCache.clearAllForMemoryRelief();
             await CacheManager.clearByPattern('precomputed_');
             await CacheManager.clearByPattern('stations:');
@@ -1199,9 +1214,10 @@ app.use((req, res, next) => {
               const { clearOgCache } = await import('./og-image-generator');
               clearOgCache();
             } catch {}
+            tryGc();
           }
         }
-      }, 5 * 60 * 1000);
+      }, 60_000);
 
       const { getActiveOperationsSummary, getGcStats, resetGcStats, initGcTracking } = await import('./utils/operation-tracker');
       await initGcTracking();
