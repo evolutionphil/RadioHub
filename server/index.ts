@@ -221,8 +221,9 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
           return tc;
         } catch { return {}; }
       })(),
-      mallocArenaMax: process.env.MALLOC_ARENA_MAX || 'not set',
-      mallocMmapThreshold: process.env.MALLOC_MMAP_THRESHOLD_ || 'not set'
+      ldPreload: process.env.LD_PRELOAD || 'not set',
+      mallocConf: process.env.MALLOC_CONF || 'not set',
+      allocator: process.env.LD_PRELOAD?.includes('jemalloc') ? 'jemalloc' : 'glibc'
     }
   });
 });
@@ -435,11 +436,16 @@ app.use(urlRedirectMiddleware);
 app.use(stationCountryValidator);
 
 // Enable compression for all responses - SEO optimization for faster page loads
+const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot/i;
 app.use(compression({
   level: 1,
   threshold: 1024,
   filter: (req, res) => {
     if (req.headers['upgrade']) {
+      return false;
+    }
+    const ua = req.headers['user-agent'] || '';
+    if (BOT_UA_RE.test(ua)) {
       return false;
     }
     const contentType = res.getHeader('Content-Type') as string;
@@ -1176,7 +1182,12 @@ app.use((req, res, next) => {
     if (process.env.NODE_ENV !== 'development') {
       const { CacheManager } = await import('./cache');
 
-      console.log(`🔧 MALLOC_ARENA_MAX=${process.env.MALLOC_ARENA_MAX || 'not set'}, MALLOC_MMAP_THRESHOLD_=${process.env.MALLOC_MMAP_THRESHOLD_ || 'not set'}`);
+      const ldPreload = process.env.LD_PRELOAD || 'not set';
+      const mallocConf = process.env.MALLOC_CONF || 'not set';
+      const allocator = ldPreload.includes('jemalloc') ? 'jemalloc ✅' : 'glibc (⚠️ RSS fragmentation risk)';
+      console.log(`🔧 Memory allocator: ${allocator}`);
+      console.log(`🔧 LD_PRELOAD=${ldPreload}`);
+      console.log(`🔧 MALLOC_CONF=${mallocConf}`);
 
       let lastMemoryGcTime = 0;
       const MEMORY_GC_COOLDOWN = 2 * 60 * 1000;
@@ -1219,8 +1230,21 @@ app.use((req, res, next) => {
         });
       };
 
-      let lastDiagLogTime = 0;
-      const DIAG_LOG_INTERVAL = 5 * 60 * 1000;
+      let lastDiagLogTime = Date.now();
+      const DIAG_LOG_INTERVAL = 2 * 60 * 1000;
+
+      setTimeout(async () => {
+        const mem = process.memoryUsage();
+        const conns = await getConnectionCount();
+        const handles = getHandleDiagnostics();
+        const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
+        const rssMB = Math.round(mem.rss / 1024 / 1024);
+        const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+        const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+        const extMB = Math.round(mem.external / 1024 / 1024);
+        const abMB = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
+        console.log(`📊 STARTUP DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${extMB}MB ab=${abMB}MB native≈${rssMB - heapTotalMB}MB | conns=${conns} | handles: ${handleStr}`);
+      }, 10_000);
 
       setInterval(() => { tryGc(); }, 60_000);
 

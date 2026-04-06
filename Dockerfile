@@ -20,6 +20,7 @@ FROM node:20-slim AS production
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    libjemalloc2 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -33,8 +34,8 @@ COPY --from=base /app/public ./public
 COPY --from=base /app/attached_assets ./attached_assets
 
 ENV NODE_ENV=production
-ENV MALLOC_ARENA_MAX=2
-ENV MALLOC_MMAP_THRESHOLD_=131072
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000
 
 EXPOSE ${PORT:-5000}
 
