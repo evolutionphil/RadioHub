@@ -9,11 +9,17 @@ const VITE_API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 if (VITE_API_BASE) {
   const originalFetch = window.fetch.bind(window);
   window.fetch = function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    let rewritten = false;
     if (typeof input === 'string' && input.startsWith('/api')) {
       input = `${VITE_API_BASE}${input}`;
+      rewritten = true;
     } else if (input instanceof Request && input.url.startsWith(window.location.origin + '/api')) {
       const newUrl = input.url.replace(window.location.origin, VITE_API_BASE);
       input = new Request(newUrl, input);
+      rewritten = true;
+    }
+    if (rewritten) {
+      init = { ...init, credentials: 'omit' };
     }
     return originalFetch(input, init);
   };
