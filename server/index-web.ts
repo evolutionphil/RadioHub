@@ -262,6 +262,19 @@ const apiProxy = createProxyMiddleware({
   }
 });
 
+app.get('/admin-login', (_req, res) => {
+  const apiDomain = BACKEND_API_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  res.redirect(301, `https://${apiDomain}/admin-login`);
+});
+app.get('/admin', (_req, res) => {
+  const apiDomain = BACKEND_API_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  res.redirect(301, `https://${apiDomain}/admin`);
+});
+app.get('/admin/*', (_req, res) => {
+  const apiDomain = BACKEND_API_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  res.redirect(301, `https://${apiDomain}${_req.path}`);
+});
+
 app.use('/api', apiProxy);
 
 (async () => {
