@@ -146,9 +146,9 @@ export function useTranslation() {
     }
   }, [locationData, language, window.location.pathname]);
 
-  // Check for server-preloaded translations to prevent flash
   const hasPreloadedTranslations = typeof window !== 'undefined' && 
     window.__INITIAL_TRANSLATIONS__ && 
+    Object.keys(window.__INITIAL_TRANSLATIONS__).length > 0 &&
     window.__INITIAL_LANGUAGE__ === language;
   
   // 🚀 LAZY LOADING: Fetch CRITICAL translations first (~100-120 keys, ~100-150ms)

@@ -60,7 +60,10 @@ export function precomputeTranslationScripts(): void {
     const metaDescription = translations.meta_description ||
       (lang !== 'en' ? `Mega Radio - ${langName} radyo istasyonları` : 'Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free.');
 
-    const script = `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${JSON.stringify(critical)};window.__PRELOADED__=true;</script>`;
+    const hasCritical = Object.keys(critical).length > 0;
+    const script = hasCritical
+      ? `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${JSON.stringify(critical)};window.__PRELOADED__=true;</script>`
+      : `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";</script>`;
 
     precomputedTranslationScripts.set(lang, { script, metaTitle, metaDescription });
   }
@@ -135,7 +138,10 @@ export function htmlLangMiddleware(req: Request, res: Response, next: NextFuncti
           (lang !== 'en' ? `Mega Radio - ${langName}` : 'Mega Radio - Listen to Free Live Radio Online');
         metaDescription = translations?.meta_description ||
           (lang !== 'en' ? `Mega Radio - ${langName} radyo istasyonları` : 'Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free.');
-        translationsScript = `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${JSON.stringify(critical)};window.__PRELOADED__=true;</script>`;
+        const hasCritical = Object.keys(critical).length > 0;
+        translationsScript = hasCritical
+          ? `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${JSON.stringify(critical)};window.__PRELOADED__=true;</script>`
+          : `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";</script>`;
       }
       
       const scriptInjected = buffer.replace(
