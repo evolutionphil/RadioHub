@@ -78,17 +78,33 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
   const isLanguageCode = SEO_LANGUAGES.some(lang => lang.code === firstSegment);
   const isCountryCode = firstSegment && firstSegment.length === 2 && COUNTRY_TO_LANGUAGE[firstSegment];
   
-  // If path has no language/country prefix, redirect to /en/*
-  // Examples: / → /en, /radios → /en/radios, /genres → /en/genres
+  const detectLanguageFromRequest = (req: Request): string => {
+    const cfCountry = (req.headers['cf-ipcountry'] as string || '').toLowerCase();
+    if (cfCountry && cfCountry !== 'xx' && cfCountry !== 't1' && COUNTRY_TO_LANGUAGE[cfCountry]) {
+      return COUNTRY_TO_LANGUAGE[cfCountry];
+    }
+    const cookieHeader = req.headers.cookie || '';
+    const prefLangMatch = cookieHeader.match(/preferredLanguage=([a-z]{2,5})/i);
+    if (prefLangMatch) {
+      const cookieLang = prefLangMatch[1].toLowerCase();
+      if (SEO_LANGUAGES.some(lang => lang.code === cookieLang)) return cookieLang;
+    }
+    const acceptLang = req.headers['accept-language'];
+    if (acceptLang) {
+      const primaryLang = acceptLang.split(',')[0].split('-')[0].toLowerCase().trim();
+      if (SEO_LANGUAGES.some(lang => lang.code === primaryLang)) return primaryLang;
+    }
+    return 'en';
+  };
+
   if (segments.length === 0) {
-    // Root path: / → /en
-    logger.log(`🔀 SEO 301: / → /en (English prefix)`);
-    res.redirect(301, '/en');
+    const detectedLang = detectLanguageFromRequest(req);
+    logger.log(`🔀 SEO 302: / → /${detectedLang} (auto-detected from country/browser)`);
+    res.redirect(302, `/${detectedLang}`);
     return;
   }
   
   if (!isLanguageCode && !isCountryCode) {
-    // Check if this is a known route segment (not a random path)
     const knownRoutes = ['radios', 'genres', 'station', 'stations', 'regions', 'discover', 
       'favorites', 'trending', 'about', 'contact', 'privacy-policy',
       'terms-and-conditions', 'feedback', 'profile', 'settings', 'notifications',
@@ -96,11 +112,11 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
       'recommendations', 'users', 'pages', 'applications', 'album', 'artist', 'song', 'records', 'tv'];
     
     if (knownRoutes.includes(firstSegment)) {
-      // Redirect to /en/* preserving the rest of the path
+      const detectedLang = detectLanguageFromRequest(req);
       const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      const newPath = `/en${urlPath}${queryString}`;
-      logger.log(`🔀 SEO 301: ${urlPath} → ${newPath} (English prefix)`);
-      res.redirect(301, newPath);
+      const newPath = `/${detectedLang}${urlPath}${queryString}`;
+      logger.log(`🔀 SEO 302: ${urlPath} → ${newPath} (auto-detected language prefix)`);
+      res.redirect(302, newPath);
       return;
     }
   }
