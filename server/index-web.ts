@@ -14,7 +14,7 @@ import { logger } from './utils/logger';
 import { urlRedirectMiddleware } from './url-redirect-middleware';
 import { stationCountryValidator } from './station-country-validator';
 import { serveStatic, log } from "./serve-static";
-import { SeoRenderer } from './seo-renderer';
+import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
 
@@ -41,11 +41,37 @@ app.get('/health', async (_req, res) => {
   const mem = process.memoryUsage();
   const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
   const rssMB = Math.round(mem.rss / 1024 / 1024);
+  const ssrStats = getSeoRenderStats();
+  const cacheStats = performanceCache.getStats();
   res.status(200).json({
     status: 'ok',
     service: 'frontend-web',
     timestamp: new Date().toISOString(),
     memory: { heapUsed: `${heapMB}MB`, rss: `${rssMB}MB` },
+    ssr: {
+      activeRenders: ssrStats.active,
+      maxConcurrent: 5,
+      totalRejected: ssrStats.rejected,
+      eventLoopLagMs: ssrStats.eventLoopLag
+    },
+    cache: {
+      seoHtml: {
+        keys: cacheStats.seoHtml.keys,
+        hits: cacheStats.seoHtml.stats.hits,
+        misses: cacheStats.seoHtml.stats.misses,
+        hitRate: cacheStats.seoHtml.stats.hits + cacheStats.seoHtml.stats.misses > 0
+          ? Math.round((cacheStats.seoHtml.stats.hits / (cacheStats.seoHtml.stats.hits + cacheStats.seoHtml.stats.misses)) * 10000) / 100
+          : 0
+      },
+      pageData: {
+        keys: cacheStats.pageData.keys,
+        hits: cacheStats.pageData.stats.hits,
+        misses: cacheStats.pageData.stats.misses,
+        hitRate: cacheStats.pageData.stats.hits + cacheStats.pageData.stats.misses > 0
+          ? Math.round((cacheStats.pageData.stats.hits / (cacheStats.pageData.stats.hits + cacheStats.pageData.stats.misses)) * 10000) / 100
+          : 0
+      }
+    },
     uptime: Math.round(process.uptime()),
     backendUrl: BACKEND_API_URL
   });
@@ -184,7 +210,7 @@ app.use((req, res, next) => {
 app.use(urlRedirectMiddleware);
 app.use(stationCountryValidator);
 
-const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot/i;
+const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot|gptbot|chatgpt|ccbot|anthropic|bytespider|perplexitybot|cohere/i;
 app.use(compression({
   level: 1,
   threshold: 1024,
@@ -317,14 +343,15 @@ app.use('/api', apiProxy);
     aboutPage: /^\/([a-z]{2}\/?)?(?:about|hakkinda|uber|sobre|a-propos|chi-siamo|an|haqqinda|za-nas)\/?/u,
     contactPage: /^\/([a-z]{2}\/?)?(?:contact|iletisim|kontakt|contacto|contatto|ittisal|elaqe|kontakti)\/?/u,
     stationsPage: /^\/([a-z]{2}\/?)?(?:stations|istasyonlar|istasyonlar|sender|stazioni|estacoes|emisoras|mahtat|stansiyalar|stantsii|电台|محطات)$/u,
-    botDetect: /\b(googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase)\b/i
+    botDetect: /\b(googlebot|google-inspectiontool|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase|gptbot|chatgpt-user|ccbot|anthropic-ai|claude-web|bytespider|perplexitybot|applebot|cohere-ai)\b/i
   };
 
   const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
   const BOT_RATE_LIMIT_WINDOW = 60_000;
   const BOT_RATE_LIMIT_MAX_MINOR = 12;
   const BOT_RATE_LIMIT_MAX_MAJOR = 15;
-  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
+  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
+  const AI_SCRAPER_RE = /\b(gptbot|chatgpt-user|ccbot|anthropic-ai|claude-web|bytespider|perplexitybot|cohere-ai)\b/i;
 
   setInterval(() => {
     const now = Date.now();
@@ -336,6 +363,12 @@ app.use('/api', apiProxy);
   app.use(async (req, res, next) => {
     const url = req.originalUrl;
     const userAgent = req.get('user-agent') || '';
+
+    if (AI_SCRAPER_RE.test(userAgent)) {
+      res.status(403).set({ 'Cache-Control': 'no-store' }).send('Forbidden');
+      return;
+    }
+
     const cleanUrlForMatching = decodeURIComponent(url.split('?')[0].split('#')[0]);
 
     const isStationPage = SEO_PRECOMPILED_REGEX.stationPage.test(cleanUrlForMatching);
@@ -387,8 +420,14 @@ app.use('/api', apiProxy);
     };
 
     const reqTimeout = setTimeout(() => {
-      logger.log(`⏰ SEO request timeout, falling back to SPA: ${url}`);
-      safeNext();
+      if (!responded && !res.headersSent) {
+        responded = true;
+        logger.log(`⏰ SEO request timeout (15s), returning 503: ${url}`);
+        res.status(503).set({
+          'Retry-After': '120',
+          'Cache-Control': 'no-store'
+        }).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mega Radio - Temporarily Unavailable</title></head><body><h1>Service Temporarily Unavailable</h1><p>Please try again later.</p></body></html>`);
+      }
     }, 15000);
 
     try {
@@ -483,29 +522,18 @@ app.use('/api', apiProxy);
         }).send(htmlContent);
       }
     } catch (error: any) {
-      if (error?.message === 'SEO_RENDER_OVERLOADED' || error?.message === 'SEO_RENDER_TIMEOUT') {
-        if (!responded && !res.headersSent) {
-          responded = true;
-          clearTimeout(reqTimeout);
-          const cleanUrl2 = url.split('?')[0].split('#')[0];
-          const minimalHtml = `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Mega Radio - Free Online Radio</title>
-    <meta name="description" content="Listen to 60,000+ free online radio stations from 120+ countries.">
-    <link rel="canonical" href="https://themegaradio.com${cleanUrl2}">
-  </head>
-  <body>
-    <div id="root"><h1>Mega Radio</h1><p>Loading...</p></div>
-  </body>
-</html>`;
-          res.status(200).set({ 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60, s-maxage=300' }).send(minimalHtml);
-          return;
-        }
+      if (!responded && !res.headersSent) {
+        responded = true;
+        clearTimeout(reqTimeout);
+        const errMsg = error?.message || '';
+        const isOverload = errMsg === 'SEO_RENDER_OVERLOADED' || errMsg === 'SEO_RENDER_TIMEOUT';
+        logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), returning 503: ${url} — ${errMsg}`);
+        res.status(503).set({
+          'Content-Type': 'text/html',
+          'Retry-After': isOverload ? '120' : '60',
+          'Cache-Control': 'no-store'
+        }).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mega Radio - Temporarily Unavailable</title></head><body><h1>Service Temporarily Unavailable</h1><p>Please try again later.</p></body></html>`);
       }
-      safeNext();
     }
   });
 

@@ -309,6 +309,12 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
     const baseUrl = getBaseUrl(req);
     const robots = `User-agent: *
 Allow: /
+Allow: /api/station/
+Allow: /api/stations/
+Allow: /api/genres
+Allow: /api/translations
+Allow: /api/location
+Allow: /api/advertisements
 Disallow: /api/
 Disallow: /*/admin/
 Disallow: /*/admin
@@ -324,13 +330,43 @@ Disallow: /*/profile
 Disallow: /og-image
 
 User-agent: Bingbot
-Crawl-delay: 10
+Crawl-delay: 5
 
 User-agent: Yandex
-Crawl-delay: 10
+Crawl-delay: 5
 
 User-agent: Baiduspider
 Crawl-delay: 10
+
+User-agent: Sogou
+Crawl-delay: 30
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ChatGPT-User
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Claude-Web
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: PerplexityBot
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+User-agent: cohere-ai
+Disallow: /
 
 Sitemap: ${baseUrl}/sitemap-index.xml`;
 

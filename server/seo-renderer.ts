@@ -9,6 +9,19 @@ const SEO_RENDER_MAX_CONCURRENT = 5;
 const SEO_RENDER_TIMEOUT_MS = 5000;
 let seoRenderActive = 0;
 let seoRenderRejected = 0;
+let eventLoopLagMs = 0;
+const EVENT_LOOP_LAG_THRESHOLD_MS = 500;
+
+setInterval(() => {
+  const start = Date.now();
+  setImmediate(() => {
+    eventLoopLagMs = Date.now() - start;
+  });
+}, 2000);
+
+export function getSeoRenderStats() {
+  return { active: seoRenderActive, rejected: seoRenderRejected, eventLoopLag: eventLoopLagMs };
+}
 
 const DB_QUERY_TIMEOUT_MS = SEO_RENDER_TIMEOUT_MS - 500;
 
@@ -32,10 +45,6 @@ function withSignal<T>(query: any, signal?: AbortSignal): Promise<T> {
       (err) => { if (!settled) { settled = true; signal.removeEventListener('abort', onAbort); reject(err); } }
     );
   });
-}
-
-export function getSeoRenderStats() {
-  return { active: seoRenderActive, rejected: seoRenderRejected };
 }
 
 export interface StaticPageData {
@@ -160,9 +169,9 @@ export class SeoRenderer {
   }
   
   async renderStaticPage(url: string, domain: string = '', preferredLanguage?: string): Promise<StaticPageData> {
-    if (seoRenderActive >= SEO_RENDER_MAX_CONCURRENT) {
+    if (seoRenderActive >= SEO_RENDER_MAX_CONCURRENT || eventLoopLagMs > EVENT_LOOP_LAG_THRESHOLD_MS) {
       seoRenderRejected++;
-      logger.log(`⚠️ SEO render rejected (active=${seoRenderActive}, rejected=${seoRenderRejected}): ${url}`);
+      logger.log(`⚠️ SEO render rejected (active=${seoRenderActive}, lag=${eventLoopLagMs}ms, rejected=${seoRenderRejected}): ${url}`);
       throw new Error('SEO_RENDER_OVERLOADED');
     }
 

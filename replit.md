@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-This project is a comprehensive full-stack radio station management application designed for streaming and administration. It offers an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key features include user management, social interaction capabilities, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The overarching goal is to establish a leading platform in digital audio, leveraging AI for content delivery and advanced HLS session management to achieve global reach and uninterrupted streaming.
+The Mega Radio Station Management System is a full-stack application for streaming and managing radio stations. It features an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. The system includes user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The vision is to establish a leading digital audio platform utilizing AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -35,7 +35,6 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Database**: MongoDB with Mongoose
 - **API**: REST API
 - **Caching**: Multi-layer (NodeCache, Redis)
-- **Core Services**: Data sync, user/station management, advertising, CMS, duplicate detection.
 
 ### Frontend
 - **Framework**: React with TypeScript
@@ -46,86 +45,44 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Audio Streaming**: HLS.js with Plyr
 - **UI/UX**: Responsive mobile-first design, consistent design system, functional audio player.
 
-### Database Design
-- **Collections**: Stations, Countries, Languages, Genres, Codecs, Sync Logs, Users, Comments, Sessions, Notifications, AdvancedSearch.
-- **User Model**: `favoriteStations`, `recentlyPlayedStations`, preferences, authentication.
-
-### Split Deployment Architecture
-The project supports two deployment modes:
-1. **Monolithic** (default): Single `server/index.ts` serves API + frontend (`Dockerfile`, `railway.toml`).
-2. **Split**: Two independent services for scalability:
-   - **backend-api** (`server/index-api.ts`, `Dockerfile.api`, `railway-api.toml`): All `/api/*` routes, WebSocket servers, sessions, OAuth, rate limiting. Domain: `api.themegaradio.com`.
-   - **frontend-web** (`server/index-web.ts`, `Dockerfile.web`, `railway-web.toml`): Vite SPA, SEO renderer, static assets. Domain: `themegaradio.com`. Client-side API calls go directly to `api.themegaradio.com` via `VITE_API_BASE_URL` (set in `scripts/build-web.sh`). Server-side proxy (`http-proxy-middleware`) still handles `/api/*` for SSR/SEO renders. `/admin*` routes return 404.
-   - Build scripts: `scripts/build-api.sh`, `scripts/build-web.sh`.
-   - Full deploy guide: `DEPLOY-SPLIT.md`.
-   - Key env vars: `BACKEND_API_URL` (frontend→backend internal URL), `CORS_ALLOWED_ORIGINS` (backend allowlist), `FRONTEND_URL` (OAuth redirects).
+### Deployment
+- **Architecture**: Supports monolithic or split deployment (backend-api and frontend-web services) for scalability.
+- **Containerization**: Docker for builds and deployment.
 
 ### Key Architectural Decisions
-- **Monorepo Structure**: Unified repository for frontend, backend, and shared types.
-- **Type Safety**: End-to-end TypeScript with Zod.
-- **Rate Limiting**: Global and auth-specific.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, robots.txt, structured data (JSON-LD), multilingual hreflang support, unified language URL prefixes.
+- **Monorepo**: Unified repository for all components.
+- **Type Safety**: End-to-end TypeScript with Zod validation.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang.
+- **Performance**: Caching, indexing, lazy loading, Core Web Vitals optimization, precomputed caches.
+- **Geolocation**: Cloudflare headers and GPS for nearby stations.
 - **Audio Continuity**: Preserves playback during navigation.
-- **Performance**: Caching, indexing, lazy loading, code splitting, Core Web Vitals optimization, precomputed caches, optimized profile data fetching.
-- **Geolocation**: Cloudflare CF-IPCountry headers, GPS-based nearby stations.
-- **Web Push Notifications**: VAPID keys and service workers for silent pushes.
-- **Smart Direct Streaming**: HTTPS streams not proxied; HTTP streams use intelligent fallback with proxy.
-- **Auto-Reconnect & Server Timeout**: Client-side auto-reconnect, optimized server-side timeouts.
-- **Vote-Based Ordering**: Stations ordered by popularity.
-- **Google OAuth**: Integrated login and avatar management.
-- **Radio Station Sync System**: Robust synchronization with automated index migration, duplicate prevention.
-- **User Engagement**: Real user favorites/ratings drive trends and recommendations.
-- **Internationalization**: 56-language SEO coverage, dynamic cache warmup, multilingual sitemap generation, country-specific URL translations, universal country normalization.
-- **Background Audio Protection**: 5-layer system to prevent browser audio suspension.
-- **Image Optimization**: Server-side image resizing and WebP conversion using Sharp, stored on S3.
-- **Memory Management**: Multi-layer OOM prevention. RSS-based monitoring (not just heap): RSS>3GB=proactive cache clear; RSS>4GB=critical full clear+GC; RSS>5GB=graceful self-restart (SIGTERM). Memory check interval: 30s. Periodic GC every 60s (`global.gc()` with `--expose-gc`). **jemalloc** replaces glibc malloc via `LD_PRELOAD` in Dockerfile (aggressively returns freed native memory to OS, eliminates RSS fragmentation). `MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000` for fast memory return. Compression disabled for bot user-agents (reduces zlib native memory from crawler traffic). HTTP server: keepAliveTimeout=10s, headersTimeout=15s, maxConnections=500 to limit native memory from idle TCP connections. Heap limit: 4096MB. Semi-space: 64MB. Operation tracker (`server/utils/operation-tracker.ts`) monitors active operations and GC pauses via PerformanceObserver (`node:perf_hooks` protocol for esbuild ESM compatibility) — diagnostics visible at `/health` or `/api/health` (not `/healthz` which returns plain `ok` for Railway speed). Sharp memory capped: `cache({memory:50,files:20,items:100})`, `concurrency(1)`. Global JSON body limit: 2MB (50MB only on `/api/admin/bulk-import-stations`). Compression level: 1 (was 6, blocked event loop). Node flags applied via Dockerfile CMD + railway.toml startCommand.
-
-IMPORTANT: Railway uses Dockerfile for builds. Node flags MUST be in BOTH Dockerfile CMD AND railway.toml startCommand. start.sh doesn't work because Dockerfile multi-stage build doesn't copy it to production stage.
-- **SEO Render Protection**: Max 5 concurrent SSR renders (Task #2), 5s timeout per render with AbortController+maxTimeMS query cancellation, 30s HTTP request timeout, 15s SEO middleware timeout. Bot rate limiting: 15 req/min (major), 12 req/min (minor). Prevents Googlebot crawl storms from cascading into server-wide event loop blocks.
-- **Event Loop Protection**: Load shedding with cooldowns, rate-limited lag logging, and log collector safeguards.
-- **Startup Stability**: Staged cache warmup, event loop blocking prevention, log collector safeguards, daily auto-restart via SIGTERM.
-- **API Key Management**: Secure generation, validation, rate limiting, and usage tracking.
-- **Cast System**: Dual architecture (WebSocket/polling) for real-time command and now-playing status.
-- **TV Device Code Login**: Netflix/YouTube-style activation.
-- **Security**: Rate limiting, X-Powered-By removal, security headers, suppressed internal error messages.
-- **Process Stability**: Global error handlers, graceful shutdown, event loop lag monitoring, MongoDB readyState monitoring, per-user WebSocket limits, strict ICY metaInterval validation, streaming for description cleanup, compression level optimization.
-- **External API Resilience**: Recommendation engine guard against concurrent computations.
-- **Account Deletion**: Apple Guideline 5.1.1 compliant, deleting all user data across 23 collections with `Promise.allSettled`.
-- **MongoDB Aggregate Timeouts**: Limits on heavy aggregates, `allowDiskUse` for genre aggregates, inter-iteration delays for warmup loops.
-- **Precomputed Genres Optimization**: Only top 19 countries refreshed automatically.
-- **Input Validation**: Robust for user authentication.
-- **Random Station Selection**: Optimized using MongoDB `$sample`.
-- **Logo Optimization**: MongoDB schema, LogoProcessor service, unified component, S3 integration.
+- **User Engagement**: Real user data drives trends and recommendations.
+- **Internationalization**: 56-language support, dynamic cache warming, country-specific URL translations.
+- **Background Audio Protection**: Multi-layer system to prevent browser audio suspension.
+- **Image Optimization**: Server-side image resizing and WebP conversion with Sharp, stored on S3.
+- **Memory Management**: Multi-layer OOM prevention using RSS monitoring, periodic GC, jemalloc, and optimized HTTP server settings.
+- **SEO Render Protection**: Limits concurrent SSR, timeouts, bot rate limiting, event loop lag monitoring, and robust error handling for SSR failures.
+- **Subscription System**: Supports various plans (`remove_ads`, `premium_monthly`, `premium_yearly`, `premium_lifetime`) with feature matrices and robust API for purchase reporting, status checking, and admin overrides.
 
 ## External Dependencies
-- **MongoDB Atlas**: Cloud database.
-- **Radio-Browser API**: External radio station data.
-- **ip-api.com**: Geolocation service.
-- **Cloudflare**: Cache management and RUM Web Vitals.
-- **mongoose**: MongoDB ODM.
-- **@tanstack/react-query**: Server state management.
-- **axios**: HTTP client.
-- **node-cron**: Scheduled tasks.
-- **@radix-ui/***: Accessible UI primitives.
-- **tailwindcss**: CSS framework.
-- **wouter**: React router.
-- **react-hook-form**: Form handling.
-- **vite**: Build tool.
-- **typescript**: Type safety.
-- **bcrypt**: Password hashing.
-- **zod**: Schema validation.
-- **hls.js**: HLS streaming library.
-- **plyr**: Media player.
-- **sharp**: Image processing.
-- **AWS S3**: Cloud storage for logos and user avatars.
-- **multer**: Multipart form-data handling for file uploads.
-
-### Subscription System
-- **Plans**: `none` | `remove_ads` | `premium_monthly` | `premium_yearly` | `premium_lifetime` (matches mobile app exactly).
-- **Product IDs**: `megaradio_remove_ads_yearly1`, `megaradio_premium_monthly1`, `megaradio_premium_yearly`, `megaradio_premium_lifetime`.
-- **Feature Matrix**: `remove_ads` plan only removes ads. Premium plans (monthly/yearly/lifetime) unlock all features: remove_ads, song_info, spotify_link, youtube_link, hd_stream, song_history, stream_record.
-- **User Model Fields**: `subscription.plan`, `subscription.platform` (ios/android/web/admin), `subscription.productId`, `subscription.transactionId`, `subscription.originalTransactionId`, `subscription.receipt`, `subscription.purchaseToken`, `subscription.expiresAt` (null for lifetime), `subscription.startedAt`, `subscription.isTrial`, `subscription.isActive`, `subscription.cancelledAt`, `subscription.lastVerifiedAt`.
-- **Mobile API**: `POST /api/user/subscription` (report purchase, requires productId+transactionId, auto-resolves plan from productId), `GET /api/user/subscription` (check status with features array, auto-expires non-lifetime), `POST /api/user/subscription/cancel`.
-- **Admin API**: `PATCH /api/admin/users/:id/subscription` (admin override).
-- **Admin UI**: Badges in `/admin/users` — No Ads (blue), Premium M/Y (yellow/orange), Lifetime (purple).
-- **Integration Doc**: `mobile-subscription-integration.md` for React Native developer.
+- **MongoDB Atlas**: Cloud database service.
+- **Radio-Browser API**: Third-party radio station data.
+- **ip-api.com**: Geolocation API.
+- **Cloudflare**: CDN, caching, and RUM Web Vitals.
+- **AWS S3**: Cloud storage for media assets (logos, avatars).
+- **mongoose**: MongoDB Object Data Modeling (ODM) library.
+- **@tanstack/react-query**: Data fetching and state management.
+- **axios**: Promise-based HTTP client.
+- **node-cron**: Task scheduling.
+- **@radix-ui/***: UI component library for accessibility.
+- **tailwindcss**: Utility-first CSS framework.
+- **wouter**: Small routing library for React.
+- **react-hook-form**: Form validation and management.
+- **vite**: Frontend build tool.
+- **typescript**: Language for type safety.
+- **bcrypt**: Password hashing library.
+- **zod**: Schema declaration and validation library.
+- **hls.js**: JavaScript library for HLS playback.
+- **plyr**: Lightweight HTML5 media player.
+- **sharp**: High-performance image processing.
+- **multer**: Middleware for handling `multipart/form-data`.

@@ -25,16 +25,16 @@ export class PerformanceCache {
     });
     
     this.seoHtmlCache = new NodeCache({ 
-      stdTTL: 900,
-      checkperiod: 180,
-      maxKeys: 2000,
+      stdTTL: 1800,
+      checkperiod: 300,
+      maxKeys: 5000,
       useClones: false
     });
     
     this.pageDataCache = new NodeCache({ 
-      stdTTL: 600,
-      checkperiod: 120,
-      maxKeys: 2000,
+      stdTTL: 900,
+      checkperiod: 180,
+      maxKeys: 3000,
       useClones: false
     });
     
