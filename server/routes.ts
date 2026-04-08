@@ -476,6 +476,49 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     }
   });
 
+  app.get("/api/translations/:lang/critical", async (req, res) => {
+    const lang = req.params.lang;
+    if (!lang || lang.length > 10) {
+      return res.status(400).json({ error: 'Invalid language code' });
+    }
+
+    try {
+      const cacheKey = `translations_critical_${lang}`;
+      const cached = await CacheManager.get<Record<string, string>>(cacheKey);
+      if (cached) {
+        res.setHeader('Cache-Control', 'public, max-age=300');
+        return res.json(cached);
+      }
+
+      const fullTranslations = await fetchTranslationsForLanguage(lang);
+      const criticalKeys = [
+        'home_hero_title', 'home_hero_subtitle', 'nav_home', 'nav_genres', 'nav_regions',
+        'nav_favorites', 'nav_trending', 'nav_about', 'nav_contact', 'search_placeholder',
+        'play', 'pause', 'stop', 'loading', 'error', 'retry', 'close', 'menu', 'back',
+        'popular_stations', 'nearby_stations', 'all_stations', 'no_stations_found',
+        'country', 'language', 'genre', 'listen_now', 'live', 'share', 'favorite',
+        'unfavorite', 'login', 'signup', 'logout', 'profile', 'settings',
+        'auth_username_label', 'auth_password_label', 'auth_email_label',
+        'footer_about', 'footer_contact', 'footer_privacy', 'footer_terms',
+        'mood_selector', 'seo_from', 'seo_listen_live_online', 'seo_description',
+        'station_info', 'station_country', 'station_language', 'station_genre',
+        'station_bitrate', 'station_codec', 'station_votes',
+        'discover_by_genre', 'discover_by_country', 'trending_now',
+        'cookie_consent_message', 'cookie_accept', 'cookie_decline'
+      ];
+      const critical: Record<string, string> = {};
+      for (const key of criticalKeys) {
+        if (fullTranslations[key]) critical[key] = fullTranslations[key];
+      }
+      await CacheManager.set(cacheKey, critical, { ttl: 7200, useRedis: true });
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.json(critical);
+    } catch (error) {
+      logger.error(`Error fetching critical translations for ${lang}:`, error);
+      res.status(500).json({ error: 'Failed to fetch critical translations' });
+    }
+  });
+
   app.get("/api/translations/:lang", async (req, res) => {
     const lang = req.params.lang;
     if (!lang || lang.length > 10) {

@@ -261,9 +261,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       
       await CacheManager.set(cacheKey, result, { ttl: 86400 });
       res.json(result);
-    } catch (error) {
-      console.error('Error in /api/admin/stations:', error);
-      res.status(500).json({ error: 'Failed to fetch stations' });
+    } catch (error: any) {
+      logger.error(`Error in /api/admin/stations: ${error?.message || error}`);
+      if (error?.stack) logger.error(error.stack.split('\n').slice(0, 5).join('\n'));
+      res.status(500).json({ error: 'Failed to fetch stations', details: error?.message || 'Unknown error' });
     }
   });
 
