@@ -12,15 +12,16 @@ import { ObjectStorageService } from "../objectStorage";
 import CacheManager from "../cache";
 import { getQuotaStatus } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
+import { stripPlaceholders } from "./shared-utils";
 
 interface RouteDeps {
   requireAuth: any;
   requireAdmin: any;
-  stripPlaceholders: (obj: any) => any;
+  stripPlaceholders?: (obj: any) => any;
 }
 
 export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
-  const { requireAdmin, stripPlaceholders } = deps;
+  const { requireAdmin } = deps;
   const objectStorageService = new ObjectStorageService();
 
   // DATA SYNC UTILITY - Fix follower counts for all users
