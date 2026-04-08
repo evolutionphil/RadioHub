@@ -451,6 +451,45 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     }
   });
 
+  app.get("/api/genres/slug/:slug", async (req, res) => {
+    try {
+      const { slug } = req.params;
+
+      const cacheKey = `genre-slug:${slug}`;
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const genre = await Genre.findOne({ slug }).select('name slug stationCount description icon').lean();
+      if (genre) {
+        const result = { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount, description: (genre as any).description, icon: (genre as any).icon };
+        await CacheManager.set(cacheKey, result, { ttl: 3600 });
+        return res.json(result);
+      }
+
+      const normalizedName = slug.replace(/-/g, ' ');
+      const escapedName = normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const stationCount = await Station.countDocuments({
+        $or: [
+          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedName}\\s*(,|$)`, 'i') } },
+          { genre: { $regex: new RegExp(escapedName, 'i') } }
+        ]
+      });
+
+      if (stationCount > 0) {
+        const result = { name: normalizedName.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), slug, stationCount };
+        await CacheManager.set(cacheKey, result, { ttl: 3600 });
+        return res.json(result);
+      }
+
+      return res.status(404).json({ error: 'Genre not found' });
+    } catch (error) {
+      console.error('Error fetching genre by slug:', error);
+      res.status(500).json({ error: 'Failed to fetch genre' });
+    }
+  });
+
   app.get("/api/genres/:slug/stations", async (req, res) => {
     try {
       const { slug } = req.params;

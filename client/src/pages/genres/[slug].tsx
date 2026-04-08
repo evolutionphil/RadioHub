@@ -7,7 +7,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
-import { getCountryFromCode } from "@shared/seo-config";
+import { getCountryFromCode, SEO_LANGUAGES } from "@shared/seo-config";
 import { useTranslation } from "@/hooks/useTranslation";
 import {
   Select,
@@ -32,18 +32,17 @@ export default function GenreDetail({
   
   const slug = paramsLang?.slug || paramsDefault?.slug;
   
-  // Extract country from URL path for filtering using shared config
-  const urlCountryCode = paramsLang?.lang;
+  const urlCode = paramsLang?.lang;
+  const isLanguageCode = urlCode ? SEO_LANGUAGES.some(l => l.code === urlCode && l.enabled) : false;
+  const urlCountryCode = (urlCode && !isLanguageCode) ? urlCode : null;
   const urlCountryName = urlCountryCode ? getCountryFromCode(urlCountryCode) : null;
   
-  // State declarations - MUST come before use
   const { t } = useTranslation();
   const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState("");
-  const [sortBy, setSortBy] = useState("quality"); // Default to quality sorting
+  const [sortBy, setSortBy] = useState("quality");
   const [currentCountryFilter, setCurrentCountryFilter] = useState(urlCountryName || selectedCountry || "all");
   
-  // Use URL-based country if available, otherwise use currentCountryFilter, then fall back to selectedCountry
   const countryForFiltering = urlCountryName || currentCountryFilter || selectedCountry;
   
   if (!slug) {

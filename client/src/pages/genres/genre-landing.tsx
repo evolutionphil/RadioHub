@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, useLocation, useRoute } from 'wouter';
 import { SeoHead } from '@/components/SeoHead';
 import StationCard from '@/components/ui/station-card';
-import { CODE_TO_COUNTRY } from '@shared/seo-config';
+import { CODE_TO_COUNTRY, SEO_LANGUAGES, getCountryCodeFromName } from '@shared/seo-config';
 import { useTranslation } from '@/hooks/useTranslation';
 
 // Import arrow icons for pagination
@@ -36,13 +36,11 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
   // Get slug from multiple sources (priority: useParams > route params)
   const slug = paramsSlug || paramsLang?.slug || paramsDefault?.slug;
   
-  // Get the current country from URL and dropdown selection
-  // Priority: selectedCountry prop (from dropdown) > URL param > 'all'
-  const urlCountryCode = paramsLang?.lang;
+  const urlCode = paramsLang?.lang;
+  const isLanguageCode = urlCode ? SEO_LANGUAGES.some(l => l.code === urlCode && l.enabled) : false;
+  const urlCountryCode = (urlCode && !isLanguageCode) ? urlCode : null;
   const urlCountryName = urlCountryCode ? (CODE_TO_COUNTRY[urlCountryCode] || 'all') : null;
   
-  // Use selectedCountry prop if it's different from URL-based country (dropdown selection)
-  // or fall back to URL-based country detection
   const currentCountry = (selectedCountry && selectedCountry !== 'all' && selectedCountry !== urlCountryName) 
     ? selectedCountry 
     : (urlCountryName || selectedCountry || 'all');
@@ -115,7 +113,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (genreLoading || !genre) {
+  if (genreLoading) {
     return (
       <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center">
         <div className="text-xl">{t('genre_loading', 'Loading genre...') || 'Loading genre...'}</div>
@@ -123,7 +121,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
     );
   }
 
-  const genreName = genre?.name || slug || '';
+  const genreName = genre?.name || (slug ? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '') || '';
 
   return (
     <>
