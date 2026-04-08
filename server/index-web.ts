@@ -263,16 +263,13 @@ const apiProxy = createProxyMiddleware({
 });
 
 app.get('/admin-login', (_req, res) => {
-  const apiDomain = BACKEND_API_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  res.redirect(301, `https://${apiDomain}/admin-login`);
+  res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
 });
 app.get('/admin', (_req, res) => {
-  const apiDomain = BACKEND_API_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  res.redirect(301, `https://${apiDomain}/admin`);
+  res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
 });
 app.get('/admin/*', (_req, res) => {
-  const apiDomain = BACKEND_API_URL.replace(/^https?:\/\//, '').replace(/\/$/, '');
-  res.redirect(301, `https://${apiDomain}${_req.path}`);
+  res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
 });
 
 app.use('/api', apiProxy);
