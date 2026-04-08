@@ -5,6 +5,20 @@ import { measureCoreWebVitals } from "./utils/performance";
 import { initImageOptimizations } from "./utils/image-optimization";
 import { initAsyncStyles, loadWebFonts, addResourceHints } from './utils/async-css-loader';
 
+const VITE_API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+if (VITE_API_BASE) {
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = function(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+    if (typeof input === 'string' && input.startsWith('/api')) {
+      input = `${VITE_API_BASE}${input}`;
+    } else if (input instanceof Request && input.url.startsWith(window.location.origin + '/api')) {
+      const newUrl = input.url.replace(window.location.origin, VITE_API_BASE);
+      input = new Request(newUrl, input);
+    }
+    return originalFetch(input, init);
+  };
+}
+
 // Initialize performance monitoring and optimizations
 if (typeof window !== 'undefined') {
   const isDev = import.meta.env.DEV;

@@ -1,5 +1,12 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+export function resolveApiUrl(path: string): string {
+  if (!API_BASE || !path.startsWith('/api')) return path;
+  return `${API_BASE}${path}`;
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -17,7 +24,8 @@ export async function apiRequest(
 ): Promise<Response> {
   const { body, headers = {} } = options;
   
-  const res = await fetch(url, {
+  const resolvedUrl = resolveApiUrl(url);
+  const res = await fetch(resolvedUrl, {
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
@@ -70,7 +78,8 @@ export const getQueryFn: <T>(options: {
       url = queryKey.join("/") as string;
     }
     
-    const res = await fetch(url, {
+    const resolvedUrl = resolveApiUrl(url);
+    const res = await fetch(resolvedUrl, {
       credentials: "include",
     });
 

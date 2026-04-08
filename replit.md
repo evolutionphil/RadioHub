@@ -55,7 +55,7 @@ The project supports two deployment modes:
 1. **Monolithic** (default): Single `server/index.ts` serves API + frontend (`Dockerfile`, `railway.toml`).
 2. **Split**: Two independent services for scalability:
    - **backend-api** (`server/index-api.ts`, `Dockerfile.api`, `railway-api.toml`): All `/api/*` routes, WebSocket servers, sessions, OAuth, rate limiting. Domain: `api.themegaradio.com`.
-   - **frontend-web** (`server/index-web.ts`, `Dockerfile.web`, `railway-web.toml`): Vite SPA, SEO renderer, static assets. Reverse-proxies `/api/*` and `/ws/*` to backend via `http-proxy-middleware`. Domain: `themegaradio.com`.
+   - **frontend-web** (`server/index-web.ts`, `Dockerfile.web`, `railway-web.toml`): Vite SPA, SEO renderer, static assets. Domain: `themegaradio.com`. Client-side API calls go directly to `api.themegaradio.com` via `VITE_API_BASE_URL` (set in `scripts/build-web.sh`). Server-side proxy (`http-proxy-middleware`) still handles `/api/*` for SSR/SEO renders. `/admin*` routes return 404.
    - Build scripts: `scripts/build-api.sh`, `scripts/build-web.sh`.
    - Full deploy guide: `DEPLOY-SPLIT.md`.
    - Key env vars: `BACKEND_API_URL` (frontend→backend internal URL), `CORS_ALLOWED_ORIGINS` (backend allowlist), `FRONTEND_URL` (OAuth redirects).
