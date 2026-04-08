@@ -51,6 +51,7 @@ export const requireAdmin: MiddlewareFn = async (req, res, next) => {
     const session = req.session as any;
 
     if (!session || !session.adminAuth) {
+      logger.log(`🔒 requireAdmin DENIED: ${req.method} ${req.path} - SessionID: ${req.sessionID}, hasSession: ${!!session}, hasAdminAuth: ${!!session?.adminAuth}`);
       return res.status(401).json({
         error: 'Admin authentication required',
         message: 'You must be logged in as an admin to access this resource.'

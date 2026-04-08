@@ -1,0 +1,40 @@
+LCP: 3036
+index-zR2rANl7.js:164 LCP: 3048
+assets/eye-BCcJIxjY.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/station-logo-DVT2peCv.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/thumbs-up-C5UR9E0H.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/optimized-image-DQ6oe87p.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+free-mode-dKiYrM6Z.css:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+navigation-CteQybwo.css:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+radio-frontend-DE0q59Ew.css:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/navigation-BcojIw3x.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/SeoHead-DydUNEqA.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/chevron-left-DNZGzpBf.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/chevron-right-Dul_Qo3s.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/heart-f-krZiTK.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/footer-E2bhtkho.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+desktop.css:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+images/hero-bg-430w.webp:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/textarea-DQVYQfU0.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/globe-EaRUO5-g.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+api/translations/en:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+images/no-image.webp:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+images/logo-icon-100w.webp:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+api/auth/me:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+api/seo/page-data?url=%2Ftr:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+index-zR2rANl7.js:41 Uncaught Error: Unable to preload CSS for /assets/free-mode-dKiYrM6Z.css
+    at HTMLLinkElement.<anonymous> (index-zR2rANl7.js:41:58383)Understand this error
+assets/free-mode-DslYk_uL.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+assets/useGlobalPlayer-B2WxmhII.js:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+api/filters/countries:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+api/translations/de:1  Failed to load resource: net::ERR_SSL_PROTOCOL_ERRORUnderstand this error
+index-zR2rANl7.js:164 FID: 0.6000000238418579
+(index):1 Unsafe attempt to load URL https://pagead2.googlesyndication.com/pagead/html/r20260402/r20190131/zrt_lookup_fy2021.html from frame with URL chrome-error://chromewebdata/. Domains, protocols and ports must match.
+Understand this error
+(index):1 Unsafe attempt to load URL https://pagead2.googlesyndication.com/pagead/html/r20260402/r20190131/zrt_lookup_fy2021.html from frame with URL chrome-error://chromewebdata/. Domains, protocols and ports must match.
+Understand this error
+(index):1 Unsafe attempt to load URL https://pagead2.googlesyndication.com/pagead/ads?client=ca-pub-8771434485570434&output=html&adk=1812271804&adf=3025194257&lmt=1775643697&plat=8%3A32768%2C9%3A134250504%2C16%3A8388608%2C17%3A32%2C24%3A32%2C25%3A32%2C30%3A1081344%2C32%3A32%2C41%3A32%2C42%3A32%2C43%3A32&format=0x0&url=https%3A%2F%2Fthemegaradio.com%2Ftr&pra=5&aiof=9&asro=0&itsi=-1&aiapmd=0.0001&aiapmid=1&aiactd=0&aicctd=0&ailctd=0&aimartd=4&aieuf=1&aicrs=1&uach=WyJXaW5kb3dzIiwiMTkuMC4wIiwieDg2IiwiIiwiMTQ2LjAuNzY4MC4xNjciLG51bGwsMCxudWxsLCI2NC...402&mjsv=m202604020101&ptt=9&saldr=aa&abxe=1&eoidce=1&nras=1&correlator=6666507819311&frm=20&pv=2&u_tz=120&u_his=2&u_h=1440&u_w=5120&u_ah=1392&u_aw=5120&u_cd=32&u_sd=1&dmc=8&adx=-12245933&ady=-12245933&biw=2558&bih=1270&scr_x=0&scr_y=0&eid=31097653%2C95386955&oid=2&pvsid=1931612633214365&tmod=149621676&uas=0&nvt=1&fsapi=1&fc=1920&brdim=3%2C10%2C3%2C10%2C5120%2C0%2C2574%2C1399%2C2558%2C1270&vis=1&rsz=%7C%7Cs%7C&abl=NS&fu=32768&bc=31&plas=787x1144_l%7C787x1144_r&bz=1.01&pgls=CAk.&ifi=1&uci=a!1&fsb=1&dtd=322 from frame with URL chrome-error://chromewebdata/. Domains, protocols and ports must match.
+Understand this error
+tr:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.Understand this warning
+tr:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.Understand this warning
+tr:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.Understand this warning

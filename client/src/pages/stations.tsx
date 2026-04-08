@@ -961,7 +961,13 @@ export default function Stations() {
         />
 
         <CardContent className="p-0">
-          {isLoading ? (
+          {error ? (
+            <div className="p-8 text-center">
+              <p className="text-red-500 font-medium mb-2">Failed to load stations</p>
+              <p className="text-sm text-gray-500">{(error as any)?.message || 'Unknown error'}</p>
+              <button onClick={() => refetch()} className="mt-3 px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">Retry</button>
+            </div>
+          ) : isLoading ? (
             <div className="p-8 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto"></div>
               <p className="mt-2 text-sm text-gray-500">

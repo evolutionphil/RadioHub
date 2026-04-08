@@ -28,16 +28,22 @@ export function registerAdminAuthRoutes(app: Express, deps: any) {
       
       (req.session as any).adminAuth = adminAuthData;
       
-      logger.log('✅ Admin login successful - Session ID:', req.sessionID);
-      logger.log('✅ Admin auth data stored:', adminAuthData);
-
-      res.json({ 
-        success: true, 
-        message: "Admin login successful",
-        user: {
-          username: ADMIN_USERNAME,
-          role: 'admin'
+      req.session.save((err) => {
+        if (err) {
+          logger.error('❌ Session save error:', err);
+          return res.status(500).json({ error: 'Session save failed' });
         }
+        logger.log('✅ Admin login successful - Session ID:', req.sessionID);
+        logger.log('✅ Admin auth data stored:', adminAuthData);
+
+        res.json({ 
+          success: true, 
+          message: "Admin login successful",
+          user: {
+            username: ADMIN_USERNAME,
+            role: 'admin'
+          }
+        });
       });
     } catch (error) {
       console.error('❌ Admin login error:', error);

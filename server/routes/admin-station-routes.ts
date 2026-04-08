@@ -82,6 +82,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   // ADMIN STATIONS API - Paginated stations for admin interface
   app.get('/api/admin/stations', requireAdmin, async (req, res) => {
     try {
+      logger.log(`📋 Admin stations request - Session ID: ${req.sessionID}, Query: ${JSON.stringify(req.query)}`);
       const { 
         page = 1, 
         limit = 50, 
