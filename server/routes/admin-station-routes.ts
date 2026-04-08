@@ -170,77 +170,33 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       if (sortBy === 'favicon') {
         const skip = (Number(page) - 1) * Number(limit);
         const lim = Number(limit);
-        const baseConditions = filter.$or ? { $and: [{ $or: filter.$or }] } : {};
-        const otherFilters = { ...filter };
-        delete otherFilters.$or;
-        
-        const withFaviconFilter = {
-          ...baseConditions,
-          ...otherFilters,
-          favicon: { $regex: '^(https?://|data:image/)', $options: 'i' }
-        };
-        
-        const noFaviconConditions = [
-          { favicon: { $exists: false } },
-          { favicon: null },
-          { favicon: '' },
-          { favicon: { $not: { $regex: '^(https?://|data:image/)', $options: 'i' } } }
-        ];
-        
-        const withoutFaviconFilter = filter.$or 
-          ? { $and: [{ $or: filter.$or }, { $or: noFaviconConditions }], ...otherFilters }
-          : { $or: noFaviconConditions, ...otherFilters };
-        
-        const withFaviconCount = await Station.countDocuments(withFaviconFilter);
-        
-        if (sortOrder === 'asc') {
-          if (skip < withFaviconCount) {
-            stations = await Station.find(withFaviconFilter)
-              .sort({ name: 1 })
-              .skip(skip)
-              .limit(lim)
-              .lean();
-            
-            if (stations.length < lim) {
-              const remaining = lim - stations.length;
-              const withoutFavicon = await Station.find(withoutFaviconFilter)
-                .sort({ name: 1 })
-                .limit(remaining)
-                .lean();
-              stations = [...stations, ...withoutFavicon];
-            }
-          } else {
-            stations = await Station.find(withoutFaviconFilter)
-              .sort({ name: 1 })
-              .skip(skip - withFaviconCount)
-              .limit(lim)
-              .lean();
-          }
-        } else {
-          const withoutFaviconCount = total - withFaviconCount;
-          if (skip < withoutFaviconCount) {
-            stations = await Station.find(withoutFaviconFilter)
-              .sort({ name: 1 })
-              .skip(skip)
-              .limit(lim)
-              .lean();
-            
-            if (stations.length < lim) {
-              const remaining = lim - stations.length;
-              const withFavicon = await Station.find(withFaviconFilter)
-                .sort({ name: 1 })
-                .limit(remaining)
-                .lean();
-              stations = [...stations, ...withFavicon];
-            }
-          } else {
-            stations = await Station.find(withFaviconFilter)
-              .sort({ name: 1 })
-              .skip(skip - withoutFaviconCount)
-              .limit(lim)
-              .lean();
-          }
+        const pipeline: any[] = [];
+        if (Object.keys(filter).length > 0) {
+          pipeline.push({ $match: filter });
         }
+        pipeline.push({
+          $addFields: {
+            hasFavicon: {
+              $cond: {
+                if: {
+                  $and: [
+                    { $ne: ['$favicon', null] },
+                    { $ne: ['$favicon', ''] },
+                    { $gt: [{ $strLenCP: { $ifNull: ['$favicon', ''] } }, 5] }
+                  ]
+                },
+                then: 1,
+                else: 0
+              }
+            }
+          }
+        });
+        const faviconSortDir = sortOrder === 'asc' ? -1 : 1;
+        pipeline.push({ $sort: { hasFavicon: faviconSortDir, name: 1 } });
+        pipeline.push({ $skip: skip });
+        pipeline.push({ $limit: lim });
+        pipeline.push({ $project: { hasFavicon: 0 } });
+        stations = await Station.aggregate(pipeline).allowDiskUse(true);
       } else {
         const sort: any = {};
         sort[sortBy as string] = sortOrder === 'asc' ? 1 : -1;
