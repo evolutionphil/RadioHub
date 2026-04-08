@@ -253,6 +253,11 @@ const apiProxy = createProxyMiddleware({
       proxyReq.setHeader('X-Forwarded-For', (req as any).ip || (req as any).connection?.remoteAddress || '');
       proxyReq.setHeader('X-Forwarded-Host', (req as any).hostname || '');
       proxyReq.setHeader('X-Forwarded-Proto', (req as any).protocol || 'https');
+      const incomingHeaders = (req as any).headers || {};
+      if (incomingHeaders['cf-ipcountry']) proxyReq.setHeader('CF-IPCountry', incomingHeaders['cf-ipcountry']);
+      if (incomingHeaders['cf-connecting-ip']) proxyReq.setHeader('CF-Connecting-IP', incomingHeaders['cf-connecting-ip']);
+      if (incomingHeaders['cf-ray']) proxyReq.setHeader('CF-Ray', incomingHeaders['cf-ray']);
+      if (incomingHeaders['x-real-ip']) proxyReq.setHeader('X-Real-IP', incomingHeaders['x-real-ip']);
     }
   }
 });
