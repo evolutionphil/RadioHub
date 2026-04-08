@@ -3,7 +3,28 @@ import { Station } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 
 const MAX_CONCURRENT_STREAMS = 100;
+const MAX_STREAM_DURATION_MS = 4 * 60 * 60 * 1000;
+const STREAM_IDLE_TIMEOUT_MS = 60 * 1000;
+const MAX_STREAMS_PER_IP = 5;
 let activeStreamCount = 0;
+const activeStreamsPerIp = new Map<string, number>();
+
+function getClientIp(req: any): string {
+  return req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+}
+
+function incrementIpStream(ip: string): boolean {
+  const current = activeStreamsPerIp.get(ip) || 0;
+  if (current >= MAX_STREAMS_PER_IP) return false;
+  activeStreamsPerIp.set(ip, current + 1);
+  return true;
+}
+
+function decrementIpStream(ip: string): void {
+  const current = activeStreamsPerIp.get(ip) || 0;
+  if (current <= 1) activeStreamsPerIp.delete(ip);
+  else activeStreamsPerIp.set(ip, current - 1);
+}
 
 export function registerStreamProxyRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
@@ -330,18 +351,22 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     if (activeStreamCount >= MAX_CONCURRENT_STREAMS) {
       return res.status(503).json({ error: 'Server at stream capacity, try again later' });
     }
+
+    const clientIp = getClientIp(req);
+    if (!incrementIpStream(clientIp)) {
+      return res.status(429).json({ error: 'Too many concurrent streams from this IP' });
+    }
+
     activeStreamCount++;
     let streamReleased = false;
     const decrementStream = () => {
       if (!streamReleased) {
         streamReleased = true;
         if (activeStreamCount > 0) activeStreamCount--;
+        decrementIpStream(clientIp);
       }
     };
     res.once('close', decrementStream);
-
-    req.setTimeout(0);
-    res.setTimeout(0);
 
     let originalUrl: string | undefined;
     try {
@@ -410,7 +435,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
       res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
       res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Connection', 'close');
       
       if (isShoutcast) {
         logger.log('📻 SHOUTCAST DETECTED: Using native HTTP with VLC-style headers');
@@ -421,16 +446,29 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         let activeProxyReq: any = null;
         let activeCleanup: (() => void) | null = null;
 
+        let shoutcastMaxTimer: ReturnType<typeof setTimeout> | null = null;
+
         const destroyActiveProxy = () => {
+          if (shoutcastMaxTimer) { clearTimeout(shoutcastMaxTimer); shoutcastMaxTimer = null; }
           if (activeCleanup) activeCleanup();
-          else if (activeProxyReq) { try { activeProxyReq.destroy(); } catch {} }
+          else {
+            if (activeProxyReq) { try { activeProxyReq.destroy(); } catch {} }
+            decrementStream();
+          }
         };
 
         req.once('close', destroyActiveProxy);
         res.once('close', destroyActiveProxy);
 
+        shoutcastMaxTimer = setTimeout(() => {
+          logger.log('⏰ Shoutcast max duration reached, closing stream');
+          shoutcastMaxTimer = null;
+          destroyActiveProxy();
+        }, MAX_STREAM_DURATION_MS);
+
         const makeShoutcastRequest = (targetUrl: string, redirectCount = 0): void => {
           if (redirectCount > 5) {
+            if (shoutcastMaxTimer) { clearTimeout(shoutcastMaxTimer); shoutcastMaxTimer = null; }
             if (!res.headersSent) res.status(500).json({ error: 'Too many redirects' });
             return;
           }
@@ -448,7 +486,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
               'Accept': '*/*',
               'Icy-MetaData': '0',
-              'Connection': 'keep-alive'
+              'Connection': 'close'
             },
             insecureHTTPParser: true,
             rejectUnauthorized: false
@@ -472,16 +510,31 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               res.setHeader('Transfer-Encoding', 'chunked');
               logger.log(`✅ Shoutcast VLC streaming: ${contentType}`);
             }
+
+            let lastDataTime = Date.now();
+            proxyRes.on('data', () => { lastDataTime = Date.now(); });
+
+            const idleCheckInterval = setInterval(() => {
+              if (Date.now() - lastDataTime > STREAM_IDLE_TIMEOUT_MS) {
+                logger.log('⏰ Shoutcast stream idle timeout, closing');
+                clearInterval(idleCheckInterval);
+                cleanup();
+              }
+            }, 15_000);
+
             proxyRes.pipe(res);
 
             let cleaned = false;
             const cleanup = () => {
               if (cleaned) return;
               cleaned = true;
+              if (shoutcastMaxTimer) { clearTimeout(shoutcastMaxTimer); shoutcastMaxTimer = null; }
+              clearInterval(idleCheckInterval);
               try { proxyRes.unpipe(res); } catch {}
               try { proxyRes.destroy(); } catch {}
               try { proxyReq.destroy(); } catch {}
               try { if (!res.writableEnded) res.end(); } catch {}
+              decrementStream();
             };
             activeCleanup = cleanup;
 
@@ -500,10 +553,12 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           activeProxyReq = proxyReq;
           
           proxyReq.on('error', (e: any) => {
+            if (shoutcastMaxTimer) { clearTimeout(shoutcastMaxTimer); shoutcastMaxTimer = null; }
             if (!e.message?.includes('aborted')) {
               console.error('❌ Shoutcast request error:', e.message);
             }
             if (!res.headersSent) res.status(500).json({ error: 'Connection failed' });
+            decrementStream();
           });
           
           proxyReq.end();
@@ -516,43 +571,62 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       logger.log('🎵 Simple direct proxy streaming (no FFmpeg, no multiplexing)');
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
-      
+      const connectTimeoutId = setTimeout(() => controller.abort(), 30000);
+
       const streamResponse = await fetch(originalUrl, {
         signal: controller.signal,
         redirect: 'follow',
         headers: {
           'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Radio/1.0)',
           'Accept': req.headers['accept'] || 'audio/*, application/vnd.apple.mpegurl, */*',
-          'Connection': 'keep-alive',
+          'Connection': 'close',
           ...(req.headers.range && { 'Range': req.headers.range as string })
         }
       });
-      
-      clearTimeout(timeoutId);
-      
+
+      clearTimeout(connectTimeoutId);
+
       if (!streamResponse.ok) {
         throw new Error(`Stream fetch failed: ${streamResponse.status}`);
       }
-      
+
       const contentType = streamResponse.headers.get('Content-Type') || 'audio/mpeg';
       res.setHeader('Content-Type', contentType);
       res.setHeader('Cache-Control', 'no-cache');
 
       if (streamResponse.body) {
-        const body = streamResponse.body;
-        body.pipe(res);
+        const body = streamResponse.body as any;
+
+        let lastDataTime = Date.now();
+        body.on('data', () => { lastDataTime = Date.now(); });
 
         let cleaned = false;
         const cleanup = (reason: string) => {
           if (cleaned) return;
           cleaned = true;
-          controller.abort();
+          clearTimeout(maxDurationTimer);
+          clearInterval(idleCheckInterval);
+          try { controller.abort(); } catch {}
           try { body.unpipe(res); } catch {}
-          try { body.destroy(); } catch {}
+          try { if (typeof body.destroy === 'function') body.destroy(); } catch {}
           try { if (!res.writableEnded) res.end(); } catch {}
+          decrementStream();
         };
-        
+
+        const maxDurationTimer = setTimeout(() => {
+          logger.log('⏰ Direct stream max duration reached, closing');
+          cleanup('max-duration');
+        }, MAX_STREAM_DURATION_MS);
+
+        const idleCheckInterval = setInterval(() => {
+          if (Date.now() - lastDataTime > STREAM_IDLE_TIMEOUT_MS) {
+            logger.log('⏰ Direct stream idle timeout, closing');
+            cleanup('idle-timeout');
+          }
+        }, 15_000);
+
+        body.pipe(res);
+
         body.on('error', (e: any) => {
           if (!e.message?.includes('aborted')) {
             console.error('❌ Stream body error:', e.message);
@@ -570,15 +644,14 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       }
 
     } catch (error: any) {
-      try { clearTimeout(timeoutId); } catch {}
-      try { controller.abort(); } catch {}
-      if (error.name !== 'AbortError' && !error.message?.includes('aborted')) {
-        console.error('❌ Simple stream error:', error.message);
+      if (error?.name !== 'AbortError' && !error?.message?.includes('aborted')) {
+        console.error('❌ Stream proxy error:', error.message);
       }
       if (!res.headersSent) {
         res.status(500).json({ error: 'Streaming failed' });
       }
       try { if (!res.writableEnded) res.end(); } catch {}
+      decrementStream();
     }
   });
 }

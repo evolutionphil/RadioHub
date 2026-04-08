@@ -994,9 +994,10 @@ app.use((req, res, next) => {
     <div id="root"><h1>Mega Radio</h1><p>Loading...</p></div>
   </body>
 </html>`;
-          res.status(200).set({
+          res.status(503).set({
             'Content-Type': 'text/html',
-            'Cache-Control': 'public, max-age=60, s-maxage=300'
+            'Retry-After': '30',
+            'Cache-Control': 'no-cache, no-store'
           }).send(minimalHtml);
           return;
         }

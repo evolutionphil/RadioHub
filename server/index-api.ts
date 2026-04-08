@@ -403,9 +403,9 @@ app.use(session(sessionConfig));
   });
 
   server.timeout = 300000;
-  server.keepAliveTimeout = 10000;
-  server.headersTimeout = 15000;
-  server.maxConnections = 500;
+  server.keepAliveTimeout = 5000;
+  server.headersTimeout = 10000;
+  server.maxConnections = 300;
   (app as any)._httpServer = server;
 
   let isShuttingDown = false;
@@ -605,9 +605,9 @@ app.use(session(sessionConfig));
       const PROACTIVE_CLEAR_COOLDOWN = 5 * 60 * 1000;
       let lastMemoryWarningTime = 0;
       const MEMORY_WARNING_INTERVAL = 3 * 60 * 1000;
-      const RSS_WARNING_MB = 3000;
-      const RSS_CRITICAL_MB = 4000;
-      const RSS_RESTART_MB = 5000;
+      const RSS_WARNING_MB = parseInt(process.env.RSS_WARNING_MB || '600', 10);
+      const RSS_CRITICAL_MB = parseInt(process.env.RSS_CRITICAL_MB || '800', 10);
+      const RSS_RESTART_MB = parseInt(process.env.RSS_RESTART_MB || '1200', 10);
 
       const tryGc = () => {
         try {
