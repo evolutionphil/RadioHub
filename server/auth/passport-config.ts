@@ -44,16 +44,13 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   // Replit's proxy may add :5000 to REPLIT_DOMAINS auto-detected URLs, causing Google OAuth to reject the callback
   // Solution: Always set GOOGLE_CALLBACK_URL to the exact URL registered in Google Console (without port)
   // Example: GOOGLE_CALLBACK_URL=https://themegaradio.com/api/auth/google/callback
-  let callbackURL = process.env.GOOGLE_CALLBACK_URL || 'https://themegaradio.com/api/auth/google/callback';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://themegaradio.com';
+  let callbackURL = process.env.GOOGLE_CALLBACK_URL || `${frontendUrl}/api/auth/google/callback`;
   
-  // For Replit: if REPLIT_DOMAINS is set and contains .replit.dev or .replit.app, use it
-  // NOTE: Do NOT include :5000 port - Replit's proxy handles routing via standard HTTPS (443)
   if (!process.env.GOOGLE_CALLBACK_URL && process.env.REPLIT_DOMAINS) {
     const domains = process.env.REPLIT_DOMAINS.split(',').map(d => d.trim());
-    // Prefer .replit.app domain
     const replitDomain = domains.find(d => d.includes('.replit.app') || d.includes('.replit.dev'));
     if (replitDomain) {
-      // NO port needed - Replit proxy uses standard HTTPS port
       callbackURL = `https://${replitDomain}/api/auth/google/callback`;
     }
   }

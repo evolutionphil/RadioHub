@@ -1,0 +1,551 @@
+if (!process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_FILE === '/dev/null') {
+  process.env.FONTCONFIG_FILE = process.cwd() + '/fontconfig.conf';
+}
+
+import express, { type Request, Response, NextFunction } from "express";
+import compression from "compression";
+import path from "path";
+import { createServer } from "http";
+import { createProxyMiddleware } from 'http-proxy-middleware';
+import { connectToMongoDB } from "./db-mongo";
+import { performanceCache } from "./performance-cache";
+import { htmlLangMiddleware, precomputeTranslationScripts } from "./html-lang-middleware";
+import { logger } from './utils/logger';
+import { urlRedirectMiddleware } from './url-redirect-middleware';
+import { stationCountryValidator } from './station-country-validator';
+import { serveStatic, log } from "./serve-static";
+import { SeoRenderer } from './seo-renderer';
+import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
+import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
+
+const app = express();
+
+app.set('trust proxy', 1);
+app.disable('x-powered-by');
+
+process.on('uncaughtException', (err) => {
+  console.error('🚨 UNCAUGHT EXCEPTION (process survived):', err.message);
+  console.error(err.stack?.split('\n').slice(0, 5).join('\n'));
+});
+process.on('unhandledRejection', (reason: any) => {
+  const msg = reason?.message || reason || 'unknown';
+  console.error('🚨 UNHANDLED REJECTION (process survived):', msg);
+  if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
+});
+
+const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000';
+
+app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+
+app.get('/health', async (_req, res) => {
+  const mem = process.memoryUsage();
+  const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+  const rssMB = Math.round(mem.rss / 1024 / 1024);
+  res.status(200).json({
+    status: 'ok',
+    service: 'frontend-web',
+    timestamp: new Date().toISOString(),
+    memory: { heapUsed: `${heapMB}MB`, rss: `${rssMB}MB` },
+    uptime: Math.round(process.uptime()),
+    backendUrl: BACKEND_API_URL
+  });
+});
+
+function getFrameOptionsHeader(): string | null {
+  if (process.env.CLICKJACKING_MITIGATION) return process.env.CLICKJACKING_MITIGATION;
+  return 'DENY';
+}
+
+function getHstsHeader(): string {
+  if (process.env.HSTS_MAX_AGE) {
+    const maxAge = process.env.HSTS_MAX_AGE;
+    const includeSubdomains = process.env.HSTS_INCLUDE_SUBDOMAINS !== 'false' ? '; includeSubDomains' : '';
+    const preload = process.env.HSTS_PRELOAD === 'true' ? '; preload' : '';
+    return `max-age=${maxAge}${includeSubdomains}${preload}`;
+  }
+  const hstsPhase = process.env.HSTS_PHASE || 'confident';
+  const hstsConfigs: Record<string, string> = {
+    testing: 'max-age=60',
+    initial: 'max-age=3600; includeSubDomains',
+    confident: 'max-age=604800; includeSubDomains',
+    production: 'max-age=31536000; includeSubDomains; preload'
+  };
+  return hstsConfigs[hstsPhase] || hstsConfigs.confident;
+}
+
+app.use((req, res, next) => {
+  res.removeHeader('X-Robots-Tag');
+  res.header('X-Robots-Tag', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+
+  res.header('X-Content-Type-Options', 'nosniff');
+  const frameOptions = getFrameOptionsHeader();
+  if (frameOptions) res.header('X-Frame-Options', frameOptions);
+  res.header('X-XSS-Protection', '1; mode=block');
+  res.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+
+  if (process.env.NODE_ENV === 'production' || req.secure || req.get('x-forwarded-proto') === 'https') {
+    res.header('Strict-Transport-Security', getHstsHeader());
+  }
+
+  if (req.path.startsWith('/cast-receiver')) {
+    next();
+    return;
+  }
+
+  const isProduction = process.env.NODE_ENV === 'production';
+  const cspDirectives = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms https://analytics.ahrefs.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://www.gstatic.com https://adservice.google.com https://tpc.googlesyndication.com https://*.adtrafficquality.google https://partner.googleadservices.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com https://www.google.com https://flowalive-sdk.s3.eu-central-1.amazonaws.com",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+    "font-src 'self' data: https://fonts.gstatic.com",
+    "img-src 'self' data: https: blob:",
+    "media-src 'self' https: blob:",
+    "connect-src 'self' https: wss:",
+    "frame-src 'self' https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://*.adtrafficquality.google https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com",
+    "frame-ancestors 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+  ];
+  if (isProduction) {
+    cspDirectives.push("upgrade-insecure-requests");
+    res.header('Content-Security-Policy', cspDirectives.join('; '));
+  } else {
+    res.header('Content-Security-Policy-Report-Only', cspDirectives.join('; '));
+  }
+
+  res.header('Expect-CT', 'max-age=86400, enforce');
+
+  if (req.method === 'OPTIONS') {
+    res.sendStatus(200);
+    return;
+  }
+
+  next();
+});
+
+app.use((req, res, next) => {
+  if (process.env.NODE_ENV === 'development' || req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
+    return next();
+  }
+  if (req.path === '/health' || req.path === '/healthz') {
+    return next();
+  }
+  const isHttpOnly = !req.secure && req.get('x-forwarded-proto') !== 'https';
+  if (isHttpOnly) {
+    const host = req.get('host') || req.hostname;
+    return res.redirect(301, `https://${host}${req.url}`);
+  }
+  next();
+});
+
+app.use((req, res, next) => {
+  const hostname = req.hostname.toLowerCase();
+  if (hostname === 'www.themegaradio.com') {
+    const protocol = req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+    return res.redirect(301, `${protocol}://themegaradio.com${req.url}`);
+  }
+  next();
+});
+
+app.use((req, res, next) => {
+  if (req.path === '/' || !req.path.endsWith('/')) return next();
+  const pathSegments = req.path.split('/');
+  const lastSegment = pathSegments[pathSegments.length - 2];
+  if (lastSegment && lastSegment.includes('.')) return next();
+  const query = req.url.slice(req.path.length);
+  const redirectPath = req.path.slice(0, -1) + query;
+  return res.redirect(301, redirectPath);
+});
+
+app.use((req, res, next) => {
+  if (/\.(js|css|png|jpg|jpeg|gif|webp|svg|ico|woff|woff2|map|json)$/i.test(req.path)) return next();
+  req.setTimeout(30000, () => {
+    if (!res.headersSent) {
+      console.error(`⏰ Request timeout (30s): ${req.method} ${req.path}`);
+      res.status(504).send('Gateway Timeout');
+    }
+  });
+  next();
+});
+
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/ws') || req.path.startsWith('/healthz') || req.path.startsWith('/health') || /\.(js|css|png|jpg|jpeg|gif|webp|svg|ico|woff|woff2|map|json)$/i.test(req.path)) {
+    return next();
+  }
+  const opId = startOperation('http-request', `${req.method} ${req.path}`);
+  let cleaned = false;
+  const cleanup = () => { if (!cleaned) { cleaned = true; endOperation(opId); } };
+  res.on('finish', cleanup);
+  res.on('close', cleanup);
+  next();
+});
+
+app.use(urlRedirectMiddleware);
+app.use(stationCountryValidator);
+
+const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot/i;
+app.use(compression({
+  level: 1,
+  threshold: 1024,
+  filter: (req, res) => {
+    if (req.headers['upgrade']) return false;
+    const ua = req.headers['user-agent'] || '';
+    if (BOT_UA_RE.test(ua)) return false;
+    const contentType = res.getHeader('Content-Type') as string;
+    if (contentType && /text|json|javascript|xml|svg/.test(contentType)) return true;
+    return compression.filter(req, res);
+  }
+}));
+
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+
+app.use((req, res, next) => {
+  const url = req.url;
+  const ext = url.split('.').pop()?.toLowerCase();
+  if (ext && ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'otf', 'json', 'xml'].includes(ext)) {
+    if (url.includes('/assets/') || url.includes('-') || url.includes('.min.')) {
+      res.set({ 'Cache-Control': 'public, max-age=31536000, immutable', 'Expires': new Date(Date.now() + 31536000 * 1000).toUTCString() });
+    } else {
+      res.set({ 'Cache-Control': 'public, max-age=31536000, must-revalidate', 'Expires': new Date(Date.now() + 31536000 * 1000).toUTCString() });
+    }
+    res.set({ 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Encoding' });
+  }
+  next();
+});
+
+app.use('/cast-receiver', (req, res, next) => {
+  res.set({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Range',
+    'Cache-Control': 'public, max-age=3600',
+  });
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  next();
+}, express.static(path.resolve(process.cwd(), "client/public/cast-receiver"), { etag: true, lastModified: true }));
+
+const publicPath = path.resolve(process.cwd(), "public");
+app.use(express.static(publicPath, { etag: true, lastModified: true, setHeaders: (res) => { res.set('X-Content-Type-Options', 'nosniff'); } }));
+
+const imagesPath = path.resolve(process.cwd(), "images");
+app.use('/station-images', express.static(imagesPath, { etag: true, lastModified: true, setHeaders: (res) => { res.set({ 'Cache-Control': 'public, max-age=86400, must-revalidate', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Encoding' }); } }));
+
+const stationLogosPath = path.resolve(process.cwd(), "station-logos");
+app.use('/station-logos', express.static(stationLogosPath, { etag: true, lastModified: true, setHeaders: (res) => { res.set({ 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Encoding' }); } }));
+
+const apiProxy = createProxyMiddleware({
+  target: BACKEND_API_URL,
+  changeOrigin: true,
+  ws: false,
+  timeout: 60000,
+  proxyTimeout: 60000,
+  on: {
+    error: (err, req, res) => {
+      console.error(`❌ Proxy error for ${(req as any).url}:`, err.message);
+      if (res && 'writeHead' in res && !(res as any).headersSent) {
+        (res as any).writeHead(502, { 'Content-Type': 'application/json' });
+        (res as any).end(JSON.stringify({ error: 'Backend API unavailable' }));
+      }
+    },
+    proxyReq: (proxyReq, req) => {
+      proxyReq.setHeader('X-Forwarded-For', (req as any).ip || (req as any).connection?.remoteAddress || '');
+      proxyReq.setHeader('X-Forwarded-Host', (req as any).hostname || '');
+      proxyReq.setHeader('X-Forwarded-Proto', (req as any).protocol || 'https');
+    }
+  }
+});
+
+app.use('/api', apiProxy);
+
+(async () => {
+  await connectToMongoDB();
+
+  const server = createServer(app);
+
+  const wsProxy = createProxyMiddleware({
+    target: BACKEND_API_URL,
+    changeOrigin: true,
+    ws: true,
+    timeout: 0,
+    on: {
+      error: (err, req) => {
+        console.error(`❌ WS Proxy error:`, err.message);
+      }
+    }
+  });
+
+  app.use('/ws', wsProxy);
+
+  server.on('upgrade', (req, socket, head) => {
+    const pathname = new URL(req.url || '', `http://${req.headers.host}`).pathname;
+    if (pathname.startsWith('/ws/')) {
+      wsProxy.upgrade!(req, socket, head);
+    }
+  });
+
+  const seoSitemapDeps = {
+    requireAdmin: (_req: any, res: any, next: any) => {
+      res.status(403).json({ error: 'Admin routes only available on API service' });
+    }
+  };
+  await registerSeoSitemapRoutes(app, seoSitemapDeps);
+
+  const seoRenderer = new SeoRenderer();
+
+  const SEO_PRECOMPILED_REGEX = {
+    stationPage: /^\/([a-z]{2}\/)?(?:stations?|istasyons?|istasyonlar|senders?|staziones?|stazioni|estacions?|estaciones|estaçoes?|estacoes?|mahtas?|mahtat|stansiya|stansiyas?|stantsiya|stantsii|radiostations?|radyo-istasyonu|taçhana|tachana|tachanot|stacja|stacje|stanice|statie|statii|stanica|stanice|stacija|stacijas|stotis|stotys|jaam|jaamad|postaja|postaje|asema|asemat|stasjon|stasjoner|stasiun|stasiun-stasiun|dai|stesen|stasie|stasies|radio|isiteshi|nilayam|steshan|stesheni|ραδιόφωνο|σταθμος|σταθμοι|станція|станции|ստdelays|ステーション|라디오|스테이션|电台|電台|محطات|محطة|اسٹیشن|ایستگاه|স্টেশন|ગુજરાતી|ஸ்டேஷன்|நிலையம்|స్టేషన్|ನಿಲ್ದಾಣ|സ്റ്റേഷൻ|ราดียว|สถานี)\//u,
+    homepage: /^\/([a-z]{2}\/?)?$/,
+    regionsPage: /^\/([a-z]{2}\/?)?(?:regions|bolgeler|regionen|regioni|regioes|regiones|manatiq|regionlar|regioni)(\/.*)?$/u,
+    genresPage: /^\/([a-z]{2}\/?)?(?:genres|turler|zhanroves|anwaa|janrlar|zhanroves|genres|generos|generi|generos|anwaa)\/?/u,
+    aboutPage: /^\/([a-z]{2}\/?)?(?:about|hakkinda|uber|sobre|a-propos|chi-siamo|an|haqqinda|za-nas)\/?/u,
+    contactPage: /^\/([a-z]{2}\/?)?(?:contact|iletisim|kontakt|contacto|contatto|ittisal|elaqe|kontakti)\/?/u,
+    stationsPage: /^\/([a-z]{2}\/?)?(?:stations|istasyonlar|istasyonlar|sender|stazioni|estacoes|emisoras|mahtat|stansiyalar|stantsii|电台|محطات)$/u,
+    botDetect: /\b(googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase)\b/i
+  };
+
+  const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
+  const BOT_RATE_LIMIT_WINDOW = 60_000;
+  const BOT_RATE_LIMIT_MAX_MINOR = 12;
+  const BOT_RATE_LIMIT_MAX_MAJOR = 15;
+  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
+
+  setInterval(() => {
+    const now = Date.now();
+    for (const [ip, entry] of botRateLimitMap) {
+      if (now > entry.resetAt) botRateLimitMap.delete(ip);
+    }
+  }, 60_000);
+
+  app.use(async (req, res, next) => {
+    const url = req.originalUrl;
+    const userAgent = req.get('user-agent') || '';
+    const cleanUrlForMatching = decodeURIComponent(url.split('?')[0].split('#')[0]);
+
+    const isStationPage = SEO_PRECOMPILED_REGEX.stationPage.test(cleanUrlForMatching);
+    const isHomepage = SEO_PRECOMPILED_REGEX.homepage.test(cleanUrlForMatching);
+    const isRegionsPage = SEO_PRECOMPILED_REGEX.regionsPage.test(cleanUrlForMatching);
+    const isGenresPage = SEO_PRECOMPILED_REGEX.genresPage.test(cleanUrlForMatching);
+    const isAboutPage = SEO_PRECOMPILED_REGEX.aboutPage.test(cleanUrlForMatching);
+    const isContactPage = SEO_PRECOMPILED_REGEX.contactPage.test(cleanUrlForMatching);
+    const isStationsPage = SEO_PRECOMPILED_REGEX.stationsPage.test(cleanUrlForMatching);
+
+    const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isStationsPage;
+    const isBot = SEO_PRECOMPILED_REGEX.botDetect.test(userAgent);
+
+    if (!isSeoEligiblePage || !isBot) return next();
+
+    const isMajorBot = MAJOR_SEARCH_BOT_RE.test(userAgent);
+    const maxRequests = isMajorBot ? BOT_RATE_LIMIT_MAX_MAJOR : BOT_RATE_LIMIT_MAX_MINOR;
+    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+    const now = Date.now();
+    let botEntry = botRateLimitMap.get(clientIp);
+    if (!botEntry || now > botEntry.resetAt) {
+      botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
+      botRateLimitMap.set(clientIp, botEntry);
+    }
+    botEntry.count++;
+    if (botEntry.count > maxRequests) {
+      res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
+      return;
+    }
+
+    const cleanUrl = url.split('?')[0].split('#')[0];
+    const cachedHtml = performanceCache.getSeoHtml(cleanUrl);
+    if (cachedHtml) {
+      res.status(200).set({
+        'Content-Type': 'text/html',
+        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
+        'X-SEO-Cache': 'HIT'
+      }).send(cachedHtml);
+      return;
+    }
+
+    let responded = false;
+    const safeNext = () => {
+      if (!responded && !res.headersSent) {
+        responded = true;
+        clearTimeout(reqTimeout);
+        next();
+      }
+    };
+
+    const reqTimeout = setTimeout(() => {
+      logger.log(`⏰ SEO request timeout, falling back to SPA: ${url}`);
+      safeNext();
+    }, 15000);
+
+    try {
+      const productionDomain = 'https://themegaradio.com';
+      const actualHost = req.get('host') || 'themegaradio.com';
+      const ogImageDomain = actualHost.includes('replit') ? `https://${actualHost}` : productionDomain;
+
+      const cookieHeader = req.headers.cookie || '';
+      const preferredLanguageMatch = cookieHeader.match(/preferredLanguage=([a-z]{2,5}(?:-[a-z]{2})?)/i);
+      const preferredLanguage = preferredLanguageMatch ? preferredLanguageMatch[1].toLowerCase() : undefined;
+
+      const seoData = await seoRenderer.renderStaticPage(url, productionDomain, preferredLanguage);
+      seoData.seoTags.domain = ogImageDomain;
+      const pageType = seoData.pageData?.pageType || 'unknown';
+
+      const htmlContent = `<!DOCTYPE html>
+<html lang="${seoData.language}">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    ${seoRenderer.generateHtmlHead(seoData.seoTags, seoData.language, seoData.translations || {}, seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData)}
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-title" content="Mega Radio">
+    <meta name="apple-mobile-web-app-capable" content="no" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Mega Radio">
+    <meta name="msapplication-TileColor" content="#1a1a2e">
+    <meta name="msapplication-TileImage" content="/apple-touch-icon.png">
+    <link rel="preload" as="font" type="font/ttf" href="/fonts/ubuntu-400.ttf" crossorigin>
+    <link rel="preload" as="font" type="font/ttf" href="/fonts/ubuntu-700.ttf" crossorigin>
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <link rel="dns-prefetch" href="https://flagcdn.com">
+    <link rel="dns-prefetch" href="https://api.ipify.org">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #0a0a0a; color: #ffffff; line-height: 1.5; font-display: swap; }
+      *, *::before, *::after { box-sizing: border-box; }
+      img { height: auto; max-width: 100%; display: block; }
+      .container-critical { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+      .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+      .hero-container { min-height: 500px; position: relative; overflow: hidden; }
+      button { font-family: inherit; }
+      a { color: inherit; text-decoration: none; }
+      .grid-stations { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+      @media (min-width: 640px) { .grid-stations { grid-template-columns: repeat(2, 1fr); } }
+      @media (min-width: 768px) { .grid-stations { grid-template-columns: repeat(3, 1fr); } }
+      .skeleton-placeholder { background: #404040; border-radius: 0.5rem; animation: pulse 2s infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+    ${pageType === 'station' && seoData.pageData?.station ? `
+    <script type="application/ld+json">
+    ${JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "BroadcastService",
+      "name": seoData.pageData.station.name,
+      "url": seoData.seoTags.canonical || '',
+      "description": seoData.seoTags.description,
+      "broadcastFrequency": "Internet Streaming",
+      ...(seoData.pageData.station.country ? { "areaServed": { "@type": "Country", "name": seoData.pageData.station.country } } : {}),
+      "provider": { "@type": "Organization", "name": "Mega Radio", "url": "https://themegaradio.com" },
+      "potentialAction": { "@type": "ListenAction", "target": seoData.seoTags.canonical || '' }
+    })}
+    </script>` : ''}
+  </head>
+  <body>
+    <div id="root">
+      <div id="ssr-content">
+        ${seoRenderer.generateHtmlBody({
+          pageType: seoData.pageData?.pageType || 'home',
+          language: seoData.language,
+          translations: seoData.translations,
+          seoTags: seoData.seoTags,
+          stationData: seoData.pageData?.station,
+          additionalData: seoData.pageData?.additionalData || {}
+        })}
+      </div>
+    </div>
+  </body>
+</html>`;
+
+      if (!responded && !res.headersSent) {
+        responded = true;
+        clearTimeout(reqTimeout);
+        performanceCache.setSeoHtml(cleanUrl, htmlContent);
+        res.status(200).set({
+          'Content-Type': 'text/html',
+          'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
+          'X-SEO-Cache': 'MISS'
+        }).send(htmlContent);
+      }
+    } catch (error: any) {
+      if (error?.message === 'SEO_RENDER_OVERLOADED' || error?.message === 'SEO_RENDER_TIMEOUT') {
+        if (!responded && !res.headersSent) {
+          responded = true;
+          clearTimeout(reqTimeout);
+          const cleanUrl2 = url.split('?')[0].split('#')[0];
+          const minimalHtml = `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mega Radio - Free Online Radio</title>
+    <meta name="description" content="Listen to 60,000+ free online radio stations from 120+ countries.">
+    <link rel="canonical" href="https://themegaradio.com${cleanUrl2}">
+  </head>
+  <body>
+    <div id="root"><h1>Mega Radio</h1><p>Loading...</p></div>
+  </body>
+</html>`;
+          res.status(200).set({ 'Content-Type': 'text/html', 'Cache-Control': 'public, max-age=60, s-maxage=300' }).send(minimalHtml);
+          return;
+        }
+      }
+      safeNext();
+    }
+  });
+
+  app.use(htmlLangMiddleware);
+
+  serveStatic(app);
+
+  const port = parseInt(process.env.PORT || '3000', 10);
+  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+    logger.log(`🚀 FRONTEND-WEB: Listening on port ${port}`);
+    logger.log(`🔗 Backend API URL: ${BACKEND_API_URL}`);
+  });
+
+  server.timeout = 300000;
+  server.keepAliveTimeout = 10000;
+  server.headersTimeout = 15000;
+
+  let isShuttingDown = false;
+  const gracefulShutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\n🛑 ${signal} received — starting graceful shutdown...`);
+    const shutdownTimeout = setTimeout(() => { process.exit(1); }, 15000);
+    try {
+      await new Promise<void>((resolve) => { server.close(() => resolve()); setTimeout(resolve, 10000); });
+      const mongooseModule = (await import('mongoose')).default;
+      if (mongooseModule.connection.readyState === 1) {
+        await mongooseModule.connection.close(false);
+      }
+      clearTimeout(shutdownTimeout);
+      process.exit(0);
+    } catch (err: any) {
+      clearTimeout(shutdownTimeout);
+      process.exit(1);
+    }
+  };
+
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  (async () => {
+    try {
+      if (process.env.NODE_ENV !== 'development') {
+        await performanceCache.warmupCaches();
+        precomputeTranslationScripts();
+        logger.log('✅ FRONTEND-WEB: Cache warmup completed');
+      }
+
+      const { loadDatabaseCountryLanguageMappings } = await import('../shared/seo-config');
+      await loadDatabaseCountryLanguageMappings();
+
+      const { loadDatabaseUrlTranslations } = await import('../shared/url-translations');
+      await loadDatabaseUrlTranslations();
+    } catch (error) {
+      console.error('❌ FRONTEND-WEB: Background tasks failed:', error);
+    }
+  })();
+})();

@@ -1,0 +1,10 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.api"
+
+[deploy]
+startCommand = "node --max-old-space-size=4096 --max-semi-space-size=64 --expose-gc dist/index-api.js"
+healthcheckPath = "/healthz"
+healthcheckTimeout = 300
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 5

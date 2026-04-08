@@ -502,51 +502,45 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
   // Google OAuth callback - implemented with passport (simplified, no dynamic import)
   app.get("/api/auth/google/callback", (req, res, next) => {
-    // Get saved language/country from session (set before OAuth redirect)
     const savedLang = (req.session as any)?.oauthReturnLang || '';
     const langPrefix = savedLang ? `/${savedLang}` : '';
+    const frontendBase = process.env.FRONTEND_URL || '';
     
     passport.authenticate('google', { 
-      failureRedirect: `${langPrefix}/?error=google_auth_failed` 
+      failureRedirect: `${frontendBase}${langPrefix}/?error=google_auth_failed` 
     }, (err: any, user: any, info: any) => {
       if (err) {
         logger.error('Google OAuth callback error:', err);
-        return res.redirect(`${langPrefix}/?error=google_auth_failed`);
+        return res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_failed`);
       }
       if (!user) {
-        return res.redirect(`${langPrefix}/?error=google_auth_cancelled`);
+        return res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_cancelled`);
       }
       
-      // Log in the user using Passport's req.login (same as email/password login)
       req.login(user, (loginErr: any) => {
         if (loginErr) {
           logger.error('Google OAuth login error:', loginErr);
-          return res.redirect(`${langPrefix}/?error=login_failed`);
+          return res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
         }
         
-        // Also set manual session data for compatibility
         (req.session as any).user = {
           userId: user._id.toString(),
           email: user.email,
           role: user.role
         };
-        // Clear the OAuth return language
         delete (req.session as any).oauthReturnLang;
         
-        // CRITICAL: Save session before redirect to ensure it's persisted
         req.session.save((saveErr: any) => {
           if (saveErr) {
             logger.error('Session save error after Google OAuth:', saveErr);
-            return res.redirect(`${langPrefix}/?error=session_save_failed`);
+            return res.redirect(`${frontendBase}${langPrefix}/?error=session_save_failed`);
           }
-          // Check for returnTo URL (e.g., /tr/tv after TV login flow)
           const returnTo = (req.session as any)?.oauthReturnTo;
           delete (req.session as any).oauthReturnTo;
           if (returnTo && returnTo.startsWith('/')) {
-            return res.redirect(returnTo);
+            return res.redirect(`${frontendBase}${returnTo}`);
           }
-          // Successful authentication, redirect to home with language preserved
-          res.redirect(`${langPrefix}/?success=google_login`);
+          res.redirect(`${frontendBase}${langPrefix}/?success=google_login`);
         });
       });
     })(req, res, next);

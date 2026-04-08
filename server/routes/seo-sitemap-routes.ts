@@ -10,7 +10,7 @@ import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
 
-export async function registerSeoSitemapRoutes(app: Express, deps: any) {
+export async function registerSeoSitemapRoutes(app: Express, deps: any, options?: { apiOnly?: boolean }) {
   const { requireAdmin } = deps;
   const seoRenderer = new SeoRenderer();
 
@@ -299,6 +299,10 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any) {
       res.status(500).json({ error: 'Failed to fetch SEO page data' });
     }
   });
+
+  if (options?.apiOnly) {
+    return;
+  }
 
   // Robots.txt generator
   app.get("/robots.txt", async (req, res) => {

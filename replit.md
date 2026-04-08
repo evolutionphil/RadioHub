@@ -50,6 +50,16 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Collections**: Stations, Countries, Languages, Genres, Codecs, Sync Logs, Users, Comments, Sessions, Notifications, AdvancedSearch.
 - **User Model**: `favoriteStations`, `recentlyPlayedStations`, preferences, authentication.
 
+### Split Deployment Architecture
+The project supports two deployment modes:
+1. **Monolithic** (default): Single `server/index.ts` serves API + frontend (`Dockerfile`, `railway.toml`).
+2. **Split**: Two independent services for scalability:
+   - **backend-api** (`server/index-api.ts`, `Dockerfile.api`, `railway-api.toml`): All `/api/*` routes, WebSocket servers, sessions, OAuth, rate limiting. Domain: `api.themegaradio.com`.
+   - **frontend-web** (`server/index-web.ts`, `Dockerfile.web`, `railway-web.toml`): Vite SPA, SEO renderer, static assets. Reverse-proxies `/api/*` and `/ws/*` to backend via `http-proxy-middleware`. Domain: `themegaradio.com`.
+   - Build scripts: `scripts/build-api.sh`, `scripts/build-web.sh`.
+   - Full deploy guide: `DEPLOY-SPLIT.md`.
+   - Key env vars: `BACKEND_API_URL` (frontend→backend internal URL), `CORS_ALLOWED_ORIGINS` (backend allowlist), `FRONTEND_URL` (OAuth redirects).
+
 ### Key Architectural Decisions
 - **Monorepo Structure**: Unified repository for frontend, backend, and shared types.
 - **Type Safety**: End-to-end TypeScript with Zod.

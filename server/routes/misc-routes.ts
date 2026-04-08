@@ -4,7 +4,7 @@ import { logger } from "../utils/logger";
 import crypto from 'crypto';
 import { isQuotaExceeded, safeWrite, handleQuotaError, isQuotaError } from "../utils/quota-guard";
 
-export function registerMiscRoutes(app: Express, deps: any) {
+export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?: boolean }) {
   const { requireAdmin, requireAuth, apiKeyMiddleware, seedDemoApiKey } = deps;
 
   // ADMIN ADVERTISEMENT MANAGEMENT API
@@ -478,19 +478,21 @@ export function registerMiscRoutes(app: Express, deps: any) {
     }
   });
 
-  app.get("/ads.txt", (req, res) => {
-    const adsTxt = `google.com, pub-8771434485570434, DIRECT, f08c47fec0942fa0`;
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(adsTxt);
-  });
+  if (!options?.apiOnly) {
+    app.get("/ads.txt", (req, res) => {
+      const adsTxt = `google.com, pub-8771434485570434, DIRECT, f08c47fec0942fa0`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(adsTxt);
+    });
 
-  app.get("/app-ads.txt", (req, res) => {
-    const appAdsTxt = `google.com, pub-8771434485570434, DIRECT, f08c47fec0942fa0`;
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(appAdsTxt);
-  });
+    app.get("/app-ads.txt", (req, res) => {
+      const appAdsTxt = `google.com, pub-8771434485570434, DIRECT, f08c47fec0942fa0`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(appAdsTxt);
+    });
+  }
 
   // api-keys, user-engagement, and apiKeyMiddleware are registered by the thin routes.ts orchestrator
 

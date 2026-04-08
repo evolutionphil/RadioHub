@@ -61,7 +61,12 @@ const deps = {
   invalidateSocialCacheForUser
 };
 
-export async function registerRoutes(app: Express): Promise<Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer>, chatWss: InstanceType<typeof WebSocketServer> }> {
+export interface RegisterRoutesOptions {
+  mode?: 'full' | 'api-only';
+}
+
+export async function registerRoutes(app: Express, options?: RegisterRoutesOptions): Promise<Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer>, chatWss: InstanceType<typeof WebSocketServer> }> {
+  const isApiOnly = options?.mode === 'api-only';
   const server = createServer(app);
 
   // === HEALTH CHECK ===
@@ -419,8 +424,9 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ Popular stations cache refresh scheduled: daily 6:30 AM (on-demand for first request)');
 
-  // === SEO REDIRECT ===
-  app.get('/stations', (_req, res) => res.redirect(301, '/radios'));
+  if (!isApiOnly) {
+    app.get('/stations', (_req, res) => res.redirect(301, '/radios'));
+  }
 
   // === LISTENING RECORD (not in any module file) ===
   app.post('/api/listening/record', requireAuth, async (req, res) => {
@@ -517,10 +523,10 @@ export async function registerRoutes(app: Express): Promise<Server & { metadataW
   registerUserAuthRoutes(app, deps);
   registerMobileTvRoutes(app, deps);
   await registerTranslationKeyRoutes(app, deps);
-  await registerSeoSitemapRoutes(app, deps);
+  await registerSeoSitemapRoutes(app, deps, { apiOnly: isApiOnly });
   registerStreamProxyRoutes(app, deps);
   registerRegionsRecommendationsRoutes(app, deps);
-  registerMiscRoutes(app, deps);
+  registerMiscRoutes(app, deps, { apiOnly: isApiOnly });
   registerSilentPushRoutes(app, deps);
   registerMessagesRoutes(app, chatWss, deps);
 
