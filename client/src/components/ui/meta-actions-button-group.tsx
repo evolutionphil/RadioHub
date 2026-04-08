@@ -2,6 +2,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useChromecast } from "@/hooks/useChromecast";
 import { useToast } from "@/hooks/use-toast";
+import { getApiProxyUrl } from "@/lib/utils";
 import youtubeIcon from "@assets/youtube-logo.png";
 import spotifyIcon from "@assets/spotify-logo.png";
 import deezerIcon from "@assets/deezer.png";
@@ -69,7 +70,7 @@ export default function MetaActionsButtonGroup({ className, iconSize = 26, hideC
       const streamUrl = currentStation?.urlResolved || currentStation?.url;
       if (streamUrl && currentStation) {
         const proxyUrl = streamUrl.startsWith('http://') 
-          ? `/api/stream/proxy?url=${encodeURIComponent(streamUrl)}`
+          ? getApiProxyUrl(`/api/stream/proxy?url=${encodeURIComponent(streamUrl)}`)
           : streamUrl;
         
         const absoluteUrl = proxyUrl.startsWith('/') 

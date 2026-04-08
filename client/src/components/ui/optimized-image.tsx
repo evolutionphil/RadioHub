@@ -1,4 +1,5 @@
 import { useState, memo, useRef, useEffect, useCallback } from "react";
+import { getApiProxyUrl } from "@/lib/utils";
 
 interface OptimizedImageProps {
   src: string;
@@ -104,7 +105,7 @@ const OptimizedImage = memo(function OptimizedImage({
     if (needsProxy) {
       // Base64 encode the URL for proxying
       const encodedUrl = btoa(src).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-      optimizedSrc = `/api/image/${encodedUrl}`;
+      optimizedSrc = getApiProxyUrl(`/api/image/${encodedUrl}`);
     }
 
     setImageSrc(optimizedSrc);

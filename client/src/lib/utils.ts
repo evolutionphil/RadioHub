@@ -1,6 +1,13 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
 
+const _API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+
+export function getApiProxyUrl(path: string): string {
+  if (!_API_BASE || !path.startsWith('/api')) return path;
+  return `${_API_BASE}${path}`;
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
@@ -58,10 +65,9 @@ export function normalizeFaviconUrl(favicon: string | undefined | null): string 
     normalizedUrl = `https://${normalizedUrl}`;
   }
 
-  // Only proxy HTTP (mixed content issue). HTTPS and modern servers have proper CORS
   if (normalizedUrl.startsWith('http:')) {
     const encodedUrl = safeBase64Encode(normalizedUrl);
-    return `/api/image/${encodedUrl}`;
+    return getApiProxyUrl(`/api/image/${encodedUrl}`);
   }
 
   return normalizedUrl;
@@ -130,7 +136,7 @@ export function getImageUrl(url: string | null | undefined): string {
   if (url.startsWith('http://')) {
     const encoded = safeBase64Encode(url);
     if (encoded) {
-      return `/api/image/${encoded}`;
+      return getApiProxyUrl(`/api/image/${encoded}`);
     }
     // If encoding fails, return fallback
     return '/images/no-image.webp';

@@ -1,4 +1,4 @@
-// Image optimization utilities for better performance
+import { getApiProxyUrl } from '@/lib/utils';
 
 // Check if browser supports WebP format
 export const supportsWebP = (): boolean => {
@@ -44,7 +44,7 @@ export const getOptimizedImageSrc = (src: string, options?: {
   
   if (isMixedContent) {
     const encodedUrl = btoa(src).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    return `/api/image/${encodedUrl}`;
+    return getApiProxyUrl(`/api/image/${encodedUrl}`);
   }
 
   return src;

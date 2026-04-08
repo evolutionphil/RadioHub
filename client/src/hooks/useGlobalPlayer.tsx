@@ -4,6 +4,7 @@ import { toast } from '@/hooks/use-toast';
 import { createMetadataClient } from '@/services/metadata-client';
 import { trackStationPlay, trackListeningTime, trackStationFavorite } from '../lib/analytics';
 import { logger } from '@/lib/logger';
+import { getApiProxyUrl } from '@/lib/utils';
 
 import type { GlobalPlayerState } from './useGlobalPlayer.shell';
 import { GlobalPlayerContext } from './useGlobalPlayer.shell';
@@ -205,7 +206,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
           // Handle mixed content
           if (station.favicon.startsWith('http:') && window.location.protocol === 'https:') {
             const encodedUrl = btoa(station.favicon).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-            return `/api/image/${encodedUrl}`;
+            return getApiProxyUrl(`/api/image/${encodedUrl}`);
           }
           return station.favicon;
         }
@@ -380,7 +381,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             let finalUrl = streamUrl;
             if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
               const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-              finalUrl = `/api/stream/${encodedUrl}`;
+              finalUrl = getApiProxyUrl(`/api/stream/${encodedUrl}`);
             }
             
             audioRef.current.src = finalUrl;
@@ -467,7 +468,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             let finalUrl = streamUrl;
             if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
               const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-              finalUrl = `/api/stream/${encodedUrl}`;
+              finalUrl = getApiProxyUrl(`/api/stream/${encodedUrl}`);
             }
             
             audioRef.current.src = finalUrl;
@@ -520,7 +521,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             
             if (baseUrl.startsWith('http://') && window.location.protocol === 'https:') {
               const encodedUrl = btoa(finalUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-              finalUrl = `/api/stream/${encodedUrl}`;
+              finalUrl = getApiProxyUrl(`/api/stream/${encodedUrl}`);
             }
             
             audioRef.current.src = finalUrl;
@@ -600,7 +601,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
                 let finalUrl = nextCandidate;
                 if (nextCandidate.startsWith('http://') && window.location.protocol === 'https:') {
                   const encodedUrl = btoa(nextCandidate).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-                  finalUrl = `/api/stream/${encodedUrl}`;
+                  finalUrl = getApiProxyUrl(`/api/stream/${encodedUrl}`);
                 }
                 
                 audioRef.current.src = finalUrl;
@@ -621,7 +622,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
           const originalUrl = currentStation.url || currentStation.urlResolved || '';
           if (!originalUrl) return;
           const encodedUrl = btoa(originalUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-          const proxyUrl = `/api/stream/${encodedUrl}`;
+          const proxyUrl = getApiProxyUrl(`/api/stream/${encodedUrl}`);
           
           const now = Date.now();
           if (!reconnectionInProgressRef.current && (now - lastReconnectTimeRef.current) >= 2000) {
@@ -823,7 +824,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
       if (urlLower.includes('.pls') || urlLower.includes('.m3u') || urlLower.includes('listen.pls')) {
         try {
           logger.log('🎵 Resolving playlist:', baseStreamUrl);
-          const resolveResponse = await fetch(`/api/stream/resolve?url=${encodeURIComponent(baseStreamUrl)}`);
+          const resolveResponse = await fetch(getApiProxyUrl(`/api/stream/resolve?url=${encodeURIComponent(baseStreamUrl)}`));
           if (resolveResponse.ok) {
             const resolved = await resolveResponse.json();
             if (resolved.candidates && resolved.candidates.length > 0) {
@@ -896,7 +897,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
                       const originalUrl = currentStation.url || currentStation.urlResolved || '';
                       if (!originalUrl) return;
                       const encodedUrl = btoa(originalUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-                      const proxyUrl = `/api/stream/${encodedUrl}`;
+                      const proxyUrl = getApiProxyUrl(`/api/stream/${encodedUrl}`);
                       
                       logger.log('🎯 HLS fallback: Using proxy stream');
                       audioRef.current.src = proxyUrl;
@@ -936,7 +937,7 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
         // VLC-STYLE: Proxy ALL streams (HTTP and HTTPS) for maximum compatibility
         // This handles SSL certificate issues, Shoutcast headers, and mixed content
         const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-        finalStreamUrl = `/api/stream/${encodedUrl}`;
+        finalStreamUrl = getApiProxyUrl(`/api/stream/${encodedUrl}`);
         logger.log('🔒 Using VLC-style proxy for reliable playback');
         
         // SAFARI iOS: Simple setAttribute like working radio players

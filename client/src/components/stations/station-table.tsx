@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Edit, Play, Pause, Trash2, ArrowUpDown, Radio, Circle, Sparkles } from "lucide-react";
 import { useState, useRef } from "react";
+import { getApiProxyUrl } from "@/lib/utils";
 import { useTranslation } from "@/hooks/useTranslation";
 // MongoDB stations use _id instead of id
 interface MongoStation {
@@ -136,7 +137,7 @@ export default function StationTable({
     // Playing server-processed stream
     
     // Backend handles all stream processing - use server proxy exclusively
-    const streamUrl = `/api/stream/${stationId}`;
+    const streamUrl = getApiProxyUrl(`/api/stream/${stationId}`);
     
     try {
       // Using backend-processed stream
