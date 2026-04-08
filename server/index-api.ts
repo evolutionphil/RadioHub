@@ -89,6 +89,11 @@ process.on('unhandledRejection', (reason: any) => {
   if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
 });
 
+import path from 'path';
+app.get('/', (_req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'api-docs.html'));
+});
+
 app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   if (req.path === '/healthz') {
     return res.status(200).send('ok');
@@ -359,6 +364,57 @@ app.use(session(sessionConfig));
     logger.log(`🔗 CORS allowed origins: ${CORS_ALLOWED_ORIGINS.join(', ')}`);
     logger.log(`🔗 Frontend URL: ${FRONTEND_URL}`);
   });
+
+  if (process.env.NODE_ENV !== 'development') {
+    const ldPreload = process.env.LD_PRELOAD || 'not set';
+    const mallocConf = process.env.MALLOC_CONF || 'not set';
+    const allocator = ldPreload.includes('jemalloc') ? 'jemalloc' : 'glibc';
+    logger.log(`🔧 Memory allocator: ${allocator}`);
+    logger.log(`🔧 LD_PRELOAD=${ldPreload}`);
+    logger.log(`🔧 MALLOC_CONF=${mallocConf}`);
+
+    const tryGc = () => { if (typeof global.gc === 'function') { try { global.gc(); } catch {} } };
+
+    const RSS_WARNING_MB = 3000;
+    const RSS_CRITICAL_MB = 4000;
+    const RSS_RESTART_MB = 5000;
+
+    setInterval(() => { tryGc(); }, 60_000);
+
+    setInterval(async () => {
+      const mem = process.memoryUsage();
+      const rssMB = Math.round(mem.rss / 1024 / 1024);
+      const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+      const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
+
+      if (rssMB >= RSS_RESTART_MB) {
+        console.error(`🔄 RSS RESTART: rss=${rssMB}MB exceeds ${RSS_RESTART_MB}MB — initiating graceful restart`);
+        process.kill(process.pid, 'SIGTERM');
+        return;
+      }
+
+      if (rssMB >= RSS_CRITICAL_MB) {
+        console.error(`🚨 MEMORY CRITICAL: rss=${rssMB}MB heap=${heapMB}MB — clearing caches + forcing GC`);
+        try {
+          const { CacheManager } = await import('./cache');
+          CacheManager.clearByPrefix('precomputed_');
+          CacheManager.clearByPrefix('stations:');
+          CacheManager.clearByPrefix('genres:');
+        } catch {}
+        tryGc();
+        return;
+      }
+
+      if (rssMB >= RSS_WARNING_MB) {
+        console.error(`⚠️ MEMORY WARNING: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB`);
+        try {
+          const { CacheManager } = await import('./cache');
+          CacheManager.clearByPrefix('seo:');
+        } catch {}
+        tryGc();
+      }
+    }, 30_000);
+  }
 
   (async () => {
     try {

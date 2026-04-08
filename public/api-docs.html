@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MegaRadio API Documentation</title>
+<meta name="description" content="Official API documentation for MegaRadio - Access 40,000+ radio stations worldwide">
+<meta name="robots" content="noindex, nofollow">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0f0f23;--card:#1a1a2e;--border:#2d2d44;--text:#e2e8f0;--muted:#94a3b8;--accent:#6366f1;--accent2:#818cf8;--green:#22c55e;--orange:#f59e0b;--red:#ef4444;--blue:#3b82f6;--cyan:#06b6d4}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+a{color:var(--accent2);text-decoration:none}
+a:hover{text-decoration:underline}
+.container{max-width:1200px;margin:0 auto;padding:0 24px}
+header{background:linear-gradient(135deg,#1e1b4b,#312e81);border-bottom:1px solid var(--border);padding:40px 0}
+header h1{font-size:2.5rem;font-weight:800;background:linear-gradient(135deg,#c7d2fe,#818cf8);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+header p{color:var(--muted);font-size:1.1rem;margin-top:8px}
+.badges{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:6px;padding:6px 14px;border-radius:20px;font-size:0.8rem;font-weight:600}
+.badge-green{background:rgba(34,197,94,0.15);color:var(--green);border:1px solid rgba(34,197,94,0.3)}
+.badge-blue{background:rgba(59,130,246,0.15);color:var(--blue);border:1px solid rgba(59,130,246,0.3)}
+.badge-orange{background:rgba(245,158,11,0.15);color:var(--orange);border:1px solid rgba(245,158,11,0.3)}
+nav{background:var(--card);border-bottom:1px solid var(--border);padding:12px 0;position:sticky;top:0;z-index:100}
+nav .container{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+nav a{padding:8px 16px;border-radius:8px;color:var(--muted);font-size:0.85rem;font-weight:500;white-space:nowrap;transition:all 0.2s}
+nav a:hover{background:rgba(99,102,241,0.1);color:var(--accent2);text-decoration:none}
+main{padding:40px 0 80px}
+section{margin-bottom:48px}
+section h2{font-size:1.6rem;font-weight:700;margin-bottom:8px;color:var(--text);display:flex;align-items:center;gap:10px}
+section h2 span{font-size:1.4rem}
+section>p{color:var(--muted);margin-bottom:20px}
+.endpoint-group{border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.endpoint{display:flex;align-items:center;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);cursor:pointer;transition:background 0.15s}
+.endpoint:last-child{border-bottom:none}
+.endpoint:hover{background:rgba(99,102,241,0.05)}
+.method{font-size:0.75rem;font-weight:700;padding:4px 10px;border-radius:6px;min-width:56px;text-align:center;letter-spacing:0.5px}
+.method-get{background:rgba(34,197,94,0.15);color:var(--green)}
+.method-post{background:rgba(59,130,246,0.15);color:var(--blue)}
+.method-put{background:rgba(245,158,11,0.15);color:var(--orange)}
+.method-delete{background:rgba(239,68,68,0.15);color:var(--red)}
+.method-ws{background:rgba(6,182,212,0.15);color:var(--cyan)}
+.endpoint .path{font-family:'SF Mono',Consolas,monospace;font-size:0.9rem;color:var(--text);font-weight:500}
+.endpoint .desc{color:var(--muted);font-size:0.85rem;margin-left:auto;text-align:right}
+.auth-tag{font-size:0.7rem;padding:2px 8px;border-radius:4px;background:rgba(245,158,11,0.15);color:var(--orange);font-weight:600}
+.code-block{background:#0d1117;border:1px solid var(--border);border-radius:10px;padding:20px;margin:16px 0;overflow-x:auto;font-family:'SF Mono',Consolas,monospace;font-size:0.85rem;line-height:1.7;color:#c9d1d9}
+.code-block .comment{color:#8b949e}
+.code-block .string{color:#a5d6ff}
+.code-block .key{color:#ff7b72}
+.code-block .value{color:#79c0ff}
+.info-box{background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.2);border-radius:10px;padding:16px 20px;margin:16px 0}
+.info-box h4{color:var(--accent2);margin-bottom:6px;font-size:0.95rem}
+.info-box p,.info-box li{color:var(--muted);font-size:0.9rem}
+.info-box ul{padding-left:20px;margin-top:6px}
+.warn-box{background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.2);border-radius:10px;padding:16px 20px;margin:16px 0}
+.warn-box h4{color:var(--orange);margin-bottom:6px;font-size:0.95rem}
+.warn-box p{color:var(--muted);font-size:0.9rem}
+table{width:100%;border-collapse:collapse;margin:16px 0}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--border);font-size:0.85rem}
+th{color:var(--muted);font-weight:600;font-size:0.8rem;text-transform:uppercase;letter-spacing:0.5px}
+td code{background:rgba(99,102,241,0.1);padding:2px 6px;border-radius:4px;font-size:0.8rem;font-family:'SF Mono',Consolas,monospace}
+.tier-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin:16px 0}
+.tier-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px}
+.tier-card h4{font-size:1rem;margin-bottom:4px}
+.tier-card .limit{color:var(--muted);font-size:0.85rem}
+.tier-card .price{font-size:1.4rem;font-weight:700;margin:8px 0}
+.tier-demo .price{color:var(--green)}
+.tier-free .price{color:var(--blue)}
+.tier-pro .price{color:var(--accent2)}
+footer{background:var(--card);border-top:1px solid var(--border);padding:24px 0;text-align:center;color:var(--muted);font-size:0.85rem}
+@media(max-width:768px){header h1{font-size:1.6rem}.endpoint{flex-wrap:wrap;gap:8px}.endpoint .desc{margin-left:0;text-align:left;width:100%}.tier-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header>
+<div class="container">
+<h1>MegaRadio API</h1>
+<p>Access 40,000+ radio stations worldwide. Real-time metadata, streaming, and more.</p>
+<div class="badges">
+<span class="badge badge-green">&#9679; API Online</span>
+<span class="badge badge-blue">v1.0</span>
+<span class="badge badge-orange">REST + WebSocket</span>
+</div>
+</div>
+</header>
+
+<nav>
+<div class="container">
+<a href="#quickstart">Quick Start</a>
+<a href="#auth">Authentication</a>
+<a href="#stations">Stations</a>
+<a href="#genres">Genres & Countries</a>
+<a href="#streaming">Streaming</a>
+<a href="#engagement">User Engagement</a>
+<a href="#user">User Auth</a>
+<a href="#subscription">Subscription</a>
+<a href="#websocket">WebSocket</a>
+<a href="#cast">Cast & TV</a>
+<a href="#ratelimits">Rate Limits</a>
+</div>
+</nav>
+
+<main>
+<div class="container">
+
+<section id="quickstart">
+<h2><span>&#128640;</span> Quick Start</h2>
+<p>Base URL for all API requests:</p>
+<div class="code-block">
+<span class="key">Base URL:</span> <span class="string">https://api.themegaradio.com</span>
+</div>
+
+<div class="info-box">
+<h4>For Mobile Developers</h4>
+<p>All mobile apps should use <code>https://api.themegaradio.com</code> as the base URL. Web browsers use <code>https://themegaradio.com</code> with built-in API proxy.</p>
+</div>
+
+<p>Fetch popular stations with a single request:</p>
+<div class="code-block">
+<span class="comment">// React Native / JavaScript</span><br>
+const response = await fetch('<span class="string">https://api.themegaradio.com/api/stations/popular?limit=20</span>');<br>
+const stations = await response.json();<br>
+<br>
+<span class="comment">// Each station object:</span><br>
+<span class="comment">// { name, url, urlResolved, country, favicon, votes, codec, bitrate, slug, ... }</span>
+</div>
+
+<div class="code-block">
+<span class="comment"># cURL</span><br>
+curl https://api.themegaradio.com/api/stations/popular?limit=10
+</div>
+</section>
+
+<section id="auth">
+<h2><span>&#128272;</span> Authentication</h2>
+<p>Three ways to authenticate API requests:</p>
+
+<table>
+<tr><th>Method</th><th>Header</th><th>Use Case</th></tr>
+<tr><td><strong>API Key</strong></td><td><code>X-API-Key: your_key</code></td><td>Server-to-server, mobile apps</td></tr>
+<tr><td><strong>User Token</strong></td><td><code>X-API-User-Token: token</code></td><td>Per-user actions (favorites, ratings)</td></tr>
+<tr><td><strong>Session Cookie</strong></td><td><code>Cookie: connect.sid=...</code></td><td>Web browser (auto-managed)</td></tr>
+</table>
+
+<h3 style="margin-top:24px;font-size:1.1rem">API Key Tiers</h3>
+<div class="tier-grid">
+<div class="tier-card tier-demo">
+<h4>Demo</h4>
+<div class="price">Free</div>
+<div class="limit">50 req/day &bull; Auto-generated per IP</div>
+</div>
+<div class="tier-card tier-free">
+<h4>Free</h4>
+<div class="price">Free</div>
+<div class="limit">1,000 req/day &bull; Register required</div>
+</div>
+<div class="tier-card tier-pro">
+<h4>Pro</h4>
+<div class="price">Contact</div>
+<div class="limit">50,000 req/day &bull; Priority support</div>
+</div>
+</div>
+
+<div class="code-block">
+<span class="comment">// Get a demo API key (auto-generated, 24h cooldown per IP)</span><br>
+const res = await fetch('<span class="string">https://api.themegaradio.com/api/api-keys/demo</span>', { method: '<span class="value">POST</span>' });<br>
+const { apiKey } = await res.json();<br>
+<br>
+<span class="comment">// Use the API key</span><br>
+fetch('<span class="string">https://api.themegaradio.com/api/stations/popular</span>', {<br>
+&nbsp;&nbsp;headers: { '<span class="key">X-API-Key</span>': apiKey }<br>
+});
+</div>
+</section>
+
+<section id="stations">
+<h2><span>&#128251;</span> Stations</h2>
+<p>Browse, search, and discover 40,000+ radio stations.</p>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/stations</span>
+<span class="desc">Search & list stations</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/station/:identifier</span>
+<span class="desc">Get station by ID or slug</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/stations/popular</span>
+<span class="desc">Trending / most voted stations</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/stations/nearby</span>
+<span class="desc">Find stations near user location</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/stations/random</span>
+<span class="desc">Random station discovery</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/stations/batch</span>
+<span class="desc">Fetch multiple stations by IDs</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/now-playing/:id</span>
+<span class="desc">Live stream metadata (song/artist)</span>
+</div>
+</div>
+
+<h3 style="margin-top:20px;font-size:1rem;color:var(--muted)">Query Parameters for /api/stations</h3>
+<table>
+<tr><th>Param</th><th>Type</th><th>Description</th></tr>
+<tr><td><code>q</code></td><td>string</td><td>Search query (name, tags, country)</td></tr>
+<tr><td><code>country</code></td><td>string</td><td>Filter by country name</td></tr>
+<tr><td><code>genre</code></td><td>string</td><td>Filter by genre/tag</td></tr>
+<tr><td><code>codec</code></td><td>string</td><td>Filter by codec (MP3, AAC, OGG)</td></tr>
+<tr><td><code>limit</code></td><td>number</td><td>Results per page (default: 20, max: 100)</td></tr>
+<tr><td><code>offset</code></td><td>number</td><td>Pagination offset</td></tr>
+<tr><td><code>sort</code></td><td>string</td><td>Sort: votes, clickCount, name, random</td></tr>
+</table>
+
+<div class="code-block">
+<span class="comment">// Search for jazz stations in Germany</span><br>
+fetch('<span class="string">https://api.themegaradio.com/api/stations?q=jazz&country=Germany&limit=10</span>')
+</div>
+</section>
+
+<section id="genres">
+<h2><span>&#127926;</span> Genres & Countries</h2>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/genres</span>
+<span class="desc">All available genres</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/genres/discoverable</span>
+<span class="desc">Top genres for homepage display</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/countries</span>
+<span class="desc">All countries with station counts</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/regions</span>
+<span class="desc">World regions (Africa, Asia, Europe...)</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/regions/:region/:country</span>
+<span class="desc">Stations by region and country</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/location</span>
+<span class="desc">Auto-detect user country from IP</span>
+</div>
+</div>
+</section>
+
+<section id="streaming">
+<h2><span>&#127911;</span> Streaming</h2>
+<p>Stream proxy handles CORS, HTTPS upgrades, and ICY metadata extraction.</p>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/stream/:encodedUrl</span>
+<span class="desc">Proxy audio stream (CORS-safe)</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/stream/hls/:encodedUrl</span>
+<span class="desc">HLS stream proxy</span>
+</div>
+</div>
+
+<div class="info-box">
+<h4>Smart Streaming Logic</h4>
+<ul>
+<li><strong>HTTPS streams</strong>: Play directly in the client (no proxy needed)</li>
+<li><strong>HTTP streams</strong>: Must use the proxy for CORS and mixed-content safety</li>
+<li>Stream URL must be URL-encoded in the path: <code>/api/stream/http%3A%2F%2Fexample.com%2Fstream</code></li>
+</ul>
+</div>
+
+<div class="code-block">
+<span class="comment">// React Native audio playback</span><br>
+const station = await fetch('<span class="string">https://api.themegaradio.com/api/station/mangoradio</span>').then(r => r.json());<br>
+<br>
+const streamUrl = station.url.startsWith('https')<br>
+&nbsp;&nbsp;? station.url  <span class="comment">// Direct HTTPS — no proxy needed</span><br>
+&nbsp;&nbsp;: `<span class="string">https://api.themegaradio.com/api/stream/</span>${encodeURIComponent(station.url)}`;<br>
+<br>
+<span class="comment">// Use streamUrl in your audio player (e.g., react-native-track-player)</span>
+</div>
+</section>
+
+<section id="engagement">
+<h2><span>&#11088;</span> User Engagement</h2>
+<p>Favorites, ratings, follows, and trending data. Requires authentication.</p>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/stations/:id/favorite</span>
+<span class="desc">Toggle favorite</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/stations/:id/rate</span>
+<span class="desc">Submit rating (1-5 stars)</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/trending</span>
+<span class="desc">Global trending stations</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/stations/:id/comment</span>
+<span class="desc">Add comment</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/stations/:id/comments</span>
+<span class="desc">Get station comments</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/follow/:userId</span>
+<span class="desc">Follow / unfollow user</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/profile/:slug</span>
+<span class="desc">Public user profile</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/listening/record</span>
+<span class="desc">Record listening history</span>
+<span class="auth-tag">AUTH</span>
+</div>
+</div>
+</section>
+
+<section id="user">
+<h2><span>&#128100;</span> User Authentication</h2>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/auth/signup</span>
+<span class="desc">Register new account</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/auth/login</span>
+<span class="desc">Email & password login</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/auth/logout</span>
+<span class="desc">Logout (clear session)</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/auth/me</span>
+<span class="desc">Current user info</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-put">PUT</span>
+<span class="path">/api/auth/profile</span>
+<span class="desc">Update profile</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/auth/google</span>
+<span class="desc">Google Sign-In (idToken)</span>
+</div>
+<div class="endpoint">
+<span class="method method-delete">DELETE</span>
+<span class="path">/api/user/delete-account</span>
+<span class="desc">Permanently delete account</span>
+<span class="auth-tag">AUTH</span>
+</div>
+</div>
+
+<div class="code-block">
+<span class="comment">// Google Sign-In for mobile</span><br>
+const res = await fetch('<span class="string">https://api.themegaradio.com/api/auth/google</span>', {<br>
+&nbsp;&nbsp;method: '<span class="value">POST</span>',<br>
+&nbsp;&nbsp;headers: { '<span class="key">Content-Type</span>': '<span class="string">application/json</span>' },<br>
+&nbsp;&nbsp;body: JSON.stringify({<br>
+&nbsp;&nbsp;&nbsp;&nbsp;idToken: '<span class="string">google_id_token_here</span>',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;email: '<span class="string">user@gmail.com</span>',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;name: '<span class="string">User Name</span>',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;googleId: '<span class="string">google_user_id</span>'<br>
+&nbsp;&nbsp;})<br>
+});
+</div>
+</section>
+
+<section id="subscription">
+<h2><span>&#128176;</span> Subscription (Mobile IAP)</h2>
+<p>Report and verify in-app purchases from iOS/Android.</p>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/user/subscription</span>
+<span class="desc">Report purchase (productId + transactionId)</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/user/subscription</span>
+<span class="desc">Check subscription status & features</span>
+<span class="auth-tag">AUTH</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/user/subscription/cancel</span>
+<span class="desc">Cancel subscription</span>
+<span class="auth-tag">AUTH</span>
+</div>
+</div>
+
+<h3 style="margin-top:20px;font-size:1rem">Product IDs</h3>
+<table>
+<tr><th>Product ID</th><th>Plan</th><th>Features</th></tr>
+<tr><td><code>megaradio_remove_ads_yearly1</code></td><td>Remove Ads</td><td>Ad-free experience</td></tr>
+<tr><td><code>megaradio_premium_monthly1</code></td><td>Premium Monthly</td><td>All features</td></tr>
+<tr><td><code>megaradio_premium_yearly</code></td><td>Premium Yearly</td><td>All features</td></tr>
+<tr><td><code>megaradio_premium_lifetime</code></td><td>Premium Lifetime</td><td>All features, forever</td></tr>
+</table>
+
+<div class="code-block">
+<span class="comment">// Report purchase after successful IAP</span><br>
+await fetch('<span class="string">https://api.themegaradio.com/api/user/subscription</span>', {<br>
+&nbsp;&nbsp;method: '<span class="value">POST</span>',<br>
+&nbsp;&nbsp;headers: {<br>
+&nbsp;&nbsp;&nbsp;&nbsp;'<span class="key">Content-Type</span>': '<span class="string">application/json</span>',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;'<span class="key">X-API-User-Token</span>': userToken<br>
+&nbsp;&nbsp;},<br>
+&nbsp;&nbsp;body: JSON.stringify({<br>
+&nbsp;&nbsp;&nbsp;&nbsp;productId: '<span class="string">megaradio_premium_monthly1</span>',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;transactionId: '<span class="string">GPA.1234-5678</span>',<br>
+&nbsp;&nbsp;&nbsp;&nbsp;platform: '<span class="string">android</span>'  <span class="comment">// or 'ios'</span><br>
+&nbsp;&nbsp;})<br>
+});
+</div>
+</section>
+
+<section id="websocket">
+<h2><span>&#9889;</span> WebSocket</h2>
+<p>Real-time connections for live metadata and casting.</p>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-ws">WS</span>
+<span class="path">wss://api.themegaradio.com/ws/metadata</span>
+<span class="desc">Live now-playing updates</span>
+</div>
+<div class="endpoint">
+<span class="method method-ws">WS</span>
+<span class="path">wss://api.themegaradio.com/ws/cast</span>
+<span class="desc">Cast / remote control commands</span>
+</div>
+<div class="endpoint">
+<span class="method method-ws">WS</span>
+<span class="path">wss://api.themegaradio.com/ws/chat</span>
+<span class="desc">Live station chat</span>
+</div>
+</div>
+
+<div class="code-block">
+<span class="comment">// Subscribe to now-playing for a station</span><br>
+const ws = new WebSocket('<span class="string">wss://api.themegaradio.com/ws/metadata</span>');<br>
+<br>
+ws.onopen = () => {<br>
+&nbsp;&nbsp;ws.send(JSON.stringify({ type: '<span class="value">subscribe</span>', stationId: '<span class="string">station_id_here</span>' }));<br>
+};<br>
+<br>
+ws.onmessage = (event) => {<br>
+&nbsp;&nbsp;const data = JSON.parse(event.data);<br>
+&nbsp;&nbsp;console.log(`Now playing: ${data.title} - ${data.artist}`);<br>
+};
+</div>
+</section>
+
+<section id="cast">
+<h2><span>&#128250;</span> Cast & TV</h2>
+<p>Chromecast, TV app, and device code login support.</p>
+
+<div class="endpoint-group">
+<div class="endpoint">
+<span class="method method-get">GET</span>
+<span class="path">/api/tv/init</span>
+<span class="desc">TV app initialization payload</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/cast/session/create</span>
+<span class="desc">Create cast pairing session</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/cast/command</span>
+<span class="desc">Send playback command</span>
+</div>
+<div class="endpoint">
+<span class="method method-post">POST</span>
+<span class="path">/api/user/push-token</span>
+<span class="desc">Register push notification token</span>
+<span class="auth-tag">AUTH</span>
+</div>
+</div>
+</section>
+
+<section id="ratelimits">
+<h2><span>&#128737;</span> Rate Limits</h2>
+
+<table>
+<tr><th>Scope</th><th>Limit</th><th>Window</th></tr>
+<tr><td>Global API</td><td>100 requests</td><td>1 minute</td></tr>
+<tr><td>Auth endpoints (login/register)</td><td>10 attempts</td><td>15 minutes</td></tr>
+<tr><td>Demo API Key</td><td>50 requests</td><td>24 hours</td></tr>
+<tr><td>Free API Key</td><td>1,000 requests</td><td>24 hours</td></tr>
+<tr><td>Pro API Key</td><td>50,000 requests</td><td>24 hours</td></tr>
+</table>
+
+<div class="warn-box">
+<h4>Rate Limit Response</h4>
+<p>When rate limited, the API returns <code>429 Too Many Requests</code> with a <code>Retry-After</code> header indicating when to retry.</p>
+</div>
+</section>
+
+<section id="errors">
+<h2><span>&#9888;&#65039;</span> Error Handling</h2>
+<p>All errors follow a consistent JSON format:</p>
+<div class="code-block">
+{<br>
+&nbsp;&nbsp;"<span class="key">error</span>": "<span class="string">Human-readable error message</span>",<br>
+&nbsp;&nbsp;"<span class="key">message</span>": "<span class="string">Detailed description (optional)</span>"<br>
+}
+</div>
+
+<table>
+<tr><th>Status</th><th>Meaning</th></tr>
+<tr><td><code>200</code></td><td>Success</td></tr>
+<tr><td><code>400</code></td><td>Bad request (invalid params)</td></tr>
+<tr><td><code>401</code></td><td>Unauthorized (missing/invalid auth)</td></tr>
+<tr><td><code>403</code></td><td>Forbidden (insufficient permissions)</td></tr>
+<tr><td><code>404</code></td><td>Not found</td></tr>
+<tr><td><code>429</code></td><td>Rate limited</td></tr>
+<tr><td><code>500</code></td><td>Internal server error</td></tr>
+</table>
+</section>
+
+</div>
+</main>
+
+<footer>
+<div class="container">
+<p>&copy; 2026 MegaRadio &mdash; <a href="https://themegaradio.com">themegaradio.com</a></p>
+</div>
+</footer>
+
+<script>
+fetch('/health').then(r=>r.json()).then(d=>{
+  const b=document.querySelector('.badge-green');
+  if(b&&d.status==='ok')b.innerHTML='&#9679; API Online';
+}).catch(()=>{});
+</script>
+</body>
+</html>
