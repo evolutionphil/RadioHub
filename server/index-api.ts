@@ -90,8 +90,25 @@ process.on('unhandledRejection', (reason: any) => {
 });
 
 import path from 'path';
+
+const distPublicPath = path.join(process.cwd(), 'dist', 'public');
+const publicPath = path.join(process.cwd(), 'public');
+
 app.get('/', (_req, res) => {
-  res.sendFile(path.join(process.cwd(), 'public', 'api-docs.html'));
+  res.sendFile(path.join(publicPath, 'api-docs.html'));
+});
+
+app.use('/assets', express.static(path.join(distPublicPath, 'assets'), { maxAge: '1y', immutable: true }));
+app.use('/admin', express.static(distPublicPath, { index: false }));
+
+app.get('/admin', (_req, res) => {
+  res.sendFile(path.join(distPublicPath, 'index.html'));
+});
+app.get('/admin/*', (_req, res) => {
+  res.sendFile(path.join(distPublicPath, 'index.html'));
+});
+app.get('/admin-login', (_req, res) => {
+  res.sendFile(path.join(distPublicPath, 'index.html'));
 });
 
 app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
