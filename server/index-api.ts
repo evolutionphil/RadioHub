@@ -99,6 +99,13 @@ import path from 'path';
 const distPublicPath = path.join(process.cwd(), 'dist', 'public');
 const publicPath = path.join(process.cwd(), 'public');
 
+app.get('/robots.txt', (_req, res) => {
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.send(`User-agent: *
+Disallow: /`);
+});
+
 app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   if (req.path === '/healthz') {
     return res.status(200).send('ok');
