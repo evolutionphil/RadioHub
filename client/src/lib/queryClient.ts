@@ -24,8 +24,7 @@ export async function apiRequest(
 ): Promise<Response> {
   const { body, headers = {} } = options;
   
-  const resolvedUrl = resolveApiUrl(url);
-  const res = await fetch(resolvedUrl, {
+  const res = await fetch(url, {
     method,
     headers: {
       ...(body ? { "Content-Type": "application/json" } : {}),
@@ -78,8 +77,7 @@ export const getQueryFn: <T>(options: {
       url = queryKey.join("/") as string;
     }
     
-    const resolvedUrl = resolveApiUrl(url);
-    const res = await fetch(resolvedUrl, {
+    const res = await fetch(url, {
       credentials: "include",
     });
 
