@@ -567,7 +567,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerMobileTvRoutes(app, deps);
   await registerTranslationKeyRoutes(app, deps);
   await registerSeoSitemapRoutes(app, deps, { apiOnly: isApiOnly });
-  registerStreamProxyRoutes(app, deps);
+  if (process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production') {
+    registerStreamProxyRoutes(app, deps);
+  }
   registerRegionsRecommendationsRoutes(app, deps);
   registerMiscRoutes(app, deps, { apiOnly: isApiOnly });
   registerSilentPushRoutes(app, deps);

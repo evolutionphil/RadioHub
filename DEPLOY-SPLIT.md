@@ -1,6 +1,6 @@
-# Split Deployment: Backend API + Frontend Web
+# Split Deployment: Backend API + Frontend Web + Stream Proxy
 
-Monolitik yapıyı iki bağımsız Railway servisine ayırma kılavuzu.
+Monolitik yapıyı üç bağımsız Railway servisine ayırma kılavuzu.
 
 ## Mimari
 
@@ -13,25 +13,25 @@ Monolitik yapıyı iki bağımsız Railway servisine ayırma kılavuzu.
               │  themegaradio.com     │
               └──────────┬────────────┘
                          │
-          ┌──────────────┴──────────────┐
-          ▼                             ▼
-┌─────────────────────┐     ┌──────────────────────┐
-│   frontend-web      │     │    backend-api        │
-│ themegaradio.com    │     │ api.themegaradio.com  │
-│                     │     │                       │
-│ React SPA + SSR     │     │ Express API (/api/*)  │
-│ SEO Renderer        │────▶│ WebSocket (/ws/*)     │
-│ Static Assets       │     │ Session + Passport    │
-│ Sitemap / robots    │     │ OAuth (Google)        │
-│ Reverse Proxy:      │     │ Admin Panel API       │
-│  /api/* → backend   │     │ Rate Limiting         │
-│  /ws/*  → backend   │     │ CORS Allowlist        │
-│ MongoDB (read-only) │     │ MongoDB (read/write)  │
-└─────────────────────┘     └───────────────────────┘
-          ▲                             ▲
-          │                             │
-     Web Browser               Mobil Uygulamalar
-     (tüm trafik)             (direkt API erişimi)
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+┌──────────────────┐ ┌──────────────┐ ┌──────────────────┐
+│  frontend-web    │ │ backend-api  │ │  stream-proxy    │
+│ themegaradio.com │ │ api.themega  │ │ stream.themega   │
+│                  │ │ radio.com    │ │ radio.com        │
+│ React SPA + SSR  │ │              │ │                  │
+│ SEO Renderer     │>│ Express API  │ │ Audio stream     │
+│ Static Assets    │ │ WebSocket    │ │ proxy (/api/     │
+│ Sitemap/robots   │ │ Session/Auth │ │ stream/*)        │
+│ Reverse Proxy:   │ │ Admin API    │ │ Image proxy      │
+│  /api/* →backend │ │ Rate Limit   │ │ (/api/image/*)   │
+│ MongoDB (read)   │ │ CORS         │ │ Playlist resolve │
+│                  │ │ MongoDB (rw) │ │ Memory monitor   │
+└──────────────────┘ └──────────────┘ └──────────────────┘
+          ▲                 ▲                  ▲
+          │                 │                  │
+     Web Browser     Mobil Uygulamalar    HTTP Streams
+     (tüm trafik)   (direkt API)     (mixed content fix)
 ```
 
 ## Nasıl Çalışır
@@ -42,6 +42,9 @@ Monolitik yapıyı iki bağımsız Railway servisine ayırma kılavuzu.
 4. Bu sayede tarayıcı açısından her şey aynı domain'de kalır (CORS sorunu yok)
 5. **Mobil uygulamalar** doğrudan `api.themegaradio.com` adresine bağlanır
 6. Admin paneli backend-api üzerindedir, frontend-web üzerinden proxy ile erişilir
+7. **HTTP audio akışları** `stream.themegaradio.com` üzerinden proxy edilir (mixed content fix)
+8. **HTTPS audio akışları** doğrudan bağlanır (proxy gerekmez)
+9. **HTTP görseller** (favicon, logo) stream-proxy üzerinden proxy edilir
 
 ---
 
@@ -90,6 +93,37 @@ Monolitik yapıyı iki bağımsız Railway servisine ayırma kılavuzu.
 - MongoDB bağlantısı (sadece SEO için okuma)
 - Healthcheck: `/healthz` ve `/health`
 
+### 3. Stream Proxy (`stream-proxy`)
+
+| Özellik | Değer |
+|---------|-------|
+| **Domain** | `stream.themegaradio.com` |
+| **Entrypoint** | `server/index-proxy.ts` |
+| **Dockerfile** | `Dockerfile.proxy` |
+| **Build script** | `scripts/build-proxy.sh` |
+| **Varsayılan port** | 4000 |
+
+**İçerik:**
+- Audio stream proxy (`/api/stream/*`) — sadece HTTP akışlar için
+- Image proxy (`/api/image/*`) — HTTP favicon/logo'lar için mixed content fix
+- Playlist resolve (`/api/stream/resolve`) — PLS/M3U playlist çözümleme
+- CORS allowlist (themegaradio.com, www, api subdomains)
+- Memory monitoring (RSS warning/critical/restart thresholds)
+- Stream registry ile aktif bağlantı takibi
+- Graceful shutdown (tüm stream'leri kapatır)
+- Healthcheck: `/healthz` (detaylı memory bilgisi), `/health` (basit)
+
+**Neden ayrı servis:**
+- API sunucusu ext memory 25MB→700MB+ patlıyordu (stream buffer'lar)
+- Socket handle'ları 3→80+ artıyordu
+- Ayrı servis olarak crash etse bile API ve Frontend etkilenmez
+- Bağımsız ölçeklendirme ve restart imkanı
+
+**Akıllı proxy routing (client-side):**
+- HTTPS streams → doğrudan bağlantı (proxy gerekmez, %57 stations)
+- HTTP streams → stream.themegaradio.com üzerinden proxy (%43 stations)
+- HLS streams → doğrudan hls.js ile, başarısız olursa proxy fallback
+
 ---
 
 ## Environment Variables (Ortam Değişkenleri)
@@ -131,6 +165,24 @@ Monolitik yapıyı iki bağımsız Railway servisine ayırma kılavuzu.
 | `MONGODB_URI` | **Evet** | MongoDB bağlantı string'i (SEO için okuma işlemleri) | `mongodb+srv://user:pass@cluster.mongodb.net/mega?retryWrites=true&w=majority` |
 | `BACKEND_API_URL` | **Evet** | Backend-api'nin dahili URL'si | `http://backend-api.railway.internal:5000` |
 | `HSTS_PHASE` | Hayır | HSTS katılık seviyesi | `production` |
+
+### Frontend Web — Build-Time Değişkenler
+
+| Değişken | Zorunlu | Açıklama | Örnek |
+|----------|---------|----------|-------|
+| `VITE_API_BASE_URL` | **Evet** | Backend API URL'si (client tarafında kullanılır) | `https://api.themegaradio.com` |
+| `VITE_STREAM_PROXY_URL` | **Evet** | Stream proxy URL'si (client tarafında kullanılır) | `https://stream.themegaradio.com` |
+
+### Stream Proxy — Tüm Değişkenler
+
+| Değişken | Zorunlu | Açıklama | Örnek |
+|----------|---------|----------|-------|
+| `PORT` | Hayır | Sunucu portu (varsayılan: 4000) | `4000` |
+| `NODE_ENV` | **Evet** | `production` olmalı | `production` |
+| `EXTRA_CORS_ORIGINS` | Hayır | Ek izin verilen origin'ler (virgülle ayrılmış) | `https://staging.themegaradio.com` |
+| `RSS_WARNING_MB` | Hayır | RSS uyarı eşiği (varsayılan: 400) | `400` |
+| `RSS_CRITICAL_MB` | Hayır | RSS kritik eşiği — tüm stream'ler kapatılır (varsayılan: 600) | `600` |
+| `RSS_RESTART_MB` | Hayır | RSS restart eşiği — process restart (varsayılan: 800) | `800` |
 
 ---
 

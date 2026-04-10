@@ -46,8 +46,10 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **UI/UX**: Responsive mobile-first design, consistent design system, functional audio player.
 
 ### Deployment
-- **Architecture**: Supports monolithic or split deployment (backend-api and frontend-web services) for scalability.
-- **Containerization**: Docker for builds and deployment.
+- **Architecture**: Three-service split deployment: backend-api (api.themegaradio.com), frontend-web (themegaradio.com), stream-proxy (stream.themegaradio.com).
+- **Stream Proxy**: Dedicated service for audio stream proxying (HTTP only) and image proxying. HTTPS streams connect directly without proxy. Solves API server ext memory explosion (25MB→700MB+).
+- **Smart Proxy Routing**: Client uses `getStreamProxyUrl()` for stream/image proxy URLs, `getApiProxyUrl()` for API calls. VITE_STREAM_PROXY_URL env var configures proxy URL.
+- **Containerization**: Docker for builds and deployment (Dockerfile.api, Dockerfile.web, Dockerfile.proxy).
 
 ### Key Architectural Decisions
 - **Monorepo**: Unified repository for all components.

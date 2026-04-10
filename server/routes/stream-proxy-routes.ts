@@ -181,10 +181,6 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
       const acceptHeader = req.headers.accept || '';
 
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-      res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
-
       if (req.method === 'OPTIONS') {
         return res.status(200).end();
       }
@@ -482,9 +478,6 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
                          originalUrl.match(/:7\d{3}(\/|$)/) || 
                          originalUrl.match(/:\d{4,5}(\/|$)/);
       
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-      res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
       res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Connection', 'close');

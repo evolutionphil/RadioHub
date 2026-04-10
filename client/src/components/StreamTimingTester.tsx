@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { getStreamProxyUrl } from '@/lib/utils';
 
 interface TimingResult {
   directStreamStart: number | null;
@@ -44,8 +45,8 @@ export function StreamTimingTester() {
     const radioHubAudio = new Audio();
     
     // Direct stream URL (with proxy for mixed content)
-    const directStreamUrl = '/api/stream/aHR0cDovLzQ2LjIwLjcuMTI2LztzdHJlYW0ubXAz';
-    const radioHubUrl = '/api/stream/aHR0cDovLzQ2LjIwLjcuMTI2LztzdHJlYW0ubXAz'; // Same URL through our system
+    const directStreamUrl = getStreamProxyUrl('/api/stream/aHR0cDovLzQ2LjIwLjcuMTI2LztzdHJlYW0ubXAz');
+    const radioHubUrl = getStreamProxyUrl('/api/stream/aHR0cDovLzQ2LjIwLjcuMTI2LztzdHJlYW0ubXAz');
     
     // Set up timing listeners
     const handleDirectPlay = () => {

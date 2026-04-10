@@ -1,4 +1,4 @@
-import { getApiProxyUrl } from '@/lib/utils';
+import { getStreamProxyUrl } from '@/lib/utils';
 
 // Check if browser supports WebP format
 export const supportsWebP = (): boolean => {
@@ -44,7 +44,7 @@ export const getOptimizedImageSrc = (src: string, options?: {
   
   if (isMixedContent) {
     const encodedUrl = btoa(src).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-    return getApiProxyUrl(`/api/image/${encodedUrl}`);
+    return getStreamProxyUrl(`/api/image/${encodedUrl}`);
   }
 
   return src;
