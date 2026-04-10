@@ -1,0 +1,10 @@
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile.proxy"
+
+[deploy]
+startCommand = "node --max-old-space-size=512 --max-semi-space-size=16 --expose-gc dist/index-proxy.js"
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+restartPolicyType = "ALWAYS"
+restartPolicyMaxRetries = 5
