@@ -673,10 +673,19 @@ app.use(session(sessionConfig));
           const conns = await getConnectionCount();
           const handles = getHandleDiagnostics();
           const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
-          console.log(`📊 DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${externalMB}MB ab=${abMB}MB native≈${nativeMB}MB | conns=${conns} | handles: ${handleStr}`);
+          let streamInfo = '';
+          try {
+            const { getStreamRegistrySize } = await import('./routes/stream-proxy-routes');
+            streamInfo = ` | streams=${getStreamRegistrySize()}`;
+          } catch {}
+          console.log(`📊 DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${externalMB}MB ab=${abMB}MB native≈${nativeMB}MB | conns=${conns}${streamInfo} | handles: ${handleStr}`);
         }
 
         if (rssMB > RSS_RESTART_MB) {
+          try {
+            const { forceCloseAllStreams } = await import('./routes/stream-proxy-routes');
+            forceCloseAllStreams(`RSS_RESTART rss=${rssMB}MB`);
+          } catch {}
           const conns = await getConnectionCount();
           const handles = getHandleDiagnostics();
           const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
@@ -685,8 +694,19 @@ app.use(session(sessionConfig));
           return;
         }
 
+        if (externalMB > 300 || rssMB > RSS_WARNING_MB) {
+          try {
+            const { forceCloseOldStreams, getActiveStreamCount, getStreamRegistrySize } = await import('./routes/stream-proxy-routes');
+            const streamCount = getStreamRegistrySize();
+            if (streamCount > 0) {
+              const pressureTTL = externalMB > 500 ? 60_000 : 5 * 60_000;
+              forceCloseOldStreams(pressureTTL);
+            }
+          } catch {}
+        }
+
         if (rssMB > RSS_WARNING_MB && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
-          console.log(`🧹 RSS MEMORY RELIEF: rss=${rssMB}MB heap=${heapMB}MB native≈${nativeMB}MB — clearing SEO & quick caches`);
+          console.log(`🧹 RSS MEMORY RELIEF: rss=${rssMB}MB heap=${heapMB}MB ext=${externalMB}MB native≈${nativeMB}MB — clearing SEO & quick caches`);
           performanceCache.clearSeoAndQuickCaches();
           tryGc();
           lastProactiveClearTime = now;
@@ -700,7 +720,14 @@ app.use(session(sessionConfig));
           }
           if ((now - lastMemoryGcTime) > MEMORY_GC_COOLDOWN) {
             lastMemoryGcTime = now;
-            console.error(`🚨 MEMORY CRITICAL: rss=${rssMB}MB heap=${heapMB}MB — clearing caches + forcing GC`);
+            try {
+              const { forceCloseAllStreams, getStreamRegistrySize } = await import('./routes/stream-proxy-routes');
+              const streamCount = getStreamRegistrySize();
+              if (streamCount > 0) {
+                forceCloseAllStreams(`MEMORY_CRITICAL rss=${rssMB}MB ext=${externalMB}MB`);
+              }
+            } catch {}
+            console.error(`🚨 MEMORY CRITICAL: rss=${rssMB}MB heap=${heapMB}MB — clearing caches + closing streams + forcing GC`);
             performanceCache.clearAllForMemoryRelief();
             await CacheManager.clearByPattern('precomputed_');
             await CacheManager.clearByPattern('stations:');

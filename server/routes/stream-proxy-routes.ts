@@ -2,12 +2,58 @@ import type { Express } from "express";
 import { Station } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 
-const MAX_CONCURRENT_STREAMS = 100;
-const MAX_STREAM_DURATION_MS = 4 * 60 * 60 * 1000;
+const MAX_CONCURRENT_STREAMS = parseInt(process.env.MAX_CONCURRENT_STREAMS || '25', 10);
+const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '30', 10) * 60 * 1000;
 const STREAM_IDLE_TIMEOUT_MS = 60 * 1000;
 const MAX_STREAMS_PER_IP = 5;
+const PRESSURE_STREAM_TTL_MS = 5 * 60 * 1000;
 let activeStreamCount = 0;
 const activeStreamsPerIp = new Map<string, number>();
+
+interface StreamEntry {
+  cleanup: () => void;
+  startedAt: number;
+  ip: string;
+}
+const activeStreamRegistry = new Map<number, StreamEntry>();
+let streamIdCounter = 0;
+
+export function getActiveStreamCount(): number {
+  return activeStreamCount;
+}
+
+export function getStreamRegistrySize(): number {
+  return activeStreamRegistry.size;
+}
+
+export function forceCloseAllStreams(reason: string): number {
+  const count = activeStreamRegistry.size;
+  if (count === 0) return 0;
+  console.log(`🔪 FORCE CLOSING ${count} active streams: ${reason}`);
+  for (const [id, entry] of activeStreamRegistry) {
+    try { entry.cleanup(); } catch {}
+  }
+  activeStreamRegistry.clear();
+  activeStreamCount = 0;
+  activeStreamsPerIp.clear();
+  return count;
+}
+
+export function forceCloseOldStreams(maxAgeMs: number): number {
+  const now = Date.now();
+  let closed = 0;
+  for (const [id, entry] of activeStreamRegistry) {
+    if (now - entry.startedAt > maxAgeMs) {
+      try { entry.cleanup(); } catch {}
+      activeStreamRegistry.delete(id);
+      closed++;
+    }
+  }
+  if (closed > 0) {
+    console.log(`🔪 PRESSURE: Closed ${closed} streams older than ${Math.round(maxAgeMs / 60000)}min`);
+  }
+  return closed;
+}
 
 function getClientIp(req: any): string {
   return req.ip || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
@@ -156,7 +202,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
             'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache'
+            'Cache-Control': 'no-cache',
+            'Connection': 'close'
           }
         });
       } catch (fetchError: any) {
@@ -166,17 +213,20 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       }
 
       if (!response.ok) {
+        try { response.body?.destroy?.(); } catch {}
         return res.status(404).json({ error: 'Image not found or inaccessible' });
       }
 
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('text/html') || contentType.includes('text/xml') || 
           contentType.includes('application/json') || contentType.includes('application/xml')) {
+        try { response.body?.destroy?.(); } catch {}
         return res.status(404).json({ error: 'Not an image' });
       }
 
       const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
       if (contentLength > MAX_IMAGE_DOWNLOAD_BYTES) {
+        try { response.body?.destroy?.(); } catch {}
         return res.status(413).json({ error: 'Image too large' });
       }
 
@@ -358,12 +408,14 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     }
 
     activeStreamCount++;
+    const streamId = ++streamIdCounter;
     let streamReleased = false;
     const decrementStream = () => {
       if (!streamReleased) {
         streamReleased = true;
         if (activeStreamCount > 0) activeStreamCount--;
         decrementIpStream(clientIp);
+        activeStreamRegistry.delete(streamId);
       }
     };
     res.once('close', decrementStream);
@@ -459,6 +511,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
         req.once('close', destroyActiveProxy);
         res.once('close', destroyActiveProxy);
+
+        activeStreamRegistry.set(streamId, { cleanup: destroyActiveProxy, startedAt: Date.now(), ip: clientIp });
 
         shoutcastMaxTimer = setTimeout(() => {
           logger.log('⏰ Shoutcast max duration reached, closing stream');
@@ -612,6 +666,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           try { if (!res.writableEnded) res.end(); } catch {}
           decrementStream();
         };
+
+        activeStreamRegistry.set(streamId, { cleanup: () => cleanup('memory-pressure'), startedAt: Date.now(), ip: clientIp });
 
         const maxDurationTimer = setTimeout(() => {
           logger.log('⏰ Direct stream max duration reached, closing');
