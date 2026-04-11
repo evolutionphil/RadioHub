@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { logger } from "../utils/logger";
 
 const MAX_CONCURRENT_STREAMS = parseInt(process.env.MAX_CONCURRENT_STREAMS || '25', 10);
-const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '30', 10) * 60 * 1000;
+const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '120', 10) * 60 * 1000;
 const STREAM_IDLE_TIMEOUT_MS = 60 * 1000;
 const MAX_STREAMS_PER_IP = 5;
 const PRESSURE_STREAM_TTL_MS = 5 * 60 * 1000;
