@@ -49,13 +49,13 @@ export class CacheManager {
         return memoryResult;
       }
 
-      // Try Redis if available
       if (redisClient && redisClient.isOpen) {
         const redisResult = await redisClient.get(key);
         if (redisResult) {
           const parsed = JSON.parse(redisResult) as T;
-          // Store in memory cache for faster future access
-          memoryCache.set(key, parsed, 300); // 5 min in memory
+          if (redisResult.length < 256_000) {
+            memoryCache.set(key, parsed, 300);
+          }
           return parsed;
         }
       }
@@ -84,10 +84,15 @@ export class CacheManager {
     try {
       const ttl = options.ttl || 600;
 
-      const memTtl = Math.min(ttl, 3600);
-      memoryCache.set(key, value, memTtl);
+      const valueSizeBytes = typeof value === 'string' ? value.length * 2 : 0;
+      const isLargeValue = valueSizeBytes > 512_000;
 
-      if (redisClient && redisClient.isOpen && (!options.useRedis || options.useRedis)) {
+      if (!isLargeValue) {
+        const memTtl = Math.min(ttl, 3600);
+        memoryCache.set(key, value, memTtl);
+      }
+
+      if (redisClient && redisClient.isOpen) {
         const opId = startOperation('cache-stringify', key);
         try {
           const serialized = JSON.stringify(value);

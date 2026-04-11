@@ -3,7 +3,7 @@ builder = "dockerfile"
 dockerfilePath = "Dockerfile.web"
 
 [deploy]
-startCommand = "node --max-old-space-size=2048 --max-semi-space-size=32 dist/index-web.js"
+startCommand = "node --max-old-space-size=2048 --max-semi-space-size=32 --expose-gc dist/index-web.js"
 healthcheckPath = "/healthz"
 healthcheckTimeout = 300
 restartPolicyType = "ALWAYS"

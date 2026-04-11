@@ -412,11 +412,16 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         return res.status(404).send('Language not found');
       }
 
-      // Generate deterministic ETag (changes daily)
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const today = new Date().toISOString().split('T')[0];
       const etag = `"${crypto.createHash('md5').update(`main-${lang}-${today}`).digest('hex')}"`;
       
-      // Check cache first
+      const clientEtag = req.headers['if-none-match'];
+      if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || clientEtag.includes(etag))) {
+        res.setHeader('ETag', etag);
+        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+        return res.status(304).end();
+      }
+
       const cacheKey = `sitemap:main:${lang}`;
       const cached = await CacheManager.get<string>(cacheKey);
       
@@ -425,10 +430,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
         res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
-        
-        if (req.headers['if-none-match'] === etag) {
-          return res.status(304).end();
-        }
         return res.send(cached);
       }
 
@@ -506,11 +507,16 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         return res.status(404).send('Language not found');
       }
 
-      // Generate deterministic ETag (changes daily)
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const today = new Date().toISOString().split('T')[0];
       const etag = `"${crypto.createHash('md5').update(`stations-${lang}-${chunk}-${today}`).digest('hex')}"`;
       
-      // Check cache first
+      const clientEtag = req.headers['if-none-match'];
+      if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || clientEtag.includes(etag))) {
+        res.setHeader('ETag', etag);
+        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+        return res.status(304).end();
+      }
+
       const cacheKey = `sitemap:stations:${lang}:${chunk}`;
       const cached = await CacheManager.get<string>(cacheKey);
       
@@ -519,10 +525,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
         res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
-        
-        if (req.headers['if-none-match'] === etag) {
-          return res.status(304).end();
-        }
         return res.send(cached);
       }
 
@@ -609,11 +611,16 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         return res.status(404).send('Language not found');
       }
 
-      // Generate deterministic ETag (changes daily)
-      const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+      const today = new Date().toISOString().split('T')[0];
       const etag = `"${crypto.createHash('md5').update(`genres-${lang}-${today}`).digest('hex')}"`;
       
-      // Check cache first
+      const clientEtag = req.headers['if-none-match'];
+      if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || clientEtag.includes(etag))) {
+        res.setHeader('ETag', etag);
+        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+        return res.status(304).end();
+      }
+
       const cacheKey = `sitemap:genres:${lang}`;
       const cached = await CacheManager.get<string>(cacheKey);
       
@@ -622,10 +629,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
         res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
-        
-        if (req.headers['if-none-match'] === etag) {
-          return res.status(304).end();
-        }
         return res.send(cached);
       }
 
