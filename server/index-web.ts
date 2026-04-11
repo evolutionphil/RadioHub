@@ -9,6 +9,7 @@ import { createServer } from "http";
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { connectToMongoDB } from "./db-mongo";
 import { performanceCache } from "./performance-cache";
+import { CacheManager } from "./cache";
 import { htmlLangMiddleware, precomputeTranslationScripts } from "./html-lang-middleware";
 import { logger } from './utils/logger';
 import { urlRedirectMiddleware } from './url-redirect-middleware';
@@ -585,6 +586,38 @@ app.use('/api/image', (_req, res) => {
 
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+  const RSS_WARNING_MB = 1200;
+  const RSS_CRITICAL_MB = 1600;
+  const RSS_RESTART_MB = 1900;
+  let lastMemoryLog = 0;
+
+  setInterval(() => {
+    const mem = process.memoryUsage();
+    const rssMB = Math.round(mem.rss / 1024 / 1024);
+    const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
+    const now = Date.now();
+
+    if (rssMB > RSS_RESTART_MB) {
+      logger.log(`🚨 MEMORY CRITICAL: RSS=${rssMB}MB > ${RSS_RESTART_MB}MB — triggering graceful restart`);
+      gracefulShutdown('MEMORY_LIMIT');
+      return;
+    }
+
+    if (rssMB > RSS_CRITICAL_MB || heapMB > 1500) {
+      logger.log(`⚠️ MEMORY HIGH: RSS=${rssMB}MB, Heap=${heapMB}MB — clearing all caches`);
+      performanceCache.clearSeoHtml();
+      performanceCache.clearPageData();
+      CacheManager.clearByPattern('sitemap');
+      if (global.gc) { global.gc(); }
+    } else if (rssMB > RSS_WARNING_MB) {
+      if (now - lastMemoryLog > 60000) {
+        lastMemoryLog = now;
+        logger.log(`⚠️ MEMORY WARNING: RSS=${rssMB}MB, Heap=${heapMB}MB — clearing SEO HTML cache`);
+      }
+      performanceCache.clearSeoHtml();
+    }
+  }, 30000);
 
   (async () => {
     try {

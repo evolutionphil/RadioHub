@@ -4,11 +4,13 @@ import { logger } from './utils/logger';
 import { startOperation, endOperation } from './utils/operation-tracker';
 
 // In-memory cache with TTL
+// CRITICAL: Sitemap XMLs are ~6MB each. maxKeys=200 × 6MB = ~1.2GB worst case.
+// Use maxKeys=200 to prevent OOM on frontend-web (2GB heap limit).
 const memoryCache = new NodeCache({ 
   stdTTL: 600,
   checkperiod: 120,
   useClones: false,
-  maxKeys: 1000
+  maxKeys: 200
 });
 
 // Redis client for production (optional)
@@ -82,7 +84,8 @@ export class CacheManager {
     try {
       const ttl = options.ttl || 600;
 
-      memoryCache.set(key, value, ttl);
+      const memTtl = Math.min(ttl, 3600);
+      memoryCache.set(key, value, memTtl);
 
       if (redisClient && redisClient.isOpen && (!options.useRedis || options.useRedis)) {
         const opId = startOperation('cache-stringify', key);
