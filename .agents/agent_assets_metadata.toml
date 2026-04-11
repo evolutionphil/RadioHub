@@ -18,3 +18,9 @@ id = "hzQ2N032lGr8CAdy8Fyn6"
 uri = "file://mobile-favorites-integration.md"
 type = "text"
 title = "Mobil Favori Sistemi — Developer Entegrasyon Dokumani"
+
+[[outputs]]
+id = "akjDlvqOvC64KZmAD5pez"
+uri = "file://docs/react-native-icy-metadata-guide.md"
+type = "text"
+title = "React Native ICY Metadata Rehberi - Mobil Developer İçin"
