@@ -308,10 +308,19 @@ app.use('/api/image', (_req, res) => {
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
   res.status(410).json({ error: 'Image proxy moved to stream.themegaradio.com', service: 'stream-proxy' });
 });
-app.use('/api', apiProxy);
 
 (async () => {
   await connectToMongoDB();
+
+  const seoSitemapDeps = {
+    requireAdmin: (_req: any, res: any, next: any) => {
+      res.status(403).json({ error: 'Admin routes only available on API service' });
+    }
+  };
+  await registerSeoSitemapRoutes(app, seoSitemapDeps);
+  logger.log('✅ SEO/Sitemap routes registered on frontend-web (handles /api/seo/page-data locally)');
+
+  app.use('/api', apiProxy);
 
   const server = createServer(app);
 
@@ -335,13 +344,6 @@ app.use('/api', apiProxy);
       wsProxy.upgrade!(req, socket, head);
     }
   });
-
-  const seoSitemapDeps = {
-    requireAdmin: (_req: any, res: any, next: any) => {
-      res.status(403).json({ error: 'Admin routes only available on API service' });
-    }
-  };
-  await registerSeoSitemapRoutes(app, seoSitemapDeps);
 
   const seoRenderer = new SeoRenderer();
 
