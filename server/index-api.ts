@@ -246,9 +246,13 @@ if (enableEmbeddedProxy) {
   });
 } else {
   app.use('/api/stream', (_req, res) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.status(410).json({ error: 'Stream proxy moved to stream.themegaradio.com' });
   });
   app.use('/api/image', (_req, res) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
     res.status(410).json({ error: 'Image proxy moved to stream.themegaradio.com' });
   });
 }
