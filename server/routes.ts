@@ -569,6 +569,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   await registerSeoSitemapRoutes(app, deps, { apiOnly: isApiOnly });
   if (process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production') {
     registerStreamProxyRoutes(app, deps);
+    console.log('🔌 Stream proxy routes registered (embedded mode)');
+  } else {
+    console.log('🚫 Stream proxy routes DISABLED — use stream.themegaradio.com');
   }
   registerRegionsRecommendationsRoutes(app, deps);
   registerMiscRoutes(app, deps, { apiOnly: isApiOnly });

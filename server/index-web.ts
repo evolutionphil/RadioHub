@@ -298,6 +298,12 @@ app.get('/admin/*', (_req, res) => {
   res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
 });
 
+app.use('/api/stream', (_req, res) => {
+  res.status(410).json({ error: 'Stream proxy moved to stream.themegaradio.com', service: 'stream-proxy' });
+});
+app.use('/api/image', (_req, res) => {
+  res.status(410).json({ error: 'Image proxy moved to stream.themegaradio.com', service: 'stream-proxy' });
+});
 app.use('/api', apiProxy);
 
 (async () => {

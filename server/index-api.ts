@@ -219,28 +219,39 @@ if (!CORS_ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
   CORS_ALLOWED_ORIGINS.push(FRONTEND_URL);
 }
 
-app.use('/api/stream', (req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-  res.header('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
-  res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
-  res.header('Access-Control-Max-Age', '86400');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
+const enableEmbeddedProxy = process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production';
 
-app.use('/api/image', (req, res, next) => {
-  const origin = req.headers.origin;
-  if (origin && CORS_ALLOWED_ORIGINS.includes(origin)) {
-    res.header('Access-Control-Allow-Origin', origin);
-  } else if (!origin) {
+if (enableEmbeddedProxy) {
+  app.use('/api/stream', (req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
-  }
-  res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
-  next();
-});
+    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
+    res.header('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
+    res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
+    res.header('Access-Control-Max-Age', '86400');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+  });
+
+  app.use('/api/image', (req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && CORS_ALLOWED_ORIGINS.includes(origin)) {
+      res.header('Access-Control-Allow-Origin', origin);
+    } else if (!origin) {
+      res.header('Access-Control-Allow-Origin', '*');
+    }
+    res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+  });
+} else {
+  app.use('/api/stream', (_req, res) => {
+    res.status(410).json({ error: 'Stream proxy moved to stream.themegaradio.com' });
+  });
+  app.use('/api/image', (_req, res) => {
+    res.status(410).json({ error: 'Image proxy moved to stream.themegaradio.com' });
+  });
+}
 
 app.use((req, res, next) => {
   if (req.path.startsWith('/api/stream') || req.path.startsWith('/api/image')) {
