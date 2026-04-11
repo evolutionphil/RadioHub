@@ -6,14 +6,14 @@ interface MetadataClient {
   id: string;
   socket: WebSocket;
   currentStream?: string;
-  lastMetadata?: any;
+  lastMetadata?: string;
 }
 
 export class RealtimeMetadataService {
   private static readonly MAX_CLIENTS = 200;
   private clients: Map<string, MetadataClient> = new Map();
   private streamMetadataService: StreamMetadataService;
-  private metadataIntervals: Map<string, NodeJS.Timeout> = new Map();
+  private pushIntervals: Map<string, NodeJS.Timeout> = new Map();
   
   constructor() {
     this.streamMetadataService = new StreamMetadataService();
@@ -62,13 +62,12 @@ export class RealtimeMetadataService {
   removeClient(clientId: string) {
     const client = this.clients.get(clientId);
     if (client) {
-      // Stop metadata tracking for this client
       if (client.currentStream) {
-        this.stopTrackingStream(client.currentStream, clientId);
+        this.stopTrackingForClient(clientId);
       }
       
       this.clients.delete(clientId);
-      logger.log(`🎵 REALTIME METADATA: Client disconnected ${clientId}`);
+      logger.log(`🎵 REALTIME METADATA: Client disconnected ${clientId} (remaining: ${this.clients.size})`);
     }
   }
 
@@ -88,53 +87,31 @@ export class RealtimeMetadataService {
     }
   }
 
-  private async trackStreamForClient(clientId: string, streamUrl: string) {
+  private trackStreamForClient(clientId: string, streamUrl: string) {
     const client = this.clients.get(clientId);
     if (!client) return;
 
-    logger.log(`🎯 REALTIME: Tracking metadata for stream: ${streamUrl}`);
-    
-    // Stop previous tracking
     if (client.currentStream) {
-      this.stopTrackingStream(client.currentStream, clientId);
+      this.stopTrackingForClient(clientId);
     }
 
     client.currentStream = streamUrl;
-    
-    // Start immediate metadata fetch
-    this.fetchAndSendMetadata(clientId, streamUrl);
-    
-    // Set up polling for real-time updates (every 10 seconds for fresh metadata)
+    this.streamMetadataService.subscribe(streamUrl, clientId);
+
+    const pushKey = clientId;
     const intervalId = setInterval(() => {
-      this.fetchAndSendMetadata(clientId, streamUrl);
-    }, 10000);
-    
-    this.metadataIntervals.set(`${clientId}-${streamUrl}`, intervalId);
-  }
+      const cl = this.clients.get(clientId);
+      if (!cl || !cl.currentStream) {
+        clearInterval(intervalId);
+        this.pushIntervals.delete(pushKey);
+        return;
+      }
 
-  private async fetchAndSendMetadata(clientId: string, streamUrl: string) {
-    const client = this.clients.get(clientId);
-    if (!client || client.currentStream !== streamUrl) return;
-
-    try {
-      const mockStation = { 
-        url: streamUrl, 
-        url_resolved: streamUrl,
-        _id: `stream-${streamUrl.replace(/[^a-zA-Z0-9]/g, '_').substring(0, 50)}`
-      };
-      
-      const metadata = await this.streamMetadataService.getStationMetadata(mockStation);
-      
+      const metadata = this.streamMetadataService.getMetadata(cl.currentStream);
       if (metadata && (metadata.title || metadata.artist)) {
-        // Only send if metadata has changed
-        const metadataString = JSON.stringify(metadata);
-        const lastMetadataString = JSON.stringify(client.lastMetadata);
-        
-        if (metadataString !== lastMetadataString) {
-          logger.log(`🎵 REALTIME: New metadata for ${streamUrl}:`, metadata);
-          
-          client.lastMetadata = metadata;
-          
+        const metadataStr = JSON.stringify(metadata);
+        if (metadataStr !== cl.lastMetadata) {
+          cl.lastMetadata = metadataStr;
           this.sendToClient(clientId, {
             action: 'setTitle',
             data: {
@@ -147,36 +124,25 @@ export class RealtimeMetadataService {
           });
         }
       }
-    } catch (error) {
-      logger.log(`❌ REALTIME: Metadata fetch error for ${streamUrl}:`, error);
-      
-      this.sendToClient(clientId, {
-        action: 'reportError',
-        data: {
-          type: 'SERVER_HTTP_ERROR',
-          detail: `Failed to fetch metadata: ${error.message}`
-        }
-      });
-    }
+    }, 3000);
+
+    this.pushIntervals.set(pushKey, intervalId);
   }
 
   private stopTrackingForClient(clientId: string) {
     const client = this.clients.get(clientId);
-    if (!client || !client.currentStream) return;
+    if (!client) return;
 
-    this.stopTrackingStream(client.currentStream, clientId);
-    client.currentStream = undefined;
-    client.lastMetadata = undefined;
-  }
+    if (client.currentStream) {
+      this.streamMetadataService.unsubscribe(client.currentStream, clientId);
+      client.currentStream = undefined;
+      client.lastMetadata = undefined;
+    }
 
-  private stopTrackingStream(streamUrl: string, clientId: string) {
-    const intervalKey = `${clientId}-${streamUrl}`;
-    const intervalId = this.metadataIntervals.get(intervalKey);
-    
+    const intervalId = this.pushIntervals.get(clientId);
     if (intervalId) {
       clearInterval(intervalId);
-      this.metadataIntervals.delete(intervalKey);
-      logger.log(`🛑 REALTIME: Stopped tracking ${streamUrl} for client ${clientId}`);
+      this.pushIntervals.delete(clientId);
     }
   }
 
@@ -192,15 +158,14 @@ export class RealtimeMetadataService {
     }
   }
 
-  // Cleanup method
   cleanup() {
-    // Clear all intervals
-    for (const intervalId of this.metadataIntervals.values()) {
+    for (const intervalId of this.pushIntervals.values()) {
       clearInterval(intervalId);
     }
-    this.metadataIntervals.clear();
+    this.pushIntervals.clear();
     
-    // Close all client connections
+    this.streamMetadataService.cleanup();
+    
     for (const client of this.clients.values()) {
       if (client.socket.readyState === WebSocket.OPEN) {
         client.socket.close();

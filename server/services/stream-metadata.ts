@@ -1,9 +1,6 @@
-import axios from 'axios';
-import http from 'http';
-import https from 'https';
-
-const noKeepAliveHttpAgent = new http.Agent({ keepAlive: false, maxSockets: 10, timeout: 10000 });
-const noKeepAliveHttpsAgent = new https.Agent({ keepAlive: false, maxSockets: 10, timeout: 10000 });
+import fetch, { Request } from 'node-fetch';
+import type { Readable } from 'node:stream';
+import { logger } from '../utils/logger';
 
 export interface MetadataResult {
   title?: string;
@@ -12,406 +9,297 @@ export interface MetadataResult {
   genre?: string;
 }
 
-export class StreamMetadataService {
-  private metadataCache = new Map<string, { data: MetadataResult; timestamp: number }>();
-  private cacheTimeout = 10000;
+interface StreamAnalysis {
+  title: string;
+  contentType: string | null;
+  icyName: string | null;
+  icyGenre: string | null;
+}
 
-  async fetchAudioMetaWithAxios(streamUrl: string): Promise<MetadataResult> {
-    let stream: any = null;
-    const controller = new AbortController();
-    const killTimer = setTimeout(() => controller.abort(), 8000);
-    try {
-      const response = await axios.get(streamUrl, {
-        timeout: 8000,
-        signal: controller.signal,
-        headers: {
-          'Icy-MetaData': '1',
-          'User-Agent': 'MegaRadio/1.0'
-        },
-        responseType: 'stream',
-        maxRedirects: 5,
-        httpAgent: noKeepAliveHttpAgent,
-        httpsAgent: noKeepAliveHttpsAgent
-      });
+interface StreamConnection {
+  controller: AbortController;
+  sockets: Set<string>;
+  nowPlaying: string | undefined;
+  metadata: MetadataResult;
+  lastUpdate: number;
+  destroy: () => void;
+}
 
-      stream = response.data;
+enum ReadAction {
+  PASS_SEGMENT,
+  DECODE_META_SIZE,
+  EXTRACT_TITLE,
+}
 
-      const icyName = response.headers['icy-name'];
-      const icyGenre = response.headers['icy-genre'];
-
-      const result: MetadataResult = icyName ? {
-        title: icyName as string,
-        station: icyName as string,
-        genre: icyGenre as string || undefined
-      } : {};
-
-      return result;
-    } catch (error: any) {
-      return {};
-    } finally {
-      clearTimeout(killTimer);
-      if (stream) {
-        try { stream.destroy(); } catch {}
-      }
-    }
+function safeRead(stream: Readable, bytes: number, handler: (chunk: Buffer) => void) {
+  if (stream.readableLength >= bytes) {
+    const data = stream.read(bytes);
+    if (data) handler(data);
   }
+}
 
-  async fetchAudioMeta(streamUrl: string): Promise<MetadataResult> {
-    const timeoutMs = 10000;
-    
-    return new Promise((resolve) => {
-      let resolved = false;
-      let req: http.ClientRequest | undefined;
-      let res: http.IncomingMessage | undefined;
+function parseIcyMetadata(raw: string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const match of raw.split("';")) {
+    const eqIdx = match.indexOf("='");
+    if (eqIdx === -1) continue;
+    const key = match.substring(0, eqIdx).trim();
+    const value = match.substring(eqIdx + 2);
+    if (key && value) result[key] = value;
+  }
+  return result;
+}
 
-      const safeResolve = (result: MetadataResult) => {
-        if (resolved) return;
-        resolved = true;
-        try { if (res) res.destroy(); } catch {}
-        try { if (req) req.destroy(); } catch {}
-        resolve(result);
-      };
+function isAdvertisement(metadata: Record<string, string>): boolean {
+  return !!(metadata['AdCreativeId'] || metadata['adw_ad'] || metadata['AdTitle']);
+}
 
-      const hardKill = setTimeout(() => safeResolve({}), timeoutMs + 2000);
+function parseArtistTitle(streamTitle: string): MetadataResult {
+  if (!streamTitle || streamTitle.length < 2) return {};
+  if (streamTitle.includes(' - ')) {
+    const [artist, title] = streamTitle.split(' - ', 2);
+    return { title: title.trim(), artist: artist.trim() };
+  }
+  return { title: streamTitle.trim() };
+}
 
-      try {
-        const url = new URL(streamUrl);
-        const isHttps = url.protocol === 'https:';
-        const httpModule = isHttps ? https : http;
-        
-        const options = {
-          hostname: url.hostname,
-          port: url.port || (isHttps ? 443 : 80),
-          path: url.pathname + url.search,
-          method: 'GET',
-          headers: {
-            'Icy-MetaData': '1',
-            'User-Agent': 'MegaRadio/1.0 MetadataClient',
-            'Accept': '*/*',
-            'Connection': 'close',
-            'Range': 'bytes=0-1024'
-          },
-          timeout: timeoutMs,
-          agent: isHttps ? noKeepAliveHttpsAgent : noKeepAliveHttpAgent
+const FETCH_HEADERS = {
+  'Icy-MetaData': '1',
+  'User-Agent': 'MegaRadio/2.0 (Radiolise-style)',
+};
+
+export class StreamMetadataService {
+  private connections = new Map<string, StreamConnection>();
+  private maxConnections = 50;
+
+  private analyzeStream(
+    url: string,
+    controller: AbortController,
+    onTitle: (title: string, headers: any) => void,
+    onError: (err: Error) => void
+  ): void {
+    const request = new Request(url, {
+      signal: controller.signal as any,
+      headers: FETCH_HEADERS,
+    });
+
+    const doAnalyze = () => {
+      fetch(request).then((response) => {
+        if (!response.ok || !response.body) {
+          onError(new Error(`HTTP ${response.status}`));
+          return;
+        }
+
+        const metaIntervalHeader = response.headers.get('icy-metaint');
+        const icyName = response.headers.get('icy-name');
+        const icyGenre = response.headers.get('icy-genre');
+
+        if (icyName) {
+          onTitle(icyName, { icyName, icyGenre });
+        }
+
+        if (!metaIntervalHeader) {
+          return;
+        }
+
+        const stream = response.body as unknown as Readable;
+        const metaInterval = Number(metaIntervalHeader);
+
+        if (!Number.isFinite(metaInterval) || metaInterval <= 0 || metaInterval > 65536) {
+          return;
+        }
+
+        let currentRaw = '';
+        let action = ReadAction.PASS_SEGMENT;
+        let decodedMetaSize = 0;
+
+        const passSegment = () => {
+          action = ReadAction.PASS_SEGMENT;
+          safeRead(stream, metaInterval, () => decodeMetaSize());
         };
 
-        req = httpModule.request(options, (incomingRes) => {
-          res = incomingRes;
-
-          if ([301, 302, 307, 308].includes(res.statusCode || 0) && res.headers['location']) {
-            const location = res.headers['location'] as string;
-            safeResolve({});
-            clearTimeout(hardKill);
-            this.fetchAudioMetaWithAxios(location).then(r => {
-              if (!resolved) resolve(r);
-            });
-            return;
-          }
-
-          const icyMetaint = res.headers['icy-metaint'];
-          const icyName = res.headers['icy-name'];
-          const icyGenre = res.headers['icy-genre'];
-
-          if (!icyMetaint || parseInt(icyMetaint as string) <= 0) {
-            clearTimeout(hardKill);
-            if (icyName) {
-              safeResolve({
-                title: icyName as string,
-                station: icyName as string,
-                genre: icyGenre as string || undefined
-              });
-            } else {
-              safeResolve({});
+        const decodeMetaSize = () => {
+          action = ReadAction.DECODE_META_SIZE;
+          safeRead(stream, 1, (chunk) => {
+            decodedMetaSize = chunk[0] << 4;
+            if (decodedMetaSize === 0) {
+              return passSegment();
             }
-            return;
-          }
-
-          const metaInterval = parseInt(icyMetaint as string);
-          if (!Number.isFinite(metaInterval) || metaInterval <= 0 || metaInterval > 65536) {
-            clearTimeout(hardKill);
-            safeResolve({});
-            return;
-          }
-
-          let buffer = Buffer.alloc(0);
-          let bytesRead = 0;
-
-          res.on('data', (chunk: Buffer) => {
-            if (resolved) return;
-            buffer = Buffer.concat([buffer, chunk]);
-            bytesRead += chunk.length;
-
-            if (bytesRead >= metaInterval) {
-              const metaLength = buffer[metaInterval] * 16;
-              
-              if (metaLength > 0 && buffer.length >= metaInterval + 1 + metaLength) {
-                const metaBlock = buffer.slice(metaInterval + 1, metaInterval + 1 + metaLength);
-                const metaString = metaBlock.toString('utf8');
-                const metadata = this.parseMetadataString(metaString);
-                
-                clearTimeout(hardKill);
-
-                if (metadata.StreamTitle) {
-                  const streamTitle = metadata.StreamTitle;
-                  
-                  if (streamTitle.includes(' - ')) {
-                    const [artist, title] = streamTitle.split(' - ', 2);
-                    safeResolve({
-                      title: title.trim(),
-                      artist: artist.trim(),
-                      station: icyName as string || undefined,
-                      genre: icyGenre as string || undefined
-                    });
-                  } else {
-                    safeResolve({
-                      title: streamTitle.trim(),
-                      station: icyName as string || undefined,
-                      genre: icyGenre as string || undefined
-                    });
-                  }
-                } else {
-                  safeResolve({
-                    title: 'Live Stream',
-                    station: icyName as string || undefined,
-                    genre: icyGenre as string || undefined
-                  });
-                }
-              } else {
-                return;
-              }
-              return;
-            }
-
-            if (bytesRead > 100000) {
-              clearTimeout(hardKill);
-              safeResolve({});
-            }
+            extractTitle();
           });
+        };
 
-          res.on('end', () => {
-            clearTimeout(hardKill);
-            if (icyName) {
-              safeResolve({
-                title: 'Live Stream',
-                station: icyName as string,
-                genre: icyGenre as string || undefined
-              });
-            } else {
-              safeResolve({});
+        const extractTitle = () => {
+          action = ReadAction.EXTRACT_TITLE;
+          safeRead(stream, decodedMetaSize, (chunk) => {
+            const decoded = chunk.toString('utf8').replace(/\0/g, '').trim();
+            if (currentRaw === decoded || !decoded) {
+              return passSegment();
             }
+            currentRaw = decoded;
+            const parsed = parseIcyMetadata(decoded);
+            if (isAdvertisement(parsed)) {
+              return passSegment();
+            }
+            if (parsed.StreamTitle) {
+              onTitle(parsed.StreamTitle, { icyName, icyGenre });
+            }
+            passSegment();
           });
+        };
 
-          res.on('error', () => {
-            clearTimeout(hardKill);
-            safeResolve({});
-          });
+        stream.on('readable', () => {
+          if (action === ReadAction.PASS_SEGMENT) return passSegment();
+          if (action === ReadAction.DECODE_META_SIZE) return decodeMetaSize();
+          if (action === ReadAction.EXTRACT_TITLE) return extractTitle();
         });
 
-        req.on('timeout', () => {
-          clearTimeout(hardKill);
-          safeResolve({});
+        stream.on('end', () => {
+          if (!controller.signal.aborted) {
+            setTimeout(() => doAnalyze(), 2000);
+          }
         });
 
-        req.on('error', () => {
-          clearTimeout(hardKill);
-          safeResolve({});
+        stream.on('error', () => {
+          if (!controller.signal.aborted) {
+            setTimeout(() => doAnalyze(), 5000);
+          }
         });
-
-        req.end();
-      } catch (error: any) {
-        clearTimeout(hardKill);
-        safeResolve({});
-      }
-    });
-  }
-
-  async fetchPlaylistMeta(streamUrl: string): Promise<MetadataResult> {
-    try {
-      const response = await axios.get(streamUrl, {
-        timeout: 8000,
-        httpAgent: noKeepAliveHttpAgent,
-        httpsAgent: noKeepAliveHttpsAgent
+      }).catch((err: any) => {
+        if (controller.signal.aborted) return;
+        setTimeout(() => doAnalyze(), 5000);
       });
+    };
 
-      if (!response.data.startsWith('#EXTM3U')) {
-        return {};
-      }
-
-      const extinfRegex = /#EXTINF:[^,]*,(.*)/g;
-      const matches = [...response.data.matchAll(extinfRegex)];
-
-      if (matches.length > 0) {
-        const currentlyPlaying = matches[matches.length - 1][1];
-        
-        if (currentlyPlaying && currentlyPlaying.includes(' - ')) {
-          const [artist, title] = currentlyPlaying.split(' - ', 2);
-          return {
-            title: title.trim(),
-            artist: artist.trim()
-          };
-        } else if (currentlyPlaying) {
-          return { title: currentlyPlaying.trim() };
-        }
-      }
-
-      return {};
-    } catch (error: any) {
-      return {};
-    }
+    doAnalyze();
   }
 
-  private parseMetadataString(metaString: string): any {
-    const result: any = {};
-    
-    try {
-      const cleanedMetaString = metaString.replace(/\0/g, '').trim();
-      
-      if (!cleanedMetaString) {
-        return result;
-      }
+  private getOrCreateConnection(streamUrl: string): StreamConnection {
+    const existing = this.connections.get(streamUrl);
+    if (existing) return existing;
 
-      const streamTitleMatch = cleanedMetaString.match(/StreamTitle='([^']*)'/);
-      if (streamTitleMatch && streamTitleMatch[1]) {
-        const title = streamTitleMatch[1].trim();
-        if (title && title.length > 1) {
-          result.StreamTitle = title;
+    if (this.connections.size >= this.maxConnections) {
+      let oldestUrl = '';
+      let oldestTime = Infinity;
+      Array.from(this.connections.entries()).forEach(([url, conn]) => {
+        if (conn.sockets.size === 0 && conn.lastUpdate < oldestTime) {
+          oldestTime = conn.lastUpdate;
+          oldestUrl = url;
         }
-      }
-
-      const segments = cleanedMetaString.split(';');
-      
-      for (const segment of segments) {
-        const trimmed = segment.trim();
-        if (!trimmed) continue;
-        
-        const equalsIndex = trimmed.indexOf('=');
-        if (equalsIndex === -1) continue;
-        
-        const key = trimmed.substring(0, equalsIndex).trim();
-        let value = trimmed.substring(equalsIndex + 1).trim();
-        
-        if (value.startsWith("'") && value.endsWith("'")) {
-          value = value.slice(1, -1);
-        }
-        
-        if (key && value && value.length > 1) {
-          result[key] = value;
-        }
-      }
-      
-      result.isAdvertisement = !!(result.AdCreativeId || result.adw_ad || result.AdTitle);
-      
-    } catch (error) {
-    }
-    
-    return result;
-  }
-
-  async resolvePlaylistUrl(playlistUrl: string): Promise<string | null> {
-    try {
-      const response = await axios.get(playlistUrl, {
-        timeout: 8000,
-        headers: {
-          'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
-          'Accept': '*/*'
-        },
-        maxRedirects: 5,
-        httpAgent: noKeepAliveHttpAgent,
-        httpsAgent: noKeepAliveHttpsAgent
       });
-      
-      const content = response.data;
-      if (typeof content !== 'string') return null;
-      
-      if (playlistUrl.toLowerCase().includes('.pls') || content.includes('[playlist]')) {
-        const fileMatch = content.match(/File\d*\s*=\s*(.+)/i);
-        if (fileMatch) {
-          const streamUrl = fileMatch[1].trim();
-          return streamUrl;
-        }
+      if (oldestUrl) {
+        this.connections.get(oldestUrl)?.destroy();
+        this.connections.delete(oldestUrl);
       }
-      
-      if (playlistUrl.toLowerCase().includes('.m3u') || content.startsWith('#EXTM3U')) {
-        const lines = content.split('\n');
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-            return trimmed;
-          }
-        }
-      }
-      
-      if (playlistUrl.toLowerCase().includes('.asx') || content.includes('<asx')) {
-        const hrefMatch = content.match(/<ref\s+href\s*=\s*["']([^"']+)["']/i);
-        if (hrefMatch) {
-          return hrefMatch[1].trim();
-        }
-      }
-      
-      return null;
-    } catch (error) {
-      return null;
     }
+
+    const controller = new AbortController();
+    const sockets = new Set<string>();
+    const conn: StreamConnection = {
+      controller,
+      sockets,
+      nowPlaying: undefined,
+      metadata: {},
+      lastUpdate: Date.now(),
+      destroy: () => {
+        controller.abort();
+        this.connections.delete(streamUrl);
+      },
+    };
+
+    this.connections.set(streamUrl, conn);
+
+    this.analyzeStream(
+      streamUrl,
+      controller,
+      (title, headers) => {
+        const parsed = parseArtistTitle(title);
+        conn.metadata = {
+          ...parsed,
+          station: headers?.icyName || undefined,
+          genre: headers?.icyGenre || undefined,
+        };
+        conn.nowPlaying = title;
+        conn.lastUpdate = Date.now();
+      },
+      (err) => {
+        logger.log(`❌ Stream metadata error for ${streamUrl}: ${err.message}`);
+      }
+    );
+
+    return conn;
+  }
+
+  subscribe(streamUrl: string, clientId: string): void {
+    const conn = this.getOrCreateConnection(streamUrl);
+    conn.sockets.add(clientId);
+  }
+
+  unsubscribe(streamUrl: string, clientId: string): void {
+    const conn = this.connections.get(streamUrl);
+    if (!conn) return;
+    conn.sockets.delete(clientId);
+
+    if (conn.sockets.size === 0) {
+      setTimeout(() => {
+        const check = this.connections.get(streamUrl);
+        if (check && check.sockets.size === 0) {
+          check.destroy();
+          logger.log(`🛑 Stream connection closed (no listeners): ${streamUrl}`);
+        }
+      }, 30000);
+    }
+  }
+
+  getMetadata(streamUrl: string): MetadataResult {
+    const conn = this.connections.get(streamUrl);
+    if (!conn) return {};
+    return conn.metadata;
   }
 
   async getStationMetadata(station: any): Promise<MetadataResult> {
-    if (!station) {
-      return {};
+    if (!station) return {};
+    const streamUrl = station.url_resolved || station.url;
+    if (!streamUrl) return {};
+
+    const conn = this.getOrCreateConnection(streamUrl);
+    if (conn.nowPlaying) {
+      return conn.metadata;
     }
 
-    let streamUrl = station.url_resolved || station.url;
-    const cacheKey = `${station._id}-${streamUrl}`;
-    const now = Date.now();
-    
-    const cached = this.metadataCache.get(cacheKey);
-    if (cached && (now - cached.timestamp) < this.cacheTimeout) {
-      return cached.data;
-    }
-    
-    try {
-      const lowerUrl = streamUrl.toLowerCase();
-      if (lowerUrl.includes('.pls') || lowerUrl.includes('.m3u') || lowerUrl.includes('.asx')) {
-        const resolvedUrl = await this.resolvePlaylistUrl(streamUrl);
-        if (resolvedUrl) {
-          streamUrl = resolvedUrl;
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(conn.metadata), 8000);
+      const check = setInterval(() => {
+        if (conn.nowPlaying) {
+          clearTimeout(timeout);
+          clearInterval(check);
+          resolve(conn.metadata);
         }
-      }
-      
-      let result: MetadataResult;
-      
-      if (station.hls || streamUrl.includes('.m3u8') || streamUrl.includes('playlist')) {
-        result = await this.fetchPlaylistMeta(streamUrl);
-      } else {
-        result = await this.fetchAudioMeta(streamUrl);
-      }
-      
-      if (result && (result.title || result.artist)) {
-        this.metadataCache.set(cacheKey, { data: result, timestamp: now });
-        
-        if (this.metadataCache.size > 50) {
-          this.cleanCache();
-        }
-        if (this.metadataCache.size > 200) {
-          this.metadataCache.clear();
-        }
-      }
-      
-      return result;
-    } catch (error: any) {
-      return {};
-    }
+      }, 500);
+    });
   }
 
-  private cleanCache(): void {
-    const now = Date.now();
-    const keysToDelete: string[] = [];
-    
-    this.metadataCache.forEach((value, key) => {
-      if (now - value.timestamp > this.cacheTimeout) {
-        keysToDelete.push(key);
-      }
+  getActiveConnections(): number {
+    return this.connections.size;
+  }
+
+  getConnectionStats(): { url: string; listeners: number; lastUpdate: number }[] {
+    const stats: { url: string; listeners: number; lastUpdate: number }[] = [];
+    this.connections.forEach((conn, url) => {
+      stats.push({
+        url: url.substring(0, 60),
+        listeners: conn.sockets.size,
+        lastUpdate: Date.now() - conn.lastUpdate,
+      });
     });
-    
-    keysToDelete.forEach(key => this.metadataCache.delete(key));
+    return stats;
+  }
+
+  cleanup(): void {
+    this.connections.forEach((conn) => {
+      conn.destroy();
+    });
+    this.connections.clear();
+    logger.log('🧹 StreamMetadataService: All connections closed');
   }
 }
