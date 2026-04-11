@@ -753,8 +753,8 @@ app.use((req, res, next) => {
   const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
   const BOT_RATE_LIMIT_WINDOW = 60_000;
   const isDev = process.env.NODE_ENV !== 'production';
-  const BOT_RATE_LIMIT_MAX_MINOR = isDev ? 500 : 12;
-  const BOT_RATE_LIMIT_MAX_MAJOR = isDev ? 500 : 15;
+  const BOT_RATE_LIMIT_MAX_MINOR = isDev ? 500 : 60;
+  const BOT_RATE_LIMIT_MAX_MAJOR = isDev ? 500 : 300;
   const MAJOR_SEARCH_BOT_RE = /\b(googlebot|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
 
   setInterval(() => {

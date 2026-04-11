@@ -348,23 +348,47 @@ app.use('/api/image', (_req, res) => {
 
   const seoRenderer = new SeoRenderer();
 
+  const { URL_TRANSLATIONS: seoUrlTranslations } = await import('../shared/url-translations');
+  function collectSeoTranslations(englishKey: string): string[] {
+    const vals = new Set<string>();
+    vals.add(englishKey);
+    for (const lang of Object.keys(seoUrlTranslations)) {
+      const val = (seoUrlTranslations as any)[lang]?.[englishKey];
+      if (val) vals.add(val);
+    }
+    return Array.from(vals).map(v => v.replace(/[.*+?${}()|[\]\\]/g, '\\$&'));
+  }
+
+  const seoStationPluralAlts = collectSeoTranslations('stations');
+  const seoStationSingularAlts = collectSeoTranslations('station');
+  const combinedSet = new Set<string>(seoStationPluralAlts.concat(seoStationSingularAlts));
+  const seoStationAllAlts = Array.from(combinedSet);
+  const seoGenreAlts = collectSeoTranslations('genres');
+  const seoAboutAlts = collectSeoTranslations('about');
+  const seoContactAlts = collectSeoTranslations('contact');
+  const seoPrivacyAlts = collectSeoTranslations('privacy-policy');
+  const seoRegionAlts = collectSeoTranslations('regions');
+
   const SEO_PRECOMPILED_REGEX = {
-    stationPage: /^\/([a-z]{2}\/)?(?:stations?|istasyons?|istasyonlar|senders?|staziones?|stazioni|estacions?|estaciones|estaçoes?|estacoes?|mahtas?|mahtat|stansiya|stansiyas?|stantsiya|stantsii|radiostations?|radyo-istasyonu|taçhana|tachana|tachanot|stacja|stacje|stanice|statie|statii|stanica|stanice|stacija|stacijas|stotis|stotys|jaam|jaamad|postaja|postaje|asema|asemat|stasjon|stasjoner|stasiun|stasiun-stasiun|dai|stesen|stasie|stasies|radio|isiteshi|nilayam|steshan|stesheni|ραδιόφωνο|σταθμος|σταθμοι|станція|станции|ստdelays|ステーション|라디오|스테이션|电台|電台|محطات|محطة|اسٹیشن|ایستگاه|স্টেশন|ગુજરાતી|ஸ்டேஷன்|நிலையம்|స్టేషన్|ನಿಲ್ದಾಣ|സ്റ്റേഷൻ|ราดียว|สถานี)\//u,
+    stationPage: new RegExp(`^\\/([a-z]{2}\\/)?(?:${seoStationAllAlts.join('|')})\\/`, 'u'),
     homepage: /^\/([a-z]{2}\/?)?$/,
-    regionsPage: /^\/([a-z]{2}\/?)?(?:regions|bolgeler|regionen|regioni|regioes|regiones|manatiq|regionlar|regioni)(\/.*)?$/u,
-    genresPage: /^\/([a-z]{2}\/?)?(?:genres|turler|zhanroves|anwaa|janrlar|zhanroves|genres|generos|generi|generos|anwaa)\/?/u,
-    aboutPage: /^\/([a-z]{2}\/?)?(?:about|hakkinda|uber|sobre|a-propos|chi-siamo|an|haqqinda|za-nas)\/?/u,
-    contactPage: /^\/([a-z]{2}\/?)?(?:contact|iletisim|kontakt|contacto|contatto|ittisal|elaqe|kontakti)\/?/u,
-    stationsPage: /^\/([a-z]{2}\/?)?(?:stations|istasyonlar|istasyonlar|sender|stazioni|estacoes|emisoras|mahtat|stansiyalar|stantsii|电台|محطات)$/u,
+    regionsPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoRegionAlts.join('|')})(\\/.*)?$`, 'u'),
+    genresPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoGenreAlts.join('|')})\\/?(.*)$`, 'u'),
+    aboutPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoAboutAlts.join('|')})\\/?$`, 'u'),
+    contactPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoContactAlts.join('|')})\\/?$`, 'u'),
+    privacyPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoPrivacyAlts.join('|')})\\/?$`, 'u'),
+    countryPage: /^\/([a-z]{2}\/?)?country\/.+$/u,
+    stationsPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoStationAllAlts.join('|')})\\/?$`, 'u'),
     botDetect: /\b(googlebot|google-inspectiontool|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase|gptbot|chatgpt-user|ccbot|anthropic-ai|claude-web|bytespider|perplexitybot|applebot|cohere-ai)\b/i
   };
 
   const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
   const BOT_RATE_LIMIT_WINDOW = 60_000;
-  const BOT_RATE_LIMIT_MAX_MINOR = 12;
-  const BOT_RATE_LIMIT_MAX_MAJOR = 15;
+  const BOT_RATE_LIMIT_MAX_MINOR = 60;
+  const BOT_RATE_LIMIT_MAX_MAJOR = 300;
   const MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
   const AI_SCRAPER_RE = /\b(gptbot|chatgpt-user|ccbot|anthropic-ai|claude-web|bytespider|perplexitybot|cohere-ai)\b/i;
+
 
   setInterval(() => {
     const now = Date.now();
@@ -390,9 +414,11 @@ app.use('/api/image', (_req, res) => {
     const isGenresPage = SEO_PRECOMPILED_REGEX.genresPage.test(cleanUrlForMatching);
     const isAboutPage = SEO_PRECOMPILED_REGEX.aboutPage.test(cleanUrlForMatching);
     const isContactPage = SEO_PRECOMPILED_REGEX.contactPage.test(cleanUrlForMatching);
+    const isPrivacyPage = SEO_PRECOMPILED_REGEX.privacyPage.test(cleanUrlForMatching);
+    const isCountryPage = SEO_PRECOMPILED_REGEX.countryPage.test(cleanUrlForMatching);
     const isStationsPage = SEO_PRECOMPILED_REGEX.stationsPage.test(cleanUrlForMatching);
 
-    const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isStationsPage;
+    const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isPrivacyPage || isCountryPage || isStationsPage;
     const isBot = SEO_PRECOMPILED_REGEX.botDetect.test(userAgent);
 
     if (!isSeoEligiblePage || !isBot) return next();

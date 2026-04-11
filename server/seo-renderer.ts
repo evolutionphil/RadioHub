@@ -496,8 +496,15 @@ export class SeoRenderer {
       seo_regional_broadcasting: 'Regional Broadcasting',
       seo_explore_radio_stations_from: 'Explore radio stations from',
       seo_listen_to_regional_broadcasting: 'Listen to regional broadcasting',
+      about_mega_radio: 'About Mega Radio - Free Online Radio Platform',
+      about_mega_radio_description: 'Learn about Mega Radio, the free online radio platform with 60,000+ stations from 120+ countries. Stream music, news, sports, and talk radio worldwide.',
+      contact_page_title: 'Contact Mega Radio - Get in Touch',
+      contact_page_description: 'Contact the Mega Radio team for support, feedback, or partnership inquiries. We are here to help you with your radio streaming experience.',
     };
-    const getTranslation = (key: string): string => translations[key] || SEO_KEY_FALLBACKS[key] || '';
+    const getTranslation = (key: string): string => {
+      const val = translations[key]?.trim();
+      return val ? val : (SEO_KEY_FALLBACKS[key] || '');
+    };
 
     // Enhance with more specific content based on page type and additional data
     // Same logic as before, but using database translations
@@ -1222,7 +1229,7 @@ export class SeoRenderer {
     <meta name="msapplication-TileColor" content="#000000">
     
     ${seoTags.canonical ? `<link rel="canonical" href="${seoTags.canonical}">` : ''}
-    ${seoTags.hreflangs ? seoTags.hreflangs.filter((h: any) => h.hreflang === 'x-default').map((h: any) => `<link rel="alternate" hreflang="x-default" href="${h.url}">`).join('') : ''}
+    ${seoTags.hreflangs ? seoTags.hreflangs.map((h: any) => `<link rel="alternate" hreflang="${h.hreflang}" href="${h.url}">`).join('\n    ') : ''}
     
     <!-- JSON-LD Structured Data for Rich Snippets -->
     <script type="application/ld+json">
