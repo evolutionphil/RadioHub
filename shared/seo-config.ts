@@ -1810,9 +1810,17 @@ export function generateSeoTags(
     }
   };
 
-  // Use database translations ONLY - everything comes from backend
+  const SEO_FALLBACKS: Record<string, string> = {
+    genres_page_title: 'Radio Genres — Browse All Music Genres | Mega Radio',
+    genres_page_description: 'Explore hundreds of radio genres including pop, rock, jazz, classical, news, and more. Listen to free live radio stations by genre.',
+    stations_page_title: 'Radio Stations — Browse All Stations | Mega Radio',
+    stations_page_description: 'Browse thousands of free online radio stations from around the world. Listen live to music, news, sports, and talk radio.',
+    regions_page_title: 'Radio by Region — Browse Stations by Region | Mega Radio',
+    regions_page_description: 'Discover radio stations from every region and country. Listen to local and international radio from Europe, Asia, Africa, Americas, and Oceania.',
+  };
   const getTranslation = (key: string): string => {
-    return translations[key] || '';
+    const val = translations[key]?.trim();
+    return val ? val : (SEO_FALLBACKS[key] || '');
   };
 
   const seoData: Record<string, SeoMetaTags> = {

@@ -576,9 +576,17 @@ export class SeoRenderer {
 
   private getH1Text(pageType: string, language: string, translations: Record<string, string>, seoTags?: any, stationData?: any, additionalData?: any): string {
     // Helper function to get localized text from DATABASE ONLY (no hardcoded translations)
+    const FALLBACK_TEXTS: Record<string, string> = {
+      genres_page_title: 'Radio Genres — Browse All Music Genres | Mega Radio',
+      stations_page_title: 'Radio Stations — Browse All Stations | Mega Radio',
+      regions_page_title: 'Radio by Region — Browse Stations by Region | Mega Radio',
+      hero_worlds_best_radio: 'Mega Radio: Listen to Free Live Radio & Music',
+      about_mega_radio: 'About Mega Radio - Free Online Radio Platform',
+      contact_page_title: 'Contact Mega Radio - Get in Touch',
+    };
     const getLocalizedText = (key: string): string => {
-      // Use database translations ONLY - everything comes from backend
-      return translations[key] || '';
+      const val = translations[key]?.trim();
+      return val ? val : (FALLBACK_TEXTS[key] || '');
     };
 
     switch (pageType) {
