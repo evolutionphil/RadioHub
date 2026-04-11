@@ -2,6 +2,9 @@ import axios from 'axios';
 import http from 'http';
 import https from 'https';
 
+const noKeepAliveHttpAgent = new http.Agent({ keepAlive: false, maxSockets: 10, timeout: 10000 });
+const noKeepAliveHttpsAgent = new https.Agent({ keepAlive: false, maxSockets: 10, timeout: 10000 });
+
 export interface MetadataResult {
   title?: string;
   artist?: string;
@@ -11,19 +14,24 @@ export interface MetadataResult {
 
 export class StreamMetadataService {
   private metadataCache = new Map<string, { data: MetadataResult; timestamp: number }>();
-  private cacheTimeout = 10000; // 10 seconds cache
-  // Simplified metadata fetch using axios for redirects
+  private cacheTimeout = 10000;
+
   async fetchAudioMetaWithAxios(streamUrl: string): Promise<MetadataResult> {
     let stream: any = null;
+    const controller = new AbortController();
+    const killTimer = setTimeout(() => controller.abort(), 8000);
     try {
       const response = await axios.get(streamUrl, {
-        timeout: 10000,
+        timeout: 8000,
+        signal: controller.signal,
         headers: {
           'Icy-MetaData': '1',
           'User-Agent': 'MegaRadio/1.0'
         },
         responseType: 'stream',
-        maxRedirects: 5
+        maxRedirects: 5,
+        httpAgent: noKeepAliveHttpAgent,
+        httpsAgent: noKeepAliveHttpsAgent
       });
 
       stream = response.data;
@@ -41,20 +49,32 @@ export class StreamMetadataService {
     } catch (error: any) {
       return {};
     } finally {
+      clearTimeout(killTimer);
       if (stream) {
         try { stream.destroy(); } catch {}
       }
     }
   }
 
-  // Extract real ICY metadata from radio streams using native HTTP
   async fetchAudioMeta(streamUrl: string): Promise<MetadataResult> {
-    const timeoutMs = 15000; // Increased timeout for better stream reliability
+    const timeoutMs = 10000;
     
     return new Promise((resolve) => {
+      let resolved = false;
+      let req: http.ClientRequest | undefined;
+      let res: http.IncomingMessage | undefined;
+
+      const safeResolve = (result: MetadataResult) => {
+        if (resolved) return;
+        resolved = true;
+        try { if (res) res.destroy(); } catch {}
+        try { if (req) req.destroy(); } catch {}
+        resolve(result);
+      };
+
+      const hardKill = setTimeout(() => safeResolve({}), timeoutMs + 2000);
+
       try {
-        // Fetching ICY metadata from stream
-        
         const url = new URL(streamUrl);
         const isHttps = url.protocol === 'https:';
         const httpModule = isHttps ? https : http;
@@ -69,18 +89,22 @@ export class StreamMetadataService {
             'User-Agent': 'MegaRadio/1.0 MetadataClient',
             'Accept': '*/*',
             'Connection': 'close',
-            'Range': 'bytes=0-1024' // Only request first chunk for metadata
+            'Range': 'bytes=0-1024'
           },
-          timeout: timeoutMs
+          timeout: timeoutMs,
+          agent: isHttps ? noKeepAliveHttpsAgent : noKeepAliveHttpAgent
         };
 
-        const req = httpModule.request(options, (res) => {
-          // ICY headers found and processed
+        req = httpModule.request(options, (incomingRes) => {
+          res = incomingRes;
 
           if ([301, 302, 307, 308].includes(res.statusCode || 0) && res.headers['location']) {
-            res.destroy();
-            req.destroy();
-            this.fetchAudioMetaWithAxios(res.headers['location'] as string).then(resolve);
+            const location = res.headers['location'] as string;
+            safeResolve({});
+            clearTimeout(hardKill);
+            this.fetchAudioMetaWithAxios(location).then(r => {
+              if (!resolved) resolve(r);
+            });
             return;
           }
 
@@ -89,147 +113,135 @@ export class StreamMetadataService {
           const icyGenre = res.headers['icy-genre'];
 
           if (!icyMetaint || parseInt(icyMetaint as string) <= 0) {
-            res.destroy();
+            clearTimeout(hardKill);
             if (icyName) {
-              resolve({
+              safeResolve({
                 title: icyName as string,
                 station: icyName as string,
                 genre: icyGenre as string || undefined
               });
             } else {
-              resolve({});
+              safeResolve({});
             }
             return;
           }
 
           const metaInterval = parseInt(icyMetaint as string);
           if (!Number.isFinite(metaInterval) || metaInterval <= 0 || metaInterval > 65536) {
-            req.destroy();
-            resolve({});
+            clearTimeout(hardKill);
+            safeResolve({});
             return;
           }
+
           let buffer = Buffer.alloc(0);
           let bytesRead = 0;
 
           res.on('data', (chunk: Buffer) => {
+            if (resolved) return;
             buffer = Buffer.concat([buffer, chunk]);
             bytesRead += chunk.length;
 
-            // Check if we've reached the metadata block
             if (bytesRead >= metaInterval) {
               const metaLength = buffer[metaInterval] * 16;
               
               if (metaLength > 0 && buffer.length >= metaInterval + 1 + metaLength) {
                 const metaBlock = buffer.slice(metaInterval + 1, metaInterval + 1 + metaLength);
                 const metaString = metaBlock.toString('utf8');
-                
-                // Raw metadata block parsed
-                
-                // Enhanced metadata parsing based on Radiolise implementation
                 const metadata = this.parseMetadataString(metaString);
                 
+                clearTimeout(hardKill);
+
                 if (metadata.StreamTitle) {
                   const streamTitle = metadata.StreamTitle;
-                  // ICY metadata extracted successfully
                   
-                  // Parse "Artist - Title" format
                   if (streamTitle.includes(' - ')) {
                     const [artist, title] = streamTitle.split(' - ', 2);
-                    resolve({
+                    safeResolve({
                       title: title.trim(),
                       artist: artist.trim(),
                       station: icyName as string || undefined,
                       genre: icyGenre as string || undefined
                     });
                   } else {
-                    resolve({
+                    safeResolve({
                       title: streamTitle.trim(),
                       station: icyName as string || undefined,
                       genre: icyGenre as string || undefined
                     });
                   }
                 } else {
-                  // Fallback to station name
-                  resolve({
+                  safeResolve({
                     title: 'Live Stream',
                     station: icyName as string || undefined,
                     genre: icyGenre as string || undefined
                   });
                 }
               } else {
-                // Not enough data yet, continue
                 return;
               }
-              
-              req.destroy(); // Close connection
               return;
             }
 
-            // Prevent reading too much data
             if (bytesRead > 100000) {
-              req.destroy();
-              resolve({});
+              clearTimeout(hardKill);
+              safeResolve({});
             }
           });
 
           res.on('end', () => {
-            // Fallback to station name if available
+            clearTimeout(hardKill);
             if (icyName) {
-              resolve({
+              safeResolve({
                 title: 'Live Stream',
                 station: icyName as string,
                 genre: icyGenre as string || undefined
               });
             } else {
-              resolve({});
+              safeResolve({});
             }
           });
 
-          res.on('error', (error) => {
-            // Silently handle common connection errors for metadata fetching
-            resolve({});
+          res.on('error', () => {
+            clearTimeout(hardKill);
+            safeResolve({});
           });
         });
 
         req.on('timeout', () => {
-          req.destroy();
-          resolve({});
+          clearTimeout(hardKill);
+          safeResolve({});
         });
 
-        req.on('error', (error) => {
-          // Silently handle connection errors for metadata requests
-          resolve({});
+        req.on('error', () => {
+          clearTimeout(hardKill);
+          safeResolve({});
         });
 
         req.end();
       } catch (error: any) {
-        // ICY metadata extraction failed
-        resolve({});
+        clearTimeout(hardKill);
+        safeResolve({});
       }
     });
   }
 
-  // Extract metadata from HLS/M3U8 playlists
   async fetchPlaylistMeta(streamUrl: string): Promise<MetadataResult> {
     try {
-      // Fetching HLS metadata from stream
-      
-      const response = await axios.get(streamUrl, { timeout: 12000 }); // Increased for HLS playlist reliability
+      const response = await axios.get(streamUrl, {
+        timeout: 8000,
+        httpAgent: noKeepAliveHttpAgent,
+        httpsAgent: noKeepAliveHttpsAgent
+      });
 
-      // Validate if the response is an M3U8 manifest
       if (!response.data.startsWith('#EXTM3U')) {
-        // Invalid M3U8 stream
         return {};
       }
 
-      // Extract metadata from #EXTINF tags
       const extinfRegex = /#EXTINF:[^,]*,(.*)/g;
       const matches = [...response.data.matchAll(extinfRegex)];
 
       if (matches.length > 0) {
-        // Use the last EXTINF as the currently playing info
         const currentlyPlaying = matches[matches.length - 1][1];
-        // HLS metadata extracted successfully
         
         if (currentlyPlaying && currentlyPlaying.includes(' - ')) {
           const [artist, title] = currentlyPlaying.split(' - ', 2);
@@ -244,38 +256,28 @@ export class StreamMetadataService {
 
       return {};
     } catch (error: any) {
-      // HLS metadata fetch error
       return {};
     }
   }
 
-  /**
-   * Parse ICY metadata string into structured format
-   * Enhanced based on Radiolise's metadata parsing approach
-   */
   private parseMetadataString(metaString: string): any {
     const result: any = {};
     
     try {
-      // Clean up the metadata string first to prevent corruption
       const cleanedMetaString = metaString.replace(/\0/g, '').trim();
       
       if (!cleanedMetaString) {
         return result;
       }
 
-      // First, try to extract StreamTitle using regex (most reliable method)
       const streamTitleMatch = cleanedMetaString.match(/StreamTitle='([^']*)'/);
       if (streamTitleMatch && streamTitleMatch[1]) {
         const title = streamTitleMatch[1].trim();
-        // Only set if title is meaningful (not empty and more than 1 character)
         if (title && title.length > 1) {
           result.StreamTitle = title;
         }
       }
 
-      // Handle Radiolise-style metadata parsing
-      // Look for key='value' patterns, split by semicolons
       const segments = cleanedMetaString.split(';');
       
       for (const segment of segments) {
@@ -288,28 +290,23 @@ export class StreamMetadataService {
         const key = trimmed.substring(0, equalsIndex).trim();
         let value = trimmed.substring(equalsIndex + 1).trim();
         
-        // Remove quotes if present
         if (value.startsWith("'") && value.endsWith("'")) {
           value = value.slice(1, -1);
         }
         
-        // Only set if key and value are meaningful
         if (key && value && value.length > 1) {
           result[key] = value;
         }
       }
       
-      // Handle advertisement detection (inspired by Radiolise)
       result.isAdvertisement = !!(result.AdCreativeId || result.adw_ad || result.AdTitle);
       
     } catch (error) {
-      // ICY metadata parsing error
     }
     
     return result;
   }
 
-  // Resolve PLS/M3U playlist to get actual stream URL
   async resolvePlaylistUrl(playlistUrl: string): Promise<string | null> {
     try {
       const response = await axios.get(playlistUrl, {
@@ -318,13 +315,14 @@ export class StreamMetadataService {
           'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
           'Accept': '*/*'
         },
-        maxRedirects: 5
+        maxRedirects: 5,
+        httpAgent: noKeepAliveHttpAgent,
+        httpsAgent: noKeepAliveHttpsAgent
       });
       
       const content = response.data;
       if (typeof content !== 'string') return null;
       
-      // PLS format: File1=http://...
       if (playlistUrl.toLowerCase().includes('.pls') || content.includes('[playlist]')) {
         const fileMatch = content.match(/File\d*\s*=\s*(.+)/i);
         if (fileMatch) {
@@ -333,7 +331,6 @@ export class StreamMetadataService {
         }
       }
       
-      // M3U format: lines starting with http
       if (playlistUrl.toLowerCase().includes('.m3u') || content.startsWith('#EXTM3U')) {
         const lines = content.split('\n');
         for (const line of lines) {
@@ -344,7 +341,6 @@ export class StreamMetadataService {
         }
       }
       
-      // ASX format: <ref href="..."/>
       if (playlistUrl.toLowerCase().includes('.asx') || content.includes('<asx')) {
         const hrefMatch = content.match(/<ref\s+href\s*=\s*["']([^"']+)["']/i);
         if (hrefMatch) {
@@ -358,10 +354,8 @@ export class StreamMetadataService {
     }
   }
 
-  // Main metadata extraction method - matches original getMeta() logic with caching
   async getStationMetadata(station: any): Promise<MetadataResult> {
     if (!station) {
-      // No station provided for metadata extraction
       return {};
     }
 
@@ -369,16 +363,12 @@ export class StreamMetadataService {
     const cacheKey = `${station._id}-${streamUrl}`;
     const now = Date.now();
     
-    // Check cache first
     const cached = this.metadataCache.get(cacheKey);
     if (cached && (now - cached.timestamp) < this.cacheTimeout) {
       return cached.data;
     }
     
-    // Extracting metadata for station
-    
     try {
-      // Check if URL is a playlist file (PLS, M3U, ASX) - resolve to actual stream first
       const lowerUrl = streamUrl.toLowerCase();
       if (lowerUrl.includes('.pls') || lowerUrl.includes('.m3u') || lowerUrl.includes('.asx')) {
         const resolvedUrl = await this.resolvePlaylistUrl(streamUrl);
@@ -389,19 +379,10 @@ export class StreamMetadataService {
       
       let result: MetadataResult;
       
-      let deadlineTimer: NodeJS.Timeout;
-      const hardDeadline = new Promise<MetadataResult>((resolve) => {
-        deadlineTimer = setTimeout(() => resolve({}), 20000);
-      });
-
-      try {
-        if (station.hls || streamUrl.includes('.m3u8') || streamUrl.includes('playlist')) {
-          result = await Promise.race([this.fetchPlaylistMeta(streamUrl), hardDeadline]);
-        } else {
-          result = await Promise.race([this.fetchAudioMeta(streamUrl), hardDeadline]);
-        }
-      } finally {
-        clearTimeout(deadlineTimer!);
+      if (station.hls || streamUrl.includes('.m3u8') || streamUrl.includes('playlist')) {
+        result = await this.fetchPlaylistMeta(streamUrl);
+      } else {
+        result = await this.fetchAudioMeta(streamUrl);
       }
       
       if (result && (result.title || result.artist)) {
@@ -415,10 +396,8 @@ export class StreamMetadataService {
         }
       }
       
-      // ICY metadata processing complete
       return result;
     } catch (error: any) {
-      // Metadata extraction failed for station
       return {};
     }
   }
@@ -436,5 +415,3 @@ export class StreamMetadataService {
     keysToDelete.forEach(key => this.metadataCache.delete(key));
   }
 }
-
-export const streamMetadataService = new StreamMetadataService();
