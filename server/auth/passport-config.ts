@@ -223,10 +223,11 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
   }));
 }
 
-// Apple OAuth Strategy placeholder - will be implemented when keys are provided
-// Note: Apple OAuth requires special setup with PKCE and JWT tokens
-// When implemented, Apple does NOT provide profile photos, so avatar will be empty.
-// Google and Facebook both automatically capture and store user profile pictures.
+if (process.env.APPLE_CLIENT_ID || process.env.APPLE_SERVICE_ID) {
+  console.log('🍎 Apple Sign-In configured (web OAuth flow via jose JWT)');
+} else {
+  console.log('⚠️ Apple Sign-In not configured (missing APPLE_CLIENT_ID/APPLE_SERVICE_ID)');
+}
 
 // Serialize/deserialize user for session management
 passport.serializeUser((user: any, done) => {

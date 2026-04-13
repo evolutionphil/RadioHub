@@ -268,6 +268,9 @@ const apiProxy = createProxyMiddleware({
   ws: false,
   timeout: 60000,
   proxyTimeout: 60000,
+  cookieDomainRewrite: {
+    '*': ''
+  },
   on: {
     error: (err, req, res) => {
       console.error(`❌ Proxy error for ${(req as any).url}:`, err.message);
@@ -285,6 +288,18 @@ const apiProxy = createProxyMiddleware({
       if (incomingHeaders['cf-connecting-ip']) proxyReq.setHeader('CF-Connecting-IP', incomingHeaders['cf-connecting-ip']);
       if (incomingHeaders['cf-ray']) proxyReq.setHeader('CF-Ray', incomingHeaders['cf-ray']);
       if (incomingHeaders['x-real-ip']) proxyReq.setHeader('X-Real-IP', incomingHeaders['x-real-ip']);
+      if ((req as any).body && (req as any).headers['content-type']) {
+        const contentType = (req as any).headers['content-type'];
+        if (contentType.includes('application/x-www-form-urlencoded')) {
+          const bodyData = new URLSearchParams((req as any).body).toString();
+          proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+          proxyReq.write(bodyData);
+        } else if (contentType.includes('application/json')) {
+          const bodyData = JSON.stringify((req as any).body);
+          proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+          proxyReq.write(bodyData);
+        }
+      }
     }
   }
 });

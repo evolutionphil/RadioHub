@@ -3,6 +3,31 @@ import mongoose from 'mongoose';
 import { User, UserFollow, AuthToken, UserNotification, UserFavorite, StationRating, StationComment, UserListeningHistory, UserProfile, PublicUserProfile, ListeningSession, Recommendation, UserMusicProfile, PushToken, UserDevice, CastSession, DirectMessage, UserSession, Notification, AdvancedSearch, AnalyticsEvent, CastCommand, CastNowPlaying, TvLoginCode } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
+async function generateAppleClientSecret(): Promise<string> {
+  const jose = await import('jose');
+  
+  const teamId = process.env.APPLE_TEAM_ID || '';
+  const clientId = process.env.APPLE_SERVICE_ID || process.env.APPLE_CLIENT_ID || '';
+  const keyId = process.env.APPLE_KEY_ID || '';
+  let privateKeyPem = process.env.APPLE_PRIVATE_KEY || '';
+  
+  privateKeyPem = privateKeyPem.replace(/\\n/g, '\n');
+  
+  const privateKey = await jose.importPKCS8(privateKeyPem, 'ES256');
+  
+  const now = Math.floor(Date.now() / 1000);
+  const jwt = await new jose.SignJWT({})
+    .setProtectedHeader({ alg: 'ES256', kid: keyId })
+    .setIssuer(teamId)
+    .setIssuedAt(now)
+    .setExpirationTime(now + 15777000)
+    .setAudience('https://appleid.apple.com')
+    .setSubject(clientId)
+    .sign(privateKey);
+  
+  return jwt;
+}
+
 export function registerUserAuthRoutes(app: Express, deps: any) {
   const { requireAuth, generateAuthToken, passport } = deps;
 
@@ -460,7 +485,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     // Use passport Google authentication
     try {
       passport.authenticate('google', { 
-        scope: ['profile', 'email'] 
+        scope: ['profile', 'email'],
+        state: true
       })(req, res, next);
     } catch (error) {
       console.error('Passport auth error:', error);
@@ -484,7 +510,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     });
   });
 
-  app.get("/api/auth/apple", (req, res) => {
+  app.get("/api/auth/apple", async (req, res) => {
     const { getSocialAuthStatus } = deps;
     const status = getSocialAuthStatus();
     if (!status.apple) {
@@ -493,11 +519,44 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         message: 'Social login with Apple requires API keys to be configured.' 
       });
     }
-    // Apple OAuth not implemented yet - requires complex PKCE setup
-    res.status(501).json({ 
-      error: 'Apple authentication not implemented', 
-      message: 'Apple OAuth flow requires special configuration and will be implemented when Apple credentials are provided.' 
+    
+    const returnTo = req.query.returnTo as string;
+    if (returnTo && req.session) {
+      (req.session as any).oauthReturnTo = returnTo;
+    }
+    
+    const referer = req.headers.referer || '';
+    const urlMatch = referer.match(/\/([a-z]{2})(?:\/|$)/i);
+    if (urlMatch && req.session) {
+      (req.session as any).oauthReturnLang = urlMatch[1].toLowerCase();
+    }
+
+    const clientId = process.env.APPLE_SERVICE_ID || process.env.APPLE_CLIENT_ID || '';
+    const frontendUrl = process.env.FRONTEND_URL || 'https://themegaradio.com';
+    const redirectUri = process.env.APPLE_CALLBACK_URL || `${frontendUrl}/api/auth/apple/callback`;
+    
+    const crypto = await import('crypto');
+    const state = crypto.randomBytes(16).toString('hex');
+    if (req.session) {
+      (req.session as any).appleOAuthState = state;
+    }
+    
+    await new Promise<void>((resolve, reject) => {
+      req.session.save((err: any) => err ? reject(err) : resolve());
     });
+    
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code id_token',
+      response_mode: 'form_post',
+      scope: 'name email',
+      state: state
+    });
+    
+    const appleAuthUrl = `https://appleid.apple.com/auth/authorize?${params.toString()}`;
+    logger.log('🍎 Apple OAuth redirect to:', appleAuthUrl);
+    res.redirect(appleAuthUrl);
   });
 
   // Google OAuth callback - implemented with passport (simplified, no dynamic import)
@@ -555,13 +614,178 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }
   });
 
-  // Apple callback placeholder - will be implemented when Apple credentials are available
   app.post("/api/auth/apple/callback", async (req, res) => {
+    const frontendBase = process.env.FRONTEND_URL || '';
+    const savedLang = (req.session as any)?.oauthReturnLang || '';
+    const langPrefix = savedLang ? `/${savedLang}` : '';
+    
     try {
-      res.redirect('/?error=apple_auth_not_implemented');
+      const { code, id_token, state, user: userDataStr } = req.body;
+      
+      if (!code && !id_token) {
+        logger.error('🍎 Apple callback: No code or id_token received');
+        return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+      }
+      
+      const savedState = (req.session as any)?.appleOAuthState;
+      delete (req.session as any).appleOAuthState;
+      if (!state || !savedState || state !== savedState) {
+        logger.error('🍎 Apple OAuth state mismatch or missing', { state: !!state, savedState: !!savedState });
+        return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+      }
+      
+      const jose = await import('jose');
+      let applePayload: any;
+      
+      if (id_token) {
+        try {
+          const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
+          const clientId = process.env.APPLE_SERVICE_ID || process.env.APPLE_CLIENT_ID || '';
+          const { payload } = await jose.jwtVerify(id_token, JWKS, {
+            issuer: 'https://appleid.apple.com',
+            audience: clientId,
+          });
+          applePayload = payload;
+        } catch (verifyErr) {
+          logger.error('🍎 Apple id_token verification failed:', verifyErr);
+          return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+        }
+      } else if (code) {
+        try {
+          const clientSecret = await generateAppleClientSecret();
+          const clientId = process.env.APPLE_SERVICE_ID || process.env.APPLE_CLIENT_ID || '';
+          const redirectUri = process.env.APPLE_CALLBACK_URL || `${frontendBase}/api/auth/apple/callback`;
+          
+          const tokenResponse = await fetch('https://appleid.apple.com/auth/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              client_id: clientId,
+              client_secret: clientSecret,
+              code: code,
+              grant_type: 'authorization_code',
+              redirect_uri: redirectUri,
+            }).toString(),
+          });
+          
+          if (!tokenResponse.ok) {
+            const errorText = await tokenResponse.text();
+            logger.error('🍎 Apple token exchange failed:', errorText);
+            return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+          }
+          
+          const tokenData = await tokenResponse.json() as any;
+          const JWKS = jose.createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
+          const { payload } = await jose.jwtVerify(tokenData.id_token, JWKS, {
+            issuer: 'https://appleid.apple.com',
+            audience: clientId,
+          });
+          applePayload = payload;
+        } catch (tokenErr) {
+          logger.error('🍎 Apple token exchange error:', tokenErr);
+          return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+        }
+      }
+      
+      if (!applePayload || !applePayload.sub) {
+        return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+      }
+      
+      const appleId = applePayload.sub;
+      const appleEmail = applePayload.email;
+      let appleFullName: string | undefined;
+      
+      if (userDataStr) {
+        try {
+          const userData = typeof userDataStr === 'string' ? JSON.parse(userDataStr) : userDataStr;
+          if (userData.name) {
+            appleFullName = [userData.name.firstName, userData.name.lastName].filter(Boolean).join(' ');
+          }
+        } catch (e) {}
+      }
+      
+      logger.log('🍎 Apple OAuth callback for:', appleId, appleEmail);
+      
+      let user = await User.findOne({ appleId: appleId });
+      
+      if (user) {
+        user.lastLoginAt = new Date();
+        if (appleFullName && !user.fullName) {
+          user.fullName = appleFullName;
+        }
+        await user.save();
+      } else {
+        if (appleEmail) {
+          user = await User.findOne({ email: appleEmail });
+        }
+        
+        if (user) {
+          (user as any).appleId = appleId;
+          user.lastLoginAt = new Date();
+          if (appleFullName && !user.fullName) {
+            user.fullName = appleFullName;
+          }
+          await user.save();
+        } else {
+          const generateSlug = (name: string, emailStr: string): string => {
+            let slugSource = name || emailStr?.split('@')[0] || 'apple-user';
+            return slugSource.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim().replace(/^-+|-+$/g, '');
+          };
+          
+          const baseSlug = generateSlug(appleFullName || '', appleEmail || '');
+          let userSlug = baseSlug || 'apple-user';
+          let counter = 1;
+          while (await User.findOne({ slug: userSlug })) {
+            userSlug = `${baseSlug || 'apple-user'}-${counter}`;
+            counter++;
+          }
+          
+          const newUser = new User({
+            appleId: appleId,
+            email: appleEmail || undefined,
+            fullName: appleFullName || undefined,
+            username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            slug: userSlug,
+            passwordHash: '',
+            emailVerified: true,
+            lastLoginAt: new Date()
+          });
+          
+          await newUser.save();
+          user = newUser;
+          logger.log(`✅ New Apple user created: "${userSlug}" (${appleEmail || 'no email'})`);
+        }
+      }
+      
+      req.login(user!, (loginErr: any) => {
+        if (loginErr) {
+          logger.error('🍎 Apple OAuth login error:', loginErr);
+          return res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
+        }
+        
+        (req.session as any).user = {
+          userId: (user as any)._id.toString(),
+          email: (user as any).email,
+          role: (user as any).role
+        };
+        delete (req.session as any).oauthReturnLang;
+        
+        req.session.save((saveErr: any) => {
+          if (saveErr) {
+            logger.error('🍎 Session save error:', saveErr);
+            return res.redirect(`${frontendBase}${langPrefix}/?error=session_save_failed`);
+          }
+          const returnTo = (req.session as any)?.oauthReturnTo;
+          delete (req.session as any).oauthReturnTo;
+          if (returnTo && returnTo.startsWith('/')) {
+            return res.redirect(`${frontendBase}${returnTo}`);
+          }
+          res.redirect(`${frontendBase}${langPrefix}/?success=apple_login`);
+        });
+      });
     } catch (error) {
-      console.error('Apple OAuth callback error:', error);
-      res.redirect('/?error=apple_auth_failed');
+      logger.error('🍎 Apple OAuth callback error:', error);
+      res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
     }
   });
 
