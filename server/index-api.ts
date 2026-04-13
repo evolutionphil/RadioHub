@@ -358,6 +358,8 @@ if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
   process.exit(1);
 }
 
+const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
+
 const sessionConfig: session.SessionOptions = {
   secret: process.env.SESSION_SECRET || 'radio-station-secret-key-2025',
   resave: false,
@@ -366,8 +368,8 @@ const sessionConfig: session.SessionOptions = {
     secure: useSecureCookies,
     httpOnly: true,
     maxAge: 3 * 24 * 60 * 60 * 1000,
-    sameSite: isReplit ? 'none' : 'lax',
-    domain: undefined,
+    sameSite: cookieDomain ? 'none' : (isReplit ? 'none' : 'lax'),
+    domain: cookieDomain,
     path: '/'
   },
   name: 'connect.sid',
@@ -375,7 +377,7 @@ const sessionConfig: session.SessionOptions = {
   rolling: false
 };
 
-logger.log(`🔐 API Session config: secure=${useSecureCookies}, isReplit=${isReplit}, NODE_ENV=${process.env.NODE_ENV}`);
+logger.log(`🔐 API Session config: secure=${useSecureCookies}, isReplit=${isReplit}, NODE_ENV=${process.env.NODE_ENV}, cookieDomain=${cookieDomain || 'auto'}, sameSite=${cookieDomain ? 'none' : (isReplit ? 'none' : 'lax')}`);
 
 const mongoUri = process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/mega';
 const isProduction = process.env.NODE_ENV === 'production' || isReplit;

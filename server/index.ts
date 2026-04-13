@@ -563,8 +563,8 @@ const sessionConfig: session.SessionOptions = {
     secure: useSecureCookies, // HTTPS-only cookies on Replit and production
     httpOnly: true, // Prevent XSS attacks
     maxAge: 3 * 24 * 60 * 60 * 1000, // 3 days (reduced to save MongoDB space)
-    sameSite: isReplit ? 'none' : 'lax', // 'none' for Replit preview iframe compatibility
-    domain: undefined, // Allow cookie for current domain and subdomains
+    sameSite: (process.env.COOKIE_DOMAIN || isReplit) ? 'none' : 'lax',
+    domain: process.env.COOKIE_DOMAIN || undefined,
     path: '/' // Cookie available on all paths
   },
   name: 'connect.sid', // Use standard express-session cookie name
