@@ -336,7 +336,10 @@ app.use('/api/image', (_req, res) => {
   await registerSeoSitemapRoutes(app, seoSitemapDeps);
   logger.log('✅ SEO/Sitemap routes registered on frontend-web (handles /api/seo/page-data locally)');
 
-  app.use('/api', apiProxy);
+  app.use('/api', (req, res, next) => {
+    req.url = `/api${req.url}`;
+    return apiProxy(req, res, next);
+  });
 
   const server = createServer(app);
 
