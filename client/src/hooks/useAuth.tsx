@@ -1,5 +1,5 @@
-import { createContext, useContext, ReactNode, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { faIdentify, faReset } from '../lib/flowalive';
 
 interface User {
@@ -40,6 +40,36 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const [tokenProcessed, setTokenProcessed] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const authToken = params.get('auth_token');
+    
+    if (authToken) {
+      params.delete('auth_token');
+      const cleanUrl = window.location.pathname + (params.toString() ? `?${params.toString()}` : '');
+      window.history.replaceState({}, '', cleanUrl);
+      
+      fetch('/api/auth/token-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: authToken }),
+        credentials: 'include',
+      })
+        .then((res) => {
+          if (res.ok) {
+            queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+          }
+        })
+        .catch(() => {})
+        .finally(() => setTokenProcessed(true));
+    } else {
+      setTokenProcessed(true);
+    }
+  }, []);
+
   const { data, isLoading } = useQuery({
     queryKey: ['/api/auth/me'],
     queryFn: async () => {
@@ -48,13 +78,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
       if (!response.ok) {
         if (response.status === 401) {
-          return null; // Not authenticated
+          return null;
         }
         throw new Error('Failed to fetch user');
       }
       return response.json();
     },
     retry: false,
+    enabled: tokenProcessed,
   });
 
   // CRITICAL FIX: API returns { user: {...} }, need to extract the user object

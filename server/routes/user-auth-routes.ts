@@ -485,8 +485,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     // Use passport Google authentication
     try {
       passport.authenticate('google', { 
-        scope: ['profile', 'email'],
-        state: true
+        scope: ['profile', 'email']
       })(req, res, next);
     } catch (error) {
       console.error('Passport auth error:', error);
@@ -559,7 +558,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     res.redirect(appleAuthUrl);
   });
 
-  // Google OAuth callback - implemented with passport (simplified, no dynamic import)
   app.get("/api/auth/google/callback", (req, res, next) => {
     const savedLang = (req.session as any)?.oauthReturnLang || '';
     const langPrefix = savedLang ? `/${savedLang}` : '';
@@ -567,7 +565,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     
     passport.authenticate('google', { 
       failureRedirect: `${frontendBase}${langPrefix}/?error=google_auth_failed` 
-    }, (err: any, user: any, info: any) => {
+    }, async (err: any, user: any, info: any) => {
       if (err) {
         logger.error('Google OAuth callback error:', err);
         return res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_failed`);
@@ -576,32 +574,35 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         return res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_cancelled`);
       }
       
-      req.login(user, (loginErr: any) => {
-        if (loginErr) {
-          logger.error('Google OAuth login error:', loginErr);
-          return res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
-        }
+      try {
+        const token = await generateAuthToken(user._id.toString(), 'web');
+        logger.log('✅ Google OAuth token generated for:', user.email);
         
-        (req.session as any).user = {
-          userId: user._id.toString(),
-          email: user.email,
-          role: user.role
-        };
+        const returnTo = (req.session as any)?.oauthReturnTo;
+        delete (req.session as any).oauthReturnTo;
         delete (req.session as any).oauthReturnLang;
         
-        req.session.save((saveErr: any) => {
-          if (saveErr) {
-            logger.error('Session save error after Google OAuth:', saveErr);
-            return res.redirect(`${frontendBase}${langPrefix}/?error=session_save_failed`);
+        if (returnTo && returnTo.startsWith('/')) {
+          return res.redirect(`${frontendBase}${returnTo}?auth_token=${token}`);
+        }
+        res.redirect(`${frontendBase}${langPrefix}/?auth_token=${token}`);
+      } catch (tokenErr) {
+        logger.error('Google OAuth token generation error:', tokenErr);
+        
+        req.login(user, (loginErr: any) => {
+          if (loginErr) {
+            return res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
           }
-          const returnTo = (req.session as any)?.oauthReturnTo;
-          delete (req.session as any).oauthReturnTo;
-          if (returnTo && returnTo.startsWith('/')) {
-            return res.redirect(`${frontendBase}${returnTo}`);
-          }
-          res.redirect(`${frontendBase}${langPrefix}/?success=google_login`);
+          (req.session as any).user = {
+            userId: user._id.toString(),
+            email: user.email,
+            role: user.role
+          };
+          req.session.save(() => {
+            res.redirect(`${frontendBase}${langPrefix}/?success=google_login`);
+          });
         });
-      });
+      }
     })(req, res, next);
   });
 
@@ -757,32 +758,22 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         }
       }
       
-      req.login(user!, (loginErr: any) => {
-        if (loginErr) {
-          logger.error('🍎 Apple OAuth login error:', loginErr);
-          return res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
-        }
+      try {
+        const token = await generateAuthToken((user as any)._id.toString(), 'web');
+        logger.log('✅ Apple OAuth token generated for:', (user as any).email);
         
-        (req.session as any).user = {
-          userId: (user as any)._id.toString(),
-          email: (user as any).email,
-          role: (user as any).role
-        };
+        const returnTo = (req.session as any)?.oauthReturnTo;
+        delete (req.session as any).oauthReturnTo;
         delete (req.session as any).oauthReturnLang;
         
-        req.session.save((saveErr: any) => {
-          if (saveErr) {
-            logger.error('🍎 Session save error:', saveErr);
-            return res.redirect(`${frontendBase}${langPrefix}/?error=session_save_failed`);
-          }
-          const returnTo = (req.session as any)?.oauthReturnTo;
-          delete (req.session as any).oauthReturnTo;
-          if (returnTo && returnTo.startsWith('/')) {
-            return res.redirect(`${frontendBase}${returnTo}`);
-          }
-          res.redirect(`${frontendBase}${langPrefix}/?success=apple_login`);
-        });
-      });
+        if (returnTo && returnTo.startsWith('/')) {
+          return res.redirect(`${frontendBase}${returnTo}?auth_token=${token}`);
+        }
+        res.redirect(`${frontendBase}${langPrefix}/?auth_token=${token}`);
+      } catch (tokenErr) {
+        logger.error('🍎 Apple OAuth token generation error:', tokenErr);
+        res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+      }
     } catch (error) {
       logger.error('🍎 Apple OAuth callback error:', error);
       res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
@@ -1249,6 +1240,49 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       });
     } catch (error) {
       res.status(500).json({ error: 'Failed to login' });
+    }
+  });
+
+  app.post("/api/auth/token-session", async (req, res) => {
+    try {
+      const { token } = req.body;
+      if (!token) {
+        return res.status(400).json({ success: false, error: 'Token is required' });
+      }
+      
+      const authToken = await AuthToken.findOne({ token, isActive: true });
+      if (!authToken) {
+        return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+      }
+      
+      if (authToken.expiresAt && new Date(authToken.expiresAt) < new Date()) {
+        authToken.isActive = false;
+        await authToken.save();
+        return res.status(401).json({ success: false, error: 'Token expired' });
+      }
+      
+      const user = await User.findById(authToken.userId);
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      
+      (req.session as any).user = {
+        userId: user._id.toString(),
+        email: user.email,
+        role: user.role
+      };
+      
+      req.session.save((err: any) => {
+        if (err) {
+          logger.error('Token-session save error:', err);
+          return res.status(500).json({ success: false, error: 'Session save failed' });
+        }
+        logger.log('✅ Token-session created for:', user.email);
+        res.json({ success: true, authenticated: true });
+      });
+    } catch (error) {
+      logger.error('Token-session error:', error);
+      res.status(500).json({ success: false, error: 'Internal error' });
     }
   });
 
