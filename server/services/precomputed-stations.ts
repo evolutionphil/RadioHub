@@ -52,6 +52,25 @@ const COUNTRY_CODE_MAP: Record<string, string> = {
   'NZ': 'New Zealand', 'CL': 'Chile', 'CO': 'Colombia', 'PE': 'Peru', 'VE': 'Venezuela'
 };
 
+const COUNTRY_NAME_ALIASES: Record<string, string[]> = {
+  'Turkey': ['Türkiye', 'Turkiye'],
+  'Türkiye': ['Turkey'],
+  'Czech Republic': ['Czechia', 'Česko'],
+  'Czechia': ['Czech Republic', 'Česko'],
+  'United Kingdom': ['The United Kingdom of Great Britain and Northern Ireland', 'The United Kingdom Of Great Britain And Northern Ireland', 'UK', 'Great Britain'],
+  'United States': ['The United States of America', 'USA', 'US', 'The United States Of America'],
+  'South Korea': ['The Republic Of Korea', 'Korea, Republic of', 'Republic of Korea'],
+  'The Republic Of Korea': ['South Korea', 'Korea'],
+  'North Korea': ['The Democratic Peoples Republic Of Korea'],
+  'The Democratic Peoples Republic Of Korea': ['North Korea'],
+  'Russia': ['The Russian Federation', 'Russian Federation'],
+  'The Russian Federation': ['Russia'],
+  'The Netherlands': ['Netherlands', 'Holland'],
+  'Netherlands': ['The Netherlands', 'Holland'],
+  'United Arab Emirates': ['The United Arab Emirates', 'UAE'],
+  'The United Arab Emirates': ['United Arab Emirates', 'UAE'],
+};
+
 const REVERSE_COUNTRY_MAP: Record<string, string> = Object.entries(COUNTRY_CODE_MAP).reduce(
   (acc, [code, name]) => ({ ...acc, [name.toLowerCase()]: code }),
   {}
@@ -79,6 +98,54 @@ export class PrecomputedStationsService {
     return null;
   }
 
+  private static resolvedCache = new Map<string, string>();
+
+  private static async resolveCountryName(countryName: string): Promise<string> {
+    const cacheKey = countryName.toLowerCase();
+    if (this.resolvedCache.has(cacheKey)) {
+      return this.resolvedCache.get(cacheKey)!;
+    }
+
+    const allCountries = await this.getAllCountriesFromDB();
+    
+    const exactMatch = allCountries.find(c => c.toLowerCase() === cacheKey);
+    if (exactMatch) {
+      this.resolvedCache.set(cacheKey, exactMatch);
+      return exactMatch;
+    }
+
+    const aliases = COUNTRY_NAME_ALIASES[countryName] || [];
+    for (const alias of aliases) {
+      const aliasMatch = allCountries.find(c => c.toLowerCase() === alias.toLowerCase());
+      if (aliasMatch) {
+        this.resolvedCache.set(cacheKey, aliasMatch);
+        return aliasMatch;
+      }
+    }
+
+    for (const [key, aliasList] of Object.entries(COUNTRY_NAME_ALIASES)) {
+      if (aliasList.some(a => a.toLowerCase() === cacheKey)) {
+        const keyMatch = allCountries.find(c => c.toLowerCase() === key.toLowerCase());
+        if (keyMatch) {
+          this.resolvedCache.set(cacheKey, keyMatch);
+          return keyMatch;
+        }
+      }
+    }
+
+    const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const dbCountry = await Station.findOne(
+      { country: { $regex: new RegExp(`^${escapedName}$`, 'i') } }
+    ).select('country').lean() as any;
+    if (dbCountry?.country) {
+      this.resolvedCache.set(cacheKey, dbCountry.country);
+      return dbCountry.country;
+    }
+
+    this.resolvedCache.set(cacheKey, countryName);
+    return countryName;
+  }
+
   static async getAllCountriesFromDB(): Promise<string[]> {
     if (this.allCountries.length > 0) {
       return this.allCountries;
@@ -104,7 +171,7 @@ export class PrecomputedStationsService {
     }
 
     return trackOperation('precompute-country', async () => {
-    const stations = await Station.aggregate([
+    let stations = await Station.aggregate([
       {
         $match: {
           country: countryName,
@@ -138,6 +205,16 @@ export class PrecomputedStationsService {
       }
     ]).option({ maxTimeMS: 15000 }).exec();
 
+    if (stations.length === 0) {
+      const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      stations = await Station.aggregate([
+        { $match: { country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, lastCheckOk: true } },
+        { $sort: { hasLogo: -1, votes: -1 } },
+        { $limit: 1500 },
+        { $project: { _id: 1, slug: 1, name: 1, url: 1, url_resolved: 1, favicon: 1, country: 1, state: 1, votes: 1, hasLogo: 1, tags: 1, codec: 1, bitrate: 1, logoAssets: { webp96: 1, webp256: 1, folder: 1 } } }
+      ]).option({ maxTimeMS: 15000 }).exec();
+    }
+
     const data: PrecomputedCountryData = {
       stations: stations as PrecomputedStation[],
       total: stations.length,
@@ -157,18 +234,8 @@ export class PrecomputedStationsService {
       return { stations: [], total: 0, computedAt: Date.now(), countryName: '' };
     }
 
-    const allCountries = await this.getAllCountriesFromDB();
-    const matchingCountry = allCountries.find(c => 
-      c.toLowerCase() === countryName.toLowerCase() ||
-      c.toLowerCase().includes(countryName.toLowerCase()) ||
-      countryName.toLowerCase().includes(c.toLowerCase())
-    );
-
-    if (!matchingCountry) {
-      return { stations: [], total: 0, computedAt: Date.now(), countryName };
-    }
-
-    return this.computeCountryStationsByName(matchingCountry);
+    const resolvedName = await this.resolveCountryName(countryName);
+    return this.computeCountryStationsByName(resolvedName);
   }
 
   static async getCountryStations(
@@ -181,24 +248,14 @@ export class PrecomputedStationsService {
       return { stations: [], total: 0, page, totalPages: 0, cached: false };
     }
 
-    const allCountries = await this.getAllCountriesFromDB();
-    const matchingCountry = allCountries.find(c => 
-      c.toLowerCase() === countryName.toLowerCase() ||
-      c.toLowerCase().includes(countryName.toLowerCase()) ||
-      countryName.toLowerCase().includes(c.toLowerCase())
-    );
-
-    if (!matchingCountry) {
-      return { stations: [], total: 0, page, totalPages: 0, cached: false };
-    }
-
-    const cacheKey = this.getCacheKey(matchingCountry);
+    const resolvedName = await this.resolveCountryName(countryName);
+    const cacheKey = this.getCacheKey(resolvedName);
     let data = await CacheManager.get<PrecomputedCountryData>(cacheKey);
     let cached = true;
 
     if (!data) {
       cached = false;
-      data = await this.computeCountryStationsByName(matchingCountry);
+      data = await this.computeCountryStationsByName(resolvedName);
     }
 
     const offset = (page - 1) * limit;
@@ -218,13 +275,14 @@ export class PrecomputedStationsService {
     page: number = 1, 
     limit: number = 33
   ): Promise<{ stations: PrecomputedStation[]; total: number; page: number; totalPages: number; cached: boolean }> {
-    const cacheKey = this.getCacheKey(countryName);
+    const resolvedName = await this.resolveCountryName(countryName);
+    const cacheKey = this.getCacheKey(resolvedName);
     let data = await CacheManager.get<PrecomputedCountryData>(cacheKey);
     let cached = true;
 
     if (!data) {
       cached = false;
-      data = await this.computeCountryStationsByName(countryName);
+      data = await this.computeCountryStationsByName(resolvedName);
     }
 
     const offset = (page - 1) * limit;
