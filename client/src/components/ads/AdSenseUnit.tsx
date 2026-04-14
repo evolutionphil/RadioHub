@@ -14,7 +14,7 @@ declare global {
 }
 
 export default function AdSenseUnit({ 
-  adSlot = "7923500623",
+  adSlot = "3609188113",
   adFormat = "auto",
   fullWidthResponsive = true,
   className = ""

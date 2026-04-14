@@ -26,6 +26,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 // Lazy load below-the-fold components for performance
 const AdCarousel = lazy(() => import("@/components/ad-carousel").then(m => ({ default: m.AdCarousel })));
+const AdSenseUnit = lazy(() => import("@/components/ads/AdSenseUnit"));
 
 // Inline ThumbsUp SVG to avoid loading entire lucide-react library for single icon
 const ThumbsUpIcon = memo(({ className }: { className?: string }) => (
@@ -973,7 +974,7 @@ export default function StationDetails() {
                 {/* Desktop Ad Space - Lazy loaded */}
                 <div className="mt-4 text-center sm:mt-0 hidden md:block">
                   <div className="mt-6">
-                    {advertisements && advertisements.length > 0 ? (
+                    {advertisements && advertisements.some(ad => ad.position === 'desktop_sidebar' && ad.isActive) ? (
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none animate-pulse" />}>
                         <AdCarousel 
                           ads={advertisements} 
@@ -983,9 +984,9 @@ export default function StationDetails() {
                         />
                       </Suspense>
                     ) : (
-                      <div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none">
-                        {t('general_ad_space', 'Ad Space')}
-                      </div>
+                      <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none animate-pulse" />}>
+                        <AdSenseUnit adSlot="3609188113" adFormat="rectangle" className="min-h-[250px]" />
+                      </Suspense>
                     )}
                   </div>
                 </div>
@@ -1304,8 +1305,8 @@ export default function StationDetails() {
             )}
 
             {/* Middle Section Ad - Between Similar Radios and More from Country */}
-            {advertisements && advertisements.some(ad => ad.position === 'middle_section') && (
-              <div className="py-6">
+            <div className="py-6">
+              {advertisements && advertisements.some(ad => ad.position === 'middle_section' && ad.isActive) ? (
                 <Suspense fallback={null}>
                   <AdCarousel 
                     ads={advertisements} 
@@ -1313,19 +1314,29 @@ export default function StationDetails() {
                     autoSwitchInterval={8000}
                   />
                 </Suspense>
-              </div>
-            )}
+              ) : (
+                <Suspense fallback={null}>
+                  <AdSenseUnit adSlot="3609188113" adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />
+                </Suspense>
+              )}
+            </div>
 
             {/* Ad Section - Mobile Bottom Ad */}
-            {advertisements && advertisements.some(ad => ad.position === 'mobile_bottom') && (
-              <Suspense fallback={null}>
-                <AdCarousel 
-                  ads={advertisements} 
-                  position="mobile_bottom"
-                  autoSwitchInterval={8000}
-                />
-              </Suspense>
-            )}
+            <div className="md:hidden py-4">
+              {advertisements && advertisements.some(ad => ad.position === 'mobile_bottom' && ad.isActive) ? (
+                <Suspense fallback={null}>
+                  <AdCarousel 
+                    ads={advertisements} 
+                    position="mobile_bottom"
+                    autoSwitchInterval={8000}
+                  />
+                </Suspense>
+              ) : (
+                <Suspense fallback={null}>
+                  <AdSenseUnit adSlot="3609188113" adFormat="auto" className="min-h-[100px]" />
+                </Suspense>
+              )}
+            </div>
 
             {/* More from Country Section - Independent Loading with Skeleton */}
             {(loadingCountry || (filteredCountryStations && filteredCountryStations.length > 0)) && station?.country && (
