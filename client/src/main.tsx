@@ -19,7 +19,7 @@ if (VITE_API_BASE) {
       rewritten = true;
     }
     if (rewritten) {
-      init = { ...init, credentials: 'omit' };
+      init = { ...init, credentials: 'include' };
     }
     return originalFetch(input, init);
   };

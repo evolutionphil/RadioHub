@@ -404,7 +404,7 @@ app.use('/api/image', (_req, res) => {
   const BOT_RATE_LIMIT_WINDOW = 60_000;
   const BOT_RATE_LIMIT_MAX_MINOR = 60;
   const BOT_RATE_LIMIT_MAX_MAJOR = 300;
-  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
+  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|apis-google|adsbot-google|mediapartners-google|storebot-google|bingbot|bingpreview|yandexbot|slurp|duckduckbot|baiduspider|applebot)\b/i;
   const AI_SCRAPER_RE = /\b(gptbot|chatgpt-user|ccbot|anthropic-ai|claude-web|bytespider|perplexitybot|cohere-ai)\b/i;
 
 
@@ -442,18 +442,21 @@ app.use('/api/image', (_req, res) => {
     if (!isSeoEligiblePage || !isBot) return next();
 
     const isMajorBot = MAJOR_SEARCH_BOT_RE.test(userAgent);
-    const maxRequests = isMajorBot ? BOT_RATE_LIMIT_MAX_MAJOR : BOT_RATE_LIMIT_MAX_MINOR;
-    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-    const now = Date.now();
-    let botEntry = botRateLimitMap.get(clientIp);
-    if (!botEntry || now > botEntry.resetAt) {
-      botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
-      botRateLimitMap.set(clientIp, botEntry);
-    }
-    botEntry.count++;
-    if (botEntry.count > maxRequests) {
-      res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
-      return;
+    if (isMajorBot) {
+      // Google/Bing/major search bots are never rate limited
+    } else {
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+      const now = Date.now();
+      let botEntry = botRateLimitMap.get(clientIp);
+      if (!botEntry || now > botEntry.resetAt) {
+        botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
+        botRateLimitMap.set(clientIp, botEntry);
+      }
+      botEntry.count++;
+      if (botEntry.count > BOT_RATE_LIMIT_MAX_MINOR) {
+        res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
+        return;
+      }
     }
 
     const cleanUrl = url.split('?')[0].split('#')[0];

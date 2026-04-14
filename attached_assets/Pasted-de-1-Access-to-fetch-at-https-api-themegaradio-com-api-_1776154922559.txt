@@ -1,0 +1,24 @@
+de:1 Access to fetch at 'https://api.themegaradio.com/api/stations/precomputed?countryName=Austria&page=1&limit=12' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/stations/precomputed?countryName=Austria&page=1&limit=12:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/translations/en' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/translations/en:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/genres/precomputed?country=Austria' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/genres/precomputed?country=Austria:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/genres/discoverable' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/genres/discoverable:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/seo/page-data?url=%2Fde' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/seo/page-data?url=%2Fde:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/auth/me' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/auth/me:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/filters/countries' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/filters/countries:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/footer-social-media' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/footer-social-media:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/stations/precomputed?countryName=Austria&page=1&limit=18' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/stations/precomputed?countryName=Austria&page=1&limit=18:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/countries' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/countries:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/translations/de' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/translations/de:1  Failed to load resource: net::ERR_FAILED
+de:1 Access to fetch at 'https://api.themegaradio.com/api/location' from origin 'https://themegaradio.com' has been blocked by CORS policy: No 'Access-Control-Allow-Origin' header is present on the requested resource.
+api.themegaradio.com/api/location:1  Failed to load resource: net::ERR_FAILED

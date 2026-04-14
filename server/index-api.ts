@@ -42,6 +42,8 @@ function getFrameOptionsHeader(): string | null {
   return 'DENY';
 }
 
+const SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|apis-google|adsbot-google|mediapartners-google|storebot-google|bingbot|bingpreview|slurp|duckduckbot|baiduspider|yandexbot|applebot)\b/i;
+
 const globalApiLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 100,
@@ -49,7 +51,10 @@ const globalApiLimiter = rateLimit({
   legacyHeaders: true,
   message: { error: 'Too many requests, please try again later.' },
   skip: (req) => {
-    return !req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health' || req.path === '/healthz';
+    if (!req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health' || req.path === '/healthz') return true;
+    const ua = req.headers['user-agent'] || '';
+    if (SEARCH_BOT_RE.test(ua)) return true;
+    return false;
   }
 });
 
@@ -59,7 +64,11 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: true,
   skipSuccessfulRequests: true,
-  message: { error: 'Too many login attempts, please try again in 15 minutes.' }
+  message: { error: 'Too many login attempts, please try again in 15 minutes.' },
+  skip: (req) => {
+    const ua = req.headers['user-agent'] || '';
+    return SEARCH_BOT_RE.test(ua);
+  }
 });
 
 function getHstsHeader(): string {
@@ -208,61 +217,20 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   });
 });
 
-app.use('/api', globalApiLimiter);
-app.use('/api/auth/login', authLimiter);
-app.use('/api/auth/register', authLimiter);
-app.use('/api/admin/login', authLimiter);
-
 const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'https://themegaradio.com').split(',').map(s => s.trim());
 const FRONTEND_URL = process.env.FRONTEND_URL || 'https://themegaradio.com';
 if (!CORS_ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
   CORS_ALLOWED_ORIGINS.push(FRONTEND_URL);
 }
 
-const enableEmbeddedProxy = process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production';
-
-if (enableEmbeddedProxy) {
-  app.use('/api/stream', (req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-    res.header('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
-    res.header('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
-    res.header('Access-Control-Max-Age', '86400');
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    next();
-  });
-
-  app.use('/api/image', (req, res, next) => {
-    const origin = req.headers.origin;
-    if (origin && CORS_ALLOWED_ORIGINS.includes(origin)) {
-      res.header('Access-Control-Allow-Origin', origin);
-    } else if (!origin) {
-      res.header('Access-Control-Allow-Origin', '*');
-    }
-    res.header('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent');
-    if (req.method === 'OPTIONS') return res.sendStatus(200);
-    next();
-  });
-} else {
-  app.use('/api/stream', (_req, res) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-    res.status(410).json({ error: 'Stream proxy moved to stream.themegaradio.com' });
-  });
-  app.use('/api/image', (_req, res) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-    res.status(410).json({ error: 'Image proxy moved to stream.themegaradio.com' });
-  });
-}
-
 app.use((req, res, next) => {
-  if (req.path.startsWith('/api/stream') || req.path.startsWith('/api/image')) {
-    return next();
+  const origin = req.headers.origin;
+  if (origin && CORS_ALLOWED_ORIGINS.some(o => origin === o || origin.endsWith('.themegaradio.com'))) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  } else {
+    res.header('Access-Control-Allow-Origin', '*');
   }
-
-  res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-API-Key, X-API-User-Token');
   res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
@@ -286,6 +254,13 @@ app.use((req, res, next) => {
 
   next();
 });
+
+app.use('/api', globalApiLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/admin/login', authLimiter);
+
+const enableEmbeddedProxy = process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production';
 
 app.use((req, res, next) => {
   if (process.env.NODE_ENV === 'development' || req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
