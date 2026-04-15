@@ -260,6 +260,23 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 app.use('/api/admin/login', authLimiter);
 
+app.use((req, res, next) => {
+  if (req.path === '/healthz' || req.path === '/health' || req.path === '/api/health') return next();
+  if (!req.path.startsWith('/api')) return next();
+  const nonDbPaths = ['/api/stream/', '/api/image-proxy/'];
+  if (nonDbPaths.some(p => req.path.startsWith(p))) return next();
+  try {
+    const mongoose = require('mongoose');
+    const state = mongoose.connection.readyState;
+    if (state !== 1) {
+      const stateNames: Record<number, string> = { 0: 'disconnected', 2: 'connecting', 3: 'disconnecting' };
+      console.error(`🚫 MongoDB circuit breaker: rejecting ${req.method} ${req.path} (state=${stateNames[state] || 'unknown'})`);
+      return res.status(503).json({ error: 'Service temporarily unavailable, please retry in a few seconds' });
+    }
+  } catch {}
+  next();
+});
+
 const enableEmbeddedProxy = process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production';
 
 app.use((req, res, next) => {
@@ -394,9 +411,9 @@ app.use(session(sessionConfig));
     }
   });
 
-  server.timeout = 300000;
-  server.keepAliveTimeout = 5000;
-  server.headersTimeout = 10000;
+  server.timeout = 120000;
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 70000;
   server.maxConnections = 300;
   (app as any)._httpServer = server;
 
@@ -449,6 +466,53 @@ app.use(session(sessionConfig));
     logger.log(`🚀 BACKEND-API: Listening on port ${port}`);
     logger.log(`🔗 CORS allowed origins: ${CORS_ALLOWED_ORIGINS.join(', ')}`);
     logger.log(`🔗 Frontend URL: ${FRONTEND_URL}`);
+
+    let watchdogFailures = 0;
+    const WATCHDOG_MAX_FAILURES = 3;
+    const WATCHDOG_INTERVAL = 30_000;
+    const WATCHDOG_TIMEOUT = 5_000;
+
+    const watchdogTimer = setInterval(async () => {
+      if (isShuttingDown) { clearInterval(watchdogTimer); return; }
+      try {
+        const http = await import('http');
+        const result = await new Promise<boolean>((resolve) => {
+          const req = http.request(
+            { hostname: '127.0.0.1', port, path: '/healthz', method: 'GET', timeout: WATCHDOG_TIMEOUT },
+            (res) => {
+              res.resume();
+              resolve(res.statusCode === 200);
+            }
+          );
+          req.on('error', () => resolve(false));
+          req.on('timeout', () => { req.destroy(); resolve(false); });
+          req.end();
+        });
+
+        if (result) {
+          if (watchdogFailures > 0) {
+            console.log(`🐕 Watchdog: recovered after ${watchdogFailures} failure(s)`);
+          }
+          watchdogFailures = 0;
+        } else {
+          watchdogFailures++;
+          console.error(`🐕 Watchdog: self-ping failed (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
+          if (watchdogFailures >= WATCHDOG_MAX_FAILURES) {
+            console.error(`🐕 Watchdog: ${WATCHDOG_MAX_FAILURES} consecutive failures — forcing restart`);
+            process.kill(process.pid, 'SIGTERM');
+          }
+        }
+      } catch (err: any) {
+        watchdogFailures++;
+        console.error(`🐕 Watchdog error: ${err.message} (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
+        if (watchdogFailures >= WATCHDOG_MAX_FAILURES) {
+          console.error(`🐕 Watchdog: forcing restart after error`);
+          process.kill(process.pid, 'SIGTERM');
+        }
+      }
+    }, WATCHDOG_INTERVAL);
+
+    logger.log(`🐕 Watchdog: enabled (interval=${WATCHDOG_INTERVAL/1000}s, maxFailures=${WATCHDOG_MAX_FAILURES})`);
   });
 
   (async () => {
