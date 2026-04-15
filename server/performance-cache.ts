@@ -27,14 +27,14 @@ export class PerformanceCache {
     this.seoHtmlCache = new NodeCache({ 
       stdTTL: 1800,
       checkperiod: 300,
-      maxKeys: 2000,
+      maxKeys: 8000,
       useClones: false
     });
     
     this.pageDataCache = new NodeCache({ 
       stdTTL: 900,
       checkperiod: 180,
-      maxKeys: 2000,
+      maxKeys: 5000,
       useClones: false
     });
     

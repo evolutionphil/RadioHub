@@ -601,17 +601,58 @@ app.use('/api/image', (_req, res) => {
 
   serveStatic(app);
 
+  let isShuttingDown = false;
+
   const port = parseInt(process.env.PORT || '3000', 10);
   server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
     logger.log(`🚀 FRONTEND-WEB: Listening on port ${port}`);
     logger.log(`🔗 Backend API URL: ${BACKEND_API_URL}`);
+
+    let watchdogFailures = 0;
+    const WATCHDOG_MAX_FAILURES = 3;
+    const WATCHDOG_INTERVAL = 30_000;
+    const WATCHDOG_TIMEOUT = 5_000;
+
+    const watchdogTimer = setInterval(async () => {
+      if (isShuttingDown) { clearInterval(watchdogTimer); return; }
+      try {
+        const http = await import('http');
+        const ok = await new Promise<boolean>((resolve) => {
+          const req = http.request(
+            { hostname: '127.0.0.1', port, path: '/healthz', method: 'GET', timeout: WATCHDOG_TIMEOUT },
+            (res) => { res.resume(); resolve(res.statusCode === 200); }
+          );
+          req.on('error', () => resolve(false));
+          req.on('timeout', () => { req.destroy(); resolve(false); });
+          req.end();
+        });
+        if (ok) {
+          if (watchdogFailures > 0) console.log(`🐕 Watchdog: recovered after ${watchdogFailures} failure(s)`);
+          watchdogFailures = 0;
+        } else {
+          watchdogFailures++;
+          console.error(`🐕 Watchdog: self-ping failed (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
+          if (watchdogFailures >= WATCHDOG_MAX_FAILURES) {
+            console.error(`🐕 Watchdog: forcing restart`);
+            process.kill(process.pid, 'SIGTERM');
+          }
+        }
+      } catch (err: any) {
+        watchdogFailures++;
+        console.error(`🐕 Watchdog error: ${err.message} (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
+        if (watchdogFailures >= WATCHDOG_MAX_FAILURES) {
+          console.error(`🐕 Watchdog: forcing restart after error`);
+          process.kill(process.pid, 'SIGTERM');
+        }
+      }
+    }, WATCHDOG_INTERVAL);
+
+    logger.log(`🐕 Watchdog: enabled (interval=${WATCHDOG_INTERVAL/1000}s, maxFailures=${WATCHDOG_MAX_FAILURES})`);
   });
 
-  server.timeout = 300000;
-  server.keepAliveTimeout = 10000;
-  server.headersTimeout = 15000;
-
-  let isShuttingDown = false;
+  server.timeout = 120000;
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 70000;
   const gracefulShutdown = async (signal: string) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
