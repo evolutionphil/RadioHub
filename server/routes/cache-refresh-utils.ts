@@ -1,37 +1,50 @@
-import { Station, UserFavorite, Translation } from '../../shared/mongo-schemas';
+import { Station, UserFavorite, Translation, TranslationKey } from '../../shared/mongo-schemas';
 import CacheManager, { CacheKeys } from '../cache';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import { logger } from '../utils/logger';
 import { TV_STATION_PROJECTION, tvSlimStation } from './shared-utils';
 
 export async function fetchTranslationsForLanguage(lang: string): Promise<Record<string, string>> {
-  const translations = await Translation.aggregate([
-    { $match: { language: lang } },
-    {
-      $lookup: {
-        from: 'translationkeys',
-        localField: 'keyId',
-        foreignField: '_id',
-        as: 'keyInfo'
+  const [allKeys, langTranslations] = await Promise.all([
+    TranslationKey.find({}).lean(),
+    Translation.aggregate([
+      { $match: { language: lang } },
+      {
+        $lookup: {
+          from: 'translationkeys',
+          localField: 'keyId',
+          foreignField: '_id',
+          as: 'keyInfo'
+        }
+      },
+      {
+        $unwind: {
+          path: '$keyInfo',
+          preserveNullAndEmptyArrays: true
+        }
       }
-    },
-    {
-      $unwind: {
-        path: '$keyInfo',
-        preserveNullAndEmptyArrays: true
-      }
-    }
+    ])
   ]);
 
   const translationMap: Record<string, string> = {};
-  for (const item of translations) {
+
+  for (const keyDoc of allKeys) {
+    if (keyDoc.key && keyDoc.defaultValue) {
+      translationMap[keyDoc.key] = keyDoc.defaultValue;
+    }
+  }
+
+  for (const item of langTranslations) {
     const keyName = item.keyInfo?.key || null;
     if (keyName && item.value) {
       translationMap[keyName] = item.value;
-    } else if (keyName) {
-      translationMap[keyName] = item.keyInfo?.defaultValue || keyName;
     }
   }
+
+  if (lang !== 'en' && Object.keys(translationMap).length === 0) {
+    logger.warn(`⚠️ No translation keys found for language '${lang}' — check TranslationKey collection`);
+  }
+
   return translationMap;
 }
 
