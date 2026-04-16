@@ -96,11 +96,17 @@ export class RecommendationEngine {
           .slice(0, limit);
       })();
       
-      const timeoutPromise = new Promise<RecommendationResult[]>((resolve) => 
-        setTimeout(() => resolve([]), 8000)
-      );
-      
-      const result = await Promise.race([computePromise, timeoutPromise]);
+      let timeoutHandle: NodeJS.Timeout | null = null;
+      const timeoutPromise = new Promise<RecommendationResult[]>((resolve) => {
+        timeoutHandle = setTimeout(() => resolve([]), 8000);
+      });
+
+      let result: RecommendationResult[];
+      try {
+        result = await Promise.race([computePromise, timeoutPromise]);
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
       settled = true;
       return result.length > 0 ? result : await this.getFallbackRecommendations(sourceStationId, limit);
         

@@ -20,6 +20,8 @@ const OG_WIDTH = 1200;
 const OG_HEIGHT = 630;
 const LOGO_SIZE = 300;
 
+const OG_MAX_DOWNLOAD_BYTES = 3 * 1024 * 1024; // 3MB hard cap for OG source images
+
 async function downloadImage(url: string): Promise<Buffer | null> {
   try {
     const response = await fetch(url, {
@@ -27,7 +29,35 @@ async function downloadImage(url: string): Promise<Buffer | null> {
       signal: AbortSignal.timeout(5000)
     });
     if (!response.ok) return null;
-    return Buffer.from(await response.arrayBuffer());
+
+    // Reject oversized downloads early via Content-Length
+    const lenHeader = response.headers.get('content-length');
+    if (lenHeader && parseInt(lenHeader, 10) > OG_MAX_DOWNLOAD_BYTES) {
+      return null;
+    }
+
+    // Stream with a hard byte cap so chunked responses can't blow RSS
+    const reader = (response.body as any)?.getReader?.();
+    if (!reader) {
+      const buf = Buffer.from(await response.arrayBuffer());
+      return buf.length > OG_MAX_DOWNLOAD_BYTES ? null : buf;
+    }
+
+    const chunks: Buffer[] = [];
+    let total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      const chunk = Buffer.from(value);
+      total += chunk.length;
+      if (total > OG_MAX_DOWNLOAD_BYTES) {
+        try { await reader.cancel(); } catch {}
+        return null;
+      }
+      chunks.push(chunk);
+    }
+    return Buffer.concat(chunks);
   } catch {
     return null;
   }

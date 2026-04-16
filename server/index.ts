@@ -1313,10 +1313,15 @@ app.use((req, res, next) => {
 
         if (externalMB > 300 || rssMB > RSS_WARNING_MB) {
           try {
-            const { forceCloseOldStreams, getStreamRegistrySize } = await import('./routes/stream-proxy-routes');
+            // Under real memory pressure, also force-close ALL streams (not just old ones).
+            // Old-only closure left newer streams accumulating external memory during sustained pressure.
+            const { forceCloseAllStreams, forceCloseOldStreams, getStreamRegistrySize } = await import('./routes/stream-proxy-routes');
             if (getStreamRegistrySize() > 0) {
-              const pressureTTL = externalMB > 500 ? 60_000 : 5 * 60_000;
-              forceCloseOldStreams(pressureTTL);
+              if (externalMB > 500) {
+                forceCloseAllStreams(`PRESSURE_ALL rss=${rssMB}MB ext=${externalMB}MB`);
+              } else {
+                forceCloseOldStreams(5 * 60_000);
+              }
             }
           } catch {}
         }

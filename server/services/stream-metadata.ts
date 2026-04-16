@@ -268,13 +268,17 @@ export class StreamMetadataService {
     }
 
     return new Promise((resolve) => {
-      const timeout = setTimeout(() => resolve(conn.metadata), 8000);
+      let settled = false;
+      const settle = (value: MetadataResult) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        clearInterval(check);
+        resolve(value);
+      };
+      const timeout = setTimeout(() => settle(conn.metadata), 8000);
       const check = setInterval(() => {
-        if (conn.nowPlaying) {
-          clearTimeout(timeout);
-          clearInterval(check);
-          resolve(conn.metadata);
-        }
+        if (conn.nowPlaying) settle(conn.metadata);
       }, 500);
     });
   }

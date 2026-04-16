@@ -29,12 +29,12 @@ async function generateAppleClientSecret(): Promise<string> {
 }
 
 export function registerUserAuthRoutes(app: Express, deps: any) {
-  const { requireAuth, generateAuthToken, passport } = deps;
+  const { requireAuth, requireAdmin, generateAuthToken, passport } = deps;
 
-  // USER MANAGEMENT API ENDPOINTS
+  // USER MANAGEMENT API ENDPOINTS — admin only (enumerable PII)
   
   // Get all users with filters and pagination
-  app.get("/api/users", async (req, res) => {
+  app.get("/api/users", requireAdmin, async (req, res) => {
     try {
       // logger.log(' Fetching users...');
       
@@ -178,8 +178,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }
   });
 
-  // Get user statistics summary
-  app.get("/api/users/stats", async (req, res) => {
+  // Get user statistics summary — admin only
+  app.get("/api/users/stats", requireAdmin, async (req, res) => {
     try {
       // logger.log(' Fetching user statistics...');
       
@@ -226,8 +226,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }
   });
 
-  // Get user activity/recent actions
-  app.get("/api/users/activity", async (req, res) => {
+  // Get user activity/recent actions — admin only
+  app.get("/api/users/activity", requireAdmin, async (req, res) => {
     try {
       // logger.log(' Fetching user activity...');
       
@@ -257,8 +257,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }
   });
 
-  // Get single user details with enhanced stats
-  app.get("/api/users/:userId", async (req, res) => {
+  // Get single user details with enhanced stats — admin only
+  // (public profile pages use a separate sanitized endpoint)
+  app.get("/api/users/:userId", requireAdmin, async (req, res) => {
     try {
       const { userId } = req.params;
       // logger.log(` Fetching user details for ${userId}...`);
@@ -311,31 +312,50 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
   });
 
   // Update user information
-  app.put("/api/users/:userId", async (req, res) => {
+  // Authorization: must be the owner OR an admin. Strict field allowlist; privileged fields (role, status)
+  // are admin-only. Prevents mass-assignment IDOR.
+  app.put("/api/users/:userId", requireAuth, async (req, res) => {
     try {
       const { userId } = req.params;
-      const updates = req.body;
-      // logger.log(` Updating user ${userId}...`);
+      const sessionUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
+      const isAdmin = !!(req.session as any)?.adminAuth;
 
-      // Remove sensitive fields from updates
-      delete updates.passwordHash;
-      delete updates.emailVerificationToken;
-      delete updates.resetPasswordToken;
+      if (!isAdmin && sessionUserId !== userId) {
+        return res.status(403).json({ error: 'Forbidden' });
+      }
+
+      const body = req.body || {};
+      // User-editable fields
+      const USER_FIELDS = ['fullName', 'username', 'email', 'avatar', 'location', 'isPublicProfile', 'preferences', 'bio'];
+      // Admin-only fields
+      const ADMIN_FIELDS = ['role', 'status', 'emailVerified'];
+
+      const updates: any = {};
+      for (const f of USER_FIELDS) {
+        if (body[f] !== undefined) updates[f] = body[f];
+      }
+      if (isAdmin) {
+        for (const f of ADMIN_FIELDS) {
+          if (body[f] !== undefined) updates[f] = body[f];
+        }
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No updatable fields provided' });
+      }
 
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         { ...updates, updatedAt: new Date() },
-        { new: true, select: '-passwordHash -emailVerificationToken -resetPasswordToken' }
+        { new: true, select: '-passwordHash -emailVerificationToken -resetPasswordToken -resetPasswordExpires' }
       ).lean();
 
       if (!updatedUser) {
         return res.status(404).json({ error: 'User not found' });
       }
 
-      // logger.log(` User ${userId} updated successfully`);
       res.json(updatedUser);
     } catch (error) {
-      // console.error('Error updating user:', error);
       res.status(500).json({ error: 'Failed to update user' });
     }
   });
@@ -352,7 +372,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
   
   // Social Authentication Routes
   // Get user's social connections (followers and following)
-  app.get("/api/user/social/:email", async (req, res) => {
+  // Requires authentication to avoid enumeration via email
+  app.get("/api/user/social/:email", requireAuth, async (req, res) => {
     try {
       const { email } = req.params;
       
@@ -1250,13 +1271,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         return res.status(400).json({ success: false, error: 'Token is required' });
       }
       
-      const authToken = await AuthToken.findOne({ token, isActive: true });
+      const authToken = await AuthToken.findOne({ token, isRevoked: false });
       if (!authToken) {
         return res.status(401).json({ success: false, error: 'Invalid or expired token' });
       }
       
       if (authToken.expiresAt && new Date(authToken.expiresAt) < new Date()) {
-        authToken.isActive = false;
+        authToken.isRevoked = true;
         await authToken.save();
         return res.status(401).json({ success: false, error: 'Token expired' });
       }
@@ -1439,10 +1460,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       const crypto = await import('crypto');
       const resetToken = crypto.default.randomBytes(32).toString('hex');
+      const resetTokenHash = crypto.default.createHash('sha256').update(resetToken).digest('hex');
       const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
 
-      user.resetPasswordToken = resetToken;
-      user.resetPasswordExpiry = resetTokenExpiry;
+      // Store only the hash in DB — original token goes out via email only
+      user.resetPasswordToken = resetTokenHash;
+      (user as any).resetPasswordExpires = resetTokenExpiry;
       await user.save();
 
       const sgMail = (await import('@sendgrid/mail')).default;
@@ -1487,9 +1510,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         return res.status(400).json({ error: 'Invalid password' });
       }
 
+      const crypto = await import('crypto');
+      const tokenHash = crypto.default.createHash('sha256').update(String(token)).digest('hex');
+
       const user = await User.findOne({
-        resetPasswordToken: token,
-        resetPasswordExpiry: { $gt: new Date() }
+        resetPasswordToken: tokenHash,
+        resetPasswordExpires: { $gt: new Date() }
       });
 
       if (!user) {
@@ -1499,7 +1525,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const bcrypt = await import('bcrypt');
       user.passwordHash = await bcrypt.default.hash(newPassword, 12);
       user.resetPasswordToken = undefined;
-      user.resetPasswordExpiry = undefined;
+      (user as any).resetPasswordExpires = undefined;
       await user.save();
 
       res.json({ message: 'Password has been reset successfully.' });

@@ -219,7 +219,8 @@ function scheduleReconnect(reason: string) {
   if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) return;
 
   reconnectAttempt++;
-  const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempt, 6)), MAX_BACKOFF_MS);
+  // attempt=1 → 1s, 2 → 2s, 3 → 4s, … capped at 60s
+  const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempt - 1, 6)), MAX_BACKOFF_MS);
   logger.error(`🔁 MongoDB reconnect scheduled in ${delay}ms (attempt ${reconnectAttempt}, reason: ${reason})`);
 
   reconnectTimer = setTimeout(async () => {

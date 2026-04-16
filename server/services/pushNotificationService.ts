@@ -59,10 +59,24 @@ async function sendExpoNotifications(tokens: string[], payload: NotificationPayl
       },
     };
 
-    const req = https.request(options, (res) => {
+    const MAX_RESPONSE_BYTES = 256 * 1024; // 256KB cap on response body
+    const REQUEST_TIMEOUT_MS = 10_000;
+    const req = https.request({ ...options, timeout: REQUEST_TIMEOUT_MS }, (res) => {
       let data = '';
-      res.on('data', chunk => { data += chunk; });
+      let total = 0;
+      let aborted = false;
+      res.on('data', chunk => {
+        if (aborted) return;
+        total += chunk.length;
+        if (total > MAX_RESPONSE_BYTES) {
+          aborted = true;
+          try { res.destroy(); } catch {}
+          return resolve(0);
+        }
+        data += chunk;
+      });
       res.on('end', () => {
+        if (aborted) return;
         try {
           const result = JSON.parse(data);
           const successCount = Array.isArray(result.data)
@@ -73,8 +87,10 @@ async function sendExpoNotifications(tokens: string[], payload: NotificationPayl
           resolve(0);
         }
       });
+      res.on('error', () => { if (!aborted) resolve(0); });
     });
     req.on('error', () => resolve(0));
+    req.on('timeout', () => { try { req.destroy(); } catch {} resolve(0); });
     req.write(body);
     req.end();
   });

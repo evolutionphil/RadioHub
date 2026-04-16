@@ -534,8 +534,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               'Icy-MetaData': '0',
               'Connection': 'close'
             },
-            insecureHTTPParser: true,
-            rejectUnauthorized: false
+            insecureHTTPParser: true
           }, (proxyRes) => {
             if (proxyRes.statusCode && proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
               logger.log(`🔀 Shoutcast redirect (${proxyRes.statusCode}): ${proxyRes.headers.location}`);

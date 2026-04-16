@@ -14,9 +14,14 @@ export interface LocationData {
 export class GeolocationService {
   // Get location data from IP address
   async getLocationFromIP(ip: string): Promise<LocationData | null> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 4000);
     try {
       // Use ip-api.com (free tier, no API key required) - HTTP endpoint works without auth
-      const response = await fetch(`http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,city,lat,lon,timezone,isp`);
+      const response = await fetch(
+        `http://ip-api.com/json/${ip}?fields=status,message,country,countryCode,region,city,lat,lon,timezone,isp`,
+        { signal: controller.signal as any }
+      );
       const data = await response.json() as any;
       
       if (data.status === 'success') {
@@ -36,6 +41,8 @@ export class GeolocationService {
     } catch (error) {
       // Error getting location from IP
       return null;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 

@@ -315,6 +315,7 @@ Allow: /api/genres
 Allow: /api/translations
 Allow: /api/location
 Allow: /api/advertisements
+Allow: /api/og-image
 Disallow: /api/
 Disallow: /*/admin/
 Disallow: /*/admin
@@ -327,7 +328,6 @@ Disallow: /*/analytics
 Disallow: /*/search*
 Disallow: /*/messages
 Disallow: /*/profile
-Disallow: /og-image
 
 User-agent: Bingbot
 Crawl-delay: 5
@@ -441,7 +441,9 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
 
-      const mainPages = ['', '/stations', '/genres', '/countries', '/about', '/regions',
+      // NOTE: '/countries' is not a real route — use '/regions' instead. Keeping /countries here
+      // creates soft-404 entries in Google Search Console.
+      const mainPages = ['', '/stations', '/genres', '/about', '/regions',
         '/regions/europe', '/regions/asia', '/regions/africa',
         '/regions/north-america', '/regions/south-america', '/regions/oceania'];
 

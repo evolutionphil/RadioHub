@@ -299,6 +299,7 @@ export class SeoRenderer {
     
     // Enhanced page type detection with more specific routing
     const stationCheck = isStationPath(cleanPath);
+    let stationNotFound = false;
     if (stationCheck.isStation) {
       pageType = 'station';
       // Extract station slug from path
@@ -306,15 +307,16 @@ export class SeoRenderer {
       if (stationSlug) {
         try {
           stationData = await withSignal(Station.findOne({ slug: stationSlug }).lean(), signal);
-          
+
           if (!stationData && stationSlug.match(/^[0-9a-fA-F]{24}$/)) {
             stationData = await withSignal(Station.findById(stationSlug).lean(), signal);
           }
-          
-          // DEFENSIVE GUARD: If station not found, create minimal placeholder data
-          // This prevents 500 errors when SEO tag generation expects station data
+
+          // If station truly doesn't exist, mark notFound and synthesize minimal data so SSR
+          // can still render a 404 body (avoids 500). Caller (index-web.ts) maps this to HTTP 404,
+          // preventing Google soft-404 spam signals.
           if (!stationData) {
-            // Create minimal station data from slug for SEO purposes
+            stationNotFound = true;
             const stationName = stationSlug
               .replace(/-/g, ' ')
               .replace(/\b\w/g, (l: string) => l.toUpperCase());
@@ -326,11 +328,13 @@ export class SeoRenderer {
               tags: '',
               url: '',
               favicon: '',
-              description: ''
+              description: '',
+              notFound: true,
             };
           }
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
+          // DB error — don't mark notFound (transient); still render placeholder
           const stationName = stationSlug
             .replace(/-/g, ' ')
             .replace(/\b\w/g, (l: string) => l.toUpperCase());
@@ -458,7 +462,7 @@ export class SeoRenderer {
       seoTags,
       translations,
       urlTranslations,
-      pageData: { pageType, station: stationData, seoTags, ...additionalData, additionalData }
+      pageData: { pageType, station: stationData, seoTags, ...additionalData, additionalData, notFound: stationNotFound || false }
     };
     
     performanceCache.setPageData(cacheKey, pageData);

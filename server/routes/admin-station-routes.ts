@@ -630,8 +630,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const blacklistedStation = await BlacklistedStation.findById(blacklistId);
       if (!blacklistedStation) return res.status(404).json({ error: 'Blacklisted station not found' });
       
+      // Station schema uses lowercase `stationuuid` — matching BlacklistedStation's `stationUuid` field
       const existingStation = await Station.findOne({
-        $or: [ { stationUuid: blacklistedStation.stationUuid }, { url: blacklistedStation.url } ]
+        $or: [ { stationuuid: blacklistedStation.stationUuid }, { url: blacklistedStation.url } ]
       });
       if (existingStation) return res.status(400).json({ error: 'Station already exists in database' });
       
@@ -643,7 +644,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             if (radioBrowserData && radioBrowserData.length > 0) {
               const stationData = radioBrowserData[0];
               const restoredStation = new Station({
-                stationUuid: stationData.stationuuid,
+                stationuuid: stationData.stationuuid,
                 name: stationData.name || blacklistedStation.name,
                 url: stationData.url || blacklistedStation.url,
                 homepage: stationData.homepage,
@@ -681,7 +682,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       } catch (radioBrowserError: any) {}
       
       const restoredStation = new Station({
-        stationUuid: blacklistedStation.stationUuid,
+        stationuuid: blacklistedStation.stationUuid,
         name: blacklistedStation.name,
         url: blacklistedStation.url,
         tags: [], country: 'Unknown', language: 'Unknown', votes: 0, lastCheckOk: false, clickCount: 0, clickTrend: 0, sslError: false

@@ -364,15 +364,15 @@ app.get('/admin-login', (_req, res) => {
 const isReplit = !!process.env.REPLIT_DOMAINS;
 const useSecureCookies = process.env.NODE_ENV === 'production' || isReplit;
 
-if (process.env.NODE_ENV === 'production' && !process.env.SESSION_SECRET) {
-  console.error('🚨 FATAL: SESSION_SECRET environment variable is required in production');
+if ((process.env.NODE_ENV === 'production' || isReplit) && !process.env.SESSION_SECRET) {
+  console.error('🚨 FATAL: SESSION_SECRET environment variable is required in production/Replit');
   process.exit(1);
 }
 
 const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
 
 const sessionConfig: session.SessionOptions = {
-  secret: process.env.SESSION_SECRET || 'radio-station-secret-key-2025',
+  secret: process.env.SESSION_SECRET || 'radio-station-dev-only-secret-do-not-use-in-prod',
   resave: false,
   saveUninitialized: false,
   cookie: {

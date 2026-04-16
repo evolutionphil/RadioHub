@@ -596,10 +596,15 @@ app.use('/api/image', (_req, res) => {
       if (!responded && !res.headersSent) {
         responded = true;
         clearTimeout(reqTimeout);
-        performanceCache.setSeoHtml(cleanUrl, htmlContent);
-        res.status(200).set({
+        const stationNotFound = !!seoData.pageData?.notFound;
+        if (!stationNotFound) {
+          performanceCache.setSeoHtml(cleanUrl, htmlContent);
+        }
+        res.status(stationNotFound ? 404 : 200).set({
           'Content-Type': 'text/html',
-          'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
+          'Cache-Control': stationNotFound
+            ? 'no-store'
+            : 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
           'X-SEO-Cache': 'MISS'
         }).send(htmlContent);
       }

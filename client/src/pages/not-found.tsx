@@ -125,7 +125,7 @@ export default function NotFound() {
   const quickLinks = [
     { label: "Home", icon: Home, href: "/", color: "#FF4199" },
     { label: "Genres", icon: Music, href: "/genres", color: "#a855f7" },
-    { label: "Countries", icon: Globe, href: "/countries", color: "#3b82f6" },
+    { label: "Countries", icon: Globe, href: "/regions", color: "#3b82f6" },
     { label: "Popular", icon: Radio, href: "/?tab=popular", color: "#10b981" },
   ];
 

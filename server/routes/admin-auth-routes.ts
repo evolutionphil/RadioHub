@@ -9,14 +9,27 @@ export function registerAdminAuthRoutes(app: Express, deps: any) {
     try {
       const { username, password } = req.body;
 
-      const ADMIN_USERNAME = process.env.ADMIN_USERNAME || "admin";
-      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
+      const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
+      const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+      if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+        logger.error('🚨 ADMIN_USERNAME / ADMIN_PASSWORD env vars are not set — admin login disabled');
+        return res.status(503).json({ error: 'Admin authentication is not configured' });
+      }
 
       if (!username || !password) {
         return res.status(400).json({ error: "Username and password required" });
       }
 
-      if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+      // Constant-time comparison (avoid string !== timing side-channel)
+      const crypto = await import('crypto');
+      const expectU = Buffer.from(ADMIN_USERNAME);
+      const gotU = Buffer.from(String(username));
+      const expectP = Buffer.from(ADMIN_PASSWORD);
+      const gotP = Buffer.from(String(password));
+      const uOk = expectU.length === gotU.length && crypto.default.timingSafeEqual(expectU, gotU);
+      const pOk = expectP.length === gotP.length && crypto.default.timingSafeEqual(expectP, gotP);
+      if (!uOk || !pOk) {
         return res.status(401).json({ error: "Invalid admin credentials" });
       }
 

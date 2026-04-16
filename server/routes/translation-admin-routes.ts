@@ -2359,7 +2359,7 @@ ${keysText}`;
   });
 
   // Admin endpoint to fix specific user with debug info
-  app.post("/api/admin/fix-user/:userId", async (req, res) => {
+  app.post("/api/admin/fix-user/:userId", requireAdmin, async (req, res) => {
     try {
       const { userId } = req.params;
       const user = await User.findById(userId);
