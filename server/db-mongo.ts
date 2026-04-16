@@ -209,50 +209,106 @@ async function seedDefaultLanguages() {
   }
 }
 
+let reconnectTimer: NodeJS.Timeout | null = null;
+let reconnectAttempt = 0;
+let reconnectInProgress = false;
+const MAX_BACKOFF_MS = 60_000;
+
+function scheduleReconnect(reason: string) {
+  if (reconnectTimer || reconnectInProgress) return;
+  if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) return;
+
+  reconnectAttempt++;
+  const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempt, 6)), MAX_BACKOFF_MS);
+  logger.error(`🔁 MongoDB reconnect scheduled in ${delay}ms (attempt ${reconnectAttempt}, reason: ${reason})`);
+
+  reconnectTimer = setTimeout(async () => {
+    reconnectTimer = null;
+    if (mongoose.connection.readyState === 1 || mongoose.connection.readyState === 2) {
+      reconnectAttempt = 0;
+      return;
+    }
+    reconnectInProgress = true;
+    try {
+      if (mongoose.connection.readyState !== 0) {
+        try { await mongoose.disconnect(); } catch {}
+      }
+      await doConnect();
+      logger.log(`✅ MongoDB: Reconnect succeeded on attempt ${reconnectAttempt}`);
+      reconnectAttempt = 0;
+    } catch (err: any) {
+      logger.error(`❌ MongoDB reconnect attempt ${reconnectAttempt} failed: ${err?.message || err}`);
+      reconnectInProgress = false;
+      scheduleReconnect('retry-after-failure');
+      return;
+    }
+    reconnectInProgress = false;
+  }, delay);
+}
+
+async function doConnect() {
+  const isProd = process.env.NODE_ENV === 'production';
+  await mongoose.connect(MONGODB_URI, {
+    maxPoolSize: isProd ? 25 : 10,
+    minPoolSize: isProd ? 5 : 2,
+    serverSelectionTimeoutMS: isProd ? 30000 : 15000,
+    socketTimeoutMS: isProd ? 45000 : 30000,
+    connectTimeoutMS: isProd ? 30000 : 15000,
+    bufferCommands: true,
+    maxIdleTimeMS: 30000,
+    family: 4,
+    heartbeatFrequencyMS: 10000,
+    retryWrites: true,
+    retryReads: true,
+    w: 'majority',
+  });
+}
+
+export function getMongoHealth() {
+  return {
+    readyState: mongoose.connection.readyState,
+    isConnected,
+    reconnectAttempt,
+    reconnectScheduled: reconnectTimer !== null,
+  };
+}
+
 export async function connectToMongoDB() {
-  if (isConnected) {
+  if (isConnected && mongoose.connection.readyState === 1) {
     return;
   }
 
-  const isProd = process.env.NODE_ENV === 'production';
+  if (!listenersRegistered) {
+    listenersRegistered = true;
+    mongoose.connection.on('error', (err) => {
+      logger.error('❌ MongoDB connection error (runtime):', err.message);
+    });
+    mongoose.connection.on('disconnected', () => {
+      isConnected = false;
+      logger.error('⚠️ MongoDB disconnected — scheduling app-level reconnect');
+      scheduleReconnect('disconnected-event');
+    });
+    mongoose.connection.on('reconnected', () => {
+      isConnected = true;
+      reconnectAttempt = 0;
+      logger.log('✅ MongoDB reconnected successfully');
+    });
+    mongoose.connection.on('connected', () => {
+      isConnected = true;
+      reconnectAttempt = 0;
+    });
+  }
 
   try {
-    await mongoose.connect(MONGODB_URI, {
-      maxPoolSize: isProd ? 25 : 10,
-      minPoolSize: isProd ? 5 : 2,
-      serverSelectionTimeoutMS: isProd ? 30000 : 15000,
-      socketTimeoutMS: isProd ? 45000 : 30000,
-      connectTimeoutMS: isProd ? 30000 : 15000,
-      bufferCommands: true,
-      maxIdleTimeMS: 30000,
-      family: 4,
-      heartbeatFrequencyMS: 10000,
-      retryWrites: true,
-      retryReads: true,
-      w: 'majority',
-    });
+    await doConnect();
     isConnected = true;
+    reconnectAttempt = 0;
     logger.log('✅ MongoDB: Connected successfully');
-
-    if (!listenersRegistered) {
-      listenersRegistered = true;
-      mongoose.connection.on('error', (err) => {
-        logger.error('❌ MongoDB connection error (runtime):', err.message);
-      });
-      mongoose.connection.on('disconnected', () => {
-        isConnected = false;
-        logger.error('⚠️ MongoDB disconnected — Mongoose will auto-reconnect');
-      });
-      mongoose.connection.on('reconnected', () => {
-        isConnected = true;
-        logger.log('✅ MongoDB reconnected successfully');
-      });
-    }
-    
     await seedDefaultLanguages();
-  } catch (error) {
-    console.error('❌ MongoDB connection error:', error);
-    logger.log('💡 MongoDB: Using in-memory fallback for development');
+  } catch (error: any) {
+    console.error('❌ MongoDB connection error:', error?.message || error);
+    logger.log('💡 MongoDB: Scheduling reconnect…');
+    scheduleReconnect('initial-connect-failed');
   }
 }
 

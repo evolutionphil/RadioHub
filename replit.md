@@ -69,8 +69,10 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Background Audio Protection**: Multi-layer system to prevent browser audio suspension.
 - **Image Optimization**: Server-side image resizing and WebP conversion with Sharp, stored on S3.
 - **Memory Management**: Multi-layer OOM prevention using RSS monitoring, periodic GC, jemalloc, optimized HTTP server settings, and stream-aware memory pressure response (force-close active streams when ext>300MB or RSS>warning).
-- **Self-Watchdog**: API server pings its own `/healthz` every 30s. After 3 consecutive failures, auto-restarts via SIGTERM. Prevents "zombie" state where process runs but stops responding to HTTP.
+- **Self-Watchdog**: Both API and Web servers ping their own `/healthz` every 30s. After 3 consecutive failures, auto-restarts via SIGTERM. Additionally, watchdog monitors `mongoose.connection.readyState` — if MongoDB is not `connected` (state !== 1) for >3 minutes, forces restart. Prevents "zombie" state where process runs but DB is permanently disconnected.
 - **MongoDB Circuit Breaker**: API requests return 503 when MongoDB is disconnected/disconnecting, preventing request queue buildup during reconnection.
+- **MongoDB App-Level Reconnect**: `server/db-mongo.ts` implements explicit exponential-backoff reconnect (1s→2s→4s→…→60s max) on `disconnected` event or failed initial connect. Does not rely solely on Mongoose's passive auto-reconnect. `getMongoHealth()` exposes `{ readyState, isConnected, reconnectAttempt, reconnectScheduled }` for diagnostics.
+- **Fail-Fast Exit**: `uncaughtException` and non-transient `unhandledRejection` trigger SIGTERM-based graceful shutdown (fail-fast) instead of log-and-continue. Transient MongoDB errors (MongoNetworkError, MongoServerSelectionError, ECONNRESET, ETIMEDOUT, ENOTFOUND, server selection) are logged but NOT fatal — they are handled by the reconnect loop.
 - **SEO Render Protection**: Limits concurrent SSR, timeouts, bot rate limiting, event loop lag monitoring, and robust error handling for SSR failures.
 - **Subscription System**: Supports various plans (`remove_ads`, `premium_monthly`, `premium_yearly`, `premium_lifetime`) with feature matrices and robust API for purchase reporting, status checking, and admin overrides.
 

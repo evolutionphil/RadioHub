@@ -24,14 +24,33 @@ const app = express();
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
+let uncaughtExitScheduled = false;
+function scheduleFatalExit(label: string) {
+  if (uncaughtExitScheduled) return;
+  uncaughtExitScheduled = true;
+  console.error(`🚨 ${label} — scheduling fail-fast exit in 1s for clean restart`);
+  setTimeout(() => {
+    try { process.kill(process.pid, 'SIGTERM'); } catch { process.exit(1); }
+    setTimeout(() => process.exit(1), 10_000).unref();
+  }, 1000).unref();
+}
+
 process.on('uncaughtException', (err) => {
-  console.error('🚨 UNCAUGHT EXCEPTION (process survived):', err.message);
+  console.error('🚨 UNCAUGHT EXCEPTION:', err.message);
   console.error(err.stack?.split('\n').slice(0, 5).join('\n'));
+  scheduleFatalExit('UNCAUGHT_EXCEPTION');
 });
 process.on('unhandledRejection', (reason: any) => {
   const msg = reason?.message || reason || 'unknown';
-  console.error('🚨 UNHANDLED REJECTION (process survived):', msg);
+  const msgStr = typeof msg === 'string' ? msg : '';
+  const isMongoTransient = /MongoNetworkError|MongoServerSelectionError|ECONNRESET|ETIMEDOUT|ENOTFOUND|server selection/i.test(msgStr);
+  if (isMongoTransient) {
+    console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msgStr);
+    return;
+  }
+  console.error('🚨 UNHANDLED REJECTION:', msg);
   if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
+  scheduleFatalExit('UNHANDLED_REJECTION');
 });
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000';
@@ -609,9 +628,11 @@ app.use('/api/image', (_req, res) => {
     logger.log(`🔗 Backend API URL: ${BACKEND_API_URL}`);
 
     let watchdogFailures = 0;
+    let mongoDownSince: number | null = null;
     const WATCHDOG_MAX_FAILURES = 3;
     const WATCHDOG_INTERVAL = 30_000;
     const WATCHDOG_TIMEOUT = 5_000;
+    const MONGO_DOWN_RESTART_MS = 3 * 60_000;
 
     const watchdogTimer = setInterval(async () => {
       if (isShuttingDown) { clearInterval(watchdogTimer); return; }
@@ -637,6 +658,25 @@ app.use('/api/image', (_req, res) => {
             process.kill(process.pid, 'SIGTERM');
           }
         }
+
+        try {
+          const mongooseModule = (await import('mongoose')).default;
+          const state = mongooseModule.connection.readyState;
+          if (state === 1) {
+            if (mongoDownSince !== null) {
+              console.log(`🐕 Watchdog: MongoDB recovered after ${Math.round((Date.now() - mongoDownSince) / 1000)}s`);
+              mongoDownSince = null;
+            }
+          } else {
+            if (mongoDownSince === null) mongoDownSince = Date.now();
+            const downFor = Date.now() - mongoDownSince;
+            console.error(`🐕 Watchdog: MongoDB readyState=${state}, down for ${Math.round(downFor / 1000)}s`);
+            if (downFor >= MONGO_DOWN_RESTART_MS) {
+              console.error(`🐕 Watchdog: MongoDB down >${MONGO_DOWN_RESTART_MS / 1000}s — forcing restart`);
+              process.kill(process.pid, 'SIGTERM');
+            }
+          }
+        } catch {}
       } catch (err: any) {
         watchdogFailures++;
         console.error(`🐕 Watchdog error: ${err.message} (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
