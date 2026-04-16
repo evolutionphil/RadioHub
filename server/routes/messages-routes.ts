@@ -11,12 +11,49 @@ import { logger } from "../utils/logger";
 
 // ─── In-memory WS ticket store (userId, expires in 60s) ───────────────────────
 const wsTickets = new Map<string, { userId: string; expiresAt: number }>();
+// Per-user live ticket tracking — revoke previous ticket when a user requests a new one
+// (bounds memory at O(users) instead of O(ticket requests/minute)).
+const userActiveTicket = new Map<string, string>();
+// Hard cap to protect against malicious auth-then-request-ticket loops from many accounts.
+const WS_TICKETS_MAX = 20_000;
 
-// Cleanup expired tickets every 2 minutes
+// Single helper: always delete ticket from both maps atomically to keep lifecycles symmetric.
+function deleteWsTicket(ticket: string): void {
+  const data = wsTickets.get(ticket);
+  if (!data) return;
+  wsTickets.delete(ticket);
+  if (userActiveTicket.get(data.userId) === ticket) {
+    userActiveTicket.delete(data.userId);
+  }
+}
+
+function issueWsTicket(userId: string): string {
+  // Revoke any previous ticket for this user (only one pending ticket at a time)
+  const prior = userActiveTicket.get(userId);
+  if (prior) deleteWsTicket(prior);
+
+  // Evict oldest if over hard cap (Map iteration order = insertion order).
+  // Use symmetric deletion so userActiveTicket's reverse mapping is also cleared.
+  if (wsTickets.size >= WS_TICKETS_MAX) {
+    const oldest = wsTickets.keys().next().value;
+    if (oldest !== undefined) deleteWsTicket(oldest);
+  }
+
+  const ticket = crypto.randomBytes(32).toString("hex");
+  wsTickets.set(ticket, { userId, expiresAt: Date.now() + 60_000 });
+  userActiveTicket.set(userId, ticket);
+  return ticket;
+}
+
+// Cleanup expired tickets every 2 minutes — also sweeps orphaned userActiveTicket entries
+// whose ticket no longer exists in wsTickets (defensive invariant cleanup).
 setInterval(() => {
   const now = Date.now();
   for (const [ticket, data] of wsTickets) {
-    if (data.expiresAt < now) wsTickets.delete(ticket);
+    if (data.expiresAt < now) deleteWsTicket(ticket);
+  }
+  for (const [uid, ticket] of userActiveTicket) {
+    if (!wsTickets.has(ticket)) userActiveTicket.delete(uid);
   }
 }, 120_000);
 
@@ -43,8 +80,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   app.get("/api/messages/ws-ticket", requireAuth, (req, res) => {
     const userId = getSessionUserId(req);
     if (!userId) return res.status(401).json({ error: "Not authenticated" });
-    const ticket = crypto.randomBytes(32).toString("hex");
-    wsTickets.set(ticket, { userId, expiresAt: Date.now() + 60_000 });
+    const ticket = issueWsTicket(userId);
     res.json({ ticket });
   });
 
@@ -427,14 +463,14 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
 
     const ticketData = wsTickets.get(ticket);
     if (!ticketData || ticketData.expiresAt < Date.now()) {
-      wsTickets.delete(ticket);
+      deleteWsTicket(ticket);
       socket.send(JSON.stringify({ type: "error", message: "Invalid or expired ticket" }));
       socket.close(4002, "Invalid ticket");
       return;
     }
 
     const userId = ticketData.userId;
-    wsTickets.delete(ticket);
+    deleteWsTicket(ticket);
 
     const client = chatService.addClient(userId, socket);
     broadcastOnlineStatus(userId, true);

@@ -380,6 +380,9 @@ app.use('/api/image', (_req, res) => {
     const pathname = new URL(req.url || '', `http://${req.headers.host}`).pathname;
     if (pathname.startsWith('/ws/')) {
       wsProxy.upgrade!(req, socket, head);
+    } else {
+      // Unknown WS path — destroy socket to prevent leak (otherwise TCP stays open indefinitely).
+      try { socket.destroy(); } catch {}
     }
   });
 

@@ -324,10 +324,9 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       let playlistType: string = 'direct';
       
       if (isPLS || isM3U) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
         try {
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 10000);
-          
           const response = await fetch(url, {
             signal: controller.signal,
             headers: {
@@ -335,8 +334,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               'Accept': '*/*'
             }
           });
-          clearTimeout(timeoutId);
-          
+
           if (response.ok) {
             const content = await response.text();
             
@@ -364,6 +362,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           }
         } catch (e) {
           logger.log(`⚠️ Playlist fetch failed for ${url}:`, e);
+        } finally {
+          clearTimeout(timeoutId);
         }
       } else if (isM3U8) {
         playlistType = 'hls';
@@ -514,8 +514,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
         const makeShoutcastRequest = (targetUrl: string, redirectCount = 0): void => {
           if (redirectCount > 5) {
-            if (shoutcastMaxTimer) { clearTimeout(shoutcastMaxTimer); shoutcastMaxTimer = null; }
             if (!res.headersSent) res.status(500).json({ error: 'Too many redirects' });
+            destroyActiveProxy();
             return;
           }
           
@@ -619,18 +619,21 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       const controller = new AbortController();
       const connectTimeoutId = setTimeout(() => controller.abort(), 30000);
 
-      const streamResponse = await fetch(originalUrl, {
-        signal: controller.signal,
-        redirect: 'follow',
-        headers: {
-          'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Radio/1.0)',
-          'Accept': req.headers['accept'] || 'audio/*, application/vnd.apple.mpegurl, */*',
-          'Connection': 'close',
-          ...(req.headers.range && { 'Range': req.headers.range as string })
-        }
-      });
-
-      clearTimeout(connectTimeoutId);
+      let streamResponse;
+      try {
+        streamResponse = await fetch(originalUrl, {
+          signal: controller.signal,
+          redirect: 'follow',
+          headers: {
+            'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Radio/1.0)',
+            'Accept': req.headers['accept'] || 'audio/*, application/vnd.apple.mpegurl, */*',
+            'Connection': 'close',
+            ...(req.headers.range && { 'Range': req.headers.range as string })
+          }
+        });
+      } finally {
+        clearTimeout(connectTimeoutId);
+      }
 
       if (!streamResponse.ok) {
         throw new Error(`Stream fetch failed: ${streamResponse.status}`);

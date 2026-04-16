@@ -88,6 +88,10 @@ export class RadioBrowserService {
             'User-Agent': this.userAgent,
           },
           timeout: 30000, // Increased timeout for large station batches
+          // Hard cap response size (prevents OOM on malicious/oversized upstream responses).
+          // Full station list is ~50MB; 100MB gives headroom without allowing runaway payloads.
+          maxContentLength: 100 * 1024 * 1024,
+          maxBodyLength: 100 * 1024 * 1024,
         });
         
         // Rotate to next server for next request (load balancing)

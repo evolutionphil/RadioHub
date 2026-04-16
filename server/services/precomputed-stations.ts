@@ -99,18 +99,32 @@ export class PrecomputedStationsService {
   }
 
   private static resolvedCache = new Map<string, string>();
+  private static readonly RESOLVED_CACHE_MAX = 500;
+
+  private static setResolvedCache(key: string, value: string): void {
+    // Bounded LRU-lite: evict oldest when full (Map preserves insertion order)
+    if (this.resolvedCache.size >= this.RESOLVED_CACHE_MAX) {
+      const oldest = this.resolvedCache.keys().next().value;
+      if (oldest !== undefined) this.resolvedCache.delete(oldest);
+    }
+    this.resolvedCache.set(key, value);
+  }
 
   private static async resolveCountryName(countryName: string): Promise<string> {
     const cacheKey = countryName.toLowerCase();
     if (this.resolvedCache.has(cacheKey)) {
-      return this.resolvedCache.get(cacheKey)!;
+      const val = this.resolvedCache.get(cacheKey)!;
+      // Refresh recency: re-insert to mark as most-recent
+      this.resolvedCache.delete(cacheKey);
+      this.resolvedCache.set(cacheKey, val);
+      return val;
     }
 
     const allCountries = await this.getAllCountriesFromDB();
     
     const exactMatch = allCountries.find(c => c.toLowerCase() === cacheKey);
     if (exactMatch) {
-      this.resolvedCache.set(cacheKey, exactMatch);
+      this.setResolvedCache(cacheKey, exactMatch);
       return exactMatch;
     }
 
@@ -118,7 +132,7 @@ export class PrecomputedStationsService {
     for (const alias of aliases) {
       const aliasMatch = allCountries.find(c => c.toLowerCase() === alias.toLowerCase());
       if (aliasMatch) {
-        this.resolvedCache.set(cacheKey, aliasMatch);
+        this.setResolvedCache(cacheKey, aliasMatch);
         return aliasMatch;
       }
     }
@@ -127,7 +141,7 @@ export class PrecomputedStationsService {
       if (aliasList.some(a => a.toLowerCase() === cacheKey)) {
         const keyMatch = allCountries.find(c => c.toLowerCase() === key.toLowerCase());
         if (keyMatch) {
-          this.resolvedCache.set(cacheKey, keyMatch);
+          this.setResolvedCache(cacheKey, keyMatch);
           return keyMatch;
         }
       }
@@ -138,11 +152,11 @@ export class PrecomputedStationsService {
       { country: { $regex: new RegExp(`^${escapedName}$`, 'i') } }
     ).select('country').lean() as any;
     if (dbCountry?.country) {
-      this.resolvedCache.set(cacheKey, dbCountry.country);
+      this.setResolvedCache(cacheKey, dbCountry.country);
       return dbCountry.country;
     }
 
-    this.resolvedCache.set(cacheKey, countryName);
+    this.setResolvedCache(cacheKey, countryName);
     return countryName;
   }
 

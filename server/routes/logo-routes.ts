@@ -40,6 +40,22 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     error?: string;
     results: StationResult[];
   }>();
+
+  // Evict terminal-state jobs older than 1 hour — prevents map from growing forever
+  // across many admin bulk-processing invocations. Also caps per-job results array
+  // size at 2000 so a single job cannot use unbounded memory.
+  const LOGO_JOB_RESULTS_MAX = 2000;
+  const LOGO_JOB_RETENTION_MS = 60 * 60 * 1000;
+  setInterval(() => {
+    const now = Date.now();
+    for (const [jobId, job] of logoProcessingJobs) {
+      const terminal = job.status === 'completed' || job.status === 'failed' || job.status === 'cancelled';
+      const completedAt = job.completedAt ? job.completedAt.getTime() : 0;
+      if (terminal && completedAt > 0 && (now - completedAt) > LOGO_JOB_RETENTION_MS) {
+        logoProcessingJobs.delete(jobId);
+      }
+    }
+  }, 10 * 60 * 1000).unref();
   
   // Get logo processing statistics
   app.get("/api/admin/logos/stats", requireAdmin, async (req, res) => {
@@ -247,7 +263,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                   if (job.results.length >= MAX_RECENT_RESULTS) {
                     job.results.shift();
                   }
-                  job.results.push(result.value);
+                  job.results.push(result.value); if (job.results.length > LOGO_JOB_RESULTS_MAX) job.results.shift();
                   if (result.value.status === 'success') {
                     totalSuccessful++;
                     job.successful = totalSuccessful;
@@ -431,7 +447,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                   if (job.results.length >= MAX_RECENT_RESULTS) {
                     job.results.shift();
                   }
-                  job.results.push(result.value);
+                  job.results.push(result.value); if (job.results.length > LOGO_JOB_RESULTS_MAX) job.results.shift();
                   if (result.value.status === 'success') {
                     totalSuccessful++;
                     job.successful = totalSuccessful;

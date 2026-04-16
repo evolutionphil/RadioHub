@@ -15,6 +15,22 @@ class ChatService {
   private activeConversations = new Map<string, string>();
 
   private static MAX_CONNECTIONS_PER_USER = 5;
+  // If a client can't keep up, drop the connection instead of buffering unbounded frames in ws internal buffer
+  private static WS_BUFFER_THRESHOLD_BYTES = 2 * 1024 * 1024; // 2MB
+
+  private safeSend(ws: WebSocket, data: string): boolean {
+    try {
+      if (ws.readyState !== 1) return false;
+      if ((ws as any).bufferedAmount > ChatService.WS_BUFFER_THRESHOLD_BYTES) {
+        try { ws.close(1013, 'slow consumer'); } catch {}
+        return false;
+      }
+      ws.send(data);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 
   /** Register a new WebSocket connection for a user */
   addClient(userId: string, ws: WebSocket): ChatClient {
@@ -80,14 +96,7 @@ class ChatService {
     const data = JSON.stringify(payload);
     let sent = false;
     for (const client of set) {
-      try {
-        if (client.ws.readyState === 1 /* OPEN */) {
-          client.ws.send(data);
-          sent = true;
-        }
-      } catch (err) {
-        logger.error(`💬 CHAT: Failed to send to user ${userId}:`, err);
-      }
+      if (this.safeSend(client.ws, data)) sent = true;
     }
     return sent;
   }
@@ -99,9 +108,7 @@ class ChatService {
       const set = this.clients.get(uid);
       if (!set) continue;
       for (const client of set) {
-        try {
-          if (client.ws.readyState === 1) client.ws.send(data);
-        } catch {}
+        this.safeSend(client.ws, data);
       }
     }
   }

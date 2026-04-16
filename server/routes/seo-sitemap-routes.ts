@@ -535,52 +535,56 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      // Fetch stations for this chunk — include updatedAt for real lastmod
-      const stations = await Station.find({ slug: { $exists: true, $ne: '' } })
+      // Stream stations via cursor — bounded memory regardless of chunk size
+      const stationCursor = Station.find({ slug: { $exists: true, $ne: '' } })
         .select('slug _id updatedAt')
         .sort({ votes: -1 })
         .skip(skip)
         .limit(stationsPerChunk)
-        .lean();
+        .lean()
+        .cursor({ batchSize: 200 });
 
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
+      // Build XML using array buffer (avoids string-concat quadratic allocation)
+      const parts: string[] = [];
+      parts.push(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`);
 
-      for (const station of stations) {
+      let stationCount = 0;
+      for await (const station of stationCursor as any) {
+        stationCount++;
         // Build localized station URL for this language
-        const stationPath = `/station/${(station as any).slug}`;
+        const stationPath = `/station/${station.slug}`;
         const localizedPath = buildLocalizedUrl(stationPath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
-        const stationLastMod = (station as any).updatedAt
-          ? new Date((station as any).updatedAt).toISOString().split('T')[0]
+        const stationLastMod = station.updatedAt
+          ? new Date(station.updatedAt).toISOString().split('T')[0]
           : undefined;
 
-        xml += `
+        parts.push(`
   <url>
     <loc>${fullUrl}</loc>${stationLastMod ? `
     <lastmod>${stationLastMod}</lastmod>` : ''}
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>`;
+    <priority>0.8</priority>`);
 
         // Add hreflang tags for all active languages (plain codes only, no ISO)
         for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
           const altLocalizedPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
-          const altFullUrl = `${baseUrl}${altLocalizedPath}`;
-          xml += `
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${altFullUrl}"/>`;
+          parts.push(`
+    <xhtml:link rel="alternate" hreflang="${altLang}" href="${baseUrl}${altLocalizedPath}"/>`);
         }
 
         // x-default points to English version
         const enLocalizedPath = buildLocalizedUrl(stationPath, 'en', undefined, urlTranslations);
-        xml += `
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>`;
-
-        xml += `
-  </url>`;
+        parts.push(`
+    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>
+  </url>`);
       }
 
-      xml += `
-</urlset>`;
+      parts.push(`
+</urlset>`);
+
+      const xml = parts.join('');
 
       // Cache for 24 hours
       await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.cacheTtlSeconds });
@@ -592,7 +596,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       res.send(xml);
 
       const duration = Date.now() - startTime;
-      logger.log(`✅ Generated sitemap-stations-${lang}-${chunk}.xml (${stations.length} stations) in ${duration}ms`);
+      logger.log(`✅ Generated sitemap-stations-${lang}-${chunk}.xml (${stationCount} stations) in ${duration}ms`);
 
     } catch (error) {
       logger.error(`❌ Error generating sitemap-stations-${lang}-${chunk}.xml:`, error);
@@ -637,45 +641,46 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      // Fetch all genres with slugs from Genre collection (not Station.distinct('tags'))
-      const genres = await Genre.find({ slug: { $exists: true, $ne: '' } })
+      // Stream genres via cursor + array buffer (bounded memory, no quadratic string concat)
+      const genreCursor = Genre.find({ slug: { $exists: true, $ne: '' } })
         .select('slug _id updatedAt')
         .sort({ stationCount: -1 })
-        .lean();
+        .lean()
+        .cursor({ batchSize: 200 });
 
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
+      const parts: string[] = [];
+      parts.push(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`);
 
-      for (const genre of genres) {
-        const genrePath = `/genres/${(genre as any).slug}`;
+      let genreCount = 0;
+      for await (const genre of genreCursor as any) {
+        genreCount++;
+        const genrePath = `/genres/${genre.slug}`;
         const localizedPath = buildLocalizedUrl(genrePath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
 
-        xml += `
+        parts.push(`
   <url>
     <loc>${fullUrl}</loc>
     <changefreq>weekly</changefreq>
-    <priority>0.7</priority>`;
+    <priority>0.7</priority>`);
 
-        // Add hreflang tags for all active languages (plain codes only, no ISO)
         for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
           const altLocalizedPath = buildLocalizedUrl(genrePath, altLang, undefined, urlTranslations);
-          const altFullUrl = `${baseUrl}${altLocalizedPath}`;
-          xml += `
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${altFullUrl}"/>`;
+          parts.push(`
+    <xhtml:link rel="alternate" hreflang="${altLang}" href="${baseUrl}${altLocalizedPath}"/>`);
         }
 
-        // x-default points to English version
         const enLocalizedPath = buildLocalizedUrl(genrePath, 'en', undefined, urlTranslations);
-        xml += `
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>`;
-
-        xml += `
-  </url>`;
+        parts.push(`
+    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>
+  </url>`);
       }
 
-      xml += `
-</urlset>`;
+      parts.push(`
+</urlset>`);
+
+      const xml = parts.join('');
 
       // Cache for 24 hours
       await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.cacheTtlSeconds });
@@ -687,7 +692,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       res.send(xml);
 
       const duration = Date.now() - startTime;
-      logger.log(`✅ Generated sitemap-genres-${lang}.xml (${genres.length} genres) in ${duration}ms`);
+      logger.log(`✅ Generated sitemap-genres-${lang}.xml (${genreCount} genres) in ${duration}ms`);
 
     } catch (error) {
       logger.error(`❌ Error generating sitemap-genres-${lang}.xml:`, error);

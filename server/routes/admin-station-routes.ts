@@ -536,31 +536,21 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   // Cleanup stations with URLs as names (Admin Only)
   app.post("/api/admin/cleanup-url-names", requireAdmin, async (req, res) => {
     try {
-      const isStationNameUrl = (name: string | null | undefined): boolean => {
-        if (!name || typeof name !== 'string') return false;
-        const lowerName = name.trim().toLowerCase();
-        return (
-          lowerName.startsWith('http://') ||
-          lowerName.startsWith('https://') ||
-          lowerName.startsWith('www.') ||
-          lowerName.startsWith('ftp://') ||
-          lowerName.startsWith('rtmp://') ||
-          lowerName.startsWith('rtsp://')
-        );
-      };
-      
-      const allStations = await Station.find({}).select('_id name url stationuuid slug').lean();
-      const stationsToDelete = allStations.filter(station => isStationNameUrl(station.name));
-      
-      if (stationsToDelete.length === 0) {
-        return res.json({ success: true, deletedCount: 0, blacklistedCount: 0, message: 'No stations with URL names found' });
-      }
-      
+      // DB-side filter using case-insensitive regex for URL prefixes (avoids loading 40k+ docs into memory)
+      const urlPrefixRegex = /^(https?:\/\/|www\.|ftps?:\/\/|rtmps?:\/\/|rtsps?:\/\/)/i;
+      const filter = { name: { $regex: urlPrefixRegex } };
+
       let deletedCount = 0;
       let blacklistedCount = 0;
       const errors: string[] = [];
-      
-      for (const station of stationsToDelete) {
+
+      // Stream matching stations via cursor — bounded memory regardless of match count
+      const cursor = Station.find(filter)
+        .select('_id name url stationuuid slug')
+        .lean()
+        .cursor({ batchSize: 500 });
+
+      for await (const station of cursor as any) {
         try {
           try {
             await BlacklistedStation.create({
@@ -572,16 +562,18 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             });
             blacklistedCount++;
           } catch (blacklistError: any) {}
-          
-          const stationDoc = station as { _id: any; name: string; url: string; stationuuid: string; slug?: string };
-          if (stationDoc.slug) performanceCache.invalidateStationCache(stationDoc.slug);
+
+          if (station.slug) performanceCache.invalidateStationCache(station.slug);
           await Station.findByIdAndDelete(station._id);
           deletedCount++;
           await UserFavorite.deleteMany({ stationId: station._id });
-          
         } catch (stationError: any) {
           errors.push(`Error deleting station ${station._id}: ${stationError.message}`);
         }
+      }
+
+      if (deletedCount === 0) {
+        return res.json({ success: true, deletedCount: 0, blacklistedCount: 0, message: 'No stations with URL names found' });
       }
       
       await CacheManager.clearByPattern('popular_stations');

@@ -427,6 +427,10 @@ app.use(session(sessionConfig));
       server.chatWss.handleUpgrade(request, socket, head, (ws) => {
         server.chatWss.emit('connection', ws, request);
       });
+    } else {
+      // Unknown WS path — must destroy socket to prevent leak. Without this,
+      // an unhandled upgrade request keeps the underlying TCP socket open indefinitely.
+      try { socket.destroy(); } catch {}
     }
   });
 

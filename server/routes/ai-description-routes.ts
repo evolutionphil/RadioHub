@@ -10,6 +10,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   // AI STATION DESCRIPTION GENERATION ENDPOINTS
   const { generateStationDescription, detectStationLanguage, translateDescription } = await import('../services/ai-station-description');
   
+  // Cap per-job result arrays to prevent unbounded memory growth on long-running jobs
+  // (e.g. 40k-station batches would otherwise keep every result object in memory forever).
+  const JOB_RESULT_ARRAY_MAX = 500;
+  const pushLimited = <T>(arr: T[], item: T): void => {
+    arr.push(item);
+    if (arr.length > JOB_RESULT_ARRAY_MAX) arr.shift();
+  };
+
   const descriptionJobs = new Map<string, {
     jobId: string;
     status: 'running' | 'paused' | 'completed' | 'failed' | 'cancelled';
@@ -422,7 +430,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   logger.log(`⏭️ Skipping "${stationName}" - all ${targetLanguages.length} languages exist`);
                   skipped++;
                   job.skipped = skipped;
-                  job.skippedStations.push({ name: stationName, reason: 'All languages exist' });
+                  pushLimited(job.skippedStations, { name: stationName, reason: 'All languages exist' });
                   processed++;
                   job.processed = processed;
                   descriptionJobs.set(jobId, job);
@@ -465,7 +473,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                     logger.log(`❌ Failed to generate native description for "${stationName}"`);
                     failed++;
                     job.failed = failed;
-                    job.failedStations.push({ name: stationName, error: 'Native generation failed' });
+                    pushLimited(job.failedStations, { name: stationName, error: 'Native generation failed' });
                     processed++;
                     job.processed = processed;
                     descriptionJobs.set(jobId, job);
@@ -521,11 +529,11 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   
                   successful++;
                   job.successful = successful;
-                  job.successfulStations.push({ name: stationName, languages: Array.from(translations.keys()) });
+                  pushLimited(job.successfulStations, { name: stationName, languages: Array.from(translations.keys()) });
                 } else {
                   successful++;
                   job.successful = successful;
-                  job.successfulStations.push({ name: stationName, languages: [nativeLanguage] });
+                  pushLimited(job.successfulStations, { name: stationName, languages: [nativeLanguage] });
                 }
                 
                 processed++;
@@ -540,7 +548,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                 const job = descriptionJobs.get(jobId);
                 if (job) {
                   job.failed = failed;
-                  job.failedStations.push({ name: station.name, error: stationError.message });
+                  pushLimited(job.failedStations, { name: station.name, error: stationError.message });
                   job.processed = ++processed;
                   descriptionJobs.set(jobId, job);
                 }
@@ -717,10 +725,10 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                       }
                       
                       successful++;
-                      job.successfulStations.push({ name: station.name, languages: missingLanguages });
+                      pushLimited(job.successfulStations, { name: station.name, languages: missingLanguages });
                     } catch (translationError: any) {
                       failed++;
-                      job.failedStations.push({ name: station.name, error: translationError.message });
+                      pushLimited(job.failedStations, { name: station.name, error: translationError.message });
                     }
                     
                     processed++;
@@ -737,7 +745,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   processed++;
                   job.processed = processed;
                   job.skipped = skipped;
-                  job.skippedStations.push({ name: station.name, reason: `Already has all target languages` });
+                  pushLimited(job.skippedStations, { name: station.name, reason: `Already has all target languages` });
                   descriptionJobs.set(jobId, job);
                   continue;
                 }
@@ -747,7 +755,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   processed++;
                   job.processed = processed;
                   job.skipped = skipped;
-                  job.skippedStations.push({ name: station.name, reason: `Already has ${targetLanguage} description` });
+                  pushLimited(job.skippedStations, { name: station.name, reason: `Already has ${targetLanguage} description` });
                   descriptionJobs.set(jobId, job);
                   continue;
                 }
@@ -757,7 +765,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   processed++;
                   job.processed = processed;
                   job.skipped = skipped;
-                  job.skippedStations.push({ name: station.name, reason: 'Previously checked - no OpenAI info available' });
+                  pushLimited(job.skippedStations, { name: station.name, reason: 'Previously checked - no OpenAI info available' });
                   descriptionJobs.set(jobId, job);
                   continue;
                 }
@@ -813,10 +821,10 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                       );
                     }
                     successful++;
-                    job.successfulStations.push({ name: station.name, languages: [result.language, ...missingLangs] });
+                    pushLimited(job.successfulStations, { name: station.name, languages: [result.language, ...missingLangs] });
                   } else {
                     successful++;
-                    job.successfulStations.push({ name: station.name, languages: [result.language] });
+                    pushLimited(job.successfulStations, { name: station.name, languages: [result.language] });
                   }
                 } else {
                   failed++;

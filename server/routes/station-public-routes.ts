@@ -242,8 +242,16 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   // STATIONS WITH GEO COORDINATES API
   app.get("/api/stations/with-geo", async (req, res) => {
     try {
-      const { limit = 1000 } = req.query;
-      const cacheKey = `stations:with_geo:${limit}`;
+      // Hard-cap limit to prevent memory spikes (40k+ stations)
+      const WITH_GEO_MAX_LIMIT = 5000;
+      const WITH_GEO_DEFAULT = 1000;
+      const rawLimit = parseInt((req.query.limit as string) || String(WITH_GEO_DEFAULT), 10);
+      const safeLimit = Math.min(
+        Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : WITH_GEO_DEFAULT,
+        WITH_GEO_MAX_LIMIT
+      );
+      // Cache key uses the clamped value so attackers can't pollute cache with arbitrary limits
+      const cacheKey = `stations:with_geo:${safeLimit}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) return res.json(cached);
 
@@ -257,7 +265,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       })
       .select('name slug country geoLat geoLong votes clickCount tags homepage favicon hasExtendedInfo url logoAssets')
       .sort({ votes: -1 }) 
-      .limit(parseInt(limit as string))
+      .limit(safeLimit)
       .lean();
       
       const result = stripPlaceholders(stations);

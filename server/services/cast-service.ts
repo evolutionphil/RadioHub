@@ -252,9 +252,9 @@ export class CastService {
   }
 
   private notifyTvDevice(tvDeviceId: string, message: any) {
-    for (const [, client] of this.clients) {
-      if (client.role === 'tv' && client.deviceId === tvDeviceId && client.socket.readyState === WebSocket.OPEN) {
-        client.socket.send(JSON.stringify(message));
+    for (const [clientId, client] of this.clients) {
+      if (client.role === 'tv' && client.deviceId === tvDeviceId) {
+        this.sendToClient(clientId, message);
         return;
       }
     }
@@ -330,11 +330,18 @@ export class CastService {
     logger.log(`📺 CAST: ${client.role} client disconnected from session ${client.sessionId}`);
   }
 
+  // If a client can't keep up, drop the connection instead of buffering frames in ws internal buffer
+  private static WS_BUFFER_THRESHOLD_BYTES = 2 * 1024 * 1024; // 2MB
+
   private sendToClient(clientId: string, message: any) {
     const client = this.clients.get(clientId);
-    if (client && client.socket.readyState === WebSocket.OPEN) {
-      client.socket.send(JSON.stringify(message));
+    if (!client || client.socket.readyState !== WebSocket.OPEN) return;
+    if ((client.socket as any).bufferedAmount > CastService.WS_BUFFER_THRESHOLD_BYTES) {
+      try { client.socket.close(1013, 'slow consumer'); } catch {}
+      this.removeClient(clientId);
+      return;
     }
+    try { client.socket.send(JSON.stringify(message)); } catch {}
   }
 
   async handleNowPlaying(sessionId: string, nowPlaying: any) {

@@ -146,15 +146,22 @@ export class RealtimeMetadataService {
     }
   }
 
+  // If a client can't keep up, drop the connection instead of buffering frames in ws internal buffer
+  private static WS_BUFFER_THRESHOLD_BYTES = 2 * 1024 * 1024; // 2MB
+
   private sendToClient(clientId: string, message: any) {
     const client = this.clients.get(clientId);
-    if (client && client.socket.readyState === WebSocket.OPEN) {
-      try {
-        client.socket.send(JSON.stringify(message));
-      } catch (error) {
-        logger.log(`❌ Failed to send to client ${clientId}:`, error);
-        this.removeClient(clientId);
-      }
+    if (!client || client.socket.readyState !== WebSocket.OPEN) return;
+    if ((client.socket as any).bufferedAmount > RealtimeMetadataService.WS_BUFFER_THRESHOLD_BYTES) {
+      try { client.socket.close(1013, 'slow consumer'); } catch {}
+      this.removeClient(clientId);
+      return;
+    }
+    try {
+      client.socket.send(JSON.stringify(message));
+    } catch (error) {
+      logger.log(`❌ Failed to send to client ${clientId}:`, error);
+      this.removeClient(clientId);
     }
   }
 

@@ -421,12 +421,21 @@ If you have any questions about this privacy policy or our data practices, pleas
   const tvCodeAttempts = new Map<string, { count: number; resetAt: number }>();
   const TV_CODE_MAX_ATTEMPTS = 10;
   const TV_CODE_WINDOW_MS = 10 * 60 * 1000;
+  // Hard-cap to prevent unbounded growth on IP sprays before the cleanup interval runs.
+  const TV_CODE_ATTEMPTS_MAX = 50_000;
+  const evictOldestTvCode = () => {
+    if (tvCodeAttempts.size >= TV_CODE_ATTEMPTS_MAX) {
+      const oldest = tvCodeAttempts.keys().next().value;
+      if (oldest !== undefined) tvCodeAttempts.delete(oldest);
+    }
+  };
+  // Clean expired entries every 5min instead of 1h to limit memory growth.
   setInterval(() => {
     const now = Date.now();
     for (const [ip, data] of tvCodeAttempts) {
       if (now > data.resetAt) tvCodeAttempts.delete(ip);
     }
-  }, 60 * 60 * 1000);
+  }, 5 * 60 * 1000);
 
   // 1. TV requests a 6-digit login code
   app.post('/api/auth/tv/code', async (req: any, res) => {
@@ -543,6 +552,7 @@ If you have any questions about this privacy policy or our data practices, pleas
           attempts.count++;
         }
       } else {
+        evictOldestTvCode();
         tvCodeAttempts.set(clientIp, { count: 1, resetAt: now + TV_CODE_WINDOW_MS });
       }
 

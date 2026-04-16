@@ -351,59 +351,75 @@ export class SilentPushService {
     if (userId) filter.userId = userId;
     if (country) filter.country = country;
 
-    const devices = await PushToken.find(filter).lean();
+    // Stream devices via cursor — avoids loading every push token document into RAM
+    // when broadcasting to the entire user base (can be hundreds of thousands).
+    const cursor = PushToken.find(filter).lean().cursor({ batchSize: 500 });
 
     const result: SilentPushResult = {
-      totalDevices: devices.length,
+      totalDevices: 0,
       ios: { sent: 0, failed: 0 },
       android: { sent: 0, failed: 0 },
       expo: { sent: 0, failed: 0 },
     };
 
-    if (devices.length === 0) return result;
+    const APNS_BATCH = 50;
+    const FCM_BATCH = 50;
+    const EXPO_BATCH = 100;
 
-    const apnsDevices: typeof devices = [];
-    const fcmDevices: typeof devices = [];
-    const expoDevices: typeof devices = [];
+    let apnsBuf: any[] = [];
+    let fcmBuf: any[] = [];
+    let expoTokenBuf: string[] = [];
 
-    for (const device of devices) {
-      const resolvedType = this.resolveTokenType(device);
-      if (resolvedType === 'apns') apnsDevices.push(device);
-      else if (resolvedType === 'fcm') fcmDevices.push(device);
-      else expoDevices.push(device);
-    }
-
-    const BATCH_SIZE = 50;
-    for (let i = 0; i < apnsDevices.length; i += BATCH_SIZE) {
-      const batch = apnsDevices.slice(i, i + BATCH_SIZE);
-      const results = await Promise.allSettled(
-        batch.map((d) => this.sendAPNsSilentPush(d.token, payload))
-      );
+    const flushApns = async () => {
+      if (apnsBuf.length === 0) return;
+      const batch = apnsBuf;
+      apnsBuf = [];
+      const results = await Promise.allSettled(batch.map((d) => this.sendAPNsSilentPush(d.token, payload)));
       for (const r of results) {
         if (r.status === 'fulfilled' && r.value) result.ios.sent++;
         else result.ios.failed++;
       }
-    }
-
-    for (let i = 0; i < fcmDevices.length; i += BATCH_SIZE) {
-      const batch = fcmDevices.slice(i, i + BATCH_SIZE);
-      const results = await Promise.allSettled(
-        batch.map((d) => this.sendFCMSilentPush(d.token, payload))
-      );
+    };
+    const flushFcm = async () => {
+      if (fcmBuf.length === 0) return;
+      const batch = fcmBuf;
+      fcmBuf = [];
+      const results = await Promise.allSettled(batch.map((d) => this.sendFCMSilentPush(d.token, payload)));
       for (const r of results) {
         if (r.status === 'fulfilled' && r.value) result.android.sent++;
         else result.android.failed++;
       }
-    }
-
-    if (expoDevices.length > 0) {
-      const tokens = expoDevices.map((d) => d.token);
+    };
+    const flushExpo = async () => {
+      if (expoTokenBuf.length === 0) return;
+      const tokens = expoTokenBuf;
+      expoTokenBuf = [];
       const sent = await this.sendExpoSilentPush(tokens, payload);
-      result.expo.sent = sent;
-      result.expo.failed = tokens.length - sent;
+      result.expo.sent += sent;
+      result.expo.failed += tokens.length - sent;
+    };
+
+    for await (const device of cursor as any) {
+      result.totalDevices++;
+      const resolvedType = this.resolveTokenType(device);
+      if (resolvedType === 'apns') {
+        apnsBuf.push(device);
+        if (apnsBuf.length >= APNS_BATCH) await flushApns();
+      } else if (resolvedType === 'fcm') {
+        fcmBuf.push(device);
+        if (fcmBuf.length >= FCM_BATCH) await flushFcm();
+      } else {
+        expoTokenBuf.push(device.token);
+        if (expoTokenBuf.length >= EXPO_BATCH) await flushExpo();
+      }
     }
 
-    logger.log(`📱 Silent push [${action}]: iOS ${result.ios.sent}/${apnsDevices.length}, Android ${result.android.sent}/${fcmDevices.length}, Expo ${result.expo.sent}/${expoDevices.length}`);
+    // Flush any remaining partial batches
+    await flushApns();
+    await flushFcm();
+    await flushExpo();
+
+    logger.log(`📱 Silent push [${action}]: iOS ${result.ios.sent}, Android ${result.android.sent}, Expo ${result.expo.sent} (total devices: ${result.totalDevices})`);
 
     return result;
   }

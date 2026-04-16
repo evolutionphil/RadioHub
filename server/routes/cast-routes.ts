@@ -148,12 +148,23 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
   const pairingAttempts = new Map<string, { count: number; resetAt: number }>();
   const PAIRING_MAX_ATTEMPTS = 5;
   const PAIRING_WINDOW_MS = 15 * 60 * 1000;
+  // Hard-cap map size to protect against IP spray attacks that would otherwise grow
+  // this map unboundedly between cleanup sweeps. Map iteration order = insertion order,
+  // so keys().next() returns the oldest entry for eviction.
+  const PAIRING_ATTEMPTS_MAX = 50_000;
+  const evictOldestPairing = () => {
+    if (pairingAttempts.size >= PAIRING_ATTEMPTS_MAX) {
+      const oldest = pairingAttempts.keys().next().value;
+      if (oldest !== undefined) pairingAttempts.delete(oldest);
+    }
+  };
+  // Clean expired entries more frequently (every 5min instead of 1h) to limit memory growth.
   setInterval(() => {
     const now = Date.now();
     for (const [ip, data] of pairingAttempts) {
       if (now > data.resetAt) pairingAttempts.delete(ip);
     }
-  }, 60 * 60 * 1000);
+  }, 5 * 60 * 1000);
 
   app.post('/api/cast/session/pair', async (req: any, res) => {
     try {
@@ -169,6 +180,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
           attempts.count++;
         }
       } else {
+        evictOldestPairing();
         pairingAttempts.set(clientIp, { count: 1, resetAt: now + PAIRING_WINDOW_MS });
       }
 
