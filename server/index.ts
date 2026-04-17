@@ -110,16 +110,32 @@ function getHstsHeader(): string {
   return hstsConfigs[hstsPhase] || hstsConfigs.confident;
 }
 
-// Global process crash prevention — log and survive instead of dying
-process.on('uncaughtException', (err) => {
-  console.error('🚨 UNCAUGHT EXCEPTION (process survived):', err.message);
-  console.error(err.stack?.split('\n').slice(0, 5).join('\n'));
+// Global process crash prevention — log and survive instead of dying.
+// Transient MongoDB errors are not fatal and are handled by the app-level
+// reconnect loop in server/db-mongo.ts. Other errors are logged but the
+// process keeps running (this is the embedded/monolith path; the split
+// services in index-api.ts use stricter fail-fast semantics).
+const TRANSIENT_MONGO_RE = /MongoNetworkError|MongoServerSelectionError|MongoNotConnectedError|MongoPoolClearedError|MongoExpiredSessionError|PoolClearedError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|server selection|connection.*closed/i;
+
+process.on('uncaughtException', (err: any) => {
+  const msg = err?.message || String(err);
+  if (TRANSIENT_MONGO_RE.test(msg)) {
+    console.warn('⚠️ UNCAUGHT EXCEPTION (transient MongoDB, ignored):', msg);
+    return;
+  }
+  console.error('🚨 UNCAUGHT EXCEPTION (process survived):', msg);
+  console.error(err?.stack?.split('\n').slice(0, 5).join('\n'));
 });
 process.on('unhandledRejection', (reason: any) => {
   const msg = reason?.message || reason || 'unknown';
   if (typeof msg === 'string' && msg.includes('over your space quota')) {
     markQuotaExceededFn();
     console.warn('⚠️ MongoDB quota exceeded (unhandled rejection) — writes paused for 10min');
+    return;
+  }
+  const msgStr = typeof msg === 'string' ? msg : '';
+  if (TRANSIENT_MONGO_RE.test(msgStr)) {
+    console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msgStr);
     return;
   }
   console.error('🚨 UNHANDLED REJECTION (process survived):', msg);

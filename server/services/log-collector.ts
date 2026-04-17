@@ -36,10 +36,30 @@ function formatLogLine(level: string, args: any[]): string {
   return line.length > 1000 ? line.slice(0, 1000) + "..." : line;
 }
 
+// Half-open circuit breaker: after MAX_CONSECUTIVE_FAILURES the collector
+// stops accepting logs, but every PROBE_RECOVERY_MS we attempt one "probe"
+// flush so transient S3 outages don't permanently lose logs until restart.
+const PROBE_RECOVERY_MS = 5 * 60_000;
+let lastFailureAt = 0;
+
 async function flushToS3(): Promise<void> {
-  if (logBuffer.length === 0) return;
-  if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-    logBuffer.length = 0;
+  // Circuit-breaker logic must run BEFORE the empty-buffer check, otherwise
+  // the probe never executes (the buffer stays empty during open-circuit
+  // because interceptConsole drops new logs in that state).
+  const breakerOpen = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
+  if (breakerOpen) {
+    if (Date.now() - lastFailureAt < PROBE_RECOVERY_MS) {
+      // Still in cooldown — drop anything that slipped into the buffer.
+      logBuffer.length = 0;
+      return;
+    }
+    // Cooldown elapsed: synthesize a tiny probe payload so we always have
+    // something to upload, even if no real logs were buffered while open.
+    if (logBuffer.length === 0) {
+      logBuffer.push(formatLogLine('INFO', ['[LogCollector] S3 recovery probe']));
+    }
+    originalConsole.warn('[LogCollector] Probing S3 recovery after circuit-breaker open');
+  } else if (logBuffer.length === 0) {
     return;
   }
 
@@ -49,11 +69,16 @@ async function flushToS3(): Promise<void> {
 
   try {
     await uploadToS3(key, Buffer.from(content, "utf-8"), "text/plain; charset=utf-8");
+    if (consecutiveFailures > 0) {
+      originalConsole.log('[LogCollector] S3 recovered — circuit breaker closed');
+    }
     consecutiveFailures = 0;
+    lastFailureAt = 0;
   } catch (err: any) {
     consecutiveFailures++;
+    lastFailureAt = Date.now();
     if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-      originalConsole.error(`[LogCollector] S3 flush failed ${consecutiveFailures}x — disabling until next successful flush`);
+      originalConsole.error(`[LogCollector] S3 flush failed ${consecutiveFailures}x — circuit breaker open, will probe again in ${PROBE_RECOVERY_MS / 1000}s`);
     }
   }
 }
@@ -72,10 +97,19 @@ function interceptConsole(): void {
   const wrap = (level: string, original: (...args: any[]) => void) => {
     return (...args: any[]) => {
       original(...args);
-      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return;
       const firstArg = typeof args[0] === 'string' ? args[0] : '';
       if (SKIP_PATTERNS.some(p => firstArg.includes(p))) return;
-      if (logBuffer.length < MAX_BUFFER_SIZE * 2) {
+      // While the breaker is open, keep accepting up to a SMALL ring of recent
+      // logs (50 lines) so when the probe succeeds the user gets some context
+      // back and we don't lose data for the entire outage. Without this we'd
+      // either lose everything or risk unbounded memory growth.
+      const breakerOpen = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
+      const cap = breakerOpen ? 50 : MAX_BUFFER_SIZE * 2;
+      if (logBuffer.length < cap) {
+        logBuffer.push(formatLogLine(level, args));
+      } else if (breakerOpen) {
+        // Ring behavior: drop oldest, push newest.
+        logBuffer.shift();
         logBuffer.push(formatLogLine(level, args));
       }
       if (logBuffer.length >= MAX_BUFFER_SIZE && !isFlushingToS3) {

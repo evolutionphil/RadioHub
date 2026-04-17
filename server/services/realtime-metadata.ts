@@ -99,6 +99,11 @@ export class RealtimeMetadataService {
     this.streamMetadataService.subscribe(streamUrl, clientId);
 
     const pushKey = clientId;
+    // Defensive: if a previous interval is still registered for this client
+    // (e.g. trackStream was called before currentStream was set), clear it
+    // before overwriting the map entry — otherwise the old interval leaks.
+    const existing = this.pushIntervals.get(pushKey);
+    if (existing) { try { clearInterval(existing); } catch {} }
     const intervalId = setInterval(() => {
       const cl = this.clients.get(clientId);
       if (!cl || !cl.currentStream) {

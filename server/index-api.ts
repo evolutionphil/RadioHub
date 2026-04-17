@@ -112,7 +112,9 @@ process.on('unhandledRejection', (reason: any) => {
     return;
   }
   const msgStr = typeof msg === 'string' ? msg : '';
-  const isMongoTransient = /MongoNetworkError|MongoServerSelectionError|ECONNRESET|ETIMEDOUT|ENOTFOUND|server selection/i.test(msgStr);
+  // Include all known transient MongoDB driver errors. Without these in the
+  // list, a momentary Atlas failover or pool clear would scheduleFatalExit().
+  const isMongoTransient = /MongoNetworkError|MongoServerSelectionError|MongoNotConnectedError|MongoPoolClearedError|MongoExpiredSessionError|PoolClearedError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|server selection|connection.*closed/i.test(msgStr);
   if (isMongoTransient) {
     console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msgStr);
     return;
@@ -465,9 +467,14 @@ app.use(session(sessionConfig));
   (app as any)._httpServer = server;
 
   let isShuttingDown = false;
+  // Watchdog timer is created later inside server.listen(). Hoisted reference
+  // so gracefulShutdown can clearInterval it immediately and prevent the race
+  // where the watchdog fires SIGTERM mid-shutdown and double-kills the process.
+  let watchdogTimerRef: NodeJS.Timeout | null = null;
   const gracefulShutdown = async (signal: string) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
+    if (watchdogTimerRef) { try { clearInterval(watchdogTimerRef); } catch {} watchdogTimerRef = null; }
     console.log(`\n🛑 ${signal} received — starting graceful shutdown...`);
     const shutdownTimeout = setTimeout(() => {
       console.error('🚨 Graceful shutdown timed out (15s) — forcing exit');
@@ -533,10 +540,15 @@ app.use(session(sessionConfig));
     const WATCHDOG_MAX_FAILURES = 3;
     const WATCHDOG_INTERVAL = 30_000;
     const WATCHDOG_TIMEOUT = 5_000;
-    const MONGO_DOWN_RESTART_MS = 3 * 60_000;
+    // Atlas primary failover takes 30-60s in practice. 90s gives the app-level
+    // reconnect loop two backoff windows to recover before we trigger a hard
+    // restart. 3-minute window was unnecessarily user-hostile.
+    const MONGO_DOWN_RESTART_MS = 90_000;
 
     const watchdogTimer = setInterval(async () => {
       if (isShuttingDown) { clearInterval(watchdogTimer); return; }
+      // Expose for gracefulShutdown so it can stop us synchronously.
+      watchdogTimerRef = watchdogTimer;
       try {
         const http = await import('http');
         const result = await new Promise<boolean>((resolve) => {

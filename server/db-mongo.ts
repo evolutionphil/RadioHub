@@ -290,11 +290,22 @@ export async function connectToMongoDB() {
     listenersRegistered = true;
     mongoose.connection.on('error', (err) => {
       logger.error('❌ MongoDB connection error (runtime):', err.message);
+      // Some failure modes (half-open sockets, server selection failures) emit
+      // 'error' but never 'disconnected'. Schedule a reconnect anyway so we
+      // don't sit in a stale state forever. scheduleReconnect() is idempotent.
+      if (mongoose.connection.readyState !== 1 && mongoose.connection.readyState !== 2) {
+        scheduleReconnect('error-event');
+      }
     });
     mongoose.connection.on('disconnected', () => {
       isConnected = false;
       logger.error('⚠️ MongoDB disconnected — scheduling app-level reconnect');
       scheduleReconnect('disconnected-event');
+    });
+    mongoose.connection.on('close', () => {
+      isConnected = false;
+      logger.error('⚠️ MongoDB connection closed — scheduling app-level reconnect');
+      scheduleReconnect('close-event');
     });
     mongoose.connection.on('reconnected', () => {
       isConnected = true;

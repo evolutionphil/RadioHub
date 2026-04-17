@@ -5,12 +5,22 @@ import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
 
-const SEO_RENDER_MAX_CONCURRENT = 5;
-const SEO_RENDER_TIMEOUT_MS = 5000;
+// Concurrency raised from 5 → 15: Googlebot crawls multi-threaded and a
+// 5-slot ceiling caused frequent 503/SEO_RENDER_OVERLOADED responses, which
+// makes Google throttle its crawl rate down. 15 is still safe for memory.
+// Timeout raised 5s → 10s: 57-language hreflang tables push borderline pages
+// over 5s during cold cache; a 10s budget keeps Googlebot from giving up.
+const SEO_RENDER_MAX_CONCURRENT = 15;
+const SEO_RENDER_TIMEOUT_MS = 10_000;
 let seoRenderActive = 0;
 let seoRenderRejected = 0;
 let eventLoopLagMs = 0;
-const EVENT_LOOP_LAG_THRESHOLD_MS = 500;
+// Raised 500 → 800ms: under brisk crawl traffic the event loop briefly spikes
+// above 500ms during JSON serialization of large hreflang/structured data
+// blocks. Rejecting at 500ms made Googlebot see frequent overload errors and
+// throttle its crawl rate. 800ms still protects against true overload while
+// allowing normal SSR work to complete.
+const EVENT_LOOP_LAG_THRESHOLD_MS = 800;
 
 setInterval(() => {
   const start = Date.now();
