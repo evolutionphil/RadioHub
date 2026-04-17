@@ -81,6 +81,25 @@ function isPrivateIPv6(ip: string): boolean {
   if (lower.startsWith('ff')) return true;
   // Cloud metadata over IPv6
   if (lower.startsWith('fd00:ec2:')) return true;
+  // 6to4 tunneling (2002::/16) — embeds IPv4 in bits 16-47, can reach internal
+  // IPv4 space if a 6to4 gateway exists. Block defensively and inspect embedded v4.
+  if (lower.startsWith('2002:')) {
+    // 2002:AABB:CCDD:: → IPv4 = AA.BB.CC.DD
+    const m = lower.match(/^2002:([0-9a-f]{1,4}):([0-9a-f]{1,4}):/);
+    if (m) {
+      const hex1 = m[1].padStart(4, '0');
+      const hex2 = m[2].padStart(4, '0');
+      const a = parseInt(hex1.slice(0, 2), 16);
+      const b = parseInt(hex1.slice(2, 4), 16);
+      const c = parseInt(hex2.slice(0, 2), 16);
+      const d = parseInt(hex2.slice(2, 4), 16);
+      if (isPrivateIPv4(`${a}.${b}.${c}.${d}`)) return true;
+    }
+    // Even with public embedded v4, 6to4 is exotic enough to refuse outright.
+    return true;
+  }
+  // Teredo (2001:0::/32) — IPv4 over IPv6 tunneling, similar concern
+  if (/^2001:0{0,3}:/.test(lower)) return true;
   return false;
 }
 
@@ -154,17 +173,47 @@ export async function validateOutboundUrl(
 export async function safeFetch(
   rawUrl: string,
   init: RequestInit = {},
-  opts: SafeUrlOptions & { timeoutMs?: number } = {}
+  opts: SafeUrlOptions & { timeoutMs?: number; maxRedirects?: number } = {}
 ): Promise<Response> {
-  const guarded = await validateOutboundUrl(rawUrl, opts);
-  if (!guarded.ok) {
-    throw new Error(`SSRF guard rejected URL: ${guarded.reason}`);
-  }
+  const maxRedirects = opts.maxRedirects ?? 5;
+  let currentUrl = rawUrl;
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? 10_000);
   try {
-    const merged: RequestInit = { ...init, signal: init.signal || controller.signal };
-    return await fetch(guarded.url.toString(), merged);
+    for (let hop = 0; hop <= maxRedirects; hop++) {
+      const guarded = await validateOutboundUrl(currentUrl, opts);
+      if (!guarded.ok) {
+        throw new Error(`SSRF guard rejected URL: ${guarded.reason}`);
+      }
+      // Re-validate every redirect hop. A malicious origin could 302 us into
+      // 169.254.169.254, localhost, etc.
+      const merged: RequestInit = {
+        ...init,
+        signal: init.signal || controller.signal,
+        redirect: 'manual',
+      };
+      const res = await fetch(guarded.url.toString(), merged);
+      if (res.status >= 300 && res.status < 400) {
+        const location = res.headers.get('location');
+        if (!location) return res;
+        if (hop === maxRedirects) {
+          throw new Error('SSRF guard rejected URL: too-many-redirects');
+        }
+        // Resolve relative redirects against the current URL.
+        try {
+          currentUrl = new URL(location, guarded.url).toString();
+        } catch {
+          throw new Error('SSRF guard rejected URL: malformed-redirect-location');
+        }
+        // Drain the body so the underlying socket can be reused.
+        try { await res.body?.cancel(); } catch {}
+        continue;
+      }
+      return res;
+    }
+    // Should be unreachable.
+    throw new Error('SSRF guard rejected URL: too-many-redirects');
   } finally {
     clearTimeout(timeout);
   }

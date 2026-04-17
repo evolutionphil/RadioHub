@@ -456,7 +456,9 @@ app.use(session(sessionConfig));
   server.headersTimeout = 70000;
   // Slowloris / hung client mitigation. Without requestTimeout, a slow client
   // can hold a connection until headersTimeout (70s) per request indefinitely.
-  (server as any).requestTimeout = 60_000;
+  // 120s gives multer 5MB chat uploads on slow mobile (~50KB/s) enough headroom
+  // while still cutting off truly stuck clients.
+  (server as any).requestTimeout = 120_000;
   server.maxHeadersCount = 100;
   (server as any).maxRequestsPerSocket = 1000;
   server.maxConnections = 300;

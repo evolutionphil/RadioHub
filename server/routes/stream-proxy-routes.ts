@@ -2,6 +2,12 @@ import type { Express } from "express";
 import { logger } from "../utils/logger";
 import { validateOutboundUrl } from "../utils/safe-fetch";
 
+// Shared port allowlist for radio stream / Shoutcast / Icecast endpoints.
+const STREAM_ALLOWED_PORTS = [
+  80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090,
+  1935, 4000, 5000, 6000, 6969, 12000, 18000,
+];
+
 const MAX_CONCURRENT_STREAMS = parseInt(process.env.MAX_CONCURRENT_STREAMS || '25', 10);
 const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '120', 10) * 60 * 1000;
 const STREAM_IDLE_TIMEOUT_MS = 60 * 1000;
@@ -481,7 +487,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           // can craft a base64-encoded URL). Reject internal/private IPs.
           const guarded = await validateOutboundUrl(decoded, {
             allowHttp: true,
-            allowedPorts: [80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090, 1935, 4000, 5000, 6000, 6969, 12000, 18000],
+            allowedPorts: STREAM_ALLOWED_PORTS,
           });
           if (!guarded.ok) {
             decrementStream();
@@ -493,11 +499,23 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         }
       } catch (e) {
         try {
-          originalUrl = decodeURIComponent(urlPath);
-          if (!originalUrl.startsWith('http://') && !originalUrl.startsWith('https://')) {
+          const fallback = decodeURIComponent(urlPath);
+          if (!fallback.startsWith('http://') && !fallback.startsWith('https://')) {
             throw new Error('Invalid URL format after decoding');
           }
+          // SSRF: this fallback path was previously unguarded — an attacker
+          // could URL-encode an internal target and bypass the base64 guard.
+          const guardedFallback = await validateOutboundUrl(fallback, {
+            allowHttp: true,
+            allowedPorts: STREAM_ALLOWED_PORTS,
+          });
+          if (!guardedFallback.ok) {
+            decrementStream();
+            return res.status(400).json({ error: 'Stream URL not allowed' });
+          }
+          originalUrl = fallback;
         } catch (fallbackError) {
+          decrementStream();
           return res.status(400).json({ error: 'Invalid stream URL format' });
         }
       }
@@ -602,7 +620,31 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             if (proxyRes.statusCode && proxyRes.statusCode >= 300 && proxyRes.statusCode < 400 && proxyRes.headers.location) {
               logger.log(`🔀 Shoutcast redirect (${proxyRes.statusCode}): ${proxyRes.headers.location}`);
               proxyRes.destroy();
-              makeShoutcastRequest(proxyRes.headers.location, redirectCount + 1);
+              // SSRF: re-validate redirect target — a malicious origin could
+              // 302 us into 169.254.169.254 or other internal addresses.
+              const nextUrl = (() => {
+                try { return new urlModule.URL(proxyRes.headers.location!, targetUrl).toString(); }
+                catch { return null; }
+              })();
+              if (!nextUrl) {
+                if (!res.headersSent) res.status(502).json({ error: 'Malformed redirect' });
+                destroyActiveProxy();
+                return;
+              }
+              validateOutboundUrl(nextUrl, { allowHttp: true, allowedPorts: STREAM_ALLOWED_PORTS })
+                .then((guard) => {
+                  if (!guard.ok) {
+                    logger.log(`🚫 Shoutcast redirect blocked by SSRF guard: ${guard.reason}`);
+                    if (!res.headersSent) res.status(502).json({ error: 'Redirect blocked' });
+                    destroyActiveProxy();
+                    return;
+                  }
+                  makeShoutcastRequest(nextUrl, redirectCount + 1);
+                })
+                .catch(() => {
+                  if (!res.headersSent) res.status(502).json({ error: 'Redirect validation failed' });
+                  destroyActiveProxy();
+                });
               return;
             }
             
@@ -683,16 +725,46 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
       let streamResponse;
       try {
-        streamResponse = await fetch(originalUrl, {
-          signal: controller.signal,
-          redirect: 'follow',
-          headers: {
-            'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Radio/1.0)',
-            'Accept': req.headers['accept'] || 'audio/*, application/vnd.apple.mpegurl, */*',
-            'Connection': 'close',
-            ...(req.headers.range && { 'Range': req.headers.range as string })
+        // SSRF: manually follow redirects and revalidate every hop. A public
+        // origin could 30x us into 169.254.169.254 / internal IPs otherwise.
+        let currentUrl = originalUrl;
+        const MAX_REDIRECTS = 5;
+        let lastRes: Response | null = null;
+        for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+          const guard = await validateOutboundUrl(currentUrl, {
+            allowHttp: true,
+            allowedPorts: STREAM_ALLOWED_PORTS,
+          });
+          if (!guard.ok) {
+            throw new Error(`Stream redirect blocked by SSRF guard: ${guard.reason}`);
           }
-        });
+          lastRes = await fetch(currentUrl, {
+            signal: controller.signal,
+            redirect: 'manual',
+            headers: {
+              'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Radio/1.0)',
+              'Accept': req.headers['accept'] || 'audio/*, application/vnd.apple.mpegurl, */*',
+              'Connection': 'close',
+              ...(req.headers.range && { 'Range': req.headers.range as string })
+            }
+          });
+          if (lastRes.status >= 300 && lastRes.status < 400) {
+            const loc = lastRes.headers.get('location');
+            if (!loc) break;
+            if (hop === MAX_REDIRECTS) {
+              throw new Error('Stream redirect: too many hops');
+            }
+            try {
+              currentUrl = new URL(loc, currentUrl).toString();
+            } catch {
+              throw new Error('Stream redirect: malformed Location');
+            }
+            try { await (lastRes.body as any)?.cancel?.(); } catch {}
+            continue;
+          }
+          break;
+        }
+        streamResponse = lastRes!;
       } finally {
         clearTimeout(connectTimeoutId);
       }

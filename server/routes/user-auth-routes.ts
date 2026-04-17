@@ -44,10 +44,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const filter: any = {};
       
       if (search) {
+        // Escape regex meta-chars to prevent NoSQL $regex injection / ReDoS.
+        const safe = String(search).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         filter.$or = [
-          { username: { $regex: search, $options: 'i' } },
-          { fullName: { $regex: search, $options: 'i' } },
-          { email: { $regex: search, $options: 'i' } }
+          { username: { $regex: safe, $options: 'i' } },
+          { fullName: { $regex: safe, $options: 'i' } },
+          { email: { $regex: safe, $options: 'i' } }
         ];
       }
       

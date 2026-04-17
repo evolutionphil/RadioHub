@@ -4,6 +4,12 @@ import { logger } from "../utils/logger";
 import crypto from 'crypto';
 import { isQuotaExceeded, safeWrite, handleQuotaError, isQuotaError } from "../utils/quota-guard";
 
+// Escape regex meta-chars so user input cannot trigger NoSQL ReDoS / regex
+// injection on $regex queries. See OWASP "ReDoS" + Mongo $regex docs.
+function escapeRegex(s: string): string {
+  return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?: boolean }) {
   const { requireAdmin, requireAuth, apiKeyMiddleware, seedDemoApiKey } = deps;
 
@@ -165,9 +171,10 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
       const filter: any = {};
       if (search) {
+        const safe = escapeRegex(search);
         filter.$or = [
-          { email: { $regex: search, $options: 'i' } },
-          { fullName: { $regex: search, $options: 'i' } }
+          { email: { $regex: safe, $options: 'i' } },
+          { fullName: { $regex: safe, $options: 'i' } }
         ];
       }
 
@@ -542,9 +549,9 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       const maxLimit = Math.min(parseInt(limit as string) || 50, 500);
       const filter: any = {};
       if (platform) filter.platform = platform;
-      if (deviceId) filter.deviceId = { $regex: String(deviceId), $options: 'i' };
+      if (deviceId) filter.deviceId = { $regex: escapeRegex(String(deviceId)), $options: 'i' };
       if (level) filter['logs.level'] = level;
-      if (search) filter['logs.message'] = { $regex: String(search), $options: 'i' };
+      if (search) filter['logs.message'] = { $regex: escapeRegex(String(search)), $options: 'i' };
       if (from || to) {
         filter.createdAt = {};
         if (from) filter.createdAt.$gte = new Date(String(from));
@@ -639,7 +646,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       const { platform, deviceId, page = '1', limit = '50' } = req.query;
       const filter: any = {};
       if (platform) filter.platform = platform;
-      if (deviceId) filter.deviceId = { $regex: deviceId, $options: 'i' };
+      if (deviceId) filter.deviceId = { $regex: escapeRegex(String(deviceId)), $options: 'i' };
       const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
       const [items, total] = await Promise.all([AppLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(), AppLog.countDocuments(filter)]);
       res.json({ logs: items, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });

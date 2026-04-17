@@ -54,8 +54,15 @@ export class CacheManager {
         if (redisResult) {
           // Detect raw string payloads (set() may have stored a string without
           // JSON-encoding it). JSON.parse on raw text would throw and lose
-          // the value silently. Probe with the first character.
-          const first = redisResult.charCodeAt(0);
+          // the value silently. Probe with the first non-whitespace character
+          // so leading whitespace in legitimate JSON doesn't trip the heuristic.
+          let probeIdx = 0;
+          while (probeIdx < redisResult.length) {
+            const ch = redisResult.charCodeAt(probeIdx);
+            if (ch !== 0x20 && ch !== 0x09 && ch !== 0x0a && ch !== 0x0d) break;
+            probeIdx++;
+          }
+          const first = redisResult.charCodeAt(probeIdx);
           const looksJson = first === 0x7b /*{*/ || first === 0x5b /*[*/ ||
             first === 0x22 /*"*/ || first === 0x74 /*t*/ || first === 0x66 /*f*/ ||
             first === 0x6e /*n*/ || (first >= 0x30 && first <= 0x39) /*0-9*/ ||
