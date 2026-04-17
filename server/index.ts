@@ -33,6 +33,7 @@ import { logger } from './utils/logger';
 import { initLogCollector } from './services/log-collector';
 import { urlRedirectMiddleware } from './url-redirect-middleware';
 import { stationCountryValidator } from './station-country-validator';
+import { geoBlockMiddleware } from './middleware/geo-block';
 
 const app = express();
 
@@ -42,6 +43,9 @@ app.set('trust proxy', 1);
 
 // Security: Remove X-Powered-By header to prevent technology stack disclosure
 app.disable('x-powered-by');
+
+// Geo-block FIRST — drop TCP connection from blocked countries (no response)
+app.use(geoBlockMiddleware);
 
 // Clickjacking Protection: Configurable X-Frame-Options strategy
 // DENY = Most secure (page cannot be embedded anywhere)

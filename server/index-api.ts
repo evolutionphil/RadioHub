@@ -27,10 +27,15 @@ import { logger } from './utils/logger';
 import { initLogCollector } from './services/log-collector';
 import { startOperation, endOperation, getActiveOperations, getGcStats, getActiveOperationsSummary, resetGcStats, initGcTracking } from './utils/operation-tracker';
 
+import { geoBlockMiddleware } from './middleware/geo-block';
+
 const app = express();
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+
+// Geo-block FIRST — drop TCP connection from blocked countries (no response)
+app.use(geoBlockMiddleware);
 
 function getFrameOptionsHeader(): string | null {
   if (process.env.CLICKJACKING_MITIGATION) {

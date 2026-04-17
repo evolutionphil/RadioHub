@@ -19,10 +19,15 @@ import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
 
+import { geoBlockMiddleware } from './middleware/geo-block';
+
 const app = express();
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+
+// Geo-block FIRST — drop TCP connection from blocked countries (no response)
+app.use(geoBlockMiddleware);
 
 let uncaughtExitScheduled = false;
 function scheduleFatalExit(label: string) {

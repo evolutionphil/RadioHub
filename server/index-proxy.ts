@@ -2,12 +2,16 @@ import express from "express";
 import compression from "compression";
 import { registerStreamProxyRoutes } from "./routes/stream-proxy-routes";
 import { logger } from "./utils/logger";
+import { geoBlockMiddleware } from "./middleware/geo-block";
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '4000', 10);
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
+
+// Geo-block FIRST — drop TCP connection from blocked countries (no response)
+app.use(geoBlockMiddleware);
 
 const ALLOWED_ORIGINS = [
   'https://themegaradio.com',
