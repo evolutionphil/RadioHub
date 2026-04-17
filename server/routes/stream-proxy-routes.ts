@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { logger } from "../utils/logger";
+import { validateOutboundUrl } from "../utils/safe-fetch";
 
 const MAX_CONCURRENT_STREAMS = parseInt(process.env.MAX_CONCURRENT_STREAMS || '25', 10);
 const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '120', 10) * 60 * 1000;
@@ -171,6 +172,19 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         return res.status(400).json({ error: 'Invalid image URL encoding' });
       }
 
+      // SSRF guard: image proxy can be invoked with arbitrary URL, so verify
+      // the destination is public before fetching. Allow any port — many radio
+      // hosts serve logos from non-standard CDN ports.
+      {
+        const guarded = await validateOutboundUrl(originalUrl, {
+          allowHttp: true,
+          allowedPorts: [80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090, 1935, 4000, 5000, 6000],
+        });
+        if (!guarded.ok) {
+          return res.status(400).json({ error: 'URL not allowed' });
+        }
+      }
+
       const width = req.query.w ? parseInt(req.query.w as string) : null;
       const height = req.query.h ? parseInt(req.query.h as string) : null;
       const size = req.query.size ? parseInt(req.query.size as string) : null;
@@ -307,8 +321,19 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
   app.get("/api/stream/resolve", async (req, res) => {
     try {
       const { url } = req.query;
-      if (!url || typeof url !== 'string') {
+      if (!url || typeof url !== 'string' || url.length > 2048) {
         return res.status(400).json({ error: 'Missing url parameter' });
+      }
+      // SSRF guard. Stream URLs use a wide port range so we permit common
+      // non-standard ports that radio hosts use.
+      {
+        const guarded = await validateOutboundUrl(url, {
+          allowHttp: true,
+          allowedPorts: [80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090, 1935, 4000, 5000, 6000, 6969, 12000, 18000],
+        });
+        if (!guarded.ok) {
+          return res.status(400).json({ error: 'URL not allowed' });
+        }
       }
 
       const fetch = (await import('node-fetch')).default;
@@ -336,8 +361,36 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           });
 
           if (response.ok) {
-            const content = await response.text();
-            
+            // Cap playlist body at 256KB. Real PLS/M3U files are well under
+            // 8KB; without this cap a malicious server can return a multi-MB
+            // body and amplify ext memory pressure.
+            const MAX_PLAYLIST_BYTES = 256 * 1024;
+            let content = '';
+            try {
+              const ct = (response.headers.get('content-type') || '').toLowerCase();
+              if (ct && !/text|playlist|mpegurl|x-mixed|application\/(?:x-)?(?:m3u|pls|octet-stream)|^$/.test(ct)) {
+                // unexpected binary type — refuse
+                content = '';
+              } else if ((response as any).body && typeof (response as any).body.getReader === 'function') {
+                const reader = (response as any).body.getReader();
+                let received = 0;
+                const decoder = new TextDecoder('utf-8', { fatal: false });
+                while (true) {
+                  const { done, value } = await reader.read();
+                  if (done) break;
+                  received += value.length;
+                  if (received > MAX_PLAYLIST_BYTES) { try { await reader.cancel(); } catch {}; break; }
+                  content += decoder.decode(value, { stream: true });
+                }
+                content += decoder.decode();
+              } else {
+                const buf = await response.buffer();
+                content = buf.subarray(0, MAX_PLAYLIST_BYTES).toString('utf8');
+              }
+            } catch {
+              content = '';
+            }
+
             if (isPLS) {
               playlistType = 'pls';
               const fileMatches = content.match(/File\d+=(.+)/gi);
@@ -424,6 +477,16 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         const decoded = Buffer.from(padded, 'base64').toString('utf8');
         
         if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+          // SSRF guard: stream proxy is the largest attack surface (any user
+          // can craft a base64-encoded URL). Reject internal/private IPs.
+          const guarded = await validateOutboundUrl(decoded, {
+            allowHttp: true,
+            allowedPorts: [80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090, 1935, 4000, 5000, 6000, 6969, 12000, 18000],
+          });
+          if (!guarded.ok) {
+            decrementStream();
+            return res.status(400).json({ error: 'Stream URL not allowed' });
+          }
           originalUrl = decoded;
         } else {
           throw new Error('Invalid decoded URL format');

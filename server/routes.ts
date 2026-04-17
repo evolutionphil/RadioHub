@@ -95,7 +95,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // === WEBSOCKET SERVERS ===
   const streamMetadataService = new StreamMetadataService();
   const realtimeMetadataService = new RealtimeMetadataService();
-  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  // 64KB payload cap — prevents WS abuse (default is ~100MB per message).
+  // Metadata frames are tiny (<2KB), so 64KB is generous.
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 });
 
   wss.on('connection', (socket: WebSocket, request) => {
     const clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -103,10 +105,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     realtimeMetadataService.addClient(clientId, socket);
   });
 
-  const castWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  const castWss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 });
   logger.log(`📺 CAST: WebSocket server ready at /ws/cast`);
 
-  const chatWss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  const chatWss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: 256 * 1024 });
   logger.log(`💬 CHAT: WebSocket server ready at /ws/chat`);
 
   // === CAST ROUTES (WebSocket + REST, registered before middleware) ===
@@ -162,15 +164,24 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.use(passport.session());
 
   // === VISITOR TRACKING ===
+  // Skip on non-DB hot paths (stream/image proxy, health, sitemap/robots) and
+  // when MongoDB is not connected — otherwise every stream request queues a
+  // write into a disconnected Mongoose buffer and inflates memory.
+  const VISITOR_SKIP_PREFIXES = [
+    '/api/stream', '/api/image-proxy', '/api/og-image',
+    '/health', '/healthz', '/api/health',
+    '/sitemap', '/robots.txt'
+  ];
   app.use((req, _res, next) => {
-    if ((req.path.startsWith('/api/') || req.path === '/' || !req.path.includes('.')) && req.path !== '/health') {
-      const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
-      VisitorSession.findOneAndUpdate(
-        { ipAddress },
-        { $set: { lastActiveDate: new Date(), userAgent: req.get('user-agent') }, $inc: { visitCount: 1 } },
-        { upsert: true, new: true }
-      ).catch(() => {});
-    }
+    if (!((req.path.startsWith('/api/') || req.path === '/' || !req.path.includes('.')))) return next();
+    if (VISITOR_SKIP_PREFIXES.some(p => req.path.startsWith(p))) return next();
+    if (mongoose.connection.readyState !== 1) return next();
+    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+    VisitorSession.findOneAndUpdate(
+      { ipAddress },
+      { $set: { lastActiveDate: new Date(), userAgent: req.get('user-agent') }, $inc: { visitCount: 1 } },
+      { upsert: true, new: true }
+    ).catch(() => {});
     next();
   });
 
@@ -550,7 +561,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   seedSeoTranslationKeys();
   app.use('/api', apiKeyMiddleware);
   app.use('/api/admin/url-translations', urlTranslationsRouter);
-  app.use('/api/admin/performance', performanceRouter);
+  // Admin-only — performance routes include destructive ops (rebuild_indexes,
+  // cache clear) plus expensive Cloudflare GraphQL fetches.
+  app.use('/api/admin/performance', requireAdmin, performanceRouter);
   registerCountryLanguageMappingRoutes(app, requireAdmin);
 
   // === REGISTER ALL ROUTE MODULES ===

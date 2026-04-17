@@ -446,7 +446,15 @@ app.use('/api/image', (_req, res) => {
       return;
     }
 
-    const cleanUrlForMatching = decodeURIComponent(url.split('?')[0].split('#')[0]);
+    // P0 fix: decodeURIComponent throws URIError on malformed escapes (e.g.
+    // %E0%A4%A) and would crash the entire SSR worker. Trap and fall back to
+    // raw URL — broken sequences just won't match SEO routes.
+    let cleanUrlForMatching: string;
+    try {
+      cleanUrlForMatching = decodeURIComponent(url.split('?')[0].split('#')[0]);
+    } catch {
+      cleanUrlForMatching = url.split('?')[0].split('#')[0];
+    }
 
     const isStationPage = SEO_PRECOMPILED_REGEX.stationPage.test(cleanUrlForMatching);
     const isHomepage = SEO_PRECOMPILED_REGEX.homepage.test(cleanUrlForMatching);

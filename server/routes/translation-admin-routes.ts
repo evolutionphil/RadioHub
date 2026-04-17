@@ -2959,8 +2959,9 @@ ${keysText}`;
     }
   });
 
-  // Force start sync
-  app.post("/api/sync/force", async (req, res) => {
+  // Force start sync — admin-only (was a public lever to spawn a heavy
+  // long-running sync that pulls 40k+ stations into memory).
+  app.post("/api/sync/force", requireAdmin, async (req, res) => {
     try {
       logger.log('🚀 Force starting sync...');
       
@@ -2983,8 +2984,8 @@ ${keysText}`;
     }
   });
 
-  // Stop sync
-  app.post("/api/sync/stop", async (req, res) => {
+  // Stop sync — admin-only.
+  app.post("/api/sync/stop", requireAdmin, async (req, res) => {
     try {
       logger.log('🛑 Stopping sync...');
       

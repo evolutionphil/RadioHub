@@ -247,6 +247,13 @@ function scheduleReconnect(reason: string) {
   }, delay);
 }
 
+// CRITICAL: bufferCommands=false prevents Mongoose from queueing operations
+// in memory while disconnected. With buffering ON, every API request that hits
+// Mongoose during an outage piles up — RSS climbs and the process eventually
+// OOMs. With buffering OFF, queries fail fast (caught by the circuit breaker)
+// and memory stays flat.
+mongoose.set('bufferCommands', false);
+
 async function doConnect() {
   const isProd = process.env.NODE_ENV === 'production';
   await mongoose.connect(MONGODB_URI, {
@@ -255,7 +262,7 @@ async function doConnect() {
     serverSelectionTimeoutMS: isProd ? 30000 : 15000,
     socketTimeoutMS: isProd ? 45000 : 30000,
     connectTimeoutMS: isProd ? 30000 : 15000,
-    bufferCommands: true,
+    bufferCommands: false,
     maxIdleTimeMS: 30000,
     family: 4,
     heartbeatFrequencyMS: 10000,

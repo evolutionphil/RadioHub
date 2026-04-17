@@ -103,12 +103,16 @@ export function initLogCollector(): void {
   flushTimer = setInterval(() => {
     flushToS3().catch(() => {});
   }, FLUSH_INTERVAL_MS);
+  // Don't block process exit on this background timer.
+  if (typeof (flushTimer as any).unref === 'function') (flushTimer as any).unref();
 
   process.on("beforeExit", () => {
+    if (flushTimer) { try { clearInterval(flushTimer); } catch {} flushTimer = null; }
     flushToS3().catch(() => {});
   });
 
   process.on("SIGTERM", () => {
+    if (flushTimer) { try { clearInterval(flushTimer); } catch {} flushTimer = null; }
     flushToS3().catch(() => {});
   });
 

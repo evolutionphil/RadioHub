@@ -160,13 +160,30 @@ export class PushNotificationService {
    * Send a push notification to multiple users
    */
   static async sendToMultipleUsers(userIds: string[], payload: NotificationPayload): Promise<number> {
-    const results = await Promise.allSettled(
-      userIds.map(userId => this.sendToUserAllChannels(userId, payload))
-    );
-
-    return results.filter(result =>
-      result.status === 'fulfilled' && result.value === true
-    ).length;
+    // Fan-out concurrency cap. A broadcast to 50k subscribers without a cap
+    // creates 50k concurrent fetch promises against Web-Push and Expo APIs:
+    // socket descriptor exhaustion, RSS spike from buffered request bodies,
+    // and rate-limit bans from upstream. Cap at 25 in-flight workers and
+    // stream the work through; total memory is O(concurrency), not O(N).
+    const CONCURRENCY = 25;
+    let succeeded = 0;
+    let cursor = 0;
+    const total = userIds.length;
+    const workers: Promise<void>[] = [];
+    for (let w = 0; w < Math.min(CONCURRENCY, total); w++) {
+      workers.push((async () => {
+        while (true) {
+          const idx = cursor++;
+          if (idx >= total) return;
+          try {
+            const ok = await this.sendToUserAllChannels(userIds[idx], payload);
+            if (ok) succeeded++;
+          } catch {}
+        }
+      })());
+    }
+    await Promise.all(workers);
+    return succeeded;
   }
 
   /**

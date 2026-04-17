@@ -72,8 +72,9 @@ export function registerSlugRoutes(app: Express, deps: any) {
     }
   });
 
-  // CLEAR ALL SLUGS FIRST (for complete regeneration)
-  app.post("/api/clear-all-slugs", async (req, res) => {
+  // CLEAR ALL SLUGS FIRST (for complete regeneration) — admin-only,
+  // destructive global mutation must not be public.
+  app.post("/api/clear-all-slugs", requireAdmin, async (req, res) => {
     try {
       logger.log('🧹 CLEARING ALL SLUGS...');
       
@@ -116,8 +117,9 @@ export function registerSlugRoutes(app: Express, deps: any) {
   });
 
   // OPTIMIZED COMPREHENSIVE SLUG GENERATION - Stations, Genres, and Users
-  app.post("/api/generate-all-slugs", async (req, res) => {
-    const { regenerateAll } = req.body;
+  // Admin-only — long-running CPU+DB job that must not be publicly triggerable.
+  app.post("/api/generate-all-slugs", requireAdmin, async (req, res) => {
+    const regenerateAll = req.body && req.body.regenerateAll === true;
     try {
       // Count stations based on regenerateAll flag
       const stationsWithoutSlugs = regenerateAll 

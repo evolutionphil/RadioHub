@@ -1267,10 +1267,14 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
   app.post("/api/auth/token-session", async (req, res) => {
     try {
       const { token } = req.body;
-      if (!token) {
+      // CRITICAL: type guard before Mongoose query. Without this, an attacker
+      // can send `{"token":{"$ne":null}}` and match any non-revoked token,
+      // turning this into an account takeover. We also bound the length to
+      // avoid DoS via huge keys.
+      if (typeof token !== 'string' || token.length < 16 || token.length > 512) {
         return res.status(400).json({ success: false, error: 'Token is required' });
       }
-      
+
       const authToken = await AuthToken.findOne({ token, isRevoked: false });
       if (!authToken) {
         return res.status(401).json({ success: false, error: 'Invalid or expired token' });

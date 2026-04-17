@@ -47,7 +47,8 @@ function issueWsTicket(userId: string): string {
 
 // Cleanup expired tickets every 2 minutes — also sweeps orphaned userActiveTicket entries
 // whose ticket no longer exists in wsTickets (defensive invariant cleanup).
-setInterval(() => {
+// unref() so this background timer never blocks process exit during shutdown.
+const _ticketCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [ticket, data] of wsTickets) {
     if (data.expiresAt < now) deleteWsTicket(ticket);
@@ -56,6 +57,7 @@ setInterval(() => {
     if (!wsTickets.has(ticket)) userActiveTicket.delete(uid);
   }
 }, 120_000);
+if (typeof (_ticketCleanupTimer as any).unref === 'function') (_ticketCleanupTimer as any).unref();
 
 // ─── Session userId helper ─────────────────────────────────────────────────────
 function getSessionUserId(req: any): string | null {

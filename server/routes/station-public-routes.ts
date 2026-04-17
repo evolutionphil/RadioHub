@@ -9,6 +9,18 @@ import { getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
 import { PrecomputedStationsService } from '../services/precomputed-stations';
 
+// Escape regex meta-characters from user input. Without this, callers can pass
+// patterns like `.*` or catastrophic-backtracking inputs (e.g. `(a+)+`) and
+// either bypass intended exact-match filters or pin a Mongo regex worker.
+// We also cap input length so a malicious 1MB query string cannot become a
+// multi-million-character RegExp source. Inputs are anchored where the call
+// site indicates an exact match is intended.
+function escapeRegex(input: any, maxLen: number = 80): string {
+  if (typeof input !== 'string') return '';
+  const s = input.length > maxLen ? input.slice(0, maxLen) : input;
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Helper: generate unique slug inline
 async function generateUniqueSlug(name: string, type: string, id: string): Promise<string> {
   const base = name.toLowerCase()
@@ -90,7 +102,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           Object.assign(tvFilter, normalizeCountryFilter(country as string));
         }
         if (state && state !== 'all') {
-          tvFilter.state = { $regex: new RegExp(state as string, 'i') };
+          tvFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
         }
         tvFilter['logoAssets.status'] = 'completed';
 
@@ -152,7 +164,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         Object.assign(countryFilter, normalizeCountryFilter(country as string));
       }
       if (state && state !== 'all') {
-        countryFilter.state = { $regex: new RegExp(state as string, 'i') };
+        countryFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
       }
       
       const requestedLimit = Number(limit);
@@ -598,8 +610,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         if (!cacheReady) {
           // Fast MongoDB fallback: sorted by votes desc with logo priority
           const skip = (pageNum - 1) * limitNum;
-          const mongoFilter: any = genre ? { $or: [{ genre: { $regex: new RegExp(genre as string, 'i') } }, { tags: { $regex: new RegExp(genre as string, 'i') } }] } : {};
-          if (search) { const q = search as string; mongoFilter.name = { $regex: new RegExp(q, 'i') }; }
+          const escG = escapeRegex(genre, 60);
+          const mongoFilter: any = escG ? { $or: [{ genre: { $regex: new RegExp(escG, 'i') } }, { tags: { $regex: new RegExp(escG, 'i') } }] } : {};
+          const escQ = escapeRegex(search, 80);
+          if (escQ) { mongoFilter.name = { $regex: new RegExp(escQ, 'i') }; }
           const [stations, total] = await Promise.all([
             Station.find(mongoFilter)
               .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
@@ -703,7 +717,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       const filter: any = { _id: { $ne: stationId } };
       if (station.country) filter.country = station.country;
-      if (station.genre) filter.genre = { $regex: new RegExp(station.genre, 'i') };
+      if (station.genre) filter.genre = { $regex: new RegExp(escapeRegex(station.genre, 60), 'i') };
 
       const linked = await Station.find(filter)
         .select('_id name favicon slug country genre tags votes bitrate codec language url urlResolved hls lastCheckOk hasLogo logoAssets')
@@ -789,13 +803,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         const searchTerms = stateAliases[state as string] || [state as string];
         if (searchTerms.length > 1) {
           if (!filter.$or) filter.$or = [];
-          filter.$or.push(...searchTerms.map((term: string) => ({ state: { $regex: new RegExp(term, 'i') } })));
+          filter.$or.push(...searchTerms.map((term: string) => ({ state: { $regex: new RegExp(escapeRegex(term, 60), 'i') } })));
         } else {
-          filter.state = { $regex: new RegExp(state as string, 'i') };
+          filter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
         }
       }
 
-      if (tags && tags !== 'all') filter.tags = { $regex: new RegExp(tags as string, 'i') };
+      if (tags && tags !== 'all') filter.tags = { $regex: new RegExp(escapeRegex(tags, 80), 'i') };
 
       if (genre && genre !== 'all') {
         const escapedGenre = (genre as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -805,7 +819,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         ];
       }
 
-      if (language && language !== 'all') filter.language = { $regex: new RegExp(language as string, 'i') };
+      if (language && language !== 'all') filter.language = { $regex: new RegExp(escapeRegex(language, 40), 'i') };
 
       let isGenreSearch = false;
       let genreSearchTerm = '';

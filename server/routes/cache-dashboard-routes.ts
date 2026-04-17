@@ -4,8 +4,13 @@ import CacheManager from '../cache';
 import { logger } from '../utils/logger';
 
 export function registerCacheDashboardRoutes(app: Express, deps: any) {
-  // CACHE MANAGEMENT API
-  app.get("/api/cache/stats", async (req, res) => {
+  const { requireAdmin } = deps;
+  if (!requireAdmin) {
+    throw new Error('cache-dashboard-routes requires deps.requireAdmin');
+  }
+
+  // CACHE MANAGEMENT API — admin-only (cache clear was a public DoS lever)
+  app.get("/api/cache/stats", requireAdmin, async (req, res) => {
     try {
       const stats = CacheManager.getStats();
       res.json({
@@ -17,16 +22,25 @@ export function registerCacheDashboardRoutes(app: Express, deps: any) {
     }
   });
 
-  app.delete("/api/cache/clear/:pattern?", async (req, res) => {
+  // Allowlist of cache patterns admins are permitted to clear. Free-form
+  // patterns enable destructive global wipes; lock to known prefixes.
+  const ALLOWED_CLEAR_PATTERNS = new Set([
+    'genres', 'stations', 'translations', 'sitemap', 'seo', 'social',
+    'tv', 'dashboard', 'countries', 'cities', 'similar', 'search'
+  ]);
+
+  app.delete("/api/cache/clear/:pattern?", requireAdmin, async (req, res) => {
     try {
       const { pattern } = req.params;
-      if (pattern) {
-        await CacheManager.clearByPattern(pattern);
-        res.json({ message: `Cleared cache entries matching pattern: ${pattern}` });
-      } else {
-        await CacheManager.clearByPattern(''); // Clear all
-        res.json({ message: 'Cleared entire cache' });
+      if (!pattern) {
+        return res.status(400).json({ error: 'Pattern is required (use one of: ' + Array.from(ALLOWED_CLEAR_PATTERNS).join(', ') + ')' });
       }
+      if (!ALLOWED_CLEAR_PATTERNS.has(pattern)) {
+        return res.status(400).json({ error: `Invalid pattern. Allowed: ${Array.from(ALLOWED_CLEAR_PATTERNS).join(', ')}` });
+      }
+      await CacheManager.clearByPattern(pattern);
+      logger.log(`🧹 Admin cleared cache pattern "${pattern}" (actor=${(req as any).session?.user?.email || 'unknown'})`);
+      res.json({ message: `Cleared cache entries matching pattern: ${pattern}` });
     } catch (error) {
       res.status(500).json({ error: 'Failed to clear cache' });
     }

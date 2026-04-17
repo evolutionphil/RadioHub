@@ -159,12 +159,14 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
     }
   };
   // Clean expired entries more frequently (every 5min instead of 1h) to limit memory growth.
-  setInterval(() => {
+  const _pairingCleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [ip, data] of pairingAttempts) {
       if (now > data.resetAt) pairingAttempts.delete(ip);
     }
   }, 5 * 60 * 1000);
+  // unref so this timer doesn't block SIGTERM-driven graceful shutdown.
+  if (typeof (_pairingCleanupTimer as any).unref === 'function') (_pairingCleanupTimer as any).unref();
 
   app.post('/api/cast/session/pair', async (req: any, res) => {
     try {

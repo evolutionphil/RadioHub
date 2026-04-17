@@ -277,6 +277,13 @@ app.use((req, res, next) => {
 app.use('/api', globalApiLimiter);
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/signup', authLimiter);
+app.use('/api/auth/mobile/login', authLimiter);
+app.use('/api/auth/apple', authLimiter);
+app.use('/api/auth/google', authLimiter);
+app.use('/api/auth/token-session', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+app.use('/api/auth/reset-password', authLimiter);
 app.use('/api/admin/login', authLimiter);
 
 app.use((req, res, next) => {
@@ -412,8 +419,18 @@ app.use(session(sessionConfig));
 
   const server = await registerRoutes(app, { mode: 'api-only' });
 
-  server.on('upgrade', (request, socket, head) => {
+  server.on('upgrade', async (request, socket, head) => {
     const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
+
+    // Mongo circuit breaker for WS upgrades — chat/cast/metadata all use DB.
+    try {
+      const mongooseMod = (await import('mongoose')).default;
+      if (mongooseMod.connection.readyState !== 1) {
+        try { socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); } catch {}
+        try { socket.destroy(); } catch {}
+        return;
+      }
+    } catch {}
 
     if (pathname === '/ws/metadata') {
       server.metadataWss.handleUpgrade(request, socket, head, (ws) => {
@@ -437,6 +454,11 @@ app.use(session(sessionConfig));
   server.timeout = 120000;
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 70000;
+  // Slowloris / hung client mitigation. Without requestTimeout, a slow client
+  // can hold a connection until headersTimeout (70s) per request indefinitely.
+  (server as any).requestTimeout = 60_000;
+  server.maxHeadersCount = 100;
+  (server as any).maxRequestsPerSocket = 1000;
   server.maxConnections = 300;
   (app as any)._httpServer = server;
 
@@ -451,6 +473,20 @@ app.use(session(sessionConfig));
     }, 15000);
 
     try {
+      // Close all WebSocket clients first so server.close() can resolve promptly.
+      try {
+        const wssList = [server.metadataWss, server.castWss, server.chatWss].filter(Boolean);
+        for (const wss of wssList) {
+          for (const client of wss.clients) {
+            try { client.close(1001, 'server-shutdown'); } catch {}
+          }
+          try { wss.close(); } catch {}
+        }
+        console.log(`✅ Closed ${wssList.length} WebSocket server(s)`);
+      } catch (wsErr: any) {
+        console.warn('⚠️ Error closing WS servers:', wsErr?.message || wsErr);
+      }
+
       await new Promise<void>((resolve) => {
         server.close(() => { console.log('✅ HTTP server closed'); resolve(); });
         setTimeout(resolve, 10000);

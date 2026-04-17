@@ -52,9 +52,22 @@ export class CacheManager {
       if (redisClient && redisClient.isOpen) {
         const redisResult = await redisClient.get(key);
         if (redisResult) {
-          const parsed = JSON.parse(redisResult) as T;
+          // Detect raw string payloads (set() may have stored a string without
+          // JSON-encoding it). JSON.parse on raw text would throw and lose
+          // the value silently. Probe with the first character.
+          const first = redisResult.charCodeAt(0);
+          const looksJson = first === 0x7b /*{*/ || first === 0x5b /*[*/ ||
+            first === 0x22 /*"*/ || first === 0x74 /*t*/ || first === 0x66 /*f*/ ||
+            first === 0x6e /*n*/ || (first >= 0x30 && first <= 0x39) /*0-9*/ ||
+            first === 0x2d /*-*/;
+          let parsed: T;
+          try {
+            parsed = looksJson ? (JSON.parse(redisResult) as T) : (redisResult as unknown as T);
+          } catch {
+            parsed = redisResult as unknown as T;
+          }
           if (redisResult.length < 256_000) {
-            memoryCache.set(key, parsed, 300);
+            try { memoryCache.set(key, parsed, 300); } catch {}
           }
           return parsed;
         }
@@ -81,28 +94,78 @@ export class CacheManager {
   }
 
   static async set<T>(key: string, value: T, options: CacheOptions = {}): Promise<void> {
-    try {
-      const ttl = options.ttl || 600;
+    const ttl = options.ttl || 600;
 
-      const valueSizeBytes = typeof value === 'string' ? value.length * 2 : 0;
-      const isLargeValue = valueSizeBytes > 512_000;
-
-      if (!isLargeValue) {
-        const memTtl = Math.min(ttl, 3600);
-        memoryCache.set(key, value, memTtl);
-      }
-
-      if (redisClient && redisClient.isOpen) {
+    // Single-pass size measurement: serialize once and reuse for both memory
+    // size check and Redis payload. This was previously broken — only string
+    // payloads were measured, so multi-MB precomputed JSON was silently
+    // jammed into NodeCache and triggered ECACHEFULL evictions on hot keys.
+    let serialized: string | null = null;
+    let payloadBytes = 0;
+    if (typeof value === 'string') {
+      payloadBytes = (value as unknown as string).length * 2; // UTF-16 estimate
+    } else {
+      try {
         const opId = startOperation('cache-stringify', key);
         try {
-          const serialized = JSON.stringify(value);
-          await redisClient.setEx(key, ttl, serialized);
+          serialized = JSON.stringify(value);
         } finally {
           endOperation(opId);
         }
+        payloadBytes = serialized ? serialized.length * 2 : 0;
+      } catch {
+        // value is not serializable (Map/circular/etc) — skip Redis but keep memory
+        serialized = null;
       }
-    } catch (error) {
     }
+
+    const isLargeValue = payloadBytes > 512_000;
+
+    // Memory write — independent failure path. NodeCache may throw ECACHEFULL
+    // if maxKeys is exceeded; that must NOT prevent the Redis write.
+    if (!isLargeValue) {
+      try {
+        const memTtl = Math.min(ttl, 3600);
+        memoryCache.set(key, value, memTtl);
+      } catch {}
+    }
+
+    // Redis write — independent failure path.
+    if (redisClient && redisClient.isOpen && serialized !== null) {
+      try {
+        await redisClient.setEx(key, ttl, serialized);
+      } catch {}
+    } else if (redisClient && redisClient.isOpen && typeof value === 'string') {
+      try {
+        await redisClient.setEx(key, ttl, value as unknown as string);
+      } catch {}
+    }
+  }
+
+  // Single-flight helper — coalesces concurrent misses on the same key into
+  // one upstream call. Prevents cache stampedes during precompute warmup or
+  // when a hot key TTLs out under traffic.
+  private static inflight = new Map<string, Promise<any>>();
+  static async getOrSetSingleFlight<T>(
+    key: string,
+    loader: () => Promise<T>,
+    options: CacheOptions = {}
+  ): Promise<T> {
+    const cached = await CacheManager.get<T>(key);
+    if (cached !== null) return cached;
+    const existing = CacheManager.inflight.get(key);
+    if (existing) return existing as Promise<T>;
+    const p = (async () => {
+      try {
+        const value = await loader();
+        await CacheManager.set(key, value, options);
+        return value;
+      } finally {
+        CacheManager.inflight.delete(key);
+      }
+    })();
+    CacheManager.inflight.set(key, p);
+    return p;
   }
 
   // Delete cached data

@@ -1,0 +1,835 @@
+index-C-1UlxJD.js:164 The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. https://developer.chrome.com/blog/autoplay/#web_audio
+(anonymous) @ index-C-1UlxJD.js:164
+setInterval
+xj @ index-C-1UlxJD.js:164
+bj @ index-C-1UlxJD.js:164
+_j @ index-C-1UlxJD.js:164
+t @ index-C-1UlxJD.js:164
+requestIdleCallback
+(anonymous) @ index-C-1UlxJD.js:164
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+Navigated to https://themegaradio.com/lt/stotis/judas-priest
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+index-C-1UlxJD.js:164 LCP: 1232
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+index-C-1UlxJD.js:41 [Violation] 'setTimeout' handler took 135ms
+index-C-1UlxJD.js:164  GET https://api.themegaradio.com/api/advertisements 404 (Not Found)
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+index-C-1UlxJD.js:164 LCP: 1572
+index-C-1UlxJD.js:41 [Violation] 'setTimeout' handler took 56ms
+index-C-1UlxJD.js:26 [Violation] 'message' handler took 155ms
+sw.js:7 [SW] Service Worker installing...
+index-C-1UlxJD.js:164 Fetch failed loading: GET "https://api.themegaradio.com/api/advertisements".
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+index-C-1UlxJD.js:164 LCP: 2112
+index-C-1UlxJD.js:164  GET https://api.themegaradio.com/api/advertisements 404 (Not Found)
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.then
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.catch
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+index-C-1UlxJD.js:164 LCP: 3032
+index-C-1UlxJD.js:164 Fetch failed loading: GET "https://api.themegaradio.com/api/advertisements".
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.then
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.catch
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+index-C-1UlxJD.js:26 [Violation] 'message' handler took 177ms
+judas-priest:1 Error while trying to use the following icon from the Manifest: https://themegaradio.com/apple-touch-icon.png (Resource size is not correct - typo in the Manifest?)
+v8c78df7c7c0f484497ecbca7046644da1771523124516:1 XHR finished loading: POST "https://themegaradio.com/cdn-cgi/rum?".
+(anonymous) @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+C @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+U @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+setTimeout
+(anonymous) @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+show_ads_impl_fy2021.js:100 XHR finished loading: GET "https://ep1.adtrafficquality.google/getconfig/sodar?sv=200&tid=gda&tv=r20260415&st=env&sjk=2917182480443367".
+(anonymous) @ show_ads_impl_fy2021.js:100
+ik @ show_ads_impl_fy2021.js:100
+hk @ show_ads_impl_fy2021.js:99
+jk @ show_ads_impl_fy2021.js:101
+R3 @ show_ads_impl_fy2021.js:760
+(anonymous) @ show_ads_impl_fy2021.js:760
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+The resource <URL> was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+index-C-1UlxJD.js:164 Fetch finished loading: POST "https://themegaradio.com/cdn-cgi/zaraz/t".
+window.fetch @ index-C-1UlxJD.js:164
+(anonymous) @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:3
+zaraz.track @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:1
+zaraz._c @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:5
+(anonymous) @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:5
+index-C-1UlxJD.js:164 Fetch finished loading: POST "https://themegaradio.com/cdn-cgi/zaraz/t".
+window.fetch @ index-C-1UlxJD.js:164
+(anonymous) @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:3
+zaraz.track @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:1
+zaraz._c @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:5
+(anonymous) @ s.js?z=JTdCJTIyZXhlY3V0ZWQlMjIlM0ElNUIlNUQlMkMlMjJ0JTIyJTNBJTIyTWVnYSUyMFJhZGlvJTIwLSUyMExpZXR1dmklQzUlQjMlMjIlMkMlMjJ4JTIyJTNBMC4yMzgyOTU3NjU2MjU1Mzg0NSUyQyUyMnclMjIlM0E5MTIlMkMlMjJoJTIyJTNBOTQ0JTJDJTIyaiUyMiUzQTk0NCUyQyUyMmUlMjIlM0E5MTIlMkMlMjJsJTIyJTNBJTIyaHR0cHMlM0ElMkYlMkZ0aGVtZWdhcmFkaW8uY29tJTJGbHQlMkZzdG90aXMlMkZqdWRhcy1wcmllc3QlMjIlMkMlMjJyJTIyJTNBJTIyJTIyJTJDJTIyayUyMiUzQTMyJTJDJTIybiUyMiUzQSUyMlVURi04JTIyJTJDJTIybyUyMiUzQTAlMkMlMjJxJTIyJTNBJTVCJTVEJTdE:5
+sw.js:13 [SW] Service Worker activating...
+Navigated to https://themegaradio.com/pl/stacja/akritas-948
+ LCP: 1136
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+index-C-1UlxJD.js:41 [Violation] 'setTimeout' handler took 116ms
+index-C-1UlxJD.js:164  GET https://api.themegaradio.com/api/advertisements 404 (Not Found)
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+ LCP: 1484
+ Fetch failed loading: GET "https://api.themegaradio.com/api/advertisements".
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+index-C-1UlxJD.js:41 [Violation] 'setTimeout' handler took 97ms
+sw.js:7 [SW] Service Worker installing...
+ LCP: 1972
+index-C-1UlxJD.js:26 [Violation] 'message' handler took 179ms
+ LCP: 2116
+ Fetch failed loading: POST "https://pagead2.googlesyndication.com/pagead/ping?e=1".
+window.fetch @ index-C-1UlxJD.js:164
+xg @ adsbygoogle.js?clien…8771434485570434:55
+yg @ adsbygoogle.js?clien…8771434485570434:55
+(anonymous) @ adsbygoogle.js?clien…8771434485570434:55
+setTimeout
+tg @ adsbygoogle.js?clien…8771434485570434:55
+ug @ adsbygoogle.js?clien…8771434485570434:55
+Dg @ adsbygoogle.js?clien…8771434485570434:56
+tq @ adsbygoogle.js?clien…771434485570434:202
+(anonymous) @ adsbygoogle.js?clien…771434485570434:203
+(anonymous) @ adsbygoogle.js?clien…8771434485570434:62
+Dq @ adsbygoogle.js?clien…771434485570434:204
+Eq @ adsbygoogle.js?clien…771434485570434:204
+(anonymous) @ adsbygoogle.js?clien…771434485570434:241
+g @ adsbygoogle.js?clien…8771434485570434:79
+ek @ adsbygoogle.js?clien…8771434485570434:80
+(anonymous) @ adsbygoogle.js?clien…771434485570434:241
+(anonymous) @ adsbygoogle.js?clien…771434485570434:243
+(anonymous) @ adsbygoogle.js?clien…771434485570434:245
+index-C-1UlxJD.js:164  GET https://api.themegaradio.com/api/advertisements 404 (Not Found)
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.then
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.catch
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+ LCP: 2940
+ Fetch failed loading: GET "https://api.themegaradio.com/api/advertisements".
+window.fetch @ index-C-1UlxJD.js:164
+queryFn @ _id_-CfIqR_8C.js:2
+i @ index-C-1UlxJD.js:49
+b @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.then
+(anonymous) @ index-C-1UlxJD.js:49
+Promise.catch
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+(anonymous) @ index-C-1UlxJD.js:41
+setTimeout
+o @ index-C-1UlxJD.js:49
+s @ index-C-1UlxJD.js:49
+batch @ index-C-1UlxJD.js:49
+rn @ index-C-1UlxJD.js:49
+setData @ index-C-1UlxJD.js:49
+onSuccess @ index-C-1UlxJD.js:49
+p @ index-C-1UlxJD.js:49
+Promise.then
+b @ index-C-1UlxJD.js:49
+start @ index-C-1UlxJD.js:49
+fetch @ index-C-1UlxJD.js:49
+ni @ index-C-1UlxJD.js:49
+onSubscribe @ index-C-1UlxJD.js:49
+subscribe @ index-C-1UlxJD.js:49
+(anonymous) @ index-C-1UlxJD.js:49
+og @ index-C-1UlxJD.js:39
+Ra @ index-C-1UlxJD.js:41
+ro @ index-C-1UlxJD.js:41
+gp @ index-C-1UlxJD.js:41
+Jn @ index-C-1UlxJD.js:39
+Lb @ index-C-1UlxJD.js:41
+sr @ index-C-1UlxJD.js:41
+Dg @ index-C-1UlxJD.js:41
+E @ index-C-1UlxJD.js:26
+z @ index-C-1UlxJD.js:26
+sw.js:13 [SW] Service Worker activating...
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+index-C-1UlxJD.js:26 [Violation] 'message' handler took 185ms
+akritas-948:313  GET https://mad.gr/wp-content/uploads/2020/06/cropped-mad-browser-icon-180x180.png 404 (Not Found)
+akritas-948:313  GET https://mad.gr/wp-content/uploads/2020/06/cropped-mad-browser-icon-180x180.png 404 (Not Found)
+akritas-948:1 Error while trying to use the following icon from the Manifest: https://themegaradio.com/apple-touch-icon.png (Resource size is not correct - typo in the Manifest?)
+ XHR finished loading: POST "https://themegaradio.com/cdn-cgi/rum?".
+(anonymous) @ v8c78df7c7c0f484497e…44da1771523124516:1
+C @ v8c78df7c7c0f484497e…44da1771523124516:1
+U @ v8c78df7c7c0f484497e…44da1771523124516:1
+setTimeout
+(anonymous) @ v8c78df7c7c0f484497e…44da1771523124516:1
+ XHR finished loading: GET "https://ep1.adtrafficquality.google/getconfig/sodar?sv=200&tid=gda&tv=r20260415&st=env&sjk=99642947076402".
+(anonymous) @ show_ads_impl_fy2021.js:100
+ik @ show_ads_impl_fy2021.js:100
+hk @ show_ads_impl_fy2021.js:99
+jk @ show_ads_impl_fy2021.js:101
+R3 @ show_ads_impl_fy2021.js:760
+(anonymous) @ show_ads_impl_fy2021.js:760
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+XHR finished loading: POST "<URL>".
+pl/stacja/akritas-948:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+ Fetch finished loading: POST "https://themegaradio.com/cdn-cgi/zaraz/t".
+window.fetch @ index-C-1UlxJD.js:164
+(anonymous) @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:3
+zaraz.track @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:1
+zaraz._c @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:5
+(anonymous) @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:5
+pl/stacja/akritas-948:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+pl/stacja/akritas-948:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.
+ Fetch finished loading: POST "https://themegaradio.com/cdn-cgi/zaraz/t".
+window.fetch @ index-C-1UlxJD.js:164
+(anonymous) @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:3
+zaraz.track @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:1
+zaraz._c @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:5
+(anonymous) @ cdn-cgi/zaraz/s.js?z…zQSU1QiU1RCU3RA==:5
+Navigated to https://themegaradio.com/en
+index-C-1UlxJD.js:26 [Violation] 'message' handler took 269ms
+index-C-1UlxJD.js:164 LCP: 1420
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+index-C-1UlxJD.js:41 [Violation] 'setTimeout' handler took 326ms
+sw.js:7 [SW] Service Worker installing...
+index-C-1UlxJD.js:164 LCP: 1996
+index-C-1UlxJD.js:41 [Violation] 'setTimeout' handler took 114ms
+index-C-1UlxJD.js:164 LCP: 2736
+sw.js:13 [SW] Service Worker activating...
+index-C-1UlxJD.js:26 [Violation] 'message' handler took 227ms
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+The AudioContext was not allowed to start. It must be resumed (or created) after a user gesture on the page. <URL>
+sw.js:164 Fetch failed loading: GET "https://upload.wikimedia.org/wikipedia/fr/thumb/c/c9/France_Culture_-_2008.svg/1024px-France_Culture_-_2008.svg.png".
+(anonymous) @ sw.js:164
+Promise.then
+(anonymous) @ sw.js:158
+Promise.then
+(anonymous) @ sw.js:157
+sw.js:164 Fetch failed loading: GET "https://upload.wikimedia.org/wikipedia/fr/thumb/d/d5/FIP_logo_2005.svg/1024px-FIP_logo_2005.svg.png".
+(anonymous) @ sw.js:164
+Promise.then
+(anonymous) @ sw.js:158
+Promise.then
+(anonymous) @ sw.js:157
+index-C-1UlxJD.js:41 [Violation] 'setTimeout' handler took 117ms
+en:313  GET https://upload.wikimedia.org/wikipedia/fr/thumb/c/c9/France_Culture_-_2008.svg/1024px-France_Culture_-_2008.svg.png 429 (Too Many Requests)
+en:313  GET https://upload.wikimedia.org/wikipedia/fr/thumb/d/d5/FIP_logo_2005.svg/1024px-FIP_logo_2005.svg.png 429 (Too Many Requests)
+sw.js:164 Fetch failed loading: GET "https://upload.wikimedia.org/wikipedia/fr/thumb/c/c9/France_Culture_-_2008.svg/1024px-France_Culture_-_2008.svg.png".
+(anonymous) @ sw.js:164
+Promise.then
+(anonymous) @ sw.js:158
+Promise.then
+(anonymous) @ sw.js:157
+en:313  GET https://upload.wikimedia.org/wikipedia/fr/thumb/c/c9/France_Culture_-_2008.svg/1024px-France_Culture_-_2008.svg.png 429 (Too Many Requests)
+sw.js:164 Fetch failed loading: GET "https://upload.wikimedia.org/wikipedia/fr/thumb/d/d5/FIP_logo_2005.svg/1024px-FIP_logo_2005.svg.png".
+(anonymous) @ sw.js:164
+Promise.then
+(anonymous) @ sw.js:158
+Promise.then
+(anonymous) @ sw.js:157
+en:313  GET https://upload.wikimedia.org/wikipedia/fr/thumb/d/d5/FIP_logo_2005.svg/1024px-FIP_logo_2005.svg.png 429 (Too Many Requests)
+en:1 Error while trying to use the following icon from the Manifest: https://themegaradio.com/apple-touch-icon.png (Resource size is not correct - typo in the Manifest?)
+v8c78df7c7c0f484497ecbca7046644da1771523124516:1 XHR finished loading: POST "https://themegaradio.com/cdn-cgi/rum?".
+(anonymous) @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+C @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+U @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+setTimeout
+(anonymous) @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+show_ads_impl_fy2021.js:100 XHR finished loading: GET "https://ep1.adtrafficquality.google/getconfig/sodar?sv=200&tid=gda&tv=r20260415&st=env&sjk=857497131853867".
+(anonymous) @ show_ads_impl_fy2021.js:100
+ik @ show_ads_impl_fy2021.js:100
+hk @ show_ads_impl_fy2021.js:99
+jk @ show_ads_impl_fy2021.js:101
+R3 @ show_ads_impl_fy2021.js:760
+(anonymous) @ show_ads_impl_fy2021.js:760
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Gn @ clarity.js:2
+ea @ clarity.js:2
+start @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+Yu @ clarity.js:2
+Xu.<computed> @ clarity.js:2
+zu @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+PendingScript
+(anonymous) @ u56nfdsjou?ref=bwt:1
+(anonymous) @ u56nfdsjou?ref=bwt:1
+PendingScript
+(anonymous) @ en:203
+requestIdleCallback.timeout @ en:204
+requestIdleCallback
+(anonymous) @ en:199
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Gn @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+ga @ clarity.js:2
+Di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Ci @ clarity.js:2
+pa @ clarity.js:2
+(anonymous) @ clarity.js:2
+attributes
+(anonymous) @ show_ads_impl_fy2021.js:761
+setTimeout
+V3 @ show_ads_impl_fy2021.js:761
+(anonymous) @ show_ads_impl_fy2021.js:760
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Gn @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+ga @ clarity.js:2
+Di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Ci @ clarity.js:2
+pa @ clarity.js:2
+(anonymous) @ clarity.js:2
+childList
+(anonymous) @ sodar2.js:52
+I @ sodar2.js:13
+next @ sodar2.js:14
+b @ sodar2.js:14
+Promise.then
+g @ sodar2.js:14
+Promise.then
+g @ sodar2.js:14
+(anonymous) @ sodar2.js:14
+na @ sodar2.js:14
+J @ sodar2.js:15
+db @ sodar2.js:51
+(anonymous) @ sodar2.js:46
+I @ sodar2.js:13
+next @ sodar2.js:14
+(anonymous) @ sodar2.js:14
+na @ sodar2.js:14
+J @ sodar2.js:15
+cb @ sodar2.js:46
+(anonymous) @ sodar2.js:49
+I @ sodar2.js:13
+next @ sodar2.js:14
+(anonymous) @ sodar2.js:14
+na @ sodar2.js:14
+J @ sodar2.js:15
+hb @ sodar2.js:49
+(anonymous) @ sodar2.js:52
+I @ sodar2.js:13
+next @ sodar2.js:14
+(anonymous) @ sodar2.js:14
+na @ sodar2.js:14
+J @ sodar2.js:15
+jb.init @ sodar2.js:52
+lb @ sodar2.js:53
+(anonymous) @ sodar2.js:53
+(anonymous) @ sodar2.js:53
+(anonymous) @ sodar2.js:53
+PendingScript
+(anonymous) @ show_ads_impl_fy2021.js:99
+ck @ show_ads_impl_fy2021.js:99
+jk @ show_ads_impl_fy2021.js:102
+await in jk
+R3 @ show_ads_impl_fy2021.js:760
+(anonymous) @ show_ads_impl_fy2021.js:760
