@@ -1895,20 +1895,31 @@ export function generateSeoTags(
 
   // Prioritize translated path from database for canonical URL
   // This ensures canonical URLs use localized paths like /sq/zhanret instead of /sq/genres
-  let canonicalPath = translatedPath || originalPath || `${language === DEFAULT_LANGUAGE ? '' : `/${language}`}${cleanPath}`;
-  
-  // CRITICAL SEO FIX: Default language homepage should use root / as canonical (no language prefix)
-  // UNLESS there's a country code (e.g., /us, /gb) which should be self-referencing
-  // Other language homepages should use their language-prefixed canonical (e.g., /tr, /de)
-  // This ensures proper multilingual SEO with self-referencing canonicals for each language variant
-  const hasCountryCode = originalPath && originalPath !== cleanPath && originalPath !== `/${language}`;
-  if ((cleanPath === '/' || cleanPath === '') && language === DEFAULT_LANGUAGE && !hasCountryCode) {
-    canonicalPath = '/';
+  // CRITICAL: ALL languages (including default English) use /{lang} prefix — matches sitemap & hreflang.
+  // Previously the default-English homepage was rewritten to "/" which caused Google Search Console
+  // "Alternate page with proper canonical tag" because:
+  //   - sitemap-main-en.xml lists https://themegaradio.com/en
+  //   - hreflang en = https://themegaradio.com/en
+  //   - canonical pointed to https://themegaradio.com/  (mismatch → duplicate signal)
+  //   - https://themegaradio.com/ 302-redirects back to /en (circular)
+  // Fix: prefix-all strategy is enforced — /en is self-canonical.
+  let canonicalPath = translatedPath || originalPath || `/${language}${cleanPath}`;
+
+  // Defensive: if canonicalPath ended up as bare "/" (e.g. caller passed cleanPath="/"
+  // and translatedPath/originalPath were empty), force the language prefix.
+  if (canonicalPath === '/' || canonicalPath === '') {
+    canonicalPath = `/${language}`;
   }
   
   // CRITICAL SEO FIX: Always strip query parameters and hash fragments from canonical URLs
   // This prevents duplicate content issues (e.g., /page and /page?tab=popular should have same canonical)
   canonicalPath = canonicalPath.split('?')[0].split('#')[0];
+
+  // Strip trailing slash (except root "/") to match the server's trailing-slash redirect
+  // and avoid canonical→redirect chains that confuse Google.
+  if (canonicalPath.length > 1 && canonicalPath.endsWith('/')) {
+    canonicalPath = canonicalPath.replace(/\/+$/, '');
+  }
   
   // Generate canonical URL
   const canonicalUrl = `${currentDomain}${canonicalPath}`;

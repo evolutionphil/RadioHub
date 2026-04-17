@@ -45,6 +45,24 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
     });
   });
 
+  // PUBLIC: only active ads, projection-limited (no admin-only fields).
+  // Cached at the CDN edge for 5 minutes to keep the API server cool.
+  app.get("/api/advertisements", async (_req, res) => {
+    try {
+      const ads = await Advertisement.find(
+        { isActive: true },
+        { title: 1, imageUrl: 1, altText: 1, seoDescription: 1, url: 1, position: 1 }
+      )
+        .sort({ position: 1, createdAt: -1 })
+        .limit(50)
+        .lean();
+      res.set('Cache-Control', 'public, max-age=300, s-maxage=300');
+      res.json(ads);
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch advertisements' });
+    }
+  });
+
   app.get("/api/admin/advertisements", requireAdmin, async (req, res) => {
     try {
       const ads = await Advertisement.find().sort({ position: 1, createdAt: -1 });
