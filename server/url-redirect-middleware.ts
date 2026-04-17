@@ -66,6 +66,41 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
   ) {
     return next();
   }
+
+  // =================================================================
+  // ?lang=xx QUERY STRING → 301 REDIRECT to /{lang}/<path>
+  // Many sites (and external links) use ?lang=tr — convert to canonical
+  // /tr URL so useTranslation can detect language from URL prefix.
+  // Single-hop, deterministic, preserves other query params.
+  // =================================================================
+  const langQuery = typeof req.query.lang === 'string' ? req.query.lang.toLowerCase() : '';
+  if (langQuery && /^[a-z]{2}$/.test(langQuery)) {
+    const isValidLang = SEO_LANGUAGES.some(l => l.code === langQuery && l.enabled);
+    if (isValidLang) {
+      // Strip existing language/country prefix from path (if any)
+      const segs = urlPath.split('/').filter(Boolean);
+      const first = segs[0]?.toLowerCase();
+      const isLangPrefix = first && first.length === 2 &&
+        (SEO_LANGUAGES.some(l => l.code === first) || COUNTRY_TO_LANGUAGE[first]);
+      const cleanPath = isLangPrefix ? '/' + segs.slice(1).join('/') : urlPath;
+      const normalizedClean = cleanPath === '/' ? '' : cleanPath.replace(/\/$/, '');
+
+      // Preserve other query params (drop lang)
+      const qIdx = req.originalUrl.indexOf('?');
+      let preservedQuery = '';
+      if (qIdx !== -1) {
+        const params = new URLSearchParams(req.originalUrl.slice(qIdx + 1));
+        params.delete('lang');
+        const remaining = params.toString();
+        if (remaining) preservedQuery = '?' + remaining;
+      }
+
+      const target = `/${langQuery}${normalizedClean}${preservedQuery}`;
+      logger.log(`🔀 LANG-QUERY 301: ${req.originalUrl} → ${target}`);
+      res.redirect(301, target);
+      return;
+    }
+  }
   
   // =================================================================
   // CRITICAL: Redirect bare English paths to /en/* format
