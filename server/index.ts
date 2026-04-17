@@ -115,15 +115,27 @@ function getHstsHeader(): string {
 // reconnect loop in server/db-mongo.ts. Other errors are logged but the
 // process keeps running (this is the embedded/monolith path; the split
 // services in index-api.ts use stricter fail-fast semantics).
-const TRANSIENT_MONGO_RE = /MongoNetworkError|MongoServerSelectionError|MongoNotConnectedError|MongoPoolClearedError|MongoExpiredSessionError|PoolClearedError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|server selection|connection.*closed/i;
+//
+// NOTE: do NOT use a generic "connection.*closed" pattern — it would
+// suppress unrelated failures (HTTP, WebSocket, etc.) whose message happens
+// to contain that phrase. We rely on Mongo-named errors and well-known
+// network errno strings only. MongoNetworkError already covers most
+// teardown cases.
+const TRANSIENT_MONGO_RE = /MongoNetworkError|MongoServerSelectionError|MongoNotConnectedError|MongoPoolClearedError|MongoExpiredSessionError|PoolClearedError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|server selection/i;
+
+function isTransientMongo(err: any): boolean {
+  const name = err?.name || '';
+  if (typeof name === 'string' && name.startsWith('Mongo')) return true;
+  const msg = err?.message || (typeof err === 'string' ? err : '');
+  return TRANSIENT_MONGO_RE.test(msg);
+}
 
 process.on('uncaughtException', (err: any) => {
-  const msg = err?.message || String(err);
-  if (TRANSIENT_MONGO_RE.test(msg)) {
-    console.warn('⚠️ UNCAUGHT EXCEPTION (transient MongoDB, ignored):', msg);
+  if (isTransientMongo(err)) {
+    console.warn('⚠️ UNCAUGHT EXCEPTION (transient MongoDB, ignored):', err?.message || err);
     return;
   }
-  console.error('🚨 UNCAUGHT EXCEPTION (process survived):', msg);
+  console.error('🚨 UNCAUGHT EXCEPTION (process survived):', err?.message || err);
   console.error(err?.stack?.split('\n').slice(0, 5).join('\n'));
 });
 process.on('unhandledRejection', (reason: any) => {
@@ -133,9 +145,8 @@ process.on('unhandledRejection', (reason: any) => {
     console.warn('⚠️ MongoDB quota exceeded (unhandled rejection) — writes paused for 10min');
     return;
   }
-  const msgStr = typeof msg === 'string' ? msg : '';
-  if (TRANSIENT_MONGO_RE.test(msgStr)) {
-    console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msgStr);
+  if (isTransientMongo(reason)) {
+    console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msg);
     return;
   }
   console.error('🚨 UNHANDLED REJECTION (process survived):', msg);

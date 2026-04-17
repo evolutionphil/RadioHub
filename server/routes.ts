@@ -435,9 +435,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ Popular stations cache refresh scheduled: daily 6:30 AM (on-demand for first request)');
 
-  if (!isApiOnly) {
-    app.get('/stations', (_req, res) => res.redirect(301, '/radios'));
-  }
+  // NOTE: bare /stations is handled by url-redirect-middleware which
+  // 301-redirects directly to /{lang}/{translated} in a single hop.
+  // The previous /stations → /radios route here caused a redirect chain
+  // (/stations → /radios → /en/radios) that hurt Google crawl efficiency.
 
   // === LISTENING RECORD (not in any module file) ===
   app.post('/api/listening/record', requireAuth, async (req, res) => {

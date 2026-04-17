@@ -97,26 +97,89 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
     return 'en';
   };
 
+  // =================================================================
+  // BOT-AWARE ROOT REDIRECT
+  // For bots: hard-301 to /en (the canonical default English URL) so
+  //   crawlers don't waste budget on geo-detected 302s and so canonical
+  //   signal is unambiguous.
+  // For users: 302 with geo-detection so a German visitor lands on /de.
+  // 302 is correct here because the chosen language depends on the
+  //   request (geo + cookie + accept-language).
+  // =================================================================
+  const userAgent = (req.headers['user-agent'] || '').toLowerCase();
+  const isMajorBot = /googlebot|bingbot|yandexbot|baiduspider|duckduckbot|applebot/.test(userAgent);
+
   if (segments.length === 0) {
+    if (isMajorBot) {
+      logger.log(`🔀 SEO 301: / → /en (bot canonical)`);
+      res.redirect(301, '/en');
+      return;
+    }
     const detectedLang = detectLanguageFromRequest(req);
-    logger.log(`🔀 SEO 302: / → /${detectedLang} (auto-detected from country/browser)`);
+    logger.log(`🔀 SEO 302: / → /${detectedLang} (geo-detected)`);
     res.redirect(302, `/${detectedLang}`);
     return;
   }
-  
+
+  // =================================================================
+  // LOWERCASE NORMALIZATION
+  // /En/Radios → /en/radios (single 301). Without this Google may
+  // index both casings as duplicate content.
+  // =================================================================
+  const firstSegRaw = segments[0];
+  if (firstSegRaw !== firstSegRaw.toLowerCase()) {
+    const lowered = '/' + segments.map((s, i) => i === 0 ? s.toLowerCase() : s).join('/');
+    // Preserve raw query (originalUrl is undecoded; req.url may differ in
+    // length from req.path for percent-encoded segments).
+    const qIdx = req.originalUrl.indexOf('?');
+    const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+    logger.log(`🔀 SEO 301: ${urlPath} → ${lowered} (lowercase language code)`);
+    res.redirect(301, lowered + queryString);
+    return;
+  }
+
   if (!isLanguageCode && !isCountryCode) {
-    const knownRoutes = ['radios', 'genres', 'station', 'stations', 'regions', 'discover', 
+    const knownRoutes = ['radios', 'genres', 'station', 'stations', 'regions', 'discover',
       'favorites', 'trending', 'about', 'contact', 'privacy-policy',
       'terms-and-conditions', 'feedback', 'profile', 'settings', 'notifications',
       'login', 'signup', 'forgot-password', 'change-password', 'request-station',
       'recommendations', 'users', 'pages', 'applications', 'album', 'artist', 'song', 'records', 'tv'];
-    
+
     if (knownRoutes.includes(firstSegment)) {
-      const detectedLang = detectLanguageFromRequest(req);
-      const queryString = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
-      const newPath = `/${detectedLang}${urlPath}${queryString}`;
-      logger.log(`🔀 SEO 302: ${urlPath} → ${newPath} (auto-detected language prefix)`);
-      res.redirect(302, newPath);
+      // CRITICAL: 301 destination MUST be deterministic (not geo-dependent).
+      // Browsers and CDNs cache 301s permanently — if we send German users to
+      // /de/sender and English users to /en/radios for the same /stations URL,
+      // the cache poisons cross-user. Worse, Google sees inconsistent canonical
+      // signals. So: bare known routes ALWAYS go to /en/{englishTranslation},
+      // and the user-facing language switcher handles preferred language
+      // afterward (with a cookie). Only the root `/` keeps geo-302 because it
+      // has no path content to canonicalize.
+      const targetLang = 'en';
+      let translatedFirstSeg = firstSegment;
+      try {
+        // Tight 2s timeout so a stalled cache lookup can't hang the request
+        // (would otherwise wait until the 30s gateway timeout and 504).
+        const dbTranslations = await Promise.race([
+          performanceCache.getUrlTranslations(),
+          new Promise<Map<string, string>>((_, reject) =>
+            setTimeout(() => reject(new Error('translation-cache-timeout')), 2000)
+          ),
+        ]);
+        translatedFirstSeg = dbTranslations.get(`${targetLang}:${firstSegment}`)
+          || URL_TRANSLATIONS[targetLang]?.[firstSegment]
+          || firstSegment;
+      } catch {
+        translatedFirstSeg = URL_TRANSLATIONS[targetLang]?.[firstSegment] || firstSegment;
+      }
+      const rest = segments.length > 1 ? '/' + segments.slice(1).join('/') : '';
+      // Use originalUrl-based query extraction so percent-encoded paths
+      // don't corrupt the Location header (req.path is decoded; raw query
+      // must be preserved verbatim).
+      const qIdx = req.originalUrl.indexOf('?');
+      const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+      const newPath = `/${targetLang}/${translatedFirstSeg}${rest}${queryString}`;
+      logger.log(`🔀 SEO 301: ${urlPath} → ${newPath} (prefix+translation, deterministic /en target)`);
+      res.redirect(301, newPath);
       return;
     }
   }

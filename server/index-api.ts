@@ -114,7 +114,14 @@ process.on('unhandledRejection', (reason: any) => {
   const msgStr = typeof msg === 'string' ? msg : '';
   // Include all known transient MongoDB driver errors. Without these in the
   // list, a momentary Atlas failover or pool clear would scheduleFatalExit().
-  const isMongoTransient = /MongoNetworkError|MongoServerSelectionError|MongoNotConnectedError|MongoPoolClearedError|MongoExpiredSessionError|PoolClearedError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|server selection|connection.*closed/i.test(msgStr);
+  // NOTE: do NOT use a generic "connection.*closed" pattern — it would
+  // suppress unrelated failures from other subsystems whose error message
+  // happens to contain that phrase. The Mongo-specific patterns below cover
+  // the real failure modes (MongoNetworkError already includes connection
+  // teardowns).
+  const errName = (reason as any)?.name || '';
+  const isMongoTransient = errName.startsWith('Mongo') ||
+    /MongoNetworkError|MongoServerSelectionError|MongoNotConnectedError|MongoPoolClearedError|MongoExpiredSessionError|PoolClearedError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|server selection/i.test(msgStr);
   if (isMongoTransient) {
     console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msgStr);
     return;

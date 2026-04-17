@@ -170,38 +170,75 @@ app.use((req, res, next) => {
   next();
 });
 
+// =================================================================
+// Unified canonical-URL middleware
+//
+// Previously HTTPS, www→non-www, and trailing-slash were three separate
+// 301 redirects. A request like http://www.themegaradio.com/foo/ would
+// chain through 3 redirects which Google penalizes (long redirect chain
+// = wasted crawl budget). This single middleware computes the final
+// canonical form and emits ONE 301.
+//
+// Order of operations: protocol → hostname → trailing slash. Final URL
+// is built once and compared to the original; if anything changed we
+// emit a single 301.
+// =================================================================
 app.use((req, res, next) => {
+  // Skip in dev/preview and on health endpoints
   if (process.env.NODE_ENV === 'development' || req.hostname === 'localhost' || req.hostname === '127.0.0.1') {
     return next();
   }
-  if (req.path === '/health' || req.path === '/healthz') {
-    return next();
-  }
-  const isHttpOnly = !req.secure && req.get('x-forwarded-proto') !== 'https';
-  if (isHttpOnly) {
-    const host = req.get('host') || req.hostname;
-    return res.redirect(301, `https://${host}${req.url}`);
-  }
-  next();
-});
+  if (req.path === '/health' || req.path === '/healthz') return next();
 
-app.use((req, res, next) => {
-  const hostname = req.hostname.toLowerCase();
-  if (hostname === 'www.themegaradio.com') {
-    const protocol = req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
-    return res.redirect(301, `${protocol}://themegaradio.com${req.url}`);
-  }
-  next();
-});
+  const originalProtocol = req.secure || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+  const originalHost = (req.get('host') || req.hostname).toLowerCase();
+  const originalPath = req.path;
 
-app.use((req, res, next) => {
-  if (req.path === '/' || !req.path.endsWith('/')) return next();
-  const pathSegments = req.path.split('/');
-  const lastSegment = pathSegments[pathSegments.length - 2];
-  if (lastSegment && lastSegment.includes('.')) return next();
-  const query = req.url.slice(req.path.length);
-  const redirectPath = req.path.slice(0, -1) + query;
-  return res.redirect(301, redirectPath);
+  let targetProtocol = originalProtocol;
+  let targetHost = originalHost;
+  let targetPath = originalPath;
+
+  // 1. HTTPS (skip in dev/replit preview where x-forwarded-proto isn't set)
+  const isPreview = req.hostname.includes('replit.dev') || req.hostname === 'localhost';
+  if (!isPreview && originalProtocol === 'http') {
+    targetProtocol = 'https';
+  }
+
+  // 2. www → non-www
+  if (targetHost === 'www.themegaradio.com') {
+    targetHost = 'themegaradio.com';
+  }
+
+  // 3. Strip trailing slash (except root, except files)
+  if (targetPath.length > 1 && targetPath.endsWith('/')) {
+    const segs = targetPath.split('/');
+    const lastSeg = segs[segs.length - 2];
+    if (!lastSeg || !lastSeg.includes('.')) {
+      targetPath = targetPath.slice(0, -1);
+    }
+  }
+
+  const protocolChanged = targetProtocol !== originalProtocol;
+  const hostChanged = targetHost !== originalHost;
+  const pathChanged = targetPath !== originalPath;
+
+  if (protocolChanged || hostChanged || pathChanged) {
+    // Extract raw query from originalUrl. CRITICAL: do NOT compute it as
+    // `req.url.slice(req.path.length)` — req.path is URL-decoded while
+    // req.url is raw, so their lengths diverge for any path containing
+    // percent-encoded characters. Using indexOf('?') on the raw originalUrl
+    // is encoding-safe and preserves the query verbatim.
+    const qIdx = req.originalUrl.indexOf('?');
+    const query = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+    // For protocol/host changes we must build absolute URL; otherwise
+    // a relative path keeps the redirect cheap.
+    const target = (protocolChanged || hostChanged)
+      ? `${targetProtocol}://${targetHost}${targetPath}${query}`
+      : `${targetPath}${query}`;
+    return res.redirect(301, target);
+  }
+
+  next();
 });
 
 app.use((req, res, next) => {
