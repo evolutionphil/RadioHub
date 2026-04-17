@@ -797,6 +797,27 @@ app.use(session(sessionConfig));
         });
       };
 
+      // Bot vs user request tracking (HTTP-level, since User-Agent is L7)
+      const BOT_UA_RE = /\b(googlebot|google-inspectiontool|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase|gptbot|chatgpt-user|ccbot|anthropic-ai|claude-web|bytespider|perplexitybot|applebot|cohere-ai)\b/i;
+      const MAJOR_BOT_UA_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider|applebot)\b/i;
+      let activeBotReqs = 0;
+      let activeUserReqs = 0;
+      let botReqsLastWindow = 0;
+      let userReqsLastWindow = 0;
+      let majorBotReqsLastWindow = 0;
+      app.use((req: any, res: any, next: any) => {
+        const ua = req.headers['user-agent'] || '';
+        const isBot = BOT_UA_RE.test(ua);
+        const isMajor = isBot && MAJOR_BOT_UA_RE.test(ua);
+        if (isBot) { activeBotReqs++; botReqsLastWindow++; if (isMajor) majorBotReqsLastWindow++; }
+        else { activeUserReqs++; userReqsLastWindow++; }
+        res.once('close', () => {
+          if (isBot) activeBotReqs = Math.max(0, activeBotReqs - 1);
+          else activeUserReqs = Math.max(0, activeUserReqs - 1);
+        });
+        next();
+      });
+
       let lastDiagLogTime = Date.now();
       const DIAG_LOG_INTERVAL = 2 * 60 * 1000;
 
@@ -830,7 +851,14 @@ app.use(session(sessionConfig));
           const conns = await getConnectionCount();
           const handles = getHandleDiagnostics();
           const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
-          console.log(`📊 DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${externalMB}MB ab=${abMB}MB native≈${nativeMB}MB | conns=${conns} | handles: ${handleStr}`);
+          const winMin = Math.max(1, Math.round(DIAG_LOG_INTERVAL / 60000));
+          const botRpm = Math.round(botReqsLastWindow / winMin);
+          const userRpm = Math.round(userReqsLastWindow / winMin);
+          const majorRpm = Math.round(majorBotReqsLastWindow / winMin);
+          console.log(`📊 DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${externalMB}MB ab=${abMB}MB native≈${nativeMB}MB | conns=${conns} | reqs active bot:${activeBotReqs} user:${activeUserReqs} | rpm bot:${botRpm}(major:${majorRpm}) user:${userRpm} | handles: ${handleStr}`);
+          botReqsLastWindow = 0;
+          userReqsLastWindow = 0;
+          majorBotReqsLastWindow = 0;
         }
 
         if (rssMB > RSS_RESTART_MB) {
