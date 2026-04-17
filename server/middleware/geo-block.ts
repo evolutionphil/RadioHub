@@ -25,38 +25,99 @@ const BLOCKED_COUNTRIES: Set<string> = new Set(
     .filter(c => /^[A-Z]{2}$/.test(c))
 );
 
+// Production hosts that MUST go through Cloudflare. If a request claims
+// one of these Host headers but has no `cf-ipcountry`, it is a direct
+// origin connection (CF bypass attempt) — drop it.
+const PROTECTED_HOSTS: Set<string> = new Set(
+  (process.env.PROTECTED_HOSTS ||
+    'themegaradio.com,www.themegaradio.com,api.themegaradio.com,stream.themegaradio.com'
+  )
+    .split(',')
+    .map(h => h.trim().toLowerCase())
+    .filter(Boolean)
+);
+
+const ENFORCE_CF_ONLY = process.env.ENFORCE_CF_ONLY !== 'false'; // default: ON
+
 let blockedCount = 0;
+let bypassCount = 0;
 let lastLoggedAt = 0;
 
-export function geoBlockMiddleware(req: Request, res: Response, next: NextFunction): void {
-  if (BLOCKED_COUNTRIES.size === 0) return next();
+function dropSocket(req: Request): void {
+  try {
+    req.socket?.destroy();
+  } catch {
+    // Socket already gone
+  }
+}
 
+function maybeFlushLog(): void {
+  const now = Date.now();
+  if (now - lastLoggedAt > 60_000) {
+    if (blockedCount > 0 || bypassCount > 0) {
+      console.log(
+        `🚫 GEO-BLOCK: ${blockedCount} blocked-country drops, ${bypassCount} CF-bypass drops in last window ` +
+        `(blocked=${Array.from(BLOCKED_COUNTRIES).join(',')})`
+      );
+    }
+    blockedCount = 0;
+    bypassCount = 0;
+    lastLoggedAt = now;
+  }
+}
+
+export function geoBlockMiddleware(req: Request, res: Response, next: NextFunction): void {
   const cc = String(
     req.headers['cf-ipcountry'] ||
     req.headers['x-country-code'] ||
     ''
   ).toUpperCase();
 
-  if (!cc || !BLOCKED_COUNTRIES.has(cc)) return next();
-
-  // Hard-drop the TCP socket — client sees a connection reset.
-  // No HTTP response, no headers, minimal CPU/bandwidth cost.
-  blockedCount++;
-  const now = Date.now();
-  if (now - lastLoggedAt > 60_000) {
-    console.log(`🚫 GEO-BLOCK: dropped ${blockedCount} requests from ${Array.from(BLOCKED_COUNTRIES).join(',')} in last window`);
-    blockedCount = 0;
-    lastLoggedAt = now;
+  // 1. Block known bad countries
+  if (BLOCKED_COUNTRIES.size > 0 && cc && BLOCKED_COUNTRIES.has(cc)) {
+    blockedCount++;
+    maybeFlushLog();
+    dropSocket(req);
+    return;
   }
 
-  try {
-    req.socket?.destroy();
-  } catch {
-    // Socket already gone — nothing to do
+  // 2. Block direct-origin (CF bypass) attempts on protected hosts.
+  //    Real visitors always traverse Cloudflare, which sets cf-ipcountry.
+  //    A request to themegaradio.com WITHOUT cf-ipcountry is suspicious
+  //    (someone resolved Railway IP and bypassed CF, possibly to evade WAF).
+  if (ENFORCE_CF_ONLY && !cc) {
+    const host = String(req.headers.host || '').toLowerCase().split(':')[0];
+    if (host && PROTECTED_HOSTS.has(host)) {
+      bypassCount++;
+      maybeFlushLog();
+      dropSocket(req);
+      return;
+    }
   }
-  // Do NOT call next() — request is terminated.
+
+  // 3. Tell Cloudflare to vary cache by country, so SG/TH cannot be served
+  //    a cached response that was originally generated for another country.
+  //    Combined with a CF Cache Rule, this guarantees SG/TH always reach the
+  //    origin (where the geo-block above will drop them).
+  res.setHeader('Vary', appendVary(res.getHeader('Vary'), 'CF-IPCountry'));
+
+  next();
+}
+
+function appendVary(existing: number | string | string[] | undefined, header: string): string {
+  if (!existing) return header;
+  const list = (Array.isArray(existing) ? existing.join(', ') : String(existing))
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (!list.some(h => h.toLowerCase() === header.toLowerCase())) list.push(header);
+  return list.join(', ');
 }
 
 export function getBlockedCountries(): string[] {
   return Array.from(BLOCKED_COUNTRIES);
+}
+
+export function getProtectedHosts(): string[] {
+  return Array.from(PROTECTED_HOSTS);
 }
