@@ -191,9 +191,25 @@ export class PushNotificationService {
    */
   static async broadcast(payload: NotificationPayload): Promise<number> {
     try {
-      const users = await User.find({ pushSubscription: { $exists: true, $ne: null } });
-      const userIds = users.map((user: IUser) => (user._id as any).toString());
-      return await this.sendToMultipleUsers(userIds, payload);
+      // Stream user IDs in batches via cursor to avoid loading 10k+ docs into RAM
+      const BATCH_SIZE = 500;
+      let totalSent = 0;
+      let batch: string[] = [];
+      const cursor = User.find({ pushSubscription: { $exists: true, $ne: null } })
+        .select({ _id: 1 })
+        .lean()
+        .cursor({ batchSize: BATCH_SIZE });
+      for await (const user of cursor as any) {
+        batch.push((user._id as any).toString());
+        if (batch.length >= BATCH_SIZE) {
+          totalSent += await this.sendToMultipleUsers(batch, payload);
+          batch = [];
+        }
+      }
+      if (batch.length > 0) {
+        totalSent += await this.sendToMultipleUsers(batch, payload);
+      }
+      return totalSent;
     } catch {
       return 0;
     }
@@ -337,10 +353,13 @@ export class PushNotificationService {
    */
   static async cleanupInvalidSubscriptions(): Promise<number> {
     try {
-      const users = await User.find({ pushSubscription: { $exists: true, $ne: null } });
+      // Stream via cursor — never load all subscribed users into memory
       let removedCount = 0;
-
-      for (const user of users as IUser[]) {
+      const cursor = User.find({ pushSubscription: { $exists: true, $ne: null } })
+        .select({ _id: 1, pushSubscription: 1 })
+        .lean()
+        .cursor({ batchSize: 200 });
+      for await (const user of cursor as any) {
         try {
           await webpush.sendNotification(user.pushSubscription, JSON.stringify({
             title: 'Test',
@@ -354,7 +373,6 @@ export class PushNotificationService {
           }
         }
       }
-
       return removedCount;
     } catch {
       return 0;

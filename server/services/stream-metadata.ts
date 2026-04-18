@@ -93,12 +93,40 @@ export class StreamMetadataService {
       headers: FETCH_HEADERS,
     });
 
+    // CIRCUIT BREAKER: prevent infinite reconnect loop on dead streams.
+    // After MAX_FAILURES, give up and let the connection idle out.
+    const MAX_FAILURES = 5;
+    const COOLDOWN_AFTER_GIVE_UP_MS = 10 * 60 * 1000; // 10 min
+    let consecutiveFailures = 0;
+    let givenUp = false;
+
+    const reschedule = (delayMs: number) => {
+      if (controller.signal.aborted) return;
+      consecutiveFailures++;
+      if (consecutiveFailures >= MAX_FAILURES && !givenUp) {
+        givenUp = true;
+        logger.log(`⛔ STREAM-META: giving up on ${url.substring(0, 60)} after ${MAX_FAILURES} failures (cooldown ${COOLDOWN_AFTER_GIVE_UP_MS / 60000}m)`);
+        setTimeout(() => {
+          if (controller.signal.aborted) return;
+          consecutiveFailures = 0;
+          givenUp = false;
+          doAnalyze();
+        }, COOLDOWN_AFTER_GIVE_UP_MS).unref?.();
+        return;
+      }
+      if (givenUp) return;
+      setTimeout(() => doAnalyze(), delayMs).unref?.();
+    };
+
     const doAnalyze = () => {
       fetch(request).then((response) => {
         if (!response.ok || !response.body) {
           onError(new Error(`HTTP ${response.status}`));
+          reschedule(5000);
           return;
         }
+        // Successful connect — reset failure counter
+        consecutiveFailures = 0;
 
         const metaIntervalHeader = response.headers.get('icy-metaint');
         const icyName = response.headers.get('icy-name');
@@ -165,19 +193,14 @@ export class StreamMetadataService {
         });
 
         stream.on('end', () => {
-          if (!controller.signal.aborted) {
-            setTimeout(() => doAnalyze(), 2000);
-          }
+          reschedule(2000);
         });
 
         stream.on('error', () => {
-          if (!controller.signal.aborted) {
-            setTimeout(() => doAnalyze(), 5000);
-          }
+          reschedule(5000);
         });
       }).catch((err: any) => {
-        if (controller.signal.aborted) return;
-        setTimeout(() => doAnalyze(), 5000);
+        reschedule(5000);
       });
     };
 

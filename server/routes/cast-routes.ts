@@ -8,6 +8,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
   const { requireAuth } = deps;
 
   castWss.on('connection', async (socket: WebSocket, request) => {
+    try {
     const clientId = `cast_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const url = new URL(request.url || '', `http://${request.headers.host}`);
     const sessionId = url.searchParams.get('sessionId');
@@ -106,6 +107,10 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
     socket.on('error', () => {
       castService.removeClient(clientId);
     });
+    } catch (e: any) {
+      console.error('⚠️ WS cast connection handler error (caught):', e?.message || e);
+      try { socket.close(1011, 'internal error'); } catch {}
+    }
   });
 
   // ==================== CAST REST API Endpoints ====================

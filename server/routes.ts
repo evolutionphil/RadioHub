@@ -101,9 +101,15 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 });
 
   wss.on('connection', (socket: WebSocket, request) => {
-    const clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    logger.log(`🎵 REALTIME METADATA: WebSocket client connected via ${request.url}`);
-    realtimeMetadataService.addClient(clientId, socket);
+    try {
+      const clientId = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      logger.log(`🎵 REALTIME METADATA: WebSocket client connected via ${request.url}`);
+      realtimeMetadataService.addClient(clientId, socket);
+    } catch (e: any) {
+      // Never let a malformed WS upgrade crash the process via fail-fast
+      console.error('⚠️ WS metadata connection handler error (caught):', e?.message || e);
+      try { socket.close(1011, 'internal error'); } catch {}
+    }
   });
 
   const castWss = new WebSocketServer({ noServer: true, perMessageDeflate: false, maxPayload: 64 * 1024 });

@@ -454,6 +454,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
 
   // ── WebSocket Handler at /ws/chat ────────────────────────────────────────────
   chatWss.on("connection", async (socket: WebSocket, request) => {
+    try {
     const url = new URL(request.url || "", `http://${request.headers.host}`);
     const ticket = url.searchParams.get("ticket");
 
@@ -562,6 +563,11 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
         broadcastOnlineStatus(userId, false);
       }
     });
+    } catch (e: any) {
+      // Never let a malformed chat WS upgrade crash the process
+      console.error('⚠️ WS chat connection handler error (caught):', e?.message || e);
+      try { socket.close(1011, 'internal error'); } catch {}
+    }
   });
 
   // ── Helper: broadcast online status to contacts ─────────────────────────────
