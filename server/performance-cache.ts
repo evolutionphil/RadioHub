@@ -298,6 +298,25 @@ export class PerformanceCache {
     logger.log(`🧹 MEMORY RELIEF: Cleared caches (translations preserved) — seo=${seoCount}, page=${pageCount}, quick=${quickCount}, similar=${similarCount}`);
   }
   
+  // Wraps a Map so that mutating methods (set/delete/clear) throw.
+  // Read methods (get/has/keys/values/entries/forEach/size, iteration) work normally.
+  // This prevents accidental shared-cache mutation when useClones=false.
+  private static createReadOnlyMap<K, V>(source: Map<K, V>): Map<K, V> {
+    const throwReadOnly = (op: string) => {
+      throw new TypeError(`Cannot ${op} on read-only cached Map (performance-cache)`);
+    };
+    const handler: ProxyHandler<Map<K, V>> = {
+      get(target, prop, receiver) {
+        if (prop === 'set') return () => throwReadOnly('set');
+        if (prop === 'delete') return () => throwReadOnly('delete');
+        if (prop === 'clear') return () => throwReadOnly('clear');
+        const value = Reflect.get(target, prop, target);
+        return typeof value === 'function' ? value.bind(target) : value;
+      }
+    };
+    return new Proxy(source, handler);
+  }
+
   clearCountryLanguageMappings() {
     this.quickCache.del('country_language_mappings');
     logger.log('🧹 Cleared country-language mappings cache');
@@ -313,9 +332,10 @@ export class PerformanceCache {
     const map = new Map<string, string>();
     mappings.forEach((m: any) => map.set(m.countryCode, m.languageCode));
     
-    this.safeSet(this.quickCache, 'quickCache', 'country_language_mappings', map);
+    const readOnly = PerformanceCache.createReadOnlyMap(map);
+    this.safeSet(this.quickCache, 'quickCache', 'country_language_mappings', readOnly);
     
-    return map;
+    return readOnly;
   }
 
   clearUrlTranslations() {
@@ -337,9 +357,10 @@ export class PerformanceCache {
       map.set(key, t.translatedPath);
     });
     
-    this.safeSet(this.quickCache, 'quickCache', 'url_translations', map);
+    const readOnly = PerformanceCache.createReadOnlyMap(map);
+    this.safeSet(this.quickCache, 'quickCache', 'url_translations', readOnly);
     
-    return map;
+    return readOnly;
   }
   
   // === CACHE STATISTICS ===
