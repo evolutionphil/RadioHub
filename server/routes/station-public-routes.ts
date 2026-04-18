@@ -689,7 +689,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       const { StreamMetadataService } = await import('../services/stream-metadata');
       const metadataService = new StreamMetadataService();
-      const metadata = await metadataService.fetchAudioMeta(streamUrl);
+      const metadata = await metadataService.getStationMetadata(station);
 
       res.json({
         title: metadata.title || station.name,
@@ -697,9 +697,16 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         station: metadata.station || station.name,
         genre: metadata.genre || ''
       });
-    } catch (error) {
-      console.error('Error fetching now-playing:', error);
-      res.status(500).json({ error: 'Failed to fetch now-playing data' });
+    } catch (error: any) {
+      if (error?.message !== 'metadata-unavailable') {
+        console.error('Error fetching now-playing:', error?.message || error);
+      }
+      res.json({
+        title: req.params.stationId ? '' : '',
+        artist: '',
+        station: '',
+        genre: ''
+      });
     }
   });
 

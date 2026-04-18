@@ -259,7 +259,7 @@ export class StreamMetadataService {
 
   async getStationMetadata(station: any): Promise<MetadataResult> {
     if (!station) return {};
-    const streamUrl = station.url_resolved || station.url;
+    const streamUrl = station.url_resolved || station.urlResolved || station.url;
     if (!streamUrl) return {};
 
     const conn = this.getOrCreateConnection(streamUrl);
