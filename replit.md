@@ -55,6 +55,11 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Audio Streaming**: HLS.js with Plyr
 - **UI/UX**: Responsive mobile-first design, consistent design system, functional audio player.
 
+### Testing
+- **Test runner**: `npm test` runs `scripts/run-tests.ts`, which discovers every `tests/**/*.test.{ts,tsx,js,mjs}` file and executes each via `tsx`. The runner exits non-zero if any file fails so the command can be wired into CI. With no test files present, the runner reports "No test files found" and exits 0.
+- **Adding tests**: Drop a new `*.test.ts` file under `tests/`. It is run as a standalone script (no test framework required) — use `node:assert` and exit non-zero on failure, e.g. the existing `tests/performance-cache-freeze.test.ts` regression test.
+- **Single file**: For quick iteration on one file, run it directly: `npx tsx tests/performance-cache-freeze.test.ts`.
+
 ### Deployment
 - **Architecture**: Three-service split deployment: backend-api (api.themegaradio.com), frontend-web (themegaradio.com), stream-proxy (stream.themegaradio.com).
 - **Stream Proxy**: Dedicated service for audio stream proxying (HTTP only) and image proxying. HTTPS streams connect directly without proxy. Solves API server ext memory explosion (25MB→700MB+).
