@@ -93,7 +93,8 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   });
 
   // === WEBSOCKET SERVERS ===
-  const streamMetadataService = new StreamMetadataService();
+  const { getStreamMetadataService } = await import('./services/stream-metadata');
+  const streamMetadataService = getStreamMetadataService();
   const realtimeMetadataService = new RealtimeMetadataService();
   // 64KB payload cap — prevents WS abuse (default is ~100MB per message).
   // Metadata frames are tiny (<2KB), so 64KB is generous.

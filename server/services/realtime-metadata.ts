@@ -1,5 +1,5 @@
 import { WebSocket } from 'ws';
-import { StreamMetadataService } from './stream-metadata';
+import { StreamMetadataService, getStreamMetadataService } from './stream-metadata';
 import { logger } from '../utils/logger';
 
 interface MetadataClient {
@@ -16,7 +16,9 @@ export class RealtimeMetadataService {
   private pushIntervals: Map<string, NodeJS.Timeout> = new Map();
   
   constructor() {
-    this.streamMetadataService = new StreamMetadataService();
+    // Use singleton — sharing connections across WS + REST prevents duplicate
+    // ICY connections to the same station and avoids state fragmentation.
+    this.streamMetadataService = getStreamMetadataService();
   }
 
   addClient(clientId: string, socket: WebSocket) {

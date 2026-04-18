@@ -687,8 +687,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         return res.json({ title: station.name, artist: '', station: station.name });
       }
 
-      const { StreamMetadataService } = await import('../services/stream-metadata');
-      const metadataService = new StreamMetadataService();
+      const { getStreamMetadataService } = await import('../services/stream-metadata');
+      const metadataService = getStreamMetadataService();
       const metadata = await metadataService.getStationMetadata(station);
 
       res.json({

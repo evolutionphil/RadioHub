@@ -68,6 +68,16 @@ const FETCH_HEADERS = {
   'User-Agent': 'MegaRadio/2.0 (Radiolise-style)',
 };
 
+// SINGLETON ACCESSOR — prevents per-request leaks of stateful connection map.
+// All callers should use getStreamMetadataService() instead of `new StreamMetadataService()`.
+let _streamMetadataServiceInstance: StreamMetadataService | null = null;
+export function getStreamMetadataService(): StreamMetadataService {
+  if (!_streamMetadataServiceInstance) {
+    _streamMetadataServiceInstance = new StreamMetadataService();
+  }
+  return _streamMetadataServiceInstance;
+}
+
 export class StreamMetadataService {
   private connections = new Map<string, StreamConnection>();
   private maxConnections = 50;
@@ -187,6 +197,21 @@ export class StreamMetadataService {
           oldestUrl = url;
         }
       });
+      // FIX: if no idle connection found, force-evict the absolute oldest
+      // (otherwise cap is bypassed and connections grow unbounded).
+      // Active subscribers will reconnect on next poll — degraded UX, not crash.
+      if (!oldestUrl) {
+        let fallbackOldestTime = Infinity;
+        Array.from(this.connections.entries()).forEach(([url, conn]) => {
+          if (conn.lastUpdate < fallbackOldestTime) {
+            fallbackOldestTime = conn.lastUpdate;
+            oldestUrl = url;
+          }
+        });
+        if (oldestUrl) {
+          console.warn(`⚠️ STREAM-META: cap=${this.maxConnections} reached, force-evicting active connection ${oldestUrl.substring(0, 60)}`);
+        }
+      }
       if (oldestUrl) {
         this.connections.get(oldestUrl)?.destroy();
         this.connections.delete(oldestUrl);

@@ -842,6 +842,7 @@ app.use(session(sessionConfig));
       setInterval(() => { tryGc(); }, 60_000);
 
       setInterval(async () => {
+        try {
         const mem = process.memoryUsage();
         const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
         const rssMB = Math.round(mem.rss / 1024 / 1024);
@@ -901,6 +902,10 @@ app.use(session(sessionConfig));
             } catch {}
             tryGc();
           }
+        }
+        } catch (e: any) {
+          // Never let DIAG interval crash the process via fail-fast
+          console.error('⚠️ DIAG interval error (caught):', e?.message || e);
         }
       }, 30_000);
 
