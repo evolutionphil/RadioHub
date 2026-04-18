@@ -118,6 +118,16 @@ export class StreamMetadataService {
       setTimeout(() => doAnalyze(), delayMs).unref?.();
     };
 
+    // Normal stream closure ('end') is not a failure — many radio servers
+    // routinely close and rotate the underlying TCP connection. Reconnect
+    // without incrementing the circuit-breaker counter so a healthy station
+    // never gets blackout-silenced for 10 minutes.
+    const rescheduleSoft = (delayMs: number) => {
+      if (controller.signal.aborted) return;
+      if (givenUp) return;
+      setTimeout(() => doAnalyze(), delayMs).unref?.();
+    };
+
     const doAnalyze = () => {
       fetch(request).then((response) => {
         if (!response.ok || !response.body) {
@@ -193,7 +203,7 @@ export class StreamMetadataService {
         });
 
         stream.on('end', () => {
-          reschedule(2000);
+          rescheduleSoft(2000);
         });
 
         stream.on('error', () => {
