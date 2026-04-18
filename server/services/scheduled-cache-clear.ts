@@ -80,24 +80,26 @@ export class ScheduledCacheClearService {
       timezone: 'Europe/Berlin'
     });
 
-    if (process.env.NODE_ENV === 'production') {
+    // Daily 04:00 restart REMOVED per user request (2026-04-18).
+    // Reason: restart is a bandage, not a cure. RSS was stable at 150MB for 14h
+    // without it. If a real memory leak appears, fix the leak — don't reboot.
+    // To re-enable in an emergency, set ENABLE_DAILY_RESTART=true.
+    if (process.env.NODE_ENV === 'production' && process.env.ENABLE_DAILY_RESTART === 'true') {
       cron.schedule('0 4 * * *', () => {
-        logger.log('🔄 DAILY RESTART: Performing scheduled nightly restart at 4:00 AM for memory hygiene...');
-        const mem = process.memoryUsage();
-        const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
-        const rssMB = Math.round(mem.rss / 1024 / 1024);
-        logger.log(`📊 Pre-restart memory: heap=${heapMB}MB, rss=${rssMB}MB, uptime=${Math.round(process.uptime())}s`);
+        logger.log('🔄 DAILY RESTART (opt-in): scheduled nightly restart triggered');
         setTimeout(() => {
           process.kill(process.pid, 'SIGTERM');
         }, 3000);
       }, {
         timezone: 'Europe/Berlin'
       });
-      logger.log('⏰ Daily restart scheduled: every day 4:00 AM (Europe/Berlin) — Railway auto-restarts the container');
+      logger.log('⏰ Daily restart scheduled (ENABLE_DAILY_RESTART=true): every day 4:00 AM (Europe/Berlin)');
+    } else {
+      logger.log('🟢 Daily restart DISABLED — server runs continuously (set ENABLE_DAILY_RESTART=true to opt-in)');
     }
 
     this.isInitialized = true;
-    logger.log('✅ Scheduled cache clear service initialized — SEO monthly 1st 3:00, Precomputed monthly 1st 4:30, Translations monthly 1st 5:00, Daily restart 4:00 AM (Europe/Berlin)');
+    logger.log('✅ Scheduled cache clear service initialized — SEO monthly 1st 3:00, Precomputed monthly 1st 4:30, Translations monthly 1st 5:00, Daily restart DISABLED');
   }
 
   public async clearAllSeoCaches(): Promise<CacheClearResult> {
