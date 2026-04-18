@@ -464,15 +464,25 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     activeStreamCount++;
     const streamId = ++streamIdCounter;
     let streamReleased = false;
-    const decrementStream = () => {
-      if (!streamReleased) {
-        streamReleased = true;
-        if (activeStreamCount > 0) activeStreamCount--;
-        decrementIpStream(clientIp);
-        activeStreamRegistry.delete(streamId);
-      }
+    const releaseSlot = () => {
+      if (streamReleased) return;
+      streamReleased = true;
+      if (activeStreamCount > 0) activeStreamCount--;
+      decrementIpStream(clientIp);
     };
-    res.once('close', decrementStream);
+
+    // Stream termination signal: any of close/error/aborted on req or res
+    // resolves the promise. The outer try/finally below awaits this and then
+    // unconditionally removes the registry entry, so leaked entries cannot
+    // outlive the underlying connection.
+    const streamTerminated = new Promise<void>((resolve) => {
+      const done = () => resolve();
+      res.once('close', done);
+      res.once('error', done);
+      req.once('close', done);
+      req.once('aborted', done);
+      req.once('error', done);
+    });
 
     let originalUrl: string | undefined;
     try {
@@ -490,7 +500,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             allowedPorts: STREAM_ALLOWED_PORTS,
           });
           if (!guarded.ok) {
-            decrementStream();
+            releaseSlot();
             return res.status(400).json({ error: 'Stream URL not allowed' });
           }
           originalUrl = decoded;
@@ -510,12 +520,12 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             allowedPorts: STREAM_ALLOWED_PORTS,
           });
           if (!guardedFallback.ok) {
-            decrementStream();
+            releaseSlot();
             return res.status(400).json({ error: 'Stream URL not allowed' });
           }
           originalUrl = fallback;
         } catch (fallbackError) {
-          decrementStream();
+          releaseSlot();
           return res.status(400).json({ error: 'Invalid stream URL format' });
         }
       }
@@ -578,12 +588,15 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           if (activeCleanup) activeCleanup();
           else {
             if (activeProxyReq) { try { activeProxyReq.destroy(); } catch {} }
-            decrementStream();
+            releaseSlot();
           }
         };
 
         req.once('close', destroyActiveProxy);
+        req.once('aborted', destroyActiveProxy);
+        req.once('error', destroyActiveProxy);
         res.once('close', destroyActiveProxy);
+        res.once('error', destroyActiveProxy);
 
         activeStreamRegistry.set(streamId, { cleanup: destroyActiveProxy, startedAt: Date.now(), ip: clientIp });
 
@@ -684,7 +697,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               try { proxyRes.destroy(); } catch {}
               try { proxyReq.destroy(); } catch {}
               try { if (!res.writableEnded) res.end(); } catch {}
-              decrementStream();
+              releaseSlot();
             };
             activeCleanup = cleanup;
 
@@ -708,13 +721,14 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               console.error('❌ Shoutcast request error:', e.message);
             }
             if (!res.headersSent) res.status(500).json({ error: 'Connection failed' });
-            decrementStream();
+            releaseSlot();
           });
           
           proxyReq.end();
         };
         
         makeShoutcastRequest(originalUrl);
+        await streamTerminated;
         return;
       }
       
@@ -793,7 +807,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           try { body.unpipe(res); } catch {}
           try { if (typeof body.destroy === 'function') body.destroy(); } catch {}
           try { if (!res.writableEnded) res.end(); } catch {}
-          decrementStream();
+          releaseSlot();
         };
 
         activeStreamRegistry.set(streamId, { cleanup: () => cleanup('memory-pressure'), startedAt: Date.now(), ip: clientIp });
@@ -822,8 +836,16 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         body.on('end', () => cleanup('body-end'));
         body.on('close', () => cleanup('body-close'));
 
+        // Cover every termination signal so cleanup() releases pipe/timer
+        // resources promptly. The outer try/finally is the authoritative
+        // guarantee that the registry entry itself is removed.
         req.on('close', () => cleanup('req-close'));
+        req.on('aborted', () => cleanup('req-aborted'));
+        req.on('error', () => cleanup('req-error'));
         res.on('close', () => cleanup('res-close'));
+        res.on('error', () => cleanup('res-error'));
+
+        await streamTerminated;
       } else {
         throw new Error('Response body is null');
       }
@@ -836,7 +858,12 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         res.status(500).json({ error: 'Streaming failed' });
       }
       try { if (!res.writableEnded) res.end(); } catch {}
-      decrementStream();
+    } finally {
+      // Authoritative lifecycle close: regardless of which branch ran or how
+      // it terminated (success, throw, abort, pipe error), the registry entry
+      // and per-IP / global counters are released exactly once here.
+      activeStreamRegistry.delete(streamId);
+      releaseSlot();
     }
   });
 }
