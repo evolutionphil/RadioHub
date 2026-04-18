@@ -37,7 +37,32 @@ const PROTECTED_HOSTS: Set<string> = new Set(
     .filter(Boolean)
 );
 
-const ENFORCE_CF_ONLY = process.env.ENFORCE_CF_ONLY !== 'false'; // default: ON
+// CF bypass detection is OFF by default. Railway's internal health checks
+// and our own self-watchdog hit the container directly (not through CF), so
+// they have NO cf-ipcountry header. Enabling CF-only enforcement here would
+// kill those requests, fail health checks, and cause 502 Bad Gateway.
+// Only enable via env if origin IP is genuinely public AND health checks
+// have been allowlisted by path/source-IP.
+const ENFORCE_CF_ONLY = process.env.ENFORCE_CF_ONLY === 'true';
+
+// Health check / internal paths that must NEVER be blocked, regardless of source.
+const HEALTH_PATHS = new Set([
+  '/healthz', '/health', '/ready', '/readyz', '/live', '/livez', '/status', '/ping',
+]);
+
+// Private/loopback IPs are always trusted (Railway internal network, localhost).
+function isPrivateOrLoopback(ip: string): boolean {
+  if (!ip) return false;
+  if (ip === '::1' || ip.startsWith('::ffff:127.') || ip.startsWith('127.')) return true;
+  if (ip.startsWith('10.') || ip.startsWith('192.168.')) return true;
+  if (ip.startsWith('172.')) {
+    const second = parseInt(ip.split('.')[1] || '0', 10);
+    if (second >= 16 && second <= 31) return true;
+  }
+  if (ip.startsWith('fc') || ip.startsWith('fd')) return true; // IPv6 ULA
+  if (ip.startsWith('fe80:')) return true; // IPv6 link-local
+  return false;
+}
 
 let blockedCount = 0;
 let bypassCount = 0;
@@ -81,13 +106,17 @@ export function geoBlockMiddleware(req: Request, res: Response, next: NextFuncti
     return;
   }
 
-  // 2. Block direct-origin (CF bypass) attempts on protected hosts.
-  //    Real visitors always traverse Cloudflare, which sets cf-ipcountry.
-  //    A request to themegaradio.com WITHOUT cf-ipcountry is suspicious
-  //    (someone resolved Railway IP and bypassed CF, possibly to evade WAF).
+  // 2. Optional CF bypass detection — OFF by default. When enabled, blocks
+  //    requests to production hosts that arrive without cf-ipcountry.
+  //    Always exempts: health-check paths, private/loopback source IPs
+  //    (Railway internal network, container self-pings).
   if (ENFORCE_CF_ONLY && !cc) {
     const host = String(req.headers.host || '').toLowerCase().split(':')[0];
-    if (host && PROTECTED_HOSTS.has(host)) {
+    const path = (req.path || req.url || '').split('?')[0];
+    const srcIp = (req.ip || req.socket?.remoteAddress || '').replace(/^::ffff:/, '');
+    const isHealth = HEALTH_PATHS.has(path);
+    const isInternal = isPrivateOrLoopback(srcIp);
+    if (host && PROTECTED_HOSTS.has(host) && !isHealth && !isInternal) {
       bypassCount++;
       maybeFlushLog();
       dropSocket(req);
