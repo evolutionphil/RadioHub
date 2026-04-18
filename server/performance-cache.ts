@@ -3,6 +3,53 @@ import { logger } from './utils/logger';
 import { sleep } from './utils/event-loop-yield';
 import { trackOperation } from './utils/operation-tracker';
 
+/**
+ * Recursively freeze a value before storing it in a `useClones: false` cache.
+ *
+ * Why: every cache here is constructed with `useClones: false` so consumers
+ * receive the same object reference on every hit. A single rogue mutation
+ * (e.g. `seoData.seoTags.domain = ...`) would otherwise corrupt the cached
+ * object for all subsequent users — causing cross-tenant SEO data, translation,
+ * and station-list bleed-through.
+ *
+ * Freezing at write time turns those mutations into immediate TypeErrors in
+ * strict mode (this codebase runs ESM/strict), surfacing the bug instead of
+ * silently poisoning shared state. Built-in collections like `Map`/`Set` are
+ * skipped because `Object.freeze` does not actually prevent their mutation.
+ */
+export function deepFreeze<T>(value: T, seen: WeakSet<object> = new WeakSet()): T {
+  if (value === null || value === undefined) return value;
+  const t = typeof value;
+  if (t !== 'object' && t !== 'function') return value;
+  const obj = value as unknown as object;
+  if (seen.has(obj)) return value;
+  // Skip types whose internal slots aren't protected by Object.freeze, or
+  // whose freezing would break expected runtime behavior.
+  if (
+    obj instanceof Map ||
+    obj instanceof Set ||
+    obj instanceof WeakMap ||
+    obj instanceof WeakSet ||
+    obj instanceof Date ||
+    obj instanceof RegExp ||
+    obj instanceof Promise ||
+    Buffer.isBuffer(obj) ||
+    ArrayBuffer.isView(obj as any)
+  ) {
+    return value;
+  }
+  if (Object.isFrozen(obj)) return value;
+  seen.add(obj);
+  Object.freeze(obj);
+  for (const key of Reflect.ownKeys(obj)) {
+    const child = (obj as any)[key];
+    if (child && (typeof child === 'object' || typeof child === 'function')) {
+      deepFreeze(child, seen);
+    }
+  }
+  return value;
+}
+
 // High-performance caching system for SEO optimization
 export class PerformanceCache {
   private static instance: PerformanceCache;
@@ -49,11 +96,15 @@ export class PerformanceCache {
   }
 
   private safeSet(cache: NodeCache, cacheName: string, key: string, value: any, ttl?: number): boolean {
+    // CRITICAL: every cache uses `useClones: false` so mutating a cached value
+    // poisons it for every other consumer. Freeze on write so any accidental
+    // mutation throws instead of silently corrupting shared state.
+    const frozen = deepFreeze(value);
     try {
       if (ttl !== undefined) {
-        cache.set(key, value, ttl);
+        cache.set(key, frozen, ttl);
       } else {
-        cache.set(key, value);
+        cache.set(key, frozen);
       }
       return true;
     } catch (err: any) {
@@ -70,10 +121,12 @@ export class PerformanceCache {
         const keysToEvict = allKeys.slice(0, evictCount);
         cache.del(keysToEvict);
         try {
+          // Use the already-frozen reference so the eviction-retry path can't
+          // smuggle mutable values into a `useClones: false` cache.
           if (ttl !== undefined) {
-            cache.set(key, value, ttl);
+            cache.set(key, frozen, ttl);
           } else {
-            cache.set(key, value);
+            cache.set(key, frozen);
           }
           return true;
         } catch {

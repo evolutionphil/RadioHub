@@ -572,7 +572,10 @@ app.use('/api/image', (_req, res) => {
       const preferredLanguage = preferredLanguageMatch ? preferredLanguageMatch[1].toLowerCase() : undefined;
 
       const seoData = await seoRenderer.renderStaticPage(url, productionDomain, preferredLanguage);
-      seoData.seoTags.domain = ogImageDomain;
+      // CRITICAL: seoData.seoTags is shared from a `useClones: false` cache and
+      // is frozen on write — clone before overriding the domain so that this
+      // request-specific value doesn't poison cached SEO data for others.
+      const seoTags = { ...seoData.seoTags, domain: ogImageDomain };
       const pageType = seoData.pageData?.pageType || 'unknown';
 
       const htmlContent = `<!DOCTYPE html>
@@ -580,7 +583,7 @@ app.use('/api/image', (_req, res) => {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    ${seoRenderer.generateHtmlHead(seoData.seoTags, seoData.language, seoData.translations || {}, seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData)}
+    ${seoRenderer.generateHtmlHead(seoTags, seoData.language, seoData.translations || {}, seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData)}
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png">
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
@@ -618,12 +621,12 @@ app.use('/api/image', (_req, res) => {
       "@context": "https://schema.org",
       "@type": "BroadcastService",
       "name": seoData.pageData.station.name,
-      "url": seoData.seoTags.canonical || '',
-      "description": seoData.seoTags.description,
+      "url": seoTags.canonical || '',
+      "description": seoTags.description,
       "broadcastFrequency": "Internet Streaming",
       ...(seoData.pageData.station.country ? { "areaServed": { "@type": "Country", "name": seoData.pageData.station.country } } : {}),
       "provider": { "@type": "Organization", "name": "Mega Radio", "url": "https://themegaradio.com" },
-      "potentialAction": { "@type": "ListenAction", "target": seoData.seoTags.canonical || '' }
+      "potentialAction": { "@type": "ListenAction", "target": seoTags.canonical || '' }
     })}
     </script>` : ''}
   </head>
@@ -634,7 +637,7 @@ app.use('/api/image', (_req, res) => {
           pageType: seoData.pageData?.pageType || 'home',
           language: seoData.language,
           translations: seoData.translations,
-          seoTags: seoData.seoTags,
+          seoTags: seoTags,
           stationData: seoData.pageData?.station,
           additionalData: seoData.pageData?.additionalData || {}
         })}

@@ -893,8 +893,11 @@ app.use((req, res, next) => {
       
       // Use seoRenderer to generate page-specific meta tags for any page type
       const seoData = await seoRenderer.renderStaticPage(url, productionDomain, preferredLanguage);
-      // Override domain for OG images in dev environment (enables WhatsApp testing)
-      seoData.seoTags.domain = ogImageDomain;
+      // Override domain for OG images in dev environment (enables WhatsApp testing).
+      // CRITICAL: seoData.seoTags is shared from a `useClones: false` cache and
+      // is frozen on write — clone before overriding to avoid corrupting other
+      // requests' cached SEO data.
+      const seoTags = { ...seoData.seoTags, domain: ogImageDomain };
       const pageType = seoData.pageData?.pageType || 'unknown';
       const identifier = seoData.pageData?.station?.name || pageType;
       logger.log(`📄 SEO: Generated meta tags for ${pageType} page: ${identifier}`);
@@ -907,7 +910,7 @@ app.use((req, res, next) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     
     <!-- SEO Meta Tags, Hreflang, JSON-LD (WebSite, Organization, FAQPage, RadioStation, ItemList) -->
-    ${seoRenderer.generateHtmlHead(seoData.seoTags, seoData.language, seoData.translations || {}, seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData)}
+    ${seoRenderer.generateHtmlHead(seoTags, seoData.language, seoData.translations || {}, seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData)}
     
     <!-- Favicon and Apple Touch Icons -->
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
@@ -974,8 +977,8 @@ app.use((req, res, next) => {
       "@context": "https://schema.org",
       "@type": "BroadcastService",
       "name": seoData.pageData.station.name,
-      "url": seoData.seoTags.canonical || '',
-      "description": seoData.seoTags.description,
+      "url": seoTags.canonical || '',
+      "description": seoTags.description,
       "broadcastFrequency": "Internet Streaming",
       ...(seoData.pageData.station.country ? { "areaServed": { "@type": "Country", "name": seoData.pageData.station.country } } : {}),
       "provider": {
@@ -985,7 +988,7 @@ app.use((req, res, next) => {
       },
       "potentialAction": {
         "@type": "ListenAction",
-        "target": seoData.seoTags.canonical || ''
+        "target": seoTags.canonical || ''
       }
     })}
     </script>` : ''}
@@ -999,7 +1002,7 @@ app.use((req, res, next) => {
           pageType: seoData.pageData?.pageType || 'home',
           language: seoData.language,
           translations: seoData.translations,
-          seoTags: seoData.seoTags,
+          seoTags: seoTags,
           stationData: seoData.pageData?.station,
           additionalData: seoData.pageData?.additionalData || {}
         })}
