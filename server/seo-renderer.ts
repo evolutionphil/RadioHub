@@ -972,7 +972,7 @@ export class SeoRenderer {
           "@type": "ListItem",
           "position": 1,
           "name": getLocalizedText('nav_home', 'Home'),
-          "item": baseDomain + `/${language}/`
+          "item": baseDomain + `/${language}`
         }
       ];
 
