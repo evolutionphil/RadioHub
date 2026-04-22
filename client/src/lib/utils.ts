@@ -14,6 +14,39 @@ export function getStreamProxyUrl(path: string): string {
   return `${_STREAM_PROXY_BASE}${path}`;
 }
 
+/**
+ * Build a proxied stream URL for the given source URL.
+ * Used when we want to force-route a stream through our stream-proxy service
+ * (e.g. on retry after a direct-connection failure, or for HTTP streams
+ * loaded from an HTTPS page to bypass mixed-content blocks).
+ */
+export function buildProxiedStreamUrl(streamUrl: string): string {
+  if (!streamUrl) return streamUrl;
+  const encoded = safeBase64Encode(streamUrl);
+  return getStreamProxyUrl(`/api/stream/${encoded}`);
+}
+
+/**
+ * Decide initial stream URL — tries direct first for efficiency.
+ * Only forces proxy when we have no choice (mixed content: http stream on https page).
+ * On playback failure, the player should retry via buildProxiedStreamUrl().
+ */
+export function resolveStreamUrl(
+  streamUrl: string,
+  _station?: { countryCode?: string | null } | null
+): string {
+  if (!streamUrl) return streamUrl;
+
+  const isHttp = streamUrl.startsWith('http://');
+  const pageIsHttps = typeof window !== 'undefined' && window.location.protocol === 'https:';
+  const mixedContent = isHttp && pageIsHttps;
+
+  if (mixedContent) {
+    return buildProxiedStreamUrl(streamUrl);
+  }
+  return streamUrl;
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
