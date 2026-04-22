@@ -479,7 +479,7 @@ export class LogoProcessor {
 
       await Station.updateOne(
         { _id: stationId },
-        { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName } }
+        { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName, 'logoAssets.lastAttempt': new Date() } }
       );
 
       if (!useS3) {
@@ -593,7 +593,7 @@ export class LogoProcessor {
 
       await Station.updateOne(
         { _id: stationId },
-        { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName } }
+        { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName, 'logoAssets.lastAttempt': new Date() } }
       );
 
       const ext = path.extname(originalFilename) || '.png';

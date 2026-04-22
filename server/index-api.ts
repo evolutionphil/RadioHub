@@ -729,6 +729,14 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled cache clear:', error.message);
         }
+
+        try {
+          const { scheduledLogoProcessor } = await import('./services/scheduled-logo-processor');
+          scheduledLogoProcessor.initialize();
+          logger.log('✅ BACKGROUND: Scheduled logo processor initialized (nightly 02:00)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled logo processor:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {

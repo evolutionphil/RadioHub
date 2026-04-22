@@ -1228,6 +1228,22 @@ app.use((req, res, next) => {
       } catch (error: any) {
         logger.warn('⚠️ BACKGROUND: Failed to initialize scheduled cache clear:', error.message);
       }
+
+      // Initialize nightly logo S3 mirror processor (runs at 2 AM daily)
+      // Skipped in development to avoid hitting production DB from local containers.
+      // In split deployments, set ENABLE_LOGO_CRON=false on every replica EXCEPT one
+      // to prevent overlapping runs.
+      if (process.env.NODE_ENV !== 'development') {
+        try {
+          const { scheduledLogoProcessor } = await import('./services/scheduled-logo-processor');
+          scheduledLogoProcessor.initialize();
+          logger.log('✅ BACKGROUND: Scheduled logo processor initialized (nightly 02:00)');
+        } catch (error: any) {
+          logger.warn('⚠️ BACKGROUND: Failed to initialize scheduled logo processor:', error.message);
+        }
+      } else {
+        logger.log('⚡ DEV MODE: Scheduled logo processor skipped');
+      }
       
       if (process.env.NODE_ENV !== 'development') {
         try {

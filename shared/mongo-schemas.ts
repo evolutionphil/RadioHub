@@ -60,6 +60,8 @@ export interface IStation extends Document {
     status: 'pending' | 'processing' | 'completed' | 'failed';
     processedAt?: Date;
     error?: string; // Error message if failed
+    failureType?: 'http_error' | 'invalid_format' | 'timeout' | 'download_failed' | 'processing_failed';
+    lastAttempt?: Date; // Used for stale-processing recovery
   };
   isManuallyEdited: boolean;
   manualEditFields?: Record<string, boolean>;
@@ -827,9 +829,14 @@ const StationSchema = new Schema<IStation>({
     webp96: String, // 96px logo filename
     webp256: String, // 256px logo filename
     original: String, // Original filename (backup)
-    status: { type: String, enum: ['pending', 'processing', 'completed', 'failed'] },
+    status: { type: String, enum: ['pending', 'processing', 'completed', 'failed'], index: true },
     processedAt: Date,
-    error: String // Error message if failed
+    error: String, // Error message if failed
+    failureType: {
+      type: String,
+      enum: ['http_error', 'invalid_format', 'timeout', 'download_failed', 'processing_failed']
+    },
+    lastAttempt: Date
   },
   isManuallyEdited: { type: Boolean, default: false },
   manualEditFields: { type: Schema.Types.Mixed, default: {} },

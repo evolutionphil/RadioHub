@@ -140,17 +140,25 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       };
       
       const hasValidImage = (station: any): boolean => {
-        if (station.logoAssets?.status === 'completed' && 
+        // 1. Optimized S3 image — preferred
+        if (station.logoAssets?.status === 'completed' &&
             (station.logoAssets?.webp256 || station.logoAssets?.webp96)) {
           return true;
         }
-        if (station.logoAssets?.status === 'failed') {
+        // 2. Permanent failure (URL itself dead) — hide
+        const failureType = station.logoAssets?.failureType;
+        if (station.logoAssets?.status === 'failed' &&
+            (failureType === 'http_error' || failureType === 'invalid_format')) {
           return false;
         }
+        // 3. Legacy local download
         if (station.localImagePath && station.localImagePath.trim()) {
           return true;
         }
-        if (!station.logoAssets && station.favicon && /^https?:\/\/.+/i.test(station.favicon.trim())) {
+        // 4. Source URL fallback — used both when logo not yet processed AND when
+        //    processing transiently failed (timeout/processing_failed/download_failed).
+        //    Browser may succeed where our server-side downloader did.
+        if (station.favicon && /^https?:\/\/.+/i.test(station.favicon.trim())) {
           return true;
         }
         return false;
