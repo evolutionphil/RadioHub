@@ -173,6 +173,32 @@ export function isJunkStation(station: any): boolean {
   return evaluateJunkStation(station).isJunk;
 }
 
+/**
+ * If `slug` looks like a frequency-prefix duplicate candidate
+ * (e.g. "1046-rtl-luxus-hits", "941-bilal-fm", "999-radio-x"), returns the
+ * canonical base slug (the part after the leading "<2-4 digit number>-").
+ * Returns null when the slug doesn't match the frequency-prefix shape.
+ *
+ * The caller is expected to confirm a real sibling exists with the base slug
+ * before flagging the record as a duplicate — the regex alone is not enough,
+ * because some legitimate stations are genuinely named after their frequency.
+ *
+ * Examples:
+ *   "1046-rtl-luxus-hits" -> "rtl-luxus-hits"
+ *   "941-bilal-fm"        -> "bilal-fm"
+ *   "radio-100"           -> null   (number is the suffix, not prefix)
+ *   "99-2"                -> null   (no alphabetic base)
+ *   "12-am"               -> null   (base too short)
+ */
+export function frequencyPrefixBaseSlug(slug: string): string | null {
+  if (!slug || typeof slug !== 'string') return null;
+  const m = /^(\d{2,4})-([a-z][a-z0-9-]+)$/.exec(slug.toLowerCase());
+  if (!m) return null;
+  const base = m[2];
+  if (base.length < 4) return null;
+  return base;
+}
+
 // -----------------------------------------------------------------------------
 // 3. Eligible languages per station
 // -----------------------------------------------------------------------------

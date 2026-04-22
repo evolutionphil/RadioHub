@@ -27,6 +27,7 @@ import {
   slugifyStationName,
   evaluateJunkStation,
   getEligibleLanguages,
+  frequencyPrefixBaseSlug,
 } from '../server/seo/junk-station-rules';
 
 const DRY_RUN = process.argv.includes('--dry-run');
@@ -145,6 +146,20 @@ async function main() {
           _id: { $ne: station._id },
         });
         if (sibling) dupeOfBase = baseSlug;
+      }
+    }
+
+    // Frequency-prefix sibling check: catches "1046-rtl-luxus-hits" when
+    // "rtl-luxus-hits" already exists. Same noindex strategy as the -N suffix
+    // branch above. Skipped if we already flagged the record as a -N dupe.
+    if (!dupeOfBase) {
+      const freqBase = frequencyPrefixBaseSlug(finalSlugForDupe || '');
+      if (freqBase) {
+        const sibling = await Station.exists({
+          slug: freqBase,
+          _id: { $ne: station._id },
+        });
+        if (sibling) dupeOfBase = freqBase;
       }
     }
 

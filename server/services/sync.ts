@@ -7,6 +7,7 @@ import { logger } from '../utils/logger';
 import {
   evaluateJunkStation,
   slugifyStationName,
+  frequencyPrefixBaseSlug,
 } from '../seo/junk-station-rules';
 
 // Cache for sync status
@@ -302,6 +303,33 @@ export class SyncService {
 
       // Update existing stations with ONLY whitelisted fields
       if (existingStationsToUpdate.length > 0) {
+        // Frequency-prefix sibling lookup (batch, single query): collect every
+        // candidate base slug for this batch and ask the DB which of them
+        // actually exist as siblings. The frequency-prefix shape alone is not
+        // proof of duplication — only flag when a real sibling exists.
+        const freqCandidates = new Map<string, string>(); // stationuuid -> baseSlug
+        const baseSlugSet = new Set<string>();
+        for (const apiStation of existingStationsToUpdate) {
+          const existing = existingByUuid.get(apiStation.stationuuid) || {};
+          const slug = existing.slug || slugifyStationName(apiStation.name || '');
+          const base = frequencyPrefixBaseSlug(slug);
+          if (base) {
+            freqCandidates.set(apiStation.stationuuid, base);
+            baseSlugSet.add(base);
+          }
+        }
+        let existingBaseSlugs = new Set<string>();
+        if (baseSlugSet.size > 0) {
+          try {
+            const found = await Station.find({
+              slug: { $in: Array.from(baseSlugSet) },
+            }).select('slug').lean();
+            existingBaseSlugs = new Set(found.map((s: any) => s.slug));
+          } catch (err) {
+            logger.log(`⚠️ Frequency-prefix sibling lookup failed: ${(err as Error).message}`);
+          }
+        }
+
         const bulkOps = existingStationsToUpdate.map(apiStation => {
           const existing = existingByUuid.get(apiStation.stationuuid) || {};
           const fields = this.getWhitelistedUpdateFields(apiStation);
@@ -316,7 +344,14 @@ export class SyncService {
             bitrate: apiStation.bitrate,
             lastCheckOk: apiStation.lastcheckok === 1,
           });
-          if (verdict.isJunk && existing.noIndex !== true) {
+          let isJunk = verdict.isJunk;
+          if (!isJunk) {
+            const candidateBase = freqCandidates.get(apiStation.stationuuid);
+            if (candidateBase && existingBaseSlugs.has(candidateBase)) {
+              isJunk = true;
+            }
+          }
+          if (isJunk && existing.noIndex !== true) {
             fields.noIndex = true;
             autoFlagged++;
           }
