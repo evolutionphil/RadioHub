@@ -1429,22 +1429,50 @@ export function getStationMetaDescription(station: any, language: string, transl
     return metaDesc.substring(0, 160);
   }
   
-  // FALLBACK 3: Use generic template-based description if database translation not available
+  // FALLBACK 3: Generic template-based description (Bing SEO: target 150-160 chars).
+  // Adds genre tags + free streaming + multi-device language so even AI-less stations
+  // produce a Bing-acceptable description length.
   const stationName = station.name;
   const nativeCountry = station.country ? getNativeCountryName(station.country, language) : null;
   const listenLive = translations['listen_live'] || 'Listen live';
-  
-  // Build description with native country name
-  let metaDesc = `${listenLive} ${stationName}`;
-  
-  if (nativeCountry) {
-    metaDesc += ` ${translations['from'] || 'from'} ${nativeCountry}`;
+  const fromWord = translations['from'] || 'from';
+  const onlineWord = translations['online'] || 'online';
+  const freeStreaming = translations['free_streaming'] || 'Free live streaming';
+  const onMegaRadio = translations['on_mega_radio'] || 'on Mega Radio';
+  const desktopMobile = translations['desktop_and_mobile'] || 'desktop and mobile';
+
+  // Genre fragment from station tags
+  let genreFragment = '';
+  if (station.tags && typeof station.tags === 'string') {
+    const topTags = station.tags.split(',').map((t: string) => t.trim()).filter(Boolean).slice(0, 3);
+    if (topTags.length > 0) {
+      genreFragment = ` — ${topTags.join(', ')}`;
+    }
   }
-  
-  metaDesc += ` - Mega Radio`;
-  
-  // Trim to 155-160 characters (SEO meta description ideal length)
-  return metaDesc.substring(0, 160);
+
+  let metaDesc = `${listenLive} ${stationName}${genreFragment}`;
+  if (nativeCountry) {
+    metaDesc += ` ${fromWord} ${nativeCountry}`;
+  }
+  metaDesc += ` ${onlineWord}. ${freeStreaming} ${onMegaRadio} — ${desktopMobile}.`;
+
+  // Bing SEO: enforce 150–160 char window. Pad with brand-safe clauses
+  // (60,000+ stations, 120+ countries, 24/7) when short station name
+  // and missing country/tags leave us under the floor.
+  const MIN_LEN = 150;
+  const MAX_LEN = 160;
+  if (metaDesc.length < MIN_LEN) {
+    const padClauses = [
+      ` 60,000+ ${translations['stations'] || 'stations'} ${translations['from'] || 'from'} 120+ ${translations['countries'] || 'countries'}.`,
+      ` ${translations['twenty_four_seven'] || '24/7 live streaming'}.`,
+      ' Mega Radio: free online radio worldwide.',
+    ];
+    for (const clause of padClauses) {
+      if (metaDesc.length >= MIN_LEN) break;
+      metaDesc += clause;
+    }
+  }
+  return metaDesc.substring(0, MAX_LEN);
 }
 
 // Helper function to check if a language has complete SEO translations for stations
@@ -1811,12 +1839,23 @@ export function generateSeoTags(
   };
 
   const SEO_FALLBACKS: Record<string, string> = {
+    // Bing SEO: every fallback description is 150–160 chars to satisfy
+    // "description too short" / "description missing" audits across all 57 langs.
     genres_page_title: 'Radio Genres — Browse All Music Genres | Mega Radio',
-    genres_page_description: 'Explore hundreds of radio genres including pop, rock, jazz, classical, news, and more. Listen to free live radio stations by genre.',
+    genres_page_description: 'Explore every radio genre on Mega Radio: pop, rock, jazz, classical, hip hop, electronic, country, news, sports and talk. Listen to free live radio stations by genre.',
     stations_page_title: 'Radio Stations — Browse All Stations | Mega Radio',
-    stations_page_description: 'Browse thousands of free online radio stations from around the world. Listen live to music, news, sports, and talk radio.',
+    stations_page_description: 'Browse 60,000+ free online radio stations from 120+ countries on Mega Radio. Listen live to music, news, sports and talk radio anywhere on desktop and mobile.',
     regions_page_title: 'Radio by Region — Browse Stations by Region | Mega Radio',
-    regions_page_description: 'Discover radio stations from every region and country. Listen to local and international radio from Europe, Asia, Africa, Americas, and Oceania.',
+    regions_page_description: 'Discover radio stations from every region and country. Listen to local and international radio from Europe, Asia, Africa, Americas, and Oceania for free on Mega Radio.',
+    home_page_description: 'Listen to 60,000+ free live radio stations from 120+ countries on Mega Radio. Stream music, news, sports and talk radio online from any device, anywhere, anytime.',
+    about_page_description: 'Learn about Mega Radio, the free online radio platform with 60,000+ stations from 120+ countries. Discover our mission, multilingual support, and global station network.',
+    contact_page_description: 'Contact the Mega Radio team for support, feedback, partnership inquiries, or station submissions. We are here to help with your free radio streaming experience.',
+    privacy_page_description: 'Read the Mega Radio privacy policy to learn how we collect, use, and protect your personal data while you stream 60,000+ free radio stations from 120+ countries.',
+    terms_page_description: 'Read the Mega Radio Terms and Conditions covering service usage, account rules, intellectual property, and listener responsibilities for free online radio streaming.',
+    search_page_title: 'Search Radio Stations — Find Live Radio by Name, Genre or Country | Mega Radio',
+    search_page_description: 'Search 60,000+ live radio stations from 120+ countries on Mega Radio. Find your favourite station by name, genre, language, or country and listen free online.',
+    faq_page_title: 'Radio Streaming FAQ — Common Questions about Online Radio | Mega Radio',
+    faq_page_description: 'Frequently asked questions about Mega Radio: how to listen to online radio, supported devices, free streaming, mobile apps, station coverage, and account help.',
   };
   const getTranslation = (key: string): string => {
     const val = translations[key]?.trim();
@@ -1825,14 +1864,16 @@ export function generateSeoTags(
 
   const seoData: Record<string, SeoMetaTags> = {
     home: {
+      // Bing SEO: hero_over_100_countries is only ~45 chars (too short for Bing's 150-char floor).
+      // Fall through to home_page_description (155 chars) when meta_description is empty.
       title: getTranslation('meta_title') || getTranslation('hero_worlds_best_radio'),
-      description: getTranslation('meta_description') || getTranslation('hero_over_100_countries'),
+      description: getTranslation('meta_description') || getTranslation('home_page_description'),
       keywords: getTranslation('meta_keywords') || 'online radio, live radio, free music, radio stations, streaming, AM FM radio, international radio',
       ogTitle: getTranslation('meta_title') || getTranslation('hero_worlds_best_radio'),
-      ogDescription: getTranslation('meta_description') || getTranslation('hero_over_100_countries'),
+      ogDescription: getTranslation('meta_description') || getTranslation('home_page_description'),
       ogType: 'website',
       twitterTitle: getTranslation('meta_title') || getTranslation('hero_worlds_best_radio'),
-      twitterDescription: getTranslation('meta_description') || getTranslation('hero_over_100_countries')
+      twitterDescription: getTranslation('meta_description') || getTranslation('home_page_description')
     },
     genres: {
       title: getTranslation('genres_page_title'),
@@ -1857,6 +1898,24 @@ export function generateSeoTags(
       ogType: 'website',
       twitterTitle: getTranslation('regions_page_title'),
       twitterDescription: getTranslation('regions_page_description')
+    },
+    search: {
+      title: getTranslation('search_page_title'),
+      description: getTranslation('search_page_description'),
+      keywords: 'radio search, find radio stations, search live radio, online radio search',
+      ogType: 'website',
+      twitterTitle: getTranslation('search_page_title'),
+      twitterDescription: getTranslation('search_page_description'),
+      // Search result pages should not be indexed (Google guidance) but should be crawlable
+      robots: 'noindex, follow'
+    },
+    faq: {
+      title: getTranslation('faq_page_title'),
+      description: getTranslation('faq_page_description'),
+      keywords: 'mega radio faq, online radio help, internet radio questions, free radio streaming faq',
+      ogType: 'website',
+      twitterTitle: getTranslation('faq_page_title'),
+      twitterDescription: getTranslation('faq_page_description')
     },
     station: {
       // Dynamic station page SEO with language-specific content for uniqueness
@@ -1888,7 +1947,9 @@ export function generateSeoTags(
 
   const pageSeo = seoData[page] || {
     title: translations['general_page_title'] || 'Mega Radio - Free Online Radio',
-    description: translations['general_page_description'] || 'Listen to free online radio stations from around the world.',
+    // Bing SEO: ~155-char fallback so the default page bucket never triggers
+    // "description too short" / "description missing" audits.
+    description: translations['general_page_description'] || 'Listen to 60,000+ free online radio stations from 120+ countries on Mega Radio. Stream live music, news, sports and talk radio anywhere on desktop or mobile.',
     keywords: 'online radio, free music, radio streaming',
     ogType: 'website'
   };

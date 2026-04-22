@@ -403,6 +403,10 @@ export class SeoRenderer {
       pageType = 'terms';
     } else if (cleanPath.startsWith('/privacy-policy') || cleanPath.startsWith('/pages/privacy-policy')) {
       pageType = 'privacy';
+    } else if (cleanPath.startsWith('/search')) {
+      pageType = 'search';
+    } else if (cleanPath.startsWith('/faq')) {
+      pageType = 'faq';
     } else if (cleanPath === '/' || cleanPath === '') {
       pageType = 'home';
       try {
@@ -437,7 +441,9 @@ export class SeoRenderer {
       'terms': 'static',
       'privacy': 'static',
       'applications': 'static',
-      'tv': 'static'
+      'tv': 'static',
+      'search': 'static',
+      'faq': 'static'
     };
     
     const dbPageType = dbPageTypeMap[pageType] || pageType;
@@ -516,7 +522,13 @@ export class SeoRenderer {
       about_mega_radio: 'About Mega Radio - Free Online Radio Platform',
       about_mega_radio_description: 'Learn about Mega Radio, the free online radio platform with 60,000+ stations from 120+ countries. Stream music, news, sports, and talk radio worldwide.',
       contact_page_title: 'Contact Mega Radio - Get in Touch',
-      contact_page_description: 'Contact the Mega Radio team for support, feedback, or partnership inquiries. We are here to help you with your radio streaming experience.',
+      contact_page_description: 'Contact the Mega Radio team for support, feedback, or partnership inquiries. We are here to help you with your free radio streaming experience worldwide.',
+      search_page_title: 'Search Radio Stations — Find Live Radio by Name, Genre or Country | Mega Radio',
+      search_page_description: 'Search 60,000+ live radio stations from 120+ countries on Mega Radio. Find your favourite station by name, genre, language, or country and listen free online.',
+      search_page_h1: 'Search Live Radio Stations',
+      faq_page_title: 'Radio Streaming FAQ — Common Questions about Online Radio | Mega Radio',
+      faq_page_description: 'Frequently asked questions about Mega Radio: how to listen to online radio, supported devices, free streaming, mobile apps, station coverage, and account help.',
+      faq_page_h1: 'Mega Radio Frequently Asked Questions',
     };
     const getTranslation = (key: string): string => {
       const val = translations[key]?.trim();
@@ -559,7 +571,8 @@ export class SeoRenderer {
     
     if (pageType === 'applications') {
       baseSeoTags.title = 'Mega Radio Apps - Download for iOS, Android, Smart TV & Desktop';
-      baseSeoTags.description = 'Download Mega Radio apps for your iOS, Android, Smart TV, and desktop devices. Stream 60,000+ radio stations on all your favorite platforms.';
+      // Bing SEO: 150+ char description (was 140).
+      baseSeoTags.description = 'Download free Mega Radio apps for iOS, Android, Smart TV, Apple TV, Roku and desktop. Stream 60,000+ live radio stations from 120+ countries on every device.';
       baseSeoTags.ogType = 'website';
     }
     
@@ -571,13 +584,29 @@ export class SeoRenderer {
     
     if (pageType === 'terms') {
       baseSeoTags.title = 'Terms and Conditions - Mega Radio';
-      baseSeoTags.description = 'Read the Terms and Conditions for using Mega Radio\'s online radio streaming platform. Learn about our service policies and user agreements.';
+      // Bing SEO: 150+ char description (was 139). Covers service usage, accounts,
+      // intellectual property and listener responsibilities for free streaming.
+      baseSeoTags.description = 'Read the Mega Radio Terms and Conditions covering service usage, account rules, intellectual property and listener responsibilities for free online radio streaming.';
       baseSeoTags.ogType = 'website';
     }
     
     if (pageType === 'privacy') {
       baseSeoTags.title = 'Privacy Policy - Mega Radio';
-      baseSeoTags.description = 'Learn how Mega Radio protects your privacy and handles your personal data. Read our comprehensive privacy policy and data protection practices.';
+      baseSeoTags.description = 'Learn how Mega Radio protects your privacy and handles your personal data. Read our comprehensive privacy policy and data protection practices for free radio listeners.';
+      baseSeoTags.ogType = 'website';
+    }
+
+    if (pageType === 'search') {
+      baseSeoTags.title = getTranslation('search_page_title');
+      baseSeoTags.description = getTranslation('search_page_description');
+      baseSeoTags.ogType = 'website';
+      // Search result pages should not be indexed (Google guidance) but should be crawlable for links
+      baseSeoTags.robots = 'noindex, follow';
+    }
+
+    if (pageType === 'faq') {
+      baseSeoTags.title = getTranslation('faq_page_title');
+      baseSeoTags.description = getTranslation('faq_page_description');
       baseSeoTags.ogType = 'website';
     }
     
@@ -607,6 +636,8 @@ export class SeoRenderer {
       hero_worlds_best_radio: 'Mega Radio: Listen to Free Live Radio & Music',
       about_mega_radio: 'About Mega Radio - Free Online Radio Platform',
       contact_page_title: 'Contact Mega Radio - Get in Touch',
+      search_page_h1: 'Search Live Radio Stations',
+      faq_page_h1: 'Mega Radio Frequently Asked Questions',
     };
     const getLocalizedText = (key: string): string => {
       const val = translations[key]?.trim();
@@ -661,9 +692,15 @@ export class SeoRenderer {
       
       case 'privacy':
         return 'Privacy Policy - Mega Radio';
-      
+
+      case 'search':
+        return getLocalizedText('search_page_h1');
+
+      case 'faq':
+        return getLocalizedText('faq_page_h1');
+
       default:
-        return getLocalizedText('hero_worlds_best_radio');
+        return getLocalizedText('hero_worlds_best_radio') || FALLBACK_TEXTS.hero_worlds_best_radio;
     }
   }
 
@@ -882,12 +919,60 @@ export class SeoRenderer {
         }
         break;
 
-      default:
-        content = `
+      case 'search':
+        {
+          const langPrefix = language === 'en' ? '' : `/${language}`;
+          content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
+            <section>
+              <p>${this.escapeHtml(getLocalizedText('search_page_intro', 'Search Mega Radio\'s catalogue of 60,000+ live radio stations from 120+ countries. Type a station name, music genre, language, or country to start streaming free online radio instantly.'))}</p>
+            </section>
+            <nav>
+              <ul>
+                <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse Radio Genres'))}</a></li>
+                <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
+                <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+              </ul>
+            </nav>
           </main>
         `;
+        }
+        break;
+
+      case 'faq':
+        {
+          const langPrefix = language === 'en' ? '' : `/${language}`;
+          content = `
+          <main>
+            <h1>${this.escapeHtml(h1Text)}</h1>
+            <section>
+              <p>${this.escapeHtml(getLocalizedText('faq_page_intro', 'Answers to common questions about Mega Radio: how online radio streaming works, supported devices, free access, mobile apps, station coverage across 120+ countries, and account help.'))}</p>
+            </section>
+            <nav>
+              <ul>
+                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Mega Radio'))}</a></li>
+                <li><a href="${langPrefix}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact Us'))}</a></li>
+                <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Browse Stations'))}</a></li>
+              </ul>
+            </nav>
+          </main>
+        `;
+        }
+        break;
+
+      default:
+        {
+          // Safety net: never emit empty <h1>. If h1Text is somehow blank, fall back to brand H1.
+          const safeH1 = (h1Text && h1Text.trim()) ? h1Text : 'Mega Radio: Free Live Radio from 120+ Countries';
+          content = `
+          <main>
+            <h1>${this.escapeHtml(safeH1)}</h1>
+          </main>
+        `;
+        }
         break;
     }
 
@@ -1214,15 +1299,46 @@ export class SeoRenderer {
       };
     }
     
+    // SAFETY NET (Bing SEO): guarantee <title> is non-empty and every
+    // <meta name="description"> / og:description / twitter:description is
+    // 150–160 characters. Bing flags both "missing" and "too short" (<150),
+    // so we enforce a minimum length, padding with a brand-safe tail if needed.
+    const FINAL_TITLE_FALLBACK = 'Mega Radio: Free Live Radio from 120+ Countries';
+    const FINAL_DESCRIPTION_FALLBACK = 'Mega Radio is your free online radio platform with 60,000+ live stations from 120+ countries. Listen to music, news, sports, and talk shows for free.';
+    const DESCRIPTION_PAD_TAIL = ' Listen free on Mega Radio — 60,000+ stations from 120+ countries on desktop, mobile and Smart TV.';
+    const MIN_DESC_LEN = 150;
+    const MAX_DESC_LEN = 160;
+    const ensureDescriptionLength = (raw: any): string => {
+      const trimmed = (raw && String(raw).trim()) ? String(raw).trim() : '';
+      if (!trimmed) return FINAL_DESCRIPTION_FALLBACK;
+      if (trimmed.length >= MIN_DESC_LEN) {
+        // Already long enough — cap at MAX_DESC_LEN to keep snippets clean.
+        return trimmed.length > MAX_DESC_LEN ? trimmed.substring(0, MAX_DESC_LEN) : trimmed;
+      }
+      // Too short: append branded tail and cap to MAX_DESC_LEN.
+      const sep = /[.!?]$/.test(trimmed) ? ' ' : '. ';
+      let padded = trimmed + sep + DESCRIPTION_PAD_TAIL.trim();
+      if (padded.length < MIN_DESC_LEN) {
+        padded = padded + ' ' + FINAL_DESCRIPTION_FALLBACK;
+      }
+      return padded.substring(0, MAX_DESC_LEN);
+    };
+    const safeTitle = (seoTags.title && String(seoTags.title).trim()) ? seoTags.title : FINAL_TITLE_FALLBACK;
+    const safeDescription = ensureDescriptionLength(seoTags.description);
+    const safeOgTitle = (seoTags.ogTitle && String(seoTags.ogTitle).trim()) ? seoTags.ogTitle : safeTitle;
+    const safeOgDescription = ensureDescriptionLength(seoTags.ogDescription || safeDescription);
+    const safeTwitterTitle = (seoTags.twitterTitle && String(seoTags.twitterTitle).trim()) ? seoTags.twitterTitle : safeTitle;
+    const safeTwitterDescription = ensureDescriptionLength(seoTags.twitterDescription || safeDescription);
+
     return `
-    <title>${seoTags.title}</title>
-    <meta name="description" content="${seoTags.description}">
+    <title>${safeTitle}</title>
+    <meta name="description" content="${safeDescription}">
     <meta name="keywords" content="${seoTags.keywords || 'online radio, live radio, free music, radio stations'}">
     <meta name="author" content="MegaRadio">
     
     <!-- Enhanced Open Graph tags -->
-    <meta property="og:title" content="${seoTags.ogTitle || seoTags.title}">
-    <meta property="og:description" content="${seoTags.ogDescription || seoTags.description}">
+    <meta property="og:title" content="${safeOgTitle}">
+    <meta property="og:description" content="${safeOgDescription}">
     <meta property="og:type" content="${seoTags.ogType || 'website'}">
     <meta property="og:url" content="${seoTags.canonical || ''}">
     <meta property="og:image" content="${ogImage}">
@@ -1234,8 +1350,8 @@ export class SeoRenderer {
     
     <!-- Enhanced Twitter Card tags -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="${seoTags.twitterTitle || seoTags.title}">
-    <meta name="twitter:description" content="${seoTags.twitterDescription || seoTags.description}">
+    <meta name="twitter:title" content="${safeTwitterTitle}">
+    <meta name="twitter:description" content="${safeTwitterDescription}">
     <meta name="twitter:image" content="${twitterImage}">
     <meta name="twitter:site" content="@MegaRadio">
     <meta name="twitter:creator" content="@MegaRadio">

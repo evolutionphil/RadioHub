@@ -767,6 +767,13 @@ app.use((req, res, next) => {
   const seoContactAlts = collectSeoTranslations('contact');
   const seoPrivacyAlts = collectSeoTranslations('privacy-policy');
   const seoRegionAlts = collectSeoTranslations('regions');
+  // Bing SEO: include /search, /faq, /terms-and-conditions, /applications in
+  // SEO eligibility so SSR returns proper <h1> + 150+ char meta description
+  // for those previously-bare paths (Bing flagged terms specifically).
+  const seoSearchAlts = collectSeoTranslations('search');
+  const seoFaqAlts = collectSeoTranslations('faq');
+  const seoTermsAlts = collectSeoTranslations('terms-and-conditions');
+  const seoApplicationsAlts = collectSeoTranslations('applications');
 
   const SEO_PRECOMPILED_REGEX = {
     stationPage: new RegExp(`^\\/([a-z]{2}\\/)?(?:${seoStationAllAlts.join('|')})\\/`, 'u'),
@@ -778,6 +785,10 @@ app.use((req, res, next) => {
     privacyPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoPrivacyAlts.join('|')})\\/?$`, 'u'),
     countryPage: /^\/([a-z]{2}\/?)?country\/.+$/u,
     stationsPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoStationAllAlts.join('|')})\\/?$`, 'u'),
+    searchPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoSearchAlts.join('|')})\\/?(\\?.*)?$`, 'u'),
+    faqPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoFaqAlts.join('|')})\\/?$`, 'u'),
+    termsPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoTermsAlts.join('|')})\\/?$`, 'u'),
+    applicationsPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoApplicationsAlts.join('|')})\\/?$`, 'u'),
     botDetect: /\b(googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot|sogou|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|skype|pinterestbot|redditbot|crawler|spider|seobility|semrush|ahrefs|mozbot|majestic|screaming|frog|nutch|fastcrawler|genieo|demandbase)\b/i
   };
 
@@ -810,8 +821,12 @@ app.use((req, res, next) => {
     const isPrivacyPage = SEO_PRECOMPILED_REGEX.privacyPage.test(cleanUrlForMatching);
     const isCountryPage = SEO_PRECOMPILED_REGEX.countryPage.test(cleanUrlForMatching);
     const isStationsPage = SEO_PRECOMPILED_REGEX.stationsPage.test(cleanUrlForMatching);
-    
-    const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isPrivacyPage || isCountryPage || isStationsPage;
+    const isSearchPage = SEO_PRECOMPILED_REGEX.searchPage.test(cleanUrlForMatching);
+    const isFaqPage = SEO_PRECOMPILED_REGEX.faqPage.test(cleanUrlForMatching);
+    const isTermsPage = SEO_PRECOMPILED_REGEX.termsPage.test(cleanUrlForMatching);
+    const isApplicationsPage = SEO_PRECOMPILED_REGEX.applicationsPage.test(cleanUrlForMatching);
+
+    const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isPrivacyPage || isCountryPage || isStationsPage || isSearchPage || isFaqPage || isTermsPage || isApplicationsPage;
     const isBot = SEO_PRECOMPILED_REGEX.botDetect.test(userAgent);
 
     if (!isSeoEligiblePage) {
