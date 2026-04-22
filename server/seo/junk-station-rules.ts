@@ -226,7 +226,9 @@ const COUNTRY_EXTRA_LANGUAGES: Record<string, string[]> = {
   sa: ['ar'], ae: ['ar'], eg: ['ar'], ma: ['ar', 'fr'], dz: ['ar', 'fr'],
   tn: ['ar', 'fr'], ly: ['ar'], jo: ['ar'], lb: ['ar', 'fr'],
   br: ['pt'], ar: ['es'], cl: ['es'], co: ['es'], pe: ['es'], ve: ['es'],
-  tr: ['tr'], gr: ['el'], il: ['he', 'ar', 'ru'], ir: ['fa'],
+  // Türkiye: Almanya'da yaklaşık 3M Türk diasporası — Türk istasyonlarını
+  // Almanca arayanlar için /de/sender/* sayfaları da uygun bir dil eşleşmesi.
+  tr: ['de'], gr: ['el'], il: ['he', 'ar', 'ru'], ir: ['fa'],
   pl: ['pl'], cz: ['cs'], sk: ['sk'], hu: ['hu'], ro: ['ro'], bg: ['bg'],
   hr: ['hr'], si: ['sl'], rs: ['sr'], ba: ['bs', 'hr', 'sr'],
   fi: ['fi', 'sv'], se: ['sv'], no: ['no'], dk: ['da'], is: ['is'],
