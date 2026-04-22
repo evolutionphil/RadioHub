@@ -457,7 +457,79 @@ app.use('/api/image', (_req, res) => {
     regionsPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoRegionAlts.join('|')})(\\/.*)?$`, 'u'),
     genresPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoGenreAlts.join('|')})\\/?(.*)$`, 'u'),
     aboutPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoAboutAlts.join('|')})\\/?$`, 'u'),
-    contactPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoContactAlts.join('|')})\\/?$`, 'u'),
+    Implementation Plan: SEO Indexing Fixes (Production: index-web.ts)
+    Thank you for pointing out that index-web.ts is the active production file. After analyzing index-web.ts and seo-renderer.ts, I have discovered the real reasons why Google Search Console is failing to index the site.
+
+    🔴 1. The 503 Overload Issue (Googlebot vs SSR Limits)
+    The Problem: In index-web.ts (line 516), you correctly exempt Googlebot from the IP rate limit (if (isMajorBot) { // never rate limited }). However, in seo-renderer.ts (line 13), you have a hardcoded limit of SEO_RENDER_MAX_CONCURRENT = 15. Because Googlebot crawls very aggressively and has no rate limit, it easily exceeds 15 concurrent connections. When this happens, seo-renderer.ts throws SEO_RENDER_OVERLOADED, and index-web.ts responds to Googlebot with a 503 Service Unavailable error (line 670). When Google sees 503 errors, it assumes the server is crashing and drastically reduces its crawl rate, leaving millions of pages stuck in "Discovered - currently not indexed".
+
+    The Fix: We need to implement a queue or graceful fallback for Googlebot instead of outright failing with 503, or increase the concurrency limit, or better yet, serve the standard SPA index.html with basic meta tags as a fallback instead of a 503. A 503 prevents indexing; serving the React app as a fallback allows Google to at least try client-side rendering.
+
+    🔴 2. Cloaking Penalty Risk (Dynamic Rendering)
+    The Problem: When a bot visits the site, index-web.ts intercepts the request and serves htmlContent (line 581) which contains a text-only skeleton of the page but completely removes the React application script (<script type="module" src="/src/main.tsx"></script>). Google considers serving completely different content and structure to bots versus users as "Cloaking", and because the bot HTML is just text, it gets flagged as "Thin Content".
+
+    The Fix: Include the React application script in the bot HTML template. Googlebot executes JavaScript. By providing both the SSR text (for immediate indexing) and the React script, Googlebot will render the exact same rich, interactive radio app that a normal user sees, avoiding penalties.
+
+    Instructions for Replit Agent
+    Please provide these exact instructions to your Replit agent to fix the active code:
+
+    Step 1: Fix Cloaking by adding React script to Bot HTML
+    In server/index-web.ts, locate the htmlContent template (around line 581-647). Add the Vite React script right before the closing </body> tag so bots can run the app:
+
+    Modify index-web.ts (around line 645):
+
+    html
+    <div id="root">
+          <div id="ssr-content">
+            ${seoRenderer.generateHtmlBody({
+              pageType: seoData.pageData?.pageType || 'home',
+              language: seoData.language,
+              translations: seoData.translations,
+              seoTags: seoTags,
+              stationData: seoData.pageData?.station,
+              additionalData: seoData.pageData?.additionalData || {}
+            })}
+          </div>
+        </div>
+        <!-- Main application script - CRITICAL for preventing Cloaking penalties -->
+        <script type="module" src="/src/main.tsx"></script>
+        <script>
+          window.performance = window.performance || {};
+          window.performance.mark && window.performance.mark('body-start');
+          document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(function() {
+              var belowFoldElements = document.querySelectorAll('.below-fold');
+              belowFoldElements.forEach(function(el) { el.style.visibility = 'visible'; });
+              window.performance.mark && window.performance.mark('critical-content-loaded');
+            }, 100);
+          });
+        </script>
+      </body>
+    </html>
+    Step 2: Prevent 503 Errors for Googlebot (Fallback to React SPA)
+    In server/index-web.ts, when a 503 overload happens, do not return an HTTP 503. Instead, log the overload and next() the request so that the server falls back to serveStatic and serves the normal React SPA. Googlebot can index SPAs. A 503 prevents indexing entirely; falling back to the SPA saves the crawl.
+
+    Modify index-web.ts (around line 664-677):
+
+    typescript
+    } catch (error: any) {
+          if (!responded && !res.headersSent) {
+            responded = true;
+            clearTimeout(reqTimeout);
+            const errMsg = error?.message || '';
+            const isOverload = errMsg === 'SEO_RENDER_OVERLOADED' || errMsg === 'SEO_RENDER_TIMEOUT';
+
+            logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), falling back to SPA: ${url} — ${errMsg}`);
+
+            // CRITICAL FIX: Do NOT return 503 to Googlebot. 
+            // 503 tells Google the server is broken, causing them to stop crawling.
+            // Instead, pass the request to the next middleware (serveStatic) so it serves 
+            // the normal React SPA. Googlebot can execute JS and index the SPA.
+            next();
+          }
+        }
+    Step 3: Remove Dead Scripts
+    In client/index.html, completely delete the commented out Ahrefs and FloWAlive analytics scripts. Dead code in <head> can occasionally cause parser delays for bots.contactPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoContactAlts.join('|')})\\/?$`, 'u'),
     privacyPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoPrivacyAlts.join('|')})\\/?$`, 'u'),
     countryPage: /^\/([a-z]{2}\/?)?country\/.+$/u,
     stationsPage: new RegExp(`^\\/([a-z]{2}\\/?)?(?:${seoStationAllAlts.join('|')})\\/?$`, 'u'),
