@@ -31,21 +31,51 @@ import {
 } from '../server/seo/junk-station-rules';
 
 const DRY_RUN = process.argv.includes('--dry-run');
-const REPORT_PATH = path.join(
+const DEFAULT_REPORT_PATH = path.join(
   process.cwd(),
   'attached_assets',
   'task-17-audit-report.csv',
 );
 
-async function main() {
-  const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-  if (!uri) throw new Error('MONGODB_URI / MONGO_URI not set in env');
+export interface JunkCleanupOptions {
+  /** When true, skip every DB write — only produce the audit CSV. */
+  dryRun?: boolean;
+  /** Where to write the audit CSV. Defaults to attached_assets/task-17-audit-report.csv. */
+  reportPath?: string;
+  /** When true, this function manages mongoose connect/disconnect. When false,
+   *  the caller is expected to have already connected (e.g. the app server). */
+  manageConnection?: boolean;
+  /** Optional logger; defaults to console. */
+  log?: (msg: string) => void;
+}
 
-  console.log(`[task-17] Connecting to Mongo (dryRun=${DRY_RUN})…`);
-  await mongoose.connect(uri);
+export interface JunkCleanupResult {
+  processed: number;
+  slugRewrites: number;
+  junkMarked: number;
+  bothChanges: number;
+  auditRows: number;
+  reportPath: string;
+  dryRun: boolean;
+}
+
+export async function runJunkCleanup(
+  options: JunkCleanupOptions = {},
+): Promise<JunkCleanupResult> {
+  const dryRun = options.dryRun ?? DRY_RUN;
+  const reportPath = options.reportPath ?? DEFAULT_REPORT_PATH;
+  const manageConnection = options.manageConnection ?? false;
+  const log = options.log ?? ((m: string) => console.log(m));
+
+  if (manageConnection) {
+    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
+    if (!uri) throw new Error('MONGODB_URI / MONGO_URI not set in env');
+    log(`[task-17] Connecting to Mongo (dryRun=${dryRun})…`);
+    await mongoose.connect(uri);
+  }
 
   const totalStations = await Station.countDocuments();
-  console.log(`[task-17] Scanning ${totalStations} stations`);
+  log(`[task-17] Scanning ${totalStations} stations (dryRun=${dryRun})`);
 
   const auditRows: string[] = [
     '"slug","name","country","action","reason","new_slug","eligible_languages"',
@@ -71,7 +101,7 @@ async function main() {
   for await (const station of cursor as any) {
     processed++;
     if (processed % 5000 === 0) {
-      console.log(
+      log(
         `[task-17] processed=${processed} slugRewrites=${slugRewrites} junkMarked=${junkMarked}`,
       );
     }
@@ -205,30 +235,51 @@ async function main() {
     );
 
     // ---- 4) Write -----------------------------------------------------------
-    if (!DRY_RUN) {
+    if (!dryRun) {
       await Station.updateOne({ _id: station._id }, { $set: ops });
     }
   }
 
-  await fs.mkdir(path.dirname(REPORT_PATH), { recursive: true });
-  await fs.writeFile(REPORT_PATH, auditRows.join('\n'), 'utf8');
+  await fs.mkdir(path.dirname(reportPath), { recursive: true });
+  await fs.writeFile(reportPath, auditRows.join('\n'), 'utf8');
 
-  console.log('[task-17] ──────────── summary ────────────');
-  console.log(`[task-17] processed:         ${processed}`);
-  console.log(`[task-17] slug rewrites:     ${slugRewrites}`);
-  console.log(`[task-17] junk marked:       ${junkMarked}`);
-  console.log(`[task-17] slug+junk both:    ${bothChanges}`);
-  console.log(`[task-17] audit rows:        ${auditRows.length - 1}`);
-  console.log(`[task-17] report:            ${REPORT_PATH}`);
-  if (DRY_RUN) console.log('[task-17] DRY RUN — no DB writes performed');
+  log('[task-17] ──────────── summary ────────────');
+  log(`[task-17] processed:         ${processed}`);
+  log(`[task-17] slug rewrites:     ${slugRewrites}`);
+  log(`[task-17] junk marked:       ${junkMarked}`);
+  log(`[task-17] slug+junk both:    ${bothChanges}`);
+  log(`[task-17] audit rows:        ${auditRows.length - 1}`);
+  log(`[task-17] report:            ${reportPath}`);
+  if (dryRun) log('[task-17] DRY RUN — no DB writes performed');
 
-  await mongoose.disconnect();
+  if (manageConnection) {
+    await mongoose.disconnect();
+  }
+
+  return {
+    processed,
+    slugRewrites,
+    junkMarked,
+    bothChanges,
+    auditRows: auditRows.length - 1,
+    reportPath,
+    dryRun,
+  };
 }
 
-main().catch(async (err) => {
-  console.error('[task-17] migration failed:', err);
-  try {
-    await mongoose.disconnect();
-  } catch {}
-  process.exit(1);
-});
+// Allow legacy CLI invocation: `tsx scripts/clean-content-quality-urls.ts`
+// Detects script-mode by comparing the entrypoint to this file. When imported
+// from the cron processor it does NOT auto-run.
+const isDirectInvocation =
+  !!process.argv[1] && process.argv[1].endsWith('clean-content-quality-urls.ts');
+
+if (isDirectInvocation) {
+  runJunkCleanup({ manageConnection: true })
+    .catch(async (err) => {
+      console.error('[task-17] migration failed:', err);
+      try {
+        await mongoose.disconnect();
+      } catch {}
+      process.exit(1);
+    });
+}

@@ -737,6 +737,14 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled logo processor:', error.message);
         }
+
+        try {
+          const { scheduledJunkCleanup } = await import('./services/scheduled-junk-cleanup');
+          scheduledJunkCleanup.initialize();
+          logger.log('✅ BACKGROUND: Scheduled junk cleanup initialized (nightly 03:30)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled junk cleanup:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {

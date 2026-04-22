@@ -1256,8 +1256,17 @@ app.use((req, res, next) => {
         } catch (error: any) {
           logger.warn('⚠️ BACKGROUND: Failed to initialize scheduled logo processor:', error.message);
         }
+
+        try {
+          const { scheduledJunkCleanup } = await import('./services/scheduled-junk-cleanup');
+          scheduledJunkCleanup.initialize();
+          logger.log('✅ BACKGROUND: Scheduled junk cleanup initialized (nightly 03:30)');
+        } catch (error: any) {
+          logger.warn('⚠️ BACKGROUND: Failed to initialize scheduled junk cleanup:', error.message);
+        }
       } else {
         logger.log('⚡ DEV MODE: Scheduled logo processor skipped');
+        logger.log('⚡ DEV MODE: Scheduled junk cleanup skipped');
       }
       
       if (process.env.NODE_ENV !== 'development') {
