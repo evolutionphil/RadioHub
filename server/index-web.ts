@@ -626,11 +626,9 @@ app.use('/api/image', (_req, res) => {
     const reqTimeout = setTimeout(() => {
       if (!responded && !res.headersSent) {
         responded = true;
-        logger.log(`⏰ SEO request timeout (15s), returning 503: ${url}`);
-        res.status(503).set({
-          'Retry-After': '120',
-          'Cache-Control': 'no-store'
-        }).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mega Radio - Temporarily Unavailable</title></head><body><h1>Service Temporarily Unavailable</h1><p>Please try again later.</p></body></html>`);
+        clearTimeout(reqTimeout);
+        logger.log(`⏰ SEO request timeout (15s), falling back to SPA: ${url}`);
+        next();
       }
     }, 15000);
 
@@ -715,6 +713,18 @@ app.use('/api/image', (_req, res) => {
         })}
       </div>
     </div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.performance = window.performance || {};
+      window.performance.mark && window.performance.mark('body-start');
+      document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+          var belowFoldElements = document.querySelectorAll('.below-fold');
+          belowFoldElements.forEach(function(el) { el.style.visibility = 'visible'; });
+          window.performance.mark && window.performance.mark('critical-content-loaded');
+        }, 100);
+      });
+    </script>
   </body>
 </html>`;
 
@@ -739,12 +749,8 @@ app.use('/api/image', (_req, res) => {
         clearTimeout(reqTimeout);
         const errMsg = error?.message || '';
         const isOverload = errMsg === 'SEO_RENDER_OVERLOADED' || errMsg === 'SEO_RENDER_TIMEOUT';
-        logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), returning 503: ${url} — ${errMsg}`);
-        res.status(503).set({
-          'Content-Type': 'text/html',
-          'Retry-After': isOverload ? '120' : '60',
-          'Cache-Control': 'no-store'
-        }).send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Mega Radio - Temporarily Unavailable</title></head><body><h1>Service Temporarily Unavailable</h1><p>Please try again later.</p></body></html>`);
+        logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), falling back to SPA: ${url} — ${errMsg}`);
+        next();
       }
     }
   });

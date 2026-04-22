@@ -215,52 +215,6 @@
     }
     </script>
 
-    <!-- Ahrefs Analytics - DISABLED: analytics.ahrefs.com returns ERR_FAILED, wasting network requests + console errors -->
-    <!-- Re-enable when Ahrefs analytics endpoint is verified working -->
-    <!--
-    <script>
-    if ('requestIdleCallback' in window) {
-      requestIdleCallback(function() {
-        var script = document.createElement('script');
-        script.src = 'https://analytics.ahrefs.com/analytics.js';
-        script.async = true;
-        script.dataset.key = 'QNVkFrmfdtnDdToXyhwXww';
-        document.head.appendChild(script);
-      }, { timeout: 5000 });
-    } else {
-      var script = document.createElement('script');
-      script.src = 'https://analytics.ahrefs.com/analytics.js';
-      script.async = true;
-      script.dataset.key = 'QNVkFrmfdtnDdToXyhwXww';
-      document.head.appendChild(script);
-    }
-    </script>
-    -->
-
-    <!-- FloWAlive Analytics - DISABLED: WebSocket endpoint (flowalive-api.esimfo.com) is unreachable (ERR_NAME_NOT_RESOLVED), wasting 121KB download + console errors -->
-    <!-- Re-enable when FloWAlive service is restored -->
-    <!--
-    <script>
-    (function() {
-      function loadFlowAlive() {
-        window.FlowAliveConfig = {
-          apiKey: "flowalive_b42f8188aad215f2250e5f0889adcbf4",
-          trackNavigation: true
-        };
-        var s = document.createElement('script');
-        s.src = 'https://flowalive-sdk.s3.eu-central-1.amazonaws.com/dist/web.global.js';
-        s.async = true;
-        document.head.appendChild(s);
-      }
-      if ('requestIdleCallback' in window) {
-        requestIdleCallback(loadFlowAlive, { timeout: 4000 });
-      } else {
-        setTimeout(loadFlowAlive, 3000);
-      }
-    })();
-    </script>
-    -->
-
     <!-- Google AdSense -->
     <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434" crossorigin="anonymous"></script>
     
