@@ -5,15 +5,16 @@ import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
 
-// Concurrency raised 5 → 15 → 50: Googlebot crawls multi-threaded and even a
-// 15-slot ceiling occasionally produced 503/SEO_RENDER_OVERLOADED bursts when
-// the crawl wave aligned with cold-cache pages, causing Google to throttle.
-// 50 keeps headroom for a thousand-strong Googlebot wave; the event-loop-lag
-// guard below (800ms threshold) is the real safety net — if the box is truly
-// overloaded it rejects automatically regardless of slot count.
+// Concurrency raised 5 → 15 → 50 → 200: Googlebot crawls multi-threaded and
+// any low ceiling produces 503/SEO_RENDER_OVERLOADED bursts during heavy
+// crawl waves on cold-cache pages, causing Google to throttle the whole site.
+// 200 gives plenty of headroom for thousand-strong Googlebot bursts; the
+// event-loop-lag guard below (800ms threshold) is the real safety net — if
+// the box is truly overloaded it rejects automatically regardless of slot
+// count, so a high slot ceiling is safe.
 // Timeout raised 5s → 10s: 57-language hreflang tables push borderline pages
 // over 5s during cold cache; a 10s budget keeps Googlebot from giving up.
-const SEO_RENDER_MAX_CONCURRENT = 50;
+const SEO_RENDER_MAX_CONCURRENT = 200;
 const SEO_RENDER_TIMEOUT_MS = 10_000;
 let seoRenderActive = 0;
 let seoRenderRejected = 0;
