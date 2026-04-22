@@ -59,6 +59,7 @@ process.on('unhandledRejection', (reason: any) => {
 });
 
 const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000';
+const STREAM_PROXY_URL = process.env.STREAM_PROXY_URL || process.env.VITE_STREAM_PROXY_URL || 'https://stream.themegaradio.com';
 
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 
@@ -375,16 +376,29 @@ app.get('/admin/*', (_req, res) => {
   res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
 });
 
-app.use('/api/stream', (_req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-  res.status(410).json({ error: 'Stream proxy moved to stream.themegaradio.com', service: 'stream-proxy' });
+// Server-side proxy for /api/image/* and /api/stream/* — forwards to the
+// dedicated stream-proxy service at STREAM_PROXY_URL. This means clients can
+// keep using relative paths (e.g. /api/image/<base64>) and we don't depend on
+// VITE_STREAM_PROXY_URL being injected into the client build. Without this,
+// production was returning 410 Gone for every logo/image request because the
+// client fell through to a same-origin URL when the build env var was missing.
+const streamServiceProxy = createProxyMiddleware({
+  target: STREAM_PROXY_URL,
+  changeOrigin: true,
+  // The stream service expects the same /api/image|stream paths so no rewrite.
+  on: {
+    error: (err: any, _req: any, res: any) => {
+      console.error('❌ Stream-service proxy error:', err?.message || err);
+      try {
+        if (res && !res.headersSent) {
+          res.status(502).json({ error: 'Stream service unavailable' });
+        }
+      } catch {}
+    }
+  }
 });
-app.use('/api/image', (_req, res) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, OPTIONS, HEAD');
-  res.status(410).json({ error: 'Image proxy moved to stream.themegaradio.com', service: 'stream-proxy' });
-});
+app.use('/api/image', streamServiceProxy);
+app.use('/api/stream', streamServiceProxy);
 
 (async () => {
   await connectToMongoDB();
