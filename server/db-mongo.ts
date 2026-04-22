@@ -257,7 +257,7 @@ mongoose.set('bufferCommands', false);
 async function doConnect() {
   const isProd = process.env.NODE_ENV === 'production';
   await mongoose.connect(MONGODB_URI, {
-    maxPoolSize: isProd ? 50 : 10,
+    maxPoolSize: isProd ? 100 : 10,
     minPoolSize: isProd ? 5 : 2,
     serverSelectionTimeoutMS: isProd ? 30000 : 15000,
     socketTimeoutMS: isProd ? 45000 : 30000,
