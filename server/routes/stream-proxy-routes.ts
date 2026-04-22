@@ -2,19 +2,11 @@ import type { Express } from "express";
 import { logger } from "../utils/logger";
 import { validateOutboundUrl } from "../utils/safe-fetch";
 
-// Port policy for radio streams: allow 80, 443, and ALL non-privileged ports (1024-65535).
-// Real-world radio providers (Streamtheworld, SonicPanel, Shoutcast/Icecast hosts) use
-// arbitrary high ports — e.g. Virgin Radio Türkiye on :3690, SonicPanel on :10997.
-// SSRF protection is enforced by validateOutboundUrl (blocks private/loopback/link-local IPs,
-// IPv6 6to4/Teredo tunnels, cloud metadata addresses) — port restriction adds no security
-// over IP restriction and just breaks legitimate streams.
-// Ports below 1024 (other than 80/443) are excluded to block ssh(22), smtp(25), pop3(110),
-// imap(143), submission(587), etc. — none of which serve audio.
-const STREAM_ALLOWED_PORTS = (() => {
-  const ports = new Set<number>([80, 443]);
-  for (let p = 1024; p <= 65535; p++) ports.add(p);
-  return Array.from(ports);
-})();
+// Shared port allowlist for radio stream / Shoutcast / Icecast endpoints.
+const STREAM_ALLOWED_PORTS = [
+  80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090,
+  1935, 4000, 5000, 6000, 6969, 12000, 18000,
+];
 
 const MAX_CONCURRENT_STREAMS = parseInt(process.env.MAX_CONCURRENT_STREAMS || '25', 10);
 const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '120', 10) * 60 * 1000;

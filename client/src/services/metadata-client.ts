@@ -48,20 +48,6 @@ export function createMetadataClient(options: MetadataClientOptions): MetadataCl
   const maxReconnectDelay = 30000;
 
   function getWebSocketUrl(): string {
-    // Prefer the API subdomain directly when configured (production split deploy).
-    // Going through the web→proxy→api chain can drop WS upgrade headers at the
-    // CDN/proxy boundary, which causes the api server to see a plain GET and
-    // respond 404. Connecting straight to api.* avoids the whole hop.
-    const apiBase = (import.meta.env.VITE_API_BASE_URL || '').trim();
-    if (apiBase) {
-      try {
-        const u = new URL(apiBase);
-        const wsProtocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${wsProtocol}//${u.host}/ws/metadata`;
-      } catch {
-        // fall through to same-origin
-      }
-    }
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const host = window.location.host;
     return `${protocol}//${host}/ws/metadata`;

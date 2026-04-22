@@ -4,7 +4,7 @@ import { toast } from '@/hooks/use-toast';
 import { createMetadataClient } from '@/services/metadata-client';
 import { trackStationPlay, trackListeningTime, trackStationFavorite } from '../lib/analytics';
 import { logger } from '@/lib/logger';
-import { getStreamProxyUrl, resolveStreamUrl, buildProxiedStreamUrl } from '@/lib/utils';
+import { getStreamProxyUrl } from '@/lib/utils';
 
 import type { GlobalPlayerState } from './useGlobalPlayer.shell';
 import { GlobalPlayerContext } from './useGlobalPlayer.shell';
@@ -376,7 +376,11 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             const separator = baseUrl.includes('?') ? '&' : '?';
             const streamUrl = `${baseUrl}${separator}_t=${cacheBuster}`;
             
-            const finalUrl = resolveStreamUrl(streamUrl, currentStation);
+            let finalUrl = streamUrl;
+            if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
+              const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+              finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
+            }
             
             audioRef.current.src = finalUrl;
             audioRef.current.load();
@@ -458,7 +462,11 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             const separator = baseUrl.includes('?') ? '&' : '?';
             const streamUrl = `${baseUrl}${separator}_t=${cacheBuster}`;
             
-            const finalUrl = resolveStreamUrl(streamUrl, currentStation);
+            let finalUrl = streamUrl;
+            if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
+              const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+              finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
+            }
             
             audioRef.current.src = finalUrl;
             audioRef.current.load();
@@ -506,7 +514,12 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             if (!baseUrl) return;
             const cacheBuster = Date.now();
             const separator = baseUrl.includes('?') ? '&' : '?';
-            const finalUrl = resolveStreamUrl(`${baseUrl}${separator}_t=${cacheBuster}`, currentStation);
+            let finalUrl = `${baseUrl}${separator}_t=${cacheBuster}`;
+            
+            if (baseUrl.startsWith('http://') && window.location.protocol === 'https:') {
+              const encodedUrl = btoa(finalUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+              finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
+            }
             
             audioRef.current.src = finalUrl;
             audioRef.current.load();
@@ -559,46 +572,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
         reconnectTimeoutRef.current = null;
       }
       
-      // SMART RETRY STRATEGY:
-      // 1) If current attempt was DIRECT (not proxied) → retry the same URL via proxy
-      //    Works for any country (TR, DE, US, ...) — saves bandwidth on working
-      //    stations while giving broken-SSL/CORS/geo-blocked ones a lifeline.
-      // 2) If proxy attempt also failed → fall through to next candidate (PLS chain)
-      // 3) If candidates exhausted → give up with a toast
+      // VLC-LIKE CANDIDATE FALLBACK: Try next candidate in the list
       if (currentStation && !isManuallyPausedRef.current) {
-        const currentSrc = audioRef.current?.src || '';
-        const alreadyProxied = currentSrc.includes('/api/stream/');
-        const baseUrl = currentStation.url || currentStation.urlResolved || '';
-
-        // PRIORITY 1: First failure on direct connection → instant proxy retry
-        if (!alreadyProxied && baseUrl && reconnectAttempts < maxReconnectAttempts) {
-          const now = Date.now();
-          if (!reconnectionInProgressRef.current && (now - lastReconnectTimeRef.current) >= 1000) {
-            reconnectionInProgressRef.current = true;
-            lastReconnectTimeRef.current = now;
-            setReconnectAttempts(prev => prev + 1);
-            setHasError(false);
-            setIsLoading(true);
-
-            const proxyUrl = buildProxiedStreamUrl(baseUrl);
-            logger.log('🔁 Direct connection failed → retrying via proxy:', proxyUrl);
-
-            reconnectTimeoutRef.current = setTimeout(() => {
-              if (audioRef.current && currentStation && !isPlayPendingRef.current) {
-                audioRef.current.src = proxyUrl;
-                audioRef.current.load();
-                safePlay('first-error-proxy-retry').catch(console.error).finally(() => {
-                  reconnectionInProgressRef.current = false;
-                });
-              } else {
-                reconnectionInProgressRef.current = false;
-              }
-            }, 500);
-          }
-          return;
-        }
-
-        // PRIORITY 2: Proxy already failed — try VLC-style next candidate from PLS
         const candidates = streamCandidatesRef.current;
         const currentIdx = currentCandidateIndexRef.current;
         
@@ -619,7 +594,11 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             
             reconnectTimeoutRef.current = setTimeout(() => {
               if (audioRef.current && currentStation && !isPlayPendingRef.current) {
-                const finalUrl = resolveStreamUrl(nextCandidate, currentStation);
+                let finalUrl = nextCandidate;
+                if (nextCandidate.startsWith('http://') && window.location.protocol === 'https:') {
+                  const encodedUrl = btoa(nextCandidate).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+                  finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
+                }
                 
                 audioRef.current.src = finalUrl;
                 audioRef.current.load();
@@ -893,43 +872,35 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
               safePlay('hls-manifest-ready').catch(console.error);
             });
             
-            // Track whether we've already retried the manifest via proxy for this
-            // station, so a second fatal error doesn't loop forever.
-            let hlsProxyRetried = false;
-
             hls.on(Hls.Events.ERROR, (event, data) => {
               if (data.fatal) {
                 console.error('❌ Fatal HLS error:', data);
                 
-                if (currentStation && !hlsProxyRetried && reconnectAttempts < maxReconnectAttempts) {
-                  hlsProxyRetried = true;
+                // Try fallback: convert HLS URL to direct stream through proxy
+                if (currentStation && reconnectAttempts < maxReconnectAttempts) {
+                  logger.log('🔄 HLS failed, trying proxy fallback...');
                   setReconnectAttempts(prev => prev + 1);
-
-                  const originalUrl = currentStation.url || currentStation.urlResolved || '';
-                  if (!originalUrl) {
-                    setHasError(true);
-                    setIsLoading(false);
-                    return;
+                  
+                  // Clean up failed HLS instance
+                  if (hlsRef.current) {
+                    hlsRef.current.destroy();
+                    hlsRef.current = null;
                   }
-
-                  // Reload the SAME m3u8 manifest through our proxy so SSL/CORS
-                  // issues at the origin are normalised. HLS.js continues to
-                  // parse the playlist; segment fetches will hit the proxy as
-                  // well because most providers ship absolute segment URLs.
-                  const proxiedManifest = buildProxiedStreamUrl(originalUrl);
-                  logger.log('🔁 HLS direct failed → reloading manifest via proxy:', proxiedManifest);
-
+                  
+                  // Try proxy fallback after delay
                   setTimeout(() => {
-                    if (currentStation && !isPlayPendingRef.current) {
-                      try {
-                        hls.loadSource(proxiedManifest);
-                      } catch (e) {
-                        console.error('HLS proxy reload failed:', e);
-                        setHasError(true);
-                        setIsLoading(false);
-                      }
+                    if (audioRef.current && currentStation && !isPlayPendingRef.current) {
+                      const originalUrl = currentStation.url || currentStation.urlResolved || '';
+                      if (!originalUrl) return;
+                      const encodedUrl = btoa(originalUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+                      const proxyUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
+                      
+                      logger.log('🎯 HLS fallback: Using proxy stream');
+                      audioRef.current.src = proxyUrl;
+                      audioRef.current.load();
+                      safePlay('hls-proxy-fallback').catch(console.error);
                     }
-                  }, 800);
+                  }, 1000);
                 } else {
                   setHasError(true);
                   setIsLoading(false);
@@ -959,11 +930,13 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
       } else {
         logger.log('🎵 Direct Stream: Smart proxy routing');
         
-        finalStreamUrl = resolveStreamUrl(streamUrl, currentStation);
-        if (finalStreamUrl !== streamUrl) {
-          logger.log('🔒 Stream → proxy (mixed-content or country-forced)');
+        if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
+          const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+          finalStreamUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
+          logger.log('🔒 HTTP stream → proxy for mixed content fix');
         } else {
-          logger.log('✅ Direct stream connection (no proxy needed)');
+          finalStreamUrl = streamUrl;
+          logger.log('✅ HTTPS stream → direct connection (no proxy needed)');
         }
         
         // SAFARI iOS: Simple setAttribute like working radio players
