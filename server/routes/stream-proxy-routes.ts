@@ -2,16 +2,17 @@ import type { Express } from "express";
 import { logger } from "../utils/logger";
 import { validateOutboundUrl } from "../utils/safe-fetch";
 
-// Shared port allowlist for radio stream / Shoutcast / Icecast endpoints.
-// Includes the common Shoutcast/Icecast/SonicPanel control-port range 8000-8999, 9000-9999, 10000-10999
-// (panels typically expose ports like 8050, 9876, 10997 for individual stations).
+// Port policy for radio streams: allow 80, 443, and ALL non-privileged ports (1024-65535).
+// Real-world radio providers (Streamtheworld, SonicPanel, Shoutcast/Icecast hosts) use
+// arbitrary high ports — e.g. Virgin Radio Türkiye on :3690, SonicPanel on :10997.
+// SSRF protection is enforced by validateOutboundUrl (blocks private/loopback/link-local IPs,
+// IPv6 6to4/Teredo tunnels, cloud metadata addresses) — port restriction adds no security
+// over IP restriction and just breaks legitimate streams.
+// Ports below 1024 (other than 80/443) are excluded to block ssh(22), smtp(25), pop3(110),
+// imap(143), submission(587), etc. — none of which serve audio.
 const STREAM_ALLOWED_PORTS = (() => {
-  const ports = new Set<number>([
-    80, 443, 1935, 4000, 5000, 6000, 6969, 7000, 7777, 12000, 18000,
-  ]);
-  for (let p = 8000; p <= 8999; p++) ports.add(p);
-  for (let p = 9000; p <= 9999; p++) ports.add(p);
-  for (let p = 10000; p <= 10999; p++) ports.add(p);
+  const ports = new Set<number>([80, 443]);
+  for (let p = 1024; p <= 65535; p++) ports.add(p);
   return Array.from(ports);
 })();
 
