@@ -41,4 +41,4 @@ EXPOSE ${PORT:-3000}
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "const http = require('http'); http.get('http://localhost:${PORT:-3000}/healthz', (r) => { process.exit(r.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"
 
-CMD ["node", "--max-old-space-size=2048", "--max-semi-space-size=32", "--expose-gc", "dist/index-web.js"]
+CMD ["node", "--max-old-space-size=3072", "--max-semi-space-size=48", "--expose-gc", "dist/index-web.js"]

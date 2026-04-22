@@ -781,9 +781,9 @@ app.use('/api/image', (_req, res) => {
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
-  const RSS_WARNING_MB = 1000;
-  const RSS_CRITICAL_MB = 1400;
-  const RSS_RESTART_MB = 1700;
+  const RSS_WARNING_MB = 1500;
+  const RSS_CRITICAL_MB = 2000;
+  const RSS_RESTART_MB = 2500;
   let lastMemoryLog = 0;
 
   setInterval(() => {
