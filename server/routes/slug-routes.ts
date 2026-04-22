@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { Station, Genre, User, BulkDescriptionJob } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { slugGenerationJobs, stripPlaceholders } from "./shared-utils";
-import { slugifyStationName } from "../seo/junk-station-rules";
+import { slugifyStationName, evaluateJunkStation } from "../seo/junk-station-rules";
 import CacheManager from "../cache";
 
 export function registerSlugRoutes(app: Express, deps: any) {
@@ -209,7 +209,7 @@ export function registerSlugRoutes(app: Express, deps: any) {
               ? {}
               : { $or: [{ slug: { $exists: false } }, { slug: '' }, { slug: null }] };
             const stations = await Station.find(stationFilter)
-              .select('_id name url country language codec bitrate')
+              .select('_id name url homepage tags country language codec bitrate lastCheckOk noIndex')
               .skip(skip)
               .limit(batchSize)
               .lean();
@@ -231,12 +231,29 @@ export function registerSlugRoutes(app: Express, deps: any) {
                 
                 // Generate unique slug using optimized in-memory checker
                 const newSlug = generateOptimizedUniqueSlug(station.name);
-                
+
+                // Re-evaluate junk against the slug we're about to persist —
+                // collision suffixes (e.g. `-mp3-1`) only become visible at
+                // assignment time, so this is the right moment to flag them.
+                const update: { slug: string; noIndex?: true } = { slug: newSlug };
+                const verdict = evaluateJunkStation({
+                  name: station.name,
+                  slug: newSlug,
+                  url: station.url,
+                  homepage: station.homepage,
+                  tags: station.tags,
+                  bitrate: station.bitrate,
+                  lastCheckOk: station.lastCheckOk,
+                });
+                if (verdict.isJunk && station.noIndex !== true) {
+                  update.noIndex = true;
+                }
+
                 // Add to bulk operations instead of individual updates
                 bulkOps.push({
                   updateOne: {
                     filter: { _id: station._id },
-                    update: { $set: { slug: newSlug } }
+                    update: { $set: update }
                   }
                 });
                 
@@ -488,7 +505,11 @@ export function registerSlugRoutes(app: Express, deps: any) {
 
           while (true) {
             // Get batch of stations
-            const stations = await Station.find().skip(skip).limit(batchSize).lean();
+            const stations = await Station.find()
+              .select('_id name url homepage tags bitrate lastCheckOk noIndex')
+              .skip(skip)
+              .limit(batchSize)
+              .lean();
             
             if (stations.length === 0) {
               break; // No more stations to process
@@ -501,11 +522,28 @@ export function registerSlugRoutes(app: Express, deps: any) {
                 
                 // Generate unique slug for this station
                 const newSlug = await generateUniqueSlug(station.name, 'station', station._id.toString());
-                
+
+                // Re-evaluate junk against the slug we're about to persist so
+                // codec-suffix matches (incl. collision suffixes like
+                // `-mp3-1`) are caught at assignment time.
+                const update: { slug: string; noIndex?: true } = { slug: newSlug };
+                const verdict = evaluateJunkStation({
+                  name: station.name,
+                  slug: newSlug,
+                  url: station.url,
+                  homepage: station.homepage,
+                  tags: station.tags,
+                  bitrate: station.bitrate,
+                  lastCheckOk: station.lastCheckOk,
+                });
+                if (verdict.isJunk && station.noIndex !== true) {
+                  update.noIndex = true;
+                }
+
                 // Update station with new slug
                 await Station.updateOne(
                   { _id: station._id },
-                  { $set: { slug: newSlug } }
+                  { $set: update }
                 );
                 
                 updated++;

@@ -8,7 +8,7 @@ import { RecommendationEngine } from '../services/recommendation-engine';
 import { getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
 import { PrecomputedStationsService } from '../services/precomputed-stations';
-import { slugifyStationName } from '../seo/junk-station-rules';
+import { slugifyStationName, evaluateJunkStation } from '../seo/junk-station-rules';
 
 // Escape regex meta-characters from user input. Without this, callers can pass
 // patterns like `.*` or catastrophic-backtracking inputs (e.g. `(a+)+`) and
@@ -63,7 +63,24 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       if (!station.slug) {
         const newSlug = await generateUniqueSlug(station.name, 'station', station._id.toString());
-        await Station.updateOne({ _id: station._id }, { $set: { slug: newSlug } });
+        // Re-evaluate junk now that we know the persisted slug — codec-suffix
+        // rules (incl. collision suffixes like `-mp3-1`) only fire once the
+        // slug is finalised, so flag noIndex at the same write.
+        const update: { slug: string; noIndex?: true } = { slug: newSlug };
+        const verdict = evaluateJunkStation({
+          name: station.name,
+          slug: newSlug,
+          url: station.url,
+          homepage: station.homepage,
+          tags: station.tags,
+          bitrate: station.bitrate,
+          lastCheckOk: station.lastCheckOk,
+        });
+        if (verdict.isJunk && station.noIndex !== true) {
+          update.noIndex = true;
+          station.noIndex = true;
+        }
+        await Station.updateOne({ _id: station._id }, { $set: update });
         station.slug = newSlug;
       }
 
