@@ -1,0 +1,47 @@
+index-BM_00T_r.js:164 LCP: 3052
+index-BM_00T_r.js:164 LCP: 3932
+index-BM_00T_r.js:164 LCP: 4500
+index-BM_00T_r.js:164 FID: 9.5
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+stream.themegaradio.com/api/stream/aHR0cDovL29uYWlyLWhhMS5rcm9uZS5hdC9rcm9uZWhpdDY0LmFhYz9fdD0xNzc2ODYxODM0OTQ3:1  Failed to load resource: net::ERR_HTTP2_PROTOCOL_ERROR
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+api.themegaradio.com/api/listening/record:1  Failed to load resource: the server responded with a status of 401 ()
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+sw.js:185 [SW] Message received: Object
+sw.js:197 [SW] Keep-alive received - maintaining background audio
+api.themegaradio.com/api/recently-played:1  Failed to load resource: the server responded with a status of 401 ()
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID

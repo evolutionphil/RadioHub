@@ -1948,10 +1948,11 @@ ${keysText}`;
     }
   });
 
-  // GET RECENTLY PLAYED STATIONS (Authenticated or public)
-  app.get("/api/recently-played", requireAuth, async (req, res) => {
+  // GET RECENTLY PLAYED STATIONS (returns [] silently for anonymous — no console-noise 401)
+  app.get("/api/recently-played", async (req, res) => {
     try {
       const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
+      if (!currentUserId) return res.json([]);
 
       const cacheKey = `recently-played:${currentUserId}`;
       const cached = await CacheManager.get(cacheKey);
@@ -1990,9 +1991,10 @@ ${keysText}`;
     }
   });
 
-  app.post("/api/recently-played", requireAuth, async (req, res) => {
+  app.post("/api/recently-played", async (req, res) => {
     try {
       const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
+      if (!currentUserId) return res.status(204).end();
       const { stationId } = req.body;
       
       if (!stationId) {

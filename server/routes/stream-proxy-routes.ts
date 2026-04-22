@@ -3,10 +3,17 @@ import { logger } from "../utils/logger";
 import { validateOutboundUrl } from "../utils/safe-fetch";
 
 // Shared port allowlist for radio stream / Shoutcast / Icecast endpoints.
-const STREAM_ALLOWED_PORTS = [
-  80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090,
-  1935, 4000, 5000, 6000, 6969, 12000, 18000,
-];
+// Includes the common Shoutcast/Icecast/SonicPanel control-port range 8000-8999, 9000-9999, 10000-10999
+// (panels typically expose ports like 8050, 9876, 10997 for individual stations).
+const STREAM_ALLOWED_PORTS = (() => {
+  const ports = new Set<number>([
+    80, 443, 1935, 4000, 5000, 6000, 6969, 7000, 7777, 12000, 18000,
+  ]);
+  for (let p = 8000; p <= 8999; p++) ports.add(p);
+  for (let p = 9000; p <= 9999; p++) ports.add(p);
+  for (let p = 10000; p <= 10999; p++) ports.add(p);
+  return Array.from(ports);
+})();
 
 const MAX_CONCURRENT_STREAMS = parseInt(process.env.MAX_CONCURRENT_STREAMS || '25', 10);
 const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '120', 10) * 60 * 1000;

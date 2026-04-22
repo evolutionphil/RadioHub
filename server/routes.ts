@@ -447,12 +447,13 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // The previous /stations → /radios route here caused a redirect chain
   // (/stations → /radios → /en/radios) that hurt Google crawl efficiency.
 
-  // === LISTENING RECORD (not in any module file) ===
-  app.post('/api/listening/record', requireAuth, async (req, res) => {
+  // === LISTENING RECORD (silent 204 for anonymous — no console-noise 401) ===
+  app.post('/api/listening/record', async (req, res) => {
     try {
-      const { stationId, stationName, listenDuration, country, genre } = req.body;
       const userId = (req.session as any)?.user?.userId;
-      if (!userId || !stationId || !listenDuration || typeof listenDuration !== 'number') {
+      if (!userId) return res.status(204).end();
+      const { stationId, stationName, listenDuration, country, genre } = req.body;
+      if (!stationId || !listenDuration || typeof listenDuration !== 'number') {
         return res.status(400).json({ error: 'Missing required fields' });
       }
       const listeningSession = new UserListeningHistory({
