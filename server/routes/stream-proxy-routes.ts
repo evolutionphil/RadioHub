@@ -374,7 +374,13 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             let content = '';
             try {
               const ct = (response.headers.get('content-type') || '').toLowerCase();
-              if (ct && !/text|playlist|mpegurl|x-mixed|application\/(?:x-)?(?:m3u|pls|octet-stream)|^$/.test(ct)) {
+              // Streamtheworld and many shoutcast/icecast hosts serve .pls
+              // with `audio/x-scpls` and .m3u with `audio/x-mpegurl`. We MUST
+              // accept those, otherwise the body is dropped, the candidate
+              // list is empty, and the resolver falls back to returning the
+              // playlist URL itself as a "candidate" — which Chrome then
+              // tries to play as audio and fails with FFmpegDemuxer error.
+              if (ct && !/text|playlist|mpegurl|scpls|audio|x-mixed|application\/(?:x-)?(?:m3u|pls|octet-stream)|^$/.test(ct)) {
                 // unexpected binary type — refuse
                 content = '';
               } else if ((response as any).body && typeof (response as any).body.getReader === 'function') {
