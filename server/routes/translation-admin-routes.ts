@@ -2949,6 +2949,56 @@ ${keysText}`;
     }
   });
 
+  // Auto-flagged junk report — short summary of how many records the
+  // ingest pipeline marked as junk during the most recent sync runs.
+  // Backs the admin dashboard tile for task #20.
+  app.get("/api/admin/sync/auto-flagged-report", requireAdmin, async (req, res) => {
+    try {
+      const { SyncLog } = await import('@shared/mongo-schemas');
+      const recent = await SyncLog.find()
+        .sort({ startedAt: -1 })
+        .limit(10)
+        .select('syncType status startedAt completedAt stationsAdded stationsUpdated stationsAutoFlagged')
+        .lean();
+
+      const lastCompleted = recent.find((l: any) => l.status === 'completed');
+      const last = recent[0] || null;
+
+      res.json({
+        last: last
+          ? {
+              syncType: last.syncType,
+              status: last.status,
+              startedAt: last.startedAt,
+              completedAt: last.completedAt,
+              stationsAdded: last.stationsAdded || 0,
+              stationsUpdated: last.stationsUpdated || 0,
+              autoFlagged: last.stationsAutoFlagged || 0,
+            }
+          : null,
+        lastCompleted: lastCompleted
+          ? {
+              startedAt: lastCompleted.startedAt,
+              completedAt: lastCompleted.completedAt,
+              stationsAdded: lastCompleted.stationsAdded || 0,
+              stationsUpdated: lastCompleted.stationsUpdated || 0,
+              autoFlagged: lastCompleted.stationsAutoFlagged || 0,
+            }
+          : null,
+        recent: recent.map((l: any) => ({
+          syncType: l.syncType,
+          status: l.status,
+          startedAt: l.startedAt,
+          completedAt: l.completedAt,
+          autoFlagged: l.stationsAutoFlagged || 0,
+        })),
+      });
+    } catch (error) {
+      console.error('Error fetching auto-flagged report:', error);
+      res.status(500).json({ error: 'Failed to fetch auto-flagged report' });
+    }
+  });
+
   // Get sync logs
   app.get("/api/sync/logs", async (req, res) => {
     try {

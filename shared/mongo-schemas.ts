@@ -143,6 +143,7 @@ export interface ISyncLog extends Document {
   stationsAdded: number;
   stationsUpdated: number;
   stationsSkipped: number;
+  stationsAutoFlagged?: number;
   errorMessage?: string;
   startedAt: Date;
   completedAt?: Date;
@@ -931,6 +932,7 @@ const SyncLogSchema = new Schema<ISyncLog>({
   stationsAdded: { type: Number, default: 0 },
   stationsUpdated: { type: Number, default: 0 },
   stationsSkipped: { type: Number, default: 0 },
+  stationsAutoFlagged: { type: Number, default: 0 },
   errorMessage: String,
   startedAt: { type: Date, required: true },
   completedAt: Date

@@ -4,6 +4,10 @@ import NodeCache from 'node-cache';
 import { ImageManager } from './image-manager';
 import { logoProcessor } from './logo-processor';
 import { logger } from '../utils/logger';
+import {
+  evaluateJunkStation,
+  slugifyStationName,
+} from '../seo/junk-station-rules';
 
 // Cache for sync status
 const syncCache = new NodeCache({ stdTTL: 300 });
@@ -49,6 +53,8 @@ export class SyncService {
 
       // Save/update stations incrementally (preserving custom data)
       const result = await this.syncStationsIncrementally(stations, syncLog, blacklistedUuids, blacklistedUrls);
+
+      logger.log(`🚯 Auto-flagged ${result.autoFlagged} junk stations during ingest`);
       
       // Download favicon images in background after sync completes
       logger.log('🖼️ Starting favicon download process...');
@@ -64,6 +70,7 @@ export class SyncService {
       syncLog.stationsAdded = result.inserted;
       syncLog.stationsUpdated = result.updated;
       syncLog.stationsSkipped = result.skipped + result.blacklisted;
+      syncLog.stationsAutoFlagged = result.autoFlagged;
       syncLog.completedAt = new Date();
       await syncLog.save();
 
@@ -203,13 +210,14 @@ export class SyncService {
     syncLog: any,
     blacklistedUuids: Set<string>,
     blacklistedUrls: Set<string>
-  ): Promise<{ processed: number; inserted: number; updated: number; skipped: number; blacklisted: number }> {
+  ): Promise<{ processed: number; inserted: number; updated: number; skipped: number; blacklisted: number; autoFlagged: number }> {
     const batchSize = 1000;
     let processed = 0;
     let inserted = 0;
     let updated = 0;
     let skipped = 0;
     let blacklisted = 0;
+    let autoFlagged = 0;
 
     for (let i = 0; i < apiStations.length; i += batchSize) {
       const batch = apiStations.slice(i, i + batchSize);
@@ -239,27 +247,53 @@ export class SyncService {
         continue;
       }
 
-      // Get existing station UUIDs in this batch
+      // Get existing station UUIDs (and the fields needed to auto-flag junk
+      // on update — slug for codec-suffix matching, noIndex to detect
+      // transitions so we don't double-count already-flagged stations).
       const batchUuids = nonBlacklistedBatch.map(s => s.stationuuid);
-      const existingStations = await Station.find({ 
-        stationuuid: { $in: batchUuids } 
-      }).select('stationuuid').lean();
-      
-      const existingUuidsSet = new Set(existingStations.map(s => s.stationuuid));
+      const existingStations = await Station.find({
+        stationuuid: { $in: batchUuids }
+      }).select('stationuuid slug noIndex').lean();
+
+      const existingByUuid = new Map<string, { slug?: string; noIndex?: boolean }>(
+        existingStations.map((s: any) => [s.stationuuid, { slug: s.slug, noIndex: s.noIndex }])
+      );
 
       // Partition into new and existing
-      const newStations = nonBlacklistedBatch.filter(s => !existingUuidsSet.has(s.stationuuid));
-      const existingStationsToUpdate = nonBlacklistedBatch.filter(s => existingUuidsSet.has(s.stationuuid));
+      const newStations = nonBlacklistedBatch.filter(s => !existingByUuid.has(s.stationuuid));
+      const existingStationsToUpdate = nonBlacklistedBatch.filter(s => existingByUuid.has(s.stationuuid));
 
-      // Insert new stations
+      // Insert new stations — auto-mark junk records with noIndex:true so
+      // the upstream radio-browser feed cannot quietly re-pollute the sitemap.
       if (newStations.length > 0) {
-        const convertedNewStations = newStations.map(station => this.convertStation(station));
+        let batchAutoFlagged = 0;
+        const convertedNewStations = newStations.map(station => {
+          const doc = this.convertStation(station);
+          // Use the slug we'd generate downstream so codec-suffix rules apply
+          // even though `slug` isn't persisted by `convertStation` itself.
+          const probeSlug = slugifyStationName(doc.name || '');
+          const verdict = evaluateJunkStation({
+            name: doc.name,
+            slug: probeSlug,
+            url: doc.url,
+            homepage: doc.homepage,
+            tags: doc.tags,
+            bitrate: doc.bitrate,
+            lastCheckOk: doc.lastCheckOk,
+          });
+          if (verdict.isJunk) {
+            doc.noIndex = true;
+            batchAutoFlagged++;
+          }
+          return doc;
+        });
         try {
           const insertResult = await Station.insertMany(convertedNewStations, { 
             ordered: false 
           });
           inserted += insertResult.length;
-          logger.log(`➕ Batch ${Math.ceil((i + 1) / batchSize)}: Inserted ${insertResult.length} new stations`);
+          autoFlagged += batchAutoFlagged;
+          logger.log(`➕ Batch ${Math.ceil((i + 1) / batchSize)}: Inserted ${insertResult.length} new stations (🚯 ${batchAutoFlagged} auto-flagged junk)`);
         } catch (error: any) {
           console.error(`❌ Batch ${Math.ceil((i + 1) / batchSize)} insert error:`, error.message);
           skipped += newStations.length;
@@ -268,14 +302,31 @@ export class SyncService {
 
       // Update existing stations with ONLY whitelisted fields
       if (existingStationsToUpdate.length > 0) {
-        const bulkOps = existingStationsToUpdate.map(apiStation => ({
-          updateOne: {
-            filter: { stationuuid: apiStation.stationuuid },
-            update: {
-              $set: this.getWhitelistedUpdateFields(apiStation)
-            }
+        const bulkOps = existingStationsToUpdate.map(apiStation => {
+          const existing = existingByUuid.get(apiStation.stationuuid) || {};
+          const fields = this.getWhitelistedUpdateFields(apiStation);
+          // Re-evaluate junk for the merged view: incoming feed values plus
+          // the persisted slug (which is what the sitemap actually emits).
+          const verdict = evaluateJunkStation({
+            name: apiStation.name,
+            slug: existing.slug || slugifyStationName(apiStation.name || ''),
+            url: apiStation.url,
+            homepage: apiStation.homepage,
+            tags: apiStation.tags,
+            bitrate: apiStation.bitrate,
+            lastCheckOk: apiStation.lastcheckok === 1,
+          });
+          if (verdict.isJunk && existing.noIndex !== true) {
+            fields.noIndex = true;
+            autoFlagged++;
           }
-        }));
+          return {
+            updateOne: {
+              filter: { stationuuid: apiStation.stationuuid },
+              update: { $set: fields }
+            }
+          };
+        });
 
         try {
           const updateResult = await Station.bulkWrite(bulkOps, { ordered: false });
@@ -292,10 +343,10 @@ export class SyncService {
       syncLog.stationsProcessed = processed;
       await syncLog.save();
       
-      logger.log(`📈 Progress: ${processed}/${apiStations.length} processed (${Math.round(processed/apiStations.length*100)}%) | ➕${inserted} 🔄${updated} ⚫${blacklisted}`);
+      logger.log(`📈 Progress: ${processed}/${apiStations.length} processed (${Math.round(processed/apiStations.length*100)}%) | ➕${inserted} 🔄${updated} ⚫${blacklisted} 🚯${autoFlagged}`);
     }
 
-    return { processed, inserted, updated, skipped, blacklisted };
+    return { processed, inserted, updated, skipped, blacklisted, autoFlagged };
   }
 
   /**
