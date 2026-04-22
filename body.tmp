@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    
+    <title>Italia Dance Music aus Italien — Jetzt Live Online Hören</title>
+    <meta name="description" content="Erleben Sie das Beste aus Dance und Electronica mit Italia Dance Music, die aus Genua, Italien streamt. Schalten Sie ein für House-Beats und elektrisierende Tracks.">
+    <meta name="keywords" content="Italia Dance Music, Italy, Italy radio, Italy dance radio, dance, electronica, genova, house, Italia Dance Music listen live, Italia Dance Music free stream, live radio, online radio, internet radio, Italia Dance Music AAC+, 96kbps, high quality, en radio">
+    <meta name="author" content="MegaRadio">
+    
+    <!-- Enhanced Open Graph tags -->
+    <meta property="og:title" content="Italia Dance Music aus Italien — Jetzt Live Online Hören">
+    <meta property="og:description" content="Italia Dance Music ist Ihr erstklassiges Ziel für die besten Dance- und Electronica-Tracks direkt aus der pulsierenden Stadt Genua, Italien. Unser Sender widmet sich der Präsentation der pulsierenden Beats der House-Musik und der aufregenden Klänge, die das Dance-Genre definieren. Egal, ob Sie Ihr Workout ankurbeln, in die Stimmung für eine Nacht ausgehen oder einfach zu Hause entspannen möchten, Italia Dance Music hat die perfekte Playlist, um Ihre Stimmung zu heben.Tauchen Sie ein in eine Welt voller Rhythmus und Melodie mit unseren sorgfältig kuratierten Auswahl, die sowohl etablierte Künstler als auch aufstrebende Talente aus der italienischen Dance-Musik-Szene präsentiert. Wir sind stolz darauf, die eklektische Vielfalt der elektronischen Musik zu zeigen und sicherzustellen, dass für jeden Hörer etwas dabei ist. Von Deep House bis zu progressiven Beats sind unsere Sendungen darauf ausgelegt, Sie in Bewegung und inspiriert zu halten.Schließen Sie sich unserer Community von Dance-Musik-Enthusiasten an und erleben Sie die elektrisierende Atmosphäre, die nur Italia Dance Music bieten kann. Mit unserer hochmodernen Streaming-Technologie können Sie überall hochwertige Audioinhalte genießen und sich leicht mit den Klängen verbinden, die Italien zu einem Zentrum der Tanzkultur machen.Verpassen Sie nicht die neuesten Hits, exklusiven Mixe und speziellen DJ-Sets, die die Energie der Tanzfläche direkt zu Ihren Lautsprechern bringen. Schalten Sie ein und lassen Sie die Musik Ihre Sinne übernehmen. Hören Sie jetzt auf Mega Radio.">
+    <meta property="og:type" content="music.radio_station">
+    <meta property="og:url" content="https://themegaradio.com/de/sender/italia-dance-music">
+    <meta property="og:image" content="https://themegaradio.com/api/og-image/italia-dance-music">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:site_name" content="MegaRadio">
+    <meta property="og:locale" content="de_DE">
+    <meta property="og:locale:alternate" content="en_US">
+    <meta property="og:locale:alternate" content="tr_TR">
+    <meta property="og:locale:alternate" content="es_ES">
+    <meta property="og:locale:alternate" content="fr_FR">
+    <meta property="og:locale:alternate" content="ar_SA">
+    <meta property="og:locale:alternate" content="it_IT">
+    <meta property="og:locale:alternate" content="pt_PT">
+    <meta property="og:locale:alternate" content="nl_NL">
+    <meta property="og:locale:alternate" content="ru_RU">
+    <meta property="og:locale:alternate" content="pl_PL">
+    <meta property="og:locale:alternate" content="sv_SE">
+    <meta property="og:locale:alternate" content="da_DK">
+    <meta property="og:locale:alternate" content="no_NO">
+    <meta property="og:locale:alternate" content="fi_FI">
+    <meta property="og:locale:alternate" content="el_GR">
+    <meta property="og:locale:alternate" content="hu_HU">
+    <meta property="og:locale:alternate" content="cs_CZ">
+    <meta property="og:locale:alternate" content="sk_SK">
+    <meta property="og:locale:alternate" content="ro_RO">
+    <meta property="og:locale:alternate" content="bg_BG">
+    <meta property="og:locale:alternate" content="hr_HR">
+    <meta property="og:locale:alternate" content="sr_RS">
+    <meta property="og:locale:alternate" content="sl_SI">
+    <meta property="og:locale:alternate" content="lv_LV">
+    <meta property="og:locale:alternate" content="lt_LT">
+    <meta property="og:locale:alternate" content="et_EE">
+    <meta property="og:locale:alternate" content="zh_CN">
+    <meta property="og:locale:alternate" content="ja_JP">
+    <meta property="og:locale:alternate" content="ko_KR">
+    <meta property="og:locale:alternate" content="hi_IN">
+    <meta property="og:locale:alternate" content="th_TH">
+    <meta property="og:locale:alternate" content="vi_VN">
+    <meta property="og:locale:alternate" content="id_ID">
+    <meta property="og:locale:alternate" content="ms_MY">
+    <meta property="og:locale:alternate" content="tl_PH">
+    <meta property="og:locale:alternate" content="he_IL">
+    <meta property="og:locale:alternate" content="fa_IR">
+    <meta property="og:locale:alternate" content="ur_PK">
+    <meta property="og:locale:alternate" content="bn_BD">
+    <meta property="og:locale:alternate" content="ta_IN">
+    <meta property="og:locale:alternate" content="te_IN">
+    <meta property="og:locale:alternate" content="mr_IN">
+    <meta property="og:locale:alternate" content="gu_IN">
+    <meta property="og:locale:alternate" content="kn_IN">
+    <meta property="og:locale:alternate" content="ml_IN">
+    <meta property="og:locale:alternate" content="pa_IN">
+    <meta property="og:locale:alternate" content="sw_KE">
+    <meta property="og:locale:alternate" content="am_ET">
+    <meta property="og:locale:alternate" content="zu_ZA">
+    <meta property="og:locale:alternate" content="af_ZA">
+    <meta property="og:locale:alternate" content="sq_AL">
+    <meta property="og:locale:alternate" content="az_AZ">
+    <meta property="og:locale:alternate" content="hy_AM">
+    <meta property="og:locale:alternate" content="so_SO">
+    <meta property="og:locale:alternate" content="uk_UA">
+    <meta property="og:locale:alternate" content="bs_BA">
+    
+    <!-- Enhanced Twitter Card tags -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Italia Dance Music aus Italien — Jetzt Live Online Hören">
+    <meta name="twitter:description" content="Erleben Sie das Beste aus Dance und Electronica mit Italia Dance Music, die aus Genua, Italien streamt. Schalten Sie ein für House-Beats und elektrisierende Tracks.">
+    <meta name="twitter:image" content="http://www.italiadancemusic.com/it/themes/corporate_lite/favicon.ico">
+    <meta name="twitter:site" content="@MegaRadio">
+    <meta name="twitter:creator" content="@MegaRadio">
+    
+    <!-- Additional meta tags -->
+    <meta name="robots" content="index, follow">
+    <meta name="theme-color" content="#000000">
+    <meta name="msapplication-TileColor" content="#000000">
+    
+    <link rel="canonical" href="https://themegaradio.com/de/sender/italia-dance-music">
+    <link rel="alternate" hreflang="en" href="https://themegaradio.com/en/stations/italia-dance-music">
+    <link rel="alternate" hreflang="tr" href="https://themegaradio.com/tr/istasyonlar/italia-dance-music">
+    <link rel="alternate" hreflang="es" href="https://themegaradio.com/es/estaciones/italia-dance-music">
+    <link rel="alternate" hreflang="fr" href="https://themegaradio.com/fr/stations/italia-dance-music">
+    <link rel="alternate" hreflang="de" href="https://themegaradio.com/de/sender/italia-dance-music">
+    <link rel="alternate" hreflang="ar" href="https://themegaradio.com/ar/mahtat/italia-dance-music">
+    <link rel="alternate" hreflang="it" href="https://themegaradio.com/it/stazioni/italia-dance-music">
+    <link rel="alternate" hreflang="pt" href="https://themegaradio.com/pt/estacoes/italia-dance-music">
+    <link rel="alternate" hreflang="nl" href="https://themegaradio.com/nl/stations/italia-dance-music">
+    <link rel="alternate" hreflang="ru" href="https://themegaradio.com/ru/stantsii/italia-dance-music">
+    <link rel="alternate" hreflang="pl" href="https://themegaradio.com/pl/stacje/italia-dance-music">
+    <link rel="alternate" hreflang="sv" href="https://themegaradio.com/sv/stationer/italia-dance-music">
+    <link rel="alternate" hreflang="da" href="https://themegaradio.com/da/stationer/italia-dance-music">
+    <link rel="alternate" hreflang="no" href="https://themegaradio.com/no/stasjoner/italia-dance-music">
+    <link rel="alternate" hreflang="fi" href="https://themegaradio.com/fi/asemat/italia-dance-music">
+    <link rel="alternate" hreflang="el" href="https://themegaradio.com/el/σταθμοι/italia-dance-music">
+    <link rel="alternate" hreflang="hu" href="https://themegaradio.com/hu/radios/italia-dance-music">
+    <link rel="alternate" hreflang="cs" href="https://themegaradio.com/cs/stanice/italia-dance-music">
+    <link rel="alternate" hreflang="sk" href="https://themegaradio.com/sk/stanice/italia-dance-music">
+    <link rel="alternate" hreflang="ro" href="https://themegaradio.com/ro/staties/italia-dance-music">
+    <link rel="alternate" hreflang="bg" href="https://themegaradio.com/bg/stantsii/italia-dance-music">
+    <link rel="alternate" hreflang="hr" href="https://themegaradio.com/hr/stanice/italia-dance-music">
+    <link rel="alternate" hreflang="sr" href="https://themegaradio.com/sr/stanice/italia-dance-music">
+    <link rel="alternate" hreflang="sl" href="https://themegaradio.com/sl/postaje/italia-dance-music">
+    <link rel="alternate" hreflang="lv" href="https://themegaradio.com/lv/stacijas/italia-dance-music">
+    <link rel="alternate" hreflang="lt" href="https://themegaradio.com/lt/stotys/italia-dance-music">
+    <link rel="alternate" hreflang="et" href="https://themegaradio.com/et/jaamad/italia-dance-music">
+    <link rel="alternate" hreflang="zh" href="https://themegaradio.com/zh/电台/italia-dance-music">
+    <link rel="alternate" hreflang="ja" href="https://themegaradio.com/ja/ステーション/italia-dance-music">
+    <link rel="alternate" hreflang="ko" href="https://themegaradio.com/ko/스테이션/italia-dance-music">
+    <link rel="alternate" hreflang="hi" href="https://themegaradio.com/hi/stations/italia-dance-music">
+    <link rel="alternate" hreflang="th" href="https://themegaradio.com/th/สถานี/italia-dance-music">
+    <link rel="alternate" hreflang="vi" href="https://themegaradio.com/vi/cac-dai/italia-dance-music">
+    <link rel="alternate" hreflang="id" href="https://themegaradio.com/id/stasiun/italia-dance-music">
+    <link rel="alternate" hreflang="ms" href="https://themegaradio.com/ms/stesen/italia-dance-music">
+    <link rel="alternate" hreflang="tl" href="https://themegaradio.com/tl/mga-istasyon/italia-dance-music">
+    <link rel="alternate" hreflang="he" href="https://themegaradio.com/he/tachanot/italia-dance-music">
+    <link rel="alternate" hreflang="fa" href="https://themegaradio.com/fa/stations/italia-dance-music">
+    <link rel="alternate" hreflang="ur" href="https://themegaradio.com/ur/اسٹیشنز/italia-dance-music">
+    <link rel="alternate" hreflang="bn" href="https://themegaradio.com/bn/স্টেশনসমূহ/italia-dance-music">
+    <link rel="alternate" hreflang="ta" href="https://themegaradio.com/ta/நிலைகள்/italia-dance-music">
+    <link rel="alternate" hreflang="te" href="https://themegaradio.com/te/steshanlu/italia-dance-music">
+    <link rel="alternate" hreflang="mr" href="https://themegaradio.com/mr/steshane/italia-dance-music">
+    <link rel="alternate" hreflang="gu" href="https://themegaradio.com/gu/સ્ટેશનો/italia-dance-music">
+    <link rel="alternate" hreflang="kn" href="https://themegaradio.com/kn/ನಿಲ್ದಾಣಗಳು/italia-dance-music">
+    <link rel="alternate" hreflang="ml" href="https://themegaradio.com/ml/nilayangal/italia-dance-music">
+    <link rel="alternate" hreflang="pa" href="https://themegaradio.com/pa/steshan/italia-dance-music">
+    <link rel="alternate" hreflang="sw" href="https://themegaradio.com/sw/stesheni/italia-dance-music">
+    <link rel="alternate" hreflang="am" href="https://themegaradio.com/am/ጣቢያዎች/italia-dance-music">
+    <link rel="alternate" hreflang="zu" href="https://themegaradio.com/zu/iziteshi/italia-dance-music">
+    <link rel="alternate" hreflang="af" href="https://themegaradio.com/af/stasies/italia-dance-music">
+    <link rel="alternate" hreflang="sq" href="https://themegaradio.com/sq/stacione/italia-dance-music">
+    <link rel="alternate" hreflang="az" href="https://themegaradio.com/az/stansiyalar/italia-dance-music">
+    <link rel="alternate" hreflang="hy" href="https://themegaradio.com/hy/ստացիաներ/italia-dance-music">
+    <link rel="alternate" hreflang="so" href="https://themegaradio.com/so/stations/italia-dance-music">
+    <link rel="alternate" hreflang="uk" href="https://themegaradio.com/uk/станції/italia-dance-music">
+    <link rel="alternate" hreflang="bs" href="https://themegaradio.com/bs/stations/italia-dance-music">
+    <link rel="alternate" hreflang="x-default" href="https://themegaradio.com/en/stations/italia-dance-music">
+    
+    <!-- JSON-LD Structured Data for Rich Snippets -->
+    <script type="application/ld+json">
+    {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": "https://themegaradio.com/#website",
+  "name": "Mega Radio",
+  "alternateName": "Mega Radio - Free Online Radio",
+  "url": "https://themegaradio.com",
+  "inLanguage": "de",
+  "description": "Mega Radio ist Ihr ultimatives Ziel zum Entdecken und Streamen von Live-Radiosendern aus der ganzen Welt. Mit über 60.000 kostenlosen Radiosendern in mehr als 120 Ländern bieten wir unbegrenzten Zugang zu Musik, Nachrichten, Sport und Unterhaltung in jeder Sprache und jedem Genre.",
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://themegaradio.com/de/search?q={search_term_string}"
+    },
+    "query-input": "required name=search_term_string"
+  }
+}
+    </script>
+    
+    <script type="application/ld+json">
+    {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "https://themegaradio.com/#organization",
+  "name": "Mega Radio",
+  "url": "https://themegaradio.com",
+  "logo": {
+    "@type": "ImageObject",
+    "url": "https://themegaradio.com/images/logo-icon.webp",
+    "width": 80,
+    "height": 80
+  },
+  "description": "Mega Radio ist Ihr ultimatives Ziel zum Entdecken und Streamen von Live-Radiosendern aus der ganzen Welt. Mit über 60.000 kostenlosen Radiosendern in mehr als 120 Ländern bieten wir unbegrenzten Zugang zu Musik, Nachrichten, Sport und Unterhaltung in jeder Sprache und jedem Genre.",
+  "inLanguage": "de",
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "Customer Service",
+    "availableLanguage": [
+      "English",
+      "Türkçe",
+      "Español",
+      "Français",
+      "Deutsch",
+      "العربية",
+      "Italiano",
+      "Português",
+      "Nederlands",
+      "Русский",
+      "Polski",
+      "Svenska",
+      "Dansk",
+      "Norsk",
+      "Suomi",
+      "Ελληνικά",
+      "Magyar",
+      "Čeština",
+      "Slovenčina",
+      "Română",
+      "Български",
+      "Hrvatski",
+      "Српски",
+      "Slovenščina",
+      "Latviešu",
+      "Lietuvių",
+      "Eesti",
+      "中文",
+      "日本語",
+      "한국어",
+      "हिन्दी",
+      "ไทย",
+      "Tiếng Việt",
+      "Bahasa Indonesia",
+      "Bahasa Melayu",
+      "Filipino",
+      "עברית",
+      "فارسی",
+      "اردو",
+      "বাংলা",
+      "தமிழ்",
+      "తెలుగు",
+      "मराठी",
+      "ગુજરાતી",
+      "ಕನ್ನಡ",
+      "മലയാളം",
+      "ਪੰਜਾਬੀ",
+      "Kiswahili",
+      "አማርኛ",
+      "isiZulu",
+      "Afrikaans",
+      "Shqip",
+      "Azərbaycan",
+      "Հայերեն",
+      "Soomaali",
+      "Українська",
+      "Bosanski"
+    ]
+  }
+}
+    </script>
+    
+    <script type="application/ld+json">
+    {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Startseite",
+      "item": "https://themegaradio.com/de"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Stations",
+      "item": "https://themegaradio.com/de/sender"
+    },
+    {
+      "@type": "ListItem",
+      "position": 3,
+      "name": "Italia Dance Music",
+      "item": "https://themegaradio.com/de/stations/italia-dance-music"
+    }
+  ]
+}
+    </script>
+    
+    
+    <script type="application/ld+json">
+    {
+  "@context": "https://schema.org",
+  "@type": "RadioStation",
+  "@id": "https://themegaradio.com/de/station/italia-dance-music",
+  "name": "Italia Dance Music",
+  "description": "Listen to Italia Dance Music live online. Free radio streaming on Mega Radio.",
+  "url": "https://themegaradio.com/de/station/italia-dance-music",
+  "logo": "http://www.italiadancemusic.com/it/themes/corporate_lite/favicon.ico",
+  "image": "http://www.italiadancemusic.com/it/themes/corporate_lite/favicon.ico",
+  "sameAs": "http://www.italiadancemusic.com/",
+  "areaServed": "Italy",
+  "broadcastLanguage": "en",
+  "broadcastFormat": "AAC+",
+  "additionalProperty": {
+    "@type": "PropertyValue",
+    "name": "bitrate",
+    "value": "96 kbps"
+  },
+  "broadcaster": {
+    "@type": "Organization",
+    "name": "Italia Dance Music",
+    "url": "http://www.italiadancemusic.com/"
+  },
+  "potentialAction": {
+    "@type": "ListenAction",
+    "target": {
+      "@type": "EntryPoint",
+      "urlTemplate": "https://themegaradio.com/de/station/italia-dance-music",
+      "actionPlatform": [
+        "http://schema.org/DesktopWebPlatform",
+        "http://schema.org/MobileWebPlatform",
+        "http://schema.org/IOSPlatform",
+        "http://schema.org/AndroidPlatform"
+      ]
+    }
+  },
+  "genre": "dance",
+  "isAccessibleForFree": true,
+  "inLanguage": "en"
+}
+    </script>
+    
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="apple-mobile-web-app-title" content="Mega Radio">
+    <meta name="apple-mobile-web-app-capable" content="no" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Mega Radio">
+    <meta name="msapplication-TileColor" content="#1a1a2e">
+    <meta name="msapplication-TileImage" content="/apple-touch-icon.png">
+    <link rel="preload" as="font" type="font/ttf" href="/fonts/ubuntu-400.ttf" crossorigin>
+    <link rel="preload" as="font" type="font/ttf" href="/fonts/ubuntu-700.ttf" crossorigin>
+    <link rel="preconnect" href="https://unpkg.com" crossorigin>
+    <link rel="dns-prefetch" href="https://flagcdn.com">
+    <link rel="dns-prefetch" href="https://api.ipify.org">
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #0a0a0a; color: #ffffff; line-height: 1.5; font-display: swap; }
+      *, *::before, *::after { box-sizing: border-box; }
+      img { height: auto; max-width: 100%; display: block; }
+      .container-critical { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+      .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+      .hero-container { min-height: 500px; position: relative; overflow: hidden; }
+      button { font-family: inherit; }
+      a { color: inherit; text-decoration: none; }
+      .grid-stations { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+      @media (min-width: 640px) { .grid-stations { grid-template-columns: repeat(2, 1fr); } }
+      @media (min-width: 768px) { .grid-stations { grid-template-columns: repeat(3, 1fr); } }
+      .skeleton-placeholder { background: #404040; border-radius: 0.5rem; animation: pulse 2s infinite; }
+      @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    </style>
+    
+    <script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"BroadcastService","name":"Italia Dance Music","url":"https://themegaradio.com/de/sender/italia-dance-music","description":"Erleben Sie das Beste aus Dance und Electronica mit Italia Dance Music, die aus Genua, Italien streamt. Schalten Sie ein für House-Beats und elektrisierende Tracks.","broadcastFrequency":"Internet Streaming","areaServed":{"@type":"Country","name":"Italy"},"provider":{"@type":"Organization","name":"Mega Radio","url":"https://themegaradio.com"},"potentialAction":{"@type":"ListenAction","target":"https://themegaradio.com/de/sender/italia-dance-music"}}
+    </script>
+  </head>
+  <body>
+    <div id="root">
+      <div id="ssr-content">
+        
+          <main>
+            <h1>Italia Dance Music aus Italien — Jetzt Live Online Hören</h1>
+            
+              <div class="station-info">
+                <!-- AI-Generated Description (unique per station) -->
+                <h2>About Italia Dance Music</h2>
+                <p>Italia Dance Music ist Ihr erstklassiges Ziel für die besten Dance- und Electronica-Tracks direkt aus der pulsierenden Stadt Genua, Italien. Unser Sender widmet sich der Präsentation der pulsierenden Beats der House-Musik und der aufregenden Klänge, die das Dance-Genre definieren. Egal, ob Sie Ihr Workout ankurbeln, in die Stimmung für eine Nacht ausgehen oder einfach zu Hause entspannen möchten, Italia Dance Music hat die perfekte Playlist, um Ihre Stimmung zu heben.</p><p>Tauchen Sie ein in eine Welt voller Rhythmus und Melodie mit unseren sorgfältig kuratierten Auswahl, die sowohl etablierte Künstler als auch aufstrebende Talente aus der italienischen Dance-Musik-Szene präsentiert. Wir sind stolz darauf, die eklektische Vielfalt der elektronischen Musik zu zeigen und sicherzustellen, dass für jeden Hörer etwas dabei ist. Von Deep House bis zu progressiven Beats sind unsere Sendungen darauf ausgelegt, Sie in Bewegung und inspiriert zu halten.</p><p>Schließen Sie sich unserer Community von Dance-Musik-Enthusiasten an und erleben Sie die elektrisierende Atmosphäre, die nur Italia Dance Music bieten kann. Mit unserer hochmodernen Streaming-Technologie können Sie überall hochwertige Audioinhalte genießen und sich leicht mit den Klängen verbinden, die Italien zu einem Zentrum der Tanzkultur machen.Verpassen Sie nicht die neuesten Hits, exklusiven Mixe und speziellen DJ-Sets, die die Energie der Tanzfläche direkt zu Ihren Lautsprechern bringen.</p><p>Schalten Sie ein und lassen Sie die Musik Ihre Sinne übernehmen. Hören Sie jetzt auf Mega Radio.</p>
+                
+                <!-- Station Details -->
+                <section class="station-details">
+                  <h2>Station Information</h2>
+                  
+                  <p><strong>Land:</strong> Italy</p>
+                  
+                  
+                  <p><strong>Genres:</strong> dance, electronica, genova, house</p>
+                  
+                  
+                  <p><strong>Official Website:</strong> <a href="http://sr2.inmystream.info:8032/listen.pls" target="_blank" rel="noopener noreferrer nofollow">http://sr2.inmystream.info:8032/listen.pls</a></p>
+                  
+                </section>
+                
+                <!-- Navigation -->
+                <nav class="explore-nav">
+                  <ul>
+                    <li><a href="/de/genres">Genres</a></li>
+                    <li><a href="/de/regions">Radio Stations by Country</a></li>
+                    <li><a href="/de/stations">Explore All Stations</a></li>
+                    <li><a href="/de/">Startseite</a></li>
+                  </ul>
+                </nav>
+              </div>
+            
+          </main>
+        
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.performance = window.performance || {};
+      window.performance.mark && window.performance.mark('body-start');
+      document.addEventListener('DOMContentLoaded', function() {
+        setTimeout(function() {
+          var belowFoldElements = document.querySelectorAll('.below-fold');
+          belowFoldElements.forEach(function(el) { el.style.visibility = 'visible'; });
+          window.performance.mark && window.performance.mark('critical-content-loaded');
+        }, 100);
+      });
+    </script>
+  </body>
+</html>

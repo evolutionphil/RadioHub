@@ -1,0 +1,28 @@
+HTTP/2 200 
+date: Wed, 22 Apr 2026 13:15:33 GMT
+content-type: text/html; charset=utf-8
+cache-control: public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600
+x-railway-cdn-edge: fastly/cache-chi-klot8100082-CHI
+content-security-policy: default-src 'self'; script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms https://analytics.ahrefs.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://www.gstatic.com https://adservice.google.com https://tpc.googlesyndication.com https://*.adtrafficquality.google https://partner.googleadservices.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com https://www.google.com https://flowalive-sdk.s3.eu-central-1.amazonaws.com; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: https: blob:; media-src 'self' https: blob:; connect-src 'self' https: wss:; frame-src 'self' https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://*.adtrafficquality.google https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests
+nel: {"report_to":"cf-nel","success_fraction":0.0,"max_age":604800}
+expect-ct: max-age=86400, enforce
+permissions-policy: geolocation=(), microphone=(), camera=()
+referrer-policy: strict-origin-when-cross-origin
+server: cloudflare
+strict-transport-security: max-age=604800; includeSubDomains
+vary: CF-IPCountry
+x-content-type-options: nosniff
+x-frame-options: DENY
+x-railway-edge: railway/us-east4-eqdc4a
+x-railway-request-id: vT31-BswTGSpbkaSwoOzXw
+x-robots-tag: index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1
+x-seo-cache: MISS
+x-xss-protection: 1; mode=block
+x-cache: MISS
+x-cache-hits: 0
+x-served-by: cache-chi-klot8100082-CHI
+cf-cache-status: DYNAMIC
+speculation-rules: "/cdn-cgi/speculation"
+report-to: {"group":"cf-nel","max_age":604800,"endpoints":[{"url":"https://a.nel.cloudflare.com/report/v4?s=PzJDHeK0qHd90SNQs6iuuxkkRSuTuOQRpDsPqvotn3IcWhQhOk2JmRft7FDwX0QEpRzuvud%2BK%2FhtHPzLInyLXcB7xJliTp1r43eXQ42clNmNHyaE%2FKgCeMvH1y39woenUPEO"}]}
+cf-ray: 9f04e5dc8ac7163e-ORD
+
