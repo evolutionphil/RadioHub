@@ -17,7 +17,8 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
-  Image
+  Image,
+  ShieldAlert
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -65,6 +66,15 @@ export default function AdminDashboard() {
   const { data: languages } = useQuery({
     queryKey: ["/api/admin/translation-languages"],
     staleTime: 60000, // Cache for 1 minute
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: autoFlaggedReport, isLoading: isLoadingAutoFlagged } = useQuery<{
+    last: { syncType: string; status: string; startedAt: string; completedAt: string | null; autoFlagged: number } | null;
+    lastCompleted: { startedAt: string; completedAt: string | null; autoFlagged: number } | null;
+  }>({
+    queryKey: ["/api/admin/sync/auto-flagged-report"],
+    staleTime: 30000,
     refetchOnWindowFocus: false,
   });
 
@@ -319,7 +329,7 @@ export default function AdminDashboard() {
       </div>
 
       {/* Station Quality Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -386,6 +396,64 @@ export default function AdminDashboard() {
               </div>
               <p className="text-xs text-muted-foreground">{stats?.descriptionPercentage || 0}% with AI descriptions</p>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-auto-flagged">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Auto-flagged this run
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoadingAutoFlagged ? (
+              <div className="space-y-2 animate-pulse">
+                <div className="h-8 bg-gray-200 rounded w-1/2" />
+                <div className="h-3 bg-gray-200 rounded w-3/4" />
+                <div className="h-3 bg-gray-200 rounded w-2/3" />
+              </div>
+            ) : autoFlaggedReport?.last || autoFlaggedReport?.lastCompleted ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span
+                    className="text-3xl font-bold text-amber-600"
+                    data-testid="text-auto-flagged-current"
+                  >
+                    {autoFlaggedReport.last?.autoFlagged ?? 0}
+                  </span>
+                  <ShieldAlert className="w-6 h-6 text-amber-500" />
+                </div>
+                {autoFlaggedReport.last && (
+                  <p className="text-xs text-muted-foreground">
+                    Current run: {autoFlaggedReport.last.status}
+                    {autoFlaggedReport.last.syncType ? ` · ${autoFlaggedReport.last.syncType}` : ''}
+                  </p>
+                )}
+                {autoFlaggedReport.lastCompleted ? (
+                  <p
+                    className="text-xs text-muted-foreground"
+                    data-testid="text-auto-flagged-last-completed"
+                  >
+                    Last completed:{' '}
+                    {new Date(
+                      autoFlaggedReport.lastCompleted.completedAt ??
+                        autoFlaggedReport.lastCompleted.startedAt,
+                    ).toLocaleString()}{' '}
+                    · {autoFlaggedReport.lastCompleted.autoFlagged} flagged
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No completed sync yet</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-3xl font-bold text-muted-foreground">0</span>
+                  <ShieldAlert className="w-6 h-6 text-muted-foreground" />
+                </div>
+                <p className="text-xs text-muted-foreground">No sync runs recorded yet</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
