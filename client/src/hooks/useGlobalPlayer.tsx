@@ -893,35 +893,43 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
               safePlay('hls-manifest-ready').catch(console.error);
             });
             
+            // Track whether we've already retried the manifest via proxy for this
+            // station, so a second fatal error doesn't loop forever.
+            let hlsProxyRetried = false;
+
             hls.on(Hls.Events.ERROR, (event, data) => {
               if (data.fatal) {
                 console.error('❌ Fatal HLS error:', data);
                 
-                // Try fallback: convert HLS URL to direct stream through proxy
-                if (currentStation && reconnectAttempts < maxReconnectAttempts) {
-                  logger.log('🔄 HLS failed, trying proxy fallback...');
+                if (currentStation && !hlsProxyRetried && reconnectAttempts < maxReconnectAttempts) {
+                  hlsProxyRetried = true;
                   setReconnectAttempts(prev => prev + 1);
-                  
-                  // Clean up failed HLS instance
-                  if (hlsRef.current) {
-                    hlsRef.current.destroy();
-                    hlsRef.current = null;
+
+                  const originalUrl = currentStation.url || currentStation.urlResolved || '';
+                  if (!originalUrl) {
+                    setHasError(true);
+                    setIsLoading(false);
+                    return;
                   }
-                  
-                  // Try proxy fallback after delay
+
+                  // Reload the SAME m3u8 manifest through our proxy so SSL/CORS
+                  // issues at the origin are normalised. HLS.js continues to
+                  // parse the playlist; segment fetches will hit the proxy as
+                  // well because most providers ship absolute segment URLs.
+                  const proxiedManifest = buildProxiedStreamUrl(originalUrl);
+                  logger.log('🔁 HLS direct failed → reloading manifest via proxy:', proxiedManifest);
+
                   setTimeout(() => {
-                    if (audioRef.current && currentStation && !isPlayPendingRef.current) {
-                      const originalUrl = currentStation.url || currentStation.urlResolved || '';
-                      if (!originalUrl) return;
-                      const encodedUrl = btoa(originalUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-                      const proxyUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
-                      
-                      logger.log('🎯 HLS fallback: Using proxy stream');
-                      audioRef.current.src = proxyUrl;
-                      audioRef.current.load();
-                      safePlay('hls-proxy-fallback').catch(console.error);
+                    if (currentStation && !isPlayPendingRef.current) {
+                      try {
+                        hls.loadSource(proxiedManifest);
+                      } catch (e) {
+                        console.error('HLS proxy reload failed:', e);
+                        setHasError(true);
+                        setIsLoading(false);
+                      }
                     }
-                  }, 1000);
+                  }, 800);
                 } else {
                   setHasError(true);
                   setIsLoading(false);
