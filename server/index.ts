@@ -785,8 +785,7 @@ app.use((req, res, next) => {
   const BOT_RATE_LIMIT_WINDOW = 60_000;
   const isDev = process.env.NODE_ENV !== 'production';
   const BOT_RATE_LIMIT_MAX_MINOR = isDev ? 500 : 60;
-  const BOT_RATE_LIMIT_MAX_MAJOR = isDev ? 500 : 300;
-  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|bingbot|yandexbot|slurp|duckduckbot|baiduspider)\b/i;
+  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|apis-google|adsbot-google|mediapartners-google|storebot-google|bingbot|bingpreview|yandexbot|slurp|duckduckbot|baiduspider|applebot)\b/i;
 
   setInterval(() => {
     const now = Date.now();
@@ -824,19 +823,22 @@ app.use((req, res, next) => {
     }
 
     const isMajorBot = MAJOR_SEARCH_BOT_RE.test(userAgent);
-    const maxRequests = isMajorBot ? BOT_RATE_LIMIT_MAX_MAJOR : BOT_RATE_LIMIT_MAX_MINOR;
-    const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-    const now = Date.now();
-    let botEntry = botRateLimitMap.get(clientIp);
-    if (!botEntry || now > botEntry.resetAt) {
-      botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
-      botRateLimitMap.set(clientIp, botEntry);
-    }
-    botEntry.count++;
-    if (botEntry.count > maxRequests) {
-      logger.log(`🚫 SEO: Bot rate limited (IP=${clientIp}, count=${botEntry.count}, major=${isMajorBot}): ${url}`);
-      res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
-      return;
+    if (isMajorBot) {
+      // Google/Bing/major search bots are never rate limited
+    } else {
+      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+      const now = Date.now();
+      let botEntry = botRateLimitMap.get(clientIp);
+      if (!botEntry || now > botEntry.resetAt) {
+        botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
+        botRateLimitMap.set(clientIp, botEntry);
+      }
+      botEntry.count++;
+      if (botEntry.count > BOT_RATE_LIMIT_MAX_MINOR) {
+        logger.log(`🚫 SEO: Bot rate limited (IP=${clientIp}, count=${botEntry.count}): ${url}`);
+        res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
+        return;
+      }
     }
 
     const cleanUrl = url.split('?')[0].split('#')[0];
