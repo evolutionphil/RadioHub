@@ -25,7 +25,7 @@ interface SeoHeadProps {
     bitrate?: number;
     votes?: number;
   } | null;
-  pageType?: 'home' | 'station' | 'genres' | 'stations' | 'users' | 'about';
+  pageType?: 'home' | 'station' | 'genres' | 'stations' | 'users' | 'about' | 'search' | 'faq';
 }
 
 export function SeoHead({ stationData, pageType = 'home' }: SeoHeadProps) {

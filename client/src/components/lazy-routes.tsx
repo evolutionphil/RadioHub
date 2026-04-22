@@ -59,6 +59,10 @@ export const Radios = lazy(() => import("@/pages/radios"));
 // Station requests
 export const RequestStation = lazy(() => import("@/pages/request-station"));
 
+// Search and FAQ — match SSR pages for /search and /faq
+export const SearchPage = lazy(() => import("@/pages/search"));
+export const FaqPage = lazy(() => import("@/pages/faq"));
+
 // Admin routes (already lazy loaded via lazy-admin-routes.tsx)
 export const AdminLogin = lazy(() => import("@/pages/admin/login"));
 

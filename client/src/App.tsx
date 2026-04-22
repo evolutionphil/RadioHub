@@ -225,6 +225,8 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     if (pathToUse === '/llms') return <LazyRoutes.LLMsPage />;
 
     if (pathToUse === '/applications') return <LazyRoutes.Applications />;
+    if (pathToUse === '/search') return <LazyRoutes.SearchPage />;
+    if (pathToUse === '/faq') return <LazyRoutes.FaqPage />;
     if (pathToUse === '/terms-and-conditions' || pathToUse === '/pages/terms-and-conditions') return <LazyRoutes.TermsAndConditions />;
     if (pathToUse === '/login') return <LazyRoutes.Login />;
     if (pathToUse === '/signup') return <LazyRoutes.Signup />;
