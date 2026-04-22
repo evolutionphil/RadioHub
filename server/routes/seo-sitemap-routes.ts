@@ -395,14 +395,34 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     return qualified;
   }
 
+  // Short-lived cache around getQualifiedSeoLanguages so each handler doesn't
+  // re-walk the translation cache on every request. Translation completeness
+  // changes very infrequently (admin updates) and the per-handler caches above
+  // are already much longer (24h), so a 10-minute TTL here is safely fresher
+  // than what we ship to crawlers.
+  let qualifiedLangCache: { value: string[]; expiresAt: number } | null = null;
+  async function getCachedQualifiedLanguages(): Promise<string[]> {
+    const now = Date.now();
+    if (qualifiedLangCache && qualifiedLangCache.expiresAt > now) {
+      return qualifiedLangCache.value;
+    }
+    const value = await getQualifiedSeoLanguages(ACTIVE_SITEMAP_LANGUAGES as unknown as string[]);
+    qualifiedLangCache = { value, expiresAt: now + 10 * 60 * 1000 };
+    return value;
+  }
+
   // Language-specific main sitemap route
   app.get("/sitemap-main-:lang.xml", async (req, res) => {
     const startTime = Date.now();
     const lang = req.params.lang;
     
     try {
-      // Validate language is in Phase 1
-      if (!ACTIVE_SITEMAP_LANGUAGES.includes(lang)) {
+      // Validate language is qualified (Phase 1 + complete SEO translations).
+      // Languages without REQUIRED_HOMEPAGE/STATION SEO keys are dropped from
+      // the sitemap until translations land — this is the gate that prevents
+      // bare /sl, /da etc. from being indexed (task #17).
+      const qualifiedLanguages = await getCachedQualifiedLanguages();
+      if (!qualifiedLanguages.includes(lang)) {
         return res.status(404).send('Language not found');
       }
 
@@ -453,8 +473,9 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     <changefreq>${changefreq}</changefreq>
     <priority>${priority}</priority>`;
 
-        // Add hreflang tags for all active languages (plain codes only, no ISO)
-        for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
+        // Add hreflang tags only for languages with complete SEO translations
+        // (task #17 — never advertise thin /sl, /da, etc. as alternates).
+        for (const altLang of qualifiedLanguages) {
           const altLocalizedPath = buildLocalizedUrl(page, altLang, undefined, urlTranslations);
           const altFullUrl = `${baseUrl}${altLocalizedPath}`;
           xml += `
@@ -498,8 +519,9 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     const chunk = parseInt(req.params.chunk) || 1;
     
     try {
-      // Validate language is in Phase 1
-      if (!ACTIVE_SITEMAP_LANGUAGES.includes(lang)) {
+      // Gate by qualified languages (task #17).
+      const qualifiedLanguages = await getCachedQualifiedLanguages();
+      if (!qualifiedLanguages.includes(lang)) {
         return res.status(404).send('Language not found');
       }
 
@@ -531,9 +553,19 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      // Stream stations via cursor — bounded memory regardless of chunk size
-      const stationCursor = Station.find({ slug: { $exists: true, $ne: '' } })
-        .select('slug _id updatedAt')
+      // Lazy-load junk rules so we can filter low-quality / inappropriate
+      // language combinations out of the sitemap (task #17 — Bing Content
+      // Quality cleanup).
+      const { isJunkStation, getEligibleLanguages } = await import('../seo/junk-station-rules');
+
+      // Stream stations via cursor — bounded memory regardless of chunk size.
+      // Exclude stations explicitly marked noIndex (junk migration sets this)
+      // and pull the extra fields needed for junk + eligibility evaluation.
+      const stationCursor = Station.find({
+        slug: { $exists: true, $ne: '' },
+        $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+      })
+        .select('slug name url country countryCode language languageCodes bitrate _id updatedAt')
         .sort({ votes: -1 })
         .skip(skip)
         .limit(stationsPerChunk)
@@ -547,6 +579,16 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       let stationCount = 0;
       for await (const station of stationCursor as any) {
+        // Defense in depth: skip junk records even if the noIndex flag wasn't
+        // backfilled yet (e.g. brand-new stations).
+        if (isJunkStation(station)) continue;
+
+        // Per-station eligible languages: only emit this URL for the current
+        // language if the station is appropriate for that language; otherwise
+        // skip it entirely (it would be noindex anyway).
+        const eligible = getEligibleLanguages(station);
+        if (!eligible.includes(lang)) continue;
+
         stationCount++;
         // Build localized station URL for this language
         const stationPath = `/station/${station.slug}`;
@@ -563,14 +605,18 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`);
 
-        // Add hreflang tags for all active languages (plain codes only, no ISO)
-        for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
+        // Add hreflang tags ONLY for languages this station is eligible for
+        // AND that have complete SEO translations. Mismatched languages
+        // (e.g. Korean for a Mexican station) used to be emitted here,
+        // leading Bing to flag the page as ContentQuality.
+        for (const altLang of qualifiedLanguages) {
+          if (!eligible.includes(altLang)) continue;
           const altLocalizedPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
           parts.push(`
     <xhtml:link rel="alternate" hreflang="${altLang}" href="${baseUrl}${altLocalizedPath}"/>`);
         }
 
-        // x-default points to English version
+        // x-default points to English version (always eligible)
         const enLocalizedPath = buildLocalizedUrl(stationPath, 'en', undefined, urlTranslations);
         parts.push(`
     <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>
@@ -606,8 +652,9 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     const lang = req.params.lang;
     
     try {
-      // Validate language is in Phase 1
-      if (!ACTIVE_SITEMAP_LANGUAGES.includes(lang)) {
+      // Gate by qualified languages (task #17).
+      const qualifiedLanguages = await getCachedQualifiedLanguages();
+      if (!qualifiedLanguages.includes(lang)) {
         return res.status(404).send('Language not found');
       }
 
@@ -661,7 +708,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>`);
 
-        for (const altLang of ACTIVE_SITEMAP_LANGUAGES) {
+        for (const altLang of qualifiedLanguages) {
           const altLocalizedPath = buildLocalizedUrl(genrePath, altLang, undefined, urlTranslations);
           parts.push(`
     <xhtml:link rel="alternate" hreflang="${altLang}" href="${baseUrl}${altLocalizedPath}"/>`);
@@ -747,24 +794,29 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       const stationChunks = Math.max(1, Math.ceil(totalStations / SITEMAP_CONFIG.stationsPerChunk));
 
+      // task #17: only emit sitemap entries for languages that pass the
+      // strict translation-completeness gate. This is what actually keeps
+      // /sl, /da, etc. out of the index until their translations land.
+      const qualifiedLanguages = await getCachedQualifiedLanguages();
+
       let xml = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
 
-      for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
+      for (const lang of qualifiedLanguages) {
         xml += `
   <sitemap>
     <loc>${baseUrl}/sitemap-main-${lang}.xml</loc>
   </sitemap>`;
       }
 
-      for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
+      for (const lang of qualifiedLanguages) {
         xml += `
   <sitemap>
     <loc>${baseUrl}/sitemap-genres-${lang}.xml</loc>
   </sitemap>`;
       }
 
-      for (const lang of ACTIVE_SITEMAP_LANGUAGES) {
+      for (const lang of qualifiedLanguages) {
         for (let i = 1; i <= stationChunks; i++) {
           xml += `
   <sitemap>

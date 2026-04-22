@@ -26,6 +26,21 @@ export const REQUIRED_STATION_SEO_KEYS = [
   'radio_streaming',             // "radio streaming"
 ] as const;
 
+// Required translation keys for the homepage / browse pages of a language.
+// A language must also have ALL of these to qualify for the sitemap. Without
+// them, a bare `/sl` or `/da` page renders with English content and trips
+// Bing's ContentQuality / NotIndexedAndMayNeedAttention signal.
+export const REQUIRED_HOMEPAGE_SEO_KEYS = [
+  'hero_worlds_best_radio',          // H1 / page title
+  'hero_over_100_countries',         // hero subline (60,000+ stations …)
+  'hero_listen_everywhere',          // secondary hero line
+  'nav_genres',                      // navigation: genres
+  'nav_regions',                     // navigation: regions
+  'nav_stations',                    // navigation: all stations
+  'popular_genres_title',            // section heading
+  'popular_countries_title',         // section heading
+] as const;
+
 // Additional SEO keys for progressive enhancement (add to database later)
 // When these exist in database for a language, the sitemap will automatically include it
 export const OPTIONAL_STATION_SEO_KEYS = [
@@ -1478,14 +1493,15 @@ export function getStationMetaDescription(station: any, language: string, transl
 // Helper function to check if a language has complete SEO translations for stations
 // Used by sitemap generators to determine which languages to include
 export function hasCompleteSeoTranslations(translations: Record<string, string>): boolean {
-  // TEMPORARY V2: Ultra-lenient - accept any language with ANY translations loaded
-  // This gets sitemaps working immediately for all available languages
-  // TODO: Once REQUIRED_STATION_SEO_KEYS are in database, switch to strict checking:
-  // return REQUIRED_STATION_SEO_KEYS.every(key => translations[key]?.trim().length > 0);
-  
-  // Accept if translations object exists and has at least 1 key
-  const keyCount = Object.keys(translations || {}).length;
-  return keyCount > 0;
+  // Strict v3: a language only qualifies for the sitemap when EVERY required
+  // station-SEO translation key is present and non-empty. This prevents Bing /
+  // Google from receiving bare /sl, /da, etc. with no localized content,
+  // which previously triggered NotIndexedAndMayNeedAttention/ContentQuality.
+  if (!translations) return false;
+  const allKeys = [...REQUIRED_STATION_SEO_KEYS, ...REQUIRED_HOMEPAGE_SEO_KEYS];
+  return allKeys.every(
+    (key) => typeof translations[key] === 'string' && translations[key].trim().length > 0,
+  );
 }
 
 // Helper function to generate ENHANCED localized keywords with SEO best practices

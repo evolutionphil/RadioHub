@@ -1,0 +1,258 @@
+/**
+ * Centralized SEO rules for stations.
+ *
+ * Three responsibilities:
+ *   1. slugifyStationName(name) — produce a stable, ASCII-safe URL slug that
+ *      transliterates non-Latin scripts (Arabic, Cyrillic, Thai, Hangul, …)
+ *      and accented Latin characters instead of stripping them.
+ *   2. isJunkStation(station) — detect "thin / low-value" station records
+ *      that should never enter Google or Bing's index (test feeds, codec
+ *      suffix names, song titles posing as stations, accidental duplicates).
+ *   3. getEligibleLanguages(station) — determine which UI languages are an
+ *      "appropriate language match" for a given station so the sitemap and
+ *      hreflang only emit those variants and the others get noindex.
+ *
+ * This module exists because Bing reported 51 themegaradio.com URLs with
+ * `NotIndexedAndMayNeedAttention/ContentQuality`. Most of those URLs were
+ * either (a) broken slugs (accents/non-Latin stripped to bare punctuation),
+ * (b) junk station records, or (c) a station forcibly translated into a
+ * language nobody in that region speaks (e.g. a Mexican station rendered
+ * in Korean at /ko/스테이션/...).
+ */
+
+import { slugify as transliterateSlugify } from 'transliteration';
+import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '../../shared/seo-config';
+
+const KNOWN_LANGUAGE_CODES = new Set(SEO_LANGUAGES.map((l) => l.code.toLowerCase()));
+
+// -----------------------------------------------------------------------------
+// 1. Slug generation
+// -----------------------------------------------------------------------------
+
+/**
+ * Generate an ASCII slug from any station name.
+ *
+ * Replaces the previous `name.toLowerCase().replace(/[^\w\s-]/g, '')` regex
+ * which silently dropped every accented or non-Latin character. For Arabic
+ * "إذاعة" (radio) the old code produced `''`; the new code produces `'idhaa'`.
+ */
+export function slugifyStationName(name: string): string {
+  if (!name || typeof name !== 'string') return '';
+
+  // 1) Transliterate Unicode → ASCII (handles Arabic, Cyrillic, Thai, CJK,
+  //    accented Latin, etc.). The library lowercases and replaces separators.
+  let slug = transliterateSlugify(name, {
+    lowercase: true,
+    separator: '-',
+    trim: true,
+  });
+
+  // 2) Belt-and-braces sanitisation: keep only [a-z0-9-], collapse repeated
+  //    hyphens, and trim edge hyphens. The transliteration library is usually
+  //    correct, but some upstream characters slip through.
+  slug = slug
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug;
+}
+
+// -----------------------------------------------------------------------------
+// 2. Junk station detection
+// -----------------------------------------------------------------------------
+
+/** Substring tokens that, when present in a slug, mark it as junk. */
+const JUNK_SLUG_SUBSTRINGS = [
+  'dolby-atmos-test',
+  'atmos-test',
+  'audio-test',
+  'codec-test',
+  'test-feed',
+  'test-stream',
+  'test-loop',
+  'pink-noise',
+  'white-noise',
+  'sweep-tone',
+  'silence-stream',
+];
+
+/**
+ * Suffix tokens that almost always indicate the station record is not actually
+ * a distinct station — it's a codec/format/bitrate variant, a song name, or a
+ * collision-counter duplicate created by the old slug generator.
+ */
+const JUNK_SLUG_SUFFIXES = [
+  '-mp3',
+  '-mp3-1',
+  '-mp3-2',
+  '-aac',
+  '-aac-1',
+  '-aac-plus',
+  '-aacp',
+  '-dab',
+  '-dab-plus',
+  '-flac',
+  '-ogg',
+  '-opus',
+  '-128',
+  '-192',
+  '-256',
+  '-320',
+];
+
+/** Regex hints that the "name" is a song/program rather than a station. */
+const SONG_LIKE_NAME_PATTERNS: RegExp[] = [
+  /\bremix\b/i,
+  /\bphonk\b/i,
+  /\bnon[\s-]?stop\s+music\b/i,
+  /\bonly\s+\w+\s+(mp3|aac)\b/i,   // "Only Mozart MP3"
+  /\bmore\s+bounce\s+to\s+the\s+ounce\b/i,
+];
+
+export interface JunkDecision {
+  isJunk: boolean;
+  reason?: string;
+}
+
+/**
+ * Decide whether a station record is junk and should never be indexed.
+ * Returns the matched reason for audit/logging.
+ */
+export function evaluateJunkStation(station: {
+  name?: string;
+  slug?: string;
+  url?: string;
+  homepage?: string;
+  tags?: string;
+  bitrate?: number;
+  lastCheckOk?: boolean;
+}): JunkDecision {
+  const name = (station.name || '').trim();
+  const slug = (station.slug || '').trim().toLowerCase();
+  const lowerName = name.toLowerCase();
+
+  if (!name) return { isJunk: true, reason: 'empty-name' };
+  if (!station.url) return { isJunk: true, reason: 'empty-stream-url' };
+
+  // NOTE: We deliberately do NOT mark every `-N` slug as junk here. Many
+  // legitimate stations have numbers in their names ("Radio 100", "FM 89-1")
+  // and the migration script reuses `-N` to break collisions, so blanket
+  // matching would noindex valid stations. Duplicate detection is performed
+  // by the migration script via `findDuplicateOfBaseSlug` below, which only
+  // marks a record junk when an actual sibling with the canonical base slug
+  // exists in the database.
+
+  for (const suffix of JUNK_SLUG_SUFFIXES) {
+    if (slug.endsWith(suffix)) {
+      return { isJunk: true, reason: `codec-suffix:${suffix}` };
+    }
+  }
+
+  for (const sub of JUNK_SLUG_SUBSTRINGS) {
+    if (slug.includes(sub) || lowerName.includes(sub.replace(/-/g, ' '))) {
+      return { isJunk: true, reason: `test-feed:${sub}` };
+    }
+  }
+
+  for (const re of SONG_LIKE_NAME_PATTERNS) {
+    if (re.test(lowerName)) {
+      return { isJunk: true, reason: `song-or-program-name:${re.source}` };
+    }
+  }
+
+  // NOTE: We deliberately do NOT flag short slugs as junk. Many legitimate
+  // call-sign / brand stations have 2–3 character slugs (e.g. `bbc`, `npr`,
+  // `kxt`, `q2`). The transliteration fix already prevents the original
+  // "stripped to nothing" failure mode for non-Latin names.
+
+  return { isJunk: false };
+}
+
+export function isJunkStation(station: any): boolean {
+  return evaluateJunkStation(station).isJunk;
+}
+
+// -----------------------------------------------------------------------------
+// 3. Eligible languages per station
+// -----------------------------------------------------------------------------
+
+/**
+ * Major-diaspora / lingua-franca languages that are reasonable for any
+ * station regardless of country. English is always included.
+ */
+const UNIVERSAL_LANGUAGES = ['en'];
+
+/**
+ * Map of country code → extra languages spoken by sizable communities in that
+ * country (beyond the primary `COUNTRY_TO_LANGUAGE` mapping). Keeps the
+ * "appropriate language set" tight while still covering legitimate diaspora
+ * audiences. Lowercase ISO 3166-1 alpha-2 keys.
+ */
+const COUNTRY_EXTRA_LANGUAGES: Record<string, string[]> = {
+  us: ['es'], ca: ['fr', 'es'], mx: ['es'], gb: [], ie: [],
+  de: ['tr'], at: [], ch: ['fr', 'it'], be: ['fr', 'nl'], lu: ['fr', 'de'],
+  fr: ['ar'], es: ['ca'], pt: [], it: [],
+  ru: [], ua: ['ru'], by: ['ru'], kz: ['ru'],
+  in: ['hi', 'ta', 'te', 'bn', 'mr', 'gu', 'ur'],
+  pk: ['ur', 'en'], bd: ['bn'], lk: ['ta'],
+  cn: ['zh'], tw: ['zh'], hk: ['zh'], jp: ['ja'], kr: ['ko'],
+  sa: ['ar'], ae: ['ar'], eg: ['ar'], ma: ['ar', 'fr'], dz: ['ar', 'fr'],
+  tn: ['ar', 'fr'], ly: ['ar'], jo: ['ar'], lb: ['ar', 'fr'],
+  br: ['pt'], ar: ['es'], cl: ['es'], co: ['es'], pe: ['es'], ve: ['es'],
+  tr: ['tr'], gr: ['el'], il: ['he', 'ar', 'ru'], ir: ['fa'],
+  pl: ['pl'], cz: ['cs'], sk: ['sk'], hu: ['hu'], ro: ['ro'], bg: ['bg'],
+  hr: ['hr'], si: ['sl'], rs: ['sr'], ba: ['bs', 'hr', 'sr'],
+  fi: ['fi', 'sv'], se: ['sv'], no: ['no'], dk: ['da'], is: ['is'],
+  nl: ['nl'], za: ['en', 'af', 'zu'], ng: ['en'], ke: ['en', 'sw'],
+  au: ['en'], nz: ['en'], ph: ['en'], my: ['en', 'ms'], sg: ['en', 'zh', 'ms'],
+  id: ['id'], th: ['th'], vn: ['vi'], kh: [],
+};
+
+/**
+ * Return the set of language codes for which a station has an "appropriate
+ * language match" — i.e. the language is genuinely spoken by part of the
+ * station's audience or its country's residents.
+ *
+ * The sitemap should only emit `<url>` entries for these languages; other
+ * languages get a `noindex` robots tag so Bing/Google stop reporting the
+ * station as a low-quality alternate.
+ */
+export function getEligibleLanguages(station: {
+  country?: string;
+  countryCode?: string;
+  language?: string;
+  languageCodes?: string;
+}): string[] {
+  const set = new Set<string>(UNIVERSAL_LANGUAGES);
+
+  const cc = (station.countryCode || '').toLowerCase();
+  if (cc && COUNTRY_TO_LANGUAGE[cc]) set.add(COUNTRY_TO_LANGUAGE[cc]);
+  if (cc && COUNTRY_EXTRA_LANGUAGES[cc]) {
+    for (const l of COUNTRY_EXTRA_LANGUAGES[cc]) set.add(l);
+  }
+
+  // Station's own broadcast language(s) — use the ISO codes field (real codes
+  // like "en,es"). Skip the freeform `language` field which is a NAME like
+  // "Spanish" and would yield bogus 2-char prefixes.
+  const codes = (station.languageCodes || '').toString().toLowerCase();
+  if (codes) {
+    for (const piece of codes.split(/[,;\s]+/)) {
+      const norm = piece.trim();
+      if (KNOWN_LANGUAGE_CODES.has(norm)) set.add(norm);
+    }
+  }
+
+  return Array.from(set);
+}
+
+/**
+ * True if the given UI language is an appropriate match for this station and
+ * the page should remain indexable.
+ */
+export function isLanguageEligibleForStation(
+  station: any,
+  language: string,
+): boolean {
+  return getEligibleLanguages(station).includes(language.toLowerCase());
+}

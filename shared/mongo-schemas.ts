@@ -69,6 +69,8 @@ export interface IStation extends Document {
   mergedUrls?: string[]; // URLs from merged stations
   mergedStationUuids?: string[]; // UUIDs of stations merged into this one
   slug?: string; // SEO-friendly URL slug
+  slugAliases?: string[]; // Old slugs that 301-redirect to current slug
+  noIndex?: boolean; // Junk/thin station — exclude from sitemap & emit robots=noindex
   // Multi-language descriptions field - matches original repository pattern
   descriptions?: { [locale: string]: string };
   // Global playback cache fields - stores successful playback methods
@@ -844,6 +846,8 @@ const StationSchema = new Schema<IStation>({
   mergedUrls: [String], // URLs from merged stations
   mergedStationUuids: [String], // UUIDs of stations merged into this one
   slug: { type: String, index: true, sparse: true }, // SEO-friendly URL slug
+  slugAliases: { type: [String], default: [], index: true }, // Old slugs that should 301 → current slug
+  noIndex: { type: Boolean, default: false, index: true }, // Junk/thin station — exclude from sitemap & emit robots=noindex
   // Global playback cache fields - stores successful playback methods
   cachedPlaybackMethod: { type: String, enum: ['direct', 'proxy'] },
   cachedPlaybackUrl: String,

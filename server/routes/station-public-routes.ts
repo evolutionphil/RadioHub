@@ -8,6 +8,7 @@ import { RecommendationEngine } from '../services/recommendation-engine';
 import { getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
 import { PrecomputedStationsService } from '../services/precomputed-stations';
+import { slugifyStationName } from '../seo/junk-station-rules';
 
 // Escape regex meta-characters from user input. Without this, callers can pass
 // patterns like `.*` or catastrophic-backtracking inputs (e.g. `(a+)+`) and
@@ -23,11 +24,7 @@ function escapeRegex(input: any, maxLen: number = 80): string {
 
 // Helper: generate unique slug inline
 async function generateUniqueSlug(name: string, type: string, id: string): Promise<string> {
-  const base = name.toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim();
+  const base = slugifyStationName(name);
   let slug = base || id;
   let counter = 0;
   while (true) {

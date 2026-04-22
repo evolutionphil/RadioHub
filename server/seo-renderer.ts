@@ -321,6 +321,30 @@ export class SeoRenderer {
         try {
           stationData = await withSignal(Station.findOne({ slug: stationSlug }).lean(), signal);
 
+          // Fall back to slug aliases (old slugs from before transliteration fix).
+          // When matched, signal a 301 redirect to the canonical URL so search
+          // engines consolidate ranking on the new slug instead of indexing both.
+          if (!stationData) {
+            const aliasMatch: any = await withSignal(
+              Station.findOne({ slugAliases: stationSlug }).lean(),
+              signal,
+            );
+            if (aliasMatch && aliasMatch.slug && aliasMatch.slug !== stationSlug) {
+              const canonicalPath = cleanPath.replace(
+                `/${stationSlug}`,
+                `/${aliasMatch.slug}`,
+              );
+              return {
+                language,
+                cleanPath,
+                seoTags: {},
+                translations: {},
+                pageData: { redirectTo: canonicalPath },
+              };
+            }
+            stationData = aliasMatch;
+          }
+
           if (!stationData && stationSlug.match(/^[0-9a-fA-F]{24}$/)) {
             stationData = await withSignal(Station.findById(stationSlug).lean(), signal);
           }
@@ -430,6 +454,47 @@ export class SeoRenderer {
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
     let seoTags = this.generateEnhancedSeoTags(pageType, language, translations, cleanPath, domain, stationData, additionalData, cleanUrl, localizedPath, urlTranslations);
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
+
+    // ---- ContentQuality safeguard (task #17) -------------------------------
+    // 1) If the resolved station is junk (test feed, codec suffix, song name,
+    //    -1/-2 collision) emit robots=noindex so Bing/Google stop reporting
+    //    these as low-quality alternates.
+    // 2) If the requested UI language is not in the station's "appropriate
+    //    language set" (country/diaspora/broadcast lang + English), emit
+    //    noindex on that language variant. The canonical/eligible languages
+    //    remain indexable.
+    if (pageType === 'station' && stationData && !stationNotFound) {
+      try {
+        const { isJunkStation, isLanguageEligibleForStation, getEligibleLanguages } = await import('./seo/junk-station-rules');
+        const isJunk = isJunkStation(stationData) || stationData.noIndex === true;
+        const langIneligible = !isJunk && !isLanguageEligibleForStation(stationData, language);
+
+        if (isJunk || langIneligible) {
+          seoTags.robots = 'noindex, follow';
+          seoTags.noIndex = true;
+
+          // Point canonical at the eligible main-language variant so search
+          // engines consolidate any residual signals on the version we want
+          // indexed (or, for junk stations, at the canonical English route).
+          // Prefer English (always eligible). Fall back to first eligible.
+          const eligible = getEligibleLanguages(stationData);
+          const canonicalLang = eligible.includes('en') ? 'en' : eligible[0] || 'en';
+          if (canonicalLang && stationData.slug) {
+            // Always resolve to a real route segment — never use the raw
+            // language code as the segment (which would yield /xx/xx/slug).
+            // Look up the translated `station` segment for the canonical
+            // language; fall back to English `station` which is a guaranteed
+            // valid route prefix served by the middleware.
+            const translatedSegment =
+              urlTranslations?.get(`${canonicalLang}:station`) || 'station';
+            seoTags.canonical = `${domain}/${canonicalLang}/${translatedSegment}/${stationData.slug}`;
+          }
+        }
+      } catch (e) {
+        // Non-fatal: if the rules module fails to load just leave robots as-is
+      }
+    }
+    // -----------------------------------------------------------------------
     // Map internal pageTypes to database format
     const dbPageTypeMap: Record<string, string> = {
       'home': 'homepage',

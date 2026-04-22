@@ -687,6 +687,18 @@ app.use('/api/stream', streamServiceProxy);
       if (!responded && !res.headersSent) {
         responded = true;
         clearTimeout(reqTimeout);
+
+        // Slug-alias 301: when SSR resolved the station via a slugAlias rather
+        // than the canonical slug, redirect to the canonical URL so Google /
+        // Bing consolidate ranking and don't keep indexing the old broken slug.
+        const redirectTo = seoData.pageData?.redirectTo;
+        if (redirectTo && typeof redirectTo === 'string') {
+          const qIdx = req.originalUrl.indexOf('?');
+          const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+          res.redirect(301, redirectTo + queryString);
+          return;
+        }
+
         const stationNotFound = !!seoData.pageData?.notFound;
         if (!stationNotFound) {
           performanceCache.setSeoHtml(cleanUrl, htmlContent);

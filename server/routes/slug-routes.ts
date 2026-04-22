@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { Station, Genre, User, BulkDescriptionJob } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { slugGenerationJobs, stripPlaceholders } from "./shared-utils";
+import { slugifyStationName } from "../seo/junk-station-rules";
 import CacheManager from "../cache";
 
 export function registerSlugRoutes(app: Express, deps: any) {
@@ -177,25 +178,21 @@ export function registerSlugRoutes(app: Express, deps: any) {
           
           logger.log(`✅ Loaded ${usedSlugs.size} existing slugs for uniqueness checking`);
           
-          // Optimized slug generator using in-memory uniqueness checking
+          // Optimized slug generator using in-memory uniqueness checking.
+          // Uses centralized transliterating slugifier so non-Latin / accented
+          // names produce real ASCII slugs instead of being stripped to ''.
           const generateOptimizedUniqueSlug = (name: string): string => {
-            const baseSlug = name
-              .toLowerCase()
-              .replace(/[^\w\s-]/g, '') // Remove special characters except spaces and hyphens
-              .replace(/\s+/g, '-') // Replace spaces with hyphens
-              .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-              .trim()
-              .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
-            
+            const baseSlug = slugifyStationName(name) || 'station';
+
             let uniqueSlug = baseSlug;
             let counter = 1;
-            
+
             // Fast in-memory uniqueness check instead of database lookups
             while (usedSlugs.has(uniqueSlug)) {
               uniqueSlug = `${baseSlug}-${counter}`;
               counter++;
             }
-            
+
             usedSlugs.add(uniqueSlug); // Reserve this slug
             return uniqueSlug;
           };
@@ -475,14 +472,8 @@ export function registerSlugRoutes(app: Express, deps: any) {
           // Helper for generateUniqueSlug if not available in this scope
           // In routes.ts this was likely a local function, we should ideally import or define it
           const generateUniqueSlug = async (name: string, type: string, id: string): Promise<string> => {
-            const baseSlug = name
-              .toLowerCase()
-              .replace(/[^\w\s-]/g, '')
-              .replace(/\s+/g, '-')
-              .replace(/-+/g, '-')
-              .trim()
-              .replace(/^-+|-+$/g, '');
-            
+            const baseSlug = slugifyStationName(name) || 'station';
+
             let uniqueSlug = baseSlug;
             let counter = 1;
             
