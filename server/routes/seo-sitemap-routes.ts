@@ -329,12 +329,6 @@ Disallow: /*/search*
 Disallow: /*/messages
 Disallow: /*/profile
 
-User-agent: Bingbot
-Crawl-delay: 5
-
-User-agent: Yandex
-Crawl-delay: 5
-
 User-agent: Baiduspider
 Crawl-delay: 10
 
