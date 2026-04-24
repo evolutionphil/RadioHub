@@ -177,4 +177,68 @@ import {
   );
 }
 
+// Station `descriptions` object — when a station has AI-generated meta+full
+// content in extra languages (beyond its country/language codes), those
+// languages must count as eligible. This is what lets multilingual stations
+// like Kronehit get indexed in every language where they have real content.
+{
+  const station = {
+    name: 'Kronehit',
+    slug: 'kronehit',
+    url: 'http://example.com/stream',
+    countryCode: 'at',           // → de (COUNTRY_TO_LANGUAGE)
+    languageCodes: '',           // empty in real DB row
+    descriptions: {
+      de: { full: 'Kronehit, der führende Radiosender…', meta: 'Österreichs Musik…' },
+      es: { full: 'Kronehit, la emisora líder…', meta: 'Música austriaca…' },
+      fr: { full: 'Kronehit, la station leader…', meta: 'Musique autrichienne…' },
+      tr: { full: 'Kronehit, Avusturya\'nın lider…', meta: 'Avusturya müziği…' },
+      // Half-filled record: only meta, no full → must NOT be eligible
+      it: { full: '', meta: 'Musica austriaca' },
+      // Empty record → must NOT be eligible
+      ja: { full: '', meta: '' },
+      // Unknown language code → must be ignored
+      xx: { full: 'garbage', meta: 'garbage' },
+    },
+  };
+  const set = new Set(getEligibleLanguages(station));
+  assert.ok(set.has('en'), 'universal en always eligible');
+  assert.ok(set.has('de'), 'country-derived de eligible');
+  assert.ok(set.has('es'), 'es eligible (full description record)');
+  assert.ok(set.has('fr'), 'fr eligible (full description record)');
+  assert.ok(set.has('tr'), 'tr eligible (full description record)');
+  assert.equal(
+    set.has('it'),
+    false,
+    'it must NOT be eligible — only meta, no full',
+  );
+  assert.equal(
+    set.has('ja'),
+    false,
+    'ja must NOT be eligible — both fields empty',
+  );
+  assert.equal(
+    set.has('xx'),
+    false,
+    'unknown language code must be rejected',
+  );
+
+  // Full gate run with a permissive qualifiedLangs whitelist: indexable
+  // should surface exactly the union of country-derived + description-backed
+  // languages. This is the end-to-end assertion the SSR + sitemap rely on.
+  const qualified = ['en', 'de', 'es', 'fr', 'tr', 'it', 'ja'];
+  const indexable = new Set(
+    getIndexableLanguagesForStation(station, qualified),
+  );
+  assert.ok(indexable.has('de'), 'Kronehit indexable in de');
+  assert.ok(indexable.has('es'), 'Kronehit indexable in es');
+  assert.ok(indexable.has('fr'), 'Kronehit indexable in fr');
+  assert.ok(indexable.has('tr'), 'Kronehit indexable in tr');
+  assert.equal(
+    indexable.has('it'),
+    false,
+    'Kronehit must NOT be indexable in it (thin content)',
+  );
+}
+
 console.log('✅ indexable-languages tests passed');

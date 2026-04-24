@@ -251,6 +251,7 @@ export function getEligibleLanguages(station: {
   countryCode?: string;
   language?: string;
   languageCodes?: string;
+  descriptions?: Record<string, { full?: string; meta?: string } | null | undefined> | null;
 }): string[] {
   const set = new Set<string>(UNIVERSAL_LANGUAGES);
 
@@ -268,6 +269,30 @@ export function getEligibleLanguages(station: {
     for (const piece of codes.split(/[,;\s]+/)) {
       const norm = piece.trim();
       if (KNOWN_LANGUAGE_CODES.has(norm)) set.add(norm);
+    }
+  }
+
+  // Station-specific AI-generated descriptions (meta + full). If the station
+  // has BOTH a meta description and a full description written for a given
+  // language, that language is considered eligible — the page has real,
+  // non-templated content to serve, not a thin/auto-translated placeholder.
+  // This is what lets multi-language stations like Kronehit get indexed in
+  // every language where they genuinely have content, not just in their
+  // country-of-origin language.
+  const descriptions = station.descriptions;
+  if (descriptions && typeof descriptions === 'object') {
+    for (const rawLang of Object.keys(descriptions)) {
+      const lang = rawLang.toLowerCase();
+      if (!KNOWN_LANGUAGE_CODES.has(lang)) continue;
+      const entry = descriptions[rawLang];
+      if (!entry) continue;
+      const full = (entry.full || '').trim();
+      const meta = (entry.meta || '').trim();
+      // Require BOTH fields non-empty so a half-filled record does not
+      // advertise a language that will render a blank/thin page.
+      if (full.length > 0 && meta.length > 0) {
+        set.add(lang);
+      }
     }
   }
 
