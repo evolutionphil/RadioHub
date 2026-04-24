@@ -131,22 +131,32 @@ export async function runJunkCleanup(
         if (counter > 50) break; // safety
       }
 
-      ops.slug = candidate;
-      reservedSlugs.add(candidate);
+      // Collision resolution can land back on the existing slug (e.g. desired
+      // is "foo" but "foo" is taken, so candidate becomes "foo-1" — which is
+      // exactly what this station is already named). In that case there's
+      // nothing to rewrite: skip the update + audit row entirely so we don't
+      // emit no-op `old=X-1 → new=X-1` entries or inflate slugRewrites.
+      if (candidate !== currentSlug) {
+        ops.slug = candidate;
+        reservedSlugs.add(candidate);
 
-      if (currentSlug && currentSlug !== candidate) {
-        // Preserve the old slug as an alias so existing inbound links still
-        // resolve via the SEO renderer's slugAliases lookup.
-        const aliases = new Set<string>(
-          Array.isArray(station.slugAliases) ? station.slugAliases : [],
-        );
-        aliases.add(currentSlug);
-        ops.slugAliases = Array.from(aliases);
+        if (currentSlug && currentSlug !== candidate) {
+          // Preserve the old slug as an alias so existing inbound links still
+          // resolve via the SEO renderer's slugAliases lookup.
+          const aliases = new Set<string>(
+            Array.isArray(station.slugAliases) ? station.slugAliases : [],
+          );
+          aliases.add(currentSlug);
+          ops.slugAliases = Array.from(aliases);
+        }
+
+        slugRewrites++;
+        updateActions.push('slug-rewrite');
+        reasons.push(`old=${currentSlug || '∅'} → new=${candidate}`);
+      } else {
+        // Reserve the slug we already own so a later station can't claim it.
+        reservedSlugs.add(candidate);
       }
-
-      slugRewrites++;
-      updateActions.push('slug-rewrite');
-      reasons.push(`old=${currentSlug || '∅'} → new=${candidate}`);
     }
 
     // ---- 2) Junk evaluation -----------------------------------------------
