@@ -1153,12 +1153,33 @@ export function generateLanguageUrls(
   currentDomain: string = '', 
   currentLanguage: string = DEFAULT_LANGUAGE,
   translationMap?: Map<string, string>,
-  currentUrl?: string  // CRITICAL: Add current URL for self-referential hreflang
+  currentUrl?: string,  // CRITICAL: Add current URL for self-referential hreflang
+  // CRITICAL SEO P0: Explicit allow-list of language codes that may appear in
+  // the hreflang output. Pass for station pages so we only advertise the
+  // languages that are actually indexable for that station (eligible ∩
+  // qualified). Pass `[]` for junk/noIndex pages to suppress ALL alternates
+  // (Google: do not expose alternates for noindex pages).
+  // `undefined` preserves legacy behaviour (emit every enabled language).
+  allowedLanguages?: string[] | ReadonlyArray<string> | null,
 ): Array<{ lang: string; url: string; hreflang: string }> {
+  // Normalise the allow-list. `null` and `undefined` both mean "no filter",
+  // but an empty ARRAY is a meaningful signal of "emit zero alternates".
+  const allowlistProvided =
+    allowedLanguages !== undefined && allowedLanguages !== null;
+  const allowSet = allowlistProvided
+    ? new Set(allowedLanguages!.map((l) => l.toLowerCase()))
+    : null;
+
+  // If an explicit empty allow-list is passed, short-circuit — a noindex/junk
+  // page must not surface ANY hreflang alternates (including x-default).
+  if (allowlistProvided && allowSet!.size === 0) {
+    return [];
+  }
+
   const seenHreflangs = new Set<string>();
   const seenUrls = new Set<string>();
   const validUrls: Array<{ lang: string; url: string; hreflang: string }> = [];
-  
+
   // CRITICAL SEO FIX: Build self-referential hreflang entry first
   // Every page must have a hreflang link pointing to itself
   // UPDATED: All languages (including English) use /{lang}/* pattern
@@ -1167,6 +1188,7 @@ export function generateLanguageUrls(
   
   const hreflangs = SEO_LANGUAGES
     .filter(lang => lang.enabled)
+    .filter(lang => !allowSet || allowSet.has(lang.code.toLowerCase()))
     .map(lang => {
       let url: string;
       
@@ -1235,15 +1257,30 @@ export function generateLanguageUrls(
       return true;
     });
   
-  return hreflangs.concat([
-      // Add x-default pointing to the default language URL (English with /en prefix)
-      // This tells Google which version to show to users with no language preference
+  // x-default: only emit if English is in the allow-list (or no allow-list is
+  // set). For a station whose indexable set is [de, tr] we should NOT point
+  // x-default at /en/... because that URL is noindex for this station —
+  // fall back to the first allowed language instead.
+  if (!allowSet || allowSet.has('en')) {
+    return hreflangs.concat([
       {
         lang: 'x-default',
         url: `${currentDomain}/en${cleanPath}`,
         hreflang: 'x-default'
       }
     ]);
+  }
+
+  // No English in allow-list: point x-default at the first allowed language's
+  // URL (already built above). Falls back to current-language URL if the
+  // allow-list somehow yielded nothing above the duplicate filter.
+  const fallback = hreflangs[0];
+  if (fallback) {
+    return hreflangs.concat([
+      { lang: 'x-default', url: fallback.url, hreflang: 'x-default' },
+    ]);
+  }
+  return hreflangs;
 }
 
 export interface SeoMetaTags {

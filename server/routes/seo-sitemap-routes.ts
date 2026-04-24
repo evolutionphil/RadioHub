@@ -9,6 +9,7 @@ import { URL_TRANSLATIONS } from "@shared/url-translations";
 import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
+import { getCachedQualifiedLanguages } from "../seo/qualified-languages";
 
 export async function registerSeoSitemapRoutes(app: Express, deps: any, options?: { apiOnly?: boolean }) {
   const { requireAdmin } = deps;
@@ -369,47 +370,9 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     res.send(robots);
   });
 
-  /**
-   * Helper function to check if a language has enough SEO translations to be indexed
-   * This prevents Google from indexing low-quality "partially translated" pages
-   */
-  async function getQualifiedSeoLanguages(allLanguages: string[]): Promise<string[]> {
-    const qualified = [];
-    
-    for (const lang of allLanguages) {
-      try {
-        // Load translations for this language
-        const translations = await performanceCache.getTranslations(lang);
-        
-        // Check if language has all required SEO keys
-        if (hasCompleteSeoTranslations(translations)) {
-          qualified.push(lang);
-        }
-      } catch (error) {
-        // Skip languages that fail to load
-        logger.warn(`⚠️ Sitemap: Skipping language ${lang} - failed to load translations`);
-      }
-    }
-    
-    logger.log(`✅ Sitemap: ${qualified.length}/${allLanguages.length} languages have complete SEO translations`);
-    return qualified;
-  }
-
-  // Short-lived cache around getQualifiedSeoLanguages so each handler doesn't
-  // re-walk the translation cache on every request. Translation completeness
-  // changes very infrequently (admin updates) and the per-handler caches above
-  // are already much longer (24h), so a 10-minute TTL here is safely fresher
-  // than what we ship to crawlers.
-  let qualifiedLangCache: { value: string[]; expiresAt: number } | null = null;
-  async function getCachedQualifiedLanguages(): Promise<string[]> {
-    const now = Date.now();
-    if (qualifiedLangCache && qualifiedLangCache.expiresAt > now) {
-      return qualifiedLangCache.value;
-    }
-    const value = await getQualifiedSeoLanguages(ACTIVE_SITEMAP_LANGUAGES as unknown as string[]);
-    qualifiedLangCache = { value, expiresAt: now + 10 * 60 * 1000 };
-    return value;
-  }
+  // The qualified-language cache has been hoisted to
+  // `server/seo/qualified-languages.ts` so the SSR renderer can consult the
+  // same source of truth. Sitemap uses the shared helper below.
 
   // Language-specific main sitemap route
   app.get("/sitemap-main-:lang.xml", async (req, res) => {
@@ -553,10 +516,11 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      // Lazy-load junk rules so we can filter low-quality / inappropriate
-      // language combinations out of the sitemap (task #17 — Bing Content
-      // Quality cleanup).
-      const { isJunkStation, getEligibleLanguages } = await import('../seo/junk-station-rules');
+      // Unified indexability gate — sitemap, SSR robots, and hreflang must
+      // all agree on which (station × language) pairs are indexable. See
+      // `server/seo/junk-station-rules.ts` for the gate; `qualifiedLanguages`
+      // comes from the shared `server/seo/qualified-languages.ts` cache.
+      const { getIndexableLanguagesForStation } = await import('../seo/junk-station-rules');
 
       // Stream stations via cursor — bounded memory regardless of chunk size.
       // Exclude stations explicitly marked noIndex (junk migration sets this)
@@ -579,15 +543,11 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       let stationCount = 0;
       for await (const station of stationCursor as any) {
-        // Defense in depth: skip junk records even if the noIndex flag wasn't
-        // backfilled yet (e.g. brand-new stations).
-        if (isJunkStation(station)) continue;
-
-        // Per-station eligible languages: only emit this URL for the current
-        // language if the station is appropriate for that language; otherwise
-        // skip it entirely (it would be noindex anyway).
-        const eligible = getEligibleLanguages(station);
-        if (!eligible.includes(lang)) continue;
+        // Unified gate: intersection of (eligible per country/language) AND
+        // (qualified UI translations) AND (not junk / not noIndex). Returns
+        // `[]` for junk/noIndex stations so they are silently skipped.
+        const indexable = getIndexableLanguagesForStation(station, qualifiedLanguages);
+        if (!indexable.includes(lang)) continue;
 
         stationCount++;
         // Build localized station URL for this language
@@ -605,12 +565,9 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`);
 
-        // Add hreflang tags ONLY for languages this station is eligible for
-        // AND that have complete SEO translations. Mismatched languages
-        // (e.g. Korean for a Mexican station) used to be emitted here,
-        // leading Bing to flag the page as ContentQuality.
-        for (const altLang of qualifiedLanguages) {
-          if (!eligible.includes(altLang)) continue;
+        // Hreflang alternates come from the same unified gate — guarantees
+        // sitemap + SSR advertise the exact same alternate set.
+        for (const altLang of indexable) {
           const altLocalizedPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
           parts.push(`
     <xhtml:link rel="alternate" hreflang="${altLang}" href="${baseUrl}${altLocalizedPath}"/>`);

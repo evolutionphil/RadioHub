@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for streaming and managing radio stations. It features an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. The system includes user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The vision is to establish a leading digital audio platform utilizing AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
+The Mega Radio Station Management System is a full-stack application designed for streaming and managing radio stations. It offers an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key features include user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The project aims to become a leading digital audio platform by leveraging AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -40,6 +40,8 @@ CRITICAL STRUCTURED DATA RULE: WebSite schema has @id=`{domain}/#website` and al
 
 CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` and `seo_listen_live_online` for localized rendering. Never hardcode English "from" or "Listen Live Online" in the station H1 template.
 
+CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed only via `getIndexableLanguagesForStation(station, qualifiedLangs)` / `isStationIndexableInLanguage(station, lang, qualifiedLangs)` from `server/seo/junk-station-rules.ts`. Sitemap inclusion (`server/routes/seo-sitemap-routes.ts`), SSR robots/noindex + hreflang emission (`server/seo-renderer.ts` station branch), SSR station-branch CANONICAL selection (must use the same `indexable` array — never `getEligibleLanguages` directly), and the 410-Gone decision (both `server/index.ts` and `server/index-web.ts`) MUST all use this exact gate. `qualifiedLangs` MUST come from `server/seo/qualified-languages.ts` (`getCachedQualifiedLanguages` — 10-min TTL, same source for both call sites; fail-open fallback to `ACTIVE_SITEMAP_LANGUAGES` when the computed set is empty so a cold cache never drops valid stations to noindex; the fallback response is NOT cached so subsequent calls re-probe). NEVER branch on the raw `getEligibleLanguages` / `isLanguageEligibleForStation` at a public SEO surface — that skips the UI-translation qualification and reintroduces "Crawled – currently not indexed" regressions (~890K GSC URLs). Junk stations (`isJunkStation` true or `noIndex:true` in DB) MUST serve 410 Gone via `sendJunkGone()` from `server/seo/send-junk-gone.ts` in ALL paths (cache-HIT AND cache-MISS) in BOTH `server/index.ts` and `server/index-web.ts` — never 200/noindex and never 301. 410 bodies MUST NOT be written to `performanceCache.setSeoHtml`. Cache-HIT paths MUST cross-check `performanceCache.getPageData(cleanUrl).pageData.stationIsJunk` before serving cached HTML so stale pre-junk SSR cannot leak. For this guard to be deterministic, `pageDataCache.stdTTL` in `server/performance-cache.ts` MUST be >= `seoHtmlCache.stdTTL` (both currently 1800s) — otherwise the HTML outlives the pageData and the junk flag is lost mid-window. Junk pages MUST emit zero hreflang alternates (Google policy for noindex/gone). Hreflang on a valid station MUST be restricted via `generateLanguageUrls(..., allowedLanguages)` using the same `indexable` array — so sitemap and SSR advertise the exact same alternate set.
+
 ## System Architecture
 
 ### Backend
@@ -57,16 +59,10 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Audio Streaming**: HLS.js with Plyr
 - **UI/UX**: Responsive mobile-first design, consistent design system, functional audio player.
 
-### Testing
-- **Test runner**: `npm test` runs `scripts/run-tests.ts`, which discovers every `tests/**/*.test.{ts,tsx,js,mjs}` file and executes each via `tsx`. The runner exits non-zero if any file fails so the command can be wired into CI. With no test files present, the runner reports "No test files found" and exits 0.
-- **Adding tests**: Drop a new `*.test.ts` file under `tests/`. It is run as a standalone script (no test framework required) — use `node:assert` and exit non-zero on failure, e.g. the existing `tests/performance-cache-freeze.test.ts` regression test.
-- **Single file**: For quick iteration on one file, run it directly: `npx tsx tests/performance-cache-freeze.test.ts`.
-
 ### Deployment
-- **Architecture**: Three-service split deployment: backend-api (api.themegaradio.com), frontend-web (themegaradio.com), stream-proxy (stream.themegaradio.com).
-- **Stream Proxy**: Dedicated service for audio stream proxying (HTTP only) and image proxying. HTTPS streams connect directly without proxy. Solves API server ext memory explosion (25MB→700MB+).
-- **Smart Proxy Routing**: Client uses `getStreamProxyUrl()` for stream/image proxy URLs, `getApiProxyUrl()` for API calls. VITE_STREAM_PROXY_URL env var configures proxy URL.
-- **Containerization**: Docker for builds and deployment (Dockerfile.api, Dockerfile.web, Dockerfile.proxy).
+- **Architecture**: Three-service split deployment: backend-api, frontend-web, stream-proxy.
+- **Stream Proxy**: Dedicated service for audio and image proxying, offloading from the API server.
+- **Containerization**: Docker for builds and deployment.
 
 ### Key Architectural Decisions
 - **Monorepo**: Unified repository for all components.
@@ -79,32 +75,32 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 - **Internationalization**: 56-language support, dynamic cache warming, country-specific URL translations.
 - **Background Audio Protection**: Multi-layer system to prevent browser audio suspension.
 - **Image Optimization**: Server-side image resizing and WebP conversion with Sharp, stored on S3.
-- **Memory Management**: Multi-layer OOM prevention using RSS monitoring, periodic GC, jemalloc, optimized HTTP server settings, and stream-aware memory pressure response (force-close active streams when ext>300MB or RSS>warning).
-- **Self-Watchdog**: Both API and Web servers ping their own `/healthz` every 30s. After 3 consecutive failures, auto-restarts via SIGTERM. Additionally, watchdog monitors `mongoose.connection.readyState` — if MongoDB is not `connected` (state !== 1) for >3 minutes, forces restart. Prevents "zombie" state where process runs but DB is permanently disconnected.
-- **MongoDB Circuit Breaker**: API requests return 503 when MongoDB is disconnected/disconnecting, preventing request queue buildup during reconnection.
-- **MongoDB App-Level Reconnect**: `server/db-mongo.ts` implements explicit exponential-backoff reconnect (1s→2s→4s→…→60s max) on `disconnected` event or failed initial connect. Does not rely solely on Mongoose's passive auto-reconnect. `getMongoHealth()` exposes `{ readyState, isConnected, reconnectAttempt, reconnectScheduled }` for diagnostics.
-- **Fail-Fast Exit**: `uncaughtException` and non-transient `unhandledRejection` trigger SIGTERM-based graceful shutdown (fail-fast) instead of log-and-continue. Transient MongoDB errors (MongoNetworkError, MongoServerSelectionError, ECONNRESET, ETIMEDOUT, ENOTFOUND, server selection) are logged but NOT fatal — they are handled by the reconnect loop.
-- **SEO Render Protection**: Limits concurrent SSR, timeouts, bot rate limiting, event loop lag monitoring, and robust error handling for SSR failures.
-- **Subscription System**: Supports various plans (`remove_ads`, `premium_monthly`, `premium_yearly`, `premium_lifetime`) with feature matrices and robust API for purchase reporting, status checking, and admin overrides.
+- **Memory Management**: Multi-layer OOM prevention using RSS monitoring, periodic GC, jemalloc, optimized HTTP server settings, and stream-aware memory pressure response.
+- **Self-Watchdog**: API and Web servers self-monitor and auto-restart on failures, including MongoDB disconnection.
+- **MongoDB Circuit Breaker**: Prevents request buildup during database reconnection.
+- **MongoDB App-Level Reconnect**: Explicit exponential-backoff reconnect logic for MongoDB.
+- **Fail-Fast Exit**: Graceful shutdown on critical uncaught exceptions.
+- **SEO Render Protection**: Limits concurrent SSR, timeouts, and bot rate limiting.
+- **Subscription System**: Supports various plans with feature matrices and robust API.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.
 - **Radio-Browser API**: Third-party radio station data.
 - **ip-api.com**: Geolocation API.
 - **Cloudflare**: CDN, caching, and RUM Web Vitals.
-- **AWS S3**: Cloud storage for media assets (logos, avatars).
+- **AWS S3**: Cloud storage for media assets.
 - **mongoose**: MongoDB Object Data Modeling (ODM) library.
 - **@tanstack/react-query**: Data fetching and state management.
 - **axios**: Promise-based HTTP client.
 - **node-cron**: Task scheduling.
-- **@radix-ui/***: UI component library for accessibility.
+- **@radix-ui/***: UI component library.
 - **tailwindcss**: Utility-first CSS framework.
-- **wouter**: Small routing library for React.
-- **react-hook-form**: Form validation and management.
+- **wouter**: Routing library for React.
+- **react-hook-form**: Form validation.
 - **vite**: Frontend build tool.
 - **typescript**: Language for type safety.
-- **bcrypt**: Password hashing library.
-- **zod**: Schema declaration and validation library.
+- **bcrypt**: Password hashing.
+- **zod**: Schema declaration and validation.
 - **hls.js**: JavaScript library for HLS playback.
 - **plyr**: Lightweight HTML5 media player.
 - **sharp**: High-performance image processing.

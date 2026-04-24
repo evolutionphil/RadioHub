@@ -562,6 +562,16 @@ app.use('/api/stream', streamServiceProxy);
     const cleanUrl = url.split('?')[0].split('#')[0];
     const cachedHtml = performanceCache.getSeoHtml(cleanUrl);
     if (cachedHtml) {
+      // Cache-HIT junk guard: a station URL whose pageData cache reports
+      // stationIsJunk must serve 410 even if a stale SSR HTML is still in
+      // cache from a previous deploy. The pageData cache uses the same key
+      // and would have been (re)written as junk by the renderer.
+      const cachedPage: any = performanceCache.getPageData(cleanUrl);
+      if (cachedPage?.pageData?.stationIsJunk) {
+        const { sendJunkGone } = await import('./seo/send-junk-gone');
+        sendJunkGone(res);
+        return;
+      }
       res.status(200).set({
         'Content-Type': 'text/html',
         'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
@@ -700,6 +710,23 @@ app.use('/api/stream', streamServiceProxy);
         }
 
         const stationNotFound = !!seoData.pageData?.notFound;
+        // Architect P0: junk station URLs (test feeds, codec-suffix slugs,
+        // song-name slugs, frequency-prefix duplicates, or DB records with
+        // noIndex:true) must return 410 Gone — NOT 200/noindex and NOT 301.
+        // Google de-indexes 410 responses dramatically faster than it drops
+        // noindex pages, and 410 removes the URL from the crawl queue entirely.
+        // Must mirror the same check in server/index.ts (dev/monolith).
+        const stationIsJunk =
+          !stationNotFound && !!seoData.pageData?.stationIsJunk;
+
+        if (stationIsJunk) {
+          // Do NOT cache SSR HTML for junk URLs — shared helper keeps the
+          // status/body/cache-control consistent with the cache-HIT branch.
+          const { sendJunkGone } = await import('./seo/send-junk-gone');
+          sendJunkGone(res);
+          return;
+        }
+
         if (!stationNotFound) {
           performanceCache.setSeoHtml(cleanUrl, htmlContent);
         }

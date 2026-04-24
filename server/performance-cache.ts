@@ -78,9 +78,15 @@ export class PerformanceCache {
       useClones: false
     });
     
-    this.pageDataCache = new NodeCache({ 
-      stdTTL: 900,
-      checkperiod: 180,
+    // CRITICAL INDEXABILITY-GATE RULE: pageDataCache TTL MUST be >= seoHtmlCache
+    // TTL so the cache-HIT junk guard in server/index.ts + server/index-web.ts
+    // can always find the `stationIsJunk` flag that accompanies the HTML it is
+    // about to serve. Previously pageData TTL was 900s vs HTML 1800s, creating
+    // a 15-minute window where a junk station would serve cached 200 HTML
+    // because the guard's pageData lookup had expired. Keep these in sync.
+    this.pageDataCache = new NodeCache({
+      stdTTL: 1800,
+      checkperiod: 300,
       maxKeys: 5000,
       useClones: false
     });

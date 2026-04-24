@@ -284,3 +284,81 @@ export function isLanguageEligibleForStation(
 ): boolean {
   return getEligibleLanguages(station).includes(language.toLowerCase());
 }
+
+// -----------------------------------------------------------------------------
+// 4. Unified indexability gate (architect P0)
+// -----------------------------------------------------------------------------
+//
+// The sitemap builder, the SSR robots-meta decision, and the hreflang alternate
+// list MUST all agree on which URLs are indexable. Previously each caller
+// re-derived its own answer, which caused hreflang to advertise ~57 language
+// variants per station even after sitemap/SSR had correctly excluded them —
+// Google would discover those advertised URLs, fetch them, and dump them into
+// "Crawled - currently not indexed".
+//
+// `getIndexableLanguagesForStation` is the single source of truth:
+//   - returns `[]` when the station is junk / noIndex:true
+//     (no alternate should be emitted; the URL itself should 410)
+//   - otherwise returns the intersection of
+//       (a) languages an audience of this station would reasonably speak
+//           (`getEligibleLanguages`), and
+//       (b) languages whose UI translations pass the strict
+//           `hasCompleteSeoTranslations` gate (`qualifiedLangs` arg).
+//
+// If `qualifiedLangs` is undefined the caller is opting out of the translation
+// gate (e.g. a unit test); in that case only the eligibility filter runs.
+
+/**
+ * The definitive "which languages may this station be indexed in?" answer.
+ * Used by the sitemap, the SSR noindex decision, the hreflang alternate list,
+ * and the 410 handler. Always go through this function — never re-derive.
+ */
+export function getIndexableLanguagesForStation(
+  station: {
+    name?: string;
+    slug?: string;
+    url?: string;
+    homepage?: string;
+    tags?: string;
+    bitrate?: number;
+    lastCheckOk?: boolean;
+    country?: string;
+    countryCode?: string;
+    language?: string;
+    languageCodes?: string;
+    noIndex?: boolean;
+  },
+  qualifiedLangs?: string[] | ReadonlyArray<string> | Set<string>,
+): string[] {
+  if (!station) return [];
+  if (station.noIndex === true) return [];
+  if (isJunkStation(station)) return [];
+
+  const eligible = getEligibleLanguages(station);
+
+  if (!qualifiedLangs) return eligible;
+
+  const qualifiedSet =
+    qualifiedLangs instanceof Set
+      ? qualifiedLangs
+      : new Set(Array.from(qualifiedLangs).map((l) => l.toLowerCase()));
+
+  return eligible.filter((lang) => qualifiedSet.has(lang.toLowerCase()));
+}
+
+/**
+ * Thin wrapper: is a specific language/station combination indexable?
+ * Equivalent to `getIndexableLanguagesForStation(...).includes(lang)` but
+ * short-circuits on junk/noIndex.
+ */
+export function isStationIndexableInLanguage(
+  station: any,
+  language: string,
+  qualifiedLangs?: string[] | ReadonlyArray<string> | Set<string>,
+): boolean {
+  if (!station || !language) return false;
+  if (station.noIndex === true) return false;
+  if (isJunkStation(station)) return false;
+  const indexable = getIndexableLanguagesForStation(station, qualifiedLangs);
+  return indexable.includes(language.toLowerCase());
+}

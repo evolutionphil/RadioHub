@@ -859,6 +859,13 @@ app.use((req, res, next) => {
     const cleanUrl = url.split('?')[0].split('#')[0];
     const cachedHtml = performanceCache.getSeoHtml(cleanUrl);
     if (cachedHtml) {
+      // Cache-HIT junk guard — see server/index-web.ts for rationale.
+      const cachedPage: any = performanceCache.getPageData(cleanUrl);
+      if (cachedPage?.pageData?.stationIsJunk) {
+        const { sendJunkGone } = await import('./seo/send-junk-gone');
+        sendJunkGone(res);
+        return;
+      }
       logger.log(`⚡ SEO: Cache HIT for: ${url}`);
       res.status(200).set({
         'Content-Type': 'text/html',
@@ -1033,6 +1040,19 @@ app.use((req, res, next) => {
         responded = true;
         clearTimeout(reqTimeout);
         const stationNotFound = !!seoData.pageData?.notFound;
+        // Architect P0: junk station URLs (test feeds, codec-suffix slugs,
+        // song-name slugs, frequency-prefix duplicates, or DB records with
+        // noIndex:true) must return 410 Gone — NOT 200/noindex and NOT 301.
+        // Google de-indexes 410 responses dramatically faster than it drops
+        // noindex pages, and 410 removes the URL from the crawl queue entirely.
+        // Must mirror the same check in server/index-web.ts.
+        const stationIsJunk =
+          !stationNotFound && !!seoData.pageData?.stationIsJunk;
+        if (stationIsJunk) {
+          const { sendJunkGone } = await import('./seo/send-junk-gone');
+          sendJunkGone(res);
+          return;
+        }
         if (!stationNotFound) {
           performanceCache.setSeoHtml(cleanUrl, htmlContent);
         }

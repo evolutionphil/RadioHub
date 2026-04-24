@@ -455,30 +455,55 @@ export class SeoRenderer {
     let seoTags = this.generateEnhancedSeoTags(pageType, language, translations, cleanPath, domain, stationData, additionalData, cleanUrl, localizedPath, urlTranslations);
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
-    // ---- ContentQuality safeguard (task #17) -------------------------------
+    // ---- ContentQuality safeguard (task #17 + architect P0) ---------------
     // 1) If the resolved station is junk (test feed, codec suffix, song name,
     //    -1/-2 collision) emit robots=noindex so Bing/Google stop reporting
-    //    these as low-quality alternates.
+    //    these as low-quality alternates. The request handler will upgrade
+    //    this to a 410 Gone via the `stationIsJunk` flag surfaced on pageData.
     // 2) If the requested UI language is not in the station's "appropriate
     //    language set" (country/diaspora/broadcast lang + English), emit
     //    noindex on that language variant. The canonical/eligible languages
     //    remain indexable.
+    // 3) Restrict hreflang alternates to the station's indexable-language set
+    //    (eligible + English). Previously we advertised all ~57 enabled
+    //    languages, which caused Google to crawl 57 variants per station and
+    //    dump ~55 of them into "Crawled - currently not indexed".
+    let stationIsJunkFlag = false;
     if (pageType === 'station' && stationData && !stationNotFound) {
       try {
-        const { isJunkStation, isLanguageEligibleForStation, getEligibleLanguages } = await import('./seo/junk-station-rules');
+        const {
+          isJunkStation,
+          getIndexableLanguagesForStation,
+          isStationIndexableInLanguage,
+        } = await import('./seo/junk-station-rules');
+        const { getCachedQualifiedLanguages } = await import('./seo/qualified-languages');
+
+        // Unified indexability gate — sitemap, SSR robots, hreflang, and the
+        // 410 handler all derive their answer from these two calls. Never
+        // branch on `isLanguageEligibleForStation` or `getEligibleLanguages`
+        // here — that bypasses the translation-qualification check and can
+        // re-introduce "Crawled - currently not indexed" regressions.
+        const qualifiedLangs = await getCachedQualifiedLanguages();
         const isJunk = isJunkStation(stationData) || stationData.noIndex === true;
-        const langIneligible = !isJunk && !isLanguageEligibleForStation(stationData, language);
+        const indexable = getIndexableLanguagesForStation(stationData, qualifiedLangs);
+        const langIneligible =
+          !isJunk && !isStationIndexableInLanguage(stationData, language, qualifiedLangs);
 
         if (isJunk || langIneligible) {
           seoTags.robots = 'noindex, follow';
           seoTags.noIndex = true;
 
-          // Point canonical at the eligible main-language variant so search
+          // Point canonical at the indexable main-language variant so search
           // engines consolidate any residual signals on the version we want
-          // indexed (or, for junk stations, at the canonical English route).
-          // Prefer English (always eligible). Fall back to first eligible.
-          const eligible = getEligibleLanguages(stationData);
-          const canonicalLang = eligible.includes('en') ? 'en' : eligible[0] || 'en';
+          // indexed. Use the SAME `indexable` array the hreflang loop below
+          // uses — NOT a raw `getEligibleLanguages` call — so canonical and
+          // hreflang never diverge (architect gate invariant). When the
+          // station is junk (indexable === []), fall through to English; the
+          // page is served as 410 Gone anyway, so canonical is mostly for
+          // consistency with already-indexed copies.
+          const canonicalLang = indexable.includes('en')
+            ? 'en'
+            : indexable[0] || 'en';
           if (canonicalLang && stationData.slug) {
             // Always resolve to a real route segment — never use the raw
             // language code as the segment (which would yield /xx/xx/slug).
@@ -490,8 +515,37 @@ export class SeoRenderer {
             seoTags.canonical = `${domain}/${canonicalLang}/${translatedSegment}/${stationData.slug}`;
           }
         }
-      } catch (e) {
-        // Non-fatal: if the rules module fails to load just leave robots as-is
+
+        if (isJunk) {
+          // Signal to the HTTP layer to return 410 Gone instead of SSR'ing
+          // the page. Also suppress ALL hreflang alternates — a noindex/
+          // gone page must not expose alternates (Google policy).
+          stationIsJunkFlag = true;
+          seoTags.hreflangs = [];
+        } else {
+          // Hreflang alternates come from the SAME unified gate that the
+          // sitemap uses — so the two surfaces advertise the exact same
+          // (station × language) set. Passing `qualifiedLangs` here ensures
+          // thin/partially-translated languages are excluded from both.
+          seoTags.hreflangs = generateLanguageUrls(
+            cleanPath,
+            domain,
+            language,
+            urlTranslations,
+            seoTags.canonical,
+            indexable,
+          );
+        }
+      } catch (e: any) {
+        // Non-fatal: if the rules module fails to load just leave robots as-is.
+        // BUT we log loudly — silently swallowing here previously hid a broken
+        // import path and caused station hreflang to skip the indexability gate.
+        try {
+          const { logger } = await import('./utils/logger');
+          logger.warn(
+            `⚠️ seo-renderer: station indexability gate failed: ${e?.message || e}`,
+          );
+        } catch {}
       }
     }
     // -----------------------------------------------------------------------
@@ -546,7 +600,20 @@ export class SeoRenderer {
       seoTags,
       translations,
       urlTranslations,
-      pageData: { pageType, station: stationData, seoTags, ...additionalData, additionalData, notFound: stationNotFound || false }
+      pageData: {
+        pageType,
+        station: stationData,
+        seoTags,
+        ...additionalData,
+        additionalData,
+        notFound: stationNotFound || false,
+        // Architect P0: surfaces junk-station detection to the HTTP layer so
+        // it can upgrade the response from 200/noindex to 410 Gone. 410 is
+        // how we tell Google "this URL is really gone, drop it from the
+        // index fast" — 301 + noindex leaves URLs in the crawl queue for
+        // months.
+        stationIsJunk: stationIsJunkFlag,
+      }
     };
     
     performanceCache.setPageData(cacheKey, pageData);
