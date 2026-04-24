@@ -87,6 +87,13 @@ export default function AdminDashboard() {
       color: "bg-blue-500"
     },
     {
+      title: "Logo Management",
+      description: "Scan station logos and mirror them to S3",
+      icon: Image,
+      href: "/admin/logos",
+      color: "bg-amber-500"
+    },
+    {
       title: "Translation Management",
       description: "Manage translation keys and strings",
       icon: Languages,
