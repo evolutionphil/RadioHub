@@ -112,6 +112,14 @@ export function isPrivateIp(ip: string): boolean {
 export interface SafeUrlOptions {
   allowedProtocols?: Array<'http:' | 'https:'>;
   allowedPorts?: number[];
+  /**
+   * Alternative to `allowedPorts`. When provided (and `allowedPorts` is not),
+   * every port EXCEPT those listed is accepted. Use this for radio/stream
+   * proxies where legitimate hosts bind to thousands of non-standard ports
+   * but we still want to block well-known internal-service ports (SSH,
+   * DB, cache, etc). If both options are present, `allowedPorts` wins.
+   */
+  blockedPorts?: ReadonlySet<number>;
   allowHttp?: boolean;
 }
 
@@ -128,7 +136,11 @@ export async function validateOutboundUrl(
   }
 
   const port = url.port ? parseInt(url.port, 10) : (url.protocol === 'https:' ? 443 : 80);
-  const portOk = opts.allowedPorts ? opts.allowedPorts.includes(port) : ALLOWED_PORTS.has(port);
+  const portOk = opts.allowedPorts
+    ? opts.allowedPorts.includes(port)
+    : opts.blockedPorts
+    ? !opts.blockedPorts.has(port)
+    : ALLOWED_PORTS.has(port);
   if (!portOk) return { ok: false, reason: 'port-not-allowed' };
 
   const host = url.hostname.toLowerCase();

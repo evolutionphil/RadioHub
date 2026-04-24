@@ -2,11 +2,62 @@ import type { Express } from "express";
 import { logger } from "../utils/logger";
 import { validateOutboundUrl } from "../utils/safe-fetch";
 
-// Shared port allowlist for radio stream / Shoutcast / Icecast endpoints.
-const STREAM_ALLOWED_PORTS = [
-  80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090,
-  1935, 4000, 5000, 6000, 6969, 12000, 18000,
-];
+// Shared port BLOCKLIST for radio stream / Shoutcast / Icecast endpoints.
+//
+// Radio stations legitimately bind to thousands of non-standard ports
+// (DB audit: 3418 distinct ports across 51.797 stations). A narrow
+// allowlist silently rejected legitimate streams (e.g. Shoutcast hosts
+// on :5032, :8201, :2199, :8200). SSRF defense remains: validateOutboundUrl
+// rejects any private/loopback/link-local/CGNAT/cloud-metadata IP — so
+// even with a permissive port policy, an attacker cannot pivot into
+// internal infrastructure. This blocklist only blocks well-known
+// internal-service ports that public hosts should never expose.
+const STREAM_BLOCKED_PORTS: ReadonlySet<number> = new Set([
+  21,    // FTP control
+  22,    // SSH
+  23,    // Telnet
+  25,    // SMTP
+  53,    // DNS
+  110,   // POP3
+  111,   // Portmapper / RPC
+  135,   // MSRPC
+  139,   // NetBIOS
+  143,   // IMAP
+  389,   // LDAP
+  445,   // SMB
+  465,   // SMTPS
+  587,   // SMTP submission
+  631,   // CUPS
+  636,   // LDAPS
+  993,   // IMAPS
+  995,   // POP3S
+  1433,  // MSSQL
+  1521,  // Oracle
+  2049,  // NFS
+  2375,  // Docker daemon (unauthenticated)
+  2376,  // Docker daemon (TLS)
+  2379,  // etcd client
+  2380,  // etcd peer
+  3306,  // MySQL
+  3389,  // RDP
+  4444,  // Metasploit default
+  5432,  // PostgreSQL
+  5672,  // AMQP / RabbitMQ
+  5984,  // CouchDB
+  6379,  // Redis
+  6380,  // Redis alt
+  6443,  // Kubernetes API server
+  9092,  // Kafka broker
+  9200,  // Elasticsearch HTTP
+  9300,  // Elasticsearch transport
+  10250, // kubelet API
+  10255, // kubelet read-only
+  11211, // Memcached
+  15672, // RabbitMQ management
+  27017, // MongoDB
+  27018, // MongoDB shard
+  27019, // MongoDB config
+]);
 
 const MAX_CONCURRENT_STREAMS = parseInt(process.env.MAX_CONCURRENT_STREAMS || '25', 10);
 const MAX_STREAM_DURATION_MS = parseInt(process.env.MAX_STREAM_DURATION_MIN || '120', 10) * 60 * 1000;
@@ -184,7 +235,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       {
         const guarded = await validateOutboundUrl(originalUrl, {
           allowHttp: true,
-          allowedPorts: [80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090, 1935, 4000, 5000, 6000],
+          blockedPorts: STREAM_BLOCKED_PORTS,
         });
         if (!guarded.ok) {
           return res.status(400).json({ error: 'URL not allowed' });
@@ -330,12 +381,12 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       if (!url || typeof url !== 'string' || url.length > 2048) {
         return res.status(400).json({ error: 'Missing url parameter' });
       }
-      // SSRF guard. Stream URLs use a wide port range so we permit common
-      // non-standard ports that radio hosts use.
+      // SSRF guard. Stream URLs use a wide port range so we permit any port
+      // except well-known internal-service ports.
       {
         const guarded = await validateOutboundUrl(url, {
           allowHttp: true,
-          allowedPorts: [80, 443, 8000, 8080, 8443, 9000, 9443, 7000, 7777, 8888, 9090, 1935, 4000, 5000, 6000, 6969, 12000, 18000],
+          blockedPorts: STREAM_BLOCKED_PORTS,
         });
         if (!guarded.ok) {
           return res.status(400).json({ error: 'URL not allowed' });
@@ -503,7 +554,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           // can craft a base64-encoded URL). Reject internal/private IPs.
           const guarded = await validateOutboundUrl(decoded, {
             allowHttp: true,
-            allowedPorts: STREAM_ALLOWED_PORTS,
+            blockedPorts: STREAM_BLOCKED_PORTS,
           });
           if (!guarded.ok) {
             releaseSlot();
@@ -523,7 +574,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           // could URL-encode an internal target and bypass the base64 guard.
           const guardedFallback = await validateOutboundUrl(fallback, {
             allowHttp: true,
-            allowedPorts: STREAM_ALLOWED_PORTS,
+            blockedPorts: STREAM_BLOCKED_PORTS,
           });
           if (!guardedFallback.ok) {
             releaseSlot();
@@ -650,7 +701,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
                 destroyActiveProxy();
                 return;
               }
-              validateOutboundUrl(nextUrl, { allowHttp: true, allowedPorts: STREAM_ALLOWED_PORTS })
+              validateOutboundUrl(nextUrl, { allowHttp: true, blockedPorts: STREAM_BLOCKED_PORTS })
                 .then((guard) => {
                   if (!guard.ok) {
                     logger.log(`🚫 Shoutcast redirect blocked by SSRF guard: ${guard.reason}`);
@@ -753,17 +804,21 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
           const guard = await validateOutboundUrl(currentUrl, {
             allowHttp: true,
-            allowedPorts: STREAM_ALLOWED_PORTS,
+            blockedPorts: STREAM_BLOCKED_PORTS,
           });
           if (!guard.ok) {
             throw new Error(`Stream redirect blocked by SSRF guard: ${guard.reason}`);
           }
+          // Always present as a media player UA. Forwarding the browser UA
+          // causes some origins (e.g. stream.zeno.fm) to reject us with HTTP
+          // 401 because they gate streaming behind "real player" checks.
+          // VLC is accepted by virtually every Shoutcast/Icecast/CDN host.
           lastRes = await fetch(currentUrl, {
             signal: controller.signal,
             redirect: 'manual',
             headers: {
-              'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0 (Radio/1.0)',
-              'Accept': req.headers['accept'] || 'audio/*, application/vnd.apple.mpegurl, */*',
+              'User-Agent': 'VLC/3.0.20 LibVLC/3.0.20',
+              'Accept': 'audio/*, application/vnd.apple.mpegurl, */*',
               'Connection': 'close',
               ...(req.headers.range && { 'Range': req.headers.range as string })
             }

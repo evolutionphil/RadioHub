@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application designed for streaming and managing radio stations. It offers an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key features include user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The project aims to become a leading digital audio platform by leveraging AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
+The Mega Radio Station Management System is a full-stack application designed for streaming and managing radio stations. It features an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key capabilities include user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The project's vision is to become a leading digital audio platform by leveraging AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -32,15 +32,15 @@ CRITICAL SEO REGEX RULE: Both `server/index.ts` AND `server/index-web.ts` must u
 
 CRITICAL RATE LIMIT RULE: Major search bots (Google, Bing, Yandex, Baidu, DuckDuckGo, Apple) are FULLY EXEMPT from all rate limits — both API rate limiter in index-api.ts and SSR bot rate limiter in index-web.ts. Minor bots get 60/min. Previous value of 15/min caused Google crawling failures.
 
-CRITICAL SSRF RULE: ALL outbound requests from server-side code (safeFetch in safe-fetch.ts, stream-proxy-routes.ts base64 + URL-decoded fallback paths, Shoutcast manual redirect handler, direct fetch path) MUST call validateOutboundUrl on every redirect hop, NOT just the initial URL. `redirect:'follow'` is forbidden — use `redirect:'manual'` with a max-5-hop loop. Otherwise a public origin can 30x into 169.254.169.254 (cloud metadata), localhost, or other internal targets. validateOutboundUrl blocks IPv6 6to4 (2002::/16) and Teredo (2001::/32) tunnels in addition to standard private/loopback/link-local ranges. STREAM_ALLOWED_PORTS in stream-proxy-routes.ts is the single source of truth for stream port allowlist. NoSQL $regex with user input MUST be escaped with escapeRegex() (regex meta-chars: `.*+?^${}()|[]\\`) — applies to misc-routes.ts and user-auth-routes.ts user-search filters.
+CRITICAL SSRF RULE: ALL outbound requests from server-side code (safeFetch in safe-fetch.ts, stream-proxy-routes.ts base64 + URL-decoded fallback paths, Shoutcast manual redirect handler, direct fetch path) MUST call validateOutboundUrl on every redirect hop, NOT just the initial URL. `redirect:'follow'` is forbidden — use `redirect:'manual'` with a max-5-hop loop. Otherwise a public origin can 30x into 169.254.169.254 (cloud metadata), localhost, or other internal targets. validateOutboundUrl blocks IPv6 6to4 (2002::/16) and Teredo (2001::/32) tunnels in addition to standard private/loopback/link-local ranges. STREAM_BLOCKED_PORTS in stream-proxy-routes.ts is the single source of truth for the stream/image proxy port policy — a BLOCKLIST (SSH, SMTP, DNS, SMB, DB/cache ports) passed via `blockedPorts` to validateOutboundUrl, not an allowlist. Narrow allowlists previously rejected ~3400 legitimate non-standard radio ports (e.g. :5032, :8201, :2199) silently; the IP-based SSRF defense (private/loopback/link-local/CGNAT/cloud-metadata) still fully guards against internal pivoting. Stream proxy MUST use a fixed media-player User-Agent (`VLC/3.0.20 LibVLC/3.0.20`) on all outbound fetches — forwarding the browser UA causes origins like stream.zeno.fm to return HTTP 401. NoSQL $regex with user input MUST be escaped with escapeRegex() (regex meta-chars: `.*+?^${}()|[]\\`) — applies to misc-routes.ts and user-auth-routes.ts user-search filters.
 
-CRITICAL CORS RULE: CORS middleware in index-api.ts must run BEFORE rate limiters. If rate limiter returns 429 before CORS headers are set, browsers block the response entirely — causing "No Access-Control-Allow-Origin" errors and making the site appear completely down. Origin-aware CORS: requests from themegaradio.com get `Access-Control-Allow-Credentials: true`; other origins get `Access-Control-Allow-Origin: *`.
+CRITICAL CORS RULE: CORS middleware in index-api.ts must run BEFORE rate limiters. If rate limiter returns 429 before CORS headers are set, browsers block the response entirely — causing "No Access-Control-Allow-Origin" errors and making the site appear completely down. Origin-aware CORS: requests from themegaradio.com get `Access-Control-Allow-Credentials: true`; other origins get `Access-Control/Allow-Origin: *`.
 
 CRITICAL STRUCTURED DATA RULE: WebSite schema has @id=`{domain}/#website` and alternateName. Organization schema has @id=`{domain}/#organization` and logo as ImageObject. FAQPage schema is present BOTH in SSR (seo-renderer.ts) AND in client SeoHead.tsx for `pageType==='home'` — do NOT remove the home FAQ from SeoHead or it disappears after React hydration. BreadcrumbList schema on station pages must always match visible breadcrumb nav in the React component (client/src/pages/stations/[id].tsx). BreadcrumbList positions are re-numbered after splice to guarantee sequential 1,2,3... order. sameAs removed from Organization schema since social accounts unverified. BroadcastService JSON-LD uses JSON.stringify() for proper character escaping — never use template literal interpolation for description fields.
 
 CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` and `seo_listen_live_online` for localized rendering. Never hardcode English "from" or "Listen Live Online" in the station H1 template.
 
-CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed only via `getIndexableLanguagesForStation(station, qualifiedLangs)` / `isStationIndexableInLanguage(station, lang, qualifiedLangs)` from `server/seo/junk-station-rules.ts`. Sitemap inclusion (`server/routes/seo-sitemap-routes.ts`), SSR robots/noindex + hreflang emission (`server/seo-renderer.ts` station branch), SSR station-branch CANONICAL selection (must use the same `indexable` array — never `getEligibleLanguages` directly), and the 410-Gone decision (both `server/index.ts` and `server/index-web.ts`) MUST all use this exact gate. `qualifiedLangs` MUST come from `server/seo/qualified-languages.ts` (`getCachedQualifiedLanguages` — 10-min TTL, same source for both call sites; fail-open fallback to `ACTIVE_SITEMAP_LANGUAGES` when the computed set is empty so a cold cache never drops valid stations to noindex; the fallback response is NOT cached so subsequent calls re-probe). NEVER branch on the raw `getEligibleLanguages` / `isLanguageEligibleForStation` at a public SEO surface — that skips the UI-translation qualification and reintroduces "Crawled – currently not indexed" regressions (~890K GSC URLs). Junk stations (`isJunkStation` true or `noIndex:true` in DB) MUST serve 410 Gone via `sendJunkGone()` from `server/seo/send-junk-gone.ts` in ALL paths (cache-HIT AND cache-MISS) in BOTH `server/index.ts` and `server/index-web.ts` — never 200/noindex and never 301. 410 bodies MUST NOT be written to `performanceCache.setSeoHtml`. Cache-HIT paths MUST cross-check `performanceCache.getPageData(cleanUrl).pageData.stationIsJunk` before serving cached HTML so stale pre-junk SSR cannot leak. For this guard to be deterministic, `pageDataCache.stdTTL` in `server/performance-cache.ts` MUST be >= `seoHtmlCache.stdTTL` (both currently 1800s) — otherwise the HTML outlives the pageData and the junk flag is lost mid-window. Junk pages MUST emit zero hreflang alternates (Google policy for noindex/gone). Hreflang on a valid station MUST be restricted via `generateLanguageUrls(..., allowedLanguages)` using the same `indexable` array — so sitemap and SSR advertise the exact same alternate set. `getEligibleLanguages(station)` MUST include every language present in `station.descriptions` with BOTH `full` AND `meta` non-empty (AI-generated per-station content counts as real content for SEO). NEVER drop the `descriptions` branch — doing so collapses multilingual stations like Kronehit back to `{en, country-language}` only, even when 14+ languages of genuine content exist in the DB. The half-filled / empty-string entry rejection is intentional: a record with only `meta` but no `full` renders a thin page and must not be advertised via hreflang.
+CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed only via `getIndexableLanguagesForStation(station, qualifiedLangs)` / `isStationIndexableInLanguage(station, lang, qualifiedLangs)` from `server/seo/junk-station-rules.ts`. Sitemap inclusion (`server/routes/seo-sitemap-routes.ts`), SSR robots/noindex + hreflang emission (`server/seo-renderer.ts` station branch), SSR station-branch CANONICAL selection (must use the same `indexable` array — never `getEligibleLanguages` directly), and the 410-Gone decision (both `server/index.ts` and `server/index-web.ts`) MUST all use this exact gate. `qualifiedLangs` MUST come from `server/seo/qualified-languages.ts` (`getCachedQualifiedLanguages` — 10-min TTL, same source for both call sites; fail-open fallback to `ACTIVE_SITEMAP_LANGUAGES` when the computed set is empty so a cold cache never drops valid stations to noindex; the fallback response is NOT cached so subsequent calls re-probe). NEVER branch on the raw `getEligibleLanguages` / `isLanguageEligibleForStation` at a public SEO surface — that skips the UI-translation qualification and reintroduces "Crawled – currently not indexed" regressions (~890K GSC URLs). Junk stations (`isJunkStation` true or `noIndex:true` in DB) MUST serve 410 Gone via `sendJunkGone()` from `server/seo/send-junk-gone.ts` in ALL paths (cache-HIT AND cache-MISS) in BOTH `server/index.ts` and `server/index-web.ts` — never 200/noindex and never 301. 410 bodies MUST NOT be written to `performanceCache.setSeoHtml`. Cache-HIT paths MUST cross-check `performanceCache.getPageData(cleanUrl).pageData.stationIsJunk` before serving cached HTML so stale pre-junk SSR cannot leak. For this guard to be deterministic, `pageDataCache.stdTTL` in `server/performance-cache.ts` MUST be >= `seoHtmlCache.stdTTL` (both currently 1800s) — otherwise the HTML outlives the pageData and the junk flag is lost mid-window. Junk pages MUST emit zero hreflang alternates (Google policy for noindex/gone). Hreflang on a valid station MUST be restricted via `generateLanguageUrls(..., allowedLanguages)` using the same `indexable` array — so sitemap and SSR advertise the exact same alternate set. `getEligibleLanguages(station)` MUST include every language present in `station.descriptions` with BOTH `full` AND `meta` non-empty (AI-generated per-station content counts as real content for SEO). NEVER drop the `descriptions` branch — doing so collapses multilingual stations like Kronehit back to `{en, country-language}` only, even when 14+ languages of genuine content exists in the DB. The half-filled / empty-string entry rejection is intentional: a record with only `meta` but no `full` renders a thin page and must not be advertised via hreflang.
 
 ## System Architecture
 
@@ -54,42 +54,39 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Framework**: React with TypeScript
 - **Routing**: Wouter
 - **State Management**: TanStack Query
-- **UI**: Tailwind CSS with shadcn/ui
+- **UI**: Tailwind CSS with shadcn/ui, responsive mobile-first design, consistent design system, functional audio player.
 - **Build Tool**: Vite
 - **Audio Streaming**: HLS.js with Plyr
-- **UI/UX**: Responsive mobile-first design, consistent design system, functional audio player.
 
 ### Deployment
 - **Architecture**: Three-service split deployment: backend-api, frontend-web, stream-proxy.
-- **Stream Proxy**: Dedicated service for audio and image proxying, offloading from the API server.
+- **Stream Proxy**: Dedicated service for audio and image proxying.
 - **Containerization**: Docker for builds and deployment.
 
 ### Key Architectural Decisions
-- **Monorepo**: Unified repository for all components.
+- **Monorepo**: Unified repository for all services.
 - **Type Safety**: End-to-end TypeScript with Zod validation.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang.
-- **Performance**: Caching, indexing, lazy loading, Core Web Vitals optimization, precomputed caches.
-- **Geolocation**: Cloudflare headers and GPS for nearby stations.
-- **Audio Continuity**: Preserves playback during navigation.
-- **User Engagement**: Real user data drives trends and recommendations.
-- **Internationalization**: 56-language support, dynamic cache warming, country-specific URL translations.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang for 56 languages.
+- **Performance**: Caching, indexing, lazy loading, and Core Web Vitals optimization.
+- **Geolocation**: Utilizes Cloudflare headers and GPS for "nearby stations" functionality.
+- **Audio Continuity**: Designed to preserve audio playback across page navigations.
+- **User Engagement**: Trends and recommendations are driven by real user data.
 - **Background Audio Protection**: Multi-layer system to prevent browser audio suspension.
-- **Image Optimization**: Server-side image resizing and WebP conversion with Sharp, stored on S3.
-- **Memory Management**: Multi-layer OOM prevention using RSS monitoring, periodic GC, jemalloc, optimized HTTP server settings, and stream-aware memory pressure response.
-- **Self-Watchdog**: API and Web servers self-monitor and auto-restart on failures, including MongoDB disconnection.
-- **MongoDB Circuit Breaker**: Prevents request buildup during database reconnection.
-- **MongoDB App-Level Reconnect**: Explicit exponential-backoff reconnect logic for MongoDB.
-- **Fail-Fast Exit**: Graceful shutdown on critical uncaught exceptions.
-- **SEO Render Protection**: Limits concurrent SSR, timeouts, and bot rate limiting.
-- **Subscription System**: Supports various plans with feature matrices and robust API.
+- **Image Optimization**: Server-side image resizing and WebP conversion with Sharp, storing on S3.
+- **Memory Management**: Multi-layer OOM prevention including RSS monitoring and periodic GC.
+- **Self-Watchdog**: Servers self-monitor and auto-restart on failures.
+- **MongoDB Circuit Breaker**: Prevents request buildup during database reconnection phases.
+- **Fail-Fast Exit**: Ensures graceful shutdown on critical uncaught exceptions.
+- **SEO Render Protection**: Limits concurrent Server-Side Rendering (SSR), incorporates timeouts, and bot rate limiting.
+- **Subscription System**: Supports various plans with a flexible feature matrix.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.
-- **Radio-Browser API**: Third-party radio station data.
+- **Radio-Browser API**: Provides third-party radio station data.
 - **ip-api.com**: Geolocation API.
 - **Cloudflare**: CDN, caching, and RUM Web Vitals.
 - **AWS S3**: Cloud storage for media assets.
-- **mongoose**: MongoDB Object Data Modeling (ODM) library.
+- **mongoose**: MongoDB Object Data Modeling (ODM).
 - **@tanstack/react-query**: Data fetching and state management.
 - **axios**: Promise-based HTTP client.
 - **node-cron**: Task scheduling.
@@ -99,9 +96,9 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **react-hook-form**: Form validation.
 - **vite**: Frontend build tool.
 - **typescript**: Language for type safety.
-- **bcrypt**: Password hashing.
-- **zod**: Schema declaration and validation.
+- **bcrypt**: Password hashing library.
+- **zod**: Schema declaration and validation library.
 - **hls.js**: JavaScript library for HLS playback.
 - **plyr**: Lightweight HTML5 media player.
-- **sharp**: High-performance image processing.
+- **sharp**: High-performance image processing library.
 - **multer**: Middleware for handling `multipart/form-data`.
