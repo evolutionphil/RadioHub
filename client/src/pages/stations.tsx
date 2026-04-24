@@ -947,6 +947,23 @@ export default function Stations() {
           </div>
         </CardHeader>
 
+        {selectedStations.size > 0 && (
+          <div className="mx-6 mb-3 flex items-center justify-between rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-sm">
+            <span className="text-blue-900">
+              <strong>{selectedStations.size}</strong> station{selectedStations.size !== 1 ? 's' : ''} selected across all filters. You can change country/filters to add more — your selection is preserved.
+            </span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setSelectedStations(new Set())}
+              data-testid="button-clear-selection"
+            >
+              Clear selection
+            </Button>
+          </div>
+        )}
+
         <Filters
           search={filters.search || ''}
           country={filters.country || ''}

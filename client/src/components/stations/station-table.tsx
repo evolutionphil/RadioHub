@@ -80,11 +80,27 @@ export default function StationTable({
   };
 
   const handleSelectAll = (checked: boolean) => {
-    const newSelected = checked 
-      ? new Set(stations.map(s => s._id))
-      : new Set();
+    const pageIds = stations.map(s => s._id);
+    const newSelected = new Set(selectedStations);
+    if (checked) {
+      pageIds.forEach(id => newSelected.add(id));
+    } else {
+      pageIds.forEach(id => newSelected.delete(id));
+    }
     onSelectedStationsChange?.(newSelected);
   };
+
+  const pageSelectedCount = stations.reduce(
+    (acc, s) => acc + (selectedStations.has(s._id) ? 1 : 0),
+    0
+  );
+  const allPageSelected = stations.length > 0 && pageSelectedCount === stations.length;
+  const somePageSelected = pageSelectedCount > 0 && !allPageSelected;
+  const selectAllCheckedValue: boolean | 'indeterminate' = allPageSelected
+    ? true
+    : somePageSelected
+    ? 'indeterminate'
+    : false;
 
   const handleSelectStation = (stationId: string, checked: boolean) => {
     const newSelected = new Set(selectedStations);
@@ -293,11 +309,16 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
         {/* Select All Checkbox for Mobile */}
         <div className="flex items-center space-x-3 py-2 px-1 border-b border-gray-200 bg-gray-50 rounded-t-lg">
           <Checkbox
-            checked={stations.length > 0 && selectedStations.size === stations.length}
-            onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+            checked={selectAllCheckedValue}
+            onCheckedChange={(checked) => handleSelectAll(checked === true)}
           />
           <span className="text-sm font-medium text-gray-700">
-            Select All ({selectedStations.size}/{stations.length})
+            Select page ({pageSelectedCount}/{stations.length})
+            {selectedStations.size > 0 && (
+              <span className="ml-2 text-blue-600">
+                — Total selected: {selectedStations.size}
+              </span>
+            )}
           </span>
         </div>
         {stations.map(station => (
@@ -429,8 +450,9 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
             <TableRow>
               <TableHead className="w-12">
                 <Checkbox
-                  checked={selectedStations.size === stations.length && stations.length > 0}
-                  onCheckedChange={handleSelectAll}
+                  checked={selectAllCheckedValue}
+                  onCheckedChange={(checked) => handleSelectAll(checked === true)}
+                  title={`Page: ${pageSelectedCount}/${stations.length} — Total selected across all filters: ${selectedStations.size}`}
                 />
               </TableHead>
               <TableHead className="w-16">Logo</TableHead>
