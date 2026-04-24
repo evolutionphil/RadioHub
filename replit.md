@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application designed for streaming and managing radio stations. It features an extensive admin interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key capabilities include user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The project's vision is to become a leading digital audio platform by leveraging AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
+The Mega Radio Station Management System is a full-stack application for streaming and managing radio stations. It offers an extensive administrative interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key capabilities include user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The project aims to be a leading digital audio platform, leveraging AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -28,7 +28,7 @@ CRITICAL BREADCRUMB JSON-LD RULE: BreadcrumbList JSON-LD `item` URLs in seo-rend
 
 CRITICAL CANONICAL RULE: Prefix-all strategy is enforced for ALL languages including default English. The /en homepage MUST self-canonical to https://themegaradio.com/en (NOT to /). Sitemap, hreflang, and canonical must all agree on the /en prefix. Stripping /en→/ for default English causes Google Search Console "Alternate page with proper canonical tag" because / 302-redirects back to /en (circular signal) and the entire site stays unindexed. shared/seo-config.ts:1899-1925 enforces this; never re-introduce a default-English bare-/ canonical branch. Trailing slashes are stripped from canonical to match the server's trailing-slash 301.
 
-CRITICAL SEO REGEX RULE: Both `server/index.ts` AND `server/index-web.ts` must use dynamically-built regex from URL_TRANSLATIONS (collectSeoTranslations). NEVER hardcode URL patterns — they go stale when translations change. Both singular (`station`) and plural (`stations`) forms must be included. Both files must include `privacyPage` and `countryPage` in `isSeoEligiblePage`.
+CRITICAL SEO REGEX RULE: Both `server/index.ts` AND `server/index-web.ts` must use dynamically-built regex from URL_TRANSLATIONS (collectSeoTranslations). NEVER hardcode URL patterns — they go stale when translations changes. Both singular (`station`) and plural (`stations`) forms must be included. Both files must include `privacyPage` and `countryPage` in `isSeoEligiblePage`.
 
 CRITICAL RATE LIMIT RULE: Major search bots (Google, Bing, Yandex, Baidu, DuckDuckGo, Apple) are FULLY EXEMPT from all rate limits — both API rate limiter in index-api.ts and SSR bot rate limiter in index-web.ts. Minor bots get 60/min. Previous value of 15/min caused Google crawling failures.
 
@@ -54,35 +54,34 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Framework**: React with TypeScript
 - **Routing**: Wouter
 - **State Management**: TanStack Query
-- **UI**: Tailwind CSS with shadcn/ui, responsive mobile-first design, consistent design system, functional audio player.
+- **UI**: Tailwind CSS with shadcn/ui for responsive, mobile-first design and functional audio player.
 - **Build Tool**: Vite
 - **Audio Streaming**: HLS.js with Plyr
 
 ### Deployment
-- **Architecture**: Three-service split deployment: backend-api, frontend-web, stream-proxy.
+- **Architecture**: Three-service split deployment (backend-api, frontend-web, stream-proxy).
 - **Stream Proxy**: Dedicated service for audio and image proxying.
 - **Containerization**: Docker for builds and deployment.
 
 ### Key Architectural Decisions
 - **Monorepo**: Unified repository for all services.
 - **Type Safety**: End-to-end TypeScript with Zod validation.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang for 56 languages.
-- **Performance**: Caching, indexing, lazy loading, and Core Web Vitals optimization.
-- **Geolocation**: Utilizes Cloudflare headers and GPS for "nearby stations" functionality.
-- **Audio Continuity**: Designed to preserve audio playback across page navigations.
-- **User Engagement**: Trends and recommendations are driven by real user data.
-- **Background Audio Protection**: Multi-layer system to prevent browser audio suspension.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang.
+- **Performance**: Caching, indexing, lazy loading, Core Web Vitals optimization.
+- **Geolocation**: Utilizes Cloudflare headers and GPS.
+- **Audio Continuity**: Preserves audio playback across page navigations.
+- **User Engagement**: Trends and recommendations driven by real user data.
 - **Image Optimization**: Server-side image resizing and WebP conversion with Sharp, storing on S3.
 - **Memory Management**: Multi-layer OOM prevention including RSS monitoring and periodic GC.
 - **Self-Watchdog**: Servers self-monitor and auto-restart on failures.
-- **MongoDB Circuit Breaker**: Prevents request buildup during database reconnection phases.
+- **MongoDB Circuit Breaker**: Prevents request buildup during database reconnection.
 - **Fail-Fast Exit**: Ensures graceful shutdown on critical uncaught exceptions.
 - **SEO Render Protection**: Limits concurrent Server-Side Rendering (SSR), incorporates timeouts, and bot rate limiting.
 - **Subscription System**: Supports various plans with a flexible feature matrix.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.
-- **Radio-Browser API**: Provides third-party radio station data.
+- **Radio-Browser API**: Third-party radio station data.
 - **ip-api.com**: Geolocation API.
 - **Cloudflare**: CDN, caching, and RUM Web Vitals.
 - **AWS S3**: Cloud storage for media assets.
