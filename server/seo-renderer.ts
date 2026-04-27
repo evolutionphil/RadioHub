@@ -4,6 +4,7 @@ import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
+import { isJunkStation } from './seo/junk-station-rules';
 
 // Concurrency raised 5 → 15 → 50 → 200 → 1000 → 2500: paired with MongoDB
 // pool 100, heap 10 GB and RSS warning 7 GB on a 24 GB Railway replica to
@@ -441,10 +442,38 @@ export class SeoRenderer {
       if (pathParts.length > 2) {
         additionalData.genreSlug = pathParts[2];
         additionalData.genreName = pathParts[2].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        // DALGA 2 W2.1: Fetch top 12 stations matching this genre for SSR <img> grid (image indexing)
+        try {
+          const term = pathParts[2].replace(/-/g, ' ');
+          // Escape regex meta-chars (replit.md SSRF/NoSQL rule)
+          const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const topStations = await withSignal(
+            Station.find({
+              tags: { $regex: escapedTerm, $options: 'i' },
+              slug: { $exists: true, $ne: '' },
+              $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+              votes: { $gt: 0 },
+            })
+              .sort({ votes: -1 })
+              .limit(24)
+              .select('name slug favicon logoAssets country tags votes descriptions url homepage bitrate lastCheckOk')
+              .lean(),
+            signal
+          );
+          // DALGA 2 W2.REVIEW P2: Apply junk-station gate per replit.md INDEXABILITY-GATE rule.
+          // Use isJunkStation + noIndex (not full isStationIndexableInLanguage which requires
+          // BOTH meta+full descriptions per language — too restrictive for our image-grid surface
+          // where the station's own SSR page already enforces full language gate).
+          additionalData.popularStations = topStations
+            .filter((s: any) => s.noIndex !== true && !isJunkStation(s))
+            .slice(0, 12);
+        } catch (error: any) {
+          if (error?.name === 'AbortError' || signal?.aborted) throw error;
+        }
       }
     } else if (cleanPath.startsWith('/stations')) {
       pageType = 'stations';
-    } else if (cleanPath.startsWith('/regions')) {
+    } else if (cleanPath.startsWith('/regions') || cleanPath.startsWith('/country')) {
       pageType = 'regions';
       // Extract region/country information for more specific SEO
       const pathParts = cleanPath.split('/');
@@ -460,6 +489,36 @@ export class SeoRenderer {
         }
         if (pathParts.length > 4) {
           additionalData.city = pathParts[4];
+        }
+        // DALGA 2 W2.2: Fetch top 12 stations from this country for SSR flag + <img> grid
+        try {
+          const countryName = additionalData.regionName as string;
+          const escapedCountry = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const topStations = await withSignal(
+            Station.find({
+              country: { $regex: `^${escapedCountry}$`, $options: 'i' },
+              slug: { $exists: true, $ne: '' },
+              $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+              votes: { $gt: 0 },
+            })
+              .sort({ votes: -1 })
+              .limit(24)
+              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk')
+              .lean(),
+            signal
+          );
+          // DALGA 2 W2.REVIEW P2: Junk gate via isJunkStation + noIndex (see W2.1 comment).
+          const indexableStations = topStations.filter((s: any) =>
+            s.noIndex !== true && !isJunkStation(s)
+          );
+          additionalData.popularStations = indexableStations.slice(0, 12);
+          // Pull lowercase ISO countryCode from first matching station for flagcdn.com
+          const cc = (topStations[0] as any)?.countryCode;
+          if (cc && typeof cc === 'string' && /^[a-z]{2}$/i.test(cc)) {
+            additionalData.countryCode = cc.toLowerCase();
+          }
+        } catch (error: any) {
+          if (error?.name === 'AbortError' || signal?.aborted) throw error;
         }
       }
     } else if (cleanPath === '/tv') {
@@ -806,6 +865,26 @@ export class SeoRenderer {
       .replace(/'/g, '&#x27;');
   }
 
+  /**
+   * Pick a valid logo URL from a station object. Trims whitespace and requires
+   * http(s) scheme so SSR <img> never renders a broken `src`. Used by both
+   * home popular-stations grid and station detail page (DALGA 1).
+   */
+  private pickLogoUrl(station: any): string | null {
+    const candidates = [
+      station?.logoAssets?.webp256,
+      station?.logoAssets?.webp96,
+      station?.favicon,
+    ];
+    for (const c of candidates) {
+      if (typeof c === 'string') {
+        const trimmed = c.trim();
+        if (trimmed && /^https?:\/\//i.test(trimmed)) return trimmed;
+      }
+    }
+    return null;
+  }
+
   private getH1Text(pageType: string, language: string, translations: Record<string, string>, seoTags?: any, stationData?: any, additionalData?: any): string {
     // Helper function to get localized text from DATABASE ONLY (no hardcoded translations)
     const FALLBACK_TEXTS: Record<string, string> = {
@@ -913,11 +992,11 @@ export class SeoRenderer {
             <nav class="main-navigation">
               <h2>${this.escapeHtml(getLocalizedText('explore_mega_radio', 'Explore Mega Radio'))}</h2>
               <ul>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}users">${this.escapeHtml(getLocalizedText('nav_users', 'Community'))}</a></li>
+                <li><a href="/${language + '/'}genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
+                <li><a href="/${language + '/'}regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
+                <li><a href="/${language + '/'}stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="/${language + '/'}recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
+                <li><a href="/${language + '/'}users">${this.escapeHtml(getLocalizedText('nav_users', 'Community'))}</a></li>
               </ul>
             </nav>
             
@@ -931,7 +1010,8 @@ export class SeoRenderer {
                   // Prefix-all canonical: /<lang>/<localized-station>/<slug> for ALL languages including English
                   const stationSegment = urlTranslations?.get(`${language}:station`) || 'station';
                   const stationUrl = `/${language}/${stationSegment}/${slug}`;
-                  const logo = station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.favicon || '/images/default-station.png';
+                  // pickLogoUrl: trim + http(s) scheme guard (architect P1) — never render broken src
+                  const logo = this.pickLogoUrl(station) || '/images/default-station.png';
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
                   const altText = country ? `${stationName} — ${country}` : stationName;
@@ -952,14 +1032,14 @@ export class SeoRenderer {
             <section class="popular-genres">
               <h2>${this.escapeHtml(getLocalizedText('popular_genres_title', 'Popular Radio Genres'))}</h2>
               <ul>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/pop">${this.escapeHtml(getLocalizedText('genre_pop_radio', 'Pop Radio Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/rock">${this.escapeHtml(getLocalizedText('genre_rock_radio', 'Rock Radio Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/jazz">${this.escapeHtml(getLocalizedText('genre_jazz_radio', 'Jazz Radio Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/classical">${this.escapeHtml(getLocalizedText('genre_classical_radio', 'Classical Radio Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/electronic">${this.escapeHtml(getLocalizedText('genre_electronic_radio', 'Electronic Radio Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/country">${this.escapeHtml(getLocalizedText('genre_country_radio', 'Country Radio Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/hip-hop">${this.escapeHtml(getLocalizedText('genre_hiphop_radio', 'Hip Hop Radio Stations'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}genres/reggae">${this.escapeHtml(getLocalizedText('genre_reggae_radio', 'Reggae Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/pop">${this.escapeHtml(getLocalizedText('genre_pop_radio', 'Pop Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/rock">${this.escapeHtml(getLocalizedText('genre_rock_radio', 'Rock Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/jazz">${this.escapeHtml(getLocalizedText('genre_jazz_radio', 'Jazz Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/classical">${this.escapeHtml(getLocalizedText('genre_classical_radio', 'Classical Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/electronic">${this.escapeHtml(getLocalizedText('genre_electronic_radio', 'Electronic Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/country">${this.escapeHtml(getLocalizedText('genre_country_radio', 'Country Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/hip-hop">${this.escapeHtml(getLocalizedText('genre_hiphop_radio', 'Hip Hop Radio Stations'))}</a></li>
+                <li><a href="/${language + '/'}genres/reggae">${this.escapeHtml(getLocalizedText('genre_reggae_radio', 'Reggae Radio Stations'))}</a></li>
               </ul>
             </section>
             
@@ -967,18 +1047,18 @@ export class SeoRenderer {
             <section class="popular-countries">
               <h2>${this.escapeHtml(getLocalizedText('popular_countries_title', 'Radio Stations by Country'))}</h2>
               <ul>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/united-states">${this.escapeHtml(getLocalizedText('country_usa_radio', 'United States Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/united-kingdom">${this.escapeHtml(getLocalizedText('country_uk_radio', 'United Kingdom Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/germany">${this.escapeHtml(getLocalizedText('country_germany_radio', 'Germany Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/france">${this.escapeHtml(getLocalizedText('country_france_radio', 'France Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/canada">${this.escapeHtml(getLocalizedText('country_canada_radio', 'Canada Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/australia">${this.escapeHtml(getLocalizedText('country_australia_radio', 'Australia Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/brazil">${this.escapeHtml(getLocalizedText('country_brazil_radio', 'Brazil Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/italy">${this.escapeHtml(getLocalizedText('country_italy_radio', 'Italy Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/spain">${this.escapeHtml(getLocalizedText('country_spain_radio', 'Spain Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/turkey">${this.escapeHtml(getLocalizedText('country_turkey_radio', 'Turkey Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/japan">${this.escapeHtml(getLocalizedText('country_japan_radio', 'Japan Radio'))}</a></li>
-                <li><a href="/${language === 'en' ? '' : language + '/'}regions/india">${this.escapeHtml(getLocalizedText('country_india_radio', 'India Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/united-states">${this.escapeHtml(getLocalizedText('country_usa_radio', 'United States Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/united-kingdom">${this.escapeHtml(getLocalizedText('country_uk_radio', 'United Kingdom Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/germany">${this.escapeHtml(getLocalizedText('country_germany_radio', 'Germany Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/france">${this.escapeHtml(getLocalizedText('country_france_radio', 'France Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/canada">${this.escapeHtml(getLocalizedText('country_canada_radio', 'Canada Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/australia">${this.escapeHtml(getLocalizedText('country_australia_radio', 'Australia Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/brazil">${this.escapeHtml(getLocalizedText('country_brazil_radio', 'Brazil Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/italy">${this.escapeHtml(getLocalizedText('country_italy_radio', 'Italy Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/spain">${this.escapeHtml(getLocalizedText('country_spain_radio', 'Spain Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/turkey">${this.escapeHtml(getLocalizedText('country_turkey_radio', 'Turkey Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/japan">${this.escapeHtml(getLocalizedText('country_japan_radio', 'Japan Radio'))}</a></li>
+                <li><a href="/${language + '/'}regions/india">${this.escapeHtml(getLocalizedText('country_india_radio', 'India Radio'))}</a></li>
               </ul>
             </section>
             
@@ -989,11 +1069,11 @@ export class SeoRenderer {
               
               <nav class="footer-links">
                 <ul>
-                  <li><a href="/${language === 'en' ? '' : language + '/'}about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
-                  <li><a href="/${language === 'en' ? '' : language + '/'}contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
-                  <li><a href="/${language === 'en' ? '' : language + '/'}privacy-policy">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
-                  <li><a href="/${language === 'en' ? '' : language + '/'}terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
-                  <li><a href="/${language === 'en' ? '' : language + '/'}applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
+                  <li><a href="/${language + '/'}about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
+                  <li><a href="/${language + '/'}contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
+                  <li><a href="/${language + '/'}privacy-policy">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
+                  <li><a href="/${language + '/'}terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
+                  <li><a href="/${language + '/'}applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
                 </ul>
               </nav>
             </section>
@@ -1007,6 +1087,22 @@ export class SeoRenderer {
             <h1>${this.escapeHtml(h1Text)}</h1>
             ${stationData ? `
               <div class="station-info">
+                ${(() => {
+                  // Station logo - SEO image surface for Google/Bing image indexing (DALGA 1 W1.1)
+                  // pickLogoUrl: trim + http(s) scheme guard (architect P1) — never render broken src
+                  // fetchpriority intentionally NOT "high": logo is not always LCP; let browser decide (architect P1)
+                  const logo = this.pickLogoUrl(stationData);
+                  if (!logo) return '';
+                  const name = this.escapeHtml(stationData.name || 'Radio Station');
+                  const country = stationData.country ? this.escapeHtml(stationData.country) : '';
+                  const altText = country ? `${name} logo — ${country}` : `${name} logo`;
+                  const caption = country ? `${name} — ${country}` : name;
+                  return `
+                <figure class="station-logo">
+                  <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="eager" decoding="async">
+                  <figcaption>${caption}</figcaption>
+                </figure>`;
+                })()}
                 <!-- AI-Generated Description (unique per station) -->
                 <h2>${this.escapeHtml(getLocalizedText('about_station', 'About ' + stationData.name))}</h2>
                 ${stationData.descriptions && stationData.descriptions[language] ? (() => {
@@ -1063,10 +1159,10 @@ export class SeoRenderer {
                 <!-- Navigation -->
                 <nav class="explore-nav">
                   <ul>
-                    <li><a href="/${language === 'en' ? '' : language + '/'}genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse All Radio Genres'))}</a></li>
-                    <li><a href="/${language === 'en' ? '' : language + '/'}regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio Stations by Country'))}</a></li>
-                    <li><a href="/${language === 'en' ? '' : language + '/'}stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Explore All Stations'))}</a></li>
-                    <li><a href="/${language === 'en' ? '' : language + '/'}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                    <li><a href="/${language + '/'}genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse All Radio Genres'))}</a></li>
+                    <li><a href="/${language + '/'}regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio Stations by Country'))}</a></li>
+                    <li><a href="/${language + '/'}stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Explore All Stations'))}</a></li>
+                    <li><a href="/${language + '/'}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                   </ul>
                 </nav>
               </div>
@@ -1078,7 +1174,7 @@ export class SeoRenderer {
       case 'genres':
         {
           const genreName = additionalData?.genreName || '';
-          const langPrefix = language === 'en' ? '' : `/${language}`;
+          const langPrefix = `/${language}`;
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
@@ -1087,6 +1183,31 @@ export class SeoRenderer {
               <p>${this.escapeHtml(getLocalizedText('seo_listen_to_live_radio_from', 'Listen to live radio from'))} ${this.escapeHtml(genreName)}. ${this.escapeHtml(getLocalizedText('seo_discover_local', 'Discover local'))} ${this.escapeHtml(genreName)} ${this.escapeHtml(getLocalizedText('seo_music_and_shows', 'music and shows'))} ${this.escapeHtml(getLocalizedText('streaming_free', 'streaming for free on Mega Radio'))}.</p>
               <p>${this.escapeHtml(getLocalizedText('hero_over_100_countries', 'Browse 60,000+ radio stations from 120+ countries'))} — ${this.escapeHtml(genreName)} ${this.escapeHtml(getLocalizedText('seo_radio_stations', 'Radio Stations'))} ${this.escapeHtml(getLocalizedText('streaming_available_24_7', 'available 24/7 for free streaming'))}.</p>
             </section>` : ''}
+            ${additionalData?.popularStations && additionalData.popularStations.length > 0 ? `
+            <!-- DALGA 2 W2.1: Top stations for this genre — SEO image surface -->
+            <section class="popular-stations">
+              <h2>${this.escapeHtml(getLocalizedText('popular_stations', 'Popular Radio Stations'))}</h2>
+              <ul class="popular-stations-list">
+                ${additionalData.popularStations.map((station: any) => {
+                  const slug = station.slug || station._id;
+                  const stationSegment = urlTranslations?.get(`${language}:station`) || 'station';
+                  const stationUrl = `/${language}/${stationSegment}/${slug}`;
+                  const logo = this.pickLogoUrl(station);
+                  if (!logo) return '';
+                  const stationName = this.escapeHtml(station.name || 'Radio Station');
+                  const country = station.country ? this.escapeHtml(station.country) : '';
+                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  return `
+                    <li>
+                      <a href="${stationUrl}">
+                        <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">
+                        <h3>${stationName}</h3>
+                      </a>
+                    </li>`;
+                }).join('')}
+              </ul>
+            </section>
+            ` : ''}
             <nav>
               <ul>
                 <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>
@@ -1103,15 +1224,49 @@ export class SeoRenderer {
       case 'regions':
         {
           const regionName = additionalData?.regionName || additionalData?.country || additionalData?.region || '';
-          const langPrefix = language === 'en' ? '' : `/${language}`;
+          const langPrefix = `/${language}`;
+          const cc = additionalData?.countryCode;
+          const flagSrc = cc && /^[a-z]{2}$/i.test(cc) ? `https://flagcdn.com/w320/${cc.toLowerCase()}.png` : '';
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
+            ${flagSrc ? `
+            <!-- DALGA 2 W2.2: Country flag — SEO image surface -->
+            <figure class="country-flag">
+              <img src="${flagSrc}" alt="${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('country_flag', 'flag'))}" width="320" height="213" loading="eager" decoding="async">
+              <figcaption>${this.escapeHtml(regionName)}</figcaption>
+            </figure>
+            ` : ''}
             ${regionName ? `
             <section>
               <p>${this.escapeHtml(getLocalizedText('seo_explore_radio_stations_from', 'Explore radio stations from'))} ${this.escapeHtml(regionName)}. ${this.escapeHtml(getLocalizedText('seo_listen_to_regional_broadcasting', 'Listen to regional broadcasting'))} ${this.escapeHtml(getLocalizedText('streaming_free', 'for free on Mega Radio'))}.</p>
               <p>${this.escapeHtml(getLocalizedText('hero_over_100_countries', 'Browse 60,000+ radio stations from 120+ countries'))} — ${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('seo_radio_stations', 'Radio Stations'))} ${this.escapeHtml(getLocalizedText('streaming_available_24_7', 'available 24/7'))}.</p>
             </section>` : ''}
+            ${additionalData?.popularStations && additionalData.popularStations.length > 0 ? `
+            <!-- DALGA 2 W2.2: Top stations from this country — SEO image surface -->
+            <section class="popular-stations">
+              <h2>${this.escapeHtml(getLocalizedText('popular_stations', 'Popular Radio Stations'))}</h2>
+              <ul class="popular-stations-list">
+                ${additionalData.popularStations.map((station: any) => {
+                  const slug = station.slug || station._id;
+                  const stationSegment = urlTranslations?.get(`${language}:station`) || 'station';
+                  const stationUrl = `/${language}/${stationSegment}/${slug}`;
+                  const logo = this.pickLogoUrl(station);
+                  if (!logo) return '';
+                  const stationName = this.escapeHtml(station.name || 'Radio Station');
+                  const country = station.country ? this.escapeHtml(station.country) : '';
+                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  return `
+                    <li>
+                      <a href="${stationUrl}">
+                        <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">
+                        <h3>${stationName}</h3>
+                      </a>
+                    </li>`;
+                }).join('')}
+              </ul>
+            </section>
+            ` : ''}
             <nav>
               <ul>
                 <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'All Regions'))}</a></li>
@@ -1127,7 +1282,7 @@ export class SeoRenderer {
 
       case 'search':
         {
-          const langPrefix = language === 'en' ? '' : `/${language}`;
+          const langPrefix = `/${language}`;
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
@@ -1149,7 +1304,7 @@ export class SeoRenderer {
 
       case 'faq':
         {
-          const langPrefix = language === 'en' ? '' : `/${language}`;
+          const langPrefix = `/${language}`;
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
@@ -1215,7 +1370,8 @@ export class SeoRenderer {
     };
 
     // LOCALIZED: WebSite Schema with SearchAction (language-aware URLs)
-    const searchPath = language === 'en' ? '/search' : `/${language}/search`;
+    // Prefix-all canonical: /${language}/search for ALL languages including English (DALGA 2 W2.3 fix)
+    const searchPath = `/${language}/search`;
     const websiteSchema = {
       "@context": "https://schema.org",
       "@type": "WebSite",
@@ -1429,10 +1585,12 @@ export class SeoRenderer {
     }
 
     // ItemList Schema for popular stations on homepage
+    // Prefix-all canonical + localized station segment for ALL languages (DALGA 2 W2.3 fix)
     let popularStationsSchema: any = null;
     if (additionalData?.popularStations && additionalData.popularStations.length > 0) {
+      const stationSegmentForJsonLd = urlTranslations?.get(`${language}:station`) || 'station';
       const stationItems = additionalData.popularStations.map((station: any, index: number) => {
-        const stationUrl = `${baseDomain}${language === 'en' ? '' : '/' + language}/station/${station.slug || station._id}`;
+        const stationUrl = `${baseDomain}/${language}/${stationSegmentForJsonLd}/${station.slug || station._id}`;
         const stationLogo = station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.favicon || `${baseDomain}/images/default-station.png`;
         
         return {
@@ -1462,9 +1620,11 @@ export class SeoRenderer {
     }
 
     // RadioStation Schema for individual station pages
+    // Prefix-all canonical + localized station segment for ALL languages (DALGA 2 W2.3 fix)
     let radioStationSchema: any = null;
     if (stationData) {
-      const stationUrl = `${baseDomain}${language === 'en' ? '' : '/' + language}/station/${stationData.slug || stationData._id}`;
+      const stationSegmentForRadioJsonLd = urlTranslations?.get(`${language}:station`) || 'station';
+      const stationUrl = `${baseDomain}/${language}/${stationSegmentForRadioJsonLd}/${stationData.slug || stationData._id}`;
       const stationLogo = stationData.logoAssets?.webp256 || stationData.logoAssets?.webp96 || stationData.favicon || `${baseDomain}/images/default-station.png`;
       
       radioStationSchema = {

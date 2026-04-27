@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and management. It offers comprehensive administrative controls, real-time monitoring, and AI-driven content delivery to boost user engagement. The project's vision is to become a leading global digital radio platform by providing a dynamic and feature-rich experience for both listeners and administrators. Key capabilities include extensive audio format support, advanced SEO, robust user management, social interaction features, geolocation services, and advanced search functionality.
+The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and management. It aims to provide a personalized listening experience for users and comprehensive management tools for broadcasters. The project's vision is to achieve market leadership by supporting extensive audio formats, advanced SEO, robust user management, social interaction features, geolocation, sophisticated search capabilities, data-driven trends, and AI-powered content recommendations, creating a dynamic platform for radio enthusiasts worldwide.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -30,9 +30,9 @@ CRITICAL CANONICAL RULE: Prefix-all strategy is enforced for ALL languages inclu
 
 CRITICAL SEO REGEX RULE: Both `server/index.ts` AND `server/index-web.ts` must use dynamically-built regex from URL_TRANSLATIONS (collectSeoTranslations). NEVER hardcode URL patterns — they go stale when translations changes. Both singular (`station`) and plural (`stations`) forms must be included. Both files must include `privacyPage` and `countryPage` in `isSeoEligiblePage`.
 
-CRITICAL RATE LIMIT RULE: Major search bots (Google, Bing, Yandex, Baidu, DuckDuckGo, Apple) are FULLY EXEMPT from all rate limits — both API rate limiter in index-api.ts and SSR bot rate limiter in index-web.ts. Minor bots get 60/min. Previous value of 15/min caused Google crawling failures.
+CRITICAL RATE LIMIT RULE: Major search bots (Google, Bing, Yandex, Baidu, DuckDuckGo, Apple) are FULLY EXEMPT from all rate limits — both API rate limiter in index-api.ts and SSR bot rate limiter in index-web.ts. Minor bots get 60/min.
 
-CRITICAL SSRF RULE: ALL outbound requests from server-side code (safeFetch in safe-fetch.ts, stream-proxy-routes.ts base64 + URL-decoded fallback paths, Shoutcast manual redirect handler, direct fetch path) MUST call validateOutboundUrl on every redirect hop, NOT just the initial URL. `redirect:'follow'` is forbidden — use `redirect:'manual'` with a max-5-hop loop. Otherwise a public origin can 30x into 169.254.169.254 (cloud metadata), localhost, or other internal targets. validateOutboundUrl blocks IPv6 6to4 (2002::/16) and Teredo (2001::/32) tunnels in addition to standard private/loopback/link-local ranges. STREAM_BLOCKED_PORTS in stream-proxy-routes.ts is the single source of truth for the stream/image proxy port policy — a BLOCKLIST (SSH, SMTP, DNS, SMB, DB/cache ports) passed via `blockedPorts` to validateOutboundUrl, not an allowlist. Narrow allowlists previously rejected ~3400 legitimate non-standard radio ports (e.g. :5032, :8201, :2199) silently; the IP-based SSRF defense (private/loopback/link-local/CGNAT/cloud-metadata) still fully guards against internal pivoting. Stream proxy MUST use a fixed media-player User-Agent (`VLC/3.0.20 LibVLC/3.0.20`) on all outbound fetches — forwarding the browser UA causes origins like stream.zeno.fm to return HTTP 401. NoSQL $regex with user input MUST be escaped with escapeRegex() (regex meta-chars: `.*+?^${}()|[]\\`) — applies to misc-routes.ts and user-auth-routes.ts user-search filters.
+CRITICAL SSRF RULE: ALL outbound requests from server-side code (safeFetch in safe-fetch.ts, stream-proxy-routes.ts base64 + URL-decoded fallback paths, Shoutcast manual redirect handler, direct fetch path) MUST call validateOutboundUrl on every redirect hop, NOT just the initial URL. `redirect:'follow'` is forbidden — use `redirect:'manual'` with a max-5-hop loop. Otherwise a public origin can 30x into 169.254.169.254 (cloud metadata), localhost, or other internal targets. validateOutboundUrl blocks IPv6 6to4 (2002::/16) and Teredo (2001::/32) tunnels in addition to standard private/loopback/link-local ranges. STREAM_BLOCKED_PORTS in stream-proxy-routes.ts is the single source of truth for the stream/image proxy port policy — a BLOCKLIST (SSH, SMTP, DNS, SMB, DB/cache ports) passed via `blockedPorts` to validateOutboundUrl, not an allowlist. Stream proxy MUST use a fixed media-player User-Agent (`VLC/3.0.20 LibVLC/3.0.20`) on all outbound fetches — forwarding the browser UA causes origins like stream.zeno.fm to return HTTP 401. NoSQL $regex with user input MUST be escaped with escapeRegex() (regex meta-chars: `.*+?^${}()|[]\\`) — applies to misc-routes.ts and user-auth-routes.ts user-search filters.
 
 CRITICAL CORS RULE: CORS middleware in index-api.ts must run BEFORE rate limiters. If rate limiter returns 429 before CORS headers are set, browsers block the response entirely — causing "No Access-Control-Allow-Origin" errors and making the site appear completely down. Origin-aware CORS: requests from themegaradio.com get `Access-Control-Allow-Credentials: true`; other origins get `Access-Control/Allow-Origin: *`.
 
@@ -40,7 +40,7 @@ CRITICAL STRUCTURED DATA RULE: WebSite schema has @id=`{domain}/#website` and al
 
 CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` and `seo_listen_live_online` for localized rendering. Never hardcode English "from" or "Listen Live Online" in the station H1 template.
 
-CRITICAL ALIAS REDIRECT RULE: When a station is resolved via `slugAliases` (rather than the canonical `slug`), `server/seo-renderer.ts` MUST rebuild the redirect target via `buildLocalizedUrl(englishCanonical, actualLanguage, countryCode, urlTranslations)` — NEVER do a raw `cleanPath.replace(stationSlug, aliasMatch.slug)`. Reason: `cleanPath` returned by `getLanguageFromPath()` is already language-stripped AND reverse-translated to English (e.g. `/ar/mahta/-1` → cleanPath `/station/-1`). A raw replace produces `/station/<canonical>` which then triggers a 3-hop redirect chain (`/station/X` → `/en/station/X` → final localized) for non-English requests, dropping language signal and causing massive Google "Crawled – currently not indexed" duplication (~880K URLs as of Apr 2026). Single 301 hop to the correctly-localized canonical is mandatory. Also: the SSR redirect handler (`pageData.redirectTo` → `res.redirect(301, ...)`) MUST exist in BOTH `server/index-web.ts:704-710` AND `server/index.ts:921-940`. The monolithic `index.ts` entry path silently swallows the redirect if the handler is missing (returns 200 with stale alias content). Both entry points must stay in parity.
+CRITICAL ALIAS REDIRECT RULE: When a station is resolved via `slugAliases` (rather than the canonical `slug`), `server/seo-renderer.ts` MUST rebuild the redirect target via `buildLocalizedUrl(englishCanonical, actualLanguage, countryCode, urlTranslations)` — NEVER do a raw `cleanPath.replace(stationSlug, aliasMatch.slug)`. Single 301 hop to the correctly-localized canonical is mandatory. Also: the SSR redirect handler (`pageData.redirectTo` → `res.redirect(301, ...)`) MUST exist in BOTH `server/index-web.ts:704-710` AND `server/index.ts:921-940`. Both entry points must stay in parity.
 
 CRITICAL MOBILE PERFORMANCE RULE: Mobile PageSpeed score'u korumak için:
 1) `vite.config.ts` `rollupOptions.output.manualChunks` KORUNMALI — react-vendor / query-vendor / radix-vendor / icons-vendor / media-vendor / forms-vendor ayrımı tree-shaking'i bozmadan lucide-react ikon parçalanmasını engeller.
@@ -51,13 +51,21 @@ CRITICAL MOBILE PERFORMANCE RULE: Mobile PageSpeed score'u korumak için:
 6) `client/index.html` `<link rel="preconnect" href="https://api.themegaradio.com" crossorigin>` 3-service split deploy'da KORUNMALI.
 7) `TranslationPreloader.tsx` background prefetch (en+de) `'load'` event SONRASI çalışmalı.
 
-CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed only via `getIndexableLanguagesForStation(station, qualifiedLangs)` / `isStationIndexableInLanguage(station, lang, qualifiedLangs)` from `server/seo/junk-station-rules.ts`. Sitemap inclusion, SSR robots/noindex + hreflang emission, SSR station-branch CANONICAL selection, and the 410-Gone decision MUST all use this exact gate. `qualifiedLangs` MUST come from `server/seo/qualified-languages.ts`. Junk stations MUST serve 410 Gone via `sendJunkGone()` in ALL paths. Cache-HIT paths MUST cross-check `performanceCache.getPageData(cleanUrl).pageData.stationIsJunk`. `pageDataCache.stdTTL` MUST be >= `seoHtmlCache.stdTTL`. Junk pages MUST emit zero hreflang alternates. Hreflang on a valid station MUST be restricted via `generateLanguageUrls(..., allowedLanguages)` using the same `indexable` array. `getEligibleLanguages(station)` MUST include every language present in `station.descriptions` with BOTH `full` AND `meta` non-empty.
+CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed only via `getIndexableLanguagesForStation(station, qualifiedLangs)` / `isStationIndexableInLanguage(station, lang, qualifiedLangs)` from `server/seo/junk-station-rules.ts`. Sitemap inclusion, SSR robots/noindex + hreflang emission, SSR station-branch CANONICAL selection, and the 410-Gone decision MUST all use this exact gate. Junk stations MUST serve 410 Gone via `sendJunkGone()` in ALL paths. Cache-HIT paths MUST cross-check `performanceCache.getPageData(cleanUrl).pageData.stationIsJunk`. `pageDataCache.stdTTL` MUST be >= `seoHtmlCache.stdTTL`. Junk pages MUST emit zero hreflang alternates. Hreflang on a valid station MUST be restricted via `generateLanguageUrls(..., allowedLanguages)` using the same `indexable` array.
 
-CRITICAL COUNTRY-PREFIX REDIRECT RULE: 2-letter URL prefixes that exist in `COUNTRY_TO_LANGUAGE` but NOT in enabled `SEO_LANGUAGES` (e.g. `/ph`, `/us`, `/au`, `/ca`, `/gb`, `/nz`, `/sg`, `/in`, `/ke`) MUST 301-redirect to `/<mapped-language>` BEFORE any SSR or security-header middleware runs. Without this redirect, those URLs render `/en` content with self-canonical to `/ph` (etc.) and Google reports "Duplicate without user-selected canonical" for ~40 country prefixes. Implemented in BOTH `server/index-web.ts` and `server/index.ts` (named `COUNTRY_PREFIX_REDIRECTS` / `COUNTRY_PREFIX_REDIRECTS_MAIN`). Map is built from `Object.entries(COUNTRY_TO_LANGUAGE)` filtered by `!seoLangCodes.has(country) && seoLangCodes.has(lang)`. Regex `/^\/([a-z]{2})(\/.*)?$/i` only matches exactly 2-letter first segments — never touches 3+ letter routes (`/api`, `/admin`, `/genres`, etc.) or enabled SEO langs (`/en`, `/tr`, `/de`, `/sv` ...).
+CRITICAL COUNTRY-PREFIX REDIRECT RULE: 2-letter URL prefixes that exist in `COUNTRY_TO_LANGUAGE` but NOT in enabled `SEO_LANGUAGES` (e.g. `/ph`, `/us`, `/au`, `/ca`, `/gb`, `/nz`, `/sg`, `/in`, `/ke`) MUST 301-redirect to `/<mapped-language>` BEFORE any SSR or security-header middleware runs. Implemented in BOTH `server/index-web.ts` and `server/index.ts`. Regex `/^\/([a-z]{2})(\/.*)?$/i` only matches exactly 2-letter first segments.
 
-CRITICAL AUTH NOINDEX RULE: Auth pages (`/login`, `/signup`, `/sign-in`, `/sign-up`, `/register`, `/forgot-password`, `/reset-password`, `/change-password`, `/auth/*` — with optional `/<lang>/` prefix) MUST emit `X-Robots-Tag: noindex, follow` AND must NOT be blocked by `Disallow:` in robots.txt. Reason: when a path is Disallow'ed, Google may "index without content" via URL discovery (sitemap, backlinks) — the noindex header is never seen because the bot can't fetch it. The single source of truth for the auth regex is `AUTH_NOINDEX_PATH` in `server/index-web.ts` and `AUTH_NOINDEX_PATH_MAIN` in `server/index.ts` (mirrored). robots.txt (server/routes/seo-sitemap-routes.ts) MUST NOT contain `Disallow: /*/login`, `Disallow: /*/signup`, or `Disallow: /*/forgot-password` — only admin/settings/profile/messages/analytics/import-export/search may stay Disallow'ed.
+CRITICAL AUTH NOINDEX RULE: Auth pages (`/login`, `/signup`, `/sign-in`, `/sign-up`, `/register`, `/forgot-password`, `/reset-password`, `/change-password`, `/auth/*` — with optional `/<lang>/` prefix) MUST emit `X-Robots-Tag: noindex, follow` AND must NOT be blocked by `Disallow:` in robots.txt. The single source of truth for the auth regex is `AUTH_NOINDEX_PATH` in `server/index-web.ts` and `AUTH_NOINDEX_PATH_MAIN` in `server/index.ts` (mirrored). robots.txt MUST NOT contain `Disallow: /*/login`, `Disallow: /*/signup`, or `Disallow: /*/forgot-password`.
 
-CRITICAL SSR IMG SURFACE RULE: Home SSR HTML MUST contain real `<img>` tags for the top-10 popular stations (S3 `logoAssets.webp256` URLs) so Bing/Google image crawlers can discover station logos. JSON-LD `ImageObject` alone is insufficient for image indexing — visible `<img src=... alt=... width=256 height=256 loading=lazy>` is required. Implemented in `server/seo-renderer.ts` `generateHtmlBody` home branch (line ~927). The injected anchor URLs MUST follow the prefix-all canonical: `/<lang>/<localized-station-segment>/<slug>` for ALL languages including English (NEVER `/station/<slug>` for English, NEVER missing `/en` prefix). `localized-station-segment` comes from `urlTranslations.get('${language}:station')` (e.g. `tr:station` → `istasyon`, `de:station` → `sender`). The `urlTranslations` Map MUST be passed from `server/index-web.ts` AND `server/index.ts` to `generateHtmlBody({ ..., urlTranslations })` — both entrypoints must stay in parity.
+CRITICAL SSR IMG SURFACE RULE: Home SSR HTML MUST contain real `<img>` tags for the top-10 popular stations (S3 `logoAssets.webp256` URLs) so Bing/Google image crawlers can discover station logos. Visible `<img src=... alt=... width=256 height=256 loading=lazy>` is required. Implemented in `server/seo-renderer.ts` `generateHtmlBody` home branch (line ~927). The injected anchor URLs MUST follow the prefix-all canonical: `/<lang>/<localized-station-segment>/<slug>` for ALL languages including English.
+
+CRITICAL SSR STATION DETAIL IMG RULE: Station detay sayfa SSR HTML'inde EXACTLY 1 station logo `<img>` tag bulunmalı (genelde `<figure>` içinde, alt="{name} logo — {country}", width/height=256, loading=eager+decoding=async). `pickLogoUrl(station)` helper'ı (server/seo-renderer.ts) kullanılır: `logoAssets.webp256 → webp96 → favicon` fallback chain, http(s) scheme guard, trim. `fetchpriority=high` kullanılmaz — LCP optimizasyonu için sadece loading=eager yeterli. Junk station 410 yolunda `<img>` üretilmez.
+
+CRITICAL IMAGE SITEMAP NAMESPACE RULE: `/sitemap-stations-{lang}-{chunk}.xml` `<urlset>` MUST declare `xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"`. Her `<url>` içinde, station gerçek S3 logo URL'i varsa (`logoAssets.webp256 → webp96 → favicon`, http(s) scheme + `default-station.{png,webp,jpg,jpeg,svg}` placeholder reject), tek bir `<image:image><image:loc>...</image:image:loc></image:image>` child emit edilir. URL'ler XML-escape edilir (& < > " '). Mongo `.select()` `logoAssets favicon` field'larını içermeli. `/sitemap-images.xml` ve `/sitemap-images-{N}.xml` 410 Gone döner — sadece `image:image` extension kullanılır, ayrı image sitemap yok.
+
+CRITICAL SSR PREFIX-ALL LANGPREFIX RULE: Tüm SSR branch'lerinde (home/station/genres/regions/country/search/faq/about/privacy) `<a>` href ve JSON-LD `url`/`@id` üretiminde, `langPrefix` veya inline language prefix MUTLAKA `/${language}` formatında — `language === 'en' ? '' : '/'+language` ASLA kullanılmaz. `searchPath` (WebSite SearchAction `urlTemplate`), ItemList `stationUrl`, RadioStation `@id`/`url` dahil. Localized URL segment için `urlTranslations.get(\`${language}:station\`)` (en→station, tr→istasyon, de→sender) kullanılır. Bu kural seo-config.ts CRITICAL CANONICAL RULE ile uyumlu — /en homepage `/en` self-canonical, asla bare `/` değil.
+
+CRITICAL GENRES/REGIONS IMG GRID RULE: Genres ve Regions/Country SSR branch'leri Mongo'dan top-12 station fetch eder ve `<img>` grid üretir. Mongo `.select()` MUTLAKA `name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk` field'larını içermeli — eksik `url` field `isJunkStation` tarafından "empty-stream-url" olarak yorumlanır ve TÜM istasyonlar junk işaretlenir (grid 0 img verir). Junk filter sadece `!isJunkStation(s) && s.noIndex !== true` kullanır — `isStationIndexableInLanguage` BURADA KULLANILMAZ (over-restrictive: meta+full descriptions zorunluluğu image grid amacı için aşırı). Country page için `https://flagcdn.com/w320/{cc}.png` flag `<img>` da emit edilir.
 
 ## System Architecture
 
@@ -65,34 +73,34 @@ CRITICAL SSR IMG SURFACE RULE: Home SSR HTML MUST contain real `<img>` tags for 
 - **Framework**: Express.js with TypeScript.
 - **Database**: MongoDB with Mongoose.
 - **API**: REST API.
-- **Caching**: Multi-layer caching utilizing NodeCache and Redis.
+- **Caching**: Multi-layer caching with NodeCache and Redis.
 
 ### Frontend
 - **Framework**: React with TypeScript.
 - **Routing**: Wouter.
 - **State Management**: TanStack Query.
-- **UI**: Tailwind CSS with shadcn/ui for responsive design.
-- **Audio Player**: HLS.js integrated with Plyr for seamless audio streaming.
+- **UI**: Tailwind CSS with shadcn/ui.
+- **Audio Player**: HLS.js integrated with Plyr.
 
 ### Deployment
-- **Architecture**: A three-service split comprising `backend-api`, `frontend-web`, and `stream-proxy`.
-- **Containerization**: Docker for isolated and reproducible environments.
+- **Architecture**: A three-service split: `backend-api`, `frontend-web`, and `stream-proxy`.
+- **Containerization**: Docker.
 - **Monorepo**: All services are managed within a unified monorepo.
 
 ### Key Architectural Decisions
-- **Type Safety**: Enforced end-to-end using TypeScript and Zod for data validation.
-- **SEO Optimization**: Implemented through slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, robust indexing strategies, and Core Web Vitals optimization.
-- **Performance**: Achieved via multi-layer caching, database indexing, lazy loading, and server-side image optimization.
+- **Type Safety**: End-to-end type safety using TypeScript and Zod.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies.
+- **Performance**: Multi-layer caching, database indexing, lazy loading, and server-side image optimization.
 - **Geolocation**: Determined using Cloudflare headers and GPS.
-- **Audio Continuity**: Ensured with seamless playback across page navigations utilizing HLS.js and Plyr.
-- **User Engagement**: Driven by data-driven trends and AI-powered content recommendations.
-- **System Stability**: Maintained through multi-layer Out-Of-Memory prevention, a self-watchdog mechanism, MongoDB circuit breaker, and fail-fast exits.
+- **Audio Continuity**: Seamless playback across page navigations.
+- **User Engagement**: Data-driven trends and AI-powered content recommendations.
+- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast exits.
 - **SSR Protection**: Limits on concurrent Server-Side Rendering, timeouts, and bot rate limiting.
-- **Subscription System**: Designed with a flexible feature matrix to support various subscription plans.
+- **Subscription System**: Flexible feature matrix for various subscription plans.
 
 ## External Dependencies
-- **MongoDB Atlas**: Cloud-hosted NoSQL database service.
-- **Radio-Browser API**: External service for radio station information.
-- **ip-api.com**: Used for geolocation services.
-- **Cloudflare**: Utilized for CDN, caching, and Real User Monitoring (RUM) for Web Vitals.
-- **AWS S3**: Employed for scalable cloud storage of media assets.
+- **MongoDB Atlas**: Cloud-hosted NoSQL database.
+- **Radio-Browser API**: External radio station information service.
+- **ip-api.com**: Geolocation services.
+- **Cloudflare**: CDN, caching, and Real User Monitoring (RUM).
+- **AWS S3**: Scalable cloud storage for media assets.

@@ -526,7 +526,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         slug: { $exists: true, $ne: '' },
         $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
       })
-        .select('slug name url country countryCode language languageCodes bitrate _id updatedAt')
+        .select('slug name url country countryCode language languageCodes bitrate _id updatedAt logoAssets favicon')
         .sort({ votes: -1 })
         .skip(skip)
         .limit(stationsPerChunk)
@@ -536,7 +536,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // Build XML using array buffer (avoids string-concat quadratic allocation)
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`);
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">`);
 
       let stationCount = 0;
       for await (const station of stationCursor as any) {
@@ -561,6 +561,31 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     <lastmod>${stationLastMod}</lastmod>` : ''}
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`);
+
+        // DALGA 3 W3.1: Google Image Sitemap extension — surface station logos
+        // for image indexing. Only emit <image:image> when a real S3/favicon
+        // URL exists; never advertise the placeholder default-station.png.
+        const stationImg =
+          (station as any)?.logoAssets?.webp256 ||
+          (station as any)?.logoAssets?.webp96 ||
+          (station as any)?.favicon ||
+          undefined;
+        if (
+          stationImg &&
+          /^https?:\/\//i.test(stationImg) &&
+          !/default-station\.(png|webp|jpg|jpeg|svg)$/i.test(stationImg)
+        ) {
+          const imgEsc = stationImg
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&apos;');
+          parts.push(`
+    <image:image>
+      <image:loc>${imgEsc}</image:loc>
+    </image:image>`);
+        }
 
         // Hreflang alternates come from the same unified gate — guarantees
         // sitemap + SSR advertise the exact same alternate set.
@@ -711,6 +736,11 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
   });
   app.get("/sitemap-images-:i.xml", (_req, res) => {
+    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+  });
+  // DALGA 1 W1.2: digit'siz /sitemap-images.xml de SPA fallback yerine 410 dönmeli;
+  // aksi halde Google bunu geçerli sitemap sanıp parse hatası / soft-404 raporluyor.
+  app.get("/sitemap-images.xml", (_req, res) => {
     res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
   });
   app.get(/^\/sitemap-stations-(\d+)\.xml$/, (_req, res) => {
