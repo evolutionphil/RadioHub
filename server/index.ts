@@ -931,6 +931,10 @@ app.use((req, res, next) => {
         const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
         clearTimeout(reqTimeout);
         responded = true;
+        // Short cache (5 min) so when an alias is removed from the DB,
+        // CDN/browser stale 301s clear quickly instead of being cached
+        // indefinitely as heuristic fresh.
+        res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
         logger.log(`🔀 SEO 301 (alias): ${url} → ${redirectTo}`);
         res.redirect(301, redirectTo + queryString);
         return;

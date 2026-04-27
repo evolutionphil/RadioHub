@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It provides comprehensive administrative controls, real-time monitoring, and an enhanced user experience for digital audio content. Key capabilities include extensive audio format support, advanced SEO, robust user management, social interaction features, geolocation services, advanced search, user engagement analytics, trending station displays, and AI-powered content recommendations. The project aims to lead in digital audio by leveraging AI-driven content delivery and HLS session management for a superior listening experience.
+The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It provides comprehensive administrative controls, real-time monitoring, and an enhanced user experience for digital audio content. Key capabilities include extensive audio format support, advanced SEO, robust user management, social interaction features, geolocation services, advanced search, user engagement analytics, trending station displays, and AI-powered content recommendations. The project aims to lead in digital audio by leveraging AI-driven content delivery and HLS session management for a superior listening experience, positioning it as a significant player in the digital audio content market.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -57,7 +57,6 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Routing**: Wouter
 - **State Management**: TanStack Query
 - **UI**: Tailwind CSS with shadcn/ui for responsive design and an audio player.
-- **Build Tool**: Vite
 - **Audio Streaming**: HLS.js with Plyr
 
 ### Deployment
@@ -69,7 +68,7 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Type Safety**: End-to-end TypeScript with Zod validation.
 - **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing.
 - **Performance**: Multi-layer caching, database indexing, lazy loading, Core Web Vitals optimization, and server-side image optimization.
-- **Geolocation**: Cloudflare headers and GPS.
+- **Geolocation**: Cloudflare headers and GPS for accurate location.
 - **Audio Continuity**: Seamless audio playback across page navigations.
 - **User Engagement**: Data-driven trends and AI-powered recommendations.
 - **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast exits.
@@ -77,12 +76,12 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Subscription System**: Flexible feature matrix for various subscription plans.
 
 ## External Dependencies
-- **MongoDB Atlas**: Cloud database service.
-- **Radio-Browser API**: Third-party radio station data.
-- **ip-api.com**: Geolocation services.
-- **Cloudflare**: CDN, caching, and RUM Web Vitals.
+- **MongoDB Atlas**: Cloud-hosted database service.
+- **Radio-Browser API**: Provides third-party radio station data.
+- **ip-api.com**: Used for geolocation services.
+- **Cloudflare**: CDN, caching, and Real User Monitoring (RUM) Web Vitals.
 - **AWS S3**: Cloud storage for media assets.
-- **mongoose**: MongoDB Object Data Modeling (ODM).
+- **mongoose**: ODM library for MongoDB.
 - **@tanstack/react-query**: Data fetching and state management.
 - **axios**: HTTP client.
 - **node-cron**: Scheduling background tasks.
@@ -92,9 +91,9 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **react-hook-form**: Form validation and management.
 - **vite**: Fast frontend build tool.
 - **typescript**: Type safety.
-- **bcrypt**: Secure password hashing.
-- **zod**: Schema declaration and validation library.
+- **bcrypt**: Password hashing.
+- **zod**: Schema declaration and validation.
 - **hls.js**: HTTP Live Streaming (HLS) playback.
 - **plyr**: HTML5 media player.
 - **sharp**: High-performance image processing.
-- **multer**: Middleware for `multipart/form-data` handling (file uploads).
+- **multer**: Middleware for file uploads.
