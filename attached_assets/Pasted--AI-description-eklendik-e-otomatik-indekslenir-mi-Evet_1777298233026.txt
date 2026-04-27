@@ -1,0 +1,58 @@
+) AI description eklendikçe otomatik indekslenir mi?
+
+Evet, otomatik. INDEXABILITY-GATE kuralı getEligibleLanguages() üzerinden istasyonun descriptions[lang].meta ve descriptions[lang].full alanlarını okur. Yeni bir dilde her ikisi de doluysa:
+
+O dil için sayfa index, follow emit edilir (otomatik).
+Sitemap'te <xhtml:link rel="alternate" hreflang="..." olarak yayınlanır.
+Search Console "Excluded → noindex" sayısı düşer, "Indexed" artar.
+Yani arka tarafta AI desc batch'i çalıştırdıkça yeni diller kademeli olarak indekslenmeye başlar — kod tarafında ekstra deploy gerekmez.
+
+2) www vs non-www durumu
+
+https://themegaradio.com/ → 301 → /en (doğru)
+https://www.themegaradio.com/ → HTTP 404 (200 değil!)
+https://www.themegaradio.com/de/sender/classic-vinyl-hd → 404
+Yani duplicate content YOK — www tarafı sayfa servis etmiyor. Seobility'nin uyarısı yanıltıcı: gerçek duplicate sadece www = 200 olursa olur. Yine de en temiz davranış için Cloudflare'de www → apex 301 redirect kurmanı öneririm:
+
+Cloudflare Dashboard → Rules → Bulk Redirects veya Page Rules
+Source: www.themegaradio.com/* → Destination: https://themegaradio.com/$1 (301)
+Bunu sen Cloudflare panelinden 2 dakikada ekleyebilirsin. Kod değişikliği gerekmiyor. (CLOUDFLARE_API_KEY mevcut, istersen ben de API ile ekleyebilirim — ama "destructive" CF write op olduğu için onayına ihtiyacım var.)
+
+3) "Words from H1 heading not found in text" (DE sayfası)
+
+H1: Classic Vinyl HD aus The United States Of America — Jetzt Live Online Hören
+
+DE body'de "Classic Vinyl HD" + "United States" geçiyor ama "Jetzt Live Online Hören" kelime grubu intro paragrafında tekrar etmiyor. Seobility H1 kelimelerinin body'de geçmesini bekliyor.
+
+Çözüm: Station SSR'da AI description'ın hemen üstüne H1 anahtar kelimelerini içeren 1 cümlelik intro eklemek. Örneğin:
+
+"Classic Vinyl HD jetzt live online hören — aus The United States Of America."
+Bu seo-renderer.ts station branch'ında 1 satır eklemek demek, 5 dakikalık iş, 57 dile çevrilmiş template ile.
+
+4) 235 kelime sorunu (TR sayfası)
+
+Ölçüm: SSR body'de 230 kelime (Seobility 235 demiş, yakın). 250+ olması lazım.
+
+ÖNEMLİ — "Read more button" iddiasını test ettim: SSR HTML'inde "Read more" / "Daha fazla göster" / "Devamı" HİÇ YOK (count=0). Yani frontend UI'daki potansiyel "daha fazla" butonu SEO'yu etkilemez — Google SSR HTML'i tarar ve tüm AI description'ı zaten body'de görür. Endişene gerek yok bu noktada.
+
+Asıl sorun: TR'deki AI description DE'den biraz daha kısa (TR diline çevirisi compact). 250'ye çıkarmak için 2 yol var:
+
+A) Bu istasyon için TR AI description'ını yeniden üret (daha uzun prompt) — runtime aksiyonu, kod yok
+B) Station SSR template'ine 20-30 kelimelik static "metin doldurucu" ekle (her dilde tercüme): tür/lokasyon/canlı dinleme tekrarları gibi. İçerik kalitesini bozmayacak şekilde.
+B daha kolay ve tüm 51,797 istasyonu birden 250+ word'e taşır. Örnek static blok (TR):
+
+"Türleri 1930, 1940, 1950, 1960, big band, beautiful music olan bu istasyon, Mega Radio üzerinden ücretsiz dinlenebilir. İnternet bağlantınız varsa dünyanın her yerinden Classic Vinyl HD canlı yayın akışına kesintisiz erişim sağlayabilirsiniz."
+Önerim — paket halinde 1 fix:
+3. ve 4. madde aslında aynı dosya: server/seo-renderer.ts station SSR branch. İkisini birden tek değişiklikle çözebilirim:
+
+AI desc'in HEMEN ÜSTÜNE: H1 kelimelerini tekrarlayan 1 intro cümlesi (her dilde) — H1↔body uyumu sağlar.
+AI desc'in HEMEN ALTINA: 25-35 kelimelik static "Mega Radio üzerinden ücretsiz dinleme" + tür+lokasyon tekrarı (her dilde) — kelime sayısını 250+'a taşır.
+Bu yaklaşım Google'ın "scaled content abuse" politikasına da takılmaz çünkü:
+
+Tek istasyon başına 25-35 kelimelik çerçeve metin (template, spam değil)
+AI desc + intro + outro = istasyona özel, dile özel
+Onayını bekliyorum:
+
+a) Sadece 3+4 yapayım (kod fix, ben yaparım)?
+b) www 301 Cloudflare API ile ben mi ekleyeyim, sen mi panelden eklersin?
+c) 2 + 3 + 4 hepsi birden?

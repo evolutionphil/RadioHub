@@ -731,6 +731,9 @@ const SeoMainRouter = React.memo(() => {
                     <Route path={`/${langConfig.code}/${translations['regions']}/:regionSlug`} component={PlayerWrapper} />
                     <Route path={`/${langConfig.code}/${translations['regions']}/:regionSlug/:countrySlug`} component={PlayerWrapper} />
                     <Route path={`/${langConfig.code}/${translations['regions']}/:regionSlug/:countrySlug/:citySlug?/stations`} component={PlayerWrapper} />
+                    {translations['stations'] && translations['stations'] !== 'stations' && (
+                      <Route path={`/${langConfig.code}/${translations['regions']}/:regionSlug/:countrySlug/:citySlug?/${translations['stations']}`} component={PlayerWrapper} />
+                    )}
                   </>
                 )}
                 {translations['pages'] && (
