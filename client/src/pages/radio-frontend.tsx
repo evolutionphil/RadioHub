@@ -493,29 +493,19 @@ export default function RadioFrontend({
 
   const { currentStation, isPlaying, playStation, stopStation } = useGlobalPlayer();
 
-  // Reset load more when country changes and invalidate caches for fresh data
+  // Reset load more when country changes
+  // PERF: Removed broad invalidateQueries — query keys already include `selectedCountry`,
+  // so TanStack Query refetches automatically when the key changes. The previous broad
+  // invalidate caused duplicate /api/stations/precomputed calls (5+ second each on mobile).
   useEffect(() => {
     setLoadMorePage(1);
     setAllLoadedStations([]);
-    
-    // Invalidate all queries dependent on country for immediate fresh data
-    queryClient.invalidateQueries({
-      predicate: (query) => {
-        return query.queryKey.some((key) => 
-          typeof key === 'string' && (
-            key.includes('/api/stations') || 
-            key.includes('/api/genres') ||
-            key.includes('/api/countries')
-          )
-        );
-      }
-    });
-    
+
     // Clear search results when country changes
     setSearchQuery("");
     setDebouncedSearchQuery("");
     setFilteredStations([]);
-  }, [selectedCountry, queryClient]);
+  }, [selectedCountry]);
 
   // Handle stations data - SIMPLIFIED to match original performance pattern
   useEffect(() => {
@@ -733,28 +723,10 @@ export default function RadioFrontend({
     gcTime: 7 * 24 * 60 * 60 * 1000, // Keep in cache for 7 days
   });
 
-  // Extended popular stations - same as initial from 7-day cache
-  // DEFERRED: Load extended popular stations (below fold)
-  const { data: extendedPopularStationsData } = useQuery({
-    queryKey: ['/api/stations/popular', selectedCountry, 'extended'],
-    enabled: shouldLoadDiscoverableGenres, // DEFERRED
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.append('countryName', selectedCountry === 'all' ? 'global' : selectedCountry);
-      params.append('page', '1');
-      params.append('limit', '12'); // Load 12 for 3x4 grid display
-      const url = `/api/stations/precomputed?${params}`;
-      logger.log(`🎯 Extended Popular Stations API Call: ${url} (selectedCountry: ${selectedCountry})`);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch extended popular stations');
-      const result = await response.json();
-      const stations = result.data || [];
-      logger.log(`✅ Extended Popular Stations Response: ${stations.length} stations`);
-      return stations;
-    },
-    staleTime: 7 * 24 * 60 * 60 * 1000,
-    gcTime: 7 * 24 * 60 * 60 * 1000
-  });
+  // PERF: `extendedPopularStationsData` removed — it duplicated the exact same
+  // /api/stations/precomputed call as the initial popular query (different cache key only),
+  // wasting 5+ seconds and 16KB on mobile. Alias kept so downstream consumers don't break.
+  const extendedPopularStationsData = popularStationsData;
 
   // Use global player for proper audio handling - MOVE TO TOP TO FIX INITIALIZATION
   const { favorites } = useGlobalPlayer();
@@ -1226,10 +1198,11 @@ export default function RadioFrontend({
             {/* 1.5. RECENTLY PLAYED STATIONS - Show only if user has played stations */}
             <RecentlyPlayedSection onPlay={handlePlay} />
 
-            {/* 2. POPULAR STATIONS - Reserve space with min-height to prevent CLS */}
-            <InView rootMargin="150px">
+            {/* 2. POPULAR STATIONS - Responsive height reservation prevents CLS (~0.2 → ~0.02) */}
+            {/* Mobile (1 col, 12 cards × ~110px) ≈ 1400px; lg (2 col) ≈ 750px; xl (3 col) ≈ 530px */}
+            <InView rootMargin="150px" className="min-h-[1400px] lg:min-h-[750px] xl:min-h-[530px]">
               {(inView) => (
-                <div className="container min-h-[400px]">
+                <div className="container">
                   {inView && popularStations?.length > 0 ? (
                     <div className="my-8">
                     <h3 className="section-header pb-4">

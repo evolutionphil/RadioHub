@@ -27,6 +27,24 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // PERF: Manual chunking to reduce HTTP/2 head-of-line blocking
+    // Default Vite splitting created 177 chunks (121 ≤8KB) — each lucide icon was its own file.
+    // Grouping vendor libs preserves tree-shaking but cuts request count drastically.
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return undefined;
+          if (id.includes('/react/') || id.includes('/react-dom/') || id.includes('/scheduler/')) return 'react-vendor';
+          if (id.includes('@tanstack/react-query')) return 'query-vendor';
+          if (id.includes('/wouter/') || id.includes('/wouter-')) return 'router-vendor';
+          if (id.includes('@radix-ui')) return 'radix-vendor';
+          if (id.includes('/lucide-react/')) return 'icons-vendor';
+          if (id.includes('/hls.js/') || id.includes('/plyr/') || id.includes('/swiper/')) return 'media-vendor';
+          if (id.includes('react-hook-form') || id.includes('@hookform/') || id.includes('/zod/')) return 'forms-vendor';
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     fs: {

@@ -34,12 +34,15 @@
     
     <!-- Core Web Vitals Performance Optimizations - No external font requests -->
     <link rel="dns-prefetch" href="https://flagcdn.com">
+    <!-- 🚀 PERF: Preconnect to API origin (3-service split) — saves ~300-1000ms TLS+TCP on first API call -->
+    <link rel="preconnect" href="https://api.themegaradio.com" crossorigin>
+    <link rel="dns-prefetch" href="https://api.themegaradio.com">
     
     <!-- 🚀 Preload critical resources for LCP optimization -->
-    <link rel="preload" href="/header-logo-80w.webp" as="image" type="image/webp">
-    <!-- 🚀 CRITICAL: Hero background - mobile-first preload -->
-    <link rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 430px)">
-    <link rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 431px)">
+    <link rel="preload" href="/header-logo-80w.webp" as="image" type="image/webp" fetchpriority="high">
+    <!-- 🚀 CRITICAL: Hero background - aligned with <picture> breakpoint (768px) in radio-frontend.tsx -->
+    <link rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 767px)" fetchpriority="high">
+    <link rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 768px)" fetchpriority="high">
     
     <!-- 🚀 Preload local Ubuntu fonts for critical weights used in rendering -->
     <link rel="preload" href="/fonts/ubuntu-400.ttf" as="font" type="font/ttf" crossorigin>

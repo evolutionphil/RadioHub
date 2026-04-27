@@ -6,6 +6,7 @@ interface InViewProps {
   threshold?: number;
   triggerOnce?: boolean;
   minHeight?: string;
+  className?: string;
 }
 
 export function InView({ 
@@ -13,7 +14,8 @@ export function InView({
   rootMargin = '200px', 
   threshold = 0.1, 
   triggerOnce = true,
-  minHeight = '100px'
+  minHeight,
+  className
 }: InViewProps) {
   const [inView, setInView] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -41,5 +43,6 @@ export function InView({
     return () => observer.disconnect();
   }, [rootMargin, threshold, triggerOnce]);
 
-  return <div ref={ref} style={{ minHeight }}>{children(inView)}</div>;
+  const style = minHeight ? { minHeight } : undefined;
+  return <div ref={ref} style={style} className={className}>{children(inView)}</div>;
 }
