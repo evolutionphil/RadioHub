@@ -1,0 +1,5 @@
+﻿"URL","Severity","Page count","Error count"
+"Your site lacks inbound links from high-quality domains.","Moderate severity","0","1"
+"Meta descriptions on many of your pages are too short. ","Moderate severity","24","24"
+"The <bwttag><h1></bwttag> tag is missing.","High severity","4","4"
+"The description is missing in the head section of the page.","High severity","3","3"

@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and management. It aims to innovate in the digital audio market by providing a robust platform with extensive administrative controls, real-time monitoring, and an enhanced user experience, leveraging AI for content delivery and HLS session management for a superior and continuous listening experience. Key capabilities include broad audio format support, advanced SEO, comprehensive user management, social interaction features, geolocation services, advanced search, user engagement analytics, trending station displays, and AI-powered content recommendations.
+The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It provides administrative controls, real-time monitoring, and AI-powered content delivery. Key features include extensive audio format support, advanced SEO, robust user management, social interaction, geolocation services, and advanced search. The system aims to enhance user engagement through analytics, trending station displays, and AI recommendations, fostering a vibrant audio ecosystem for broadcasters and listeners.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -46,7 +46,7 @@ CRITICAL MOBILE PERFORMANCE RULE: Mobile PageSpeed score'u korumak için (Apr 20
 1) `vite.config.ts` `rollupOptions.output.manualChunks` KORUNMALI — react-vendor / query-vendor / radix-vendor / icons-vendor / media-vendor / forms-vendor ayrımı tree-shaking'i bozmadan lucide-react ikon parçalanmasını engeller (default Vite davranışı her ikonu ayrı chunk yapıyordu, 177 chunk → ~70).
 2) `client/src/pages/radio-frontend.tsx` içinde `extendedPopularStationsData` AYRI bir useQuery olarak EKLENMEMELİ — `popularStationsData` ile aynı URL'yi (`/api/stations/precomputed?countryName=X&page=1&limit=12`) çağırıyor, sadece alias olarak kalmalı. Aksi halde mobilde 5+ saniye duplicate API çağrısı oluşur.
 3) Country-change useEffect'inde broad `invalidateQueries({ predicate })` EKLENMEMELİ — TanStack Query queryKey değiştiğinde otomatik refetch yapar. Broad invalidate 7 günlük staleTime'ı bypass edıp gereksiz API trafiği oluşturur.
-4) `InView` wrapper'ı (client/src/components/ui/in-view.tsx) artık `minHeight` defaultsuz; lazy bölümlerde CLS önlemek için ya `minHeight` prop'u ya `className="min-h-[...]"` verilmeli. Popular Stations için responsive `min-h-[1400px] lg:min-h-[750px]` xl:min-h-[530px] kullanılır (mobile 12 kart × ~110px hesabı).
+4) `InView` wrapper'ı (client/src/components/ui/in-view.tsx) artık `minHeight` defaultsuz; lazy bölümlerde CLS önlemek için ya `minHeight` prop'u ya `className="min-h-[...]"` verilmeli. Popular Stations için responsive `min-h-[1400px] lg:min-h-[750px]` xl:min-h-[530px]` kullanılır (mobile 12 kart × ~110px hesabı).
 5) `client/index.html` hero preload media query'si HER ZAMAN `radio-frontend.tsx`'teki `<picture>` `<source media="(min-width: 768px)">` ile hizalı olmalı (max-width:767 mobile, min-width:768 desktop). 430/431 ayrımı 431-767 aralığında çift-indirme yaratıyordu.
 6) `client/index.html` `<link rel="preconnect" href="https://api.themegaradio.com" crossorigin>` 3-service split deploy'da KORUNMALI; CORS preflight'sız ilk API çağrısı için TLS+TCP'yi parallelize eder.
 7) `TranslationPreloader.tsx` background prefetch (en+de) `'load'` event SONRASI çalışmalı — initial paint window'da prefetch FCP'yi mobilde +0.4-1.2s geciktiriyordu.
@@ -59,33 +59,34 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Framework**: Express.js with TypeScript.
 - **Database**: MongoDB with Mongoose.
 - **API**: REST API.
-- **Caching**: Multi-layer caching with NodeCache and Redis.
+- **Caching**: Multi-layer caching utilizing NodeCache and Redis.
 
 ### Frontend
 - **Framework**: React with TypeScript.
 - **Routing**: Wouter.
 - **State Management**: TanStack Query.
-- **UI**: Tailwind CSS with shadcn/ui for responsive design and an integrated audio player (HLS.js with Plyr).
+- **UI**: Tailwind CSS with shadcn/ui for responsive design.
+- **Audio Player**: HLS.js integrated with Plyr for seamless audio streaming.
 
 ### Deployment
-- **Architecture**: Three-service split (`backend-api`, `frontend-web`, `stream-proxy`).
-- **Containerization**: Docker.
-- **Monorepo**: All services managed within a unified monorepo.
+- **Architecture**: A three-service split comprising `backend-api`, `frontend-web`, and `stream-proxy`.
+- **Containerization**: Docker for isolated and reproducible environments.
+- **Monorepo**: All services are managed within a unified monorepo.
 
 ### Key Architectural Decisions
-- **Type Safety**: End-to-end type safety enforced with TypeScript and Zod.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, robust indexing, and Core Web Vitals optimization.
-- **Performance**: Multi-layer caching, database indexing, lazy loading, server-side image optimization.
-- **Geolocation**: Cloudflare headers and GPS.
-- **Audio Continuity**: Seamless playback across page navigations using HLS.js and Plyr.
-- **User Engagement**: Data-driven trends and AI-powered content recommendations.
-- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, fail-fast exits.
+- **Type Safety**: Enforced end-to-end using TypeScript and Zod for data validation.
+- **SEO Optimization**: Implemented through slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, robust indexing strategies, and Core Web Vitals optimization.
+- **Performance**: Achieved via multi-layer caching, database indexing, lazy loading, and server-side image optimization.
+- **Geolocation**: Determined using Cloudflare headers and GPS.
+- **Audio Continuity**: Ensured with seamless playback across page navigations utilizing HLS.js and Plyr.
+- **User Engagement**: Driven by data-driven trends and AI-powered content recommendations.
+- **System Stability**: Maintained through multi-layer Out-Of-Memory prevention, a self-watchdog mechanism, MongoDB circuit breaker, and fail-fast exits.
 - **SSR Protection**: Limits on concurrent Server-Side Rendering, timeouts, and bot rate limiting.
-- **Subscription System**: Flexible feature matrix for various subscription plans.
+- **Subscription System**: Designed with a flexible feature matrix to support various subscription plans.
 
 ## External Dependencies
-- **MongoDB Atlas**: Cloud-hosted NoSQL database.
-- **Radio-Browser API**: Provides radio station information.
-- **ip-api.com**: Used for geolocation services.
-- **Cloudflare**: CDN, caching, and Real User Monitoring (RUM) Web Vitals.
-- **AWS S3**: Scalable cloud storage for media assets.
+- **MongoDB Atlas**: A cloud-hosted NoSQL database service.
+- **Radio-Browser API**: An external service providing comprehensive radio station information.
+- **ip-api.com**: Used for accurate geolocation services.
+- **Cloudflare**: Utilized for CDN, caching, and Real User Monitoring (RUM) for Web Vitals.
+- **AWS S3**: Employed for scalable cloud storage of media assets.
