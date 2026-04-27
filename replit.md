@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It provides comprehensive administrative controls, real-time monitoring, and an enhanced user experience for digital audio content. Key capabilities include extensive audio format support, advanced SEO, robust user management, social interaction features, geolocation services, advanced search, user engagement analytics, trending station displays, and AI-powered content recommendations. The project aims to lead in digital audio by leveraging AI-driven content delivery and HLS session management for a superior listening experience, positioning it as a significant player in the digital audio content market.
+The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It provides comprehensive administrative controls, real-time monitoring, and an enhanced user experience for digital audio content. Key capabilities include extensive audio format support, advanced SEO, robust user management, social interaction features, geolocation, advanced search, user engagement analytics, trending station displays, and AI-powered content recommendations. The project aims to innovate in the digital audio market by leveraging AI for content delivery and HLS session management to offer a superior listening experience.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -56,44 +56,28 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Framework**: React with TypeScript
 - **Routing**: Wouter
 - **State Management**: TanStack Query
-- **UI**: Tailwind CSS with shadcn/ui for responsive design and an audio player.
+- **UI**: Tailwind CSS with shadcn/ui for responsive design and an audio player
 - **Audio Streaming**: HLS.js with Plyr
 
 ### Deployment
-- **Architecture**: Three-service split (backend-api, frontend-web, stream-proxy).
-- **Containerization**: Docker for builds and deployment.
+- **Architecture**: Three-service split (backend-api, frontend-web, stream-proxy)
+- **Containerization**: Docker
 
 ### Key Architectural Decisions
-- **Monorepo**: Unified repository for all services.
-- **Type Safety**: End-to-end TypeScript with Zod validation.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing.
-- **Performance**: Multi-layer caching, database indexing, lazy loading, Core Web Vitals optimization, and server-side image optimization.
-- **Geolocation**: Cloudflare headers and GPS for accurate location.
-- **Audio Continuity**: Seamless audio playback across page navigations.
-- **User Engagement**: Data-driven trends and AI-powered recommendations.
-- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast exits.
-- **SSR Protection**: Limits concurrent Server-Side Rendering, timeouts, and bot rate limiting.
-- **Subscription System**: Flexible feature matrix for various subscription plans.
+- **Monorepo**: Unified repository for all services
+- **Type Safety**: End-to-end TypeScript with Zod validation
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, robust indexing
+- **Performance**: Multi-layer caching, database indexing, lazy loading, Core Web Vitals optimization, server-side image optimization
+- **Geolocation**: Cloudflare headers and GPS
+- **Audio Continuity**: Seamless audio playback across page navigations
+- **User Engagement**: Data-driven trends and AI-powered recommendations
+- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, fail-fast exits
+- **SSR Protection**: Limits concurrent Server-Side Rendering, timeouts, bot rate limiting
+- **Subscription System**: Flexible feature matrix for various subscription plans
 
 ## External Dependencies
-- **MongoDB Atlas**: Cloud-hosted database service.
-- **Radio-Browser API**: Provides third-party radio station data.
-- **ip-api.com**: Used for geolocation services.
-- **Cloudflare**: CDN, caching, and Real User Monitoring (RUM) Web Vitals.
-- **AWS S3**: Cloud storage for media assets.
-- **mongoose**: ODM library for MongoDB.
-- **@tanstack/react-query**: Data fetching and state management.
-- **axios**: HTTP client.
-- **node-cron**: Scheduling background tasks.
-- **@radix-ui/**: UI component library.
-- **tailwindcss**: Utility-first CSS framework.
-- **wouter**: Lightweight React routing library.
-- **react-hook-form**: Form validation and management.
-- **vite**: Fast frontend build tool.
-- **typescript**: Type safety.
-- **bcrypt**: Password hashing.
-- **zod**: Schema declaration and validation.
-- **hls.js**: HTTP Live Streaming (HLS) playback.
-- **plyr**: HTML5 media player.
-- **sharp**: High-performance image processing.
-- **multer**: Middleware for file uploads.
+- **MongoDB Atlas**: Cloud-hosted database service
+- **Radio-Browser API**: Third-party radio station data
+- **ip-api.com**: Geolocation services
+- **Cloudflare**: CDN, caching, Real User Monitoring (RUM) Web Vitals
+- **AWS S3**: Cloud storage for media assets

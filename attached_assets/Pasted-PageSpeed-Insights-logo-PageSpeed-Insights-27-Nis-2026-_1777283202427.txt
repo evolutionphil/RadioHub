@@ -1,0 +1,557 @@
+PageSpeed Insights logo
+PageSpeed Insights
+27 Nis 2026 11:45:12 tarihinden başlayan rapor
+
+Geçerli bir URL girin
+
+smartphone
+Mobil
+
+computer
+Masaüstü
+
+Gerçek kullanıcılarınızın nelerle karşılaştığını görün
+Veri Yok
+
+Performans sorunlarını teşhis edin
+19
+Performans
+96
+Erişilebilirlik
+92
+En İyi Uygulamalar
+100
+SEO
+19
+FCP
++1
+LCP
++0
+TBT
++5
+CLS
++12
+SI
++2
+Performans
+Değerler tahminidir ve değişiklik gösterebilir. Performance skorunun hesaplanması , doğrudan bu metriklerle yapılır.Hesap makinesini göster.
+0–49
+50–89
+90–100
+Final Screenshot
+
+METRİKLER
+Görünümü genişlet
+First Contentful Paint
+5,0 sn.
+Largest Contentful Paint
+11,6 sn.
+Total Blocking Time
+1.360 ms.
+Cumulative Layout Shift
+0.265
+Speed Index
+8,9 sn.
+Captured at 27 Nis 2026 11:45 GMT+2
+Emülasyonlu Moto G Power with Lighthouse 13.0.1
+Tek sayfalık oturum
+İlk sayfa yükleme
+Yavaş 4G kısıtlaması
+Using HeadlessChromium 146.0.7680.177 with lr
+Ağaç grafiği göster
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Şunlarla alakalı denetimleri göster:
+
+All
+
+FCP
+
+LCP
+
+TBT
+
+CLS
+ANALİZLER
+Oluşturma engelleme istekleri Tahmini tasarruf: 1.210 ms.
+İstekler sayfanın ilk oluşturma işlemini engelliyor. Bu durum, LCP'yi geciktirebilir. Erteleme veya satır içine yerleştirme, bu ağ isteklerini kritik yoldan uzaklaştırabilir.LCPFCPPuanlanmamış
+URL
+Aktarım Boyutu
+Süre
+themegaradio.com 1. Taraf
+34,1 KiB	450 msn
+/assets/index-es_h5wXU.css(themegaradio.com)
+34,1 KiB
+450 msn
+Doküman isteğiyle ilgili gecikme Tahmini tasarruf: 100 ms.
+İlk ağ isteğiniz en önemli isteğinizdir. Yönlendirmelerden kaçınarak, hızlı sunucu yanıtı sağlayarak ve metin sıkıştırmayı etkinleştirerek gecikmeyi azaltın.LCPFCPPuanlanmamış
+Yönlendirmeler vardı (1 yönlendirme, +101 ms)
+Sunucu hızlı yanıt veriyor (1 ms gözlemlendi)
+Metin sıkıştırma uygulanır
+Düzen kayması sorununun nedenleri
+Düzen kaymaları, öğeler herhangi bir kullanıcı etkileşimi olmadan hareket ettiğinde gerçekleşir. Öğelerin eklenmesi, kaldırılması veya sayfa yüklenirken yazı tiplerinin değişmesi gibi düzen kaymalarının nedenlerini araştırın.CLSPuanlanmamış
+Öğe
+Düzen kayması puanı
+Toplam
+0,265
+Popular Stationsin United StatesRadio Paradise Main Mix (EU) 320k AACUSA, Calif…
+<div style="min-height: 100px;">
+0,133
+Popular Stationsin United StatesRadio Paradise Main Mix (EU) 320k AACUSA, Calif…
+<div style="min-height: 100px;">
+0,133
+main.pt-[70px] > div.w-full > div.hero-container > img.absolute
+<img src="/images/bg-gradient-red.svg" alt="" class="absolute right-0 top-0 h-full opacity-60 pointer-events-none z-0" aria-hidden="true" loading="lazy" data-optimized="true">
+Boyutu belirlenmemiş resim öğesi
+Zorunlu yeniden düzenleme
+DOM durumunda yapılan bir değişiklik nedeniyle stiller geçersiz kılındıktan sonra JavaScript, geometrik özellikler (ör. offsetWidth) sorguladığında zorunlu yeniden düzenleme gerçekleşir. Bu durum, performansın düşmesine neden olabilir. Zorunlu yeniden düzenlemeler ve olası çözümleri hakkında daha fazla bilgi edinin.Puanlanmamış
+En çok zaman alan işlev çağrısı
+Toplam yeniden düzenleme süresi
+/assets/index-BGyBLHGi.js:42:34195(themegaradio.com)
+30 msn
+Kaynak
+Toplam yeniden düzenleme süresi
+/assets/radio-hea….js:1:1865(themegaradio.com)
+17 msn
+/assets/free-mode-C8I2M6Ce.js:1:4979(themegaradio.com)
+14 msn
+/assets/free-mode-C8I2M6Ce.js:1:56052(themegaradio.com)
+8 msn
+/assets/free-mode-C8I2M6Ce.js:1:10876(themegaradio.com)
+4 msn
+/assets/radio-frontend-BCszsJoF.js:44:8547(themegaradio.com)
+5 msn
+[ilişkilendirilmemiş]
+25 msn
+/assets/index-BGyBLHGi.js:164:64714(themegaradio.com)
+0 msn
+LCP istek keşfi
+LCP resmini HTML'den anında bulunabilir hale getirerek ve geç yüklemeden kaçınarak LCP'yi optimize edinLCPPuanlanmamış
+geç yükleme uygulanmadı
+fetchpriority=high uygulanmalıdır
+İstek, ilk dokümanda bulunabilir
+div.w-full > div.hero-container > picture > img.absolute
+<img src="/images/hero-bg-430w.webp" alt="" class="absolute inset-0 w-full h-full object-cover pointer-events-none z-0" aria-hidden="true" fetchpriority="high" decoding="async" width="1920" height="600" data-optimized="true">
+Ağ bağımlılık ağacı
+Sayfaların daha kolay yüklenmesi için zincir uzunluğunu azaltarak, kaynakların indirme boyutunu küçülterek veya gereksiz kaynakların indirilmesini erteleyerek kritik istek zinciri oluşturmaktan kaçının.LCPPuanlanmamış
+Maksimum kritik yol gecikmesi: 5.338 msn
+İlk Gezinme
+/nl(themegaradio.com) - 234 msn, 7,26 KiB
+/nl(themegaradio.com) - 234 msn, 7,26 KiB
+/assets/index-BGyBLHGi.js(themegaradio.com) - 345 msn, 154,36 KiB
+/assets/wifi-off-BWgtOqz5.js(themegaradio.com) - 1.230 msn, 2,95 KiB
+/assets/search-BDuBh8hV.js(themegaradio.com) - 1.220 msn, 2,87 KiB
+/assets/music-DchlInY2.js(themegaradio.com) - 1.228 msn, 2,88 KiB
+/assets/radio-a4bInHRz.js(themegaradio.com) - 1.241 msn, 2,95 KiB
+/assets/arrow-rig….js(themegaradio.com) - 1.229 msn, 2,85 KiB
+/assets/wifi-DRfBXmru.js(themegaradio.com) - 1.221 msn, 2,91 KiB
+/assets/messages-2Qn-EmXL.js(themegaradio.com) - 1.248 msn, 9,56 KiB
+/assets/circle-DnCVHH7u.js(themegaradio.com) - 1.255 msn, 2,83 KiB
+/assets/message-circle-DMycNlTd.js(themegaradio.com) - 1.224 msn, 2,87 KiB
+/assets/arrow-lef….js(themegaradio.com) - 1.239 msn, 2,85 KiB
+/assets/favorites-Buvz-VlX.js(themegaradio.com) - 1.250 msn, 5,35 KiB
+/assets/profile-discover-CBCqZJIo.js(themegaradio.com) - 1.226 msn, 6,36 KiB
+/assets/profile-s….js(themegaradio.com) - 1.234 msn, 7,12 KiB
+/assets/switch-DEn-gkzx.js(themegaradio.com) - 1.242 msn, 3,84 KiB
+/assets/test-tube-CegA0B3I.js(themegaradio.com) - 1.226 msn, 3,04 KiB
+/assets/bell-DcMJ-wCU.js(themegaradio.com) - 1.244 msn, 2,89 KiB
+/assets/settings-BsHEa0J8.js(themegaradio.com) - 1.240 msn, 3,04 KiB
+/assets/notifications-view-DePVdOvz.js(themegaradio.com) - 1.261 msn, 5,24 KiB
+/assets/message-s….js(themegaradio.com) - 1.227 msn, 2,88 KiB
+/assets/profile-VlyJ3UHp.js(themegaradio.com) - 1.237 msn, 7,19 KiB
+/assets/mail-CJQSrv7G.js(themegaradio.com) - 1.263 msn, 2,90 KiB
+/assets/map-pin-CFZTZYT-.js(themegaradio.com) - 1.262 msn, 2,92 KiB
+/assets/calendar-C1mC8qCY.js(themegaradio.com) - 1.251 msn, 2,89 KiB
+/assets/clock-CszKhvUH.js(themegaradio.com) - 1.252 msn, 2,89 KiB
+/assets/activity-By8kyphv.js(themegaradio.com) - 1.249 msn, 2,92 KiB
+/assets/star-ClF0lCuI.js(themegaradio.com) - 1.245 msn, 2,90 KiB
+/assets/user-minus-BHakkaYC.js(themegaradio.com) - 1.270 msn, 2,91 KiB
+/assets/user-plus-BxZnzn-T.js(themegaradio.com) - 1.256 msn, 2,95 KiB
+/assets/login-C6AtQsB_.js(themegaradio.com) - 1.244 msn, 5,05 KiB
+/assets/signup-DNmOvwMB.js(themegaradio.com) - 1.269 msn, 5,71 KiB
+/assets/form-0_b98tfF.js(themegaradio.com) - 1.264 msn, 3,34 KiB
+/assets/ProfileLa….js(themegaradio.com) - 1.254 msn, 4,58 KiB
+/assets/login-C9RQZi4s.js(themegaradio.com) - 1.267 msn, 4,49 KiB
+/assets/radio-hea….js(themegaradio.com) - 548 msn, 11,07 KiB
+/assets/slugs-OTPv6NvP.js(themegaradio.com) - 558 msn, 2,89 KiB
+/assets/user-UOz0AWq9.js(themegaradio.com) - 529 msn, 2,89 KiB
+/assets/radio-frontend-BCszsJoF.js(themegaradio.com) - 575 msn, 18,09 KiB
+…genres/precomputed?country=United+States(api.themegaradio.com) - 3.368 msn, 8,87 KiB
+/api/countries(api.themegaradio.com) - 3.342 msn, 4,20 KiB
+…genres/discoverable(api.themegaradio.com) - 4.966 msn, 2,12 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=36(api.themegaradio.com) - 5.236 msn, 43,11 KiB
+…stations/nearby?lat=…(api.themegaradio.com) - 5.066 msn, 11,46 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=12(api.themegaradio.com) - 5.338 msn, 15,94 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=12(api.themegaradio.com) - 5.337 msn, 15,94 KiB
+…genres/precomputed?country=United+States(api.themegaradio.com) - 5.014 msn, 8,87 KiB
+/api/countries(api.themegaradio.com) - 5.044 msn, 4,20 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=18(api.themegaradio.com) - 1.479 msn, 22,65 KiB
+/styles/mobile.css(themegaradio.com) - 3.546 msn, 3,12 KiB
+/assets/station-card-DhBrTUpn.js(themegaradio.com) - 537 msn, 5,18 KiB
+/assets/favorite-button-CRv_qgEv.js(themegaradio.com) - 533 msn, 7,85 KiB
+/styles/non-critical.css(themegaradio.com) - 3.628 msn, 3,35 KiB
+/assets/useMutati….js(themegaradio.com) - 561 msn, 3,83 KiB
+/assets/Notificat….js(themegaradio.com) - 530 msn, 4,01 KiB
+/assets/index-DsX90z0K.js(themegaradio.com) - 546 msn, 26,85 KiB
+/assets/dialog-DbRmfcKb.js(themegaradio.com) - 556 msn, 3,45 KiB
+/assets/index-BmCXNvvt.js(themegaradio.com) - 531 msn, 4,59 KiB
+/assets/tabs-BAAoSc9h.js(themegaradio.com) - 534 msn, 3,94 KiB
+/assets/index-DehoNJat.js(themegaradio.com) - 560 msn, 4,12 KiB
+/assets/separator-Zq5coPBW.js(themegaradio.com) - 568 msn, 2,97 KiB
+/assets/eye-off-B91xVz9P.js(themegaradio.com) - 571 msn, 2,97 KiB
+/assets/eye-CRXETXbs.js(themegaradio.com) - 562 msn, 2,90 KiB
+/assets/usePushNo….js(themegaradio.com) - 557 msn, 4,67 KiB
+…genres/discoverable(api.themegaradio.com) - 2.004 msn, 2,12 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=36(api.themegaradio.com) - 2.164 msn, 43,11 KiB
+…stations/nearby?lat=…(api.themegaradio.com) - 1.890 msn, 11,46 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=12(api.themegaradio.com) - 2.235 msn, 15,94 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=12(api.themegaradio.com) - 2.474 msn, 15,94 KiB
+/assets/station-l….js(themegaradio.com) - 550 msn, 3,61 KiB
+/assets/thumbs-up-DdNnwUQ1.js(themegaradio.com) - 549 msn, 2,94 KiB
+/assets/optimized….js(themegaradio.com) - 535 msn, 3,75 KiB
+/assets/free-mode-C8I2M6Ce.js(themegaradio.com) - 567 msn, 28,97 KiB
+/getconfig/sodar?sv=200&tid=gda&tv=r20260423&st=env&sjk=132…(ep1.adtrafficquality.google) - 3.219 msn, 13,72 KiB
+…translations/nl(api.themegaradio.com) - 917 msn, 56,54 KiB
+/api/location(api.themegaradio.com) - 913 msn, 1,50 KiB
+…stations/precomputed?countryName=global&page=1&limit=18(api.themegaradio.com) - 1.072 msn, 33,98 KiB
+/assets/free-mode-BzwUOW7h.css(themegaradio.com) - 554 msn, 3,71 KiB
+/assets/navigatio….js(themegaradio.com) - 577 msn, 4,34 KiB
+/assets/navigation-DvnzTIAN.css(themegaradio.com) - 559 msn, 3,26 KiB
+/assets/SeoHead-By7yp2u0.js(themegaradio.com) - 555 msn, 7,27 KiB
+/assets/chevron-l….js(themegaradio.com) - 571 msn, 2,85 KiB
+/assets/chevron-r….js(themegaradio.com) - 559 msn, 2,84 KiB
+…translations/de(api.themegaradio.com) - 5.045 msn, 59,20 KiB
+/assets/heart-Dq7LEmSZ.js(themegaradio.com) - 572 msn, 2,89 KiB
+/assets/radio-fro….css(themegaradio.com) - 546 msn, 3,51 KiB
+/assets/footer-DO1pIMUJ.js(themegaradio.com) - 570 msn, 9,54 KiB
+/assets/useGlobal….js(themegaradio.com) - 1.295 msn, 10,09 KiB
+…stations/precomputed?countryName=United+States&page=1&limit=18(api.themegaradio.com) - 4.831 msn, 22,65 KiB
+…filters/countries(api.themegaradio.com) - 908 msn, 4,20 KiB
+/api/footer-social-media(api.themegaradio.com) - 912 msn, 1,80 KiB
+/assets/textarea-CjKhr_oF.js(themegaradio.com) - 579 msn, 2,91 KiB
+/assets/AdSenseUnit-urUM_lff.js(themegaradio.com) - 536 msn, 3,26 KiB
+/assets/globe-BwPaD6mg.js(themegaradio.com) - 578 msn, 2,89 KiB
+…translations/en(api.themegaradio.com) - 623 msn, 45,68 KiB
+…auth/me(api.themegaradio.com) - 614 msn, 1,42 KiB
+…seo/page-data?url=%2Fnl(api.themegaradio.com) - 627 msn, 80,33 KiB
+/assets/_id_-B_tEgnS1.js(themegaradio.com) - 1.259 msn, 12,47 KiB
+/assets/animated-….js(themegaradio.com) - 1.238 msn, 8,29 KiB
+/assets/skeleton-BSsoHtz_.js(themegaradio.com) - 1.233 msn, 2,73 KiB
+/assets/TrendingS….js(themegaradio.com) - 1.293 msn, 42,38 KiB
+/assets/badge-BTzWLbN2.js(themegaradio.com) - 1.266 msn, 2,96 KiB
+/assets/trending-….js(themegaradio.com) - 1.219 msn, 2,89 KiB
+/assets/users-DtyYHw-O.js(themegaradio.com) - 1.232 msn, 2,91 KiB
+/assets/not-found-BQKNxcgv.js(themegaradio.com) - 1.223 msn, 6,81 KiB
+/assets/index-es_h5wXU.css(themegaradio.com) - 274 msn, 34,08 KiB
+/fonts/ubuntu-600.ttf(themegaradio.com) - 876 msn, 119,36 KiB
+Önceden bağlanmış kaynaklar
+Önceden bağlanma ipuçları, sayfa yüklenirken tarayıcının gerekli bağlantıları önceden kurmasına yardımcı olarak ilgili kaynağa yapılacak ilk istekte zaman kazandırır. Sayfanın önceden bağlantı kurduğu kaynaklar aşağıda verilmiştir.
+hiçbir kaynak önceden bağlanmadı
+Önceden bağlanma adayları
+En önemli kaynaklarınıza önceden bağlanma ipuçları ekleyin ancak 4'ten az ipucu kullanmaya çalışın.
+Kaynak
+Tahmini LCP tasarrufu
+https://api.themegaradio.com
+300 msn
+Verimli önbellek sürelerini kullanın Tahmini tasarruf: 42 KiB
+Uzun önbellek ömrü, sayfanızın tekrar ziyaret edilmesi sürecini hızlandırabilir. Daha fazla bilgi edinin.LCPFCPPuanlanmamış
+  3. taraf kaynaklarını göster (3)
+İstek
+TTL'yi Önbelleğe Alma
+Aktarım Boyutu
+Google/Doubleclick Ads Ad 
+178 KiB
+…m202…/show_ads_impl_fy2021.js?bust=31098075(pagead2.googlesyndication.com)
+14g
+178 KiB
+Clarity Utility 
+25 KiB
+/0.8.60-beta/clarity.js(scripts.clarity.ms)
+1g
+25 KiB
+Google CDN Cdn 
+14 KiB
+…146/cast_sender.js(www.gstatic.com)
+1g
+14 KiB
+themegaradio.com 1. Taraf
+14 KiB
+…zaraz/s.js?z=JTdCJTIyZ…(themegaradio.com)
+None
+5 KiB
+…image/aHR0cDovL…(stream.themegaradio.com)
+1g
+5 KiB
+…image/aHR0cDovL…(stream.themegaradio.com)
+1g
+2 KiB
+…image/aHR0cDovL…(stream.themegaradio.com)
+1g
+2 KiB
+Resim yayınlamayı kolaylaştırın Tahmini tasarruf: 185 KiB
+Resimlerin indirme süresini kısaltmak, sayfanın algılanan yükleme süresini ve LCP'yi daha iyi hale getirebilir. Resim boyutunu optimize etme hakkında daha fazla bilgi edinin.LCPFCPPuanlanmamış
+  3. taraf kaynaklarını göster (10)
+URL
+Kaynak Boyutu
+Tahmini Tasarruf
+walmradio.com
+128,2 KiB	125,2 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://icecast.walmradio.com:8443/otr.jpg" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c4a1bd66579311ab7c9c" data-optimized="true">
+/otr.jpg(icecast.walmradio.com)
+35,6 KiB
+34,9 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (500x500) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+34,9 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://icecast.walmradio.com:8443/jazz.jpg" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c45fbd66579311aad58a" data-optimized="true">
+/jazz.jpg(icecast.walmradio.com)
+33,1 KiB
+32,4 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (480x480) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+32,4 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://icecast.walmradio.com:8443/classic.jpg" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c468bd66579311aaee0e" data-optimized="true">
+/classic.jpg(icecast.walmradio.com)
+25,1 KiB
+24,6 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (512x512) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+24,6 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://icecast.walmradio.com:8443/walm.jpg" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c4a1bd66579311ab7ca0" data-optimized="true">
+/walm.jpg(icecast.walmradio.com)
+19,5 KiB
+19,1 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (500x500) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+19,1 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://icecast.walmradio.com:8443/christmas.png" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c467bd66579311aaeacb" data-optimized="true">
+/christmas.png(icecast.walmradio.com)
+14,9 KiB
+14,1 KiB
+Modern bir resim biçimi (WebP, AVIF) kullanmak veya resim sıkıştırmasını artırmak bu resmin indirme boyutunu küçültebilir.
+11,3 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (150x150) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+11,7 KiB
+Amazon Web Services Other 
+37,3 KiB	34,8 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c480bd66579311ab2bd0" data-optimized="true">
+…noaa-weather-radio-kec49-monterey-california_11ab2bd0/log….webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+13,6 KiB
+12,8 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (256x256) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+12,6 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c477bd66579311ab13f3" data-optimized="true">
+…kfjc-1_11ab13f3/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+8,0 KiB
+7,4 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (256x256) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+7,4 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c477bd66579311ab13f4" data-optimized="true">
+…kfjc-2_11ab13f4/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+8,0 KiB
+7,4 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (256x256) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+7,4 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c474bd66579311ab09fe" data-optimized="true">
+…highfi-dream_11ab09fe/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+7,7 KiB
+7,2 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (256x256) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+7,2 KiB
+themegaradio.com 1. Taraf
+24,8 KiB	17,7 KiB
+Person wearing headphones enjoying music
+<img loading="lazy" class="absolute -right-10 top-0 h-full sm:right-0 pointer-events-none" src="/images/headphone.webp" alt="Person wearing headphones enjoying music" data-optimized="true">
+/images/headphone.webp(themegaradio.com)
+12,4 KiB
+8,8 KiB
+Bu resim dosyası, görüntülenen boyutlarına (195x160) göre olması gerekenden (363x298) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+8,8 KiB
+Person wearing headphones enjoying music
+<img loading="lazy" class="absolute -right-10 top-0 h-full sm:right-0 pointer-events-none" src="/images/headphone.webp" alt="Person wearing headphones enjoying music" data-optimized="true">
+/images/headphone.webp(themegaradio.com)
+12,4 KiB
+8,8 KiB
+Bu resim dosyası, görüntülenen boyutlarına (195x160) göre olması gerekenden (363x298) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+8,8 KiB
+radioparadise.com
+8,2 KiB	7,4 KiB
+Listen to ${station.name} live from ${station.country} - ${station.genre ||
+<img src="https://radioparadise.com/apple-touch-icon.png" alt="Listen to ${station.name} live from ${station.country} - ${station.genre |…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c490bd66579311ab5033" data-optimized="true">
+/apple-touch-icon.png(radioparadise.com)
+8,2 KiB
+7,4 KiB
+Bu resim dosyası, görüntülenen boyutlarına (70x70) göre olması gerekenden (180x180) daha büyük. Resim indirme boyutunu küçültmek için duyarlı resimler kullanın.
+7,0 KiB
+LCP dökümü
+3. taraflar
+Bu analizler Chrome Geliştirici Araçları Performans Paneli'nde de mevcuttur. Daha ayrıntılı bilgi görüntülemek için izleme kaydı oluşturun.
+TEŞHİS
+JavaScript yürütme süresini azaltın 4,2 sn.
+Ana iş parçacığı çalışmasını en aza indir 6,4 sn.
+Kullanılmayan JavaScript'i azaltın Tahmini tasarruf: 227 KiB
+Kullanılmayan CSS'yi azaltın Tahmini tasarruf: 28 KiB
+Uzun ana ileti dizisi görevlerinden kaçının 16 uzun görev bulundu
+Kullanıcı Zamanlaması işaretleri ve ölçüleri 1 kullanıcı zamanlaması
+Uygulamanızın performansı hakkında daha fazla bilgi. Bu sayılar Performan skoruna doğrudan etki etmezler.
+BAŞARILI DENETİMLER (11)
+Göster
+96
+Erişilebilirlik
+Bu kontroller, web uygulamanızın erişilebilirliğini iyileştirme fırsatlarını öne çıkarır. Otomatik algılama, sorunların yalnızca bir alt kümesini algılayabilir ve web uygulamanızın erişilebilirliğini garanti etmez. Bu nedenle, manuel test yapmanız da önerilir.
+EN İYİ UYGULAMALAR
+Dokunma hedefleri, yeterli boyut veya boşluğa sahip değil.
+Yeterli boyut ve boşluğa sahip dokunma hedefleri, küçük kontrol düğmelerini kullanmakta sorun yaşayan kullanıcıların hedefleri etkinleştirmesine yardımcı olur. Dokunma hedefleri hakkında daha fazla bilgi edinin.
+Başarısız Öğeler
+Applications
+<a href="/nl/toepassingen" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Contact
+<a href="/nl/contact" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Contact
+<a href="/nl/contact" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Applications
+<a href="/nl/toepassingen" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Terms & Conditions
+<a href="/nl/pagina's/voorwaarden" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Terms & Conditions
+<a href="/nl/pagina's/voorwaarden" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Contact
+<a href="/nl/contact" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Privacy
+<a href="/nl/pagina's/privacy-beleid" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Privacy
+<a href="/nl/pagina's/privacy-beleid" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Terms & Conditions
+<a href="/nl/pagina's/voorwaarden" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+All Regions
+<a href="/nl/regio's" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+United States
+<a href="/nl/regio's/north-america/united-states" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+United States
+<a href="/nl/regio's/north-america/united-states" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+All Regions
+<a href="/nl/regio's" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Germany
+<a href="/nl/regio's/europe/germany" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Germany
+<a href="/nl/regio's/europe/germany" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+United States
+<a href="/nl/regio's/north-america/united-states" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Türkiye
+<a href="/nl/regio's/europe/turkey" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Türkiye
+<a href="/nl/regio's/europe/turkey" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Germany
+<a href="/nl/regio's/europe/germany" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Austria
+<a href="/nl/regio's/europe/austria" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Austria
+<a href="/nl/regio's/europe/austria" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Türkiye
+<a href="/nl/regio's/europe/turkey" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+United Kingdom
+<a href="/nl/regio's/europe/united-kingdom" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+United Kingdom
+<a href="/nl/regio's/europe/united-kingdom" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Austria
+<a href="/nl/regio's/europe/austria" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+France
+<a href="/nl/regio's/europe/france" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+France
+<a href="/nl/regio's/europe/france" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+United Kingdom
+<a href="/nl/regio's/europe/united-kingdom" class="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+Bu öğeler, erişilebilirlikle ilgili yaygın en iyi uygulamaları öne çıkarır.
+MANUEL OLARAK KONTROL EDİLECEK EK ÖĞELER (10)
+Göster
+Bu öğeler, otomatik test aracının kapsamında yer almayan alanları ele alır. Erişilebilirlik incelemesi gerçekleştirme hakkında daha fazla bilgiyi rehberimizde bulabilirsiniz.
+BAŞARILI DENETİMLER (23)
+Göster
+GEÇERLİ DEĞİL (36)
+Göster
+92
+En İyi Uygulamalar
+KULLANICI DENEYİMİ
+Düşük çözünürlüklü resimleri sunar
+Resmin doğal boyutları, resmin netliğini en üst düzeye çıkarmak için görüntü boyutu ve piksel oranı ile orantılı olmalıdır. Nasıl uyumlu resimler sağlayabileceğinizi öğrenin.
+URL
+Görüntülenen boyut
+Gerçek boyut
+Beklenen boyut
+themegaradio.com 1. Taraf
+div.w-full > div.hero-container > picture > img.absolute
+<img src="https://themegaradio.com/images/heroleft-300w.webp" alt="" width="500" height="460" class="absolute left-0 bottom-0 w-[300px] sm:w-[400px] lg:w-[500px] h-auto pointe…" aria-hidden="true" loading="lazy" style="opacity: 0.6; z-index: 5;" data-optimized="true">
+/images/heroleft-300w.webp(themegaradio.com)
+300 x 276
+300 x 276
+450 x 414
+İlişkilendirilemez
+Favorite
+<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAeCAYAAAA/xX6fAAAACXBI…" alt="Favorite" class="transition-all " style="width: 22.4px; height: 22.4px; filter: none; opacity: 0.7;" data-optimized="true">
+data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABwAAAAeCAYAAAA/x…
+22 x 22
+28 x 30
+33 x 33
+GENEL
+Tarayıcı hataları konsola kaydedildi
+Konsola kaydedilen hatalar çözülmemiş problemleri belirtir Bunlar, ağ istek hatalarından ve diğer tarayıcı sorunlarından gelebilir. Konsol teşhis denetlemesindeki hatalar hakkında daha fazla bilgi edinin.
+  3. taraf kaynaklarını göster (2)
+Kaynak
+Açıklama
+wikimedia.org
+…KKIQ-FM.png/150px-KKIQ-FM.png:1:0(upload.wikimedia.org)
+Failed to load resource: the server responded with a status of 400 (Bad Request)
+…KKIQ-FM.png/150px-KKIQ-FM.png:1:0(upload.wikimedia.org)
+Failed to load resource: the server responded with a status of 400 (Bad Request)
+themegaradio.com 1. Taraf
+/nl:257:6(themegaradio.com)
+SyntaxError: Unexpected token '<'
+POLİTİKA DEĞERLENDİRME
+XSS saldırıları karşısında CSP'nin etkinliğini sınayın
+Güçlü bir HSTS politikası kullanın
+COOP ile uygun kaynak izolasyonunu sağlayın
+Trusted Types ile DOM tabanlı XSS'yi azaltın
+BAŞARILI DENETİMLER (11)
+Göster
+GEÇERLİ DEĞİL (3)
+Göster
+100
+SEO
+Bu kontroller, sayfanızın temel arama motoru optimizasyonu tavsiyesine uymasını sağlar. Burada Lighthouse'un puan vermediği ve Önemli Web Verileri'ndeki performansınız da dahil arama sıralamanızı etkileyebilecek birçok ek faktör vardır. Google Arama'nın Temel Özellikleri hakkında daha fazla bilgi edinin.
+MANUEL OLARAK KONTROL EDİLECEK EK ÖĞELER (1)
+Gizle
+Yapılandırılmış veriler geçerli
+SEO ile ilgili diğer en iyi uygulamaları kontrol etmek için sitenizde bu ek doğrulayıcıları çalıştırın.
+BAŞARILI DENETİMLER (10)
+Göster
+PageSpeed Insights hakkında daha fazla bilgi
+Yenilikler
+Dokümanlar
+Web Performansı hakkında bilgi edinin
+Stack Overflow hakkında soru sorun
+Posta listesi
+Alakalı İçerik
+Güncellemeler
+Web'in Temelleri
+Örnek Olaylar
+Podcast'ler
+Bağlan
+Twitter
+YouTube
+Google Developers Logo
+Chrome
+Firebase
+Tüm ürünler
+Şartlar ve Gizlilik Politikası
+Ayrıntılı bilgi için Google Developers Sitesi Politikaları'na bakın.
