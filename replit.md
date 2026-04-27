@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and management. It provides a personalized listening experience for users and comprehensive management tools for broadcasters. The project aims to become a leading platform in the online radio market, offering extensive audio format support, advanced SEO, robust user management, social interaction, geolocation, sophisticated search, data-driven trend analysis, and AI-powered content recommendations.
+The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. Its core purpose is to provide a personalized listening experience and comprehensive broadcasting tools. Key features include support for various audio formats, advanced SEO, robust user management, social interaction, geolocation, sophisticated search, data-driven trend analysis, and AI-powered content recommendations. The project aims to be a leader in the online radio market through innovation and superior user experience.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -44,7 +44,7 @@ CRITICAL ALIAS REDIRECT RULE: When a station is resolved via `slugAliases` (rath
 
 CRITICAL MOBILE PERFORMANCE RULE: Mobile PageSpeed score'u korumak için:
 1) `vite.config.ts` `rollupOptions.output.manualChunks` KORUNMALI — react-vendor / query-vendor / radix-vendor / icons-vendor / media-vendor / forms-vendor ayrımı tree-shaking'i bozmadan lucide-react ikon parçalanmasını engeller.
-2) `client/src/pages/radio-frontend.tsx` içinde `extendedPopularStationsData` AYRI bir useQuery olarak EKLENMEMELİ — `popularStationsData` ile aynı URL'yi (`/api/stations/precomputed?countryName=X&page=1&limit=12`) çağrıyor, sadece alias olarak kalmalı.
+2) `client/src/pages/radio-frontend.tsx` içinde `extendedPopularStationsData` AYRI bir useQuery olarak EKLENMEMELİ — `popularStationsData` ile aynı URL'yi (`/api/stations/precomputed?countryName=X&page=1&limit=12`) çağırıyor, sadece alias olarak kalmalı.
 3) Country-change useEffect'inde broad `invalidateQueries({ predicate })` EKLENMEMELİ — TanStack Query queryKey değiştiğinde otomatik refetch yapar.
 4) `InView` wrapper'ı (client/src/components/ui/in-view.tsx) artık `minHeight` defaultsuz; lazy bölümlerde CLS önlemek için ya `minHeight` prop'u ya `className="min-h-[...]"` verilmeli.
 5) `client/index.html` hero preload media query'si HER ZAMAN `radio-frontend.tsx`'teki `<picture>` `<source media="(min-width: 768px)">` ile hizalı olmalı.
@@ -89,18 +89,18 @@ CRITICAL GENRES/REGIONS IMG GRID RULE: Genres ve Regions/Country SSR branch'leri
 
 ### Key Architectural Decisions
 - **Type Safety**: End-to-end type safety using TypeScript and Zod.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies.
-- **Performance**: Multi-layer caching, database indexing, lazy loading, and server-side image optimization.
-- **Geolocation**: Determined using Cloudflare headers and GPS.
-- **Audio Continuity**: Seamless playback across page navigations.
-- **User Engagement**: Data-driven trends and AI-powered content recommendations.
-- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast exits.
-- **SSR Protection**: Limits on concurrent Server-Side Rendering, timeouts, and bot rate limiting.
-- **Subscription System**: Flexible feature matrix for various subscription plans.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies are central to the system.
+- **Performance**: Achieved through multi-layer caching, database indexing, lazy loading, and server-side image optimization.
+- **Geolocation**: Determined using Cloudflare headers and GPS for personalized content.
+- **Audio Continuity**: Designed for seamless playback across page navigations.
+- **User Engagement**: Features data-driven trends and AI-powered content recommendations.
+- **System Stability**: Incorporates multi-layer Out-Of-Memory prevention, self-watchdog mechanisms, MongoDB circuit breaker, and fail-fast exits.
+- **SSR Protection**: Implements limits on concurrent Server-Side Rendering, timeouts, and bot rate limiting to ensure stable performance.
+- **Subscription System**: Features a flexible matrix for various subscription plans.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud-hosted NoSQL database.
-- **Radio-Browser API**: External radio station information service.
-- **ip-api.com**: Geolocation services.
-- **Cloudflare**: CDN, caching, and Real User Monitoring (RUM).
-- **AWS S3**: Scalable cloud storage for media assets.
+- **Radio-Browser API**: External service for radio station information.
+- **ip-api.com**: Used for geolocation services.
+- **Cloudflare**: Utilized for CDN, caching, and Real User Monitoring (RUM).
+- **AWS S3**: Provides scalable cloud storage for media assets.
