@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It aims to provide a personalized listening experience and comprehensive broadcasting tools, aspiring to be a leader in the online radio market. Key capabilities include support for diverse audio formats, advanced SEO, robust user management, social interaction, geolocation-based content, sophisticated search, data-driven trend analysis, and AI-powered recommendations. The project's ambition is to offer a seamless and rich radio experience worldwide.
+The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. Its core purpose is to deliver a personalized listening experience and comprehensive broadcasting tools, aiming for leadership in the online radio market. Key features include support for diverse audio formats, advanced SEO, robust user management, social interaction, geolocation-based content, sophisticated search, data-driven trend analysis, and AI-powered recommendations. The project seeks to provide a seamless and enriched radio experience to users worldwide, emphasizing business vision, market potential, and ambitious project goals.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -12,7 +12,7 @@ CRITICAL ADMIN UI RULE: Edit popups and admin dialogs must ALWAYS stay light/whi
 
 CRITICAL SEO HEADING RULE: Only ONE H1 per page (provided by server-rendered content in seo-renderer.ts). All content sections (RadioFAQ, About, etc.) must use H2 for main headings and H3/H4 for subsections to maintain proper heading hierarchy across all 57 languages.
 
-CRITICAL SEO COMPLIANCE RULE: NO sr-only H3 headings with SEO keywords on any page (Google Hidden Text policy). NO boilerplate template text in SSR body (Google Scaled Content Abuse policy). SSR station body must ONLY contain: AI description + station details + nav links.
+CRITICAL SEO COMPLIANCE RULE: NO sr-only H3 headings with SEO keywords on any page (Google Hidden Text policy). NO PURE boilerplate template text in SSR body — but station-specific enriched intro/outro IS allowed (Google Scaled Content Abuse policy). SSR station body MUST contain in order: (1) station logo `<figure>`, (2) `<h2>About</h2>`, (3) **H1-keyword echo intro** (1 sentence, MUST interpolate `{STATION}` + `{COUNTRY}` — translation key `seo_station_intro_sentence`), (4) AI description paragraph(s), (5) **station-specific outro** (25-35 words, MUST interpolate `{STATION}` + `{COUNTRY}` + `{GENRES}` from real `stationData.tags` — translation key `seo_station_outro_sentence`), (6) station details section, (7) nav links. Intro+outro are NOT scaled boilerplate because they interpolate real per-station data (name + country + top-3 tags). Junk station 410 path bypasses intro/outro/AI desc entirely (sendJunkGone). i18n DB keys `seo_station_intro_sentence` and `seo_station_outro_sentence` should be translated to all 57 languages over time; until then `getLocalizedText` falls back to English template.
 
 CRITICAL LASTMOD RULE: Station sitemaps must ONLY include `<lastmod>` when real `updatedAt` data exists in the DB. If `updatedAt` is missing, omit `<lastmod>` entirely — never use today's date as fallback (Google treats fake lastmod as spam signal).
 
@@ -90,19 +90,19 @@ CRITICAL GENRES/REGIONS IMG GRID RULE: Genres ve Regions/Country SSR branch'leri
 - **Monorepo**: All services are managed within a unified monorepo.
 
 ### Key Architectural Decisions
-- **Type Safety**: End-to-end type safety using TypeScript and Zod.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies.
-- **Performance**: Multi-layer caching, database indexing, lazy loading, and server-side image optimization.
-- **Geolocation**: Determined using Cloudflare headers and GPS for personalized content.
-- **Audio Continuity**: Seamless playback across page navigations.
-- **User Engagement**: Data-driven trends and AI-powered content recommendations.
-- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast exits.
-- **SSR Protection**: Limits on concurrent Server-Side Rendering, timeouts, and bot rate limiting.
-- **Subscription System**: Flexible matrix for various subscription plans.
+- **Type Safety**: Achieved using TypeScript and Zod for end-to-end type validation.
+- **SEO Optimization**: Implemented through slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies.
+- **Performance**: Enhanced via multi-layer caching, database indexing, lazy loading, and server-side image optimization.
+- **Geolocation**: Utilizes Cloudflare headers and GPS for personalized content delivery.
+- **Audio Continuity**: Ensures seamless playback across page navigations.
+- **User Engagement**: Driven by data-driven trends and AI-powered content recommendations.
+- **System Stability**: Maintained through multi-layer Out-Of-Memory prevention, a self-watchdog, MongoDB circuit breaker, and fail-fast exits.
+- **SSR Protection**: Limits concurrent Server-Side Rendering, implements timeouts, and includes bot rate limiting.
+- **Subscription System**: Features a flexible matrix to support various subscription plans.
 
 ## External Dependencies
-- **MongoDB Atlas**: Cloud-hosted NoSQL database.
-- **Radio-Browser API**: External service for radio station information.
-- **ip-api.com**: Used for geolocation services.
-- **Cloudflare**: Utilized for CDN, caching, and Real User Monitoring (RUM).
-- **AWS S3**: Provides scalable cloud storage for media assets.
+- **MongoDB Atlas**: Cloud-hosted NoSQL database used for data storage.
+- **Radio-Browser API**: External service providing radio station information.
+- **ip-api.com**: Used for geolocation services to determine user location.
+- **Cloudflare**: Utilized for CDN services, caching, and Real User Monitoring (RUM).
+- **AWS S3**: Provides scalable cloud storage for media assets like station logos and audio files.

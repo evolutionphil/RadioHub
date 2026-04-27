@@ -1105,6 +1105,19 @@ export class SeoRenderer {
                 })()}
                 <!-- AI-Generated Description (unique per station) -->
                 <h2>${this.escapeHtml(getLocalizedText('about_station', 'About ' + stationData.name))}</h2>
+                <!-- DALGA 4: H1-keyword echo intro (single sentence, station-specific interpolation: name + country) -->
+                ${(() => {
+                  const introTemplate = getLocalizedText(
+                    'seo_station_intro_sentence',
+                    'Listen to {STATION} live online from {COUNTRY} — free internet radio streaming on Mega Radio.'
+                  );
+                  const stationName = stationData.name || 'Radio Station';
+                  const country = stationData.country || 'around the world';
+                  const introText = introTemplate
+                    .replace(/\{STATION\}/g, stationName)
+                    .replace(/\{COUNTRY\}/g, country);
+                  return `<p class="station-intro">${this.escapeHtml(introText)}</p>`;
+                })()}
                 ${stationData.descriptions && stationData.descriptions[language] ? (() => {
                   const desc = stationData.descriptions[language];
                   let fullText = '';
@@ -1141,6 +1154,27 @@ export class SeoRenderer {
                   }
                   return '';
                 })() : (stationData.description ? `<p>${this.escapeHtml(stationData.description)}</p>` : '')}
+                <!-- DALGA 4: Station-specific outro (25-35 words, interpolation: name + country + tags — NOT scaled boilerplate) -->
+                ${(() => {
+                  const outroTemplate = getLocalizedText(
+                    'seo_station_outro_sentence',
+                    'Stream {STATION} 24/7 from anywhere with internet access. Discover {GENRES} radio stations from {COUNTRY} and 60,000 more stations on Mega Radio — free, no signup required.'
+                  );
+                  const stationName = stationData.name || 'Radio Station';
+                  const country = stationData.country || 'around the world';
+                  const tagList = (stationData.tags || '')
+                    .split(/[,;]/)
+                    .map((t: string) => t.trim())
+                    .filter((t: string) => t.length > 0)
+                    .slice(0, 3)
+                    .join(', ');
+                  const genres = tagList || getLocalizedText('seo_live_radio', 'live radio');
+                  const outroText = outroTemplate
+                    .replace(/\{STATION\}/g, stationName)
+                    .replace(/\{COUNTRY\}/g, country)
+                    .replace(/\{GENRES\}/g, genres);
+                  return `<p class="station-outro">${this.escapeHtml(outroText)}</p>`;
+                })()}
                 
                 <!-- Station Details -->
                 <section class="station-details">
