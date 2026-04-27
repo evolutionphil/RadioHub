@@ -456,7 +456,7 @@ export class SeoRenderer {
             })
               .sort({ votes: -1 })
               .limit(24)
-              .select('name slug favicon logoAssets country tags votes descriptions url homepage bitrate lastCheckOk')
+              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk')
               .lean(),
             signal
           );
@@ -992,11 +992,11 @@ export class SeoRenderer {
             <nav class="main-navigation">
               <h2>${this.escapeHtml(getLocalizedText('explore_mega_radio', 'Explore Mega Radio'))}</h2>
               <ul>
-                <li><a href="/${language + '/'}genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
-                <li><a href="/${language + '/'}regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
-                <li><a href="/${language + '/'}stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                <li><a href="/${language + '/'}recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
-                <li><a href="/${language + '/'}users">${this.escapeHtml(getLocalizedText('nav_users', 'Community'))}</a></li>
+                <li><a href="/${language}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
+                <li><a href="/${language}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
+                <li><a href="/${language}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="/${language}/recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
+                <li><a href="/${language}/users">${this.escapeHtml(getLocalizedText('nav_users', 'Community'))}</a></li>
               </ul>
             </nav>
             
@@ -1032,14 +1032,14 @@ export class SeoRenderer {
             <section class="popular-genres">
               <h2>${this.escapeHtml(getLocalizedText('popular_genres_title', 'Popular Radio Genres'))}</h2>
               <ul>
-                <li><a href="/${language + '/'}genres/pop">${this.escapeHtml(getLocalizedText('genre_pop_radio', 'Pop Radio Stations'))}</a></li>
-                <li><a href="/${language + '/'}genres/rock">${this.escapeHtml(getLocalizedText('genre_rock_radio', 'Rock Radio Stations'))}</a></li>
-                <li><a href="/${language + '/'}genres/jazz">${this.escapeHtml(getLocalizedText('genre_jazz_radio', 'Jazz Radio Stations'))}</a></li>
-                <li><a href="/${language + '/'}genres/classical">${this.escapeHtml(getLocalizedText('genre_classical_radio', 'Classical Radio Stations'))}</a></li>
-                <li><a href="/${language + '/'}genres/electronic">${this.escapeHtml(getLocalizedText('genre_electronic_radio', 'Electronic Radio Stations'))}</a></li>
-                <li><a href="/${language + '/'}genres/country">${this.escapeHtml(getLocalizedText('genre_country_radio', 'Country Radio Stations'))}</a></li>
-                <li><a href="/${language + '/'}genres/hip-hop">${this.escapeHtml(getLocalizedText('genre_hiphop_radio', 'Hip Hop Radio Stations'))}</a></li>
-                <li><a href="/${language + '/'}genres/reggae">${this.escapeHtml(getLocalizedText('genre_reggae_radio', 'Reggae Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/pop">${this.escapeHtml(getLocalizedText('genre_pop_radio', 'Pop Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/rock">${this.escapeHtml(getLocalizedText('genre_rock_radio', 'Rock Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/jazz">${this.escapeHtml(getLocalizedText('genre_jazz_radio', 'Jazz Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/classical">${this.escapeHtml(getLocalizedText('genre_classical_radio', 'Classical Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/electronic">${this.escapeHtml(getLocalizedText('genre_electronic_radio', 'Electronic Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/country">${this.escapeHtml(getLocalizedText('genre_country_radio', 'Country Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/hip-hop">${this.escapeHtml(getLocalizedText('genre_hiphop_radio', 'Hip Hop Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/reggae">${this.escapeHtml(getLocalizedText('genre_reggae_radio', 'Reggae Radio Stations'))}</a></li>
               </ul>
             </section>
             
@@ -1047,18 +1047,18 @@ export class SeoRenderer {
             <section class="popular-countries">
               <h2>${this.escapeHtml(getLocalizedText('popular_countries_title', 'Radio Stations by Country'))}</h2>
               <ul>
-                <li><a href="/${language + '/'}regions/united-states">${this.escapeHtml(getLocalizedText('country_usa_radio', 'United States Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/united-kingdom">${this.escapeHtml(getLocalizedText('country_uk_radio', 'United Kingdom Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/germany">${this.escapeHtml(getLocalizedText('country_germany_radio', 'Germany Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/france">${this.escapeHtml(getLocalizedText('country_france_radio', 'France Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/canada">${this.escapeHtml(getLocalizedText('country_canada_radio', 'Canada Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/australia">${this.escapeHtml(getLocalizedText('country_australia_radio', 'Australia Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/brazil">${this.escapeHtml(getLocalizedText('country_brazil_radio', 'Brazil Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/italy">${this.escapeHtml(getLocalizedText('country_italy_radio', 'Italy Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/spain">${this.escapeHtml(getLocalizedText('country_spain_radio', 'Spain Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/turkey">${this.escapeHtml(getLocalizedText('country_turkey_radio', 'Turkey Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/japan">${this.escapeHtml(getLocalizedText('country_japan_radio', 'Japan Radio'))}</a></li>
-                <li><a href="/${language + '/'}regions/india">${this.escapeHtml(getLocalizedText('country_india_radio', 'India Radio'))}</a></li>
+                <li><a href="/${language}/regions/united-states">${this.escapeHtml(getLocalizedText('country_usa_radio', 'United States Radio'))}</a></li>
+                <li><a href="/${language}/regions/united-kingdom">${this.escapeHtml(getLocalizedText('country_uk_radio', 'United Kingdom Radio'))}</a></li>
+                <li><a href="/${language}/regions/germany">${this.escapeHtml(getLocalizedText('country_germany_radio', 'Germany Radio'))}</a></li>
+                <li><a href="/${language}/regions/france">${this.escapeHtml(getLocalizedText('country_france_radio', 'France Radio'))}</a></li>
+                <li><a href="/${language}/regions/canada">${this.escapeHtml(getLocalizedText('country_canada_radio', 'Canada Radio'))}</a></li>
+                <li><a href="/${language}/regions/australia">${this.escapeHtml(getLocalizedText('country_australia_radio', 'Australia Radio'))}</a></li>
+                <li><a href="/${language}/regions/brazil">${this.escapeHtml(getLocalizedText('country_brazil_radio', 'Brazil Radio'))}</a></li>
+                <li><a href="/${language}/regions/italy">${this.escapeHtml(getLocalizedText('country_italy_radio', 'Italy Radio'))}</a></li>
+                <li><a href="/${language}/regions/spain">${this.escapeHtml(getLocalizedText('country_spain_radio', 'Spain Radio'))}</a></li>
+                <li><a href="/${language}/regions/turkey">${this.escapeHtml(getLocalizedText('country_turkey_radio', 'Turkey Radio'))}</a></li>
+                <li><a href="/${language}/regions/japan">${this.escapeHtml(getLocalizedText('country_japan_radio', 'Japan Radio'))}</a></li>
+                <li><a href="/${language}/regions/india">${this.escapeHtml(getLocalizedText('country_india_radio', 'India Radio'))}</a></li>
               </ul>
             </section>
             
@@ -1069,11 +1069,11 @@ export class SeoRenderer {
               
               <nav class="footer-links">
                 <ul>
-                  <li><a href="/${language + '/'}about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
-                  <li><a href="/${language + '/'}contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
-                  <li><a href="/${language + '/'}privacy-policy">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
-                  <li><a href="/${language + '/'}terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
-                  <li><a href="/${language + '/'}applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
+                  <li><a href="/${language}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
+                  <li><a href="/${language}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
+                  <li><a href="/${language}/privacy-policy">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
+                  <li><a href="/${language}/terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
+                  <li><a href="/${language}/applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
                 </ul>
               </nav>
             </section>
@@ -1193,10 +1193,10 @@ export class SeoRenderer {
                 <!-- Navigation -->
                 <nav class="explore-nav">
                   <ul>
-                    <li><a href="/${language + '/'}genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse All Radio Genres'))}</a></li>
-                    <li><a href="/${language + '/'}regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio Stations by Country'))}</a></li>
-                    <li><a href="/${language + '/'}stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Explore All Stations'))}</a></li>
-                    <li><a href="/${language + '/'}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                    <li><a href="/${language}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse All Radio Genres'))}</a></li>
+                    <li><a href="/${language}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio Stations by Country'))}</a></li>
+                    <li><a href="/${language}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Explore All Stations'))}</a></li>
+                    <li><a href="/${language}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                   </ul>
                 </nav>
               </div>

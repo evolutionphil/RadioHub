@@ -11,6 +11,19 @@ import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
 import { getCachedQualifiedLanguages } from "../seo/qualified-languages";
 
+// Centralized XML escape helper (Architect B P0)
+// Escapes the 5 XML predefined entities for safe inclusion in <loc>, <image:loc>,
+// <xhtml:link href>, station name fields, etc. Use everywhere instead of ad-hoc replace chains.
+function escapeXml(value: string): string {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
 export async function registerSeoSitemapRoutes(app: Express, deps: any, options?: { apiOnly?: boolean }) {
   const { requireAdmin } = deps;
   const seoRenderer = new SeoRenderer();
@@ -308,8 +321,12 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // Robots.txt generator
   app.get("/robots.txt", async (req, res) => {
     const baseUrl = getBaseUrl(req);
+    // robots.txt rule order (Architect B P1):
+    // 1. Specific Allow rules for /api/* (so Google WRS can fetch SSR data endpoints)
+    // 2. Disallow /api/ catch-all (blocks the rest of /api from being crawled as content)
+    // 3. Disallow admin / private routes
+    // 4. Allow / catch-all LAST (defensive default for any unmatched path)
     const robots = `User-agent: *
-Allow: /
 Allow: /api/station/
 Allow: /api/stations/
 Allow: /api/genres
@@ -326,6 +343,7 @@ Disallow: /*/analytics
 Disallow: /*/search*
 Disallow: /*/messages
 Disallow: /*/profile
+Allow: /
 
 User-agent: Baiduspider
 Crawl-delay: 10
@@ -575,15 +593,9 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
           /^https?:\/\//i.test(stationImg) &&
           !/default-station\.(png|webp|jpg|jpeg|svg)$/i.test(stationImg)
         ) {
-          const imgEsc = stationImg
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&apos;');
           parts.push(`
     <image:image>
-      <image:loc>${imgEsc}</image:loc>
+      <image:loc>${escapeXml(stationImg)}</image:loc>
     </image:image>`);
         }
 

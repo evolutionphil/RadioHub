@@ -274,6 +274,22 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   });
 });
 
+// CRITICAL CORS RULE (Architect D P1): CORS headers MUST be set BEFORE rate limiters
+// so that 429 / preflight responses still carry CORS headers. If a 429 is returned without
+// Access-Control-Allow-Origin, the browser blocks the response entirely and the site appears
+// completely down to the user. Mirrors the order already used in server/index-api.ts.
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-API-Key, X-API-User-Token');
+  res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
+  res.header('Access-Control-Max-Age', '86400');
+  if (req.method === 'OPTIONS') {
+    return res.status(204).end();
+  }
+  next();
+});
+
 // Apply global API rate limiting to all /api routes
 app.use('/api', globalApiLimiter);
 
