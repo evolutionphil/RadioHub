@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. Its core purpose is to provide a personalized listening experience for users and comprehensive management tools for broadcasters. Key features include extensive audio format support, advanced SEO, robust user management, social interaction, geolocation, sophisticated search, data-driven trend analysis, and AI-powered content recommendations. The project aims to become a leading platform in the online radio market for enthusiasts and broadcasters worldwide.
+The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and management. It provides a personalized listening experience for users and comprehensive management tools for broadcasters. The project aims to become a leading platform in the online radio market, offering extensive audio format support, advanced SEO, robust user management, social interaction, geolocation, sophisticated search, data-driven trend analysis, and AI-powered content recommendations.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -44,7 +44,7 @@ CRITICAL ALIAS REDIRECT RULE: When a station is resolved via `slugAliases` (rath
 
 CRITICAL MOBILE PERFORMANCE RULE: Mobile PageSpeed score'u korumak için:
 1) `vite.config.ts` `rollupOptions.output.manualChunks` KORUNMALI — react-vendor / query-vendor / radix-vendor / icons-vendor / media-vendor / forms-vendor ayrımı tree-shaking'i bozmadan lucide-react ikon parçalanmasını engeller.
-2) `client/src/pages/radio-frontend.tsx` içinde `extendedPopularStationsData` AYRI bir useQuery olarak EKLENMEMELİ — `popularStationsData` ile aynı URL'yi (`/api/stations/precomputed?countryName=X&page=1&limit=12`) çağırıyor, sadece alias olarak kalmalı.
+2) `client/src/pages/radio-frontend.tsx` içinde `extendedPopularStationsData` AYRI bir useQuery olarak EKLENMEMELİ — `popularStationsData` ile aynı URL'yi (`/api/stations/precomputed?countryName=X&page=1&limit=12`) çağrıyor, sadece alias olarak kalmalı.
 3) Country-change useEffect'inde broad `invalidateQueries({ predicate })` EKLENMEMELİ — TanStack Query queryKey değiştiğinde otomatik refetch yapar.
 4) `InView` wrapper'ı (client/src/components/ui/in-view.tsx) artık `minHeight` defaultsuz; lazy bölümlerde CLS önlemek için ya `minHeight` prop'u ya `className="min-h-[...]"` verilmeli.
 5) `client/index.html` hero preload media query'si HER ZAMAN `radio-frontend.tsx`'teki `<picture>` `<source media="(min-width: 768px)">` ile hizalı olmalı.
