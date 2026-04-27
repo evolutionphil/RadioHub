@@ -883,8 +883,8 @@ export class SeoRenderer {
     }
   }
 
-  generateHtmlBody(pageData: { pageType: string; language: string; translations: Record<string, string>; seoTags?: any; stationData?: any; additionalData?: any }): string {
-    const { pageType, language, translations, seoTags, stationData, additionalData } = pageData;
+  generateHtmlBody(pageData: { pageType: string; language: string; translations: Record<string, string>; seoTags?: any; stationData?: any; additionalData?: any; urlTranslations?: Map<string, string> }): string {
+    const { pageType, language, translations, seoTags, stationData, additionalData, urlTranslations } = pageData;
     const h1Text = this.getH1Text(pageType, language, translations, seoTags, stationData, additionalData);
     
     // Generate a minimal but semantic HTML body for SEO
@@ -921,6 +921,33 @@ export class SeoRenderer {
               </ul>
             </nav>
             
+            ${additionalData?.popularStations && additionalData.popularStations.length > 0 ? `
+            <!-- Popular Radio Stations - SEO image surface for Bing/Google image indexing -->
+            <section class="popular-stations">
+              <h2>${this.escapeHtml(getLocalizedText('popular_stations', 'Popular Radio Stations'))}</h2>
+              <ul class="popular-stations-list">
+                ${additionalData.popularStations.map((station: any) => {
+                  const slug = station.slug || station._id;
+                  // Prefix-all canonical: /<lang>/<localized-station>/<slug> for ALL languages including English
+                  const stationSegment = urlTranslations?.get(`${language}:station`) || 'station';
+                  const stationUrl = `/${language}/${stationSegment}/${slug}`;
+                  const logo = station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.favicon || '/images/default-station.png';
+                  const stationName = this.escapeHtml(station.name || 'Radio Station');
+                  const country = station.country ? this.escapeHtml(station.country) : '';
+                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  return `
+                    <li>
+                      <a href="${stationUrl}">
+                        <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">
+                        <h3>${stationName}</h3>
+                      </a>
+                    </li>
+                  `;
+                }).join('')}
+              </ul>
+            </section>
+            ` : ''}
+
             <!-- Popular Genres Links -->
             <section class="popular-genres">
               <h2>${this.escapeHtml(getLocalizedText('popular_genres_title', 'Popular Radio Genres'))}</h2>

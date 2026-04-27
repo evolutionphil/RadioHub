@@ -320,10 +320,7 @@ Allow: /api/og-image
 Disallow: /api/
 Disallow: /*/admin/
 Disallow: /*/admin
-Disallow: /*/login
-Disallow: /*/signup
 Disallow: /*/settings
-Disallow: /*/forgot-password
 Disallow: /*/import-export
 Disallow: /*/analytics
 Disallow: /*/search*

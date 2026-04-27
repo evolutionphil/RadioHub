@@ -18,8 +18,29 @@ import { serveStatic, log } from "./serve-static";
 import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
+import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@shared/seo-config';
 
 import { geoBlockMiddleware } from './middleware/geo-block';
+
+// Country-prefix duplicate canonical fix (Bing DALGA A)
+// SEO_LANGUAGES'da OLMAYAN ama COUNTRY_TO_LANGUAGE'da bulunan 2-harf prefix'leri
+// (ör. /ph, /us, /au, /ca, /gb, /nz) /<mapped-lang> hedefine 301 redirect.
+// Aksi halde /ph içinde /en içeriği render olup self-canonical /ph kalıyor → Google
+// "Duplicate without user-selected canonical" cezası.
+const _seoLangCodes = new Set(SEO_LANGUAGES.filter(l => l.enabled).map(l => l.code));
+const COUNTRY_PREFIX_REDIRECTS = new Map<string, string>();
+for (const [country, lang] of Object.entries(COUNTRY_TO_LANGUAGE)) {
+  if (!_seoLangCodes.has(country) && _seoLangCodes.has(lang)) {
+    COUNTRY_PREFIX_REDIRECTS.set(country, lang);
+  }
+}
+
+// Auth path noindex regex (Bing DALGA B1)
+// Mevcut robots.txt Disallow varken Google "indexed though blocked" raporlayabiliyor.
+// Sayfa fetch edilebilir olmalı + X-Robots-Tag noindex header dönmeli.
+// Tüm auth varyantları kapsanır: /auth/*, login, signup, sign-in, sign-up, register,
+// forgot-password, reset-password, change-password (her biri opsiyonel /<lang>/ prefix ile).
+const AUTH_NOINDEX_PATH = /^(?:\/[a-z]{2})?\/(?:auth(?:\/.*)?|login|signup|sign-in|sign-up|register|forgot-password|reset-password|change-password)(?:\/|$)/i;
 
 const app = express();
 
@@ -125,9 +146,30 @@ function getHstsHeader(): string {
   return hstsConfigs[hstsPhase] || hstsConfigs.confident;
 }
 
+// Country-prefix 301 redirect (Bing DALGA A) - run BEFORE everything else
+app.use((req, res, next) => {
+  const m = req.path.match(/^\/([a-z]{2})(\/.*)?$/i);
+  if (m) {
+    const prefix = m[1].toLowerCase();
+    const target = COUNTRY_PREFIX_REDIRECTS.get(prefix);
+    if (target) {
+      const rest = m[2] || '';
+      const qIdx = req.originalUrl.indexOf('?');
+      const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+      return res.redirect(301, `/${target}${rest}${queryString}`);
+    }
+  }
+  next();
+});
+
 app.use((req, res, next) => {
   res.removeHeader('X-Robots-Tag');
-  res.header('X-Robots-Tag', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+  // Auth pages (login/signup/forgot-password/...) -> noindex (Bing DALGA B1)
+  if (AUTH_NOINDEX_PATH.test(req.path)) {
+    res.header('X-Robots-Tag', 'noindex, follow');
+  } else {
+    res.header('X-Robots-Tag', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+  }
 
   res.header('X-Content-Type-Options', 'nosniff');
   const frameOptions = getFrameOptionsHeader();
@@ -675,7 +717,8 @@ app.use('/api/stream', streamServiceProxy);
           translations: seoData.translations,
           seoTags: seoTags,
           stationData: seoData.pageData?.station,
-          additionalData: seoData.pageData?.additionalData || {}
+          additionalData: seoData.pageData?.additionalData || {},
+          urlTranslations: seoData.urlTranslations
         })}
       </div>
     </div>

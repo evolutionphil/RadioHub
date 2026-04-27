@@ -1987,7 +1987,7 @@ export function generateSeoTags(
       ogDescription: stationData ? 
         getLocalizedStationDescription(stationData, language, translations) :
         'Listen to live radio stations online with Mega Radio.',
-      ogImage: stationData?.favicon || undefined,
+      ogImage: stationData?.logoAssets?.webp512 || stationData?.logoAssets?.webp256 || stationData?.favicon || undefined,
       ogType: 'music.radio_station',
       twitterTitle: stationData ? 
         generateLocalizedStationTitle(stationData, language, translations) :

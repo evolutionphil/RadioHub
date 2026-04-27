@@ -33,6 +33,21 @@ import { logger } from './utils/logger';
 import { initLogCollector } from './services/log-collector';
 import { urlRedirectMiddleware } from './url-redirect-middleware';
 import { stationCountryValidator } from './station-country-validator';
+import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@shared/seo-config';
+
+// Country-prefix duplicate canonical fix (Bing DALGA A) - mirror of index-web.ts
+const _seoLangCodesMain = new Set(SEO_LANGUAGES.filter(l => l.enabled).map(l => l.code));
+const COUNTRY_PREFIX_REDIRECTS_MAIN = new Map<string, string>();
+for (const [country, lang] of Object.entries(COUNTRY_TO_LANGUAGE)) {
+  if (!_seoLangCodesMain.has(country) && _seoLangCodesMain.has(lang)) {
+    COUNTRY_PREFIX_REDIRECTS_MAIN.set(country, lang);
+  }
+}
+
+// Auth path noindex regex (Bing DALGA B1) - mirror of index-web.ts
+// Tüm auth varyantları: /auth/*, login, signup, sign-in, sign-up, register,
+// forgot-password, reset-password, change-password (opsiyonel /<lang>/ prefix ile).
+const AUTH_NOINDEX_PATH_MAIN = /^(?:\/[a-z]{2})?\/(?:auth(?:\/.*)?|login|signup|sign-in|sign-up|register|forgot-password|reset-password|change-password)(?:\/|$)/i;
 import { geoBlockMiddleware } from './middleware/geo-block';
 
 const app = express();
@@ -272,6 +287,22 @@ app.use((req, res, next) => {
   next();
 });
 
+// Country-prefix 301 redirect (Bing DALGA A) - run BEFORE everything else
+app.use((req, res, next) => {
+  const m = req.path.match(/^\/([a-z]{2})(\/.*)?$/i);
+  if (m) {
+    const prefix = m[1].toLowerCase();
+    const target = COUNTRY_PREFIX_REDIRECTS_MAIN.get(prefix);
+    if (target) {
+      const rest = m[2] || '';
+      const qIdx = req.originalUrl.indexOf('?');
+      const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+      return res.redirect(301, `/${target}${rest}${queryString}`);
+    }
+  }
+  next();
+});
+
 // SEO & Security Headers Middleware
 app.use((req, res, next) => {
   // CRITICAL SEO FIX: Override any blocking X-Robots-Tag headers from development environment
@@ -282,9 +313,14 @@ app.use((req, res, next) => {
   // Remove any existing X-Robots-Tag that might block crawling
   res.removeHeader('X-Robots-Tag');
   
-  // Set proper X-Robots-Tag for production: allow all crawlers to index and follow
-  // This explicitly overrides Replit's development noindex header
-  res.header('X-Robots-Tag', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+  // Auth pages (login/signup/forgot-password/...) -> noindex (Bing DALGA B1)
+  if (AUTH_NOINDEX_PATH_MAIN.test(req.path)) {
+    res.header('X-Robots-Tag', 'noindex, follow');
+  } else {
+    // Set proper X-Robots-Tag for production: allow all crawlers to index and follow
+    // This explicitly overrides Replit's development noindex header
+    res.header('X-Robots-Tag', 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
+  }
   
   // CORS Configuration for cross-origin streaming & Samsung TV compatibility
   res.header('Access-Control-Allow-Origin', '*');
@@ -1051,7 +1087,8 @@ app.use((req, res, next) => {
           translations: seoData.translations,
           seoTags: seoTags,
           stationData: seoData.pageData?.station,
-          additionalData: seoData.pageData?.additionalData || {}
+          additionalData: seoData.pageData?.additionalData || {},
+          urlTranslations: seoData.urlTranslations
         })}
       </div>
     </div>
