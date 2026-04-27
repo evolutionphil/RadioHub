@@ -917,6 +917,25 @@ app.use((req, res, next) => {
       
       // Use seoRenderer to generate page-specific meta tags for any page type
       const seoData = await seoRenderer.renderStaticPage(url, productionDomain, preferredLanguage);
+
+      // Slug-alias 301 redirect handler (parity with server/index-web.ts:704-710).
+      // When SSR resolved the station via a slugAlias rather than the canonical
+      // slug, redirect to the canonical localized URL so Google/Bing consolidate
+      // ranking and don't keep indexing the old broken slug. Without this, the
+      // monolithic dev server (and any deployment using index.ts as the SSR
+      // entry point) silently swallows the redirect and serves a 200 OK page,
+      // leaving stale aliases live in search results.
+      const redirectTo = seoData.pageData?.redirectTo;
+      if (redirectTo && typeof redirectTo === 'string') {
+        const qIdx = req.originalUrl.indexOf('?');
+        const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+        clearTimeout(reqTimeout);
+        responded = true;
+        logger.log(`🔀 SEO 301 (alias): ${url} → ${redirectTo}`);
+        res.redirect(301, redirectTo + queryString);
+        return;
+      }
+
       // Override domain for OG images in dev environment (enables WhatsApp testing).
       // CRITICAL: seoData.seoTags is shared from a `useClones: false` cache and
       // is frozen on write — clone before overriding to avoid corrupting other

@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for streaming and managing radio stations. It offers an extensive administrative interface, real-time monitoring, broad audio format support, and SEO-friendly URLs. Key capabilities include user management, social interaction, geolocation, advanced search, authentic user engagement data, trending stations, and AI-powered recommendations. The project aims to be a leading digital audio platform, leveraging AI for content delivery and advanced HLS session management for global reach and uninterrupted streaming.
+The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It provides comprehensive administrative controls, real-time monitoring, and an enhanced user experience for digital audio content. Key capabilities include extensive audio format support, advanced SEO, robust user management, social interaction features, geolocation services, advanced search, user engagement analytics, trending station displays, and AI-powered content recommendations. The project aims to lead in digital audio by leveraging AI-driven content delivery and HLS session management for a superior listening experience.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -18,7 +18,7 @@ CRITICAL LASTMOD RULE: Station sitemaps must ONLY include `<lastmod>` when real 
 
 CRITICAL UGC RULE: User-submitted comments are stripped of HTML tags on input (max 1000 chars) and on output. Any future comment rendering with links MUST use `rel="nofollow ugc noopener"` to comply with Google's UGC spam policy.
 
-CRITICAL SITEMAP RULE: sitemap-index.xml references ONLY existing routes: sitemap-main-{lang}.xml, sitemap-genres-{lang}.xml, sitemap-stations-{lang}-{chunk}.xml. Never add sitemap-images-*, sitemap-stations-{digit}.xml, sitemap-news.xml, sitemap-videos.xml back — these violate Google policies or don't exist. robots.txt must only list sitemap-index.xml. sitemap-main.xml is a 301 redirect to sitemap-main-en.xml. Deprecated sitemap URLs (/sitemap-news.xml, /sitemap-videos.xml, /sitemap-images-*.xml, /sitemap-stations-{digit}.xml) return 410 Gone to prevent soft-404.
+CRITICAL SITEMAP RULE: sitemap-index.xml references ONLY existing routes: sitemap-main-{lang}.xml, sitemap-genres-{lang}.xml, sitemap-stations-{chunk}.xml. Never add sitemap-images-*, sitemap-stations-{digit}.xml, sitemap-news.xml, sitemap-videos.xml back — these violate Google policies or don't exist. robots.txt must only list sitemap-index.xml. sitemap-main.xml is a 301 redirect to sitemap-main-en.xml. Deprecated sitemap URLs (/sitemap-news.xml, /sitemap-videos.xml, /sitemap-images-*.xml, /sitemap-stations-{digit}.xml) return 410 Gone to prevent soft-404.
 
 CRITICAL ROBOTS.TXT RULE: `Disallow: /api/` blocks Google WRS (Web Rendering Service) from fetching API endpoints during JavaScript rendering, which causes React to show "Station not found" even when SSR is correct. Critical API paths MUST have explicit `Allow:` rules BEFORE the `Disallow: /api/` line: `/api/station/`, `/api/stations/`, `/api/genres`, `/api/translations`, `/api/location`, `/api/advertisements`. Never remove these Allow rules or Google will see blank/error pages after JS render.
 
@@ -40,6 +40,8 @@ CRITICAL STRUCTURED DATA RULE: WebSite schema has @id=`{domain}/#website` and al
 
 CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` and `seo_listen_live_online` for localized rendering. Never hardcode English "from" or "Listen Live Online" in the station H1 template.
 
+CRITICAL ALIAS REDIRECT RULE: When a station is resolved via `slugAliases` (rather than the canonical `slug`), `server/seo-renderer.ts` MUST rebuild the redirect target via `buildLocalizedUrl(englishCanonical, actualLanguage, countryCode, urlTranslations)` — NEVER do a raw `cleanPath.replace(stationSlug, aliasMatch.slug)`. Reason: `cleanPath` returned by `getLanguageFromPath()` is already language-stripped AND reverse-translated to English (e.g. `/ar/mahta/-1` → cleanPath `/station/-1`). A raw replace produces `/station/<canonical>` which then triggers a 3-hop redirect chain (`/station/X` → `/en/station/X` → final localized) for non-English requests, dropping language signal and causing massive Google "Crawled – currently not indexed" duplication (~880K URLs as of Apr 2026). Single 301 hop to the correctly-localized canonical is mandatory. Also: the SSR redirect handler (`pageData.redirectTo` → `res.redirect(301, ...)`) MUST exist in BOTH `server/index-web.ts:704-710` AND `server/index.ts:921-940`. The monolithic `index.ts` entry path silently swallows the redirect if the handler is missing (returns 200 with stale alias content). Both entry points must stay in parity.
+
 CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed only via `getIndexableLanguagesForStation(station, qualifiedLangs)` / `isStationIndexableInLanguage(station, lang, qualifiedLangs)` from `server/seo/junk-station-rules.ts`. Sitemap inclusion (`server/routes/seo-sitemap-routes.ts`), SSR robots/noindex + hreflang emission (`server/seo-renderer.ts` station branch), SSR station-branch CANONICAL selection (must use the same `indexable` array — never `getEligibleLanguages` directly), and the 410-Gone decision (both `server/index.ts` and `server/index-web.ts`) MUST all use this exact gate. `qualifiedLangs` MUST come from `server/seo/qualified-languages.ts` (`getCachedQualifiedLanguages` — 10-min TTL, same source for both call sites; fail-open fallback to `ACTIVE_SITEMAP_LANGUAGES` when the computed set is empty so a cold cache never drops valid stations to noindex; the fallback response is NOT cached so subsequent calls re-probe). NEVER branch on the raw `getEligibleLanguages` / `isLanguageEligibleForStation` at a public SEO surface — that skips the UI-translation qualification and reintroduces "Crawled – currently not indexed" regressions (~890K GSC URLs). Junk stations (`isJunkStation` true or `noIndex:true` in DB) MUST serve 410 Gone via `sendJunkGone()` from `server/seo/send-junk-gone.ts` in ALL paths (cache-HIT AND cache-MISS) in BOTH `server/index.ts` and `server/index-web.ts` — never 200/noindex and never 301. 410 bodies MUST NOT be written to `performanceCache.setSeoHtml`. Cache-HIT paths MUST cross-check `performanceCache.getPageData(cleanUrl).pageData.stationIsJunk` before serving cached HTML so stale pre-junk SSR cannot leak. For this guard to be deterministic, `pageDataCache.stdTTL` in `server/performance-cache.ts` MUST be >= `seoHtmlCache.stdTTL` (both currently 1800s) — otherwise the HTML outlives the pageData and the junk flag is lost mid-window. Junk pages MUST emit zero hreflang alternates (Google policy for noindex/gone). Hreflang on a valid station MUST be restricted via `generateLanguageUrls(..., allowedLanguages)` using the same `indexable` array — so sitemap and SSR advertise the exact same alternate set. `getEligibleLanguages(station)` MUST include every language present in `station.descriptions` with BOTH `full` AND `meta` non-empty (AI-generated per-station content counts as real content for SEO). NEVER drop the `descriptions` branch — doing so collapses multilingual stations like Kronehit back to `{en, country-language}` only, even when 14+ languages of genuine content exists in the DB. The half-filled / empty-string entry rejection is intentional: a record with only `meta` but no `full` renders a thin page and must not be advertised via hreflang.
 
 ## System Architecture
@@ -54,50 +56,45 @@ CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed
 - **Framework**: React with TypeScript
 - **Routing**: Wouter
 - **State Management**: TanStack Query
-- **UI**: Tailwind CSS with shadcn/ui for responsive, mobile-first design and functional audio player.
+- **UI**: Tailwind CSS with shadcn/ui for responsive design and an audio player.
 - **Build Tool**: Vite
 - **Audio Streaming**: HLS.js with Plyr
 
 ### Deployment
-- **Architecture**: Three-service split deployment (backend-api, frontend-web, stream-proxy).
-- **Stream Proxy**: Dedicated service for audio and image proxying.
+- **Architecture**: Three-service split (backend-api, frontend-web, stream-proxy).
 - **Containerization**: Docker for builds and deployment.
 
 ### Key Architectural Decisions
 - **Monorepo**: Unified repository for all services.
 - **Type Safety**: End-to-end TypeScript with Zod validation.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang.
-- **Performance**: Caching, indexing, lazy loading, Core Web Vitals optimization.
-- **Geolocation**: Utilizes Cloudflare headers and GPS.
-- **Audio Continuity**: Preserves audio playback across page navigations.
-- **User Engagement**: Trends and recommendations driven by real user data.
-- **Image Optimization**: Server-side image resizing and WebP conversion with Sharp, storing on S3.
-- **Memory Management**: Multi-layer OOM prevention including RSS monitoring and periodic GC.
-- **Self-Watchdog**: Servers self-monitor and auto-restart on failures.
-- **MongoDB Circuit Breaker**: Prevents request buildup during database reconnection.
-- **Fail-Fast Exit**: Ensures graceful shutdown on critical uncaught exceptions.
-- **SEO Render Protection**: Limits concurrent Server-Side Rendering (SSR), incorporates timeouts, and bot rate limiting.
-- **Subscription System**: Supports various plans with a flexible feature matrix.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing.
+- **Performance**: Multi-layer caching, database indexing, lazy loading, Core Web Vitals optimization, and server-side image optimization.
+- **Geolocation**: Cloudflare headers and GPS.
+- **Audio Continuity**: Seamless audio playback across page navigations.
+- **User Engagement**: Data-driven trends and AI-powered recommendations.
+- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast exits.
+- **SSR Protection**: Limits concurrent Server-Side Rendering, timeouts, and bot rate limiting.
+- **Subscription System**: Flexible feature matrix for various subscription plans.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud database service.
 - **Radio-Browser API**: Third-party radio station data.
-- **ip-api.com**: Geolocation API.
+- **ip-api.com**: Geolocation services.
 - **Cloudflare**: CDN, caching, and RUM Web Vitals.
 - **AWS S3**: Cloud storage for media assets.
 - **mongoose**: MongoDB Object Data Modeling (ODM).
 - **@tanstack/react-query**: Data fetching and state management.
-- **axios**: Promise-based HTTP client.
-- **node-cron**: Task scheduling.
-- **@radix-ui/***: UI component library.
+- **axios**: HTTP client.
+- **node-cron**: Scheduling background tasks.
+- **@radix-ui/**: UI component library.
 - **tailwindcss**: Utility-first CSS framework.
-- **wouter**: Routing library for React.
-- **react-hook-form**: Form validation.
-- **vite**: Frontend build tool.
-- **typescript**: Language for type safety.
-- **bcrypt**: Password hashing library.
+- **wouter**: Lightweight React routing library.
+- **react-hook-form**: Form validation and management.
+- **vite**: Fast frontend build tool.
+- **typescript**: Type safety.
+- **bcrypt**: Secure password hashing.
 - **zod**: Schema declaration and validation library.
-- **hls.js**: JavaScript library for HLS playback.
-- **plyr**: Lightweight HTML5 media player.
-- **sharp**: High-performance image processing library.
-- **multer**: Middleware for handling `multipart/form-data`.
+- **hls.js**: HTTP Live Streaming (HLS) playback.
+- **plyr**: HTML5 media player.
+- **sharp**: High-performance image processing.
+- **multer**: Middleware for `multipart/form-data` handling (file uploads).

@@ -330,10 +330,57 @@ export class SeoRenderer {
               signal,
             );
             if (aliasMatch && aliasMatch.slug && aliasMatch.slug !== stationSlug) {
-              const canonicalPath = cleanPath.replace(
+              // JUNK GATE (Architect P1, Apr 2026): If the canonical target is
+              // itself a junk station (noIndex:true or matches isJunkStation
+              // heuristics), DO NOT 301 to it — that would tell Google "this
+              // old URL = good new URL" and consolidate ranking onto a page we
+              // explicitly want gone. Instead, signal stationIsJunk:true so
+              // the HTTP layer in index.ts/index-web.ts serves 410 Gone for
+              // the original alias URL too. Same gate the main station branch
+              // uses (line ~503) to keep alias and canonical paths consistent.
+              const { isJunkStation } = await import('./seo/junk-station-rules');
+              const aliasTargetIsJunk =
+                isJunkStation(aliasMatch) || aliasMatch.noIndex === true;
+              if (aliasTargetIsJunk) {
+                // CRITICAL: Do NOT set notFound:true — the HTTP-layer junk
+                // handler in both index.ts:1068 and index-web.ts:719 gates on
+                // `!stationNotFound && !!stationIsJunk`. Setting notFound here
+                // would skip the 410 path and fall through to a generic 404,
+                // which is a weaker signal to Google than 410 Gone.
+                logger.log(`🚫 SEO ALIAS 410: ${cleanPath} (${stationSlug}) → ${aliasMatch.slug} is junk, serving 410 Gone`);
+                return {
+                  language,
+                  cleanPath,
+                  seoTags: { robots: 'noindex, follow', noIndex: true } as any,
+                  translations: {},
+                  pageData: {
+                    stationIsJunk: true,
+                    pageType: 'station',
+                  } as any,
+                };
+              }
+
+              // BUG FIX (Apr 2026): cleanPath comes from getLanguageFromPath() which
+              // STRIPS the language prefix and REVERSE-TRANSLATES the path back to
+              // English (e.g. "/ar/mahta/old-slug" -> cleanPath "/station/old-slug").
+              // Previously we did `cleanPath.replace(stationSlug, newSlug)` which
+              // produced "/station/new-slug" (no language prefix, no localized
+              // segment) and triggered a 3-hop redirect chain back to /en/...,
+              // causing massive "Crawled - currently not indexed" duplication in
+              // Google Search Console. Now we rebuild the FULL localized canonical
+              // (lang prefix + translated segment) so it's a single 301 hop to the
+              // correct localized URL — preserving language signal and SEO equity.
+              const englishCanonical = cleanPath.replace(
                 `/${stationSlug}`,
                 `/${aliasMatch.slug}`,
               );
+              const canonicalPath = buildLocalizedUrl(
+                englishCanonical,
+                actualLanguage,
+                countryCode,
+                urlTranslations,
+              );
+              logger.log(`🔀 SEO ALIAS 301: ${cleanPath} (${stationSlug}) → ${canonicalPath} (${aliasMatch.slug})`);
               return {
                 language,
                 cleanPath,
