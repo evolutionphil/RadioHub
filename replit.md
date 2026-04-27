@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. It provides robust administrative controls, real-time monitoring, and AI-driven content delivery to enhance user engagement. Key capabilities include extensive audio format support, advanced SEO, comprehensive user management, social interaction features, geolocation services, and advanced search. The project aims to be a leading digital radio platform, offering a dynamic and feature-rich experience for listeners and administrators.
+The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and management. It offers comprehensive administrative controls, real-time monitoring, and AI-driven content delivery to boost user engagement. The project's vision is to become a leading global digital radio platform by providing a dynamic and feature-rich experience for both listeners and administrators. Key capabilities include extensive audio format support, advanced SEO, robust user management, social interaction features, geolocation services, and advanced search functionality.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
