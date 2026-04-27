@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and management. Its core purpose is to provide a personalized listening experience and comprehensive broadcasting tools. Key features include support for various audio formats, advanced SEO, robust user management, social interaction, geolocation, sophisticated search, data-driven trend analysis, and AI-powered content recommendations. The project aims to be a leader in the online radio market through innovation and superior user experience.
+The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and management. Its primary goal is to deliver a personalized listening experience and comprehensive broadcasting tools, supporting diverse audio formats, advanced SEO, robust user management, social interaction, geolocation, sophisticated search, data-driven trend analysis, and AI-powered content recommendations. The project aims to become a leader in the online radio market through innovation and a superior user experience.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -59,7 +59,7 @@ CRITICAL AUTH NOINDEX RULE: Auth pages (`/login`, `/signup`, `/sign-in`, `/sign-
 
 CRITICAL SSR IMG SURFACE RULE: Home SSR HTML MUST contain real `<img>` tags for the top-10 popular stations (S3 `logoAssets.webp256` URLs) so Bing/Google image crawlers can discover station logos. Visible `<img src=... alt=... width=256 height=256 loading=lazy>` is required. Implemented in `server/seo-renderer.ts` `generateHtmlBody` home branch (line ~927). The injected anchor URLs MUST follow the prefix-all canonical: `/<lang>/<localized-station-segment>/<slug>` for ALL languages including English.
 
-CRITICAL SSR STATION DETAIL IMG RULE: Station detay sayfa SSR HTML'inde EXACTLY 1 station logo `<img>` tag bulunmalı (genelde `<figure>` içinde, alt="{name} logo — {country}", width/height=256, loading=eager+decoding=async). `pickLogoUrl(station)` helper'ı (server/seo-renderer.ts) kullanılır: `logoAssets.webp256 → webp96 → favicon` fallback chain, http(s) scheme guard, trim. `fetchpriority=high` kullanılmaz — LCP optimizasyonu için sadece loading=eager yeterli. Junk station 410 yolunda `<img>` üretilmez.
+CRITICAL SSR STATION DETAIL IMG RULE: Station detay sayfa SSR HTML'inde EXACTLY 1 station logo `<img>` tag bulunmalı (genelde `<figure>` içinde, alt="{name} logo — {country}", width/height=256, loading=eager+decoding=async). `pickLogoUrl(station)` helper'ı (server/seo-renderer.ts) kullanılır: `logoAssets.webp256 → webp96 → favicon` fallback chain, http(s) scheme guard, trim. `fetchpriority=high` kullanılmaz — LCP optimizasyonu için sadece loading=eager yeterlidir. Junk station 410 yolunda `<img>` üretilmez.
 
 CRITICAL IMAGE SITEMAP NAMESPACE RULE: `/sitemap-stations-{lang}-{chunk}.xml` `<urlset>` MUST declare `xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"`. Her `<url>` içinde, station gerçek S3 logo URL'i varsa (`logoAssets.webp256 → webp96 → favicon`, http(s) scheme + `default-station.{png,webp,jpg,jpeg,svg}` placeholder reject), tek bir `<image:image><image:loc>...</image:image:loc></image:image>` child emit edilir. URL'ler XML-escape edilir (& < > " '). Mongo `.select()` `logoAssets favicon` field'larını içermeli. `/sitemap-images.xml` ve `/sitemap-images-{N}.xml` 410 Gone döner — sadece `image:image` extension kullanılır, ayrı image sitemap yok.
 
@@ -89,14 +89,14 @@ CRITICAL GENRES/REGIONS IMG GRID RULE: Genres ve Regions/Country SSR branch'leri
 
 ### Key Architectural Decisions
 - **Type Safety**: End-to-end type safety using TypeScript and Zod.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies are central to the system.
-- **Performance**: Achieved through multi-layer caching, database indexing, lazy loading, and server-side image optimization.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies.
+- **Performance**: Multi-layer caching, database indexing, lazy loading, and server-side image optimization.
 - **Geolocation**: Determined using Cloudflare headers and GPS for personalized content.
-- **Audio Continuity**: Designed for seamless playback across page navigations.
-- **User Engagement**: Features data-driven trends and AI-powered content recommendations.
-- **System Stability**: Incorporates multi-layer Out-Of-Memory prevention, self-watchdog mechanisms, MongoDB circuit breaker, and fail-fast exits.
-- **SSR Protection**: Implements limits on concurrent Server-Side Rendering, timeouts, and bot rate limiting to ensure stable performance.
-- **Subscription System**: Features a flexible matrix for various subscription plans.
+- **Audio Continuity**: Seamless playback across page navigations.
+- **User Engagement**: Data-driven trends and AI-powered content recommendations.
+- **System Stability**: Multi-layer Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast exits.
+- **SSR Protection**: Limits on concurrent Server-Side Rendering, timeouts, and bot rate limiting.
+- **Subscription System**: Flexible matrix for various subscription plans.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud-hosted NoSQL database.
