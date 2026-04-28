@@ -1,4 +1,4 @@
-import { Station, SyncLog } from '@shared/mongo-schemas';
+https://www.seobility.net/en/seocheck/check/?url=https%3A%2F%2Fthemegaradio.com%2Fde%2Fsender%2Fclassic-vinyl-hd&mode=standard#factor_title_contentimport { Station, SyncLog } from '@shared/mongo-schemas';
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import { ImageManager } from './image-manager';
