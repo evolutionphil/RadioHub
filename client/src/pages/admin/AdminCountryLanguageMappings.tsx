@@ -75,9 +75,8 @@ export default function AdminCountryLanguageMappings() {
   // Bulk save mutation
   const bulkSaveMutation = useMutation({
     mutationFn: async (mappings: Array<{ countryCode: string; countryName: string; languageCode: string }>) => {
-      return await apiRequest('/api/admin/country-language-mappings/bulk', {
-        method: 'POST',
-        body: JSON.stringify({ mappings }),
+      return await apiRequest('POST', '/api/admin/country-language-mappings/bulk', {
+        body: { mappings },
       });
     },
     onSuccess: () => {
@@ -100,7 +99,8 @@ export default function AdminCountryLanguageMappings() {
   // Handle language change for a country
   const handleLanguageChange = (countryCode: string, languageCode: string) => {
     const newChanges = new Map(pendingChanges);
-    newChanges.set(countryCode, languageCode);
+    // Sentinel value "__none__" means "no mapping" — store as empty string in pending changes
+    newChanges.set(countryCode, languageCode === '__none__' ? '' : languageCode);
     setPendingChanges(newChanges);
   };
 
@@ -267,14 +267,14 @@ export default function AdminCountryLanguageMappings() {
                         <TableCell>
                           <Select
                             data-testid={`select-language-${country.code}`}
-                            value={effectiveLanguage}
+                            value={effectiveLanguage || '__none__'}
                             onValueChange={(value) => handleLanguageChange(country.code, value)}
                           >
                             <SelectTrigger>
                               <SelectValue placeholder="Select language..." />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="">No mapping (Default to English)</SelectItem>
+                              <SelectItem value="__none__">No mapping (Default to English)</SelectItem>
                               {languages?.map((lang) => (
                                 <SelectItem key={lang.code} value={lang.code}>
                                   {lang.name} ({lang.code})
