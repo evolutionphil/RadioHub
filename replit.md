@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and broadcasting. Its primary goal is to offer personalized listening experiences and advanced broadcasting tools, aiming to lead the online radio market. Key capabilities include diverse audio format support, robust user management, social interaction features, geolocation-based content delivery, sophisticated search, data-driven trend analysis, and AI-powered recommendations. The project aims to provide a comprehensive, high-performance, and stable platform to attract a significant online radio audience.
+The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and broadcasting. Its primary purpose is to offer personalized listening experiences and comprehensive broadcasting tools. Key capabilities include support for diverse audio formats, user and social interaction management, geolocation-based content delivery, advanced search functionalities, data-driven trend analysis, and AI-powered recommendations. The project aims to become a leading platform in online radio, significantly enhancing listener engagement and streamlining broadcaster management.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -42,14 +42,7 @@ CRITICAL MULTILINGUAL H1 RULE: Station page H1 uses translation keys `seo_from` 
 
 CRITICAL ALIAS REDIRECT RULE: When a station is resolved via `slugAliases` (rather than the canonical `slug`), `server/seo-renderer.ts` MUST rebuild the redirect target via `buildLocalizedUrl(englishCanonical, actualLanguage, countryCode, urlTranslations)` — NEVER do a raw `cleanPath.replace(stationSlug, aliasMatch.slug)`. Single 301 hop to the correctly-localized canonical is mandatory. Also: the SSR redirect handler (`pageData.redirectTo` → `res.redirect(301, ...)`) MUST exist in BOTH `server/index-web.ts:704-710` AND `server/index.ts:921-940`. Both entry points must stay in parity.
 
-CRITICAL MOBILE PERFORMANCE RULE: Mobile PageSpeed score'unu korumak için:
-1) `vite.config.ts` `rollupOptions.output.manualChunks` KORUNMALI — react-vendor / query-vendor / radix-vendor / icons-vendor / media-vendor / forms-vendor ayrımı tree-shaking'i bozmadan lucide-react ikon parçalanmasını engeller.
-2) `client/src/pages/radio-frontend.tsx` içinde `extendedPopularStationsData` AYRI bir useQuery olarak EKLENMEMELİ — `popularStationsData` ile aynı URL'yi (`/api/stations/precomputed?countryName=X&page=1&limit=12`) çağırıyor, sadece alias olarak kalmalı.
-3) Country-change useEffect'inde broad `invalidateQueries({ predicate })` EKLENMEMELİ — TanStack Query queryKey değiştiğinde otomatik refetch yapar.
-4) `InView` wrapper'ı (client/src/components/ui/in-view.tsx) artık `minHeight` defaultsuz; lazy bölümlerde CLS önlemek için ya `minHeight` prop'u ya `className="min-h-[...]"` verilmeli.
-5) `client/index.html` hero preload media query'si HER ZAMAN `radio-frontend.tsx`'teki `<picture>` `<source media="(min-width: 768px)">` ile hizalı olmalı.
-6) `client/index.html` `<link rel="preconnect" href="https://api.themegaradio.com" crossorigin>` 3-service split deploy'da KORUNMALI.
-7) `TranslationPreloader.tsx` background prefetch (en+de) `'load'` event SONRASI çalışmalı.
+CRITICAL MOBILE PERFORMANCE RULE: `vite.config.ts` `rollupOptions.output.manualChunks` must be preserved. `extendedPopularStationsData` should not be added as a separate `useQuery`. Avoid broad `invalidateQueries({ predicate })` in country-change useEffect. `InView` wrapper must have `minHeight` prop or `className`. `client/index.html` hero preload media query must align with `<picture>` `<source media="(min-width: 768px)">`. `client/index.html` `<link rel="preconnect" href="https://api.themegaradio.com" crossorigin>` must be preserved. `TranslationPreloader.tsx` background prefetch must run AFTER 'load' event.
 
 CRITICAL INDEXABILITY-GATE RULE: For station URLs, indexability MUST be computed only via `getIndexableLanguagesForStation(station, qualifiedLangs)` / `isStationIndexableInLanguage(station, lang, qualifiedLangs)` from `server/seo/junk-station-rules.ts`. Sitemap inclusion, SSR robots/noindex + hreflang emission, SSR station-branch CANONICAL selection, and the 410-Gone decision MUST all use this exact gate. Junk stations MUST serve 410 Gone via `sendJunkGone()` in ALL paths. Cache-HIT paths MUST cross-check `performanceCache.getPageData(cleanUrl).pageData.stationIsJunk`. `pageDataCache.stdTTL` MUST be >= `seoHtmlCache.stdTTL`. Junk pages MUST emit zero hreflang alternates. Hreflang on a valid station MUST be restricted via `generateLanguageUrls(..., allowedLanguages)` using the same `indexable` array.
 
@@ -59,57 +52,56 @@ CRITICAL AUTH NOINDEX RULE: Auth pages (`/login`, `/signup`, `/sign-in`, `/sign-
 
 CRITICAL SSR IMG SURFACE RULE: Home SSR HTML MUST contain real `<img>` tags for the top-10 popular stations (S3 `logoAssets.webp256` URLs) so Bing/Google image crawlers can discover station logos. Visible `<img src=... alt=... width=256 height=256 loading=lazy>` is required. Implemented in `server/seo-renderer.ts` `generateHtmlBody` home branch (line ~927). The injected anchor URLs MUST follow the prefix-all canonical: `/<lang>/<localized-station-segment>/<slug>` for ALL languages including English.
 
-CRITICAL SSR STATION DETAIL IMG RULE: Station detay sayfa SSR HTML'inde EXACTLY 1 station logo `<img>` tag bulunmalı (genelde `<figure>` içinde, alt="{name} logo — {country}", width/height=256, loading=eager+decoding=async). `pickLogoUrl(station)` helper'ı (server/seo-renderer.ts) kullanılır: `logoAssets.webp256 → webp96 → favicon` fallback chain, http(s) scheme guard, trim. `fetchpriority=high` kullanılmaz — LCP optimizasyonu için sadece loading=eager yeterlidir. Junk station 410 yolunda `<img>` üretilmez.
+CRITICAL SSR STATION DETAIL IMG RULE: Station detail page SSR HTML must contain exactly one station logo `<img>` tag (usually within `<figure>`, alt="{name} logo — {country}", width/height=256, loading=eager+decoding=async). The `pickLogoUrl(station)` helper (server/seo-renderer.ts) is used: `logoAssets.webp256 → webp96 → favicon` fallback chain, http(s) scheme guard, trim. `fetchpriority=high` is not used. For junk station 410 paths, no `<img>` is generated.
 
-CRITICAL IMAGE SITEMAP NAMESPACE RULE: `/sitemap-stations-{lang}-{chunk}.xml` `<urlset>` MUST declare `xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"`. Her `<url>` içinde, station gerçek S3 logo URL'i varsa (`logoAssets.webp256 → webp96 → favicon`, http(s) scheme + `default-station.{png,webp,jpg,jpeg,svg}` placeholder reject), tek bir `<image:image><image:loc>...</image:image:loc></image:image>` child emit edilir. URL'ler XML-escape edilir (& < > " '). Mongo `.select()` `logoAssets favicon` field'larını içermeli. `/sitemap-images.xml` ve `/sitemap-images-{N}.xml` 410 Gone döner — sadece `image:image` extension kullanılır, ayrı image sitemap yok.
+CRITICAL IMAGE SITEMAP NAMESPACE RULE: `/sitemap-stations-{lang}-{chunk}.xml` `<urlset>` MUST declare `xmlns:image="http://www.google.com/schemas/sitemap-image/1.1"`. For each `<url>`, if the station has a real S3 logo URL (`logoAssets.webp256 → webp96 → favicon`, http(s) scheme + `default-station.{png,webp,jpg,jpeg,svg}` placeholder reject), a single `<image:image><image:loc>...</image:image:loc></image:image>` child is emitted. URLs are XML-escaped. Mongo `.select()` must include `name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk` fields. `/sitemap-images.xml` and `/sitemap-images-{N}.xml` return 410 Gone.
 
-CRITICAL SSR PREFIX-ALL LANGPREFIX RULE: Tüm SSR branch'lerinde (home/station/genres/regions/country/search/faq/about/privacy) `<a>` href ve JSON-LD `url`/`@id` üretiminde, `langPrefix` veya inline language prefix MUTLAKA `/${language}` formatında — `language === 'en' ? '' : '/'+language` ASLA kullanılmaz. `searchPath` (WebSite SearchAction `urlTemplate`), ItemList `stationUrl`, RadioStation `@id`/`url` dahil. Localized URL segment için `urlTranslations.get(\`${language}:station\`)` (en→station, tr→istasyon, de→sender) kullanılır. Bu kural seo-config.ts CRITICAL CANONICAL RULE ile uyumlu — /en homepage `/en` self-canonical, asla bare `/` değil.
+CRITICAL SSR PREFIX-ALL LANGPREFIX RULE: In all SSR branches (home/station/genres/regions/country/search/faq/about/privacy), `<a>` href and JSON-LD `url`/`@id` generation, `langPrefix` or inline language prefix MUST be in `/${language}` format — `language === 'en' ? '' : '/'+language` is NEVER used. This includes `searchPath` (WebSite SearchAction `urlTemplate`), ItemList `stationUrl`, RadioStation `@id`/`url`. For localized URL segment, `urlTranslations.get(\`${language}:station\`)` (en→station, tr→istasyon, de→sender) is used. This rule aligns with seo-config.ts CRITICAL CANONICAL RULE.
 
-CRITICAL WOUTER LOCALIZED REGIONS ROUTE RULE: `client/src/App.tsx` içinde, dil-spesifik translated `regions` blok'unda (~line 731-740) `/:citySlug?/stations` literal mount ETMEK YETMİYOR — Türkçe `/istasyonlar`, Almanca `/sender`, İspanyolca `/emisoras-radio` gibi localized stations suffix'leri için ayrı bir `<Route path={`/${langConfig.code}/${translations['regions']}/:regionSlug/:countrySlug/:citySlug?/${translations['stations']}`} />` mount EDİLMELİDİR. Yoksa wouter literal `/stations` ile match edemediği için catch-all `/:countryCode/:rest*` (line ~1083) yakalar, PlayerWrapper render olur ama `useParams()` `{countryCode, rest}` döner — `regionSlug/countrySlug/citySlug` undefined olur, sayfa boş skeleton + API'ye undefined slug istek atar = kullanıcı 404 görür. Footer'dan herhangi bir 5-segment ülke linkine basınca 404 alıyorsa root cause budur. English route'lar (line 611, 757, 978, 1038) literal `/stations` ile doğru — değiştirmeyin.
+CRITICAL WOUTER LOCALIZED REGIONS ROUTE RULE: In `client/src/App.tsx`, for the language-specific translated `regions` block, it is NOT enough to literally mount `/:citySlug?/stations`. A separate `<Route path={`/${langConfig.code}/${translations['regions']}/:regionSlug/:countrySlug/:citySlug?/${translations['stations']}`} />` must be mounted for localized stations suffixes like Turkish `/istasyonlar`, German `/sender`, Spanish `/emisoras-radio`. Otherwise, wouter cannot match it, the catch-all `/:countryCode/:rest*` takes over, PlayerWrapper renders but `useParams()` returns `{countryCode, rest}`, `regionSlug/countrySlug/citySlug` are undefined, resulting in a blank skeleton page and undefined slug API requests. English routes (lines 611, 757, 978, 1038) are correct with literal `/stations` and should not be changed.
 
-CRITICAL META DESCRIPTION LENGTH RULE: Tüm `<meta name="description">`, `og:description`, `twitter:description` MAX 145 karakter olmalı (≈1000 px Sebility/Yandex sınırı). Word-boundary truncation zorunlu — `truncateAtWordBoundary(text, 145)` (`shared/seo-config.ts:11`) tek source-of-truth helper. ASLA `substring(0, 160)` kullanma — yarım kelime ("Mega Rad", "60") bırakır. `server/seo-renderer.ts:1715` `ensureDescriptionLength` İngilizce `DESCRIPTION_PAD_TAIL` kullanmıyor — dil-karışıklığını önler (önceki bug: DE AI meta + "Listen free on Mega Radio — 60" İngilizce tail). `getStationMetaDescription` (shared/seo-config.ts:1458) içindeki padding clauses dil-aware: `translations['stations']`, `translations['from']`, `translations['countries']`, `translations['twenty_four_seven']`. MIN 130 / MAX 145 char penceresi — bu pencere dışında ASLA padding ekleme.
+CRITICAL META DESCRIPTION LENGTH RULE: All `<meta name="description">`, `og:description`, `twitter:description` MUST be MAX 145 characters (≈1000 px Sebility/Yandex limit). Word-boundary truncation is mandatory — `truncateAtWordBoundary(text, 145)` (`shared/seo-config.ts:11`) is the single source-of-truth helper. NEVER use `substring(0, 160)`. `server/seo-renderer.ts:1715` `ensureDescriptionLength` does not use English `DESCRIPTION_PAD_TAIL` to prevent language mixing. The padding clauses in `getStationMetaDescription` (shared/seo-config.ts:1458) are language-aware: `translations['stations']`, `translations['from']`, `translations['countries']`, `translations['twenty_four_seven']`. Padding should ONLY be added within the MIN 130 / MAX 145 character window.
 
-CRITICAL ADMIN STATION UPLOAD RULE: Admin panel station logo upload + edit-save uses TWO endpoints in `server/routes/admin-station-routes.ts`:
-1) `POST /api/admin/stations/:id/upload-favicon` — multer.memoryStorage 5MB image-only multipart, calls `logoProcessor.processFromBuffer(stationId, slug, buffer, originalname)` → AWS S3 (`station-logos/{folder}/logo-256.webp` + `original.{ext}` via `uploadToS3`), then mirrors `logoAssets.webp256` (S3 URL) into `station.favicon` via `Station.updateOne` so `favicon` field is ALWAYS the S3 URL after upload. NEVER use Replit Object Storage (`ObjectStorageService.getFaviconUploadURL`) — that is dead code path; AWS S3 is the only allowed backend (AWS_BUCKET_NAME, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY env vars).
-2) `PUT /api/stations/:stationId` — admin station metadata update with strict whitelist `STATION_UPDATE_ALLOWED_FIELDS = [name, url, homepage, favicon, country, countryCode, language, tags, bitrate, codec, hls, noIndex]`. NEVER allow `_id, slug, logoAssets, createdAt, updatedAt, votes, clickcount` (slug change would break canonical URLs). If admin pastes a non-S3 favicon URL, fire-and-forget `logoProcessor.processFromUrl(stationId, slug, url)` to mirror it to S3.
-Both endpoints MUST: validate `mongoose.Types.ObjectId.isValid()`, use `requireAdmin`, call `performanceCache.invalidateStationCache(slug)` after write. Frontend `station-edit-dialog.tsx` and `station-form.tsx` use `${station._id || station.id}` (Mongo `.lean()` only returns `_id`). `logoProcessor.processFromBuffer` MUST have `processingQueue.has/add` guard with `finally { processingQueue.delete }` to prevent concurrent uploads corrupting the same station's S3 folder.
+CRITICAL ADMIN STATION UPLOAD RULE: Admin panel station logo upload + edit-save uses TWO endpoints in `server/routes/admin-station-routes.ts`: `POST /api/admin/stations/:id/upload-favicon` (multer.memoryStorage 5MB image-only multipart, calls `logoProcessor.processFromBuffer` to AWS S3, then mirrors `logoAssets.webp256` into `station.favicon`) and `PUT /api/stations/:stationId` (admin station metadata update with strict whitelist `STATION_UPDATE_ALLOWED_FIELDS`). NEVER use Replit Object Storage. If admin pastes a non-S3 favicon URL, fire-and-forget `logoProcessor.processFromUrl`. Both endpoints MUST: validate `mongoose.Types.ObjectId.isValid()`, use `requireAdmin`, call `performanceCache.invalidateStationCache(slug)`. Frontend `station-edit-dialog.tsx` and `station-form.tsx` use `${station._id || station.id}`. `logoProcessor.processFromBuffer` MUST have `processingQueue.has/add` guard.
 
-CRITICAL GENRES/REGIONS IMG GRID RULE: Genres ve Regions/Country SSR branch'leri Mongo'dan top-12 station fetch eder ve `<img>` grid üretir. Mongo `.select()` MUTLAKA `name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk` field'larını içermeli — eksik `url` field `isJunkStation` tarafından "empty-stream-url" olarak yorumlanır ve TÜM istasyonlar junk işaretlenir (grid 0 img verir). Junk filter sadece `!isJunkStation(s) && s.noIndex !== true` kullanır — `isStationIndexableInLanguage` BURADA KULLANILMAZ (over-restrictive: meta+full descriptions zorunluluğu image grid amacı için aşırı). Country page için `https://flagcdn.com/w320/{cc}.png` flag `<img>` da emit edilir.
+CRITICAL NOINDEX-DUP-MERGE MIGRATION RULE: Stations with `noIndex:true` that have exactly ONE non-noIndex sibling sharing the same `name + countryCode` MUST be merged into the canonical sibling's `slugAliases` (preserves backlink equity via 301 redirect) instead of staying as 410 Gone. Migration script: `scripts/merge-noindex-duplicates-to-aliases.ts` (aggregation + bulkWrite, idempotent via `$addToSet` + `deleteMany`). NEVER touch stations with 0 siblings (truly junk → keep 410) or 2+ siblings (ambiguous → skip). After running: server restart required to flush `performanceCache` and `pageDataCache`. Re-running the script is safe — `$addToSet` is no-op on existing aliases and `deleteMany` is no-op on already-deleted dups.
+
+CRITICAL GENRES/REGIONS IMG GRID RULE: Genres and Regions/Country SSR branches fetch top-12 stations from Mongo and generate an `<img>` grid. Mongo `.select()` MUST include `name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk` fields. The junk filter only uses `!isJunkStation(s) && s.noIndex !== true`; `isStationIndexableInLanguage` is NOT used here. For the country page, `https://flagcdn.com/w320/{cc}.png` flag `<img>` is also emitted.
 
 ## System Architecture
 
 ### Backend
 - **Framework**: Express.js with TypeScript.
 - **Database**: MongoDB with Mongoose.
-- **API**: REST API.
-- **Caching**: Multi-layer caching with NodeCache and Redis.
+- **API**: RESTful API.
+- **Caching**: NodeCache and Redis for multi-layer caching.
 
 ### Frontend
 - **Framework**: React with TypeScript.
 - **Routing**: Wouter.
 - **State Management**: TanStack Query.
-- **UI**: Tailwind CSS with shadcn/ui.
-- **Audio Player**: HLS.js integrated with Plyr.
+- **UI**: Tailwind CSS and shadcn/ui components.
+- **Audio Player**: HLS.js with Plyr.
 
 ### Deployment
-- **Architecture**: A three-service split: `backend-api`, `frontend-web`, and `stream-proxy`.
+- **Architecture**: Microservices (backend-api, frontend-web, stream-proxy).
 - **Containerization**: Docker.
-- **Monorepo**: All services are managed within a unified monorepo.
+- **Monorepo**: Unified monorepo for all services.
 
 ### Key Architectural Decisions
-- **Type Safety**: Achieved using TypeScript and Zod for end-to-end type validation.
-- **SEO Optimization**: Implemented through slug-based URLs, dynamic sitemaps, structured data, multilingual hreflang, and robust indexing strategies.
-- **Performance**: Enhanced via multi-layer caching, database indexing, lazy loading, and server-side image optimization.
-- **Geolocation**: Utilizes Cloudflare headers and GPS for personalized content delivery.
-- **Audio Continuity**: Ensures seamless playback across page navigations.
-- **User Engagement**: Driven by data-driven trends and AI-powered content recommendations.
-- **System Stability**: Maintained through multi-layer Out-Of-Memory prevention, a self-watchdog, MongoDB circuit breaker, and fail-fast exits.
-- **SSR Protection**: Limits concurrent Server-Side Rendering, implements timeouts, and includes bot rate limiting.
-- **Subscription System**: Features a flexible matrix to support various subscription plans.
+- **Type Safety**: TypeScript and Zod for schema validation.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, JSON-LD, multilingual hreflang, robust indexing.
+- **Performance**: Multi-layer caching, database indexing, lazy loading, server-side image optimization.
+- **Geolocation**: Personalized content via Cloudflare headers and GPS.
+- **Audio Continuity**: Seamless playback across navigations.
+- **User Engagement**: Data analytics and AI-powered recommendations.
+- **System Stability**: Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, fail-fast mechanisms.
+- **SSR Protection**: Concurrent SSR management, timeouts, bot rate limiting.
+- **Subscription System**: Flexible matrix for various plans.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud-hosted NoSQL database.
-- **Radio-Browser API**: External service for radio station information.
-- **ip-api.com**: Used for geolocation services.
-- **Cloudflare**: Utilized for CDN, caching, and Real User Monitoring (RUM).
-- **AWS S3**: Provides scalable cloud storage for media assets.
+- **Radio-Browser API**: External radio station data.
+- **ip-api.com**: Geolocation services.
+- **Cloudflare**: CDN, caching, RUM.
+- **AWS S3**: Scalable cloud storage for media assets.
