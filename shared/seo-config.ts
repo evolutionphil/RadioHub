@@ -1,6 +1,24 @@
 // SEO Configuration for multilingual support
 import { reverseTranslateUrl } from './url-translations';
 
+/**
+ * Word-boundary safe truncation for meta descriptions.
+ * Sebility / Yandex flag descriptions > 1000 pixels (~150 chars). Default 145 chars
+ * keeps us safely under that threshold across Latin & most non-Latin scripts.
+ * Cuts at the last space if it falls in the upper 30% of the budget; otherwise hard
+ * cuts at maxLen. Trims trailing punctuation/separator characters so we never end
+ * with a half word like "Mega Rad" or "60" (the previous substring(0,160) bug).
+ */
+export function truncateAtWordBoundary(text: string, maxLen: number = 145): string {
+  if (!text) return '';
+  const trimmed = String(text).trim();
+  if (trimmed.length <= maxLen) return trimmed;
+  const slice = trimmed.substring(0, maxLen);
+  const lastSpace = slice.lastIndexOf(' ');
+  const cutAt = lastSpace > maxLen * 0.7 ? lastSpace : maxLen;
+  return slice.substring(0, cutAt).replace(/[\s,;:.—–\-]+$/, '');
+}
+
 export interface SeoLanguage {
   code: string;
   name: string;
@@ -1454,7 +1472,7 @@ export function getStationMetaDescription(station: any, language: string, transl
         .replace(/^\s*\[TRANSLATED\s+FULL\s+DESCRIPTION\]\s*/i, '')  // Remove [TRANSLATED FULL DESCRIPTION]
         .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')  // Remove [FULL DESCRIPTION...]
         .trim();
-      return fullDesc.substring(0, 160);
+      return truncateAtWordBoundary(fullDesc, 145);
     }
     // Handle old string format - truncate to meta description length
     if (typeof desc === 'string') {
@@ -1463,7 +1481,7 @@ export function getStationMetaDescription(station: any, language: string, transl
         .replace(/^\s*\[SEO\s+META[^\]]*\]\s*/i, '')  // Remove [SEO META...]
         .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')  // Remove [FULL DESCRIPTION...]
         .trim();
-      return strDesc.substring(0, 160);
+      return truncateAtWordBoundary(strDesc, 145);
     }
   }
   
@@ -1478,10 +1496,10 @@ export function getStationMetaDescription(station: any, language: string, transl
       .replace('${station.name}', station.name)
       .replace('{STATION_NAME}', station.name)
       .replace('{station}', station.name);
-    return metaDesc.substring(0, 160);
+    return truncateAtWordBoundary(metaDesc, 145);
   }
   
-  // FALLBACK 3: Generic template-based description (Bing SEO: target 150-160 chars).
+  // FALLBACK 3: Generic template-based description (Bing SEO: target 130-145 chars).
   // Adds genre tags + free streaming + multi-device language so even AI-less stations
   // produce a Bing-acceptable description length.
   const stationName = station.name;
@@ -1508,23 +1526,24 @@ export function getStationMetaDescription(station: any, language: string, transl
   }
   metaDesc += ` ${onlineWord}. ${freeStreaming} ${onMegaRadio} — ${desktopMobile}.`;
 
-  // Bing SEO: enforce 150–160 char window. Pad with brand-safe clauses
-  // (60,000+ stations, 120+ countries, 24/7) when short station name
-  // and missing country/tags leave us under the floor.
-  const MIN_LEN = 150;
-  const MAX_LEN = 160;
+  // Bing SEO: enforce 130–145 char window (≤1000 px ≈ Sebility / Yandex limit).
+  // Pad with localized brand-safe clauses when short station name + missing
+  // country/tags leave us under the floor. Padding clauses pull from the same
+  // language's translation map so we never mix English padding into a non-English
+  // description (the previous "Listen free on Mega Radio — 60" bug).
+  const MIN_LEN = 130;
+  const MAX_LEN = 145;
   if (metaDesc.length < MIN_LEN) {
     const padClauses = [
       ` 60,000+ ${translations['stations'] || 'stations'} ${translations['from'] || 'from'} 120+ ${translations['countries'] || 'countries'}.`,
       ` ${translations['twenty_four_seven'] || '24/7 live streaming'}.`,
-      ' Mega Radio: free online radio worldwide.',
     ];
     for (const clause of padClauses) {
       if (metaDesc.length >= MIN_LEN) break;
       metaDesc += clause;
     }
   }
-  return metaDesc.substring(0, MAX_LEN);
+  return truncateAtWordBoundary(metaDesc, MAX_LEN);
 }
 
 // Helper function to check if a language has complete SEO translations for stations

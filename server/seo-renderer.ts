@@ -1,4 +1,4 @@
-import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle } from '@shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from '@shared/seo-config';
 import { Translation, Station, SeoMetadata } from '../shared/mongo-schemas';
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
@@ -1699,29 +1699,20 @@ export class SeoRenderer {
       };
     }
     
-    // SAFETY NET (Bing SEO): guarantee <title> is non-empty and every
-    // <meta name="description"> / og:description / twitter:description is
-    // 150–160 characters. Bing flags both "missing" and "too short" (<150),
-    // so we enforce a minimum length, padding with a brand-safe tail if needed.
+    // SAFETY NET: cap every <meta name="description"> / og:description /
+    // twitter:description at 145 characters with word-boundary truncation
+    // (≤1000 px ≈ Sebility / Yandex limit). The legacy English padding tail
+    // ("Listen free on Mega Radio — 60,000+ stations…") was REMOVED because
+    // it bled English copy into non-English descriptions. Per-language
+    // padding (when needed) is now done inside getStationMetaDescription
+    // using that language's own translation map.
     const FINAL_TITLE_FALLBACK = 'Mega Radio: Free Live Radio from 120+ Countries';
-    const FINAL_DESCRIPTION_FALLBACK = 'Mega Radio is your free online radio platform with 60,000+ live stations from 120+ countries. Listen to music, news, sports, and talk shows for free.';
-    const DESCRIPTION_PAD_TAIL = ' Listen free on Mega Radio — 60,000+ stations from 120+ countries on desktop, mobile and Smart TV.';
-    const MIN_DESC_LEN = 150;
-    const MAX_DESC_LEN = 160;
+    const FINAL_DESCRIPTION_FALLBACK = 'Mega Radio is your free online radio platform with 60,000+ live stations from 120+ countries.';
+    const MAX_DESC_LEN = 145;
     const ensureDescriptionLength = (raw: any): string => {
       const trimmed = (raw && String(raw).trim()) ? String(raw).trim() : '';
-      if (!trimmed) return FINAL_DESCRIPTION_FALLBACK;
-      if (trimmed.length >= MIN_DESC_LEN) {
-        // Already long enough — cap at MAX_DESC_LEN to keep snippets clean.
-        return trimmed.length > MAX_DESC_LEN ? trimmed.substring(0, MAX_DESC_LEN) : trimmed;
-      }
-      // Too short: append branded tail and cap to MAX_DESC_LEN.
-      const sep = /[.!?]$/.test(trimmed) ? ' ' : '. ';
-      let padded = trimmed + sep + DESCRIPTION_PAD_TAIL.trim();
-      if (padded.length < MIN_DESC_LEN) {
-        padded = padded + ' ' + FINAL_DESCRIPTION_FALLBACK;
-      }
-      return padded.substring(0, MAX_DESC_LEN);
+      if (!trimmed) return truncateAtWordBoundary(FINAL_DESCRIPTION_FALLBACK, MAX_DESC_LEN);
+      return truncateAtWordBoundary(trimmed, MAX_DESC_LEN);
     };
     const safeTitle = (seoTags.title && String(seoTags.title).trim()) ? seoTags.title : FINAL_TITLE_FALLBACK;
     const safeDescription = ensureDescriptionLength(seoTags.description);
