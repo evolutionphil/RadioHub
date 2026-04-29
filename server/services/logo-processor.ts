@@ -587,7 +587,17 @@ export class LogoProcessor {
       return { success: false, error: 'Empty buffer' };
     }
 
+    if (this.processingQueue.has(stationId)) {
+      return { success: false, error: 'Already processing this station', failureType: 'processing_failed' };
+    }
+    this.processingQueue.add(stationId);
+
     try {
+      const validation = await this.isValidImageBuffer(buffer);
+      if (!validation.valid) {
+        return { success: false, error: validation.reason || 'Invalid image format', failureType: 'invalid_format' };
+      }
+
       const folderName = this.getFolderName(slug, stationId);
       const useS3 = isS3Configured();
 
@@ -653,6 +663,8 @@ export class LogoProcessor {
       );
 
       return { success: false, error: error.message };
+    } finally {
+      this.processingQueue.delete(stationId);
     }
   }
 

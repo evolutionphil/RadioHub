@@ -72,12 +72,16 @@ export default function StationEditDialog({ station, isOpen, onClose, onGenerate
 
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const response = await fetch(`/api/stations/${station.id}`, {
+      const stationId = station._id || station.id;
+      const response = await fetch(`/api/stations/${stationId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!response.ok) throw new Error('Failed to update station');
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update station');
+      }
       return response.json();
     },
     onSuccess: () => {

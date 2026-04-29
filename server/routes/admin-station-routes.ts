@@ -1,18 +1,52 @@
 import type { Express } from "express";
 import express from "express";
 import mongoose from "mongoose";
+import multer from "multer";
 import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob } from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
 import { PrecomputedStationsService } from "../services/precomputed-stations";
 import { logoProcessor } from "../services/logo-processor";
+import { isS3Url } from "../services/s3-storage";
 import { IndexNowService } from "../services/indexnow";
-import { ObjectStorageService } from "../objectStorage";
 import CacheManager from "../cache";
 import { getQuotaStatus } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
 import { stripPlaceholders } from "./shared-utils";
+
+const faviconUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('Only image files are allowed'));
+  },
+});
+
+const STATION_UPDATE_ALLOWED_FIELDS = [
+  'name', 'url', 'homepage', 'favicon', 'country', 'countryCode',
+  'language', 'tags', 'bitrate', 'codec', 'hls', 'noIndex'
+] as const;
+
+function pickAllowedStationFields(body: Record<string, any>): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const key of STATION_UPDATE_ALLOWED_FIELDS) {
+    if (body[key] !== undefined) out[key] = body[key];
+  }
+  if (out.bitrate !== undefined && out.bitrate !== null && out.bitrate !== '') {
+    const n = Number(out.bitrate);
+    out.bitrate = Number.isFinite(n) ? n : undefined;
+    if (out.bitrate === undefined) delete out.bitrate;
+  } else if (out.bitrate === '') {
+    delete out.bitrate;
+  }
+  if (typeof out.favicon === 'string') out.favicon = out.favicon.trim();
+  if (typeof out.url === 'string') out.url = out.url.trim();
+  if (typeof out.homepage === 'string') out.homepage = out.homepage.trim();
+  if (typeof out.name === 'string') out.name = out.name.trim();
+  return out;
+}
 
 interface RouteDeps {
   requireAuth: any;
@@ -22,7 +56,6 @@ interface RouteDeps {
 
 export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   const { requireAdmin } = deps;
-  const objectStorageService = new ObjectStorageService();
 
   // DATA SYNC UTILITY - Fix follower counts for all users
   app.post("/api/admin/sync-follower-counts", requireAdmin, async (req, res) => {
@@ -318,25 +351,122 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
-  // FAVICON UPLOAD URL ENDPOINT - Generate signed URL for favicon upload
-  app.post("/api/admin/stations/favicon-upload-url", requireAdmin, async (req, res) => {
-    try {
-      const { uploadUrl, publicUrl, objectPath } = await objectStorageService.getFaviconUploadURL();
-      res.json({ uploadUrl, publicUrl, objectPath });
-    } catch (error: any) {
-      console.error('Error generating favicon upload URL:', error);
-      res.status(500).json({ error: 'Failed to generate upload URL' });
-    }
-  });
+  // STATION FAVICON UPLOAD - Direct multipart upload → AWS S3 via logoProcessor
+  // POST /api/admin/stations/:id/upload-favicon (multipart/form-data, field: 'favicon')
+  app.post(
+    "/api/admin/stations/:id/upload-favicon",
+    requireAdmin,
+    (req, res, next) => {
+      faviconUpload.single('favicon')(req, res, (err: any) => {
+        if (err) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(413).json({ error: 'File too large. Max 5MB.' });
+          }
+          return res.status(400).json({ error: err.message || 'Invalid upload' });
+        }
+        next();
+      });
+    },
+    async (req: any, res) => {
+      try {
+        const { id } = req.params;
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+          return res.status(400).json({ error: 'Invalid station id' });
+        }
+        if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
+          return res.status(400).json({ error: 'No favicon file uploaded (field name: favicon)' });
+        }
 
-  // GET FAVICON UPLOAD URL - Generate signed URL for favicon upload (Admin Only)
-  app.get("/api/admin/favicon-upload-url", requireAdmin, async (req, res) => {
+        const station = await Station.findById(id).select('_id slug name').lean();
+        if (!station) return res.status(404).json({ error: 'Station not found' });
+
+        const slug = (station as any).slug || (station as any).name?.toLowerCase().replace(/\s+/g, '-') || String(station._id);
+
+        const result = await logoProcessor.processFromBuffer(
+          String(station._id),
+          slug,
+          req.file.buffer,
+          req.file.originalname || 'upload.png'
+        );
+
+        if (!result.success) {
+          return res.status(422).json({ error: result.error || 'Logo processing failed' });
+        }
+
+        const updated = await Station.findById(id).select('_id slug favicon logoAssets').lean();
+        const newFaviconUrl = (updated as any)?.logoAssets?.webp256
+          || (updated as any)?.logoAssets?.original
+          || (updated as any)?.favicon
+          || '';
+
+        // Mirror processed S3 URL into the favicon field so the visible URL is also S3
+        if (newFaviconUrl && isS3Url(newFaviconUrl)) {
+          await Station.updateOne({ _id: id }, { $set: { favicon: newFaviconUrl } });
+        }
+
+        if ((station as any).slug) {
+          performanceCache.invalidateStationCache((station as any).slug);
+        }
+
+        return res.json({
+          success: true,
+          favicon: newFaviconUrl,
+          logoAssets: (updated as any)?.logoAssets || null,
+          folder: result.folder,
+        });
+      } catch (error: any) {
+        logger.error(`Favicon upload failed: ${error.message}`);
+        return res.status(500).json({ error: error.message || 'Upload failed' });
+      }
+    }
+  );
+
+  // STATION UPDATE - Edit station metadata (Admin only)
+  // PUT /api/stations/:stationId   (frontend updateMutation hits this exact path)
+  app.put("/api/stations/:stationId", requireAdmin, express.json({ limit: '1mb' }), async (req, res) => {
     try {
-      const { uploadUrl, publicUrl, objectPath } = await objectStorageService.getFaviconUploadURL();
-      res.json({ uploadUrl, publicUrl, objectPath });
+      const { stationId } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(stationId)) {
+        return res.status(400).json({ error: 'Invalid station id' });
+      }
+
+      const update = pickAllowedStationFields(req.body || {});
+      if (Object.keys(update).length === 0) {
+        return res.status(400).json({ error: 'No editable fields provided' });
+      }
+
+      const before = await Station.findById(stationId).select('_id slug favicon').lean();
+      if (!before) return res.status(404).json({ error: 'Station not found' });
+
+      const updated = await Station.findByIdAndUpdate(
+        stationId,
+        { $set: update },
+        { new: true, runValidators: false }
+      ).lean();
+
+      // If favicon URL changed AND it's not already an S3 URL → mirror it to S3 in background
+      const newFavicon = (updated as any)?.favicon;
+      const oldFavicon = (before as any)?.favicon;
+      if (
+        newFavicon &&
+        typeof newFavicon === 'string' &&
+        newFavicon.startsWith('http') &&
+        newFavicon !== oldFavicon &&
+        !isS3Url(newFavicon)
+      ) {
+        const slug = (updated as any).slug || String((updated as any)._id);
+        // fire-and-forget mirror to S3 (errors logged inside processor)
+        logoProcessor.processFromUrl(String((updated as any)._id), slug, newFavicon).catch(() => {});
+      }
+
+      if ((updated as any)?.slug) {
+        performanceCache.invalidateStationCache((updated as any).slug);
+      }
+
+      return res.json({ success: true, station: updated });
     } catch (error: any) {
-      console.error('Error generating favicon upload URL:', error);
-      res.status(500).json({ error: 'Failed to generate upload URL', details: error.message });
+      logger.error(`Station update failed: ${error.message}`);
+      return res.status(500).json({ error: error.message || 'Update failed' });
     }
   });
 
