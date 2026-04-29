@@ -70,6 +70,8 @@ export default function AdminTranslations() {
   const [isScanning, setIsScanning] = useState(false);
   const [isTranslatingAll, setIsTranslatingAll] = useState(false);
   const [translateAllProgress, setTranslateAllProgress] = useState({ current: 0, total: 0, currentLang: '' });
+  const [isTranslatingMissing, setIsTranslatingMissing] = useState(false);
+  const [translateMissingProgress, setTranslateMissingProgress] = useState({ current: 0, total: 0, currentLang: '' });
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(50);
 
@@ -316,6 +318,61 @@ export default function AdminTranslations() {
       });
     }
   });
+
+  // Translate ONLY missing keys for languages with completion < 100%
+  const handleTranslateMissingOnly = async () => {
+    const incompleteLanguages = languages.filter(
+      lang => lang.isEnabled && lang.code !== 'en' && lang.completionPercentage < 100
+    );
+    if (incompleteLanguages.length === 0) {
+      toast({ title: "All Complete", description: "All enabled languages are already at 100%" });
+      return;
+    }
+
+    setIsTranslatingMissing(true);
+    setTranslateMissingProgress({ current: 0, total: incompleteLanguages.length, currentLang: '' });
+
+    let totalTranslated = 0;
+    let totalFailed = 0;
+
+    for (let i = 0; i < incompleteLanguages.length; i++) {
+      const lang = incompleteLanguages[i];
+      setTranslateMissingProgress({ current: i + 1, total: incompleteLanguages.length, currentLang: lang.name });
+
+      try {
+        const response = await fetch(
+          `/api/admin/translation-languages/${lang.code}/translate?missingOnly=true`,
+          {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' }
+          }
+        );
+        if (response.ok) {
+          const data = await response.json();
+          totalTranslated += data.stats?.translated || 0;
+          totalFailed += data.stats?.failed || 0;
+        } else {
+          totalFailed++;
+        }
+      } catch (error) {
+        console.error(`Failed to translate missing for ${lang.code}:`, error);
+        totalFailed++;
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-keys'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/all-translations'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/translation-languages'] });
+
+    toast({
+      title: "Missing Translations Filled",
+      description: `Added ${totalTranslated} new translations across ${incompleteLanguages.length} languages (${totalFailed} failed). Existing translations were not modified.`
+    });
+
+    setIsTranslatingMissing(false);
+    setTranslateMissingProgress({ current: 0, total: 0, currentLang: '' });
+  };
 
   // Translate ALL enabled languages sequentially
   const handleTranslateAllLanguages = async () => {
@@ -578,8 +635,25 @@ export default function AdminTranslations() {
             {isScanning ? 'Scanning...' : 'Check New Parameters'}
           </Button>
           <Button 
+            onClick={handleTranslateMissingOnly}
+            disabled={isTranslatingMissing || isTranslatingAll || languages.length === 0}
+            variant="outline"
+            className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 hover:from-amber-600 hover:to-orange-600 disabled:opacity-50"
+            data-testid="button-translate-missing"
+            title="Only fills in completely missing translations. Existing translations are NOT modified."
+          >
+            {isTranslatingMissing ? (
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Sparkles className="w-4 h-4 mr-2" />
+            )}
+            {isTranslatingMissing 
+              ? `${translateMissingProgress.current}/${translateMissingProgress.total} ${translateMissingProgress.currentLang}...` 
+              : 'Translate Missing Only'}
+          </Button>
+          <Button 
             onClick={handleTranslateAllLanguages}
-            disabled={isTranslatingAll || languages.length === 0}
+            disabled={isTranslatingAll || isTranslatingMissing || languages.length === 0}
             variant="outline"
             className="bg-gradient-to-r from-green-500 to-emerald-500 text-white border-0 hover:from-green-600 hover:to-emerald-600 disabled:opacity-50"
             data-testid="button-translate-all"

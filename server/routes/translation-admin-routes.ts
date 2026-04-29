@@ -255,6 +255,8 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
   app.post("/api/admin/translation-languages/:code/translate", requireAdmin, async (req, res) => {
     try {
       const { code } = req.params;
+      // missingOnly=true → only insert truly missing translations, never overwrite existing rows
+      const missingOnly = req.query.missingOnly === 'true' || req.body?.missingOnly === true;
 
       // Skip English - no need to translate
       if (code.toLowerCase() === 'en') {
@@ -348,8 +350,8 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
         if (!existing) {
           // Missing translation
           keysToTranslate.push({ ...key, isNew: true });
-        } else {
-          // Check if translation needs fixing:
+        } else if (!missingOnly) {
+          // Check if translation needs fixing (skip in missingOnly mode):
           // 1. Value is same as key name (untranslated)
           // 2. Value contains underscores (likely key name, not real translation)
           // 3. Value is same as English default (not translated at all)
