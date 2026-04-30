@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2 } from 'lucide-react';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -451,6 +451,14 @@ export default function AdminCountryLanguageMappings() {
                     const updatedAtDate = updatedAtRaw ? new Date(updatedAtRaw) : null;
                     const updatedAtValid =
                       updatedAtDate && !isNaN(updatedAtDate.getTime()) ? updatedAtDate : null;
+                    const isOverride =
+                      isMapped &&
+                      !!defaultLanguageCode &&
+                      effectiveLanguage !== defaultLanguageCode;
+                    const overrideTitle =
+                      isOverride && defaultLanguageName
+                        ? `Overrides default (${defaultLanguageName})`
+                        : undefined;
 
                     return (
                       <TableRow
@@ -486,8 +494,20 @@ export default function AdminCountryLanguageMappings() {
                               <RefreshCw className="h-3 w-3" />
                               Pending
                             </span>
+                          ) : isOverride ? (
+                            <span
+                              data-testid={`status-override-${country.code}`}
+                              title={overrideTitle}
+                              className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400"
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              Override
+                            </span>
                           ) : isMapped ? (
-                            <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                            <span
+                              data-testid={`status-mapped-${country.code}`}
+                              className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400"
+                            >
                               <CheckCircle2 className="h-3 w-3" />
                               Mapped
                             </span>
