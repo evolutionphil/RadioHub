@@ -117,10 +117,17 @@ async function verifyAppleReceipt(receipt: string, productId: string): Promise<V
     if (!match) {
       return { valid: false, error: `Lifetime productId ${productId} not found in receipt`, code: "apple_not_in_receipt" };
     }
+    if (match.cancellation_date_ms || match.cancellation_date) {
+      return { valid: false, error: "Lifetime purchase was cancelled/refunded", code: "apple_cancelled" };
+    }
+    const origTxn = String(match.original_transaction_id || match.transaction_id || "");
+    if (!origTxn) {
+      return { valid: false, error: "Apple receipt missing original_transaction_id", code: "apple_no_txn" };
+    }
     return {
       valid: true,
       expiresAt: null,
-      originalTransactionId: String(match.original_transaction_id || match.transaction_id || ""),
+      originalTransactionId: origTxn,
       isLifetime: true,
       productId,
       environment: env,
@@ -138,6 +145,10 @@ async function verifyAppleReceipt(receipt: string, productId: string): Promise<V
     return bx > ax ? b : a;
   });
 
+  if (newest?.cancellation_date_ms || newest?.cancellation_date) {
+    return { valid: false, error: "Subscription was cancelled/refunded", code: "apple_cancelled" };
+  }
+
   const expiresMs = Number(newest?.expires_date_ms || 0);
   if (!expiresMs) {
     return { valid: false, error: "Apple receipt has no expires_date_ms", code: "apple_no_expiry" };
@@ -146,10 +157,15 @@ async function verifyAppleReceipt(receipt: string, productId: string): Promise<V
     return { valid: false, error: "Subscription expired", code: "expired" };
   }
 
+  const origTxn = String(newest.original_transaction_id || newest.transaction_id || "");
+  if (!origTxn) {
+    return { valid: false, error: "Apple receipt missing original_transaction_id", code: "apple_no_txn" };
+  }
+
   return {
     valid: true,
     expiresAt: expiresMs,
-    originalTransactionId: String(newest.original_transaction_id || newest.transaction_id || ""),
+    originalTransactionId: origTxn,
     isLifetime: false,
     productId,
     environment: env,
@@ -187,13 +203,32 @@ async function verifyGoogleReceipt(purchaseToken: string, productId: string): Pr
     if (data?.purchaseState !== 0) {
       return { valid: false, error: `Lifetime purchaseState=${data?.purchaseState}`, code: "google_not_purchased" };
     }
+    if (data?.consumptionState === 1) {
+      return { valid: false, error: "Lifetime purchase has been consumed", code: "google_consumed" };
+    }
+    const orderId = String(data?.orderId || "");
+    if (!orderId) {
+      return { valid: false, error: "Google response missing orderId", code: "google_no_order_id" };
+    }
     return {
       valid: true,
       expiresAt: null,
-      originalTransactionId: String(data?.orderId || ""),
+      originalTransactionId: orderId,
       isLifetime: true,
       productId,
     };
+  }
+
+  // Subscription: paymentState — 0=pending, 1=received, 2=free trial, 3=pending deferred upgrade/downgrade
+  const paymentState = data?.paymentState;
+  if (paymentState !== undefined && paymentState !== 1 && paymentState !== 2) {
+    return { valid: false, error: `Google subscription paymentState=${paymentState} (not paid)`, code: "google_unpaid" };
+  }
+  // cancelReason: 0=user cancel, 1=system, 2=replaced, 3=developer
+  // A future expiry with cancelReason !== undefined still grants access until expiry, so we allow it
+  // but reject when cancelReason indicates a refund/revocation (presence of userCancellationTimeMillis means already revoked).
+  if (data?.cancelReason === 1 && data?.expiryTimeMillis && Number(data.expiryTimeMillis) <= Date.now()) {
+    return { valid: false, error: "Subscription cancelled by system (billing failure)", code: "google_billing_failure" };
   }
 
   const expiresMs = Number(data?.expiryTimeMillis || 0);
@@ -204,10 +239,14 @@ async function verifyGoogleReceipt(purchaseToken: string, productId: string): Pr
     return { valid: false, error: "Subscription expired", code: "expired" };
   }
 
+  // For subscriptions, orderId can change on each renewal. linkedPurchaseToken connects upgrade/downgrade chains.
+  // Use orderId as primary if available, fall back to purchaseToken for global uniqueness.
+  const txnId = String(data?.orderId || data?.linkedPurchaseToken || purchaseToken);
+
   return {
     valid: true,
     expiresAt: expiresMs,
-    originalTransactionId: String(data?.orderId || data?.linkedPurchaseToken || purchaseToken),
+    originalTransactionId: txnId,
     isLifetime: false,
     productId,
   };
@@ -285,43 +324,86 @@ export function registerIapValidationRoutes(app: Express) {
       }
 
       let attached = false;
+      let attachError: string | null = null;
+      const isAndroid = platformTyped === "android";
+
       if (targetUserId) {
         try {
           const plan = PRODUCT_TO_PLAN[result.productId];
           const expiresAtDate = result.isLifetime ? null : (result.expiresAt ? new Date(result.expiresAt) : null);
 
-          const existing = await User.findById(targetUserId).select("subscription").lean();
-          const existingSub: any = (existing as any)?.subscription;
-          const isSameTransaction =
-            existingSub?.originalTransactionId &&
-            existingSub.originalTransactionId === result.originalTransactionId &&
-            existingSub.isActive;
-
-          if (!isSameTransaction) {
-            const update: any = {
-              "subscription.plan": plan,
-              "subscription.platform": platformTyped,
-              "subscription.productId": result.productId,
-              "subscription.transactionId": result.originalTransactionId,
-              "subscription.originalTransactionId": result.originalTransactionId,
-              "subscription.receipt": receipt,
-              "subscription.isActive": true,
-              "subscription.lastVerifiedAt": new Date(),
-              "subscription.expiresAt": expiresAtDate,
-            };
-            if (!existingSub?.startedAt) update["subscription.startedAt"] = new Date();
-            await User.findByIdAndUpdate(targetUserId, { $set: update });
+          // Global receipt-replay guard: reject if this transaction is already attached
+          // to a DIFFERENT active user. Prevents one purchase from unlocking many accounts.
+          // Match against both originalTransactionId and (Android) purchaseToken.
+          const replayQuery: any = {
+            _id: { $ne: targetUserId },
+            "subscription.isActive": true,
+            $or: [
+              { "subscription.originalTransactionId": result.originalTransactionId },
+            ],
+          };
+          if (isAndroid) {
+            replayQuery.$or.push({ "subscription.purchaseToken": receipt });
+          }
+          const conflict = await User.findOne(replayQuery).select("_id").lean();
+          if (conflict) {
+            logger.log(`[IAP] Replay blocked: txn=${result.originalTransactionId} requested by user=${targetUserId}, owned by user=${(conflict as any)._id}`);
+            return res.status(409).json({
+              valid: false,
+              error: "Receipt is already attached to another account",
+              code: "receipt_replay",
+            });
           } else {
-            await User.findByIdAndUpdate(targetUserId, {
-              $set: {
+            const existing = await User.findById(targetUserId).select("subscription").lean();
+            const existingSub: any = (existing as any)?.subscription;
+            const isSameTransaction =
+              existingSub?.originalTransactionId &&
+              existingSub.originalTransactionId === result.originalTransactionId &&
+              existingSub.isActive;
+
+            if (!isSameTransaction) {
+              const update: any = {
+                "subscription.plan": plan,
+                "subscription.platform": platformTyped,
+                "subscription.productId": result.productId,
+                "subscription.transactionId": result.originalTransactionId,
+                "subscription.originalTransactionId": result.originalTransactionId,
+                "subscription.isActive": true,
                 "subscription.lastVerifiedAt": new Date(),
                 "subscription.expiresAt": expiresAtDate,
-              },
-            });
+              };
+              if (isAndroid) {
+                update["subscription.purchaseToken"] = receipt;
+                update.$unset = { "subscription.receipt": "" };
+              } else {
+                update["subscription.receipt"] = receipt;
+              }
+              if (!existingSub?.startedAt) update["subscription.startedAt"] = new Date();
+
+              const { $unset, ...setFields } = update as any;
+              const op: any = { $set: setFields };
+              if ($unset) op.$unset = $unset;
+              await User.findByIdAndUpdate(targetUserId, op, { runValidators: true });
+            } else {
+              const sameTxnSet: any = {
+                "subscription.lastVerifiedAt": new Date(),
+                "subscription.expiresAt": expiresAtDate,
+              };
+              const sameTxnUnset: any = {};
+              // Migrate legacy Android records that stored token in `receipt`
+              if (isAndroid && existingSub?.receipt && !existingSub?.purchaseToken) {
+                sameTxnSet["subscription.purchaseToken"] = receipt;
+                sameTxnUnset["subscription.receipt"] = "";
+              }
+              const sameTxnOp: any = { $set: sameTxnSet };
+              if (Object.keys(sameTxnUnset).length) sameTxnOp.$unset = sameTxnUnset;
+              await User.findByIdAndUpdate(targetUserId, sameTxnOp, { runValidators: true });
+            }
+            attached = true;
           }
-          attached = true;
         } catch (err: any) {
-          logger.error("[IAP] Failed to persist subscription:", err?.message || err);
+          attachError = err?.message || String(err);
+          logger.error("[IAP] Failed to persist subscription:", attachError);
         }
       }
 
@@ -334,6 +416,7 @@ export function registerIapValidationRoutes(app: Express) {
         plan: PRODUCT_TO_PLAN[result.productId],
         features: PLAN_FEATURES[PRODUCT_TO_PLAN[result.productId]],
         attachedToUser: attached,
+        ...(attachError ? { attachError } : {}),
         ...(result.environment ? { environment: result.environment } : {}),
       });
     } catch (err: any) {

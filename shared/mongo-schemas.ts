@@ -306,7 +306,7 @@ export interface IUser extends Document {
   };
   subscription?: {
     plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
-    platform: 'ios' | 'android' | 'web' | 'admin';
+    platform: 'ios' | 'android' | 'tvos' | 'macos' | 'web' | 'admin';
     productId?: string;
     transactionId?: string;
     originalTransactionId?: string;
@@ -1088,7 +1088,7 @@ const UserSchema = new Schema<IUser>({
   },
   subscription: {
     plan: { type: String, enum: ['none', 'remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'], default: 'none' },
-    platform: { type: String, enum: ['ios', 'android', 'web', 'admin'] },
+    platform: { type: String, enum: ['ios', 'android', 'tvos', 'macos', 'web', 'admin'] },
     productId: String,
     transactionId: String,
     originalTransactionId: String,
