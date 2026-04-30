@@ -2,6 +2,51 @@ import type { Express } from "express";
 import mongoose from 'mongoose';
 import { User, UserFollow, AuthToken, UserNotification, UserFavorite, StationRating, StationComment, UserListeningHistory, UserProfile, PublicUserProfile, ListeningSession, Recommendation, UserMusicProfile, PushToken, UserDevice, CastSession, DirectMessage, UserSession, Notification, AdvancedSearch, AnalyticsEvent, CastCommand, CastNowPlaying, TvLoginCode } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { SEO_LANGUAGES } from '../../shared/seo-config';
+
+// Build the canonical set of enabled language codes for OAuth referer parsing.
+// Used to distinguish a real language prefix (`/en`, `/tr`) from a route name
+// that happens to be 2 letters (`/tv`).
+const ENABLED_LANGUAGE_CODES = new Set(
+  SEO_LANGUAGES.filter((l: any) => l.enabled).map((l: any) => l.code.toLowerCase())
+);
+
+/**
+ * Extract the language prefix from an HTTP referer URL.
+ * Returns the language code (e.g. "en", "tr") if the referer's first path
+ * segment is an enabled SEO language, otherwise null. Slashless homepages
+ * like https://themegaradio.com/en match; non-language routes like /tv do not.
+ */
+function extractLanguageFromReferer(referer: string): string | null {
+  if (!referer) return null;
+  try {
+    const url = new URL(referer);
+    const segments = url.pathname.split('/').filter(Boolean);
+    const first = segments[0]?.toLowerCase();
+    if (first && ENABLED_LANGUAGE_CODES.has(first)) return first;
+  } catch (_) { /* malformed referer, ignore */ }
+  return null;
+}
+
+/**
+ * Safely append `auth_token` to a relative redirect target, preserving any
+ * existing query string and fragment. Handles the edge cases the architect
+ * flagged: returnTo with `?foo=bar`, returnTo with `#fragment`, etc.
+ */
+function buildRedirectWithToken(frontendBase: string, returnTo: string, token: string): string {
+  const placeholderBase = 'http://x.local';
+  const base = frontendBase || placeholderBase;
+  try {
+    const url = new URL(returnTo, base);
+    url.searchParams.set('auth_token', token);
+    if (!frontendBase) return url.pathname + url.search + url.hash;
+    return url.toString();
+  } catch (_) {
+    // Fallback: returnTo not parseable — append carefully with `?` vs `&`
+    const sep = returnTo.includes('?') ? '&' : '?';
+    return `${frontendBase}${returnTo}${sep}auth_token=${encodeURIComponent(token)}`;
+  }
+}
 
 async function generateAppleClientSecret(): Promise<string> {
   const jose = await import('jose');
@@ -615,26 +660,65 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       });
     }
     
-    // Save returnTo URL in session for post-login redirect
-    const returnTo = req.query.returnTo as string;
+    // Save returnTo URL in session for post-login redirect.
+    // Only relative paths starting with '/' are accepted to prevent open redirects.
+    const rawReturnTo = req.query.returnTo as string | undefined;
+    const returnTo = (typeof rawReturnTo === 'string' && rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//'))
+      ? rawReturnTo
+      : undefined;
     if (returnTo && req.session) {
       (req.session as any).oauthReturnTo = returnTo;
       logger.log('🔀 Saved OAuth returnTo:', returnTo);
     }
     
-    // Save current language/country code in session for OAuth return
-    const referer = req.headers.referer || '';
-    const urlMatch = referer.match(/\/([a-z]{2})(?:\/|$)/i);
-    if (urlMatch && req.session) {
-      (req.session as any).oauthReturnLang = urlMatch[1].toLowerCase();
-      logger.log('🌍 Saved OAuth return language:', urlMatch[1].toLowerCase());
+    // Save current language/country code in session for OAuth return.
+    // Uses the SEO_LANGUAGES whitelist so slashless homepages like /en match
+    // but route names that happen to be two letters (like /tv) do NOT.
+    const refererLang = extractLanguageFromReferer(req.headers.referer || '');
+    if (refererLang && req.session) {
+      (req.session as any).oauthReturnLang = refererLang;
+      logger.log('🌍 Saved OAuth return language:', refererLang);
+    }
+    
+    // CRITICAL: persist the session BEFORE redirecting to Google. Without this
+    // explicit save, MongoStore writes asynchronously and Google may complete
+    // OAuth and redirect the user back to /api/auth/google/callback before the
+    // oauthReturnTo write finishes — causing the callback to fall back to the
+    // homepage instead of /tv (or wherever the user came from). The Apple
+    // endpoint already does this; Google was missing it.
+    if (req.session) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err: any) => err ? reject(err) : resolve());
+        });
+      } catch (saveErr) {
+        logger.error('⚠️ Google OAuth session save failed (continuing with state-param fallback):', saveErr);
+      }
+    }
+    
+    // Defense-in-depth: also encode returnTo into the OAuth `state` parameter.
+    // Google echoes `state` back on the callback unchanged, so even if the
+    // session cookie is dropped (third-party-cookie blockers, Safari ITP,
+    // store outage, etc.) the callback can still recover the redirect target.
+    // We sign with HMAC to prevent attacker tampering, and the callback also
+    // re-validates that the recovered path starts with '/'.
+    let stateParam: string | undefined;
+    if (returnTo) {
+      try {
+        const crypto = await import('crypto');
+        const secret = process.env.SESSION_SECRET || 'radio-station-dev-only-secret-do-not-use-in-prod';
+        const payload = Buffer.from(JSON.stringify({ r: returnTo })).toString('base64url');
+        const sig = crypto.createHmac('sha256', secret).update(payload).digest('base64url').slice(0, 16);
+        stateParam = `${payload}.${sig}`;
+      } catch (_) { /* state is optional; ignore */ }
     }
     
     // Use passport Google authentication
     try {
       passport.authenticate('google', { 
-        scope: ['profile', 'email']
-      })(req, res, next);
+        scope: ['profile', 'email'],
+        ...(stateParam ? { state: stateParam } : {})
+      } as any)(req, res, next);
     } catch (error) {
       console.error('Passport auth error:', error);
       res.status(500).json({ error: 'Authentication setup error' });
@@ -726,14 +810,52 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const token = await generateAuthToken(user._id.toString(), 'web');
         logger.log('✅ Google OAuth token generated for:', user.email);
         
-        const returnTo = (req.session as any)?.oauthReturnTo;
+        // Resolve redirect target: prefer session, fall back to HMAC-signed
+        // `state` query param (set in /api/auth/google) so the redirect still
+        // lands the user on /tv (or wherever they started) even when the
+        // session cookie was dropped between Google and the callback.
+        let returnTo: string | undefined = (req.session as any)?.oauthReturnTo;
+        if (!returnTo) {
+          const stateParam = req.query.state as string | undefined;
+          if (stateParam && stateParam.includes('.')) {
+            try {
+              const crypto = await import('crypto');
+              const secret = process.env.SESSION_SECRET || 'radio-station-dev-only-secret-do-not-use-in-prod';
+              const [payload, sig] = stateParam.split('.', 2);
+              const expected = crypto.createHmac('sha256', secret).update(payload).digest('base64url').slice(0, 16);
+              if (sig === expected) {
+                const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+                if (typeof decoded?.r === 'string' && decoded.r.startsWith('/') && !decoded.r.startsWith('//')) {
+                  returnTo = decoded.r;
+                  logger.log('🔀 Recovered returnTo from OAuth state param:', returnTo);
+                }
+              } else {
+                logger.log('⚠️ Google OAuth state HMAC mismatch — ignoring state');
+              }
+            } catch (_) { /* ignore malformed state */ }
+          }
+        }
         delete (req.session as any).oauthReturnTo;
         delete (req.session as any).oauthReturnLang;
         
-        if (returnTo && returnTo.startsWith('/')) {
-          return res.redirect(`${frontendBase}${returnTo}?auth_token=${token}`);
+        // Persist the session cleanup + the passport user before redirecting.
+        if (req.session) {
+          try {
+            await new Promise<void>((resolve, reject) => {
+              req.session.save((err: any) => err ? reject(err) : resolve());
+            });
+          } catch (saveErr) {
+            logger.error('⚠️ Google OAuth callback session save failed:', saveErr);
+          }
         }
-        res.redirect(`${frontendBase}${langPrefix}/?auth_token=${token}`);
+        
+        // Re-validate returnTo (defence in depth) before redirecting.
+        // Use buildRedirectWithToken so existing query strings or fragments
+        // in returnTo are preserved (e.g. `/en/tv?ref=abc#section`).
+        if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+          return res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
+        }
+        res.redirect(buildRedirectWithToken(frontendBase, `${langPrefix}/`, token));
       } catch (tokenErr) {
         logger.error('Google OAuth token generation error:', tokenErr);
         
