@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application designed for global radio station streaming and broadcasting. Its primary purpose is to offer personalized listening experiences and comprehensive broadcasting tools. Key capabilities include support for diverse audio formats, user and social interaction management, geolocation-based content delivery, advanced search functionalities, data-driven trend analysis, and AI-powered recommendations. The project aims to become a leading platform in online radio, significantly enhancing listener engagement and streamlining broadcaster management.
+The Mega Radio Station Management System is a full-stack application for global radio station streaming and broadcasting. Its purpose is to offer personalized listening experiences and comprehensive broadcasting tools. Key capabilities include support for diverse audio formats, interactive user functionalities, geolocation-based content delivery, advanced search, trend analysis, and AI-driven recommendations. The project aims to become a leading platform in online radio, enhancing listener engagement and streamlining broadcaster operations.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -80,28 +80,28 @@ CRITICAL GENRES/REGIONS IMG GRID RULE: Genres and Regions/Country SSR branches f
 - **Framework**: React with TypeScript.
 - **Routing**: Wouter.
 - **State Management**: TanStack Query.
-- **UI**: Tailwind CSS and shadcn/ui components.
-- **Audio Player**: HLS.js with Plyr.
+- **UI**: Tailwind CSS and shadcn/ui components for a modern, responsive design.
+- **Audio Player**: HLS.js with Plyr for seamless playback.
 
 ### Deployment
 - **Architecture**: Microservices (backend-api, frontend-web, stream-proxy).
-- **Containerization**: Docker.
+- **Containerization**: Docker for isolated and scalable services.
 - **Monorepo**: Unified monorepo for all services.
 
 ### Key Architectural Decisions
-- **Type Safety**: TypeScript and Zod for schema validation.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, JSON-LD, multilingual hreflang, robust indexing.
-- **Performance**: Multi-layer caching, database indexing, lazy loading, server-side image optimization.
-- **Geolocation**: Personalized content via Cloudflare headers and GPS.
-- **Audio Continuity**: Seamless playback across navigations.
-- **User Engagement**: Data analytics and AI-powered recommendations.
-- **System Stability**: Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, fail-fast mechanisms.
-- **SSR Protection**: Concurrent SSR management, timeouts, bot rate limiting.
-- **Subscription System**: Flexible matrix for various plans.
+- **Type Safety**: Implemented using TypeScript and Zod for robust schema validation.
+- **SEO Optimization**: Comprehensive strategy including slug-based URLs, dynamic sitemaps, JSON-LD, multilingual hreflang, and robust indexing rules.
+- **Performance**: Achieved through multi-layer caching, database indexing, lazy loading, and server-side image optimization.
+- **Geolocation**: Personalizes content delivery using Cloudflare headers and GPS data.
+- **Audio Continuity**: Ensures uninterrupted audio playback across user navigations.
+- **User Engagement**: Driven by data analytics and AI-powered recommendation engines.
+- **System Stability**: Engineered with Out-Of-Memory prevention, a self-watchdog, MongoDB circuit breaker, and fail-fast mechanisms.
+- **SSR Protection**: Manages concurrent Server-Side Rendering (SSR) requests, timeouts, and bot rate limiting.
+- **Subscription System**: A flexible matrix supporting various subscription plans and features.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud-hosted NoSQL database.
-- **Radio-Browser API**: External radio station data.
-- **ip-api.com**: Geolocation services.
-- **Cloudflare**: CDN, caching, RUM.
+- **Radio-Browser API**: External API providing comprehensive radio station data.
+- **ip-api.com**: Geolocation service.
+- **Cloudflare**: Utilized for CDN, caching, RUM, and enhanced security.
 - **AWS S3**: Scalable cloud storage for media assets.
