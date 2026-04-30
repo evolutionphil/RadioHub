@@ -2683,3 +2683,99 @@ export const SitemapManifest = mongoose.model<ISitemapManifest>(
   'SitemapManifest',
   SitemapManifestSchema,
 );
+
+// ==================== IAP Audit Events ====================
+// Per-call audit trail for /api/iap/validate. Lets admins answer
+// "kim ne zaman hangi makbuzla doğruladı" when Apple/Google issue refunds,
+// when a user disputes a charge, or when fraud is suspected.
+//
+// One row per validate attempt — both successful and failed. Auto-expires
+// after 365 days (Apple/Google refund windows are < 90 days, plus headroom
+// for chargeback disputes).
+
+export type IapEventResult =
+  | 'success'              // verify OK + DB persisted
+  | 'replay_blocked'       // 409 — receipt attached to another user
+  | 'invalid_receipt'      // verify returned valid:false (any provider code)
+  | 'expired'              // verify returned expired
+  | 'apple_error'          // Apple network/server error
+  | 'google_error'         // Google network/server error
+  | 'missing_credentials'  // server-side config missing
+  | 'bad_request'          // client sent malformed input (400 before verify)
+  | 'persist_error'        // verify OK but DB write failed
+  | 'fatal_error';         // unhandled exception (500)
+
+export interface IIapEvent {
+  userId?: mongoose.Types.ObjectId | null;
+  platform: 'ios' | 'android' | 'unknown';
+  productId?: string;
+  transactionId?: string;
+  originalTransactionId?: string;
+  // SHA-256 hex of the full receipt/purchaseToken — never store the raw
+  // value (it's a credential that can re-validate the purchase server-side).
+  receiptHash?: string;
+  result: IapEventResult;
+  // Provider-specific code from verify (e.g. "expired", "apple_cancelled",
+  // "google_consumed", "google_no_expiry").
+  providerCode?: string;
+  statusCode: number;
+  errorMessage?: string;
+  // Subscription state computed from the verify result (only set on success
+  // or when verify yielded structured data — useful for "what plan was the
+  // user about to be granted?").
+  plan?: string;
+  isTrial?: boolean;
+  expiresAt?: Date | null;
+  isLifetime?: boolean;
+  ip?: string;
+  userAgent?: string;
+  durationMs?: number;
+  createdAt: Date;
+}
+
+const IapEventSchema = new Schema<IIapEvent>({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', default: null, index: true },
+  platform: { type: String, enum: ['ios', 'android', 'unknown'], required: true },
+  productId: { type: String, default: '' },
+  transactionId: { type: String, default: '' },
+  originalTransactionId: { type: String, default: '', index: true },
+  receiptHash: { type: String, default: '' },
+  result: {
+    type: String,
+    enum: [
+      'success',
+      'replay_blocked',
+      'invalid_receipt',
+      'expired',
+      'apple_error',
+      'google_error',
+      'missing_credentials',
+      'bad_request',
+      'persist_error',
+      'fatal_error',
+    ],
+    required: true,
+    index: true,
+  },
+  providerCode: { type: String, default: '' },
+  statusCode: { type: Number, required: true },
+  errorMessage: { type: String, default: '' },
+  plan: { type: String, default: '' },
+  isTrial: { type: Boolean, default: false },
+  expiresAt: { type: Date, default: null },
+  isLifetime: { type: Boolean, default: false },
+  ip: { type: String, default: '' },
+  userAgent: { type: String, default: '' },
+  durationMs: { type: Number, default: 0 },
+  // 365-day TTL — purges on its own so the collection doesn't grow forever.
+  createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 365 },
+});
+
+IapEventSchema.index({ createdAt: -1 });
+IapEventSchema.index({ userId: 1, createdAt: -1 });
+IapEventSchema.index({ result: 1, createdAt: -1 });
+IapEventSchema.index({ platform: 1, createdAt: -1 });
+IapEventSchema.index({ productId: 1, createdAt: -1 });
+IapEventSchema.index({ originalTransactionId: 1, createdAt: -1 });
+
+export const IapEvent = mongoose.model<IIapEvent>('IapEvent', IapEventSchema);

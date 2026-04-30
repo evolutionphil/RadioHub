@@ -28,3 +28,4 @@ export const AdminUsers = lazy(() => import("@/pages/admin/admin-users"));
 export const LogoManagement = lazy(() => import("@/pages/admin/logo-management"));
 export const HomeSettings = lazy(() => import("@/pages/admin/home-settings"));
 export const DbManagement = lazy(() => import("@/pages/admin/db-management"));
+export const AdminIapEvents = lazy(() => import("@/pages/admin/iap-events"));

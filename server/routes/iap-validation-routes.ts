@@ -1,7 +1,55 @@
 import type { Express, Request, Response } from "express";
+import { createHash } from "crypto";
 import { JWT } from "google-auth-library";
-import { User, AuthToken } from "../../shared/mongo-schemas";
+import {
+  User,
+  AuthToken,
+  IapEvent,
+  type IapEventResult,
+} from "../../shared/mongo-schemas";
 import { logger } from "../utils/logger";
+
+// SHA-256 hex of the receipt — receipts/purchaseTokens are credentials that
+// re-validate against Apple/Google, so the raw value MUST never live in the
+// audit log. The hash is enough to correlate multiple validate calls for the
+// same purchase.
+function hashReceipt(receipt: string | undefined | null): string {
+  if (!receipt || typeof receipt !== "string") return "";
+  return createHash("sha256").update(receipt).digest("hex");
+}
+
+// Best-effort write to the IapEvent audit collection. NEVER throws — audit
+// failures must not break the user-facing validate flow.
+async function writeIapEvent(payload: {
+  userId: string | null;
+  platform: "ios" | "android" | "unknown";
+  productId?: string;
+  transactionId?: string;
+  originalTransactionId?: string;
+  receiptHash?: string;
+  result: IapEventResult;
+  providerCode?: string;
+  statusCode: number;
+  errorMessage?: string;
+  plan?: string;
+  isTrial?: boolean;
+  expiresAt?: Date | null;
+  isLifetime?: boolean;
+  ip?: string;
+  userAgent?: string;
+  durationMs?: number;
+}): Promise<void> {
+  try {
+    await IapEvent.create({
+      ...payload,
+      userId: payload.userId || null,
+    } as any);
+  } catch (err: any) {
+    // Don't surface audit failures — they're for after-the-fact debugging
+    // and shouldn't impact subscription delivery.
+    logger.error("[IAP] audit write failed:", err?.message || err);
+  }
+}
 
 type Platform = "ios" | "android" | "tvos" | "macos";
 type PremiumPlan =
@@ -278,29 +326,109 @@ async function resolveAuthUserId(req: Request): Promise<string | null> {
 
 export function registerIapValidationRoutes(app: Express) {
   app.post("/api/iap/validate", async (req: Request, res: Response) => {
-    try {
-      const { platform, productId, receipt } = req.body || {};
+    const startedAt = Date.now();
+    const { platform, productId, receipt } = req.body || {};
+    // Normalize the audit `platform` so even malformed requests get a row.
+    const auditPlatform: "ios" | "android" | "unknown" =
+      platform === "android"
+        ? "android"
+        : APPLE_PLATFORMS.includes(platform as Platform)
+        ? "ios"
+        : "unknown";
+    const ip =
+      (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+      req.ip ||
+      req.socket?.remoteAddress ||
+      "";
+    const userAgent = (req.headers["user-agent"] as string) || "";
 
+    // Fold result classification + status code + JSON body emission into one
+    // helper so every exit point writes a matching audit row.
+    //
+    // The audit write is FIRE-AND-FORGET: we send the response first and let
+    // the IapEvent insert happen on the next tick. This way Mongo latency,
+    // buffering, or transient stalls never delay the user-facing validate
+    // call. `writeIapEvent` itself swallows its own errors so an unhandled
+    // rejection here is impossible, but we attach a `.catch` for safety.
+    const finish = (
+      statusCode: number,
+      body: any,
+      audit: {
+        result: IapEventResult;
+        userId?: string | null;
+        productId?: string;
+        transactionId?: string;
+        originalTransactionId?: string;
+        providerCode?: string;
+        errorMessage?: string;
+        plan?: string;
+        isTrial?: boolean;
+        expiresAt?: Date | null;
+        isLifetime?: boolean;
+      },
+    ) => {
+      const payload = {
+        userId: audit.userId ?? null,
+        platform: auditPlatform,
+        productId: audit.productId ?? (typeof productId === "string" ? productId : ""),
+        transactionId: audit.transactionId ?? "",
+        originalTransactionId: audit.originalTransactionId ?? "",
+        receiptHash: hashReceipt(typeof receipt === "string" ? receipt : ""),
+        result: audit.result,
+        providerCode: audit.providerCode ?? "",
+        statusCode,
+        errorMessage: audit.errorMessage ?? "",
+        plan: audit.plan ?? "",
+        isTrial: !!audit.isTrial,
+        expiresAt: audit.expiresAt ?? null,
+        isLifetime: !!audit.isLifetime,
+        ip,
+        userAgent,
+        durationMs: Date.now() - startedAt,
+      };
+      // Schedule on next tick to guarantee the response is flushed first.
+      setImmediate(() => {
+        writeIapEvent(payload).catch((err) =>
+          logger.error("[IAP] audit dispatch failed:", err?.message || err),
+        );
+      });
+      return res.status(statusCode).json(body);
+    };
+
+    try {
       if (!platform || !["ios", "android", "tvos", "macos"].includes(platform)) {
-        return res.status(400).json({
-          valid: false,
-          error: "platform must be one of: ios, android, tvos, macos",
-        });
+        return finish(
+          400,
+          { valid: false, error: "platform must be one of: ios, android, tvos, macos" },
+          { result: "bad_request", errorMessage: "invalid platform" },
+        );
       }
       if (!productId || typeof productId !== "string") {
-        return res.status(400).json({ valid: false, error: "productId is required" });
+        return finish(
+          400,
+          { valid: false, error: "productId is required" },
+          { result: "bad_request", errorMessage: "missing productId" },
+        );
       }
       if (!PRODUCT_TO_PLAN[productId]) {
-        return res.status(400).json({
-          valid: false,
-          error: `Unknown productId: ${productId}. Valid: ${Object.keys(PRODUCT_TO_PLAN).join(", ")}`,
-        });
+        return finish(
+          400,
+          {
+            valid: false,
+            error: `Unknown productId: ${productId}. Valid: ${Object.keys(PRODUCT_TO_PLAN).join(", ")}`,
+          },
+          { result: "bad_request", errorMessage: `unknown productId: ${productId}` },
+        );
       }
       if (!receipt || typeof receipt !== "string") {
-        return res.status(400).json({
-          valid: false,
-          error: "receipt is required (Apple base64 receipt-data or Google purchaseToken)",
-        });
+        return finish(
+          400,
+          {
+            valid: false,
+            error: "receipt is required (Apple base64 receipt-data or Google purchaseToken)",
+          },
+          { result: "bad_request", errorMessage: "missing receipt" },
+        );
       }
 
       const platformTyped = platform as Platform;
@@ -309,7 +437,25 @@ export function registerIapValidationRoutes(app: Express) {
         : await verifyGoogleReceipt(receipt, productId);
 
       if (!result.valid) {
-        return res.status(400).json(result);
+        // Classify the failure code into one of the audit buckets so admins
+        // can group "expired vs network error vs config error vs invalid".
+        const codeStr = String(result.code || "");
+        let auditResult: IapEventResult = "invalid_receipt";
+        if (codeStr === "expired") {
+          auditResult = "expired";
+        } else if (codeStr.startsWith("missing_apple_secret") || codeStr.startsWith("missing_google_creds") || codeStr === "missing_pkg") {
+          auditResult = "missing_credentials";
+        } else if (codeStr.startsWith("apple_network") || codeStr.startsWith("apple_sandbox_network") || codeStr === "apple_unknown") {
+          auditResult = "apple_error";
+        } else if (codeStr === "google_error" || codeStr === "google_billing_failure") {
+          auditResult = "google_error";
+        }
+        return finish(400, result, {
+          result: auditResult,
+          providerCode: codeStr,
+          errorMessage: result.error,
+          productId,
+        });
       }
 
       const authedUserId = await resolveAuthUserId(req);
@@ -326,12 +472,11 @@ export function registerIapValidationRoutes(app: Express) {
       let attached = false;
       let attachError: string | null = null;
       const isAndroid = platformTyped === "android";
+      const plan = PRODUCT_TO_PLAN[result.productId];
+      const expiresAtDate = result.isLifetime ? null : (result.expiresAt ? new Date(result.expiresAt) : null);
 
       if (targetUserId) {
         try {
-          const plan = PRODUCT_TO_PLAN[result.productId];
-          const expiresAtDate = result.isLifetime ? null : (result.expiresAt ? new Date(result.expiresAt) : null);
-
           // Global receipt-replay guard: reject if this transaction is already attached
           // to ANY OTHER user (active OR inactive). Without the inactive check an
           // attacker could deactivate their own sub (e.g. by letting it lapse) and
@@ -349,11 +494,26 @@ export function registerIapValidationRoutes(app: Express) {
           const conflict = await User.findOne(replayQuery).select("_id").lean();
           if (conflict) {
             logger.log(`[IAP] Replay blocked: txn=${result.originalTransactionId} requested by user=${targetUserId}, owned by user=${(conflict as any)._id}`);
-            return res.status(409).json({
-              valid: false,
-              error: "Receipt is already attached to another account",
-              code: "receipt_replay",
-            });
+            return finish(
+              409,
+              {
+                valid: false,
+                error: "Receipt is already attached to another account",
+                code: "receipt_replay",
+              },
+              {
+                result: "replay_blocked",
+                userId: targetUserId,
+                productId: result.productId,
+                transactionId: result.originalTransactionId,
+                originalTransactionId: result.originalTransactionId,
+                providerCode: "receipt_replay",
+                errorMessage: `owned by user ${(conflict as any)._id}`,
+                plan,
+                expiresAt: expiresAtDate,
+                isLifetime: result.isLifetime,
+              },
+            );
           } else {
             const existing = await User.findById(targetUserId).select("subscription").lean();
             const existingSub: any = (existing as any)?.subscription;
@@ -408,21 +568,42 @@ export function registerIapValidationRoutes(app: Express) {
         }
       }
 
-      return res.json({
-        valid: true,
-        expiresAt: result.expiresAt,
-        originalTransactionId: result.originalTransactionId,
-        isLifetime: result.isLifetime,
-        productId: result.productId,
-        plan: PRODUCT_TO_PLAN[result.productId],
-        features: PLAN_FEATURES[PRODUCT_TO_PLAN[result.productId]],
-        attachedToUser: attached,
-        ...(attachError ? { attachError } : {}),
-        ...(result.environment ? { environment: result.environment } : {}),
-      });
+      return finish(
+        200,
+        {
+          valid: true,
+          expiresAt: result.expiresAt,
+          originalTransactionId: result.originalTransactionId,
+          isLifetime: result.isLifetime,
+          productId: result.productId,
+          plan,
+          features: PLAN_FEATURES[plan],
+          attachedToUser: attached,
+          ...(attachError ? { attachError } : {}),
+          ...(result.environment ? { environment: result.environment } : {}),
+        },
+        {
+          result: attachError ? "persist_error" : "success",
+          userId: targetUserId,
+          productId: result.productId,
+          transactionId: result.originalTransactionId,
+          originalTransactionId: result.originalTransactionId,
+          errorMessage: attachError || "",
+          plan,
+          expiresAt: expiresAtDate,
+          isLifetime: result.isLifetime,
+        },
+      );
     } catch (err: any) {
       logger.error("[IAP] /api/iap/validate fatal:", err?.message || err);
-      return res.status(500).json({ valid: false, error: "Internal validation error" });
+      return finish(
+        500,
+        { valid: false, error: "Internal validation error" },
+        {
+          result: "fatal_error",
+          errorMessage: err?.message || String(err),
+        },
+      );
     }
   });
 }

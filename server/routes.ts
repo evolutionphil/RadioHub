@@ -48,6 +48,7 @@ import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
 import { registerMiscRoutes } from './routes/misc-routes';
 import { registerIapValidationRoutes } from './routes/iap-validation-routes';
+import { registerAdminIapRoutes } from './routes/admin-iap-routes';
 import { registerSilentPushRoutes } from './routes/silent-push-routes';
 import { registerMessagesRoutes } from './routes/messages-routes';
 
@@ -598,6 +599,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerRegionsRecommendationsRoutes(app, deps);
   registerMiscRoutes(app, deps, { apiOnly: isApiOnly });
   registerIapValidationRoutes(app);
+  registerAdminIapRoutes(app, deps);
   registerSilentPushRoutes(app, deps);
   registerMessagesRoutes(app, chatWss, deps);
 

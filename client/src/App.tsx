@@ -172,6 +172,7 @@ function AdminRouterContent() {
         
         {/* Users Management */}
         <Route path="/admin/users" component={LazyAdminRoutes.AdminUsers} />
+        <Route path="/admin/iap-events" component={LazyAdminRoutes.AdminIapEvents} />
         
         {/* SEO Tools */}
         <Route path="/admin/seo-preview" component={LazyAdminRoutes.AdminSeoPreview} />

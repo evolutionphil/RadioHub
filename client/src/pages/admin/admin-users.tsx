@@ -12,18 +12,20 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Search, Edit2, Trash2 } from "lucide-react";
+import { Loader2, Search, Edit2, Trash2, Crown, Ban } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getAvatarUrl } from "@/lib/utils";
 
 interface UserSubscription {
   plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
-  platform: 'ios' | 'android' | 'web' | 'admin';
+  platform: 'ios' | 'android' | 'tvos' | 'macos' | 'web' | 'admin';
   productId?: string;
   transactionId?: string;
+  originalTransactionId?: string;
   expiresAt?: string | null;
   startedAt?: string;
+  lastVerifiedAt?: string;
   isTrial?: boolean;
   isActive: boolean;
   cancelledAt?: string;
@@ -51,6 +53,10 @@ export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
+  // Local form state for the "Admin Overrides" section in the edit modal.
+  // Reset every time the user opens a new edit dialog.
+  const [subPlanDraft, setSubPlanDraft] = useState<string>("none");
+  const [subExpiresDraft, setSubExpiresDraft] = useState<string>("");
   const { toast } = useToast();
 
   const { data: usersResponse, isLoading: isLoadingUsers, error: usersError } = useQuery<{ users: UserProfile[]; total: number }>({
@@ -98,6 +104,54 @@ export default function AdminUsers() {
     },
     onError: () => {
       toast({ title: "Error", description: "Failed to delete user", variant: "destructive" });
+    },
+  });
+
+  // Admin override: revoke active subscription. Stamps cancelledAt + flips
+  // isActive=false but keeps the historical product/txn fields for audit.
+  const cancelSubMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiRequest("POST", `/api/admin/users/${userId}/subscription/cancel`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Subscription cancelled", description: "User's subscription marked inactive." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to cancel subscription", variant: "destructive" });
+    },
+  });
+
+  // Admin override: grant lifetime premium (platform='admin', expiresAt=null,
+  // isActive=true). Used for promo codes, support compensation, etc.
+  const grantLifetimeMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiRequest("POST", `/api/admin/users/${userId}/subscription/grant-lifetime`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Lifetime granted", description: "User now has premium_lifetime via admin override." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to grant lifetime", variant: "destructive" });
+    },
+  });
+
+  // Free-form plan/expiry override (existing endpoint). Lets admin pick a
+  // plan from the dropdown and (optionally) set a custom expiresAt.
+  const updateSubMutation = useMutation({
+    mutationFn: (data: { userId: string; plan: string; expiresAt?: string | null }) =>
+      apiRequest("PATCH", `/api/admin/users/${data.userId}/subscription`, {
+        body: {
+          plan: data.plan,
+          isActive: data.plan !== "none",
+          ...(data.expiresAt !== undefined ? { expiresAt: data.expiresAt } : {}),
+        },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      toast({ title: "Subscription updated", description: "Plan saved successfully." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to update subscription", variant: "destructive" });
     },
   });
 
@@ -253,6 +307,12 @@ export default function AdminUsers() {
                             onClick={() => {
                               setEditingUserId(user._id);
                               setEditData(user);
+                              setSubPlanDraft(user.subscription?.plan || "none");
+                              setSubExpiresDraft(
+                                user.subscription?.expiresAt
+                                  ? new Date(user.subscription.expiresAt).toISOString().slice(0, 10)
+                                  : "",
+                              );
                             }}
                             title="Edit user"
                           >
@@ -360,24 +420,6 @@ export default function AdminUsers() {
                       <span className="text-gray-500">Last Update</span>
                       <p className="font-medium text-gray-900">{formatDate(editUser?.updatedAt)}</p>
                     </div>
-                    <div>
-                      <span className="text-gray-500">Subscription</span>
-                      <p className="font-medium">
-                        {getSubscriptionBadge(editUser?.subscription) || (
-                          <span className="text-gray-400">None</span>
-                        )}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-gray-500">Platform</span>
-                      <p className="font-medium text-gray-900">{editUser?.subscription?.platform || "-"}</p>
-                    </div>
-                    {editUser?.subscription?.expiresAt && (
-                      <div>
-                        <span className="text-gray-500">Expires</span>
-                        <p className="font-medium text-gray-900">{formatDate(editUser.subscription.expiresAt)}</p>
-                      </div>
-                    )}
                     {editUser?.googleId && (
                       <div className="col-span-2">
                         <span className="text-gray-500">Google ID</span>
@@ -388,6 +430,150 @@ export default function AdminUsers() {
                       <span className="text-gray-500">User ID</span>
                       <p className="font-medium text-gray-900 font-mono text-xs">{editingUserId}</p>
                     </div>
+                  </div>
+                </div>
+
+                {/* Subscription Details — full read-only view of every IUser.subscription field */}
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide flex items-center justify-between">
+                    <span>Subscription Details</span>
+                    {getSubscriptionBadge(editUser?.subscription) || (
+                      <span className="text-xs text-gray-400 normal-case font-normal">No active plan</span>
+                    )}
+                  </h3>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <span className="text-gray-500">Plan</span>
+                      <p className="font-medium text-gray-900">{editUser?.subscription?.plan || "none"}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Active</span>
+                      <p className={`font-medium ${editUser?.subscription?.isActive ? "text-green-700" : "text-red-700"}`}>
+                        {editUser?.subscription?.isActive ? "Yes" : "No"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Platform</span>
+                      <p className="font-medium text-gray-900">{editUser?.subscription?.platform || "-"}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Trial</span>
+                      <p className="font-medium text-gray-900">{editUser?.subscription?.isTrial ? "Yes" : "No"}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Started</span>
+                      <p className="font-medium text-gray-900">{formatDate(editUser?.subscription?.startedAt)}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Expires</span>
+                      <p className="font-medium text-gray-900">
+                        {editUser?.subscription?.expiresAt
+                          ? formatDate(editUser.subscription.expiresAt)
+                          : editUser?.subscription?.plan === "premium_lifetime"
+                            ? "Never (lifetime)"
+                            : "-"}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Last verified</span>
+                      <p className="font-medium text-gray-900">{formatDate(editUser?.subscription?.lastVerifiedAt)}</p>
+                    </div>
+                    <div>
+                      <span className="text-gray-500">Cancelled</span>
+                      <p className="font-medium text-gray-900">
+                        {editUser?.subscription?.cancelledAt ? formatDate(editUser.subscription.cancelledAt) : "-"}
+                      </p>
+                    </div>
+                    {editUser?.subscription?.productId && (
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Product ID</span>
+                        <p className="font-medium text-gray-900 font-mono text-xs break-all">{editUser.subscription.productId}</p>
+                      </div>
+                    )}
+                    {editUser?.subscription?.originalTransactionId && (
+                      <div className="col-span-2">
+                        <span className="text-gray-500">Original transaction ID</span>
+                        <p className="font-medium text-gray-900 font-mono text-xs break-all">{editUser.subscription.originalTransactionId}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Admin Overrides — bypass Apple/Google. Sets platform='admin' on the server. */}
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-4 space-y-3">
+                  <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Admin Overrides</h3>
+                  <p className="text-xs text-gray-600">
+                    These actions bypass Apple/Google verification. The server stamps <code className="bg-white px-1 rounded">platform=admin</code> so the override is auditable.
+                  </p>
+                  <div className="grid grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Plan</label>
+                      <select
+                        value={subPlanDraft}
+                        onChange={(e) => setSubPlanDraft(e.target.value)}
+                        className="w-full bg-white text-gray-900 border border-gray-300 rounded px-2 py-1.5 text-sm"
+                      >
+                        <option value="none">none (no plan)</option>
+                        <option value="remove_ads">remove_ads</option>
+                        <option value="premium_monthly">premium_monthly</option>
+                        <option value="premium_yearly">premium_yearly</option>
+                        <option value="premium_lifetime">premium_lifetime</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">Expires (optional)</label>
+                      <Input
+                        type="date"
+                        value={subExpiresDraft}
+                        onChange={(e) => setSubExpiresDraft(e.target.value)}
+                        className="bg-white text-gray-900 border-gray-300 text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        updateSubMutation.mutate({
+                          userId: editingUserId,
+                          plan: subPlanDraft,
+                          expiresAt: subExpiresDraft ? new Date(subExpiresDraft).toISOString() : null,
+                        })
+                      }
+                      disabled={updateSubMutation.isPending}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                    >
+                      {updateSubMutation.isPending ? <Loader2 className="mr-1 animate-spin" size={14} /> : null}
+                      Save plan
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (window.confirm("Grant lifetime premium to this user (admin override)?")) {
+                          grantLifetimeMutation.mutate(editingUserId);
+                        }
+                      }}
+                      disabled={grantLifetimeMutation.isPending}
+                      className="bg-white text-purple-700 border-purple-300 hover:bg-purple-50"
+                    >
+                      <Crown size={14} className="mr-1" />
+                      Grant lifetime
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        if (window.confirm("Cancel this user's subscription? They will lose premium access immediately.")) {
+                          cancelSubMutation.mutate(editingUserId);
+                        }
+                      }}
+                      disabled={cancelSubMutation.isPending || !editUser?.subscription?.isActive}
+                      className="bg-white text-red-700 border-red-300 hover:bg-red-50 disabled:opacity-50"
+                    >
+                      <Ban size={14} className="mr-1" />
+                      Cancel subscription
+                    </Button>
                   </div>
                 </div>
 
