@@ -94,37 +94,9 @@ export default function UsersPage() {
     staleTime: 30000,
   });
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-[#0E0E0E]">
-        <div className="bg-[#151515] py-7">
-          <div className="container mx-auto px-4">
-            <h1 className="text-2xl font-bold text-white md:text-3xl">Social</h1>
-          </div>
-        </div>
-
-        <div className="container mx-auto p-6">
-          <Card className="bg-[#151515] border-gray-800">
-            <CardHeader className="text-center">
-              <Users className="w-16 h-16 text-blue-500 mx-auto mb-4" />
-              <CardTitle className="text-white text-2xl">Connect with Others</CardTitle>
-              <p className="text-gray-400">
-                Join our community to follow other users, get personalized recommendations, and discover new radio stations
-              </p>
-            </CardHeader>
-            <CardContent className="text-center">
-              <Button 
-                onClick={() => window.location.href = '/auth/login'}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3"
-              >
-                Sign In to Get Started
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
+  // Discover tab is PUBLIC; followers/following/notifications require auth.
+  // We render the page for everyone and gate per-tab content below.
+  const tabCount = isAuthenticated ? 4 : 1;
 
   return (
     <div className="min-h-screen bg-[#0E0E0E]">
@@ -138,7 +110,9 @@ export default function UsersPage() {
 
       <div className="container mx-auto p-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 bg-[#151515] border border-gray-800">
+          <TabsList
+            className={`grid w-full ${tabCount === 4 ? 'grid-cols-4' : 'grid-cols-1'} bg-[#151515] border border-gray-800`}
+          >
             <TabsTrigger 
               value="discover" 
               className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
@@ -146,35 +120,39 @@ export default function UsersPage() {
               <Users className="w-4 h-4 mr-2" />
               Discover
             </TabsTrigger>
-            <TabsTrigger 
-              value="followers"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-            >
-              <TrendingUp className="w-4 h-4 mr-2" />
-              Followers ({followersData?.pagination.total || 0})
-            </TabsTrigger>
-            <TabsTrigger 
-              value="following"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
-            >
-              <UserPlus className="w-4 h-4 mr-2" />
-              Following ({followingData?.pagination.total || 0})
-            </TabsTrigger>
-            <TabsTrigger 
-              value="notifications"
-              className="data-[state=active]:bg-blue-600 data-[state=active]:text-white relative"
-            >
-              <Bell className="w-4 h-4 mr-2" />
-              Notifications
-              {notificationsData && notificationsData.unreadCount > 0 && (
-                <Badge 
-                  variant="destructive" 
-                  className="absolute -top-2 -right-2 h-5 w-5 text-xs p-0 flex items-center justify-center"
+            {isAuthenticated && (
+              <>
+                <TabsTrigger
+                  value="followers"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
                 >
-                  {notificationsData.unreadCount}
-                </Badge>
-              )}
-            </TabsTrigger>
+                  <TrendingUp className="w-4 h-4 mr-2" />
+                  Followers ({followersData?.pagination.total || 0})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="following"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white"
+                >
+                  <UserPlus className="w-4 h-4 mr-2" />
+                  Following ({followingData?.pagination.total || 0})
+                </TabsTrigger>
+                <TabsTrigger
+                  value="notifications"
+                  className="data-[state=active]:bg-blue-600 data-[state=active]:text-white relative"
+                >
+                  <Bell className="w-4 h-4 mr-2" />
+                  Notifications
+                  {notificationsData && notificationsData.unreadCount > 0 && (
+                    <Badge
+                      variant="destructive"
+                      className="absolute -top-2 -right-2 h-5 w-5 text-xs p-0 flex items-center justify-center"
+                    >
+                      {notificationsData.unreadCount}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           <TabsContent value="discover" className="space-y-6">

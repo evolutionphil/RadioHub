@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application designed for global online radio streaming and broadcasting. It offers personalized listening experiences and comprehensive management tools for radio stations, supporting diverse audio formats, interactive features, geolocation-based content, advanced search, trend analysis, and AI-driven recommendations. The project's vision is to become a leading global online radio platform, enhancing listener engagement and streamlining broadcasting operations, aiming to be a major player in the online radio market.
+The Mega Radio Station Management System is a full-stack application for global online radio streaming and broadcasting. Its main purpose is to deliver personalized listening experiences and comprehensive management tools for radio stations. Key capabilities include support for diverse audio formats, interactive features, geolocation-based content, advanced search, trend analysis, and AI-driven recommendations. The project aims to become a leading global online radio platform, enhancing listener engagement and streamlining broadcasting operations to secure a significant position in the online radio market.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -76,34 +76,33 @@ CRITICAL GENRES/REGIONS IMG GRID RULE: Genres and Regions/Country SSR branches f
 - **Framework**: Express.js with TypeScript.
 - **Database**: MongoDB with Mongoose.
 - **API**: RESTful API design.
-- **Caching**: Multi-layer caching with NodeCache and Redis.
+- **Caching**: Multi-layer caching using NodeCache and Redis.
 - **SSR Protection**: Manages concurrent SSR requests, timeouts, and bot rate limiting.
-- **System Stability**: Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, fail-fast strategies.
+- **System Stability**: Features include Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, and fail-fast strategies.
 
 ### Frontend
 - **Framework**: React with TypeScript.
 - **Routing**: Wouter.
 - **State Management**: TanStack Query.
 - **UI**: Tailwind CSS and shadcn/ui components.
-- **Audio Player**: HLS.js integrated with Plyr.
-- **Audio Continuity**: Uninterrupted playback across navigation.
+- **Audio Player**: HLS.js integrated with Plyr for continuous playback across navigation.
 
 ### Deployment
 - **Architecture**: Microservices (backend API, frontend web, stream proxy).
 - **Containerization**: Docker.
-- **Monorepo**: Unified structure for development and management.
+- **Monorepo**: Unified development and management structure.
 
 ### Key Architectural Decisions
-- **Type Safety**: Achieved with TypeScript and Zod.
-- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, JSON-LD, multilingual hreflang, and detailed indexing rules.
-- **Performance**: Multi-layer caching, database indexing, lazy loading, server-side image optimization.
-- **Geolocation**: Personalized content delivery using Cloudflare headers and GPS data.
-- **User Engagement**: Data analytics and AI-powered recommendations.
-- **Subscription System**: Flexible matrix supporting various plans and features.
+- **Type Safety**: Ensured through TypeScript and Zod.
+- **SEO Optimization**: Implemented with slug-based URLs, dynamic sitemaps, JSON-LD, multilingual hreflang, and specific indexing rules.
+- **Performance**: Achieved via multi-layer caching, database indexing, lazy loading, and server-side image optimization.
+- **Geolocation**: Personalized content delivery leveraging Cloudflare headers and GPS data.
+- **User Engagement**: Supported by data analytics and AI-powered recommendations.
+- **Subscription System**: A flexible matrix supporting various plans and features.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud-hosted NoSQL database.
-- **Radio-Browser API**: External radio station database.
-- **ip-api.com**: Geolocation API.
-- **Cloudflare**: CDN, caching, RUM, and security services.
-- **AWS S3**: Scalable and secure media asset storage.
+- **Radio-Browser API**: External database for radio station information.
+- **ip-api.com**: Geolocation API service.
+- **Cloudflare**: Provides CDN, caching, Real User Monitoring (RUM), and security services.
+- **AWS S3**: Used for scalable and secure media asset storage.

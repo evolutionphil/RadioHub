@@ -16,13 +16,12 @@ import {
 
 interface User {
   _id: string;
-  email: string;
   fullName?: string;
-  username?: string;
+  username: string;
   avatar?: string;
   followersCount?: number;
   favoriteStationsCount?: number;
-  isPublicProfile?: boolean;
+  slug?: string;
 }
 
 export default function UsersIndex() {
@@ -38,19 +37,28 @@ export default function UsersIndex() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  // Fetch users with search, sorting and pagination
+  // Debounce search input → only fire request after typing stops (400ms)
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery.trim()), 400);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Fetch users from PUBLIC discovery endpoint (no auth required, isPublicProfile filter, newest first by default)
   const { data: usersData, isLoading } = useQuery({
-    queryKey: ["/api/users", { search: searchQuery, page, limit, sortBy }],
+    queryKey: ["/api/users/search", { q: debouncedSearch, page, limit, sortBy }],
     queryFn: async () => {
       const params = new URLSearchParams({
         page: page.toString(),
         limit: limit.toString(),
         sortBy: sortBy,
-        ...(searchQuery && { search: searchQuery })
+        ...(debouncedSearch && { q: debouncedSearch })
       });
-      const response = await fetch(`/api/users?${params}`);
+      const response = await fetch(`/api/users/search?${params}`);
+      if (!response.ok) throw new Error(`Failed to load users (${response.status})`);
       return response.json();
-    }
+    },
+    staleTime: 30_000,
   });
 
   const users = usersData?.users || [];
@@ -61,7 +69,7 @@ export default function UsersIndex() {
   };
 
   const displayName = (user: User) => {
-    return user.fullName || user.username || user.email.split('@')[0];
+    return user.fullName || user.username || "User";
   };
 
   return (

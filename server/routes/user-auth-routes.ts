@@ -31,6 +31,131 @@ async function generateAppleClientSecret(): Promise<string> {
 export function registerUserAuthRoutes(app: Express, deps: any) {
   const { requireAuth, requireAdmin, generateAuthToken, passport } = deps;
 
+  // PUBLIC USER DISCOVERY — no auth required
+  // Lists/searches only users that have isPublicProfile:true (privacy-safe).
+  // Default sort: createdAt desc (newest community members first).
+  // Used by /users (Discover/Community) page; supports search by username/fullName/email.
+  // Also supports sortBy: newest|oldest|most_radios|least_radios.
+  // Accepts BOTH `q` and `search` for query (legacy compat).
+  app.get("/api/users/search", async (req, res) => {
+    try {
+      const { q, search, page = 1, limit = 20, sortBy = 'newest' } = req.query;
+      const limitNum = Math.min(Math.max(Number(limit) || 20, 1), 50);
+      const pageNum = Math.max(Number(page) || 1, 1);
+      const skip = (pageNum - 1) * limitNum;
+
+      const filter: any = {
+        isPublicProfile: true,
+        status: 'active',
+      };
+
+      const queryStr = String(q ?? search ?? '').trim();
+      if (queryStr.length >= 2) {
+        // Escape regex meta-chars to prevent NoSQL $regex injection / ReDoS.
+        const safe = queryStr.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        filter.$or = [
+          { username: { $regex: safe, $options: 'i' } },
+          { fullName: { $regex: safe, $options: 'i' } },
+          { email: { $regex: safe, $options: 'i' } },
+        ];
+      }
+
+      // STRICT ALLOWLIST — email + IDs + tokens + provider IDs are NEVER returned to public callers,
+      // even though search BY email is supported (one-way: searchable, not enumerable).
+      const PUBLIC_FIELDS = '_id username fullName avatar location bio followersCount followingCount createdAt slug';
+      const sortKey = String(sortBy);
+      const useAggregation = sortKey === 'most_radios' || sortKey === 'least_radios';
+
+      let users: any[];
+      let total: number;
+
+      if (useAggregation) {
+        // Explicit allowlist $project — DENYLIST is dangerous (any new field leaks by default).
+        const pipeline: any[] = [
+          { $match: filter },
+          {
+            $addFields: {
+              favoriteStationsCount: {
+                $cond: {
+                  if: { $isArray: '$favoriteStations' },
+                  then: { $size: '$favoriteStations' },
+                  else: { $ifNull: ['$favoriteStationsCount', 0] },
+                },
+              },
+            },
+          },
+          {
+            $sort:
+              sortKey === 'most_radios'
+                ? { favoriteStationsCount: -1, createdAt: -1 }
+                : { favoriteStationsCount: 1, createdAt: -1 },
+          },
+          { $skip: skip },
+          { $limit: limitNum },
+          {
+            $project: {
+              _id: 1,
+              username: 1,
+              fullName: 1,
+              avatar: 1,
+              location: 1,
+              bio: 1,
+              followersCount: 1,
+              followingCount: 1,
+              favoriteStationsCount: 1,
+              createdAt: 1,
+              slug: 1,
+            },
+          },
+        ];
+        [users, total] = await Promise.all([
+          User.aggregate(pipeline),
+          User.countDocuments(filter),
+        ]);
+      } else {
+        const sortObject: any = sortKey === 'oldest' ? { createdAt: 1 } : { createdAt: -1 };
+        // .select() with allowlist + favoriteStations (used to derive count, then dropped)
+        const docs = await User.find(filter)
+          .select(`${PUBLIC_FIELDS} favoriteStations favoriteStationsCount`)
+          .sort(sortObject)
+          .skip(skip)
+          .limit(limitNum)
+          .lean();
+        total = await User.countDocuments(filter);
+
+        users = docs.map((u: any) => ({
+          _id: u._id,
+          username: u.username,
+          fullName: u.fullName,
+          avatar: u.avatar,
+          location: u.location,
+          bio: u.bio,
+          followersCount: u.followersCount || 0,
+          followingCount: u.followingCount || 0,
+          favoriteStationsCount:
+            (Array.isArray(u.favoriteStations) ? u.favoriteStations.length : u.favoriteStationsCount) || 0,
+          createdAt: u.createdAt,
+          slug: u.slug,
+        }));
+      }
+
+      res.set('Cache-Control', 'public, max-age=60, stale-while-revalidate=120');
+      res.json({
+        users,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total,
+          pages: Math.ceil(total / limitNum),
+          hasMore: pageNum < Math.ceil(total / limitNum),
+        },
+      });
+    } catch (error) {
+      logger.log('User search error:', error);
+      res.status(500).json({ error: 'Failed to search users' });
+    }
+  });
+
   // USER MANAGEMENT API ENDPOINTS — admin only (enumerable PII)
   
   // Get all users with filters and pagination
