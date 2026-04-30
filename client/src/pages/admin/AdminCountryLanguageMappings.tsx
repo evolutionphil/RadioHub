@@ -22,8 +22,18 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2 } from 'lucide-react';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 interface Country {
   name: string;
@@ -55,6 +65,7 @@ export default function AdminCountryLanguageMappings() {
   const [searchTerm, setSearchTerm] = useState('');
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
   const [overwriteExisting, setOverwriteExisting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
 
   // Fetch available countries
   const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
@@ -113,6 +124,44 @@ export default function AdminCountryLanguageMappings() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to save mappings',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Delete a single country-language mapping
+  const deleteMappingMutation = useMutation({
+    mutationFn: async (countryCode: string) => {
+      return await apiRequest(
+        'DELETE',
+        `/api/admin/country-language-mappings/${countryCode}`,
+      );
+    },
+    onSuccess: (_data, countryCode) => {
+      // Drop any pending change for this country so the UI returns to "unmapped"
+      setPendingChanges(prev => {
+        if (!prev.has(countryCode)) return prev;
+        const next = new Map(prev);
+        next.delete(countryCode);
+        return next;
+      });
+      // Optimistically remove the deleted mapping from the cache so the row's
+      // dropdown and trash button update immediately, without waiting for the
+      // invalidated query to refetch.
+      queryClient.setQueryData<CountryLanguageMapping[]>(
+        ['/api/admin/country-language-mappings'],
+        (old) => (old ? old.filter(m => m.countryCode !== countryCode) : old),
+      );
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      toast({
+        title: 'Mapping cleared',
+        description: 'The country mapping was removed and will fall back to the default language.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to clear mapping',
         variant: 'destructive',
       });
     },
@@ -350,12 +399,13 @@ export default function AdminCountryLanguageMappings() {
                   <TableHead>Country</TableHead>
                   <TableHead className="w-64">Language</TableHead>
                   <TableHead className="w-24">Status</TableHead>
+                  <TableHead className="w-20 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCountries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                       No countries found
                     </TableCell>
                   </TableRow>
@@ -364,6 +414,10 @@ export default function AdminCountryLanguageMappings() {
                     const effectiveLanguage = getEffectiveLanguage(country.code);
                     const hasPendingChange = pendingChanges.has(country.code);
                     const isMapped = !!effectiveLanguage;
+                    const hasDbMapping = mappingsMap.has(country.code);
+                    const isClearingThis =
+                      deleteMappingMutation.isPending &&
+                      deleteMappingMutation.variables === country.code;
 
                     return (
                       <TableRow
@@ -411,6 +465,26 @@ export default function AdminCountryLanguageMappings() {
                             </span>
                           )}
                         </TableCell>
+                        <TableCell className="text-right">
+                          {hasDbMapping ? (
+                            <Button
+                              data-testid={`button-clear-mapping-${country.code}`}
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                              title="Clear mapping"
+                              aria-label={`Clear mapping for ${country.name}`}
+                              onClick={() => setPendingDelete(country)}
+                              disabled={isClearingThis}
+                            >
+                              {isClearingThis ? (
+                                <RefreshCw className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          ) : null}
+                        </TableCell>
                       </TableRow>
                     );
                   })
@@ -427,6 +501,41 @@ export default function AdminCountryLanguageMappings() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog
+        open={pendingDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingDelete(null);
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-confirm-clear-mapping">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear mapping?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? `This will remove the database mapping for ${pendingDelete.name} (${pendingDelete.code}). The country will fall back to its hardcoded default language.`
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-clear-mapping">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-clear-mapping"
+              onClick={() => {
+                if (pendingDelete) {
+                  deleteMappingMutation.mutate(pendingDelete.code);
+                  setPendingDelete(null);
+                }
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Clear mapping
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
