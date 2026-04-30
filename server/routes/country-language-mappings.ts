@@ -148,6 +148,25 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     }
   });
 
+  // Delete all country-language mappings
+  app.delete('/api/admin/country-language-mappings', requireAdmin, async (_req, res) => {
+    try {
+      const { CountryLanguageMapping } = await import('../../shared/mongo-schemas');
+
+      const result = await CountryLanguageMapping.deleteMany({});
+
+      // Clear performance cache to force reload
+      const { performanceCache } = await import('../performance-cache');
+      performanceCache.clearCountryLanguageMappings();
+
+      console.log(`✅ Deleted all ${result.deletedCount} country-language mappings`);
+      res.json({ success: true, deletedCount: result.deletedCount });
+    } catch (error) {
+      console.error('Error deleting all country-language mappings:', error);
+      res.status(500).json({ error: 'Failed to delete all country-language mappings' });
+    }
+  });
+
   // Delete a country-language mapping
   app.delete('/api/admin/country-language-mappings/:countryCode', requireAdmin, async (req, res) => {
     try {

@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -67,6 +67,7 @@ export default function AdminCountryLanguageMappings() {
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
   const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
+  const [confirmResetAll, setConfirmResetAll] = useState(false);
 
   // Fetch available countries
   const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
@@ -183,6 +184,38 @@ export default function AdminCountryLanguageMappings() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to clear mapping',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Delete all country-language mappings
+  const resetAllMutation = useMutation<{ success: boolean; deletedCount: number }>({
+    mutationFn: async () => {
+      const res = await apiRequest('DELETE', '/api/admin/country-language-mappings');
+      return (await res.json()) as { success: boolean; deletedCount: number };
+    },
+    onSuccess: (data) => {
+      // Clear any pending changes since the table is now empty
+      setPendingChanges(new Map());
+      // Optimistically empty the cache so the UI updates immediately
+      queryClient.setQueryData<CountryLanguageMapping[]>(
+        ['/api/admin/country-language-mappings'],
+        [],
+      );
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      const count = data?.deletedCount ?? 0;
+      toast({
+        title: 'All mappings cleared',
+        description: count > 0
+          ? `Removed ${count} ${count === 1 ? 'mapping' : 'mappings'}. All countries will fall back to defaults.`
+          : 'All mappings have been removed.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to clear all mappings',
         variant: 'destructive',
       });
     },
@@ -391,6 +424,24 @@ export default function AdminCountryLanguageMappings() {
               Auto-fill from defaults
             </Button>
             <Button
+              data-testid="button-reset-all-mappings"
+              variant="outline"
+              onClick={() => setConfirmResetAll(true)}
+              disabled={
+                (existingMappings?.length || 0) === 0 ||
+                resetAllMutation.isPending ||
+                bulkSaveMutation.isPending
+              }
+              className="text-destructive hover:text-destructive"
+            >
+              {resetAllMutation.isPending ? (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash className="mr-2 h-4 w-4" />
+              )}
+              Reset all mappings
+            </Button>
+            <Button
               data-testid="button-save-mappings"
               onClick={handleBulkSave}
               disabled={!hasChanges || bulkSaveMutation.isPending}
@@ -597,6 +648,39 @@ export default function AdminCountryLanguageMappings() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Clear mapping
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={confirmResetAll}
+        onOpenChange={(open) => {
+          if (!open) setConfirmResetAll(false);
+        }}
+      >
+        <AlertDialogContent data-testid="dialog-confirm-reset-all">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset all mappings?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently remove all {existingMappings?.length || 0} country-language
+              mappings from the database. Every country will fall back to its hardcoded default
+              language. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-reset-all">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-reset-all"
+              onClick={() => {
+                resetAllMutation.mutate();
+                setConfirmResetAll(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Reset all mappings
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
