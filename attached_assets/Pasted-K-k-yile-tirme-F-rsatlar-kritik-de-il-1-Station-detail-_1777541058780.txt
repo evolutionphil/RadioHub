@@ -1,0 +1,28 @@
+Küçük İyileştirme Fırsatları (kritik değil)
+1. Station detail page'de mobile'da gizlenen "now playing" metadata
+Yer: client/src/pages/stations/[id].tsx:831, 842
+
+<span className="hidden md:inline">{stationMeta.artist} - {stationMeta.title}</span>
+<span className="hidden md:inline">{stationMeta.title}</span>
+
+Bu artist + şarkı adı mobile'da gözükmüyor. Ama bu canlı stream metadata (şu anda çalan şarkı), SEO içeriği değil — Googlebot zaten bunu indexlemez (sürekli değişir). Aksiyon gerekmez, ancak UX olarak mobile'da da göstermek isteyebilirsiniz.
+
+2. Çok küçük font'lar (text-[10px], text-[11px])
+En kritik yer: client/src/components/layout/footer.tsx:177-187 — footer telif/yardımcı yazılar.
+
+Google'ın Mobile Usability raporu eskiden "text too small to read" uyarısı verirdi. Bu rapor 2023'te kaldırıldı, şimdi sadece Lighthouse'da skor düşürür. SEO sıralaması üzerinde direkt etkisi yok, ama UX için footer'ı text-xs (12px) yapmak iyi olur. Diğer yerler (api-docs, messages) zaten kullanıcı tarafından görülen kritik alanlar değil.
+
+3. overflow-x: hidden (html + body) — client/src/index.css:144-155
+Bu mobile yatay-kaydırmayı engellemek için yaygın bir teknik. Eğer altta gerçekten taşan element varsa Google "Content wider than screen" diyebilir, ama mevcut kodda taşma görünmüyor. Aksiyon gerekmez.
+
+4. Touch-target boyutları
+Otomatik doğrulama yapamadım. Manuel olarak Chrome DevTools → Lighthouse Mobile → "Tap targets are sized appropriately" çalıştırılmalı. Genel React + Tailwind kodunuzda h-10/h-12 (40-48px) butonlar standart, muhtemelen sorun yok.
+
+🎯 Sonuç
+Bing 1023 sitemap hatası ile Google indexing sorunu mobile-first ile İLGİSİZDİ — sadece sitemap altyapısı sorunuydu, onu zaten düzelttik. Mobile-first indexing tarafında siteniz standart-üstü iyi:
+
+Tek HTML, tek URL, identical mobile=desktop SSR (Google'ın istediği "responsive design" yaklaşımı)
+AMP/m.* yok = ileri görüşlü (Google AMP'i 2021'de geri çekti)
+Doğru viewport + apple/android meta'lar
+Doğru <picture> + preload eşleşmesi (LCP optimal)
+Aksiyon önerim: Hiçbir şey acil değil. İsterseniz tek küçük bir iyileştirme olarak footer.tsx'teki text-[10px]'leri text-xs yapabilirim — Lighthouse Mobile UX skorunu birkaç puan yukarı çeker. Onaylarsanız hemen yaparım, yoksa mevcut hali ile siteniz Google mobile-first indexing için hazır.

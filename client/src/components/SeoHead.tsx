@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useTranslation } from '@/hooks/useTranslation';
 import { generateSeoTags, getLanguageFromPath, generateLanguageUrls } from '@shared/seo-config';
+import { buildGenreSeo } from '@shared/genre-seo-templates';
 import { useQuery } from '@tanstack/react-query';
 import { 
   generateOrganizationSchema, 
@@ -26,9 +27,17 @@ interface SeoHeadProps {
     votes?: number;
   } | null;
   pageType?: 'home' | 'station' | 'genres' | 'stations' | 'users' | 'about' | 'search' | 'faq';
+  /**
+   * Genre detail name (e.g. "Pop", "Rock"). When provided alongside `pageType="genres"`,
+   * the SeoHead overrides the generic genres-listing meta tags with a fully localized
+   * genre-detail title/description (matches the SSR output from server/seo-renderer.ts).
+   * Without this, React hydration would replace the SSR-localized meta with English/generic
+   * placeholders, causing Google WRS to record the wrong meta after JS render.
+   */
+  genreName?: string;
 }
 
-export function SeoHead({ stationData, pageType = 'home' }: SeoHeadProps) {
+export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadProps) {
   const [location] = useLocation();
   const { language } = useTranslation();
 
@@ -64,6 +73,20 @@ export function SeoHead({ stationData, pageType = 'home' }: SeoHeadProps) {
 
     // Generate SEO tags - pass original location as canonical to prevent country code → language code conversion
     const seoTags = generateSeoTags(pageType, language, translationMap, cleanPath, currentDomain, stationData, location);
+
+    // Genre detail override: keeps client hydration aligned with server SSR.
+    // generateSeoTags returns generic genres-listing meta when called from a genre detail
+    // page (it doesn't know about `genreName`), so React would otherwise overwrite the
+    // SSR-localized title/description with generic English/generic listing meta after mount.
+    if (pageType === 'genres' && genreName) {
+      const genreSeo = buildGenreSeo(genreName, language, translationMap);
+      seoTags.title = genreSeo.title;
+      seoTags.description = genreSeo.description;
+      seoTags.ogTitle = genreSeo.title;
+      seoTags.ogDescription = genreSeo.description;
+      seoTags.twitterTitle = genreSeo.title;
+      seoTags.twitterDescription = genreSeo.description;
+    }
 
     // Update title
     if (seoTags.title) {

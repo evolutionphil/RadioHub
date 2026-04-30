@@ -924,10 +924,10 @@ export class SeoRenderer {
       
       case 'genres':
         if (additionalData?.genreName) {
-          const genreName = this.escapeHtml(additionalData.genreName);
-          const radioStationsText = translations['seo_radio_stations'] || 'Radio Stations';
-          const listenLiveText = translations['seo_listen_live_online'] || 'Listen Live Online';
-          return `${genreName} ${radioStationsText} — ${listenLiveText} | Mega Radio`;
+          // Use multilingual helper so TR/DE/ES/etc. don't show English "Radio Stations"
+          // when the legacy DB keys are missing (which is the current production state).
+          const genreSeo = buildGenreSeo(additionalData.genreName, language, translations);
+          return `${this.escapeHtml(genreSeo.h1)} | Mega Radio`;
         }
         return getLocalizedText('genres_page_title');
       
@@ -1219,11 +1219,16 @@ export class SeoRenderer {
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
-            ${genreName ? `
+            ${genreName ? (() => {
+              // Multilingual body intro/availability — see shared/genre-seo-templates.ts.
+              // Replaces the old per-key i18n approach which left TR/DE/etc. body fragments in English.
+              const genreSeo = buildGenreSeo(genreName, language, translations);
+              return `
             <section>
-              <p>${this.escapeHtml(getLocalizedText('seo_listen_to_live_radio_from', 'Listen to live radio from'))} ${this.escapeHtml(genreName)}. ${this.escapeHtml(getLocalizedText('seo_discover_local', 'Discover local'))} ${this.escapeHtml(genreName)} ${this.escapeHtml(getLocalizedText('seo_music_and_shows', 'music and shows'))} ${this.escapeHtml(getLocalizedText('streaming_free', 'streaming for free on Mega Radio'))}.</p>
-              <p>${this.escapeHtml(getLocalizedText('hero_over_100_countries', 'Browse 60,000+ radio stations from 120+ countries'))} — ${this.escapeHtml(genreName)} ${this.escapeHtml(getLocalizedText('seo_radio_stations', 'Radio Stations'))} ${this.escapeHtml(getLocalizedText('streaming_available_24_7', 'available 24/7 for free streaming'))}.</p>
-            </section>` : ''}
+              <p>${this.escapeHtml(genreSeo.bodyIntro)}</p>
+              <p>${this.escapeHtml(genreSeo.bodyAvailability)}</p>
+            </section>`;
+            })() : ''}
             ${additionalData?.popularStations && additionalData.popularStations.length > 0 ? `
             <!-- DALGA 2 W2.1: Top stations for this genre — SEO image surface -->
             <section class="popular-stations">

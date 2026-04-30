@@ -125,7 +125,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
 
   return (
     <>
-      <SeoHead pageType="genres" />
+      <SeoHead pageType="genres" genreName={genreName} />
       
       <div className="min-h-screen bg-[#0D0D0D]">
         {/* Header with Breadcrumb - Figma: 1512x100, #151515 */}
