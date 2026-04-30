@@ -1,7 +1,7 @@
 # Mega Radio Station Management System
 
 ## Overview
-The Mega Radio Station Management System is a full-stack application for global radio station streaming and broadcasting, designed to deliver personalized listening experiences and comprehensive management tools for broadcasters. Key capabilities include support for diverse audio formats, interactive user functionalities, geolocation-based content delivery, advanced search, trend analysis, and AI-driven recommendations. The project aims to become a leading online radio platform, enhancing listener engagement and streamlining broadcaster operations through a robust and scalable architecture, thus presenting significant market potential.
+The Mega Radio Station Management System is a full-stack application designed for global online radio streaming and broadcasting. Its primary goal is to deliver personalized listening experiences and comprehensive management tools for radio stations. Key features include support for various audio formats, interactive functionalities, geolocation-based content, advanced search, trend analysis, and AI-driven recommendations. The project aims to become a leading global online radio platform, enhancing listener engagement and optimizing broadcasting operations.
 
 ## User Preferences
 Preferred communication style: Simple, everyday language.
@@ -18,7 +18,9 @@ CRITICAL LASTMOD RULE: Station sitemaps must ONLY include `<lastmod>` when real 
 
 CRITICAL UGC RULE: User-submitted comments are stripped of HTML tags on input (max 1000 chars) and on output. Any future comment rendering with links MUST use `rel="nofollow ugc noopener"` to comply with Google's UGC spam policy.
 
-CRITICAL SITEMAP RULE: sitemap-index.xml references ONLY existing routes: sitemap-main-{lang}.xml, sitemap-genres-{lang}.xml, sitemap-stations-{chunk}.xml. Never add sitemap-images-*, sitemap-stations-{digit}.xml, sitemap-news.xml, sitemap-videos.xml back — these violate Google policies or don't exist. robots.txt must only list sitemap-index.xml. sitemap-main.xml is a 301 redirect to sitemap-main-en.xml. Deprecated sitemap URLs (/sitemap-news.xml, /sitemap-videos.xml, /sitemap-images-*.xml, /sitemap-stations-{digit}.xml) return 410 Gone to prevent soft-404.
+CRITICAL SITEMAP MANIFEST RULE: sitemap-index.xml is now driven by `SitemapManifest` Mongo collection (`shared/mongo-schemas.ts`). The manifest is built by `server/seo/sitemap-manifest-builder.ts` (`buildAllSitemapManifests`) which: (1) fetches qualified-languages state, (2) per language scans indexable stations + genres, (3) buckets stations into chunks of `STATIONS_PER_CHUNK` (1000) using `votes desc, _id asc` deterministic order, (4) writes a `building` doc, (5) atomically swaps to `active` (transaction-or-fallback). Sitemap routes (`/sitemap-index.xml`, `/sitemap-main-{lang}.xml`, `/sitemap-genres-{lang}.xml`, `/sitemap-stations-{lang}-{chunk}.xml`) read ONLY from the active manifest. ANY chunk number outside the active manifest's range MUST return 410 Gone (`410-Gone for retired chunks`). Manifest is rebuilt every 6h by `startManifestRefreshLoop`. ETag = `manifestVersion:qualifiedHash:type:lang[:chunk]`. Cache-Control: `s-maxage=600` (index, 10min), `s-maxage=3600` (children, 1h), both with `stale-while-revalidate=300`. `lastmod` is ONLY emitted from real `manifest.maxUpdatedAt` (never today's date fallback). NEVER add sitemap-images-*, sitemap-stations-{digit}.xml (no-lang), sitemap-news.xml, sitemap-videos.xml back — these violate Google policies or don't exist. robots.txt must only list sitemap-index.xml. sitemap-main.xml is a 301 redirect to sitemap-main-en.xml. Deprecated sitemap URLs (/sitemap-news.xml, /sitemap-videos.xml, /sitemap-images-*.xml, /sitemap-stations-{N}.xml without lang) return 410 Gone to prevent soft-404.
+
+CRITICAL QUALIFIED-LANGUAGES FAIL-CLOSED RULE: `server/seo/qualified-languages.ts` is FAIL-CLOSED — it MUST NEVER fall back to all 57 ACTIVE_SITEMAP_LANGUAGES on translation cache miss (the previous fail-open behavior caused 1023 empty Bing sitemap entries). Resolution order: (1) in-memory cache (10min TTL), (2) live compute via `hasCompleteSeoTranslations`, (3) DB-backed `SeoQualifiedLanguagesLkg` (Last-Known-Good, 30d TTL), (4) `EMERGENCY_SEED_QUALIFIED_LANGUAGES = [ar,de,en,es,fr,it,nl,pt,ru,tr]` only on FIRST-EVER boot when LKG is empty, (5) `QualifiedLanguagesUnavailableError` → sitemap routes respond 503 + `Retry-After: 60` + `Cache-Control: no-store`. SHRINK PROTECTION: if live `computed.length < lkg.languages.length × 0.5`, treat as transient cache miss and stick with LKG. Drift detection logs hash transitions. `initializeQualifiedLanguages()` is called at server boot in BOTH `server/index.ts` AND `server/index-web.ts` AFTER URL translations load, BEFORE accepting traffic. Genre._id is mixed type (ObjectId for new docs, string slugs like 'genre-pop' for legacy seeds) — `SitemapManifestChunkSchema.stationIds` uses `Schema.Types.Mixed` and the genres route uses `Genre.collection.find()` (raw native driver) to bypass mongoose strict ObjectId casting. Reset script: `scripts/reset-sitemap-state.ts` (deletes LKG + manifests, forces re-build). Cloudflare purge after deploy: `PURGE=1 npx tsx scripts/cloudflare-purge-sitemaps.ts` (purges robots + sitemap-index + per-lang main/genres + OLD chunks 1..50 superset + actual active chunks).
 
 CRITICAL ROBOTS.TXT RULE: `Disallow: /api/` blocks Google WRS (Web Rendering Service) from fetching API endpoints during JavaScript rendering, which causes React to show "Station not found" even when SSR is correct. Critical API paths MUST have explicit `Allow:` rules BEFORE the `Disallow: /api/` line: `/api/station/`, `/api/stations/`, `/api/genres`, `/api/translations`, `/api/location`, `/api/advertisements`. Never remove these Allow rules or Google will see blank/error pages after JS render.
 
@@ -32,7 +34,7 @@ CRITICAL SEO REGEX RULE: Both `server/index.ts` AND `server/index-web.ts` must u
 
 CRITICAL RATE LIMIT RULE: Major search bots (Google, Bing, Yandex, Baidu, DuckDuckGo, Apple) are FULLY EXEMPT from all rate limits — both API rate limiter in index-api.ts and SSR bot rate limiter in index-web.ts. Minor bots get 60/min.
 
-CRITICAL SSRF RULE: ALL outbound requests from server-side code (safeFetch in safe-fetch.ts, stream-proxy-routes.ts base64 + URL-decoded fallback paths, Shoutcast manual redirect handler, direct fetch path) MUST call validateOutboundUrl on every redirect hop, NOT just the initial URL. `redirect:'follow'` is forbidden — use `redirect:'manual'` with a max-5-hop loop. Otherwise a public origin can 30x into 169.254.169.254 (cloud metadata), localhost, or other internal targets. validateOutboundUrl blocks IPv6 6to4 (2002::/16) and Teredo (2001::32) tunnels in addition to standard private/loopback/link-local ranges. STREAM_BLOCKED_PORTS in stream-proxy-routes.ts is the single source of truth for the stream/image policy — a BLOCKLIST (SSH, SMTP, DNS, SMB, DB/cache ports) passed via `blockedPorts` to validateOutboundUrl, not an allowlist. Stream proxy MUST use a fixed media-player User-Agent (`VLC/3.0.20 LibVLC/3.0.20`) on all outbound fetches — forwarding the browser UA causes origins like stream.zeno.fm to return HTTP 401. NoSQL $regex with user input MUST be escaped with escapeRegex() (regex meta-chars: `.*+?^${}()|[]\`) — applies to misc-routes.ts and user-auth-routes.ts user-search filters.
+CRITICAL SSRF RULE: ALL outbound requests from server-side code (safeFetch in safe-fetch.ts, stream-proxy-routes.ts base64 + URL-decoded fallback paths, Shoutcast manual redirect handler, direct fetch path) MUST call validateOutboundUrl on every redirect hop, NOT just the initial URL. `redirect:'follow'` is forbidden — use `redirect:'manual'` with a max-5-hop loop. Otherwise a public origin can 30x into 169.254.169.254 (cloud metadata), localhost, or other internal targets. `validateOutboundUrl` blocks IPv6 6to4 (2002::/16) and Teredo (2001::32) tunnels in addition to standard private/loopback/link-local ranges. STREAM_BLOCKED_PORTS in stream-proxy-routes.ts is the single source of truth for the stream/image policy — a BLOCKLIST (SSH, SMTP, DNS, SMB, DB/cache ports) passed via `blockedPorts` to `validateOutboundUrl`, not an allowlist. Stream proxy MUST use a fixed media-player User-Agent (`VLC/3.0.20 LibVLC/3.0.20`) on all outbound fetches — forwarding the browser UA causes origins like stream.zeno.fm to return HTTP 401. NoSQL $regex with user input MUST be escaped with escapeRegex() (regex meta-chars: `.*+?^${}()|[]\`) — applies to misc-routes.ts and user-auth-routes.ts user-search filters.
 
 CRITICAL CORS RULE: CORS middleware in index-api.ts must run BEFORE rate limiters. If rate limiter returns 429 before CORS headers are set, browsers block the response entirely — causing "No Access-Control-Allow-Origin" errors and making the site appear completely down. Origin-aware CORS: requests from themegaradio.com get `Access-Control/Allow-Credentials: true`; other origins get `Access-Control/Allow-Origin: *`.
 
@@ -73,35 +75,35 @@ CRITICAL GENRES/REGIONS IMG GRID RULE: Genres and Regions/Country SSR branches f
 ### Backend
 - **Framework**: Express.js with TypeScript.
 - **Database**: MongoDB with Mongoose.
-- **API**: RESTful API.
-- **Caching**: NodeCache and Redis for multi-layer caching.
+- **API**: RESTful API design.
+- **Caching**: Multi-layer caching with NodeCache and Redis.
+- **SSR Protection**: Manages concurrent SSR requests, timeouts, and bot rate limiting.
+- **System Stability**: Out-Of-Memory prevention, self-watchdog, MongoDB circuit breaker, fail-fast strategies.
 
 ### Frontend
 - **Framework**: React with TypeScript.
 - **Routing**: Wouter.
 - **State Management**: TanStack Query.
-- **UI**: Tailwind CSS and shadcn/ui components for a modern, responsive design.
-- **Audio Player**: HLS.js with Plyr for seamless playback.
+- **UI**: Tailwind CSS and shadcn/ui components.
+- **Audio Player**: HLS.js integrated with Plyr.
+- **Audio Continuity**: Uninterrupted playback across navigation.
 
 ### Deployment
-- **Architecture**: Microservices (backend-api, frontend-web, stream-proxy).
-- **Containerization**: Docker for isolated and scalable services.
-- **Monorepo**: Unified monorepo for all services.
+- **Architecture**: Microservices (backend API, frontend web, stream proxy).
+- **Containerization**: Docker.
+- **Monorepo**: Unified structure for development and management.
 
 ### Key Architectural Decisions
-- **Type Safety**: Implemented using TypeScript and Zod for robust schema validation.
-- **SEO Optimization**: Comprehensive strategy including slug-based URLs, dynamic sitemaps, JSON-LD, multilingual hreflang, and robust indexing rules.
-- **Performance**: Achieved through multi-layer caching, database indexing, lazy loading, and server-side image optimization.
-- **Geolocation**: Personalizes content delivery using Cloudflare headers and GPS data.
-- **Audio Continuity**: Ensures uninterrupted audio playback across user navigations.
-- **User Engagement**: Driven by data analytics and AI-powered recommendation engines.
-- **System Stability**: Engineered with Out-Of-Memory prevention, a self-watchdog, MongoDB circuit breaker, and fail-fast mechanisms.
-- **SSR Protection**: Manages concurrent Server-Side Rendering (SSR) requests, timeouts, and bot rate limiting.
-- **Subscription System**: A flexible matrix supporting various subscription plans and features.
+- **Type Safety**: Achieved with TypeScript and Zod.
+- **SEO Optimization**: Slug-based URLs, dynamic sitemaps, JSON-LD, multilingual hreflang, and detailed indexing rules.
+- **Performance**: Multi-layer caching, database indexing, lazy loading, server-side image optimization.
+- **Geolocation**: Personalized content delivery using Cloudflare headers and GPS data.
+- **User Engagement**: Data analytics and AI-powered recommendations.
+- **Subscription System**: Flexible matrix supporting various plans and features.
 
 ## External Dependencies
 - **MongoDB Atlas**: Cloud-hosted NoSQL database.
-- **Radio-Browser API**: External API providing comprehensive radio station data.
-- **ip-api.com**: Geolocation service.
-- **Cloudflare**: Utilized for CDN, caching, RUM, and enhanced security.
-- **AWS S3**: Scalable cloud storage for media assets.
+- **Radio-Browser API**: External radio station database.
+- **ip-api.com**: Geolocation API.
+- **Cloudflare**: CDN, caching, RUM, and security services.
+- **AWS S3**: Scalable and secure media asset storage.

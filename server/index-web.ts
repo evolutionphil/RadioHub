@@ -941,6 +941,23 @@ app.use('/api/stream', streamServiceProxy);
 
       const { loadDatabaseUrlTranslations } = await import('../shared/url-translations');
       await loadDatabaseUrlTranslations();
+
+      // Sitemap subsystem (manifest-driven, refactored 2026-04-30):
+      //   1. initializeQualifiedLanguages() — fail-closed warm-up + LKG seed.
+      //   2. buildAllSitemapManifests() — first build (idempotent, skips if fresh).
+      //   3. startManifestRefreshLoop() — periodic rebuild every 6h.
+      // Done in background so server starts accepting requests immediately;
+      // sitemap routes return 503 + Retry-After until manifests are ready.
+      try {
+        const { initializeQualifiedLanguages } = await import('./seo/qualified-languages');
+        await initializeQualifiedLanguages();
+        const { buildAllSitemapManifests, startManifestRefreshLoop } = await import('./seo/sitemap-manifest-builder');
+        await buildAllSitemapManifests();
+        startManifestRefreshLoop();
+        logger.log('✅ FRONTEND-WEB: Sitemap manifest subsystem initialized');
+      } catch (err) {
+        console.error('❌ FRONTEND-WEB: Sitemap manifest init failed:', err);
+      }
     } catch (error) {
       console.error('❌ FRONTEND-WEB: Background tasks failed:', error);
     }

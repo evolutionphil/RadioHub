@@ -1283,7 +1283,24 @@ app.use((req, res, next) => {
       // Load database URL translations for multilingual routing
       const { loadDatabaseUrlTranslations } = await import('../shared/url-translations');
       await loadDatabaseUrlTranslations();
-      
+
+      // Sitemap subsystem (manifest-driven, refactored 2026-04-30):
+      //   1. initializeQualifiedLanguages() — fail-closed warm-up + LKG seed.
+      //   2. buildAllSitemapManifests() — first build (idempotent, skips if fresh).
+      //   3. startManifestRefreshLoop() — periodic rebuild every 6h.
+      // Mirrors the wire-up in server/index-web.ts so monolithic and
+      // microservice deployments behave identically.
+      try {
+        const { initializeQualifiedLanguages } = await import('./seo/qualified-languages');
+        await initializeQualifiedLanguages();
+        const { buildAllSitemapManifests, startManifestRefreshLoop } = await import('./seo/sitemap-manifest-builder');
+        await buildAllSitemapManifests();
+        startManifestRefreshLoop();
+        logger.log('✅ Sitemap manifest subsystem initialized');
+      } catch (err) {
+        console.error('❌ Sitemap manifest init failed:', err);
+      }
+
       if (process.env.NODE_ENV !== 'development') {
         try {
           const CacheManagerModule = (await import('./cache')).default;

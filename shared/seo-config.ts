@@ -167,11 +167,17 @@ export const SITEMAP_CONFIG = {
   maxUrlsPerChunk: 40000,          // Conservative limit to stay well under 50K
   stationsPerChunk: 1000,           // Stations per sitemap file
   imagesPerChunk: 500,              // Image entries per sitemap file
-  
-  // Caching strategy
-  cacheTtlSeconds: 86400,           // 24 hours cache (1 day)
+
+  // Caching strategy — refactored 2026-04-30 (manifest-driven)
+  // Index uses SHORT cache so manifest swap propagates within 10min;
+  // child sitemaps use longer cache because their content is keyed by
+  // manifest version + qualifiedLanguagesHash in the ETag.
+  cacheTtlSeconds: 86400,           // legacy / non-manifest paths
+  indexCacheTtlSeconds: 600,        // 10 min — sitemap-index.xml
+  childCacheTtlSeconds: 3600,       // 1h   — sitemap-stations/genres/main-{lang}*.xml
+  childStaleWhileRevalidateSec: 300,// stale-while-revalidate for children
   enableEtagCaching: true,          // Enable 304 Not Modified responses
-  
+
   // Performance limits
   maxGenerationTimeMs: 30000,       // 30 seconds max per sitemap
   enableLazyGeneration: true,       // Generate on-demand instead of pre-generating

@@ -2572,3 +2572,114 @@ DirectMessageSchema.index({ fromUserId: 1, toUserId: 1, createdAt: -1 });
 DirectMessageSchema.index({ toUserId: 1, read: 1 });
 
 export const DirectMessage = mongoose.model<IDirectMessage>('DirectMessage', DirectMessageSchema);
+
+// ==================== SEO Qualified Languages LKG (Last-Known-Good) ====================
+// Singleton store of the last-known-good list of qualified SEO languages.
+// Used by `server/seo/qualified-languages.ts` as a fail-closed fallback when
+// the in-memory cache is cold AND the live computation returns zero results.
+// Replaces the old fail-open behavior that emitted ALL 49 ACTIVE_SITEMAP_LANGUAGES,
+// which caused Cloudflare to cache a sitemap-index referencing non-existent
+// child sitemaps for 24h and produced 1023 Bing crawl errors.
+export interface ISeoQualifiedLanguagesLkg extends Document {
+  key: string;                 // singleton: 'qualified_languages'
+  languages: string[];         // sorted ascending for stable hash
+  hash: string;                // sha256(languages.join(','))
+  source: 'computed' | 'seed';
+  computedAt: Date;
+  expiresAt: Date;             // TTL ~30 days
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const SeoQualifiedLanguagesLkgSchema = new Schema<ISeoQualifiedLanguagesLkg>({
+  key: { type: String, required: true, unique: true },
+  languages: [{ type: String, required: true }],
+  hash: { type: String, required: true },
+  source: { type: String, enum: ['computed', 'seed'], required: true },
+  computedAt: { type: Date, required: true },
+  expiresAt: { type: Date, required: true },
+}, { timestamps: true });
+
+SeoQualifiedLanguagesLkgSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+export const SeoQualifiedLanguagesLkg = mongoose.model<ISeoQualifiedLanguagesLkg>(
+  'SeoQualifiedLanguagesLkg',
+  SeoQualifiedLanguagesLkgSchema,
+);
+
+// ==================== Sitemap Manifest (per-language, per-type chunked plan) ====================
+// One document per (type, language, version, status). Status flow:
+//   building --(success)--> active --(swap)--> superseded --(TTL)--> deleted
+//   building --(failure)--> failed --(TTL)--> deleted
+//
+// Compound partial-unique indexes guarantee at most one `active` and one
+// `building` doc per (type, language) so the atomic swap is safe.
+//
+// Routes (`/sitemap-index.xml`, `/sitemap-stations-{lang}-{chunk}.xml`,
+// `/sitemap-genres-{lang}.xml`, `/sitemap-main-{lang}.xml`) read from `active`
+// only — eliminating the old global Math.ceil(50000/1000)=50 chunks-per-language
+// strategy that emitted empty chunks for sparse languages.
+export interface ISitemapManifestChunk {
+  chunk: number;                                     // 1-indexed
+  // Mixed: Station._id is ObjectId, Genre._id can be a string slug ('genre-pop')
+  // for legacy seed data. Schema uses Mixed; route code casts via String().
+  stationIds: Array<mongoose.Types.ObjectId | string>;
+  urlCount: number;
+  maxUpdatedAt?: Date;                               // for <lastmod>; only set when real station.updatedAt exists
+}
+
+export interface ISitemapManifest extends Document {
+  type: 'stations' | 'main' | 'genres';
+  language: string;
+  version: string;                                   // e.g. timestamp-based or content-hash
+  status: 'building' | 'active' | 'superseded' | 'failed';
+  qualifiedLanguagesHash: string;                    // hash of the qualifiedLanguages snapshot used at build time
+  qualifiedLanguages: string[];                      // snapshot for audit
+  chunks: ISitemapManifestChunk[];
+  totalUrls: number;
+  chunkCount: number;
+  generatedAt: Date;
+  expiresAt: Date;                                   // TTL cleanup for non-active docs
+  errorMessage?: string;
+}
+
+const SitemapManifestChunkSchema = new Schema<ISitemapManifestChunk>({
+  chunk: { type: Number, required: true },
+  // Mixed accepts both ObjectId (Station._id) and String (legacy Genre._id like 'genre-pop').
+  stationIds: { type: [Schema.Types.Mixed], default: [] },
+  urlCount: { type: Number, required: true },
+  maxUpdatedAt: { type: Date },
+}, { _id: false });
+
+const SitemapManifestSchema = new Schema<ISitemapManifest>({
+  type: { type: String, enum: ['stations', 'main', 'genres'], required: true },
+  language: { type: String, required: true },
+  version: { type: String, required: true },
+  status: { type: String, enum: ['building', 'active', 'superseded', 'failed'], required: true },
+  qualifiedLanguagesHash: { type: String, required: true },
+  qualifiedLanguages: [{ type: String }],
+  chunks: { type: [SitemapManifestChunkSchema], default: [] },
+  totalUrls: { type: Number, required: true, default: 0 },
+  chunkCount: { type: Number, required: true, default: 0 },
+  generatedAt: { type: Date, default: Date.now },
+  expiresAt: { type: Date, required: true },
+  errorMessage: { type: String },
+});
+
+// Primary read index — covers all sitemap-route queries
+SitemapManifestSchema.index({ type: 1, language: 1, status: 1, generatedAt: -1 });
+// At most ONE building doc per (type, language) — prevents concurrent rebuilds.
+// We do NOT enforce a unique active doc; activateManifest() best-effort
+// demotes the previous active to superseded, but a brief overlap is tolerated
+// when transactions aren't available. Routes pick `findOne(status:active)`
+// sorted by generatedAt desc so the newer one wins regardless.
+SitemapManifestSchema.index(
+  { type: 1, language: 1 },
+  { unique: true, partialFilterExpression: { status: 'building' } },
+);
+SitemapManifestSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+export const SitemapManifest = mongoose.model<ISitemapManifest>(
+  'SitemapManifest',
+  SitemapManifestSchema,
+);

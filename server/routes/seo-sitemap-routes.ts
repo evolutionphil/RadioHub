@@ -9,7 +9,16 @@ import { URL_TRANSLATIONS } from "@shared/url-translations";
 import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
-import { getCachedQualifiedLanguages } from "../seo/qualified-languages";
+import {
+  getCachedQualifiedLanguages,
+  getQualifiedLanguagesState,
+  QualifiedLanguagesUnavailableError,
+} from "../seo/qualified-languages";
+import {
+  buildAllSitemapManifests,
+  getActiveManifest,
+  getActiveStationChunk,
+} from "../seo/sitemap-manifest-builder";
 
 // Centralized XML escape helper (Architect B P0)
 // Escapes the 5 XML predefined entities for safe inclusion in <loc>, <image:loc>,
@@ -22,6 +31,78 @@ function escapeXml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&apos;');
+}
+
+/** A4 fix: image:image emit eligibility — only owned/verified hosts.
+ * Architect 4 mandate: no arbitrary external favicon URLs. Allowed hosts:
+ *   - AWS S3 buckets (anything under amazonaws.com)
+ *   - themegaradio.com / *.themegaradio.com
+ * Rejects placeholder default-station.* and non-http(s) schemes. */
+function isVerifiedImageHost(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  if (!/^https?:\/\//i.test(url)) return false;
+  if (/default-station\.(png|webp|jpg|jpeg|svg)$/i.test(url)) return false;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return false; }
+  const host = parsed.hostname.toLowerCase();
+  return (
+    host.endsWith('.amazonaws.com') ||
+    host === 'amazonaws.com' ||
+    host === 'themegaradio.com' ||
+    host.endsWith('.themegaradio.com')
+  );
+}
+
+/** Pick best image URL for a station — only verified hosts allowed.
+ * Returns null if no acceptable image is available. */
+function pickStationImage(station: any): string | null {
+  const candidates = [
+    station?.logoAssets?.webp256,
+    station?.logoAssets?.webp96,
+    station?.favicon,
+  ];
+  for (const candidate of candidates) {
+    if (typeof candidate === 'string' && isVerifiedImageHost(candidate.trim())) {
+      return candidate.trim();
+    }
+  }
+  return null;
+}
+
+/** Send 503 Service Unavailable when qualified-languages cannot be resolved.
+ * Cloudflare/CDN MUST NOT cache this. */
+function send503QualifiedLangs(res: any, route: string): void {
+  logger.error(`🔴 ${route}: qualified-languages unavailable — returning 503`);
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Retry-After', '300');
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(503).send('Sitemap temporarily unavailable — qualified-languages cache cold. Retry in 5 minutes.');
+}
+
+/** Format a Date as ISO 8601 (YYYY-MM-DD) for sitemap <lastmod>. Returns empty
+ * string if input is not a valid Date — caller should omit <lastmod> entirely
+ * (CRITICAL LASTMOD RULE: never use today as fallback). */
+function formatLastmod(date?: Date | null): string {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+  return date.toISOString().split('T')[0];
+}
+
+/** Stable ETag = sha256(prefix|hash|version|lastmod). 16-char hex. */
+function makeManifestEtag(parts: (string | number | undefined | null)[]): string {
+  const joined = parts.map((p) => (p ?? '')).join('|');
+  return `"${crypto.createHash('sha256').update(joined).digest('hex').slice(0, 16)}"`;
+}
+
+/** 304 Not Modified shortcut. Returns true if response was sent. */
+function send304IfMatch(req: any, res: any, etag: string, cacheControl: string): boolean {
+  const clientEtag = req.headers['if-none-match'];
+  if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || (typeof clientEtag === 'string' && clientEtag.includes(etag)))) {
+    res.setHeader('ETag', etag);
+    res.setHeader('Cache-Control', cacheControl);
+    res.status(304).end();
+    return true;
+  }
+  return false;
 }
 
 export async function registerSeoSitemapRoutes(app: Express, deps: any, options?: { apiOnly?: boolean }) {
@@ -389,55 +470,59 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   // `server/seo/qualified-languages.ts` so the SSR renderer can consult the
   // same source of truth. Sitemap uses the shared helper below.
 
-  // Language-specific main sitemap route
+  // Language-specific main sitemap route — manifest-driven (refactored 2026-04-30)
   app.get("/sitemap-main-:lang.xml", async (req, res) => {
     const startTime = Date.now();
     const lang = req.params.lang;
-    
+    const childCacheControl = `public, max-age=${SITEMAP_CONFIG.childCacheTtlSeconds}, s-maxage=${SITEMAP_CONFIG.childCacheTtlSeconds}, stale-while-revalidate=${SITEMAP_CONFIG.childStaleWhileRevalidateSec}`;
+
     try {
-      // Validate language is qualified (Phase 1 + complete SEO translations).
-      // Languages without REQUIRED_HOMEPAGE/STATION SEO keys are dropped from
-      // the sitemap until translations land — this is the gate that prevents
-      // bare /sl, /da etc. from being indexed (task #17).
-      const qualifiedLanguages = await getCachedQualifiedLanguages();
+      let state;
+      try { state = await getQualifiedLanguagesState(); }
+      catch (err) {
+        if (err instanceof QualifiedLanguagesUnavailableError) return send503QualifiedLangs(res, `sitemap-main-${lang}`);
+        throw err;
+      }
+      const qualifiedLanguages = state.languages;
       if (!qualifiedLanguages.includes(lang)) {
-        return res.status(404).send('Language not found');
+        // Manifest-driven 410: lang not qualified -> permanently gone (Bing/Google removal signal)
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
+        return res.status(410).send('Gone');
       }
 
-      const today = new Date().toISOString().split('T')[0];
-      const etag = `"${crypto.createHash('md5').update(`main-${lang}-${today}`).digest('hex')}"`;
-      
-      const clientEtag = req.headers['if-none-match'];
-      if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || clientEtag.includes(etag))) {
-        res.setHeader('ETag', etag);
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
-        return res.status(304).end();
+      const manifest = await getActiveManifest('main', lang);
+      // No manifest yet (cold boot before warm-up complete) -> 503 retry
+      if (!manifest) {
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Retry-After', '120');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(503).send('Manifest building — retry shortly');
       }
 
-      const cacheKey = `sitemap:main:${lang}`;
+      const lastmod = formatLastmod(manifest.maxUpdatedAt);
+      const etag = makeManifestEtag(['main', lang, state.hash, manifest.version, lastmod]);
+      if (send304IfMatch(req, res, etag, childCacheControl)) return;
+
+      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}`;
       const cached = await CacheManager.get<string>(cacheKey);
-      
       if (cached) {
-        logger.log(`⚡ Sitemap cache HIT: ${cacheKey}`);
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+        res.setHeader('Cache-Control', childCacheControl);
         return res.send(cached);
       }
 
       const baseUrl = getBaseUrl(req);
-
-      // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`;
-
-      // NOTE: '/countries' is not a real route — use '/regions' instead. Keeping /countries here
-      // creates soft-404 entries in Google Search Console.
       const mainPages = ['', '/stations', '/genres', '/about', '/regions',
         '/regions/europe', '/regions/asia', '/regions/africa',
         '/regions/north-america', '/regions/south-america', '/regions/oceania'];
+
+      const parts: string[] = [];
+      parts.push(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`);
 
       for (const page of mainPages) {
         const localizedPath = buildLocalizedUrl(page, lang, undefined, urlTranslations);
@@ -445,192 +530,166 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         const priority = page === '' ? '1.0' : (page === '/stations' || page === '/genres' ? '0.9' : '0.8');
         const changefreq = page === '' || page === '/stations' ? 'daily' : 'weekly';
 
-        xml += `
+        parts.push(`
   <url>
-    <loc>${fullUrl}</loc>
+    <loc>${escapeXml(fullUrl)}</loc>
     <changefreq>${changefreq}</changefreq>
-    <priority>${priority}</priority>`;
+    <priority>${priority}</priority>`);
 
-        // Add hreflang tags only for languages with complete SEO translations
-        // (task #17 — never advertise thin /sl, /da, etc. as alternates).
         for (const altLang of qualifiedLanguages) {
-          const altLocalizedPath = buildLocalizedUrl(page, altLang, undefined, urlTranslations);
-          const altFullUrl = `${baseUrl}${altLocalizedPath}`;
-          xml += `
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${altFullUrl}"/>`;
+          const altPath = buildLocalizedUrl(page, altLang, undefined, urlTranslations);
+          parts.push(`
+    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
         }
-
-        // x-default points to English version
-        const enLocalizedPath = buildLocalizedUrl(page, 'en', undefined, urlTranslations);
-        xml += `
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>`;
-
-        xml += `
-  </url>`;
+        const enPath = buildLocalizedUrl(page, 'en', undefined, urlTranslations);
+        parts.push(`
+    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(baseUrl + enPath)}"/>
+  </url>`);
       }
+      parts.push(`
+</urlset>`);
+      const xml = parts.join('');
 
-      xml += `
-</urlset>`;
-
-      // Cache for 24 hours
-      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.cacheTtlSeconds });
-
-      // Set caching headers
+      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('ETag', etag);
-      res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+      res.setHeader('Cache-Control', childCacheControl);
       res.send(xml);
 
-      const duration = Date.now() - startTime;
-      logger.log(`✅ Generated sitemap-main-${lang}.xml in ${duration}ms`);
-
+      logger.log(`✅ sitemap-main-${lang}.xml (${mainPages.length} URLs) ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-main-${lang}.xml:`, error);
       res.status(500).send('Error generating sitemap');
     }
   });
 
-  // Language-specific station sitemap route with chunking
+  // Language-specific station sitemap route — manifest-driven (refactored 2026-04-30)
+  // Reads station _ids from active SitemapManifest, returns 410 Gone for chunks
+  // not present in the manifest (Bing/Google clear-removal signal vs 404 ambiguity).
   app.get("/sitemap-stations-:lang-:chunk.xml", async (req, res) => {
     const startTime = Date.now();
     const lang = req.params.lang;
     const chunk = parseInt(req.params.chunk) || 1;
-    
+    const childCacheControl = `public, max-age=${SITEMAP_CONFIG.childCacheTtlSeconds}, s-maxage=${SITEMAP_CONFIG.childCacheTtlSeconds}, stale-while-revalidate=${SITEMAP_CONFIG.childStaleWhileRevalidateSec}`;
+
     try {
-      // Gate by qualified languages (task #17).
-      const qualifiedLanguages = await getCachedQualifiedLanguages();
+      let state;
+      try { state = await getQualifiedLanguagesState(); }
+      catch (err) {
+        if (err instanceof QualifiedLanguagesUnavailableError) return send503QualifiedLangs(res, `sitemap-stations-${lang}-${chunk}`);
+        throw err;
+      }
+      const qualifiedLanguages = state.languages;
       if (!qualifiedLanguages.includes(lang)) {
-        return res.status(404).send('Language not found');
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
+        return res.status(410).send('Gone');
       }
 
-      const today = new Date().toISOString().split('T')[0];
-      const etag = `"${crypto.createHash('md5').update(`stations-${lang}-${chunk}-${today}`).digest('hex')}"`;
-      
-      const clientEtag = req.headers['if-none-match'];
-      if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || clientEtag.includes(etag))) {
-        res.setHeader('ETag', etag);
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
-        return res.status(304).end();
+      // Manifest lookup — fail early if no active manifest yet (cold boot).
+      const chunkInfo = await getActiveStationChunk(lang, chunk);
+      if (!chunkInfo) {
+        // Distinguish: do we have ANY manifest at all? If yes, this chunk is
+        // permanently retired -> 410. If no manifest at all, manifest is still
+        // building -> 503.
+        const manifest = await getActiveManifest('stations', lang);
+        if (manifest) {
+          res.setHeader('Content-Type', 'text/plain');
+          res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
+          return res.status(410).send('Gone');
+        }
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Retry-After', '120');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(503).send('Manifest building — retry shortly');
       }
 
-      const cacheKey = `sitemap:stations:${lang}:${chunk}`;
+      const lastmod = formatLastmod(chunkInfo.maxUpdatedAt);
+      const etag = makeManifestEtag(['stations', lang, chunk, state.hash, chunkInfo.version, lastmod]);
+      if (send304IfMatch(req, res, etag, childCacheControl)) return;
+
+      const cacheKey = `sitemap:stations:${lang}:${chunk}:${state.hash}:${chunkInfo.version}`;
       const cached = await CacheManager.get<string>(cacheKey);
-      
       if (cached) {
-        logger.log(`⚡ Sitemap cache HIT: ${cacheKey}`);
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+        res.setHeader('Cache-Control', childCacheControl);
         return res.send(cached);
       }
 
       const baseUrl = getBaseUrl(req);
-      const stationsPerChunk = SITEMAP_CONFIG.stationsPerChunk;
-      const skip = (chunk - 1) * stationsPerChunk;
-
-      // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
-
-      // Unified indexability gate — sitemap, SSR robots, and hreflang must
-      // all agree on which (station × language) pairs are indexable. See
-      // `server/seo/junk-station-rules.ts` for the gate; `qualifiedLanguages`
-      // comes from the shared `server/seo/qualified-languages.ts` cache.
       const { getIndexableLanguagesForStation } = await import('../seo/junk-station-rules');
 
-      // Stream stations via cursor — bounded memory regardless of chunk size.
-      // Exclude stations explicitly marked noIndex (junk migration sets this)
-      // and pull the extra fields needed for junk + eligibility evaluation.
-      const stationCursor = Station.find({
-        slug: { $exists: true, $ne: '' },
-        $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-      })
-        .select('slug name url country countryCode language languageCodes bitrate _id updatedAt logoAssets favicon')
-        .sort({ votes: -1 })
-        .skip(skip)
-        .limit(stationsPerChunk)
-        .lean()
-        .cursor({ batchSize: 200 });
+      // Bulk-fetch the stations from the manifest. Mongo $in is bounded
+      // (max 1000 per chunk) so a single round-trip is safe.
+      const stationDocs = await Station.find({ _id: { $in: chunkInfo.stationIds } })
+        .select('_id slug name url homepage tags bitrate lastCheckOk country countryCode language languageCodes noIndex updatedAt logoAssets favicon')
+        .lean();
 
-      // Build XML using array buffer (avoids string-concat quadratic allocation)
+      // Re-order by manifest order (Mongo doesn't preserve $in order).
+      const byId = new Map<string, any>();
+      for (const s of stationDocs) byId.set(String((s as any)._id), s);
+
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">`);
 
       let stationCount = 0;
-      for await (const station of stationCursor as any) {
-        // Unified gate: intersection of (eligible per country/language) AND
-        // (qualified UI translations) AND (not junk / not noIndex). Returns
-        // `[]` for junk/noIndex stations so they are silently skipped.
-        const indexable = getIndexableLanguagesForStation(station, qualifiedLanguages);
+      for (const objId of chunkInfo.stationIds) {
+        const station = byId.get(String(objId));
+        if (!station || !station.slug) continue; // station deleted between build and serve — skip
+
+        // Defensive double-check: re-run the indexability gate at serve time
+        // so a freshly-flagged junk/noIndex station never leaks into XML.
+        const indexable = getIndexableLanguagesForStation(station as any, qualifiedLanguages);
         if (!indexable.includes(lang)) continue;
 
         stationCount++;
-        // Build localized station URL for this language
         const stationPath = `/station/${station.slug}`;
         const localizedPath = buildLocalizedUrl(stationPath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
         const stationLastMod = station.updatedAt
-          ? new Date(station.updatedAt).toISOString().split('T')[0]
-          : undefined;
+          ? formatLastmod(new Date(station.updatedAt))
+          : '';
 
         parts.push(`
   <url>
-    <loc>${fullUrl}</loc>${stationLastMod ? `
+    <loc>${escapeXml(fullUrl)}</loc>${stationLastMod ? `
     <lastmod>${stationLastMod}</lastmod>` : ''}
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`);
 
-        // DALGA 3 W3.1: Google Image Sitemap extension — surface station logos
-        // for image indexing. Only emit <image:image> when a real S3/favicon
-        // URL exists; never advertise the placeholder default-station.png.
-        const stationImg =
-          (station as any)?.logoAssets?.webp256 ||
-          (station as any)?.logoAssets?.webp96 ||
-          (station as any)?.favicon ||
-          undefined;
-        if (
-          stationImg &&
-          /^https?:\/\//i.test(stationImg) &&
-          !/default-station\.(png|webp|jpg|jpeg|svg)$/i.test(stationImg)
-        ) {
+        // A4: image:image ONLY for verified hosts (S3 / themegaradio.com).
+        const stationImg = pickStationImage(station);
+        if (stationImg) {
           parts.push(`
     <image:image>
       <image:loc>${escapeXml(stationImg)}</image:loc>
     </image:image>`);
         }
 
-        // Hreflang alternates come from the same unified gate — guarantees
-        // sitemap + SSR advertise the exact same alternate set.
         for (const altLang of indexable) {
-          const altLocalizedPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
+          const altPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${baseUrl}${altLocalizedPath}"/>`);
+    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
         }
-
-        // x-default points to English version (always eligible)
-        const enLocalizedPath = buildLocalizedUrl(stationPath, 'en', undefined, urlTranslations);
+        const enPath = buildLocalizedUrl(stationPath, 'en', undefined, urlTranslations);
         parts.push(`
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(baseUrl + enPath)}"/>
   </url>`);
       }
-
       parts.push(`
 </urlset>`);
-
       const xml = parts.join('');
 
-      // Cache for 24 hours
-      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.cacheTtlSeconds });
-
-      // Set caching headers
+      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('ETag', etag);
-      res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+      res.setHeader('Cache-Control', childCacheControl);
       res.send(xml);
 
-      const duration = Date.now() - startTime;
-      logger.log(`✅ Generated sitemap-stations-${lang}-${chunk}.xml (${stationCount} stations) in ${duration}ms`);
-
+      logger.log(`✅ sitemap-stations-${lang}-${chunk}.xml (${stationCount}/${chunkInfo.stationIds.length}) ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-stations-${lang}-${chunk}.xml:`, error);
       res.status(500).send('Error generating sitemap');
@@ -638,96 +697,106 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   });
 
   // Language-specific genre sitemap route
+  // Genres sitemap — manifest-driven (refactored 2026-04-30)
   app.get("/sitemap-genres-:lang.xml", async (req, res) => {
     const startTime = Date.now();
     const lang = req.params.lang;
-    
+    const childCacheControl = `public, max-age=${SITEMAP_CONFIG.childCacheTtlSeconds}, s-maxage=${SITEMAP_CONFIG.childCacheTtlSeconds}, stale-while-revalidate=${SITEMAP_CONFIG.childStaleWhileRevalidateSec}`;
+
     try {
-      // Gate by qualified languages (task #17).
-      const qualifiedLanguages = await getCachedQualifiedLanguages();
+      let state;
+      try { state = await getQualifiedLanguagesState(); }
+      catch (err) {
+        if (err instanceof QualifiedLanguagesUnavailableError) return send503QualifiedLangs(res, `sitemap-genres-${lang}`);
+        throw err;
+      }
+      const qualifiedLanguages = state.languages;
       if (!qualifiedLanguages.includes(lang)) {
-        return res.status(404).send('Language not found');
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
+        return res.status(410).send('Gone');
       }
 
-      const today = new Date().toISOString().split('T')[0];
-      const etag = `"${crypto.createHash('md5').update(`genres-${lang}-${today}`).digest('hex')}"`;
-      
-      const clientEtag = req.headers['if-none-match'];
-      if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || clientEtag.includes(etag))) {
-        res.setHeader('ETag', etag);
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
-        return res.status(304).end();
+      const manifest = await getActiveManifest('genres', lang);
+      if (!manifest) {
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Retry-After', '120');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(503).send('Manifest building — retry shortly');
       }
 
-      const cacheKey = `sitemap:genres:${lang}`;
+      const lastmod = formatLastmod(manifest.maxUpdatedAt);
+      const etag = makeManifestEtag(['genres', lang, state.hash, manifest.version, lastmod]);
+      if (send304IfMatch(req, res, etag, childCacheControl)) return;
+
+      const cacheKey = `sitemap:genres:${lang}:${state.hash}:${manifest.version}`;
       const cached = await CacheManager.get<string>(cacheKey);
-      
       if (cached) {
-        logger.log(`⚡ Sitemap cache HIT: ${cacheKey}`);
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+        res.setHeader('Cache-Control', childCacheControl);
         return res.send(cached);
       }
 
       const baseUrl = getBaseUrl(req);
-
-      // Load URL translations
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
-      // Stream genres via cursor + array buffer (bounded memory, no quadratic string concat)
-      const genreCursor = Genre.find({ slug: { $exists: true, $ne: '' } })
-        .select('slug _id updatedAt')
-        .sort({ stationCount: -1 })
-        .lean()
-        .cursor({ batchSize: 200 });
+      // Manifest stores genre _ids in chunks[0].stationIds (re-using the
+      // mongoose array — see sitemap-manifest-builder.buildGenreChunks).
+      // NOTE: Genre._id is mixed (ObjectId for new docs, string slugs like
+      // 'genre-pop' for legacy seed data). Use the raw native collection to
+      // bypass mongoose strict ObjectId casting on the $in array.
+      const genreIds = manifest.chunks.flatMap((c) => c.stationIds);
+      const genreDocs = genreIds.length > 0
+        ? await Genre.collection
+            .find({ _id: { $in: genreIds as any[] } }, { projection: { _id: 1, slug: 1, updatedAt: 1 } })
+            .toArray()
+        : [];
+      const genreById = new Map<string, any>();
+      for (const g of genreDocs) genreById.set(String((g as any)._id), g);
 
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`);
 
       let genreCount = 0;
-      for await (const genre of genreCursor as any) {
+      for (const objId of genreIds) {
+        const genre = genreById.get(String(objId));
+        if (!genre || !genre.slug) continue;
         genreCount++;
         const genrePath = `/genres/${genre.slug}`;
         const localizedPath = buildLocalizedUrl(genrePath, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
+        const genreLastMod = genre.updatedAt ? formatLastmod(new Date(genre.updatedAt)) : '';
 
         parts.push(`
   <url>
-    <loc>${fullUrl}</loc>
+    <loc>${escapeXml(fullUrl)}</loc>${genreLastMod ? `
+    <lastmod>${genreLastMod}</lastmod>` : ''}
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>`);
 
         for (const altLang of qualifiedLanguages) {
-          const altLocalizedPath = buildLocalizedUrl(genrePath, altLang, undefined, urlTranslations);
+          const altPath = buildLocalizedUrl(genrePath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${baseUrl}${altLocalizedPath}"/>`);
+    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
         }
-
-        const enLocalizedPath = buildLocalizedUrl(genrePath, 'en', undefined, urlTranslations);
+        const enPath = buildLocalizedUrl(genrePath, 'en', undefined, urlTranslations);
         parts.push(`
-    <xhtml:link rel="alternate" hreflang="x-default" href="${baseUrl}${enLocalizedPath}"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(baseUrl + enPath)}"/>
   </url>`);
       }
-
       parts.push(`
 </urlset>`);
-
       const xml = parts.join('');
 
-      // Cache for 24 hours
-      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.cacheTtlSeconds });
-
-      // Set caching headers
+      await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('ETag', etag);
-      res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.cacheTtlSeconds}`);
+      res.setHeader('Cache-Control', childCacheControl);
       res.send(xml);
 
-      const duration = Date.now() - startTime;
-      logger.log(`✅ Generated sitemap-genres-${lang}.xml (${genreCount} genres) in ${duration}ms`);
-
+      logger.log(`✅ sitemap-genres-${lang}.xml (${genreCount}) ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-genres-${lang}.xml:`, error);
       res.status(500).send('Error generating sitemap');
@@ -766,68 +835,116 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   //   sitemap-main-{lang}.xml    → main pages per language (home, genres, regions, etc.)
   //   sitemap-genres-{lang}.xml  → genre pages per language
   //   sitemap-stations-{lang}-{chunk}.xml → station pages per language, paginated
+  // Sitemap-index — manifest-driven (refactored 2026-04-30)
+  // Reads SitemapManifest collection, emits ONLY child sitemaps that have an
+  // active manifest with chunkCount > 0. Each <sitemap> entry includes
+  // <lastmod> derived from manifest.maxUpdatedAt (omit if missing — never
+  // fake today's date per CRITICAL LASTMOD RULE).
+  //
+  // Cache: 600s (indexCacheTtlSeconds) — short so manifest swaps propagate
+  // through Cloudflare within ~10min instead of 24h.
   app.get("/sitemap-index.xml", async (req, res) => {
+    const indexCacheControl = `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}, s-maxage=${SITEMAP_CONFIG.indexCacheTtlSeconds}`;
+
     try {
       const baseUrl = getBaseUrl(req);
 
-      let totalStations = 0;
-      const countCacheKey = 'sitemap:stationCount';
-      const cachedCount = await CacheManager.get<number>(countCacheKey);
-      if (cachedCount) {
-        totalStations = cachedCount;
-      } else {
-        try {
-          totalStations = await Promise.race([
-            Station.countDocuments({ slug: { $exists: true, $ne: '' } }),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 8000))
-          ]) as number;
-          await CacheManager.set(countCacheKey, totalStations, { ttl: 86400 });
-        } catch {
-          logger.warn('⚠️ Sitemap Index: Station count timed out — using safe fallback');
-          totalStations = 50000;
+      let state;
+      try { state = await getQualifiedLanguagesState(); }
+      catch (err) {
+        if (err instanceof QualifiedLanguagesUnavailableError) return send503QualifiedLangs(res, 'sitemap-index');
+        throw err;
+      }
+      const qualifiedLanguages = state.languages;
+
+      // Fetch active manifests for all qualified langs, all 3 types.
+      const { SitemapManifest } = await import('../../shared/mongo-schemas');
+      const manifests = await SitemapManifest.find({
+        status: 'active',
+        language: { $in: qualifiedLanguages },
+        type: { $in: ['main', 'genres', 'stations'] },
+      })
+        .select('type language version chunks chunkCount totalUrls qualifiedLanguagesHash')
+        .lean();
+
+      // If no manifests at all, manifest-builder hasn't run yet (cold boot).
+      if (manifests.length === 0) {
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Retry-After', '120');
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(503).send('Sitemap manifest building — retry shortly');
+      }
+
+      // Compute ETag from qualified-langs hash + sorted manifest versions.
+      const manifestSig = manifests
+        .map((m: any) => `${m.type}:${m.language}:${m.version}`)
+        .sort()
+        .join('|');
+      const etag = makeManifestEtag(['index', state.hash, crypto.createHash('sha256').update(manifestSig).digest('hex').slice(0, 16)]);
+      if (send304IfMatch(req, res, etag, indexCacheControl)) return;
+
+      // Compute per-(type,lang) max lastmod for the index entries.
+      const manifestByKey = new Map<string, any>();
+      for (const m of manifests as any[]) {
+        const dates = (m.chunks || [])
+          .map((c: any) => c.maxUpdatedAt)
+          .filter((d: any) => d instanceof Date);
+        const maxUpdatedAt = dates.length > 0
+          ? new Date(Math.max(...dates.map((d: Date) => d.getTime())))
+          : undefined;
+        manifestByKey.set(`${m.type}:${m.language}`, { ...m, maxUpdatedAt });
+      }
+
+      const parts: string[] = [];
+      parts.push(`<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`);
+
+      const emitEntry = (loc: string, lastmod?: string) => {
+        parts.push(`
+  <sitemap>
+    <loc>${escapeXml(loc)}</loc>${lastmod ? `
+    <lastmod>${lastmod}</lastmod>` : ''}
+  </sitemap>`);
+      };
+
+      // 1. Main sitemaps (one per qualified lang, only if manifest exists)
+      for (const lang of qualifiedLanguages) {
+        const m = manifestByKey.get(`main:${lang}`);
+        if (!m || m.chunkCount === 0) continue;
+        emitEntry(`${baseUrl}/sitemap-main-${lang}.xml`, formatLastmod(m.maxUpdatedAt));
+      }
+
+      // 2. Genres sitemaps
+      for (const lang of qualifiedLanguages) {
+        const m = manifestByKey.get(`genres:${lang}`);
+        if (!m || m.chunkCount === 0) continue;
+        emitEntry(`${baseUrl}/sitemap-genres-${lang}.xml`, formatLastmod(m.maxUpdatedAt));
+      }
+
+      // 3. Station sitemaps — emit ONLY existing chunks per language (no
+      // global Math.ceil). Sparse languages emit 0-3 chunks instead of 50.
+      let totalChildSitemaps = 0;
+      for (const lang of qualifiedLanguages) {
+        const m = manifestByKey.get(`stations:${lang}`);
+        if (!m || !Array.isArray(m.chunks) || m.chunks.length === 0) continue;
+        for (const chunk of m.chunks) {
+          if (!chunk || chunk.urlCount === 0) continue;
+          const chunkLastmod = formatLastmod(chunk.maxUpdatedAt);
+          emitEntry(`${baseUrl}/sitemap-stations-${lang}-${chunk.chunk}.xml`, chunkLastmod);
+          totalChildSitemaps++;
         }
       }
 
-      const stationChunks = Math.max(1, Math.ceil(totalStations / SITEMAP_CONFIG.stationsPerChunk));
-
-      // task #17: only emit sitemap entries for languages that pass the
-      // strict translation-completeness gate. This is what actually keeps
-      // /sl, /da, etc. out of the index until their translations land.
-      const qualifiedLanguages = await getCachedQualifiedLanguages();
-
-      let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`;
-
-      for (const lang of qualifiedLanguages) {
-        xml += `
-  <sitemap>
-    <loc>${baseUrl}/sitemap-main-${lang}.xml</loc>
-  </sitemap>`;
-      }
-
-      for (const lang of qualifiedLanguages) {
-        xml += `
-  <sitemap>
-    <loc>${baseUrl}/sitemap-genres-${lang}.xml</loc>
-  </sitemap>`;
-      }
-
-      for (const lang of qualifiedLanguages) {
-        for (let i = 1; i <= stationChunks; i++) {
-          xml += `
-  <sitemap>
-    <loc>${baseUrl}/sitemap-stations-${lang}-${i}.xml</loc>
-  </sitemap>`;
-        }
-      }
-
-      xml += `
-</sitemapindex>`;
+      parts.push(`
+</sitemapindex>`);
+      const xml = parts.join('');
 
       res.setHeader('Content-Type', 'application/xml');
-      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', indexCacheControl);
       res.send(xml);
 
+      logger.log(`✅ sitemap-index.xml: ${qualifiedLanguages.length} langs, ${totalChildSitemaps} station chunks, ${manifests.length} total entries`);
     } catch (error) {
       console.error('❌ Error generating sitemap index:', error);
       res.status(500).send('Error generating sitemap index');
