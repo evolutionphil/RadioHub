@@ -5,6 +5,7 @@ import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
 import { isJunkStation } from './seo/junk-station-rules';
+import { buildGenreSeo } from '@shared/genre-seo-templates';
 
 // Concurrency raised 5 → 15 → 50 → 200 → 1000 → 2500: paired with MongoDB
 // pool 100, heap 10 GB and RSS warning 7 GB on a 24 GB Railway replica to
@@ -790,9 +791,15 @@ export class SeoRenderer {
     }
     
     if (pageType === 'genres' && additionalData?.genreName) {
-      baseSeoTags.title = `${additionalData.genreName} ${getTranslation('seo_radio_stations')} - ${getTranslation('seo_listen_live_online')} | Mega Radio`;
-      baseSeoTags.description = `${getTranslation('seo_listen_to_live_radio_from')} ${additionalData.genreName}. ${getTranslation('seo_discover_local')} ${additionalData.genreName} ${getTranslation('seo_music_and_shows')}.`;
-      baseSeoTags.keywords = `${additionalData.genreName} radio, ${additionalData.genreName} music, ${additionalData.genreName} stations`;
+      // Use multilingual SEO templates (server/seo/genre-seo-templates.ts).
+      // DB translation keys win when ALL legacy keys are present in the requested
+      // language; otherwise we fall back to the natural per-language template.
+      // Without this, every non-English language showed English title fragments
+      // ("Pop Radio Stations") and a fully-English description.
+      const genreSeo = buildGenreSeo(additionalData.genreName, language, translations);
+      baseSeoTags.title = genreSeo.title;
+      baseSeoTags.description = genreSeo.description;
+      baseSeoTags.keywords = genreSeo.keywords;
     }
     
     if (pageType === 'about') {
