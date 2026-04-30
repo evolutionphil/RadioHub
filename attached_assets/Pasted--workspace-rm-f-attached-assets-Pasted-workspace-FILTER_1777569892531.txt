@@ -1,0 +1,81 @@
+~/workspace$ rm -f "attached_assets/Pasted--workspace-FILTER-BRANCH-SQUELCH-WARNING-1-git-filter-b_1777569817983.txt"
+
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter \
+  'git rm --cached --ignore-unmatch attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json' \
+  --prune-empty --tag-name-filter cat -- --all
+
+git push origin main --force-with-lease
+Cannot rewrite branches: You have unstaged changes.
+Enumerating objects: 143, done.
+Counting objects: 100% (143/143), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (118/118), done.
+Writing objects: 100% (118/118), 2.72 MiB | 6.26 MiB/s, done.
+Total 118 (delta 99), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (99/99), completed with 24 local objects.
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: 
+remote: - GITHUB PUSH PROTECTION
+remote:   —————————————————————————————————————————
+remote:     Resolve the following violations before pushing again
+remote: 
+remote:     - Push cannot contain secrets
+remote: 
+remote:     
+remote:      (?) Learn how to resolve a blocked push
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push
+remote:     
+remote:      (?) This repository does not have Secret Scanning enabled, but is eligible. Enable Secret Scanning to view and manage detected secrets.
+remote:      Visit the repository settings page, https://github.com/evolutionphil/RadioHub/settings/security_analysis
+remote:     
+remote:     
+remote:       —— Google Cloud Service Account Credentials ——————————
+remote:        locations:
+remote:          - commit: 8e4d1de1a0bf4824170544368eeb459f74c7ea31
+remote:            path: attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json:1
+remote:     
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.
+remote:        https://github.com/evolutionphil/RadioHub/security/secret-scanning/unblock-secret/3D5PuzaHqpTstLf1VJFMOosWGrp
+remote:     
+remote: 
+remote: 
+To https://github.com/evolutionphil/RadioHub.git
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/evolutionphil/RadioHub.git'
+~/workspace$ git push origin main --force
+Enumerating objects: 143, done.
+Counting objects: 100% (143/143), done.
+Delta compression using up to 8 threads
+Compressing objects: 100% (118/118), done.
+Writing objects: 100% (118/118), 2.72 MiB | 6.89 MiB/s, done.
+Total 118 (delta 99), reused 0 (delta 0), pack-reused 0 (from 0)
+remote: Resolving deltas: 100% (99/99), completed with 24 local objects.
+remote: error: GH013: Repository rule violations found for refs/heads/main.
+remote: 
+remote: - GITHUB PUSH PROTECTION
+remote:   —————————————————————————————————————————
+remote:     Resolve the following violations before pushing again
+remote: 
+remote:     - Push cannot contain secrets
+remote: 
+remote:     
+remote:      (?) Learn how to resolve a blocked push
+remote:      https://docs.github.com/code-security/secret-scanning/working-with-secret-scanning-and-push-protection/working-with-push-protection-from-the-command-line#resolving-a-blocked-push
+remote:     
+remote:      (?) This repository does not have Secret Scanning enabled, but is eligible. Enable Secret Scanning to view and manage detected secrets.
+remote:      Visit the repository settings page, https://github.com/evolutionphil/RadioHub/settings/security_analysis
+remote:     
+remote:     
+remote:       —— Google Cloud Service Account Credentials ——————————
+remote:        locations:
+remote:          - commit: 8e4d1de1a0bf4824170544368eeb459f74c7ea31
+remote:            path: attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json:1
+remote:     
+remote:        (?) To push, remove secret from commit(s) or follow this URL to allow the secret.
+remote:        https://github.com/evolutionphil/RadioHub/security/secret-scanning/unblock-secret/3D5PuzaHqpTstLf1VJFMOosWGrp
+remote:     
+remote: 
+remote: 
+To https://github.com/evolutionphil/RadioHub.git
+ ! [remote rejected] main -> main (push declined due to repository rule violations)
+error: failed to push some refs to 'https://github.com/evolutionphil/RadioHub.git'
