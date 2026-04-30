@@ -174,7 +174,7 @@ export default function Footer() {
                     letterSpacing: '0%'
                   }}
                 >
-                  <span className="text-[11px] sm:text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">mega</span>
+                  <span className="text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">mega</span>
                 </span>
                 <span 
                   style={{ 
@@ -184,7 +184,7 @@ export default function Footer() {
                     letterSpacing: '0%'
                   }}
                 >
-                  <span className="text-[11px] sm:text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">radio</span>
+                  <span className="text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">radio</span>
                 </span>
               </div>
             </a>
