@@ -16,7 +16,6 @@ import { logger } from '@/lib/logger';
 
 export default function GlobalPlayer() {
   const [location] = useLocation();
-  const isProfilePage = location.startsWith('/profile');
   const { currentStation, isPlaying, pauseStation, stopStation, resumeStation, stationMeta, playStation, previousStation, nextStation } = useGlobalPlayer();
   const { isAuthenticated } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
@@ -24,7 +23,12 @@ export default function GlobalPlayer() {
   const [showSignupModal, setShowSignupModal] = useState(false);
   const { t } = useTranslation();
   const { getLocalizedUrl, englishPath } = useSeoRouting();
-  
+
+  // Use englishPath (language-stripped) so /tr/profile/..., /de/profile/...
+  // and other localized profile routes are also detected. Without this the
+  // player would overlap the sidebar on every non-English profile page.
+  const isProfilePage = englishPath.startsWith('/profile');
+
   // Hide mini-player on station detail page (it has its own player)
   const isStationDetailPage = englishPath.startsWith('/station/') || englishPath.startsWith('/stations/');
   
@@ -119,10 +123,16 @@ export default function GlobalPlayer() {
 
   return (
     <div>
-      {/* Ask To Signup Banner */}
+      {/* Ask To Signup Banner — also offset by sidebar on profile pages to
+          stay consistent with the player wrapper below it. (In practice
+          profile pages require auth so the banner is never shown there,
+          but the offset prevents any future regression.) */}
       {showSignupBanner && !isAuthenticated && !collapsed && (
         <div 
-          className="fixed z-30 left-0 right-0 hidden md:block"
+          className={cn(
+            "fixed z-30 right-0 hidden md:block",
+            isProfilePage ? "left-0 lg:left-64" : "left-0"
+          )}
           style={{ 
             bottom: '156px',
             height: '86px',
@@ -186,11 +196,16 @@ export default function GlobalPlayer() {
         </div>
       )}
       
-      {/* Main Player Container - Reference: fixed bottom-0 z-20 w-full, NO sidebar offset */}
+      {/* Main Player Container - on profile pages, offset by sidebar width
+          (16rem = lg:w-64) at the lg breakpoint where the ProfileLayout
+          sidebar becomes visible. Below lg, span full width as usual. */}
       <div 
         className={cn(
-          "fixed bottom-0 left-0 right-0 z-20 w-full transition-all duration-300 ease-in-out",
-          collapsed ? "h-[60px] md:h-[79px]" : "h-[104px] md:h-[156px]"
+          "fixed bottom-0 right-0 z-20 transition-all duration-300 ease-in-out",
+          collapsed ? "h-[60px] md:h-[79px]" : "h-[104px] md:h-[156px]",
+          isProfilePage
+            ? "left-0 w-full lg:left-64 lg:w-[calc(100%-16rem)]"
+            : "left-0 w-full"
         )}
         style={{
           background: 'rgba(0, 0, 0, 0.5)',
