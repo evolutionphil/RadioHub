@@ -559,7 +559,7 @@ export class SeoRenderer {
     // Pass localized path to use translated paths in canonical URL
     // Also pass urlTranslations map for hreflang tags with translated paths
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
-    let seoTags = this.generateEnhancedSeoTags(pageType, language, translations, cleanPath, domain, stationData, additionalData, cleanUrl, localizedPath, urlTranslations);
+    let seoTags = await this.generateEnhancedSeoTags(pageType, language, translations, cleanPath, domain, stationData, additionalData, cleanUrl, localizedPath, urlTranslations);
     if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
     // ---- ContentQuality safeguard (task #17 + architect P0) ---------------
@@ -729,7 +729,7 @@ export class SeoRenderer {
     }, url);
   }
 
-  generateEnhancedSeoTags(
+  async generateEnhancedSeoTags(
     pageType: string, 
     language: string, 
     translations: Record<string, string>, 
@@ -740,7 +740,7 @@ export class SeoRenderer {
     originalPath?: string,  // Original URL path to preserve country codes
     translatedPath?: string,  // Translated path from database for canonical URL
     urlTranslations?: Map<string, string>  // URL translations map for all languages
-  ): any {
+  ): Promise<any> {
     // Use the existing generateSeoTags function as base
     // Pass translated path to use localized paths in canonical URL (e.g., /sq/zhanret instead of /sq/genres)
     // Also pass urlTranslations map for generating hreflang tags with translated paths
@@ -855,10 +855,49 @@ export class SeoRenderer {
       baseSeoTags.ogType = 'website';
     }
     
-    // Generate comprehensive hreflang tags for all pages with translated paths
-    // CRITICAL SEO FIX: Pass canonical URL for self-referential hreflang
-    baseSeoTags.hreflangs = generateLanguageUrls(cleanPath, domain, language, urlTranslations, baseSeoTags.canonical);
-    
+    // Generate comprehensive hreflang tags for all pages with translated paths.
+    // CRITICAL SEO FIX: Pass canonical URL for self-referential hreflang.
+    // ARCHITECT P0 FIX (2026-04-30): non-station pages MUST advertise only the
+    // qualified-language set so they don't expose 57 alternates while sitemaps
+    // expose 10 (the original Bing 1023-empty-sitemap root cause). Station
+    // pages override this below in renderStaticPage with the per-station
+    // indexable set (eligible ∩ qualified).
+    let allowedLanguages: string[] | undefined;
+    try {
+      const { getCachedQualifiedLanguages } = await import('./seo/qualified-languages');
+      allowedLanguages = await getCachedQualifiedLanguages();
+    } catch (e: any) {
+      // FAIL-CLOSED (Webmaster #1 HIGH-2 fix, 2026-04-30): if the cache is
+      // unavailable mid-request we MUST NOT fall back to all 57 enabled
+      // SEO_LANGUAGES — that exact 58-vs-≤10 mismatch caused the original
+      // 1023-empty-Bing-sitemap incident. Instead, restrict alternates to a
+      // minimal safe set: the current rendering language + English. Ensures
+      // (a) self-referential hreflang is always present, (b) we never expose
+      // a language not also present in some sitemap, (c) sitemap-routes will
+      // independently 503/410 anyway via getQualifiedLanguagesState().
+      const minimalSet = Array.from(new Set([language, 'en'])).filter(Boolean);
+      allowedLanguages = minimalSet;
+      try {
+        logger.warn(`⚠️ generateEnhancedSeoTags: qualified-languages unavailable — falling back to MINIMAL set [${minimalSet.join(',')}] (${e?.message || e})`);
+      } catch {}
+    }
+    // FAIL-CLOSED guard #2: even when getCachedQualifiedLanguages() succeeded,
+    // if the rendering language somehow isn't in the qualified set the page
+    // would lose its self-referential hreflang (Search Console warning:
+    // "Page does not have an hreflang tag pointing to itself"). Inject the
+    // current language defensively. This addresses Webmaster #1 HIGH-1.
+    if (Array.isArray(allowedLanguages) && language && !allowedLanguages.includes(language)) {
+      allowedLanguages = [...allowedLanguages, language];
+    }
+    baseSeoTags.hreflangs = generateLanguageUrls(
+      cleanPath,
+      domain,
+      language,
+      urlTranslations,
+      baseSeoTags.canonical,
+      allowedLanguages,
+    );
+
     return baseSeoTags;
   }
   

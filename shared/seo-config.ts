@@ -1222,7 +1222,11 @@ export function generateLanguageUrls(
       } else if (lang.isDefault) {
         // UPDATED: English also uses /en prefix for consistency
         // All languages follow /{lang}/* pattern
-        url = `${currentDomain}/en${cleanPath}`;
+        // Architect P0 fix: strip trailing-slash so /en/ never appears (canonical
+        // is /en slashless and Search Console reports "Page with redirect" if
+        // x-default disagrees).
+        const enPath = cleanPath === '/' || cleanPath === '' ? '' : cleanPath.replace(/\/+$/, '');
+        url = `${currentDomain}/en${enPath}`;
       } else {
         // Build translation map key: "languageCode:segment"
         // For a path like "/station/abc", we look for "tr:station" for Turkish
@@ -1286,10 +1290,13 @@ export function generateLanguageUrls(
   // x-default at /en/... because that URL is noindex for this station —
   // fall back to the first allowed language instead.
   if (!allowSet || allowSet.has('en')) {
+    // Architect P0 fix: strip trailing-slash so x-default never resolves to
+    // /en/ (which would 301 to /en) — must match the canonical slashless URL.
+    const enPath = cleanPath === '/' || cleanPath === '' ? '' : cleanPath.replace(/\/+$/, '');
     return hreflangs.concat([
       {
         lang: 'x-default',
-        url: `${currentDomain}/en${cleanPath}`,
+        url: `${currentDomain}/en${enPath}`,
         hreflang: 'x-default'
       }
     ]);

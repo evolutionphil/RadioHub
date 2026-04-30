@@ -58,8 +58,43 @@ interface StationLite {
   favicon?: string;
 }
 
-function makeVersion(): string {
-  return `${Date.now().toString(36)}-${crypto.randomBytes(4).toString('hex')}`;
+/**
+ * Build a CONTENT-DEPENDENT version string so identical rebuilds produce the
+ * same version (ETag stability). ARCHITECT P0 fix (2026-04-30): the previous
+ * `Date.now() + randomBytes` recipe re-keyed every 6h even when the chunk
+ * contents were identical, which:
+ *   1. caused a Cloudflare cache stampede on each rebuild,
+ *   2. wasted Bing/Google bot bandwidth re-downloading identical sitemaps,
+ *   3. made If-None-Match 304 short-circuiting useless.
+ * The new recipe = sha256(qualifiedLanguagesHash + sorted chunks signature).
+ */
+function makeContentVersion(args: {
+  qualifiedLanguagesHash: string;
+  chunks: Array<{ chunk: number; urlCount: number; stationIds?: any[]; maxUpdatedAt?: Date | null }>;
+}): string {
+  // Webmaster #2 HIGH-1a fix (2026-04-30): version hash MUST NOT include
+  // maxUpdatedAt. Mongoose timestamps auto-bump Station.updatedAt on every
+  // save (including uptime probes setting lastCheckOk), which would tick the
+  // version every time a station was probed → ETag invalidation → Cloudflare
+  // cache stampede → defeats the entire stampede-protection purpose of this
+  // refactor. The URL SET (stationIds) is the cache-relevant content. The
+  // <lastmod> XML element is a freshness *signal* surfaced via the
+  // Last-Modified HTTP header, which clients revalidate independently with
+  // If-Modified-Since. So: ETag tracks URL set; Last-Modified tracks freshness.
+  const sig = args.chunks
+    .slice()
+    .sort((a, b) => a.chunk - b.chunk)
+    .map(c => {
+      const ids = (c.stationIds || []).map((x: any) => String(x)).sort().join(',');
+      return `${c.chunk}:${c.urlCount}:${ids}`;
+    })
+    .join('|');
+  const hash = crypto
+    .createHash('sha256')
+    .update(args.qualifiedLanguagesHash + '\n' + sig)
+    .digest('hex')
+    .slice(0, 16);
+  return `v${hash}`;
 }
 
 /** Build a manifest for one (type, language). Status will be written as
@@ -74,8 +109,25 @@ async function writeBuildingManifest(args: {
   totalUrls: number;
 }) {
   const { type, language, qualifiedLanguages, qualifiedLanguagesHash, chunks, totalUrls } = args;
-  const version = makeVersion();
+  // Content-addressable version (stable when chunks are identical).
+  const version = makeContentVersion({ qualifiedLanguagesHash, chunks });
   const now = new Date();
+
+  // Architect P0 fix: idempotent skip — if the active manifest already has
+  // this exact (type, language, version), there is nothing to swap. Return
+  // the active doc directly without writing a new building doc. This
+  // prevents Cloudflare cache stampede when chunks haven't changed but the
+  // 6h refresh loop fired.
+  const existingActive = await SitemapManifest.findOne({
+    type,
+    language,
+    status: 'active',
+    version,
+  }).lean();
+  if (existingActive) {
+    logger.debug(`✅ manifest no-op: type=${type} lang=${language} version=${version} already active`);
+    return existingActive;
+  }
 
   // Reclaim stuck building docs (process crashed mid-build).
   await SitemapManifest.deleteMany({
@@ -85,19 +137,52 @@ async function writeBuildingManifest(args: {
     generatedAt: { $lt: new Date(Date.now() - STALE_BUILDING_RECLAIM_MS) },
   });
 
-  return await SitemapManifest.create({
-    type,
-    language,
-    version,
-    status: 'building',
-    qualifiedLanguagesHash,
-    qualifiedLanguages,
-    chunks,
-    totalUrls,
-    chunkCount: chunks.length,
-    generatedAt: now,
-    expiresAt: new Date(now.getTime() + MANIFEST_TTL_BUILDING_MS),
-  });
+  // Webmaster #1 MEDIUM-3 fix (2026-04-30): handle E11000 from the
+  // partialFilterExpression unique index on (type, language, status='building').
+  // When two processes (multi-replica deploy + cron) race here, exactly one
+  // create succeeds. The loser must NOT bubble — it should re-check whether
+  // the winner already activated a matching version, and either return that
+  // active doc (idempotent skip) or wait one cycle and let the next refresh
+  // loop pick it up (return any existing active for this type/lang).
+  try {
+    return await SitemapManifest.create({
+      type,
+      language,
+      version,
+      status: 'building',
+      qualifiedLanguagesHash,
+      qualifiedLanguages,
+      chunks,
+      totalUrls,
+      chunkCount: chunks.length,
+      generatedAt: now,
+      expiresAt: new Date(now.getTime() + MANIFEST_TTL_BUILDING_MS),
+    });
+  } catch (err: any) {
+    if (err?.code !== 11000) throw err;
+    logger.warn(`⚠️ manifest-builder: E11000 race on (type=${type}, lang=${language}) — another builder is in flight; returning existing active doc as no-op`);
+    // Re-check active first (the winner may have already swapped to active).
+    const winnerActive = await SitemapManifest.findOne({
+      type,
+      language,
+      status: 'active',
+    }).sort({ generatedAt: -1 }).lean();
+    if (winnerActive) return winnerActive;
+    // Else return current building doc (caller will skip swap because
+    // status is 'building' but not its own _id — see callers' guard).
+    const winnerBuilding = await SitemapManifest.findOne({
+      type,
+      language,
+      status: 'building',
+    }).sort({ generatedAt: -1 }).lean();
+    if (winnerBuilding) {
+      // Mark with a sentinel flag so callers know NOT to call activateManifest()
+      // on the winner's _id (only the writer of a building doc may activate it).
+      return { ...winnerBuilding, status: 'active' as const, _raceLost: true } as any;
+    }
+    // Pathological: no row anywhere — let the caller throw normally on next access.
+    throw err;
+  }
 }
 
 /** Atomically swap building → active and demote any existing active to
@@ -372,29 +457,38 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
       perLangCounts[lang] = stationTotal;
 
       // Stations
-      const stationsBuilding = await writeBuildingManifest({
+      const stationsBuilding: any = await writeBuildingManifest({
         type: 'stations', language: lang,
         qualifiedLanguages: languages, qualifiedLanguagesHash: hash,
         chunks: stationChunks, totalUrls: stationTotal,
       });
-      await activateManifest(stationsBuilding._id as mongoose.Types.ObjectId, 'stations', lang);
+      // Skip swap when writeBuildingManifest returned an existing-active doc
+      // (content-version no-op). Otherwise activate the freshly written
+      // building doc.
+      if (stationsBuilding?.status !== 'active') {
+        await activateManifest(stationsBuilding._id as mongoose.Types.ObjectId, 'stations', lang);
+      }
 
       // Genres (one chunk per lang, same ids; URLs differ via buildLocalizedUrl)
-      const genresBuilding = await writeBuildingManifest({
+      const genresBuilding: any = await writeBuildingManifest({
         type: 'genres', language: lang,
         qualifiedLanguages: languages, qualifiedLanguagesHash: hash,
         chunks: genreData.totalUrls > 0 ? [genreData.chunk] : [],
         totalUrls: genreData.totalUrls,
       });
-      await activateManifest(genresBuilding._id as mongoose.Types.ObjectId, 'genres', lang);
+      if (genresBuilding?.status !== 'active') {
+        await activateManifest(genresBuilding._id as mongoose.Types.ObjectId, 'genres', lang);
+      }
 
       // Main
-      const mainBuilding = await writeBuildingManifest({
+      const mainBuilding: any = await writeBuildingManifest({
         type: 'main', language: lang,
         qualifiedLanguages: languages, qualifiedLanguagesHash: hash,
         chunks: [mainData.chunk], totalUrls: mainData.totalUrls,
       });
-      await activateManifest(mainBuilding._id as mongoose.Types.ObjectId, 'main', lang);
+      if (mainBuilding?.status !== 'active') {
+        await activateManifest(mainBuilding._id as mongoose.Types.ObjectId, 'main', lang);
+      }
     }
 
     const elapsed = Date.now() - t0;

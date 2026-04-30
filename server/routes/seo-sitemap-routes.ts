@@ -87,6 +87,40 @@ function formatLastmod(date?: Date | null): string {
   return date.toISOString().split('T')[0];
 }
 
+/**
+ * Architect P1 fix (2026-04-30): emit RFC 7231 `Last-Modified` HTTP header so
+ * Yandex/Bing/Google can short-circuit re-fetches via `If-Modified-Since`.
+ * No-op when the underlying Date is missing or invalid (we never want a fake
+ * "today" lastmod — that's a Google scaled-content spam signal). Caller MUST
+ * still emit ETag for non-date-based 304 short-circuits (we keep both).
+ */
+function setLastModifiedHeader(res: any, date?: Date | null): void {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return;
+  try {
+    res.setHeader('Last-Modified', date.toUTCString());
+  } catch { /* best-effort */ }
+}
+
+/** 304 Not Modified shortcut for `If-Modified-Since` only. Returns true when
+ * response was sent. Use AFTER setLastModifiedHeader has computed the date so
+ * the header round-trip is idempotent. */
+function send304IfNotModifiedSince(req: any, res: any, date: Date | null | undefined, etag: string, cacheControl: string): boolean {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return false;
+  const ims = req.headers['if-modified-since'];
+  if (typeof ims !== 'string') return false;
+  const since = Date.parse(ims);
+  if (isNaN(since)) return false;
+  // Round to second precision (HTTP-Date is second-resolution).
+  if (Math.floor(date.getTime() / 1000) <= Math.floor(since / 1000)) {
+    res.setHeader('ETag', etag);
+    res.setHeader('Last-Modified', date.toUTCString());
+    res.setHeader('Cache-Control', cacheControl);
+    res.status(304).end();
+    return true;
+  }
+  return false;
+}
+
 /** Stable ETag = sha256(prefix|hash|version|lastmod). 16-char hex. */
 function makeManifestEtag(parts: (string | number | undefined | null)[]): string {
   const joined = parts.map((p) => (p ?? '')).join('|');
@@ -428,9 +462,43 @@ Allow: /
 
 User-agent: Baiduspider
 Crawl-delay: 10
+Allow: /api/station/
+Allow: /api/stations/
+Allow: /api/genres
+Allow: /api/translations
+Allow: /api/location
+Allow: /api/advertisements
+Allow: /api/og-image
+Disallow: /api/
+Disallow: /*/admin/
+Disallow: /*/admin
+Disallow: /*/settings
+Disallow: /*/import-export
+Disallow: /*/analytics
+Disallow: /*/search*
+Disallow: /*/messages
+Disallow: /*/profile
+Allow: /
 
 User-agent: Sogou
 Crawl-delay: 30
+Allow: /api/station/
+Allow: /api/stations/
+Allow: /api/genres
+Allow: /api/translations
+Allow: /api/location
+Allow: /api/advertisements
+Allow: /api/og-image
+Disallow: /api/
+Disallow: /*/admin/
+Disallow: /*/admin
+Disallow: /*/settings
+Disallow: /*/import-export
+Disallow: /*/analytics
+Disallow: /*/search*
+Disallow: /*/messages
+Disallow: /*/profile
+Allow: /
 
 User-agent: GPTBot
 Disallow: /
@@ -502,6 +570,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       const lastmod = formatLastmod(manifest.maxUpdatedAt);
       const etag = makeManifestEtag(['main', lang, state.hash, manifest.version, lastmod]);
+      if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
       const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}`;
@@ -509,6 +578,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
+        setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
         res.setHeader('Cache-Control', childCacheControl);
         return res.send(cached);
       }
@@ -553,6 +623,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('ETag', etag);
+      setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
       res.setHeader('Cache-Control', childCacheControl);
       res.send(xml);
 
@@ -606,6 +677,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       const lastmod = formatLastmod(chunkInfo.maxUpdatedAt);
       const etag = makeManifestEtag(['stations', lang, chunk, state.hash, chunkInfo.version, lastmod]);
+      if (send304IfNotModifiedSince(req, res, chunkInfo.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
       const cacheKey = `sitemap:stations:${lang}:${chunk}:${state.hash}:${chunkInfo.version}`;
@@ -613,6 +685,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
+        setLastModifiedHeader(res, chunkInfo.maxUpdatedAt as any);
         res.setHeader('Cache-Control', childCacheControl);
         return res.send(cached);
       }
@@ -686,6 +759,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('ETag', etag);
+      setLastModifiedHeader(res, chunkInfo.maxUpdatedAt as any);
       res.setHeader('Cache-Control', childCacheControl);
       res.send(xml);
 
@@ -727,6 +801,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       const lastmod = formatLastmod(manifest.maxUpdatedAt);
       const etag = makeManifestEtag(['genres', lang, state.hash, manifest.version, lastmod]);
+      if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
       const cacheKey = `sitemap:genres:${lang}:${state.hash}:${manifest.version}`;
@@ -734,6 +809,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');
         res.setHeader('ETag', etag);
+        setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
         res.setHeader('Cache-Control', childCacheControl);
         return res.send(cached);
       }
@@ -793,6 +869,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       await CacheManager.set(cacheKey, xml, { ttl: SITEMAP_CONFIG.childCacheTtlSeconds });
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('ETag', etag);
+      setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
       res.setHeader('Cache-Control', childCacheControl);
       res.send(xml);
 
@@ -859,7 +936,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       // Fetch active manifests for all qualified langs, all 3 types.
       const { SitemapManifest } = await import('../../shared/mongo-schemas');
-      const manifests = await SitemapManifest.find({
+      const allActiveManifests = await SitemapManifest.find({
         status: 'active',
         language: { $in: qualifiedLanguages },
         type: { $in: ['main', 'genres', 'stations'] },
@@ -868,12 +945,58 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         .lean();
 
       // If no manifests at all, manifest-builder hasn't run yet (cold boot).
-      if (manifests.length === 0) {
+      if (allActiveManifests.length === 0) {
         res.setHeader('Content-Type', 'text/plain');
         res.setHeader('Retry-After', '120');
         res.setHeader('Cache-Control', 'no-store');
         return res.status(503).send('Sitemap manifest building — retry shortly');
       }
+
+      // ARCHITECT P0 FIX (2026-04-30): atomic swap consistency. The qualified
+      // -languages set can change between manifest builds (e.g. a new lang
+      // gains 100% translation coverage, hash changes from H1 → H2). During
+      // the rolling swap, mixed-hash rows can co-exist. To guarantee the
+      // sitemap-index never advertises a stale entry whose child sitemap
+      // also drifted on the very same request, pick ONLY rows whose
+      // qualifiedLanguagesHash matches the most-recent hash we observe in
+      // the manifest set. Prefer the current state.hash if any row carries
+      // it, else fall back to the most-common hash (so we don't go empty
+      // if state.hash hasn't propagated to any builder yet).
+      // Webmaster review (2026-04-30) HIGH-fix: deterministic tie-break.
+      // Old code relied on Map insertion order (= Mongo result order) which
+      // can differ across replicas → Cloudflare may cache mixed-hash indexes.
+      // New ordering when state.hash is unavailable in any active row:
+      //   1. count desc       (prefer the bigger cohort)
+      //   2. latestGen desc   (newer wins ties — closer to "current" state)
+      //   3. hash asc         (lexical fallback — fully deterministic)
+      const hashStats = new Map<string, { count: number; latestGen: number }>();
+      for (const m of allActiveManifests as any[]) {
+        const h = m.qualifiedLanguagesHash || 'unknown';
+        const gen = m.generatedAt instanceof Date ? m.generatedAt.getTime() : 0;
+        const cur = hashStats.get(h);
+        if (cur) {
+          cur.count += 1;
+          if (gen > cur.latestGen) cur.latestGen = gen;
+        } else {
+          hashStats.set(h, { count: 1, latestGen: gen });
+        }
+      }
+      let pickedHash: string;
+      if (hashStats.has(state.hash)) {
+        pickedHash = state.hash;
+      } else {
+        // Deterministic 3-key sort.
+        const sorted = Array.from(hashStats.entries()).sort((a, b) => {
+          if (b[1].count !== a[1].count) return b[1].count - a[1].count;
+          if (b[1].latestGen !== a[1].latestGen) return b[1].latestGen - a[1].latestGen;
+          return a[0].localeCompare(b[0]);
+        });
+        pickedHash = sorted[0][0];
+        logger.warn(`⚠️ sitemap-index: state.hash=${state.hash.slice(0,8)} not in any active manifest; deterministic-fallback hash=${pickedHash.slice(0,8)} (count=${sorted[0][1].count}, rolling-swap drift)`);
+      }
+      const manifests = allActiveManifests.filter(
+        (m: any) => (m.qualifiedLanguagesHash || 'unknown') === pickedHash,
+      );
 
       // Compute ETag from qualified-langs hash + sorted manifest versions.
       const manifestSig = manifests
@@ -924,14 +1047,24 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // 3. Station sitemaps — emit ONLY existing chunks per language (no
       // global Math.ceil). Sparse languages emit 0-3 chunks instead of 50.
       let totalChildSitemaps = 0;
+      let indexMaxLastmod: Date | null = null;
       for (const lang of qualifiedLanguages) {
         const m = manifestByKey.get(`stations:${lang}`);
         if (!m || !Array.isArray(m.chunks) || m.chunks.length === 0) continue;
         for (const chunk of m.chunks) {
           if (!chunk || chunk.urlCount === 0) continue;
           const chunkLastmod = formatLastmod(chunk.maxUpdatedAt);
+          if (chunk.maxUpdatedAt instanceof Date && (!indexMaxLastmod || chunk.maxUpdatedAt > indexMaxLastmod)) {
+            indexMaxLastmod = chunk.maxUpdatedAt;
+          }
           emitEntry(`${baseUrl}/sitemap-stations-${lang}-${chunk.chunk}.xml`, chunkLastmod);
           totalChildSitemaps++;
+        }
+      }
+      // Sweep main+genres maxUpdatedAt into index Last-Modified.
+      for (const m of manifestByKey.values() as any) {
+        if (m?.maxUpdatedAt instanceof Date && (!indexMaxLastmod || m.maxUpdatedAt > indexMaxLastmod)) {
+          indexMaxLastmod = m.maxUpdatedAt;
         }
       }
 
@@ -941,6 +1074,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       res.setHeader('Content-Type', 'application/xml');
       res.setHeader('ETag', etag);
+      setLastModifiedHeader(res, indexMaxLastmod);
       res.setHeader('Cache-Control', indexCacheControl);
       res.send(xml);
 

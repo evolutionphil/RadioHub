@@ -193,20 +193,34 @@ export class IndexNowService {
     return this.submitToIndexNow([url], trigger);
   }
 
+  /**
+   * ARCHITECT P0 fix (2026-04-30): IndexNow submissions MUST use the prefix-all
+   * canonical (`/en/station/...`, `/en/genres/...`). Previously we sent the
+   * legacy bare-slash URLs (`/station/`, `/genre/`), which 301-redirect to
+   * `/en/...`. Bing/Yandex IndexNow treats the redirect target as the real
+   * URL anyway, but submitting the redirect source counts toward the per-day
+   * IndexNow quota and gets logged as `Redirected URL` in Bing Webmaster
+   * Tools, polluting the dashboard. We now submit the canonical destination
+   * directly.
+   */
   static async submitStationUrls(stationSlugs: string[], host: string = PRIMARY_HOST, trigger: IndexNowTrigger = 'station-update'): Promise<IndexNowResponse> {
-    const urls = stationSlugs.map(slug => `https://${host}/station/${slug}`);
+    const urls = stationSlugs.map(slug => `https://${host}/en/station/${slug}`);
     return this.submitToIndexNow(urls, trigger);
   }
 
   static async submitGenreUrls(genreSlugs: string[], host: string = PRIMARY_HOST, trigger: IndexNowTrigger = 'manual'): Promise<IndexNowResponse> {
-    const urls = genreSlugs.map(slug => `https://${host}/genre/${slug}`);
+    const urls = genreSlugs.map(slug => `https://${host}/en/genres/${slug}`);
     return this.submitToIndexNow(urls, trigger);
   }
 
+  /**
+   * ARCHITECT P0 fix (2026-04-30): only submit `/sitemap-index.xml` —
+   * `/sitemap.xml` does not exist on this domain (we removed the legacy route
+   * months ago). Submitting it logged daily 404s in Bing Webmaster Tools.
+   */
   static async submitSitemaps(host: string = PRIMARY_HOST, trigger: IndexNowTrigger = 'sitemap-regen'): Promise<IndexNowResponse> {
     const sitemapUrls = [
-      `https://${host}/sitemap.xml`,
-      `https://${host}/sitemap-index.xml`
+      `https://${host}/sitemap-index.xml`,
     ];
     return this.submitToIndexNow(sitemapUrls, trigger);
   }
