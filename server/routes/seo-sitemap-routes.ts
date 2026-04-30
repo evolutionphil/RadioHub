@@ -103,9 +103,19 @@ function setLastModifiedHeader(res: any, date?: Date | null): void {
 
 /** 304 Not Modified shortcut for `If-Modified-Since` only. Returns true when
  * response was sent. Use AFTER setLastModifiedHeader has computed the date so
- * the header round-trip is idempotent. */
+ * the header round-trip is idempotent.
+ *
+ * RFC 7232 §6 PRECEDENCE GUARD: when client also sent `If-None-Match`, defer
+ * to the ETag comparator (`send304IfMatch`) — IMS must NOT short-circuit when
+ * INM is present. This is critical because manifest `version` (and ETag)
+ * intentionally excludes `maxUpdatedAt` to ignore Mongoose timestamp churn from
+ * uptime probes; relying on IMS alone could serve a stale 304 after a station
+ * is removed from a chunk (its `maxUpdatedAt` may not bump even though the
+ * URL set changed). See replit.md "CRITICAL SITEMAP MANIFEST RULE". */
 function send304IfNotModifiedSince(req: any, res: any, date: Date | null | undefined, etag: string, cacheControl: string): boolean {
   if (!(date instanceof Date) || isNaN(date.getTime())) return false;
+  // RFC 7232 §6: If-None-Match takes precedence over If-Modified-Since.
+  if (req.headers['if-none-match']) return false;
   const ims = req.headers['if-modified-since'];
   if (typeof ims !== 'string') return false;
   const since = Date.parse(ims);
@@ -1004,7 +1014,6 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         .sort()
         .join('|');
       const etag = makeManifestEtag(['index', state.hash, crypto.createHash('sha256').update(manifestSig).digest('hex').slice(0, 16)]);
-      if (send304IfMatch(req, res, etag, indexCacheControl)) return;
 
       // Compute per-(type,lang) max lastmod for the index entries.
       const manifestByKey = new Map<string, any>();
@@ -1017,6 +1026,26 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
           : undefined;
         manifestByKey.set(`${m.type}:${m.language}`, { ...m, maxUpdatedAt });
       }
+
+      // Pre-compute index-level Last-Modified so we can offer BOTH
+      // If-None-Match (ETag) AND If-Modified-Since 304 short-circuits.
+      // Bingbot/Yandex sometimes send only IMS — without this they re-download
+      // the full index every poll. (Architect #4 audit, MEDIUM fix.)
+      let indexMaxLastmodPrecomputed: Date | null = null;
+      for (const m of manifestByKey.values() as any) {
+        if (m?.maxUpdatedAt instanceof Date && (!indexMaxLastmodPrecomputed || m.maxUpdatedAt > indexMaxLastmodPrecomputed)) {
+          indexMaxLastmodPrecomputed = m.maxUpdatedAt;
+        }
+        if (Array.isArray(m?.chunks)) {
+          for (const chunk of m.chunks) {
+            if (chunk?.maxUpdatedAt instanceof Date && (!indexMaxLastmodPrecomputed || chunk.maxUpdatedAt > indexMaxLastmodPrecomputed)) {
+              indexMaxLastmodPrecomputed = chunk.maxUpdatedAt;
+            }
+          }
+        }
+      }
+      if (send304IfMatch(req, res, etag, indexCacheControl)) return;
+      if (send304IfNotModifiedSince(req, res, indexMaxLastmodPrecomputed, etag, indexCacheControl)) return;
 
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>

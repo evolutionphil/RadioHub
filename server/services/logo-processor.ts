@@ -528,6 +528,8 @@ export class LogoProcessor {
         }
       }
 
+      // Always commit the latest logoAssets (these are the freshest mirror
+      // results — overwriting older ones is correct).
       await Station.updateOne(
         { _id: stationId },
         {
@@ -540,6 +542,22 @@ export class LogoProcessor {
           }
         }
       );
+
+      // Mirror logoAssets.webp256 → station.favicon ONLY when station.favicon
+      // still equals the URL we just processed (compare-and-swap guard). This
+      // prevents a slow background mirror for old URL A from silently clobbering
+      // a newer admin-saved URL B that finished while A was still processing.
+      // Only mirror when we actually produced an S3 URL (useS3 path); local-disk
+      // fallback stores relative filenames which would break frontend rendering.
+      if (useS3 && typeof logoAssets.webp256 === 'string' && logoAssets.webp256.startsWith('http')) {
+        const cas = await Station.updateOne(
+          { _id: stationId, favicon: faviconUrl },
+          { $set: { favicon: logoAssets.webp256, hasCustomFavicon: true } }
+        );
+        if (cas.matchedCount === 0) {
+          logger.log(`⚠️ Skipped favicon mirror for ${stationId}: station.favicon changed during processing (admin save or newer mirror won)`);
+        }
+      }
 
       return { success: true, folder: folderName };
 

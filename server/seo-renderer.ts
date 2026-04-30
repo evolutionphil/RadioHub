@@ -1511,16 +1511,31 @@ export class SeoRenderer {
         }
       ];
 
-      // Extract breadcrumb path segments
+      // Extract breadcrumb path segments.
+      // CRITICAL: build currentPath from LOCALIZED segments so JSON-LD `item`
+      // URLs match the canonical (e.g. `/tr/istasyon/<slug>`, NOT `/tr/station/<slug>`).
+      // English route segments leaking into deep crumbs cause Google to crawl
+      // them, hit the 301 redirect to the localized canonical, and report
+      // "Page with redirect" in Search Console Coverage. (Webmaster #2 P1 fix.)
       const pathSegments = cleanPath.split('/').filter(Boolean);
+      const translateSeg = (seg: string): string => {
+        if (!language || language === 'en') return seg;
+        if (!urlTranslations || urlTranslations.size === 0) return seg;
+        // Try direct map (e.g. "tr:station" → "istasyon", "tr:genres" → "turler")
+        return urlTranslations.get(`${language}:${seg}`) || seg;
+      };
       let currentPath = '';
 
       for (let i = 0; i < pathSegments.length; i++) {
         const segment = pathSegments[i];
-        currentPath += '/' + segment;
+        const isLastSegment = i === pathSegments.length - 1;
+        // Station slug (e.g. "mangoradio") must NEVER be translated; only route
+        // segments like "station"/"stations"/"genres"/"regions"/"countries" do.
+        const isStationDetailSlug = isLastSegment && (cleanPath.includes('/station/') || cleanPath.includes('/stations/'));
+        const segForUrl = isStationDetailSlug ? segment : translateSeg(segment);
+        currentPath += '/' + segForUrl;
 
-        // Skip if it's a detailed identifier (like station slug)
-        if (i === pathSegments.length - 1 && (cleanPath.includes('/station/') || cleanPath.includes('/stations/'))) {
+        if (isStationDetailSlug) {
           // Use station name if available, otherwise use segment
           const name = stationData?.name || segment.replace(/-/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
           breadcrumbItems.push({

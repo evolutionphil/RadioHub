@@ -8,7 +8,7 @@ import { normalizeCountryFilter } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
 import { PrecomputedStationsService } from "../services/precomputed-stations";
 import { logoProcessor } from "../services/logo-processor";
-import { isS3Url } from "../services/s3-storage";
+import { isS3Url, isS3Configured } from "../services/s3-storage";
 import { IndexNowService } from "../services/indexnow";
 import CacheManager from "../cache";
 import { getQuotaStatus } from "../utils/quota-guard";
@@ -408,11 +408,21 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           performanceCache.invalidateStationCache((station as any).slug);
         }
 
+        // Surface S3 configuration status so admin UI can warn when logo
+        // landed only on Railway's ephemeral disk (lost on next redeploy).
+        const s3Ok = isS3Configured();
+        const warning = s3Ok ? undefined : 'S3 not configured — logo stored on ephemeral Railway disk and will be lost on next redeploy. Configure AWS_BUCKET_NAME / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY.';
+        if (!s3Ok) {
+          logger.warn(`⚠️ Favicon upload for station ${id} (${slug}) used local-disk fallback (S3 not configured)`);
+        }
+
         return res.json({
           success: true,
           favicon: newFaviconUrl,
           logoAssets: (updated as any)?.logoAssets || null,
           folder: result.folder,
+          backedUpToS3: s3Ok && !!newFaviconUrl && isS3Url(newFaviconUrl),
+          warning,
         });
       } catch (error: any) {
         logger.error(`Favicon upload failed: ${error.message}`);
@@ -444,7 +454,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         { new: true, runValidators: false }
       ).lean();
 
-      // If favicon URL changed AND it's not already an S3 URL → mirror it to S3 in background
+      // If favicon URL changed AND it's not already an S3 URL → mirror it to S3 in background.
+      // The mirror also atomically swaps station.favicon → S3 URL on success
+      // (see logo-processor.ts processFromUrl), so the dış URL only ever lives
+      // in the DB for the few seconds it takes to download + resize + upload.
       const newFavicon = (updated as any)?.favicon;
       const oldFavicon = (before as any)?.favicon;
       if (
@@ -455,8 +468,19 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         !isS3Url(newFavicon)
       ) {
         const slug = (updated as any).slug || String((updated as any)._id);
-        // fire-and-forget mirror to S3 (errors logged inside processor)
-        logoProcessor.processFromUrl(String((updated as any)._id), slug, newFavicon).catch(() => {});
+        const stationIdStr = String((updated as any)._id);
+        // Fire-and-forget mirror to S3 — log failures so admin can re-trigger
+        // by saving again. logoAssets.status='failed' is also persisted by the
+        // processor itself for UI visibility.
+        logoProcessor.processFromUrl(stationIdStr, slug, newFavicon)
+          .then((r) => {
+            if (!r.success) {
+              logger.warn(`⚠️ S3 mirror failed for station ${stationIdStr} (${slug}): ${r.error || 'unknown'} (failureType=${r.failureType || 'unknown'}); favicon kept as external URL`);
+            }
+          })
+          .catch((err: any) => {
+            logger.error(`❌ S3 mirror exception for station ${stationIdStr} (${slug}): ${err?.message || err}`);
+          });
       }
 
       if ((updated as any)?.slug) {
