@@ -20,7 +20,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Country {
@@ -43,10 +45,16 @@ interface CountryLanguageMapping {
   updatedAt?: string;
 }
 
+interface CountryLanguageDefault {
+  countryCode: string;
+  languageCode: string;
+}
+
 export default function AdminCountryLanguageMappings() {
   const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState('');
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
 
   // Fetch available countries
   const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
@@ -63,6 +71,11 @@ export default function AdminCountryLanguageMappings() {
     queryKey: ['/api/admin/country-language-mappings'],
   });
 
+  // Fetch hardcoded country-language defaults (COUNTRY_TO_LANGUAGE)
+  const { data: countryLanguageDefaults, isLoading: isLoadingDefaults } = useQuery<CountryLanguageDefault[]>({
+    queryKey: ['/api/admin/country-language-defaults'],
+  });
+
   // Create a map of existing mappings for quick lookup
   const mappingsMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -71,6 +84,15 @@ export default function AdminCountryLanguageMappings() {
     });
     return map;
   }, [existingMappings]);
+
+  // Create a map of hardcoded defaults for quick lookup
+  const defaultsMap = useMemo(() => {
+    const map = new Map<string, string>();
+    countryLanguageDefaults?.forEach(d => {
+      map.set(d.countryCode, d.languageCode);
+    });
+    return map;
+  }, [countryLanguageDefaults]);
 
   // Bulk save mutation
   const bulkSaveMutation = useMutation({
@@ -107,6 +129,71 @@ export default function AdminCountryLanguageMappings() {
   // Get effective language for a country (pending change or existing mapping)
   const getEffectiveLanguage = (countryCode: string): string => {
     return pendingChanges.get(countryCode) || mappingsMap.get(countryCode) || '';
+  };
+
+  // Auto-fill from hardcoded defaults
+  const handleAutoFill = () => {
+    if (!countries || countries.length === 0) {
+      toast({
+        title: 'No countries loaded',
+        description: 'Country list is not available yet',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if (defaultsMap.size === 0) {
+      toast({
+        title: 'No defaults available',
+        description: 'Hardcoded country-language defaults could not be loaded',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const newChanges = new Map(pendingChanges);
+    let filledCount = 0;
+
+    countries.forEach(country => {
+      const defaultLanguage = defaultsMap.get(country.code);
+      if (!defaultLanguage) return;
+
+      const existingMapping = mappingsMap.get(country.code);
+      const hasPending = pendingChanges.has(country.code);
+
+      if (overwriteExisting) {
+        // Overwrite mode: only set if it would actually change something
+        const currentEffective = hasPending
+          ? pendingChanges.get(country.code)
+          : existingMapping || '';
+        if (currentEffective !== defaultLanguage) {
+          newChanges.set(country.code, defaultLanguage);
+          filledCount++;
+        }
+      } else {
+        // Default mode: only fill countries with no DB mapping AND no pending change
+        if (!existingMapping && !hasPending) {
+          newChanges.set(country.code, defaultLanguage);
+          filledCount++;
+        }
+      }
+    });
+
+    if (filledCount === 0) {
+      toast({
+        title: 'Nothing to fill',
+        description: overwriteExisting
+          ? 'All countries already match their default language'
+          : 'All countries already have a mapping or pending change. Enable "Overwrite existing" to replace them.',
+      });
+      return;
+    }
+
+    setPendingChanges(newChanges);
+    toast({
+      title: 'Auto-filled defaults',
+      description: `Auto-filled ${filledCount} ${filledCount === 1 ? 'country' : 'countries'} — review and click Save Changes`,
+    });
   };
 
   // Handle bulk save
@@ -199,8 +286,8 @@ export default function AdminCountryLanguageMappings() {
         </CardHeader>
         <CardContent>
           {/* Search and Actions */}
-          <div className="flex items-center gap-4 mb-6">
-            <div className="relative flex-1">
+          <div className="flex flex-wrap items-center gap-4 mb-6">
+            <div className="relative flex-1 min-w-64">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 data-testid="input-search-countries"
@@ -210,6 +297,29 @@ export default function AdminCountryLanguageMappings() {
                 className="pl-10"
               />
             </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="overwrite-existing"
+                data-testid="checkbox-overwrite-existing"
+                checked={overwriteExisting}
+                onCheckedChange={(checked) => setOverwriteExisting(checked === true)}
+              />
+              <Label
+                htmlFor="overwrite-existing"
+                className="text-sm font-normal cursor-pointer whitespace-nowrap"
+              >
+                Overwrite existing
+              </Label>
+            </div>
+            <Button
+              data-testid="button-autofill-defaults"
+              variant="outline"
+              onClick={handleAutoFill}
+              disabled={isLoadingDefaults || !countries || bulkSaveMutation.isPending}
+            >
+              <Wand2 className="mr-2 h-4 w-4" />
+              Auto-fill from defaults
+            </Button>
             <Button
               data-testid="button-save-mappings"
               onClick={handleBulkSave}

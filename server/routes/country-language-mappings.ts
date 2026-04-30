@@ -34,6 +34,21 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     }
   });
 
+  // Get hardcoded country-language defaults from COUNTRY_TO_LANGUAGE
+  app.get('/api/admin/country-language-defaults', requireAdmin, async (req, res) => {
+    try {
+      const { COUNTRY_TO_LANGUAGE } = await import('../../shared/seo-config');
+      const defaults = Object.entries(COUNTRY_TO_LANGUAGE).map(([countryCode, languageCode]) => ({
+        countryCode,
+        languageCode,
+      }));
+      res.json(defaults);
+    } catch (error) {
+      console.error('Error fetching country-language defaults:', error);
+      res.status(500).json({ error: 'Failed to fetch country-language defaults' });
+    }
+  });
+
   // Get all available languages from SEO_LANGUAGES
   app.get('/api/admin/available-languages', requireAdmin, async (req, res) => {
     try {
