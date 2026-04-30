@@ -1,0 +1,56 @@
+"wip before history rewrite" --allow-empty && FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter   'git rm --cached --ignore-unmatch attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'   --prune-empty --tag-name-filter cat -- --all && git push origin main --force-with-lease
+git add -A && git commit -m \"wip before history rewrite\" --allow-empty && FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter   'git rm --cached --ignore-unmatch attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'   --prune-empty --tag-name-filter cat -- --all && git push origin main --force-with-leasebash: git: command not found
+~/workspace$ git add -A && git commit -m "wip before history rewrite" --allow-empty && \
+FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch --force --index-filter \
+  'git rm --cached --ignore-unmatch attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json' \
+  --prune-empty --tag-name-filter cat -- --all && \
+git push origin main --force-with-lease
+[main b15124a] wip before history rewrite
+Rewrite 8e4d1de1a0bf4824170544368eeb459f74c7ea31 (433/795) (36 seconds passed, remaining 30 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite 5dd44bc3aac3fdb480a34e7f6c690f52b2cf7254 (433/795) (36 seconds passed, remaining 30 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite e43b30c435a7aca9bdfd816ebbbe825d4311a5a2 (433/795) (36 seconds passed, remaining 30 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite 992d45a3b04395f2ea2228240f24a0bfeefd8fa9 (433/795) (36 seconds passed, remaining 30 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite 9ca061918bda7c64eba4734df22f6d2f207778aa (700/795) (53 seconds passedRewrite e8ccd2943544d2ad29be8909db18aa51f1093bca (700/795) (53 seconds passedRewrite 8a34eff7cb0c70225e6d4a16e8568c7ebd406e51 (700/795) (53 seconds passedRewrite b9559cbf5a190aac40e8847fccb1e0caefec94f1 (700/795) (53 seconds passedRewrite ebc1b26f54ed60532bffc47dfbd6900d00886a75 (700/795) (53 seconds passedRewrite 381a40f188aa0d6500c6d42123a0831adca2cca6 (700/795) (53 seconds passedRewrite f6e3c95c0b148de40bb222f14cab488e2e3ba2da (700/795) (53 seconds passedRewrite 0edbde1605f066791df45888a0faed7286987bf2 (700/795) (53 seconds passedRewrite 214fbeb4a1fc81db53e5cc365ccfa1a152e7d764 (700/795) (53 seconds passedRewrite 45ea1fd8a7911eba6a5634aa69c1fe85bea0bb77 (700/795) (53 seconds passedRewrite 658d4623dd32f9fa874481a601b3ea732f113862 (714/795) (54 seconds passedRewrite 172f6bbfc5c8c8a1304e1a16dbfa72ba957149ab (714/795) (54 seconds passedRewrite c63aae0e08906cfd8c4bd44bd49d65ccaabf4826 (714/795) (54 seconds passedRewrite d4c4565dcbb37a3d03bedbf651e9e11eac7cb2a8 (714/795) (54 seconds passedRewrite 7887900b96996c9d6f8f089066e09ea6cc9c3b95 (714/795) (54 seconds passedRewrite 42b82397326823de5f50bd096aecb72951f94525 (714/795) (54 seconds passedRewrite 94e259316cfca74c86919a53a493978ac9337309 (714/795) (54 seconds passedRewrite ff2b6e14e6e94ee3a25511fe1e8e4667cf94fa27 (714/795) (54 seconds passedRewrite 41c6458265c340acf6f54eb68b35d6881942941e (714/795) (54 seconds passedRewrite 204ecc381e4d709a4ea912b5885fc6c41b2884b4 (714/795) (54 seconds passedRewrite 56e1ecb6d91eb46f2eb240069974edf723603449 (714/795) (54 seconds passedRewrite 5f2be8f11185c056dba2f79f1e99e721ef60395b (714/795) (54 seconds passedRewrite 58ff9c8c4acb31003bfef1d726ba7721c7865ab5 (714/795) (54 seconds passedRewrite 1ec8cb17c0a2fbe8bb4793e6e4921de94ab2df2a (714/795) (54 seconds passedRewrite 0a79fa43bbbf2f6242faaae6ec5811cf5f189d9c (728/795) (56 seconds passedRewrite 0a184851fc694d6b66c8def41f0beef5649c6ce0 (728/795) (56 seconds passedRewrite d3e4991c57beb31aac71e4dfe9995c2d3c49240c (728/795) (56 seconds passedRewrite edfd403034e07060232a70f9610efad33196671c (728/795) (56 seconds passedRewrite edd6579a473259384d5d83211028d50392492fbc (728/795) (56 seconds passedRewrite 8c4c8d4be15de7e8df09818ba9353da34e179353 (728/795) (56 seconds passedRewrite 9da0cf6a96d7d3af6ed47b34a2c7f0a6d7113e9b (728/795) (56 seconds passedRewrite 899117ec684023e162d06ab7daa5b0c8f41acdec (728/795) (56 seconds passedRewrite 56221c34a5befedf43b7d724e1701e51e33ffd9f (728/795) (56 seconds passedRewrite 89e328090751e0164324ac512058acea8b9a3b74 (728/795) (56 seconds passedRewrite 1742ceb91db4ba89846e0f5ded345f2720e11bc6 (728/795) (56 seconds passedRewrite e6209c43d0c9ff2d3561f8d66c1bee8b834530e5 (728/795) (56 seconds passedRewrite 808d453fce74244dd7c95efcc7a69f641a11a4c2 (728/795) (56 seconds passedRewrite ecca19ef981712298493e37e13a6929cd4f0dc03 (728/795) (56 seconds passedRewrite e0b9f981c0f4b5626394b6814f8e104d800362af (742/795) (57 seconds passedRewrite 85952f22a31c7d57970422ae74e087ae88623232 (742/795) (57 seconds passedRewrite f65c5812daf61801181ad2dd7f8073bd9c716d71 (742/795) (57 seconds passedRewrite 27878d19674eedd1fdf76b18c677870c6696d237 (742/795) (57 seconds passedRewrite 42fb5522e25f7fb1d37592b37f92449a5e674f22 (742/795) (57 seconds passedRewrite 8599544d5b135865084cc4636a44da670a1474c6 (742/795) (57 seconds passedRewrite ba4b1cd5aa2f6d0adfcb9826bc4115c3253d5e9f (742/795) (57 seconds passedRewrite 26508879fb7ce99338a1bfa5c6ec1113ab24ca1f (742/795) (57 seconds passedRewrite 4605ee0d0b50ba93f51afc9005eb67c73cae8829 (742/795) (57 seconds passedRewrite 48b9f64a1c6fe8ba77ebb05980085a3883a7f9db (742/795) (57 seconds passedRewrite aec2af610f89f4a809c301ac3788476fc6ad17f8 (742/795) (57 seconds passedRewrite 6e58e9eef8dd2e0ded12a664c3f192c2d0df2bff (742/795) (57 seconds passedRewrite 7f847fc9e19f53845a94620913b61b0f107f752b (742/795) (57 seconds passedRewrite 8c8d9ecfab990aab6707d47fb176629168d2dce4 (742/795) (57 seconds passedRewrite 362f7f24bee62c3a4055175f7ca5c1c2fc440f40 (756/795) (58 seconds passedRewrite 552760405953f0023efad3822e347ef27d2a5450 (756/795) (58 seconds passedRewrite 84c5e928d9c76b45b17bcac47bb99e6e35fd7849 (756/795) (58 seconds passedRewrite e5d740aeff1b9a980656e0e9311dc29f2681b83c (756/795) (58 seconds passedRewrite 719566ea153b64034b76bac61581c523d5bd9240 (756/795) (58 seconds passedRewrite 8f1338ec669845e948d9cb5d278d172dbfa022d3 (756/795) (58 seconds passedRewrite b453e93081a42018fcd7fb1ec0cab8b321c5988c (756/795) (58 seconds passedRewrite 2f874d70c89085e2da3ccad8ffb09d1dc694a7a4 (756/795) (58 seconds passedRewrite 51ecb3a430c5444c499f52f8d9214d11364be1f7 (756/795) (58 seconds passedRewrite 09d3455e38779dc732bb8a7b3bb3b9e11eaea016 (756/795) (58 seconds passedRewrite 25dd117a26c675b009bc085d14afc0a7f9c1a751 (756/795) (58 seconds passedRewrite bac8a81b628a985b68dc227d135dcd37c30f5cd2 (756/795) (58 seconds passedRewrite e71abe48b269982f573922f3d358289235015473 (756/795) (58 seconds passedRewrite f02307ff842c7f87ca9a816208f20c70cadfd965 (756/795) (58 seconds passedRewrite 31efa2e5abbd9e17a7a06c806427bb42bcf9311f (770/795) (59 seconds passedRewrite 284b846478e37d53ac93b8d1a282d7952b857d87 (770/795) (59 seconds passedRewrite 63b5016b05c92fa21fce001681e3c9648edd1e2d (770/795) (59 seconds passedRewrite c3430f5163a8b62e52473f7557516ae86ba2a9e1 (770/795) (59 seconds passedRewrite f78b50430cf00a5f5cde3c88c40f65039b47b39d (770/795) (59 seconds passedRewrite fe87740ff4b441c6ae33e347acdeac0a0fce5296 (770/795) (59 seconds passedRewrite cc2a22faee1b84fd5fb87d295844c51ec418742d (770/795) (59 seconds passedRewrite b7090b0cc9b47a3141497f86e8eca014ec21ed29 (770/795) (59 seconds passedRewrite 38759f9d6a2e4fa398f73ac2cc8c986705f52388 (770/795) (59 seconds passedRewrite 749805bab2d4dc4c569854064ab9e142d3960459 (784/795) (59 seconds passed, remaining 0 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite e3ea0d13aaaa685c2abdcb6ed286763307ec9000 (784/795) (59 seconds passed, remaining 0 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite 5c4cbc39f9b645a0c032f57e60611a53e4809c24 (784/795) (59 seconds passed, remaining 0 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite 56f3a8dab3de8b102236500e546d28e9b0a9785e (784/795) (59 seconds passed, remaining 0 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite 61529d012d881ce73d5581a9e5f5749ab31c0604 (784/795) (59 seconds passed, remaining 0 predicted)    rm 'attached_assets/megaradio-276c6-f443e2ae5475_1777564636142.json'
+Rewrite b15124aa8082c1dbf7183d8703787f1701969f8e (784/795) (59 seconds passed, remaining 0 predicted)    
+Ref 'refs/heads/main' was rewritten
+Ref 'refs/heads/replit-agent' was rewritten
+Ref 'refs/heads/subrepl-34xlrg9j' was rewritten
+Ref 'refs/heads/subrepl-4g79qtid' was rewritten
+Ref 'refs/heads/subrepl-56a5mav8' was rewritten
+Ref 'refs/heads/subrepl-59bn7saa' was rewritten
+Ref 'refs/heads/subrepl-72mwzpga' was rewritten
+Ref 'refs/heads/subrepl-9kv8ud8p' was rewritten
+Ref 'refs/heads/subrepl-9pls3dxp' was rewritten
+Ref 'refs/heads/subrepl-9rpsusiu' was rewritten
+Ref 'refs/heads/subrepl-cn59nzrd' was rewritten
+Ref 'refs/heads/subrepl-cx8b1tny' was rewritten
+Ref 'refs/heads/subrepl-dsc3udll' was rewritten
+Ref 'refs/heads/subrepl-e0qf6r8d' was rewritten
+Ref 'refs/heads/subrepl-e4sng2qt' was rewritten
+Ref 'refs/heads/subrepl-i2rbkah8' was rewritten
+Ref 'refs/heads/subrepl-jcmccizj' was rewritten
+Ref 'refs/heads/subrepl-jjx6blnm' was rewritten
+Ref 'refs/heads/subrepl-jykbcoi7' was rewritten
+Ref 'refs/heads/subrepl-l7nopujz' was rewritten
+Ref 'refs/heads/subrepl-lk1pn5um' was rewritten
+Ref 'refs/heads/subrepl-ntows92h' was rewritten
+Ref 'refs/heads/subrepl-r5e3cwkk' was rewritten
+Ref 'refs/heads/subrepl-sc4432dv' was rewritten
+Ref 'refs/heads/subrepl-sgozswst' was rewritten
+Ref 'refs/heads/subrepl-snc1g8xe' was rewritten
+Ref 'refs/heads/subrepl-u1begutf' was rewritten
+Ref 'refs/heads/subrepl-utcsl1s7' was rewritten
+Ref 'refs/heads/subrepl-w4opehxb' was rewritten
+Ref 'refs/heads/subrepl-xf0smtdz' was rewritten
+Ref 'refs/remotes/gitsafe-backup/main' was rewritten
+WARNING: Ref 'refs/remotes/gitsafe-backup/main' is unchanged
+Ref 'refs/remotes/origin/main' was rewritten
+WARNING: Ref 'refs/remotes/origin/main' is unchanged
+Ref 'refs/replit/agent-ledger' was rewritten
+To https://github.com/evolutionphil/RadioHub.git
+ ! [rejected]        main -> main (stale info)
+error: failed to push some refs to 'https://github.com/evolutionphil/RadioHub.git'
