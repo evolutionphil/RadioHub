@@ -1,9 +1,18 @@
 import { logger } from '../utils/logger';
 import axios from 'axios';
 import { IndexNowLog } from '../../shared/mongo-schemas';
+import { validateOutboundUrl } from '../utils/safe-fetch';
 
 const INDEXNOW_ENDPOINT = 'https://api.indexnow.org/indexnow';
-const API_KEY = '5ace9b68e3a60b85c7c5a61f1226a652';
+// IndexNow key. Backed by env (`INDEXNOW_API_KEY`); falls back to the legacy
+// committed key only when env is not set, so existing deployments keep working
+// during rotation. The key file at https://<host>/<KEY>.txt MUST contain this
+// same value for IndexNow ownership verification — rotating it requires
+// updating both the env var AND the .txt file served at the domain root.
+const API_KEY = process.env.INDEXNOW_API_KEY || '5ace9b68e3a60b85c7c5a61f1226a652';
+if (!process.env.INDEXNOW_API_KEY) {
+  logger.log('⚠️ IndexNow: INDEXNOW_API_KEY env not set, using legacy committed key. Set the env var (and update the .txt key file at the domain root) to rotate.');
+}
 // Production domain only
 const ALLOWED_HOSTS = ['themegaradio.com'];
 const PRIMARY_HOST = 'themegaradio.com'; // Default for helper methods
@@ -40,12 +49,44 @@ export class IndexNowService {
       logger.log(`📡 IndexNow: Submitting ${urls.length} URLs to search engines...`);
       logger.log(`📡 IndexNow Payload:`, JSON.stringify(payload, null, 2));
 
-      const response = await axios.post(INDEXNOW_ENDPOINT, payload, {
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8'
-        },
-        validateStatus: () => true // Accept any status code
-      });
+      // SSRF guard the outbound endpoint and follow any redirects manually,
+      // re-validating each hop. The endpoint is hardcoded so the risk surface
+      // is small, but this keeps us aligned with the project SSRF rule.
+      let currentEndpoint = INDEXNOW_ENDPOINT;
+      let response: any = null;
+      // Allow at most MAX_REDIRECTS hops AFTER the initial request, so the loop
+      // body runs up to MAX_REDIRECTS+1 times (initial + N follows).
+      const MAX_REDIRECTS = 3;
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        const guarded = await validateOutboundUrl(currentEndpoint);
+        if (!guarded.ok) {
+          throw new Error(`IndexNow outbound URL blocked by SSRF guard: ${guarded.reason}`);
+        }
+        response = await axios.post(currentEndpoint, payload, {
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8'
+          },
+          maxRedirects: 0,
+          validateStatus: () => true // Accept any status code (incl. 3xx for manual follow)
+        });
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers?.['location'];
+          if (!location) {
+            // 3xx without Location header — treat as terminal so we don't loop.
+            break;
+          }
+          if (hop === MAX_REDIRECTS) {
+            throw new Error('IndexNow: too many redirects');
+          }
+          try {
+            currentEndpoint = new URL(location, currentEndpoint).toString();
+          } catch {
+            throw new Error('IndexNow: malformed redirect Location');
+          }
+          continue;
+        }
+        break;
+      }
 
       const statusCode = response.status;
       const responseTime = Date.now() - startTime;

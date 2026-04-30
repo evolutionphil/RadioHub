@@ -301,7 +301,7 @@ export default function AdminCountryLanguageMappings() {
   };
 
   // Handle bulk save
-  const handleBulkSave = () => {
+  const handleBulkSave = async () => {
     if (pendingChanges.size === 0) {
       toast({
         title: 'No changes',
@@ -310,17 +310,42 @@ export default function AdminCountryLanguageMappings() {
       return;
     }
 
-    const mappings = Array.from(pendingChanges.entries()).map(([countryCode, languageCode]) => {
-      const country = countries?.find(c => c.code === countryCode);
-      return {
-        countryCode,
-        countryName: country?.name || countryCode,
-        languageCode,
-        isActive: true,
-      };
-    });
+    // Split pending changes:
+    //   - rows where the user picked "No mapping" (empty languageCode) must be
+    //     DELETED via the per-country DELETE endpoint, otherwise the bulk save
+    //     would silently no-op (the API rejects empty languageCode).
+    //   - everything else is bulk-saved.
+    const entries = Array.from(pendingChanges.entries());
+    const toDelete = entries
+      .filter(([countryCode, languageCode]) => !languageCode && mappingsMap.has(countryCode))
+      .map(([countryCode]) => countryCode);
+    const toUpsert = entries
+      .filter(([, languageCode]) => !!languageCode)
+      .map(([countryCode, languageCode]) => {
+        const country = countries?.find(c => c.code === countryCode);
+        return {
+          countryCode,
+          countryName: country?.name || countryCode,
+          languageCode,
+          isActive: true,
+        };
+      });
 
-    bulkSaveMutation.mutate(mappings);
+    try {
+      // Run deletes sequentially so any error surfaces clearly.
+      for (const countryCode of toDelete) {
+        await deleteMappingMutation.mutateAsync(countryCode);
+      }
+      if (toUpsert.length > 0) {
+        await bulkSaveMutation.mutateAsync(toUpsert);
+      } else if (toDelete.length > 0) {
+        // bulkSaveMutation's onSuccess clears pending changes; if we only
+        // deleted, do the same here so the dirty-state badge resets.
+        setPendingChanges(new Map());
+      }
+    } catch {
+      // Individual mutation onError handlers already toast — nothing to do.
+    }
   };
 
   // Filter countries based on search term
@@ -698,7 +723,7 @@ export default function AdminCountryLanguageMappings() {
           if (!open) setPendingDelete(null);
         }}
       >
-        <AlertDialogContent data-testid="dialog-confirm-clear-mapping">
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-lg text-gray-900" data-testid="dialog-confirm-clear-mapping">
           <AlertDialogHeader>
             <AlertDialogTitle>Clear mapping?</AlertDialogTitle>
             <AlertDialogDescription>
@@ -733,7 +758,7 @@ export default function AdminCountryLanguageMappings() {
           if (!open) setConfirmResetAll(false);
         }}
       >
-        <AlertDialogContent data-testid="dialog-confirm-reset-all">
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-lg text-gray-900" data-testid="dialog-confirm-reset-all">
           <AlertDialogHeader>
             <AlertDialogTitle>Reset all mappings?</AlertDialogTitle>
             <AlertDialogDescription>

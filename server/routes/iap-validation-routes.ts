@@ -333,11 +333,12 @@ export function registerIapValidationRoutes(app: Express) {
           const expiresAtDate = result.isLifetime ? null : (result.expiresAt ? new Date(result.expiresAt) : null);
 
           // Global receipt-replay guard: reject if this transaction is already attached
-          // to a DIFFERENT active user. Prevents one purchase from unlocking many accounts.
-          // Match against both originalTransactionId and (Android) purchaseToken.
+          // to ANY OTHER user (active OR inactive). Without the inactive check an
+          // attacker could deactivate their own sub (e.g. by letting it lapse) and
+          // then re-attach the same receipt/token to a fresh account. Match against
+          // both originalTransactionId and (Android) purchaseToken.
           const replayQuery: any = {
             _id: { $ne: targetUserId },
-            "subscription.isActive": true,
             $or: [
               { "subscription.originalTransactionId": result.originalTransactionId },
             ],

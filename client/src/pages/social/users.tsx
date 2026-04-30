@@ -23,7 +23,6 @@ interface FollowUser {
     _id: string;
     fullName?: string;
     username?: string;
-    email: string;
     avatar?: string;
     location?: string;
     followersCount: number;
@@ -181,7 +180,7 @@ export default function UsersPage() {
                           <Avatar className="w-12 h-12">
                             <AvatarImage src={follower.user.avatar} />
                             <AvatarFallback className="bg-blue-600 text-white">
-                              {(follower.user.fullName || follower.user.username || follower.user.email).charAt(0).toUpperCase()}
+                              {(follower.user.fullName || follower.user.username || 'U').charAt(0).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           
@@ -189,7 +188,9 @@ export default function UsersPage() {
                             <h3 className="font-medium text-white">
                               {follower.user.fullName || follower.user.username || 'User'}
                             </h3>
-                            <p className="text-sm text-gray-400">{follower.user.email}</p>
+                            {follower.user.username && (
+                              <p className="text-sm text-gray-400">@{follower.user.username}</p>
+                            )}
                             <div className="flex items-center space-x-4 mt-1">
                               <span className="text-xs text-gray-500">
                                 {follower.user.followersCount} followers
@@ -239,7 +240,7 @@ export default function UsersPage() {
                           <Avatar className="w-12 h-12">
                             <AvatarImage src={following.user.avatar} />
                             <AvatarFallback className="bg-blue-600 text-white">
-                              {(following.user.fullName || following.user.username || following.user.email).charAt(0).toUpperCase()}
+                              {(following.user.fullName || following.user.username || 'U').charAt(0).toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           
@@ -247,7 +248,9 @@ export default function UsersPage() {
                             <h3 className="font-medium text-white">
                               {following.user.fullName || following.user.username || 'User'}
                             </h3>
-                            <p className="text-sm text-gray-400">{following.user.email}</p>
+                            {following.user.username && (
+                              <p className="text-sm text-gray-400">@{following.user.username}</p>
+                            )}
                             <div className="flex items-center space-x-4 mt-1">
                               <span className="text-xs text-gray-500">
                                 {following.user.followersCount} followers

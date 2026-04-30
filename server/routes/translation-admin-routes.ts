@@ -8,6 +8,14 @@ import { syncService } from "../services/sync";
 import { isQuotaExceeded, isQuotaError, handleQuotaError, safeWrite } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
 
+// Module-scoped lock for the auto-translate route. The translation pipeline
+// reads existing rows, calls OpenAI in batches, then writes results — running
+// two concurrent jobs for the same language causes duplicate-key errors,
+// double API spend, and undefined "last write wins" semantics. Holding a
+// per-language Promise ensures the second concurrent caller fails fast with
+// HTTP 409 instead of stomping on the in-flight job.
+const inFlightTranslateJobs = new Map<string, Promise<unknown>>();
+
 export function registerTranslationAdminRoutes(app: Express, deps: any) {
   const { requireAuth, requireAdmin } = deps;
 
@@ -253,8 +261,29 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
 
   // AUTO-TRANSLATE Language via OpenAI - Enhanced with English detection and brand protection
   app.post("/api/admin/translation-languages/:code/translate", requireAdmin, async (req, res) => {
+    const { code } = req.params;
+    const lockKey = (code || '').toLowerCase();
+
+    // Server-side lock: reject if a job for this language is already running.
+    // Without this, double-clicks on "Auto-translate" or two admins clicking
+    // simultaneously kick off two pipelines that both insert/update the same
+    // rows — wasting OpenAI tokens and risking duplicate-key write errors.
+    if (lockKey && inFlightTranslateJobs.has(lockKey)) {
+      return res.status(409).json({
+        error: 'A translation job for this language is already running',
+        code: 'translation_job_in_progress',
+      });
+    }
+
+    let releaseLock: (() => void) | null = null;
+    if (lockKey) {
+      const lockPromise = new Promise<void>((resolve) => {
+        releaseLock = resolve;
+      });
+      inFlightTranslateJobs.set(lockKey, lockPromise);
+    }
+
     try {
-      const { code } = req.params;
       // missingOnly=true → only insert truly missing translations, never overwrite existing rows
       const missingOnly = req.query.missingOnly === 'true' || req.body?.missingOnly === true;
 
@@ -347,9 +376,17 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
       for (const key of allKeys) {
         // Look up by key._id (TranslationKey ObjectId) matching Translation.keyId
         const existing = existingTranslationsMap.get(key._id?.toString());
-        if (!existing) {
-          // Missing translation
-          keysToTranslate.push({ ...key, isNew: true });
+        // Treat empty / whitespace-only existing rows as "missing" — otherwise
+        // missingOnly=true skips them forever and the language stays half-empty.
+        const existingValueTrimmed = (existing?.value || '').trim();
+        if (!existing || existingValueTrimmed === '') {
+          // Missing (or effectively-empty) translation. Pass existingId when
+          // there's a row to update so we don't insert a duplicate.
+          keysToTranslate.push({
+            ...key,
+            isNew: !existing,
+            ...(existing ? { existingId: existing._id, existingValue: existing.value } : {}),
+          });
         } else if (!missingOnly) {
           // Check if translation needs fixing (skip in missingOnly mode):
           // 1. Value is same as key name (untranslated)
@@ -588,6 +625,15 @@ ${keysText}`;
     } catch (error) {
       console.error('Error auto-translating language:', error);
       res.status(500).json({ error: 'Failed to auto-translate language' });
+    } finally {
+      // Always release the per-language lock so a future job can run, even
+      // when the pipeline threw mid-batch.
+      if (lockKey) {
+        inFlightTranslateJobs.delete(lockKey);
+      }
+      if (releaseLock) {
+        releaseLock();
+      }
     }
   });
 

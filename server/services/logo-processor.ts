@@ -7,6 +7,7 @@ import { promisify } from 'util';
 import { Station } from '../../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
+import { validateOutboundUrl } from '../utils/safe-fetch';
 
 sharp.cache({ memory: 50, files: 20, items: 100 });
 sharp.concurrency(1);
@@ -761,38 +762,89 @@ export class LogoProcessor {
   private async downloadImage(url: string, attempt: number = 1): Promise<DownloadResult> {
     try {
       const timeout = 5000 + (attempt * 3000); // 5s, 8s
-      
-      // Parse URL to get host for Referer header
-      let referer = '';
-      try {
-        const urlObj = new URL(url);
-        referer = `${urlObj.protocol}//${urlObj.host}/`;
-      } catch {}
-      
-      const response = await axios.get(url, {
-        responseType: 'arraybuffer',
-        timeout: timeout,
-        maxContentLength: 2 * 1024 * 1024,
-        maxBodyLength: 2 * 1024 * 1024,
-        maxRedirects: 3,
-        decompress: true,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'Accept-Encoding': 'gzip, deflate, br',
-          'Referer': referer,
-          'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-          'Sec-Ch-Ua-Mobile': '?0',
-          'Sec-Ch-Ua-Platform': '"Windows"',
-          'Sec-Fetch-Dest': 'image',
-          'Sec-Fetch-Mode': 'no-cors',
-          'Sec-Fetch-Site': 'same-origin',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
-        validateStatus: (status) => status >= 200 && status < 300 // Only accept 2xx
-      });
+
+      let currentUrl = url;
+      const maxHops = 3;
+      let response: any = null;
+
+      for (let hop = 0; hop <= maxHops; hop++) {
+        // SSRF guard on EVERY hop (replit.md SSRF rule).
+        const guarded = await validateOutboundUrl(currentUrl, { allowHttp: true });
+        if (!guarded.ok) {
+          return {
+            buffer: null,
+            error: `Outbound URL rejected by SSRF guard: ${guarded.reason}`,
+            failureType: 'download_failed',
+          };
+        }
+
+        // Rebuild Referer for the CURRENT hop's host (not the original).
+        let referer = '';
+        try {
+          referer = `${guarded.url.protocol}//${guarded.url.host}/`;
+        } catch {}
+
+        response = await axios.get(currentUrl, {
+          responseType: 'arraybuffer',
+          timeout: timeout,
+          maxContentLength: 2 * 1024 * 1024,
+          maxBodyLength: 2 * 1024 * 1024,
+          maxRedirects: 0, // we walk redirects manually so each hop is SSRF-checked
+          decompress: true,
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Referer': referer,
+            'Sec-Ch-Ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'image',
+            'Sec-Fetch-Mode': 'no-cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          // Accept 2xx success and 3xx so we can manually follow + re-validate.
+          validateStatus: (status) => (status >= 200 && status < 300) || (status >= 300 && status < 400)
+        });
+
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers?.['location'];
+          // 3xx without Location is a server bug — treating it as a terminal
+          // response yields an empty/HTML body and a misleading "invalid_format"
+          // failure. Surface the real cause instead.
+          if (!location) {
+            return {
+              buffer: null,
+              error: `Redirect ${response.status} without Location header`,
+              failureType: 'download_failed',
+              statusCode: response.status,
+            };
+          }
+          if (hop === maxHops) {
+            return {
+              buffer: null,
+              error: 'Too many redirects',
+              failureType: 'download_failed',
+              statusCode: response.status,
+            };
+          }
+          try {
+            currentUrl = new URL(location, currentUrl).toString();
+          } catch {
+            return {
+              buffer: null,
+              error: 'Malformed redirect Location',
+              failureType: 'download_failed',
+              statusCode: response.status,
+            };
+          }
+          continue; // re-validate next hop
+        }
+        break; // 2xx → exit loop and process body
+      }
 
       const statusCode = response.status;
       const contentType = response.headers['content-type'] || '';

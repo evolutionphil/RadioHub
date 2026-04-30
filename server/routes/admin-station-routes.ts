@@ -445,7 +445,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         return res.status(400).json({ error: 'No editable fields provided' });
       }
 
-      const before = await Station.findById(stationId).select('_id slug favicon').lean();
+      const before = await Station.findById(stationId).select('_id slug favicon logoAssets').lean();
       if (!before) return res.status(404).json({ error: 'Station not found' });
 
       const updated = await Station.findByIdAndUpdate(
@@ -455,16 +455,22 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       ).lean();
 
       // If favicon URL changed AND it's not already an S3 URL → mirror it to S3 in background.
+      // ALSO retry the mirror when the URL is unchanged but the previous mirror
+      // attempt failed (logoAssets.status === 'failed') — otherwise admins have
+      // no way to retry a failed logo without first changing the URL.
       // The mirror also atomically swaps station.favicon → S3 URL on success
       // (see logo-processor.ts processFromUrl), so the dış URL only ever lives
       // in the DB for the few seconds it takes to download + resize + upload.
       const newFavicon = (updated as any)?.favicon;
       const oldFavicon = (before as any)?.favicon;
+      const previousLogoStatus = (before as any)?.logoAssets?.status;
+      const shouldRetryFailedMirror =
+        newFavicon === oldFavicon && previousLogoStatus === 'failed';
       if (
         newFavicon &&
         typeof newFavicon === 'string' &&
         newFavicon.startsWith('http') &&
-        newFavicon !== oldFavicon &&
+        (newFavicon !== oldFavicon || shouldRetryFailedMirror) &&
         !isS3Url(newFavicon)
       ) {
         const slug = (updated as any).slug || String((updated as any)._id);

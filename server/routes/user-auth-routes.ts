@@ -751,7 +751,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       });
     }
     
-    const returnTo = req.query.returnTo as string;
+    // Sanitize returnTo: must be a same-origin path (mirrors Google flow).
+    // Reject protocol-relative `//evil.com` and any absolute URL — otherwise
+    // an attacker can pivot the post-login redirect to an external host.
+    const rawReturnTo = req.query.returnTo as string | undefined;
+    const returnTo = (typeof rawReturnTo === 'string' && rawReturnTo.startsWith('/') && !rawReturnTo.startsWith('//'))
+      ? rawReturnTo
+      : undefined;
     if (returnTo && req.session) {
       (req.session as any).oauthReturnTo = returnTo;
     }
@@ -1036,10 +1042,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         delete (req.session as any).oauthReturnTo;
         delete (req.session as any).oauthReturnLang;
         
-        if (returnTo && returnTo.startsWith('/')) {
-          return res.redirect(`${frontendBase}${returnTo}?auth_token=${token}`);
+        // Re-validate returnTo (defence in depth — session could carry an
+        // unsanitized value from a legacy cookie). Use buildRedirectWithToken
+        // so existing query strings or fragments are preserved correctly.
+        if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+          return res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
         }
-        res.redirect(`${frontendBase}${langPrefix}/?auth_token=${token}`);
+        res.redirect(buildRedirectWithToken(frontendBase, `${langPrefix}/`, token));
       } catch (tokenErr) {
         logger.error('🍎 Apple OAuth token generation error:', tokenErr);
         res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
@@ -1927,7 +1936,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       const [followers, total] = await Promise.all([
         UserFollow.find({ followingUserId: userId })
-          .populate('userId', 'fullName username email avatar location followersCount followingCount')
+          // PII: never expose email on this public endpoint.
+          .populate('userId', 'fullName username avatar location followersCount followingCount')
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit),
@@ -1963,7 +1973,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       const [following, total] = await Promise.all([
         UserFollow.find({ userId: userId })
-          .populate('followingUserId', 'fullName username email avatar location followersCount followingCount')
+          // PII: never expose email on this public endpoint.
+          .populate('followingUserId', 'fullName username avatar location followersCount followingCount')
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit),

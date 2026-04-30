@@ -75,6 +75,12 @@ function getFrameOptionsHeader(): string | null {
   return 'DENY';
 }
 
+// Major search engine bot UA regex — kept in module scope so the rate-limit
+// `skip` callback can reuse it without re-allocating per request. Mirrors the
+// regex defined further down (line ~851) and in server/index-web.ts (~537);
+// when adding a new bot here, also add it in those two places.
+const GLOBAL_LIMITER_MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|apis-google|adsbot-google|mediapartners-google|storebot-google|bingbot|bingpreview|yandexbot|slurp|duckduckbot|baiduspider|applebot)\b/i;
+
 // RATE LIMITING: Prevent brute-force and DoS attacks
 const globalApiLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -84,7 +90,18 @@ const globalApiLimiter = rateLimit({
   message: { error: 'Too many requests, please try again later.' },
   skip: (req) => {
     // Skip rate limiting for health checks and non-API routes
-    return !req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health' || req.path === '/healthz';
+    if (!req.path.startsWith('/api') || req.path === '/api/health' || req.path === '/health' || req.path === '/healthz') {
+      return true;
+    }
+    // Major search-engine crawlers (Google, Bing, Yandex, Baidu, DuckDuckGo,
+    // Apple) are FULLY EXEMPT from API rate limits per replit.md
+    // CRITICAL RATE LIMIT RULE — otherwise their JS-rendering pipelines hit
+    // 429s and fail to crawl station/genre pages.
+    const ua = req.get('user-agent') || '';
+    if (GLOBAL_LIMITER_MAJOR_SEARCH_BOT_RE.test(ua)) {
+      return true;
+    }
+    return false;
   }
 });
 
