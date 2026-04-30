@@ -105,6 +105,15 @@ export default function AdminCountryLanguageMappings() {
     return map;
   }, [countryLanguageDefaults]);
 
+  // Create a map of language code -> language name for quick lookup
+  const languageNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    languages?.forEach(lang => {
+      map.set(lang.code, lang.name);
+    });
+    return map;
+  }, [languages]);
+
   // Bulk save mutation
   const bulkSaveMutation = useMutation({
     mutationFn: async (mappings: Array<{ countryCode: string; countryName: string; languageCode: string }>) => {
@@ -418,6 +427,13 @@ export default function AdminCountryLanguageMappings() {
                     const isClearingThis =
                       deleteMappingMutation.isPending &&
                       deleteMappingMutation.variables === country.code;
+                    const defaultLanguageCode = defaultsMap.get(country.code);
+                    const defaultLanguageName = defaultLanguageCode
+                      ? languageNameMap.get(defaultLanguageCode) || defaultLanguageCode
+                      : null;
+                    const noMappingLabel = defaultLanguageName
+                      ? `No mapping (default: ${defaultLanguageName})`
+                      : 'No mapping (Default to English)';
 
                     return (
                       <TableRow
@@ -438,7 +454,7 @@ export default function AdminCountryLanguageMappings() {
                               <SelectValue placeholder="Select language..." />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="__none__">No mapping (Default to English)</SelectItem>
+                              <SelectItem value="__none__">{noMappingLabel}</SelectItem>
                               {languages?.map((lang) => (
                                 <SelectItem key={lang.code} value={lang.code}>
                                   {lang.name} ({lang.code})
