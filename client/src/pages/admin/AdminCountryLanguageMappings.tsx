@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatDistanceToNow } from 'date-fns';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -92,6 +93,17 @@ export default function AdminCountryLanguageMappings() {
     const map = new Map<string, string>();
     existingMappings?.forEach(mapping => {
       map.set(mapping.countryCode, mapping.languageCode);
+    });
+    return map;
+  }, [existingMappings]);
+
+  // Create a map of countryCode -> updatedAt for quick lookup
+  const updatedAtMap = useMemo(() => {
+    const map = new Map<string, string>();
+    existingMappings?.forEach(mapping => {
+      if (mapping.updatedAt) {
+        map.set(mapping.countryCode, mapping.updatedAt);
+      }
     });
     return map;
   }, [existingMappings]);
@@ -408,13 +420,14 @@ export default function AdminCountryLanguageMappings() {
                   <TableHead>Country</TableHead>
                   <TableHead className="w-64">Language</TableHead>
                   <TableHead className="w-24">Status</TableHead>
+                  <TableHead className="w-40 text-right">Last updated</TableHead>
                   <TableHead className="w-20 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredCountries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                       No countries found
                     </TableCell>
                   </TableRow>
@@ -434,6 +447,10 @@ export default function AdminCountryLanguageMappings() {
                     const noMappingLabel = defaultLanguageName
                       ? `No mapping (default: ${defaultLanguageName})`
                       : 'No mapping (Default to English)';
+                    const updatedAtRaw = updatedAtMap.get(country.code);
+                    const updatedAtDate = updatedAtRaw ? new Date(updatedAtRaw) : null;
+                    const updatedAtValid =
+                      updatedAtDate && !isNaN(updatedAtDate.getTime()) ? updatedAtDate : null;
 
                     return (
                       <TableRow
@@ -479,6 +496,18 @@ export default function AdminCountryLanguageMappings() {
                               <XCircle className="h-3 w-3" />
                               Default
                             </span>
+                          )}
+                        </TableCell>
+                        <TableCell
+                          className="text-right text-xs text-muted-foreground tabular-nums"
+                          data-testid={`text-updated-at-${country.code}`}
+                        >
+                          {updatedAtValid ? (
+                            <span title={updatedAtValid.toLocaleString()}>
+                              {formatDistanceToNow(updatedAtValid, { addSuffix: true })}
+                            </span>
+                          ) : (
+                            <span aria-hidden="true">—</span>
                           )}
                         </TableCell>
                         <TableCell className="text-right">
