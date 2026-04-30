@@ -13,3 +13,4 @@ public/station-images/
 .cache
 .pythonlibs
 tmp/
+attached_assets/megaradio-*.json
