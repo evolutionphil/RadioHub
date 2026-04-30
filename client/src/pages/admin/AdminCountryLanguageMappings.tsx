@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle } from 'lucide-react';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -68,6 +68,7 @@ export default function AdminCountryLanguageMappings() {
   const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
   const [confirmResetAll, setConfirmResetAll] = useState(false);
+  const [updatedAtSort, setUpdatedAtSort] = useState<'desc' | 'asc' | null>(null);
 
   // Fetch available countries
   const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
@@ -325,15 +326,44 @@ export default function AdminCountryLanguageMappings() {
   // Filter countries based on search term
   const filteredCountries = useMemo(() => {
     if (!countries) return [];
-    if (!searchTerm) return countries;
 
-    const term = searchTerm.toLowerCase();
-    return countries.filter(
-      country =>
-        country.name.toLowerCase().includes(term) ||
-        country.code.toLowerCase().includes(term)
+    const term = searchTerm.trim().toLowerCase();
+    const filtered = term
+      ? countries.filter(
+          country =>
+            country.name.toLowerCase().includes(term) ||
+            country.code.toLowerCase().includes(term)
+        )
+      : countries;
+
+    if (!updatedAtSort) return filtered;
+
+    // Partition: rows with a valid updatedAt vs. rows without one.
+    // Rows without updatedAt are always grouped at the bottom (alphabetical),
+    // regardless of sort direction.
+    const withDate: Array<{ country: Country; time: number }> = [];
+    const withoutDate: Country[] = [];
+
+    filtered.forEach(country => {
+      const raw = updatedAtMap.get(country.code);
+      const time = raw ? new Date(raw).getTime() : NaN;
+      if (raw && !isNaN(time)) {
+        withDate.push({ country, time });
+      } else {
+        withoutDate.push(country);
+      }
+    });
+
+    withDate.sort((a, b) =>
+      updatedAtSort === 'desc' ? b.time - a.time : a.time - b.time,
     );
-  }, [countries, searchTerm]);
+
+    return [...withDate.map(entry => entry.country), ...withoutDate];
+  }, [countries, searchTerm, updatedAtSort, updatedAtMap]);
+
+  const handleToggleUpdatedAtSort = () => {
+    setUpdatedAtSort(prev => (prev === 'desc' ? 'asc' : 'desc'));
+  };
 
   // Loading state
   if (isLoadingCountries || isLoadingLanguages || isLoadingMappings) {
@@ -471,7 +501,51 @@ export default function AdminCountryLanguageMappings() {
                   <TableHead>Country</TableHead>
                   <TableHead className="w-64">Language</TableHead>
                   <TableHead className="w-24">Status</TableHead>
-                  <TableHead className="w-40 text-right">Last updated</TableHead>
+                  <TableHead
+                    className="w-40 text-right p-0"
+                    aria-sort={
+                      updatedAtSort === 'desc'
+                        ? 'descending'
+                        : updatedAtSort === 'asc'
+                          ? 'ascending'
+                          : 'none'
+                    }
+                  >
+                    <button
+                      type="button"
+                      data-testid="button-sort-updated-at"
+                      onClick={handleToggleUpdatedAtSort}
+                      aria-label={
+                        updatedAtSort === 'desc'
+                          ? 'Sorted by last updated, newest first. Click to sort oldest first.'
+                          : updatedAtSort === 'asc'
+                            ? 'Sorted by last updated, oldest first. Click to sort newest first.'
+                            : 'Sort by last updated'
+                      }
+                      className="inline-flex w-full items-center justify-end gap-1 px-4 py-3 text-sm font-medium hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                    >
+                      <span>Last updated</span>
+                      {updatedAtSort === 'desc' ? (
+                        <ChevronDown
+                          className="h-4 w-4 text-foreground"
+                          data-testid="icon-sort-updated-at-desc"
+                          aria-hidden="true"
+                        />
+                      ) : updatedAtSort === 'asc' ? (
+                        <ChevronUp
+                          className="h-4 w-4 text-foreground"
+                          data-testid="icon-sort-updated-at-asc"
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <ChevronsUpDown
+                          className="h-4 w-4 opacity-50"
+                          data-testid="icon-sort-updated-at-none"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="w-20 text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
