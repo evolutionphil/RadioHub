@@ -723,6 +723,21 @@ const SeoMainRouter = React.memo(() => {
                     {translations['records'] && (
                       <Route path={`/${langConfig.code}/${translations['profile']}/${translations['records']}`} component={PlayerWrapper} />
                     )}
+                    {/* Messages — `messages` is not yet in URL_TRANSLATIONS, so
+                        getLocalizedUrl('/profile/messages') for non-English
+                        languages emits /<lang>/<translated-profile>/messages
+                        (mixed). Mount that path plus a wildcard for thread
+                        sub-routes like /<lang>/<translated-profile>/messages/<userId>.
+                        If/when 'messages' gets a translation, the second pair
+                        below covers the fully-translated form. */}
+                    <Route path={`/${langConfig.code}/${translations['profile']}/messages`} component={PlayerWrapper} />
+                    <Route path={`/${langConfig.code}/${translations['profile']}/messages/:rest*`} component={PlayerWrapper} />
+                    {translations['messages'] && (
+                      <>
+                        <Route path={`/${langConfig.code}/${translations['profile']}/${translations['messages']}`} component={PlayerWrapper} />
+                        <Route path={`/${langConfig.code}/${translations['profile']}/${translations['messages']}/:rest*`} component={PlayerWrapper} />
+                      </>
+                    )}
                   </>
                 )}
                 {translations['regions'] && translations['regions'] !== 'regions' && (
@@ -767,6 +782,8 @@ const SeoMainRouter = React.memo(() => {
           <Route path={`/${langConfig.code}/profile/settings`} component={PlayerWrapper} />
           <Route path={`/${langConfig.code}/profile/notifications`} component={PlayerWrapper} />
           <Route path={`/${langConfig.code}/profile/records`} component={PlayerWrapper} />
+          <Route path={`/${langConfig.code}/profile/messages`} component={PlayerWrapper} />
+          <Route path={`/${langConfig.code}/profile/messages/:rest*`} component={PlayerWrapper} />
           <Route path={`/${langConfig.code}/profile`} component={PlayerWrapper} />
         </React.Fragment>
       ))}
