@@ -24,12 +24,20 @@ const JUNK_BODY =
   '</body></html>';
 
 export function sendJunkGone(res: Response): void {
+  // CRITICAL: the global SSR middleware in `server/index-web.ts` (and
+  // `server/index.ts`) sets `X-Robots-Tag: index, follow, ...` on every
+  // response by default. For a 410 Gone we MUST overwrite that header to
+  // `noindex, follow` so Google sees a single, consistent "drop me" signal
+  // instead of the contradictory pair `410 + index, follow` which surfaces
+  // as a "Soft 404 / contradictory signal" warning in Search Console.
+  res.removeHeader('X-Robots-Tag');
   res
     .status(410)
     .set({
       'Content-Type': 'text/html; charset=utf-8',
       'Cache-Control': 'public, max-age=86400',
       'X-SEO-Cache': 'JUNK-410',
+      'X-Robots-Tag': 'noindex, follow',
     })
     .send(JUNK_BODY);
 }

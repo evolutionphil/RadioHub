@@ -127,6 +127,7 @@ export function evaluateJunkStation(station: {
   tags?: string;
   bitrate?: number;
   lastCheckOk?: boolean;
+  lastCheckOkTime?: Date | string | null;
 }): JunkDecision {
   const name = (station.name || '').trim();
   const slug = (station.slug || '').trim().toLowerCase();
@@ -134,6 +135,30 @@ export function evaluateJunkStation(station: {
 
   if (!name) return { isJunk: true, reason: 'empty-name' };
   if (!station.url) return { isJunk: true, reason: 'empty-stream-url' };
+
+  // Broken stream rule (TR audit P1):
+  // If Radio-Browser has marked the stream as down (`lastCheckOk === false`)
+  // AND the station has not recovered in the last 30 days, treat the page
+  // as junk. A station detail page advertising "Listen Live" while the
+  // upstream URL has been dead for a month is a clear "thin/low-quality"
+  // signal and triggers Google's Crawled-not-indexed bucket.
+  // We DO NOT junk a station that just had a single failed health check —
+  // streams flap, and we want to avoid flushing legitimate stations from
+  // the index over a transient outage. The 30-day floor is conservative.
+  if (station.lastCheckOk === false) {
+    const last = station.lastCheckOkTime
+      ? new Date(station.lastCheckOkTime as any).getTime()
+      : NaN;
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    // FAIL-OPEN on unknown: if we don't have a `lastCheckOkTime` timestamp
+    // we cannot prove the station has been dead for 30+ days, so we keep it
+    // indexable and rely on Radio-Browser's next sync to populate the field.
+    // This matches the spec ("son 30 gün recover etmemiş") strictly and
+    // avoids over-junking stations that simply have incomplete telemetry.
+    if (Number.isFinite(last) && Date.now() - last > THIRTY_DAYS_MS) {
+      return { isJunk: true, reason: 'stream-dead-30d' };
+    }
+  }
 
   // NOTE: We deliberately do NOT mark every `-N` slug as junk here. Many
   // legitimate stations have numbers in their names ("Radio 100", "FM 89-1")
@@ -347,6 +372,7 @@ export function getIndexableLanguagesForStation(
     tags?: string;
     bitrate?: number;
     lastCheckOk?: boolean;
+    lastCheckOkTime?: Date | string | null;
     country?: string;
     countryCode?: string;
     language?: string;

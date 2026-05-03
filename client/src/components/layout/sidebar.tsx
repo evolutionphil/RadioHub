@@ -33,6 +33,7 @@ const navigation: NavigationItem[] = [
   { name: 'Dashboard', href: '/admin/dashboard', icon: BarChart3 },
   { name: 'Users', href: '/admin/users', icon: Users },
   { name: 'IAP Events', href: '/admin/iap-events', icon: FileText },
+  { name: 'SEO Maintenance', href: '/admin/seo-maintenance', icon: FileText },
   { 
     name: 'Settings', 
     icon: Settings,
