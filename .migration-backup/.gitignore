@@ -1,0 +1,16 @@
+node_modules
+dist
+.DS_Store
+server/public
+vite.config.ts.*
+*.tar.gz
+
+# Runtime generated files - auto-created by server
+public/station-logos/
+public/station-images/
+
+# Cache and temp files
+.cache
+.pythonlibs
+tmp/
+attached_assets/megaradio-*.json
