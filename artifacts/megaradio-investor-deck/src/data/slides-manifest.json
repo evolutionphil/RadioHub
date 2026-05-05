@@ -1,0 +1,170 @@
+[
+  {
+    "id": "11111111-1111-4111-8111-000000000001",
+    "position": 1,
+    "filepath": "src/pages/slides/Cover.tsx",
+    "title": "Cover",
+    "description": "Title slide with MegaRadio logo, tagline, and founder credit.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000002",
+    "position": 2,
+    "filepath": "src/pages/slides/Problem.tsx",
+    "title": "The Problem",
+    "description": "Why global radio is fragmented, unreliable, and local-only today.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000003",
+    "position": 3,
+    "filepath": "src/pages/slides/Opportunity.tsx",
+    "title": "Opportunity",
+    "description": "Market scope: 2.5B+ weekly radio listeners, 50k+ live streams, 200+ countries.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000004",
+    "position": 4,
+    "filepath": "src/pages/slides/Solution.tsx",
+    "title": "Solution",
+    "description": "Universal player, global discovery, multilingual SEO in one platform.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000005",
+    "position": 5,
+    "filepath": "src/pages/slides/PlaybackEngine.tsx",
+    "title": "Continuous Playback",
+    "description": "HLS.js + Plyr engine, persistent player, multi-format streaming, stream proxy.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000006",
+    "position": 6,
+    "filepath": "src/pages/slides/Discovery.tsx",
+    "title": "Discovery",
+    "description": "Genres, regions, cities, search, favorites, comments, now-playing SSE.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000007",
+    "position": 7,
+    "filepath": "src/pages/slides/Personalization.tsx",
+    "title": "Personalization & AI",
+    "description": "Cloudflare + GPS geolocation, trend analysis, AI-powered recommendations.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000008",
+    "position": 8,
+    "filepath": "src/pages/slides/SeoMoatStat.tsx",
+    "title": "57 Languages",
+    "description": "Hero stat: every page server-rendered in 57 languages.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000009",
+    "position": 9,
+    "filepath": "src/pages/slides/SeoInfra.tsx",
+    "title": "SEO Infrastructure",
+    "description": "Server rendering, sitemaps, hreflang, JSON-LD, junk rules, IndexNow.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000010",
+    "position": 10,
+    "filepath": "src/pages/slides/Performance.tsx",
+    "title": "Performance & Reliability",
+    "description": "Multi-layer caching, MongoDB circuit breaker, OOM protection, SSR protection.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000011",
+    "position": 11,
+    "filepath": "src/pages/slides/Architecture.tsx",
+    "title": "Architecture",
+    "description": "Cloudflare edge, Express + TypeScript app tier, MongoDB Atlas data tier.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000012",
+    "position": 12,
+    "filepath": "src/pages/slides/Mobile.tsx",
+    "title": "Mobile & Monetization",
+    "description": "Apple IAP, Google Play billing, unified subscription matrix, ads, email.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000013",
+    "position": 13,
+    "filepath": "src/pages/slides/AdminOps.tsx",
+    "title": "Admin & Operations",
+    "description": "SEO maintenance, logo and metadata backfill, IAP events, IndexNow monitor.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000014",
+    "position": 14,
+    "filepath": "src/pages/slides/WhyNow.tsx",
+    "title": "Why Now",
+    "description": "Smart speakers, in-car streaming, and 5G make borderless radio practical.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000015",
+    "position": 15,
+    "filepath": "src/pages/slides/Competition.tsx",
+    "title": "Landscape",
+    "description": "Where MegaRadio sits versus on-demand audio and legacy directories.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000016",
+    "position": 16,
+    "filepath": "src/pages/slides/Traction.tsx",
+    "title": "Traction",
+    "description": "Stations indexed, languages, regions, monthly listeners (placeholders).",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000017",
+    "position": 17,
+    "filepath": "src/pages/slides/BusinessModel.tsx",
+    "title": "Business Model",
+    "description": "MegaRadio Pro subscriptions plus geo-targeted advertising.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000018",
+    "position": 18,
+    "filepath": "src/pages/slides/Roadmap.tsx",
+    "title": "Roadmap",
+    "description": "12-month plan: deeper personalization, native mobile, broadcaster self-serve.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000019",
+    "position": 19,
+    "filepath": "src/pages/slides/Team.tsx",
+    "title": "Team",
+    "description": "Founder profile: Muhammed Fatih Geyik, full-stack engineering and growth.",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000020",
+    "position": 20,
+    "filepath": "src/pages/slides/Ask.tsx",
+    "title": "The Ask",
+    "description": "Round size and use-of-funds (placeholder fields for live conversations).",
+    "speakerNotes": ""
+  },
+  {
+    "id": "11111111-1111-4111-8111-000000000021",
+    "position": 21,
+    "filepath": "src/pages/slides/Closing.tsx",
+    "title": "Closing",
+    "description": "Thank-you slide with founder, web, and contact details.",
+    "speakerNotes": ""
+  }
+]

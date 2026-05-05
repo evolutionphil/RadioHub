@@ -166,6 +166,9 @@ export async function runJunkCleanup(
       homepage: station.homepage,
       tags: station.tags,
       bitrate: station.bitrate,
+      lastCheckOk: station.lastCheckOk,
+      lastCheckOkTime: station.lastCheckOkTime,
+      lastCheckTime: station.lastCheckTime,
     });
 
     // Sibling-aware duplicate detection: only mark `slug-N` records as junk

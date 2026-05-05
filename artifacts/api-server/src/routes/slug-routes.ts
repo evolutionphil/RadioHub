@@ -244,6 +244,8 @@ export function registerSlugRoutes(app: Express, deps: any) {
                   tags: station.tags,
                   bitrate: station.bitrate,
                   lastCheckOk: station.lastCheckOk,
+                  lastCheckOkTime: station.lastCheckOkTime,
+                  lastCheckTime: station.lastCheckTime,
                 });
                 if (verdict.isJunk && station.noIndex !== true) {
                   update.noIndex = true;
@@ -535,6 +537,8 @@ export function registerSlugRoutes(app: Express, deps: any) {
                   tags: station.tags,
                   bitrate: station.bitrate,
                   lastCheckOk: station.lastCheckOk,
+                  lastCheckOkTime: station.lastCheckOkTime,
+                  lastCheckTime: station.lastCheckTime,
                 });
                 if (verdict.isJunk && station.noIndex !== true) {
                   update.noIndex = true;

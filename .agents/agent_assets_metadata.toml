@@ -1,0 +1,20 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "LRyz9dKJk2AR6Szi5oA2N"
+uri = "file://artifacts/megaradio-investor-deck/public/hero-soundwave.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "ClcKV44czvKF8yr4KKYfD"
+uri = "file://artifacts/megaradio-investor-deck/public/listener-headphones.png"
+type = "image"
+title = "generated_image"
+
+[[generated]]
+id = "14m8lfhWZjrVqtabKT6fl"
+uri = "file://artifacts/megaradio-investor-deck/public/global-map.png"
+type = "image"
+title = "generated_image"

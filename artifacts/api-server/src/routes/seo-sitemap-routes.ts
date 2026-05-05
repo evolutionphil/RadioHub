@@ -9,6 +9,7 @@ import { URL_TRANSLATIONS } from '../shared/url-translations';
 import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
+import { sendSitemapGone } from "../seo/send-sitemap-gone";
 import {
   getCachedQualifiedLanguages,
   getQualifiedLanguagesState,
@@ -564,9 +565,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       const qualifiedLanguages = state.languages;
       if (!qualifiedLanguages.includes(lang)) {
         // Manifest-driven 410: lang not qualified -> permanently gone (Bing/Google removal signal)
-        res.setHeader('Content-Type', 'text/plain');
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
-        return res.status(410).send('Gone');
+        return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
       }
 
       const manifest = await getActiveManifest('main', lang);
@@ -662,9 +661,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       }
       const qualifiedLanguages = state.languages;
       if (!qualifiedLanguages.includes(lang)) {
-        res.setHeader('Content-Type', 'text/plain');
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
-        return res.status(410).send('Gone');
+        return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
       }
 
       // Manifest lookup — fail early if no active manifest yet (cold boot).
@@ -675,9 +672,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         // building -> 503.
         const manifest = await getActiveManifest('stations', lang);
         if (manifest) {
-          res.setHeader('Content-Type', 'text/plain');
-          res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
-          return res.status(410).send('Gone');
+          return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
         }
         res.setHeader('Content-Type', 'text/plain');
         res.setHeader('Retry-After', '120');
@@ -796,9 +791,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       }
       const qualifiedLanguages = state.languages;
       if (!qualifiedLanguages.includes(lang)) {
-        res.setHeader('Content-Type', 'text/plain');
-        res.setHeader('Cache-Control', `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}`);
-        return res.status(410).send('Gone');
+        return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
       }
 
       const manifest = await getActiveManifest('genres', lang);
@@ -898,21 +891,21 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
   // 410 Gone for deprecated/removed sitemaps — prevents "soft 404" from SPA catch-all
   app.get("/sitemap-news.xml", (_req, res) => {
-    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+    sendSitemapGone(res);
   });
   app.get("/sitemap-videos.xml", (_req, res) => {
-    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+    sendSitemapGone(res);
   });
   app.get("/sitemap-images-:i.xml", (_req, res) => {
-    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+    sendSitemapGone(res);
   });
   // DALGA 1 W1.2: digit'siz /sitemap-images.xml de SPA fallback yerine 410 dönmeli;
   // aksi halde Google bunu geçerli sitemap sanıp parse hatası / soft-404 raporluyor.
   app.get("/sitemap-images.xml", (_req, res) => {
-    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+    sendSitemapGone(res);
   });
   app.get(/^\/sitemap-stations-(\d+)\.xml$/, (_req, res) => {
-    res.status(410).setHeader('Content-Type', 'text/plain').send('Gone');
+    sendSitemapGone(res);
   });
 
 

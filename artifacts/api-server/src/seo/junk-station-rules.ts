@@ -128,6 +128,7 @@ export function evaluateJunkStation(station: {
   bitrate?: number;
   lastCheckOk?: boolean;
   lastCheckOkTime?: Date | string | null;
+  lastCheckTime?: Date | string | null;
 }): JunkDecision {
   const name = (station.name || '').trim();
   const slug = (station.slug || '').trim().toLowerCase();
@@ -146,18 +147,37 @@ export function evaluateJunkStation(station: {
   // streams flap, and we want to avoid flushing legitimate stations from
   // the index over a transient outage. The 30-day floor is conservative.
   if (station.lastCheckOk === false) {
-    const last = station.lastCheckOkTime
+    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+    const lastOk = station.lastCheckOkTime
       ? new Date(station.lastCheckOkTime as any).getTime()
       : NaN;
-    const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
-    // FAIL-OPEN on unknown: if we don't have a `lastCheckOkTime` timestamp
-    // we cannot prove the station has been dead for 30+ days, so we keep it
-    // indexable and rely on Radio-Browser's next sync to populate the field.
-    // This matches the spec ("son 30 gün recover etmemiş") strictly and
-    // avoids over-junking stations that simply have incomplete telemetry.
-    if (Number.isFinite(last) && Date.now() - last > THIRTY_DAYS_MS) {
+    const lastCheck = station.lastCheckTime
+      ? new Date(station.lastCheckTime as any).getTime()
+      : NaN;
+    const now = Date.now();
+
+    // Case A: we know when it last worked, and that was 30+ days ago.
+    if (Number.isFinite(lastOk) && now - lastOk > THIRTY_DAYS_MS) {
       return { isJunk: true, reason: 'stream-dead-30d' };
     }
+
+    // Case B (TR audit P1 follow-up): we have no successful-check timestamp
+    // at all (`lastCheckOkTime` missing), but Radio-Browser HAS been health-
+    // checking the station (`lastCheckTime` exists) and the most recent
+    // check was 30+ days ago and still failed. This catches stations that
+    // were never observed in a healthy state — exactly the "broken-stream-
+    // but-indexable" bucket the TR audit flagged. Without this we fail-open
+    // forever for anything Radio-Browser has never seen working.
+    if (
+      !Number.isFinite(lastOk) &&
+      Number.isFinite(lastCheck) &&
+      now - lastCheck > THIRTY_DAYS_MS
+    ) {
+      return { isJunk: true, reason: 'stream-never-recovered-30d' };
+    }
+
+    // Otherwise fail-open: incomplete telemetry, keep it indexable and let
+    // the next Radio-Browser sync populate the timestamps.
   }
 
   // NOTE: We deliberately do NOT mark every `-N` slug as junk here. Many

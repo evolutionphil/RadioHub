@@ -1,0 +1,31 @@
+kind = "slides"
+previewPath = "/megaradio-investor-deck/"
+title = "MegaRadio – Investor Deck"
+version = "1.0.0"
+id = "artifacts/megaradio-investor-deck"
+router = "path"
+
+[[integratedSkills]]
+name = "slides"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/megaradio-investor-deck/" ]
+localPort = 25000
+
+[services.development]
+run = "pnpm --filter @workspace/megaradio-investor-deck run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/megaradio-investor-deck", "run", "build" ]
+publicDir = "artifacts/megaradio-investor-deck/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25000"
+BASE_PATH = "/megaradio-investor-deck/"

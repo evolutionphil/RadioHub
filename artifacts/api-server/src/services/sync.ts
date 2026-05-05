@@ -64,6 +64,11 @@ export class SyncService {
       // Process logos with new optimization pipeline (parallel, non-blocking)
       logger.log('🎨 Starting logo optimization process...');
       this.processLogosInBackground();
+
+      // Hydrate stations whose `tags` field is missing/empty by re-fetching
+      // them from Radio-Browser by stationuuid (TR audit P2). Non-blocking.
+      logger.log('🏷️ Starting missing-tags hydration...');
+      this.hydrateMissingTagsInBackground();
       
       // Update sync log with final status
       syncLog.status = 'completed';
@@ -281,6 +286,8 @@ export class SyncService {
             tags: doc.tags,
             bitrate: doc.bitrate,
             lastCheckOk: doc.lastCheckOk,
+            lastCheckOkTime: doc.lastCheckOkTime,
+            lastCheckTime: doc.lastCheckTime,
           });
           if (verdict.isJunk) {
             doc.noIndex = true;
@@ -343,6 +350,12 @@ export class SyncService {
             tags: apiStation.tags,
             bitrate: apiStation.bitrate,
             lastCheckOk: apiStation.lastcheckok === 1,
+            lastCheckOkTime: apiStation.lastcheckoktime
+              ? new Date(apiStation.lastcheckoktime)
+              : undefined,
+            lastCheckTime: apiStation.lastchecktime
+              ? new Date(apiStation.lastchecktime)
+              : undefined,
           });
           let isJunk = verdict.isJunk;
           if (!isJunk) {
@@ -704,6 +717,118 @@ export class SyncService {
     } catch (error) {
       console.error('❌ Logo optimization process failed:', error);
     }
+  }
+
+  /**
+   * Hydrate `tags` for stations whose tags field is missing or empty
+   * (TR audit P2). Re-fetches each station by `stationuuid` from
+   * Radio-Browser and writes the upstream `tags` value back.
+   *
+   * - Skips stations already carrying tags.
+   * - Conservative concurrency / batch delay so it can run alongside
+   *   live traffic and the favicon + logo background jobs.
+   *
+   * NOTE: stations whose upstream Radio-Browser record has empty tags are
+   * counted under `emptyUpstream` and STILL match the candidate filter on
+   * future runs (no persisted "checked-empty" sentinel exists today). The
+   * `limit` knob caps work per pass so this re-query cost stays bounded;
+   * if upstream-empty churn becomes a real cost we can persist a
+   * `tagsCheckedAt` field and exclude recently-checked rows.
+   */
+  async hydrateMissingTagsInBackground(
+    options: { limit?: number; countryCode?: string } = {},
+  ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number }> {
+    const limit = options.limit ?? 1000;
+    const filter: Record<string, unknown> = {
+      stationuuid: { $exists: true, $nin: [null, ''] },
+      $or: [
+        { tags: { $exists: false } },
+        { tags: null },
+        { tags: '' },
+      ],
+    };
+    if (options.countryCode) {
+      filter.countryCode = options.countryCode.toUpperCase();
+    }
+
+    let processed = 0;
+    let hydrated = 0;
+    let emptyUpstream = 0;
+    let failed = 0;
+
+    try {
+      const stations = await Station.find(filter)
+        .select('_id stationuuid name')
+        .limit(limit)
+        .lean();
+
+      if (stations.length === 0) {
+        logger.log('🏷️ No stations need tags hydration');
+        return { processed, hydrated, emptyUpstream, failed };
+      }
+
+      logger.log(
+        `🏷️ Found ${stations.length} stations needing tags hydration${
+          options.countryCode ? ` (${options.countryCode.toUpperCase()})` : ''
+        }`,
+      );
+
+      const batchSize = 10;
+      for (let i = 0; i < stations.length; i += batchSize) {
+        const batch = stations.slice(i, i + batchSize);
+
+        const batchResults = await Promise.allSettled(
+          batch.map(async (station) => {
+            const uuid = (station as any).stationuuid as string;
+            const apiResp = await axios.get(
+              `https://de1.api.radio-browser.info/json/stations/byuuid/${encodeURIComponent(uuid)}`,
+              {
+                timeout: 10000,
+                headers: { 'User-Agent': 'MegaRadio/1.0 (tags-hydration)' },
+              },
+            );
+            const remote = Array.isArray(apiResp.data) ? apiResp.data[0] : null;
+            const tags =
+              remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
+            if (!tags) return { hydrated: false, empty: true };
+            await Station.updateOne(
+              { _id: (station as any)._id },
+              { $set: { tags } },
+            );
+            return { hydrated: true, empty: false };
+          }),
+        );
+
+        for (const r of batchResults) {
+          processed++;
+          if (r.status === 'fulfilled') {
+            if (r.value.hydrated) hydrated++;
+            else if (r.value.empty) emptyUpstream++;
+          } else {
+            failed++;
+          }
+        }
+
+        if ((i + batchSize) % 100 === 0 || i + batchSize >= stations.length) {
+          const total = stations.length;
+          const done = Math.min(i + batchSize, total);
+          logger.log(
+            `🏷️ Tags hydration progress: ${done}/${total} (✅${hydrated} ∅${emptyUpstream} ❌${failed})`,
+          );
+        }
+
+        // Be polite to the upstream API.
+        await new Promise((resolve) => setTimeout(resolve, 750));
+      }
+
+      logger.log(
+        `✅ Tags hydration completed: ${hydrated} hydrated, ${emptyUpstream} upstream-empty, ${failed} failed (of ${processed})`,
+      );
+    } catch (error) {
+      console.error('❌ Tags hydration process failed:', error);
+    }
+
+    return { processed, hydrated, emptyUpstream, failed };
   }
 }
 
