@@ -457,7 +457,7 @@ export class SeoRenderer {
             })
               .sort({ votes: -1 })
               .limit(24)
-              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk')
+              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
               .lean(),
             signal
           );
@@ -504,7 +504,7 @@ export class SeoRenderer {
             })
               .sort({ votes: -1 })
               .limit(24)
-              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk')
+              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
               .lean(),
             signal
           );

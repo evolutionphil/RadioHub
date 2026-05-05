@@ -47,6 +47,8 @@ interface StationLite {
   tags?: string;
   bitrate?: number;
   lastCheckOk?: boolean;
+  lastCheckOkTime?: Date | null;
+  lastCheckTime?: Date | null;
   country?: string;
   countryCode?: string;
   language?: string;
@@ -301,7 +303,7 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
     slug: { $exists: true, $ne: '' },
     $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
   })
-    .select('_id slug name url homepage tags bitrate lastCheckOk country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon')
+    .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon')
     .sort({ votes: -1, _id: 1 })
     .lean()
     .cursor({ batchSize: 500 });

@@ -702,7 +702,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       // Bulk-fetch the stations from the manifest. Mongo $in is bounded
       // (max 1000 per chunk) so a single round-trip is safe.
       const stationDocs = await Station.find({ _id: { $in: chunkInfo.stationIds } })
-        .select('_id slug name url homepage tags bitrate lastCheckOk country countryCode language languageCodes noIndex updatedAt logoAssets favicon')
+        .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex updatedAt logoAssets favicon')
         .lean();
 
       // Re-order by manifest order (Mongo doesn't preserve $in order).
