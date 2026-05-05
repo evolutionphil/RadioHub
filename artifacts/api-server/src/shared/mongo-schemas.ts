@@ -82,6 +82,7 @@ export interface IStation extends Document {
   isFeatured?: boolean; // Manual featured/popular station flag - shows in station's own country
   showInGlobalPopular?: boolean; // Also show in global popular section (requires isFeatured=true)
   aiDescriptionSkipped?: boolean; // Station was checked for AI description but had no info from OpenAI - don't recheck to save tokens
+  tagsCheckedAt?: Date; // Last time we re-queried Radio-Browser for this station's tags (whether upstream returned tags or was empty) - used to skip re-querying empty-upstream stations for a cooldown window
   createdAt: Date;
   updatedAt: Date;
 }
@@ -859,6 +860,7 @@ const StationSchema = new Schema<IStation>({
   showInGlobalPopular: { type: Boolean, default: false }, // Also show in global popular section (requires isFeatured=true)
   descriptions: { type: Schema.Types.Mixed, default: {} }, // Multi-language AI descriptions - { "en": "...", "tr": "...", etc }
   aiDescriptionSkipped: { type: Boolean, default: false, index: true }, // Station was checked for AI description but had no info from OpenAI - don't recheck to save tokens
+  tagsCheckedAt: { type: Date }, // Last time we re-queried Radio-Browser for this station's tags (whether upstream returned tags or was empty) - used to skip re-querying empty-upstream stations for a cooldown window
   hasLogo: { type: Boolean, default: false }, // Pre-computed flag: true if station has a valid favicon/logo - used for fast sorting in precomputed cache
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

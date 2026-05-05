@@ -729,23 +729,32 @@ export class SyncService {
    * - Conservative concurrency / batch delay so it can run alongside
    *   live traffic and the favicon + logo background jobs.
    *
-   * NOTE: stations whose upstream Radio-Browser record has empty tags are
-   * counted under `emptyUpstream` and STILL match the candidate filter on
-   * future runs (no persisted "checked-empty" sentinel exists today). The
-   * `limit` knob caps work per pass so this re-query cost stays bounded;
-   * if upstream-empty churn becomes a real cost we can persist a
-   * `tagsCheckedAt` field and exclude recently-checked rows.
+   * Stations whose upstream Radio-Browser record returns empty tags are
+   * stamped with `tagsCheckedAt = now` and excluded from the candidate
+   * filter for a cooldown window (~30 days), so we don't re-query
+   * genuinely-empty stations forever.
    */
   async hydrateMissingTagsInBackground(
     options: { limit?: number; countryCode?: string } = {},
   ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number }> {
     const limit = options.limit ?? 1000;
+    const cooldownMs = 30 * 24 * 60 * 60 * 1000; // 30 days
+    const cooldownCutoff = new Date(Date.now() - cooldownMs);
     const filter: Record<string, unknown> = {
       stationuuid: { $exists: true, $nin: [null, ''] },
       $or: [
         { tags: { $exists: false } },
         { tags: null },
         { tags: '' },
+      ],
+      $and: [
+        {
+          $or: [
+            { tagsCheckedAt: { $exists: false } },
+            { tagsCheckedAt: null },
+            { tagsCheckedAt: { $lt: cooldownCutoff } },
+          ],
+        },
       ],
     };
     if (options.countryCode) {
@@ -798,10 +807,16 @@ export class SyncService {
             const remote = Array.isArray(apiResp.data) ? apiResp.data[0] : null;
             const tags =
               remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
-            if (!tags) return { hydrated: false, empty: true };
+            if (!tags) {
+              await Station.updateOne(
+                { _id: station._id },
+                { $set: { tagsCheckedAt: new Date() } },
+              );
+              return { hydrated: false, empty: true };
+            }
             await Station.updateOne(
               { _id: station._id },
-              { $set: { tags } },
+              { $set: { tags, tagsCheckedAt: new Date() } },
             );
             return { hydrated: true, empty: false };
           }),
