@@ -1,0 +1,154 @@
+
+
+fearless-appreciation
+
+production
+
+
+
+Agent
+
+
+RadioHub
+Deployments
+Variables
+Metrics
+Settings
+themegaradio.com
+europe-west4-drams3a
+1 Replica
+
+HISTORY
+RadioHub
+/
+cfb4655b
+Deploying
+
+Apr 3, 2026 at 2:53 AM GMT+2
+themegaradio.com
+Details
+Build Logs
+Deploy Logs
+HTTP Logs
+Network Flow Logs
+Search build logs
+
+You reached the start of the range
+Apr 3, 2026 at 2:48 AM
+scheduling build on Metal builder "builder-dgvhlz"
+[snapshot] received sha256:ee86d73c69eeeb3cdadf78ae39a6d512c30e71dbb2f7db534a209a6f3f30d5a3 md5:403c11a64aaf8af0a304aac1a6ffc354
+receiving snapshot
+22.3 MB
+1.8s
+found 'Dockerfile' at 'Dockerfile'
+found 'nixpacks.toml' at 'nixpacks.toml'
+found 'railway.toml' at 'railway.toml'
+analyzing snapshot
+22.3 MB
+154ms
+uploading snapshot
+22.3 MB
+445ms
+scheduling build on Metal builder "builder-dgvhlz"
+fetched snapshot sha256:ee86d73c69eeeb3cdadf78ae39a6d512c30e71dbb2f7db534a209a6f3f30d5a3 (23 MB bytes)
+fetching snapshot
+22.3 MB
+305ms
+unpacking archive
+29.2 MB
+312ms
+
+internal
+load build definition from Dockerfile
+0ms
+
+internal
+load metadata for docker.io/library/node:20-slim
+567ms
+
+internal
+load .dockerignore
+0ms
+
+base
+FROM docker.io/library/node:20-slim@sha256:1e85773c98c31d4fe5b545e4cb17379e617b348832fb3738b22a08f68dec30f3
+10ms
+
+internal
+load build context
+1ms
+
+base
+RUN npm ci --include=dev cached
+0ms
+
+base
+COPY package.json package-lock.json* ./ cached
+0ms
+
+base
+WORKDIR /app cached
+0ms
+
+base
+RUN apt-get update && apt-get install -y     python3     make     g++     && rm -rf /var/lib/apt/lists/* cached
+0ms
+
+base
+COPY . .
+780ms
+
+base
+RUN npm run build
+14s
+⚡ Done in 68ms
+
+production
+RUN npm ci --omit=dev cached
+0ms
+
+production
+COPY package.json package-lock.json* ./ cached
+0ms
+
+production
+WORKDIR /app cached
+0ms
+
+production
+RUN apt-get update && apt-get install -y     ca-certificates     && rm -rf /var/lib/apt/lists/* cached
+0ms
+
+production
+COPY --from=base /app/dist ./dist
+246ms
+
+production
+COPY --from=base /app/public ./public
+297ms
+
+production
+COPY --from=base /app/attached_assets ./attached_assets
+186ms
+
+exporting to docker image format
+2s
+containerimage.config.digest: sha256:e7d86af39b4ae7d18eb90340d4cfd3097485d4892550f06ced1603f698826a67
+containerimage.digest: sha256:ce0e6c6ec8ea26391f3ce32e50424eb92de524ec91a595ecd7a7a25194189765
+containerimage.descriptor: eyJtZWRpYVR5cGUiOiJhcHBsaWNhdGlvbi92bmQub2NpLmltYWdlLm1hbmlmZXN0LnYxK2pzb24iLCJkaWdlc3QiOiJzaGEyNTY6Y2UwZTZjNmVjOGVhMjYzOTFmM2NlMzJlNTA0MjRlYjkyZGU1MjRlYzkxYTU5NWVjZDdhN2EyNTE5NDE4OTc2NSIsInNpemUiOjI1ODQsImFubm90YXRpb25zIjp7Im9yZy5vcGVuY29udGFpbmVycy5pbWFnZS5jcmVhdGVkIjoiMjAyNi0wNC0wM1QwMDo1Mzo0MVoifSwicGxhdGZvcm0iOnsiYXJjaGl0ZWN0dXJlIjoiYW1kNjQiLCJvcyI6ImxpbnV4In19
+image push
+239.4 MB
+5.3s
+ 
+====================
+Starting Healthcheck
+====================
+Path: /healthz
+Retry window: 5m0s
+ 
+Attempt #1 failed with service unavailable. Continuing to retry for 4m49s
+Attempt #2 failed with service unavailable. Continuing to retry for 4m38s
+Attempt #3 failed with service unavailable. Continuing to retry for 4m26s
+Attempt #4 failed with service unavailable. Continuing to retry for 4m12s
+
+

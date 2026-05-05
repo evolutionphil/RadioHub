@@ -1,0 +1,739 @@
+index-d1RNz10s.js:164 LCP: 456
+index-d1RNz10s.js:164 LCP: 692
+sw.js:7 [SW] Service Worker installing...
+c300.png:1  Failed to load resource: net::ERR_NAME_NOT_RESOLVED
+c300.png:1  Failed to load resource: net::ERR_NAME_NOT_RESOLVED
+c300.png:1  Failed to load resource: net::ERR_NAME_NOT_RESOLVED
+sw.js:13 [SW] Service Worker activating...
+index-d1RNz10s.js:164 FID: 1
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+index-d1RNz10s.js:164 Fetch failed loading: POST "https://pagead2.googlesyndication.com/pagead/ping?e=1".
+window.fetch @ index-d1RNz10s.js:164
+Xq @ show_ads_impl_fy2021.js:131
+$q @ show_ads_impl_fy2021.js:131
+(anonymous) @ show_ads_impl_fy2021.js:132
+setTimeout
+l @ show_ads_impl_fy2021.js:132
+yq @ show_ads_impl_fy2021.js:130
+Ja @ show_ads_impl_fy2021.js:126
+RB @ show_ads_impl_fy2021.js:252
+YB @ show_ads_impl_fy2021.js:254
+await in YB
+BK @ show_ads_impl_fy2021.js:436
+lJ @ show_ads_impl_fy2021.js:435
+(anonymous) @ show_ads_impl_fy2021.js:400
+Bg @ show_ads_impl_fy2021.js:400
+Bg @ show_ads_impl_fy2021.js:405
+jD @ show_ads_impl_fy2021.js:278
+kD @ show_ads_impl_fy2021.js:278
+lD @ show_ads_impl_fy2021.js:279
+pD @ show_ads_impl_fy2021.js:280
+(anonymous) @ show_ads_impl_fy2021.js:362
+EH @ show_ads_impl_fy2021.js:362
+(anonymous) @ show_ads_impl_fy2021.js:361
+(anonymous) @ show_ads_impl_fy2021.js:249
+Wb @ show_ads_impl_fy2021.js:249
+(anonymous) @ show_ads_impl_fy2021.js:249
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Gn @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+ga @ clarity.js:2
+Di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Ci @ clarity.js:2
+pa @ clarity.js:2
+(anonymous) @ clarity.js:2
+childList
+Mz @ show_ads_impl_fy2021.js:198
+Nz @ show_ads_impl_fy2021.js:199
+hD @ show_ads_impl_fy2021.js:275
+kD @ show_ads_impl_fy2021.js:278
+lD @ show_ads_impl_fy2021.js:279
+pD @ show_ads_impl_fy2021.js:280
+(anonymous) @ show_ads_impl_fy2021.js:362
+EH @ show_ads_impl_fy2021.js:362
+(anonymous) @ show_ads_impl_fy2021.js:361
+(anonymous) @ show_ads_impl_fy2021.js:249
+Wb @ show_ads_impl_fy2021.js:249
+(anonymous) @ show_ads_impl_fy2021.js:249
+usePushNotifications-BO1s_TxE.js:1 [Violation] 'setInterval' handler took 136ms
+usePushNotifications-BO1s_TxE.js:1 [Violation] 'setInterval' handler took 88ms
+ Fetch finished loading: POST "https://themegaradio.com/cdn-cgi/zaraz/t".
+window.fetch @ index-d1RNz10s.js:164
+(anonymous) @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:3
+zaraz.track @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:1
+zaraz._c @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:5
+(anonymous) @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:5
+ XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+jr @ clarity.js:2
+Di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Ci @ clarity.js:2
+Xe @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+Ae @ clarity.js:2
+i @ clarity.js:2
+(anonymous) @ clarity.js:2
+ Fetch finished loading: POST "https://themegaradio.com/cdn-cgi/zaraz/t".
+window.fetch @ index-d1RNz10s.js:164
+(anonymous) @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:3
+zaraz.track @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:1
+zaraz._c @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:5
+(anonymous) @ cdn-cgi/zaraz/s.js?z…lM0ElNUIlNUQlN0Q=:5
+ XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+jr @ clarity.js:2
+ln @ clarity.js:2
+(anonymous) @ clarity.js:2
+Navigated to https://themegaradio.com/tr
+index-d1RNz10s.js:164 LCP: 596
+index-d1RNz10s.js:41 [Violation] 'setTimeout' handler took 139ms
+[Violation] Forced reflow while executing JavaScript took 36ms
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+Fetch finished loading: GET "<URL>".
+index-d1RNz10s.js:164 LCP: 1008
+sw.js:7 [SW] Service Worker installing...
+index-d1RNz10s.js:26 [Violation] 'message' handler took 670ms
+tr:313  GET https://d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png net::ERR_NAME_NOT_RESOLVED
+index-d1RNz10s.js:41 [Violation] 'setTimeout' handler took 559ms
+tr:313  GET https://d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png net::ERR_NAME_NOT_RESOLVED
+index-d1RNz10s.js:41 [Violation] 'setTimeout' handler took 309ms
+tr:313  GET https://d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png net::ERR_NAME_NOT_RESOLVED
+v8c78df7c7c0f484497ecbca7046644da1771523124516:1 XHR finished loading: POST "https://themegaradio.com/cdn-cgi/rum?".
+n.sendObjectBeacon @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+C @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+U @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+setTimeout
+(anonymous) @ v8c78df7c7c0f484497ecbca7046644da1771523124516:1
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Gn @ clarity.js:2
+ea @ clarity.js:2
+start @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+Yu @ clarity.js:2
+Xu.<computed> @ clarity.js:2
+zu @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+index-d1RNz10s.js:34  GET https://d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png net::ERR_NAME_NOT_RESOLVED
+$u @ index-d1RNz10s.js:34
+kb @ index-d1RNz10s.js:41
+Fg @ index-d1RNz10s.js:41
+$g @ index-d1RNz10s.js:41
+Ib @ index-d1RNz10s.js:41
+Dg @ index-d1RNz10s.js:41
+E @ index-d1RNz10s.js:26
+z @ index-d1RNz10s.js:26
+show_ads_impl_fy2021.js:100 XHR finished loading: GET "https://ep1.adtrafficquality.google/getconfig/sodar?sv=200&tid=gda&tv=r20260415&st=env&sjk=2209054596435977".
+(anonymous) @ show_ads_impl_fy2021.js:100
+ik @ show_ads_impl_fy2021.js:100
+hk @ show_ads_impl_fy2021.js:99
+jk @ show_ads_impl_fy2021.js:101
+U3 @ show_ads_impl_fy2021.js:761
+(anonymous) @ show_ads_impl_fy2021.js:761
+index-d1RNz10s.js:26 [Violation] 'message' handler took 236ms
+index-d1RNz10s.js:26 [Violation] 'message' handler took 659ms
+d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png:1  GET https://d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png net::ERR_NAME_NOT_RESOLVED
+d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png:1  GET https://d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png net::ERR_NAME_NOT_RESOLVED
+index-d1RNz10s.js:26 [Violation] 'message' handler took 681ms
+d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png:1  GET https://d3kle7qwymxpcy.cloudfront.net/images/broadcasts/05/11/127542/1/c300.png net::ERR_NAME_NOT_RESOLVED
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Gn @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+clarity.js:2 XHR finished loading: POST "https://f.clarity.ms/collect".
+pi @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+hi @ clarity.js:2
+(anonymous) @ clarity.js:2
+setTimeout
+V @ clarity.js:2
+di @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+it @ clarity.js:2
+Gn @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+(anonymous) @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2
+Promise.then
+c @ clarity.js:2
+o @ clarity.js:2

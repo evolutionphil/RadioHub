@@ -1,0 +1,34 @@
+index-v2HRB7kn.js:164 LCP: 164
+index-v2HRB7kn.js:164 LCP: 192
+index-v2HRB7kn.js:164 LCP: 192
+index-v2HRB7kn.js:164 LCP: 220
+api/auth/me:1  Failed to load resource: the server responded with a status of 403 ()
+api/translations/en:1  Failed to load resource: the server responded with a status of 403 ()
+api/filters/countries:1  Failed to load resource: the server responded with a status of 403 ()
+api/seo/page-data?url=%2Ftr:1  Failed to load resource: the server responded with a status of 403 ()
+api/footer-social-media:1  Failed to load resource: the server responded with a status of 403 ()
+api/stations/precomputed?countryName=global&page=1&limit=18:1  Failed to load resource: the server responded with a status of 403 ()
+api/translations/tr:1  Failed to load resource: the server responded with a status of 403 ()
+api/location:1  Failed to load resource: the server responded with a status of 403 ()
+api/translations/de:1  Failed to load resource: the server responded with a status of 403 ()
+api/countries:1  Failed to load resource: the server responded with a status of 403 ()
+api/genres/precomputed?:1  Failed to load resource: the server responded with a status of 403 ()
+sw.js:7 [SW] Service Worker installing...
+api/genres/discoverable:1  Failed to load resource: the server responded with a status of 403 ()
+api/stations/precomputed?countryName=global&page=1&limit=12:1  Failed to load resource: the server responded with a status of 403 ()
+api/stations/precomputed?countryName=global&page=1&limit=12:1  Failed to load resource: the server responded with a status of 403 ()
+sw.js:13 [SW] Service Worker activating...
+api/translations/en:1  Failed to load resource: the server responded with a status of 403 ()
+api/stations/precomputed?countryName=global&page=1&limit=18:1  Failed to load resource: the server responded with a status of 403 ()
+api/translations/tr:1  Failed to load resource: the server responded with a status of 403 ()
+api/filters/countries:1  Failed to load resource: the server responded with a status of 403 ()
+api/footer-social-media:1  Failed to load resource: the server responded with a status of 403 ()
+api/seo/page-data?url=%2Ftr:1  Failed to load resource: the server responded with a status of 403 ()
+api/location:1  Failed to load resource: the server responded with a status of 403 ()
+api/translations/de:1  Failed to load resource: the server responded with a status of 403 ()
+api/genres/precomputed?:1  Failed to load resource: the server responded with a status of 403 ()
+api/countries:1  Failed to load resource: the server responded with a status of 403 ()
+index-v2HRB7kn.js:164 FID: 0.40000009536743164
+api/genres/discoverable:1  Failed to load resource: the server responded with a status of 403 ()
+api/stations/precomputed?countryName=global&page=1&limit=12:1  Failed to load resource: the server responded with a status of 403 ()
+api/stations/precomputed?countryName=global&page=1&limit=12:1  Failed to load resource: the server responded with a status of 403 ()

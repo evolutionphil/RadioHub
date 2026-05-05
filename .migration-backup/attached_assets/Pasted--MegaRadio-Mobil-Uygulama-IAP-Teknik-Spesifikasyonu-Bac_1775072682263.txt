@@ -1,0 +1,118 @@
+## 📋 MegaRadio Mobil Uygulama — IAP Teknik Spesifikasyonu (Backend Developer İçin)
+
+### 1. Ürün (Product) Tanımları
+Mobil uygulamada tanımlı 4 adet ürün var. Bu ID'ler App Store Connect ve Google Play Console'da birebir eşleşmek zorunda:
+| Sabit Adı | Product ID (Store'lardaki) | Tür | Süre |
+|---|---|---|---|
+| REMOVE_ADS_YEARLY | megaradio_remove_ads_yearly1 | Subscription (auto-renewable) | 1 Yıl |
+| PREMIUM_MONTHLY | megaradio_premium_monthly1 | Subscription (auto-renewable) | 1 Ay (7 gün ücretsiz deneme dahil) |
+| PREMIUM_YEARLY | megaradio_premium_yearly | Subscription (auto-renewable) | 1 Yıl |
+| PREMIUM_LIFETIME | megaradio_premium_lifetime | In-App Purchase (non-consumable, tek seferlik) | Ömür boyu |
+### 2. Plan Yapısı ve Feature Mapping
+Mobil uygulama her Product ID'yi bir plan adına (PremiumPlan) eşliyor. Backend'in de aynı plan adlarını kullanması gerekiyor:
+type PremiumPlan = 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime'
+**Product ID → Plan eşlemesi:**
+| Product ID | Plan Adı |
+|---|---|
+| megaradio_remove_ads_yearly1 | remove_ads |
+| megaradio_premium_monthly1 | premium_monthly |
+| megaradio_premium_yearly | premium_yearly |
+| megaradio_premium_lifetime | premium_lifetime |
+**Plan → Feature erişim matrisi:**
+| Feature | none | remove_ads | premium_monthly | premium_yearly | premium_lifetime |
+|---|---|---|---|---|---|
+| remove_ads | ❌ | ✅ | ✅ | ✅ | ✅ |
+| song_info | ❌ | ❌ | ✅ | ✅ | ✅ |
+| spotify_link | ❌ | ❌ | ✅ | ✅ | ✅ |
+| youtube_link | ❌ | ❌ | ✅ | ✅ | ✅ |
+| hd_stream | ❌ | ❌ | ✅ | ✅ | ✅ |
+| song_history | ❌ | ❌ | ✅ | ✅ | ✅ |
+| stream_record | ❌ | ❌ | ✅ | ✅ | ✅ |
+> **Önemli:** `remove_ads` planı **sadece** reklam kaldırma hakkı verir. Diğer premium özellikler (`song_info`, `hd_stream` vb.) açılmaz. Premium planların üçü de (`monthly`, `yearly`, `lifetime`) tüm özellikleri açar.
+### 3. Satın Alma Akışı (Purchase Flow)
+[Kullanıcı] → Paywall'da plan seçer → [Mobil Uygulama] Store'a satın alma isteği gönderir
+                                              ↓
+                                    Store işlemi onaylar
+                                              ↓
+                              purchaseUpdatedListener tetiklenir
+                                              ↓
+                          handlePurchaseSuccess(purchase) çağrılır
+                                              ↓
+                      productId → plan eşlemesi yapılır (PRODUCT_TO_PLAN)
+                                              ↓
+                      Süre hesaplanır (monthly=30 gün, yearly=365 gün, lifetime=null)
+                                              ↓
+                      premiumStore.setPremiumStatus(plan, expiryDate) → AsyncStorage'a kaydeder
+                                              ↓
+                      finishTransaction() → Store'a işlem tamamlandı bilgisi gider
+### 4. Mevcut Durum: Tamamen Lokal (Server-Side Validation YOK)
+Şu an mobil uygulama satın almaları tamamen lokal yönetiyor:
+Satın alma sonrası plan ve expiryDate doğrudan AsyncStorage'a yazılıyor
+Herhangi bir backend API çağrısı yapılmıyor
+Receipt validation (makbuz doğrulama) yok
+Kullanıcı cihaz değiştirirse, sadece restorePurchases() ile Store'dan geri yükleme yapılıyor
+### 5. Backend'in Yapması Gerekenler
+Backend developer'ın uygulaması gereken entegrasyon:
+#### 5.1 — Subscription Endpoint'i
+POST /api/user/subscription
+**Mobil uygulamanın göndereceği payload:**
+json
+{
+  "platform": "ios" | "android",
+  "productId": "megaradio_premium_monthly1",
+  "plan": "premium_monthly",
+  "transactionId": "...",
+  "receipt": "...",
+  "purchaseToken": "..."  // Android only
+}
+**Backend'in döneceği response:**
+json
+{
+  "success": true,
+  "plan": "premium_monthly",
+  "expiryDate": "2026-04-15T00:00:00.000Z",
+  "features": ["remove_ads", "song_info", "spotify_link", "youtube_link", "hd_stream", "song_history", "stream_record"]
+}
+#### 5.2 — Receipt Validation
+iOS: Apple'ın App Store Server API v2'sini kullanarak receipt doğrulaması
+Android: Google Play Developer API ile purchaseToken doğrulaması
+#### 5.3 — Kullanıcı Durumu Sorgulama
+GET /api/user/subscription
+Mobil uygulama açılışta kullanıcının güncel abonelik durumunu sorgulamak için kullanacak.
+**Response:**
+json
+{
+  "plan": "premium_monthly",
+  "expiryDate": "2026-04-15T00:00:00.000Z",
+  "isActive": true,
+  "features": ["remove_ads", "song_info", "spotify_link", "youtube_link", "hd_stream", "song_history", "stream_record"]
+}
+#### 5.4 — Backend Veritabanı Şeması (Öneri)
+users_subscriptions:
+{
+  userId: string,
+  plan: "none" | "remove_ads" | "premium_monthly" | "premium_yearly" | "premium_lifetime",
+  productId: string,        // Store product ID
+  platform: "ios" | "android",
+  transactionId: string,
+  receipt: string,
+  purchaseToken: string?,   // Android only
+  expiryDate: Date | null,  // null = lifetime
+  isActive: boolean,
+  createdAt: Date,
+  updatedAt: Date
+}
+### 6. Varsayılan Fiyatlar (Paywall'da Gösterilen)
+| Plan | Varsayılan Fiyat | Periyot |
+|---|---|---|
+| Remove Ads | €5.99 | Yıllık |
+| Premium Monthly | €3.99 | Aylık (7 gün ücretsiz deneme) |
+| Premium Yearly | €29.99 | Yıllık |
+| Premium Lifetime | €59.99 | Tek seferlik |
+> Bu fiyatlar Store'dan dinamik olarak çekilir. Yukarıdakiler sadece fallback değerlerdir.
+### 7. Kritik Notlar
+Plan adları değişmemeli. Mobil uygulama remove_ads, premium_monthly, premium_yearly, premium_lifetime string'lerini kullanıyor. Backend bunlarla birebir uyumlu olmalı.
+premium_lifetime planının expiryDate'i null'dır. Backend bunu sonsuz abonelik olarak değerlendirmeli.
+remove_ads planı premium değildir. Sadece reklam kaldırır, diğer premium özellikleri açmaz. Backend'in premium ve pro gibi farklı isimlendirmeler kullanması yerine yukarıdaki 5 plan adını doğrudan kullanması gerekir.
+Restore akışı: Kullanıcı cihaz değiştirdiğinde getAvailablePurchases() ile Store'dan tüm aktif satın almalar çekilir ve en yüksek rank'lı plan aktif edilir. Rank sırası: none(0) < remove_ads(1) < premium_monthly(2) < premium_yearly(3) < premium_lifetime(4).
+Subscription type ayrımı: premium_lifetime hariç tüm ürünler type: 'subs' (subscription) olarak satın alınır. premium_lifetime ise type: 'in-app' (non-consumable one-time purchase) olarak satın alınır.

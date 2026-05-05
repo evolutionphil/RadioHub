@@ -1,0 +1,136 @@
+Şimdi backend developer için dokümantasyon, test hesabı ve App Privacy Labels rehberini oluşturacağım:
+Action: file_editor create /app/frontend/BACKEND_DELETE_ACCOUNT_API.md --file-text "# Backend Developer: Delete Account API Gereksinimi
+
+## Apple Policy Zorunluluğu (Guideline 5.1.1)
+Apple, hesap oluşturma özelliği olan tüm uygulamaların **hesap silme** özelliği sunmasını zorunlu kılıyor. Bu endpoint olmadan uygulama **REJECT** edilecektir.
+
+## Gerekli API Endpoint
+
+### `DELETE /api/user/delete-account`
+
+**Headers:**
+```
+Authorization: Bearer <jwt_token>
+```
+
+**Response (Başarılı):**
+```json
+{
+  \"success\": true,
+  \"message\": \"Account deleted successfully\"
+}
+```
+
+**Response (Hata):**
+```json
+{
+  \"success\": false,
+  \"message\": \"Could not delete account\"
+}
+```
+
+## Backend'de Yapılması Gerekenler
+
+1. **Kullanıcı verisini sil veya anonimleştir:**
+   - Kullanıcı profili (ad, email, avatar)
+   - Favori istasyonlar
+   - Dinleme geçmişi
+   - Takipçi/Takip edilen ilişkileri
+   - Push notification token'ları
+   - Bildirimler
+
+2. **Aktif abonelikleri iptal et:**
+   - Apple/Google tarafındaki subscription'ları iptal etmek kullanıcının sorumluluğu (bu konuda kullanıcıya bilgi verilecek)
+   - Backend'deki premium flag'leri temizle
+
+3. **GDPR Uyumluluk:**
+   - 30 gün içinde tüm kişisel verileri sil (Apple ve GDPR gereksinimi)
+   - Anonim istatistik verisi tutulabilir
+
+4. **Rate Limiting:**
+   - Bu endpoint'e rate limiting ekle (brute-force koruması)
+
+## Mevcut API Yapısı Referans
+- Base URL: `https://themegaradio.com`
+- Auth header: `Authorization: Bearer <jwt_token>`
+- Mevcut DELETE endpoint örneği: `DELETE /api/user/favorites/:stationId`
+
+## Frontend Tarafı
+Frontend'de \"Delete Account\" butonu ve onay modalı zaten eklendi:
+- `frontend/app/(tabs)/profile.tsx` → \"Delete Account\" butonu
+- Kullanıcıdan \"delete\" yazmasını istiyor (yanlışlıkla silme koruması)
+- API çağrısı: `api.delete('/api/user/delete-account')`
+
+## Test
+Endpoint hazır olduğunda test etmek için:
+```bash
+curl -X DELETE https://themegaradio.com/api/user/delete-account \
+  -H \"Authorization: Bearer <test_user_token>\" \
+  -H \"Content-Type: application/json\"
+```
+"
+Observation: Create successful: /app/frontend/BACKEND_DELETE_ACCOUNT_API.md
+
+Fetching debug logs for expo
+
+==> /var/log/supervisor/expo.err.log <==
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+
+==> /var/log/supervisor/expo.out.log <==
+ LOG  [web] Logs will appear in the browser console
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 49ms node_modules/expo-router/node/render.js (1 module)
+[WatchService] Not available (non-iOS or no native module)
+[WearOSService] Not available (non-Android or no native module)
+[NativeCast] Google Cast not available (expected on web)
+[NativeCast] AirPlay not available (expected on non-iOS)
+[Onboarding] All images preloaded
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 1165ms index.ts (1 module)
+λ Bundled 42ms node_modules/expo-router/node/render.js (1 module)
+[WatchService] Not available (non-iOS or no native module)
+[WearOSService] Not available (non-Android or no native module)
+[NativeCast] Google Cast not available (expected on web)
+[NativeCast] AirPlay not available (expected on non-iOS)
+[Onboarding] All images preloaded
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 669ms index.ts (1 module)
+Web Bundled 50ms index.ts (1 module)
+ LOG  [web] Logs will appear in the browser console
+
+
+Fetching debug logs for backend
+
+==> /var/log/supervisor/backend.err.log <==
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [440] using WatchFiles
+INFO:     Started server process [464]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+
+==> /var/log/supervisor/backend.out.log <==
+
+
+Fetching debug logs for mongodb
+
+tail: cannot open '/var/log/supervisor/mongodb*.log' for reading: No such file or directory

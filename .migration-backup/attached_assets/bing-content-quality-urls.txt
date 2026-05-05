@@ -1,0 +1,56 @@
+# 51 URLs from Bing Webmaster's NotIndexedAndMayNeedAttention/ContentQuality
+# export. Source CSV:
+#   themegaradio.com_SitemapIndexCoverageIssueDetail_4_22_2026_1776870207368.csv
+# Re-run `tsx scripts/audit-51-urls.ts` to refresh
+# attached_assets/task-17-51url-status.csv after migration runs in production.
+https://themegaradio.com/th/สถานี/radio-tlaxcala-tlaxcala-1430-am-xett-am-coracyt-tlaxcala-tlaxcala
+https://themegaradio.com/lv/stacija/love-lokale-omroep-volendam-edam-dab
+https://themegaradio.com/fi/asema/ard-dolby-atmos-test-1
+https://themegaradio.com/en/station/jefferson-county-ny-police-fire-and-ems
+https://themegaradio.com/sk/stanica/la-comadre-irapuato-1063-fm-xhito-fm-grupo-acir-irapuato-gt
+https://themegaradio.com/hu/radio/war-fm-gilgandra-989-fm-mp3-1
+https://themegaradio.com/hu/radio/cfqx-fm-1041-qx104-country-winnipeg-mb
+https://themegaradio.com/hu/radio/cjwv-oldies-967-fm
+https://themegaradio.com/hr/stanica/radio-maria-kenya-nairobi
+https://themegaradio.com/hu/radio/magic-fm-agrinio
+https://themegaradio.com/hu/radio/radio-mas-997-fm
+https://themegaradio.com/no/stasjon/life-radio-non-stop-music
+https://themegaradio.com/hr/stanica/ckap-1009-moose-fm-kapuskasing-on
+https://themegaradio.com/de/sender/cleansingmusic-cleansing-70s-mp3
+https://themegaradio.com/th/สถานี/australian-digital-radio-network-only-mozart-mp3
+https://themegaradio.com/mr/steshan/exa-fm-1003-campeche-1003-fm-xhmi-fm-ncs-ncleo-comunicacin-del-sureste-campeche-campeche
+https://themegaradio.com/gu/સ્ટેશન/la-invasora-tijuana-xha-fm-945-fm-uniradio-tijuana-baja-california
+https://themegaradio.com/ko/스테이션/radio-liberty-multiplayer-phonk-remix
+https://themegaradio.com/zu/isiteshi/more-bounce-to-the-ounce
+https://themegaradio.com/ro/statie/chas-fm-kiss-1005-sault-ste-marie-on
+https://themegaradio.com/ro/statie/sveriges-radio-p4-vst
+https://themegaradio.com/ko/스테이션/brillux-radio
+https://themegaradio.com/id/stasiun/gippsland-fm-morwell-1047-fm-aac
+https://themegaradio.com/zh/电台/cjed-fm-1051-the-river-niagara-falls-on
+https://themegaradio.com/ur/اسٹیشن/exa-fm-983-ciudad-jurezel-paso-983-fm-xhpx-fm-mvs-radio-ciudad-jurez-chihuahua
+https://themegaradio.com/ro/statie/star-fm-maximum-rock-country-rock
+https://themegaradio.com/el/σταθμος/ckgb-fm-993-kiss-993-timmins
+https://themegaradio.com/ko/스테이션/la-rancherita-los-mochis-917-fm-xhecu-fm-grupo-radio-centro-los-mochis-si
+https://themegaradio.com/ta/நிலையம்/fiesta-mexicana-irapuato-1055-fm
+https://themegaradio.com/ko/스테이션/decennial-gothica-radio-ii
+https://themegaradio.com/zu/isiteshi/mystery-and-suspense-radio
+https://themegaradio.com/vi/dai/the-big-top-40-show-sundays-4-7pm-1
+https://themegaradio.com/no/stasjon/phoenix-fm-bendigo-1067-fm-mp3
+https://themegaradio.com/th/สถานี/catedral-fm-sp
+https://themegaradio.com/th/สถานี/exa-fm-973-mty-973-fm-xhsr-fm-mvs-radio-monterrey-nuevo-len
+https://themegaradio.com/sl
+https://themegaradio.com/ja/ステーション/east-fm-1027-tamil
+https://themegaradio.com/de/sender/allzic-radio-brazil
+https://themegaradio.com/es/estacion/south-carolina-public-radio
+https://themegaradio.com/fa/station/rmn-dxdc-davao
+https://themegaradio.com/en/station/radio-back-in-itime
+https://themegaradio.com/az/stansiya/kolednoto-radio
+https://themegaradio.com/ta/நிலையம்/lokale-omroep-goirle-radio
+https://themegaradio.com/da
+https://themegaradio.com/es/estacion/radio-4-brainport-eindhoven-64-k-aac
+https://themegaradio.com/es/estacion/radio-olimp-1045-fm
+https://themegaradio.com/kn/ನಿಲ್ದಾಣ/exa-fm-983-ciudad-jurezel-paso-983-fm-xhpx-fm-mvs-radio-ciudad-jurez-chihuahua
+https://themegaradio.com/zh/电台/sanctuary-radio-uganda-mbuya-mp3
+https://themegaradio.com/af/stasie/schwarzwaldradio-aac-new-stream-url-as-of-2023
+https://themegaradio.com/ru/stantsiya/cms-fm-canberra-911-fm-mp3
+https://themegaradio.com/zh/电台/mdr-kultur-low

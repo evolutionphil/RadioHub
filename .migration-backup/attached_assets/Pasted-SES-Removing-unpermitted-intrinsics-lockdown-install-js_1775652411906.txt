@@ -1,0 +1,104 @@
+SES Removing unpermitted intrinsics
+lockdown-install.js:1 SES Removing unpermitted intrinsics
+index-v2HRB7kn.js:164 LCP: 488
+index-v2HRB7kn.js:164 LCP: 792
+index-v2HRB7kn.js:49  GET https://api.themegaradio.com/api/translations/en/critical 404 (Not Found)
+(anonymous) @ index-v2HRB7kn.js:49
+i @ index-v2HRB7kn.js:49
+x @ index-v2HRB7kn.js:49
+start @ index-v2HRB7kn.js:49
+fetch @ index-v2HRB7kn.js:49
+ni @ index-v2HRB7kn.js:49
+onSubscribe @ index-v2HRB7kn.js:49
+subscribe @ index-v2HRB7kn.js:49
+(anonymous) @ index-v2HRB7kn.js:49
+tg @ index-v2HRB7kn.js:39
+Ra @ index-v2HRB7kn.js:41
+ro @ index-v2HRB7kn.js:41
+mp @ index-v2HRB7kn.js:41
+Jn @ index-v2HRB7kn.js:39
+Nb @ index-v2HRB7kn.js:41
+sr @ index-v2HRB7kn.js:41
+Ig @ index-v2HRB7kn.js:41
+E @ index-v2HRB7kn.js:26
+z @ index-v2HRB7kn.js:26Understand this error
+index-v2HRB7kn.js:49  GET https://api.themegaradio.com/api/admin/stations?page=1&limit=50&sortBy=favicon&sortOrder=desc&hasDescriptions=all 500 (Internal Server Error)
+Fj @ index-v2HRB7kn.js:49
+getAdminStations @ api-COunUqGk.js:1
+queryFn @ stations-CXOw5vss.js:19
+i @ index-v2HRB7kn.js:49
+x @ index-v2HRB7kn.js:49
+start @ index-v2HRB7kn.js:49
+fetch @ index-v2HRB7kn.js:49
+ni @ index-v2HRB7kn.js:49
+onSubscribe @ index-v2HRB7kn.js:49
+subscribe @ index-v2HRB7kn.js:49
+(anonymous) @ index-v2HRB7kn.js:49
+tg @ index-v2HRB7kn.js:39
+Ra @ index-v2HRB7kn.js:41
+ro @ index-v2HRB7kn.js:41
+mp @ index-v2HRB7kn.js:41
+Jn @ index-v2HRB7kn.js:39
+Nb @ index-v2HRB7kn.js:41
+sr @ index-v2HRB7kn.js:41
+Ig @ index-v2HRB7kn.js:41
+E @ index-v2HRB7kn.js:26
+z @ index-v2HRB7kn.js:26Understand this error
+lockdown-install.js:1 SES Removing unpermitted intrinsics
+index-v2HRB7kn.js:49  GET https://api.themegaradio.com/api/translations/en/critical 404 (Not Found)
+(anonymous) @ index-v2HRB7kn.js:49
+i @ index-v2HRB7kn.js:49
+x @ index-v2HRB7kn.js:49
+(anonymous) @ index-v2HRB7kn.js:49
+Promise.then
+(anonymous) @ index-v2HRB7kn.js:49
+Promise.catch
+x @ index-v2HRB7kn.js:49
+start @ index-v2HRB7kn.js:49
+fetch @ index-v2HRB7kn.js:49
+ni @ index-v2HRB7kn.js:49
+onSubscribe @ index-v2HRB7kn.js:49
+subscribe @ index-v2HRB7kn.js:49
+(anonymous) @ index-v2HRB7kn.js:49
+tg @ index-v2HRB7kn.js:39
+Ra @ index-v2HRB7kn.js:41
+ro @ index-v2HRB7kn.js:41
+mp @ index-v2HRB7kn.js:41
+Jn @ index-v2HRB7kn.js:39
+Nb @ index-v2HRB7kn.js:41
+sr @ index-v2HRB7kn.js:41
+Ig @ index-v2HRB7kn.js:41
+E @ index-v2HRB7kn.js:26
+z @ index-v2HRB7kn.js:26Understand this error
+lockdown-install.js:1 SES Removing unpermitted intrinsics
+lockdown-install.js:1 SES Removing unpermitted intrinsics
+lockdown-install.js:1 SES Removing unpermitted intrinsics
+lockdown-install.js:1 SES Removing unpermitted intrinsics
+index-v2HRB7kn.js:49  GET https://api.themegaradio.com/api/admin/stations?page=1&limit=50&sortBy=favicon&sortOrder=desc&hasDescriptions=all 500 (Internal Server Error)
+Fj @ index-v2HRB7kn.js:49
+getAdminStations @ api-COunUqGk.js:1
+queryFn @ stations-CXOw5vss.js:19
+i @ index-v2HRB7kn.js:49
+x @ index-v2HRB7kn.js:49
+(anonymous) @ index-v2HRB7kn.js:49
+Promise.then
+(anonymous) @ index-v2HRB7kn.js:49
+Promise.catch
+x @ index-v2HRB7kn.js:49
+start @ index-v2HRB7kn.js:49
+fetch @ index-v2HRB7kn.js:49
+ni @ index-v2HRB7kn.js:49
+onSubscribe @ index-v2HRB7kn.js:49
+subscribe @ index-v2HRB7kn.js:49
+(anonymous) @ index-v2HRB7kn.js:49
+tg @ index-v2HRB7kn.js:39
+Ra @ index-v2HRB7kn.js:41
+ro @ index-v2HRB7kn.js:41
+mp @ index-v2HRB7kn.js:41
+Jn @ index-v2HRB7kn.js:39
+Nb @ index-v2HRB7kn.js:41
+sr @ index-v2HRB7kn.js:41
+Ig @ index-v2HRB7kn.js:41
+E @ index-v2HRB7kn.js:26
+z @ index-v2HRB7kn.js:26Understand this error
+index-v2HRB7kn.js:164 FID: 0.5

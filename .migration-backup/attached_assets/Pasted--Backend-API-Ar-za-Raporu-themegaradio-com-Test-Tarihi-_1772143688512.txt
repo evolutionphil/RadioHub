@@ -1,0 +1,45 @@
+
+🔴 Backend API Arıza Raporu - themegaradio.com
+
+Test Tarihi: 26 Şubat 2026
+Test Edilen API Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw
+Test Header: X-API-Key + tv=1 parametresi
+
+❌ ÇALIŞMAYAN ENDPOINT'LER (17 adet)
+#	Endpoint	HTTP Response	Hata Mesajı
+1	GET /api/stations?country=TR	200	{"error":"Failed to fetch stations"}
+2	GET /api/stations/popular	200	{"error":"Failed to fetch popular stations"}
+3	GET /api/stations/precomputed?country=global	200	{"error":"Failed to fetch stations"}
+4	GET /api/stations/nearby?lat=41&lng=28	200	{"error":"Failed to fetch nearby stations"}
+5	GET /api/stations/working?country=TR	200	{"error":"Failed to fetch working stations"}
+6	GET /api/stations/country-random?country=TR	200	{"error":"Failed to fetch country stations"}
+7	GET /api/stations/stats	200	{"error":"Failed to fetch station statistics"}
+8	GET /api/station/power-fm	200	{"error":"Failed to fetch station"}
+9	GET /api/genres	200	{"error":"Failed to fetch genres"}
+10	GET /api/genres/precomputed	200	{"error":"Failed to fetch genres"}
+11	GET /api/genres/discoverable	200	{"error":"Failed to fetch discoverable genres"}
+12	GET /api/genres/slug/pop	200	{"error":"Failed to fetch genre"}
+13	GET /api/countries	200	{"error":"Failed to fetch countries"}
+14	GET /api/filters/countries	200	{"error":"Failed to fetch filter countries"}
+15	GET /api/filters/languages	?	Test edilmedi
+16	GET /api/filters/genres	?	Test edilmedi
+17	GET /api/recommendations/diverse	200	{"error":"Failed to fetch recommendations"}
+✅ ÇALIŞAN ENDPOINT'LER (4 adet)
+#	Endpoint	Durum
+1	GET /api/location	✅ Çalışıyor
+2	GET /api/discover/search?q=pop	✅ Çalışıyor (iTunes API)
+3	GET /api/discover/top100	✅ Çalışıyor (iTunes Chart)
+4	GET /api/community-favorites	✅ Boş array döndürüyor []
+🔍 BACKEND DEVELOPER İÇİN SORULAR
+1. Veritabanı Bağlantısı:
+
+MongoDB bağlantısı aktif mi?
+Redis cache bağlantısı çalışıyor mu?
+Son 24 saatte veritabanı credential değişikliği yapıldı mı?
+2. Harici API Bağlantıları:
+
+radio-browser.info API'sine erişim var mı?
+Bu API'den veri çekiliyor mu yoksa timeout mu alınıyor?
+API rate limit'e takılmış olabilir misiniz?
+3. Sunucu Logları:
+

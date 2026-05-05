@@ -1,0 +1,28 @@
+Comprehensive SEO Audit Report: Mega Radio
+Based on a detailed code review of your codebase (Vite React SPA + Express backend), I have identified several critical SEO issues that are likely causing the site to not be indexed properly by Google Search Console.
+
+🔴 1. Critical Indexing Blockers
+A. Bot Rate Limiting (429 Errors)
+Your server has a strict rate limiter for bots: BOT_RATE_LIMIT_MAX_MAJOR is set to 300 requests per minute per IP. Googlebot is a highly aggressive crawler, especially when discovering a large site with 60,000+ stations. When Google hits this limit, it receives a 429 Too Many Requests response. This explicitly tells Google to back off, causing pages to remain stuck in "Discovered - currently not indexed".
+
+B. "Soft 404" Errors (Responding 200 OK for Missing Pages)
+When a bot requests a station that doesn't exist (e.g., old URL or typo), the seo-renderer.ts correctly detects that the station is missing and flags notFound: true. However, the server in index.ts always responds with an HTTP status 200 OK alongside a placeholder HTML page. Google interprets this as a valid page, resulting in "Soft 404" errors. This severely damages your site's quality score and wastes crawl budget.
+
+C. Server Timeout Errors (503 Service Unavailable)
+If the SEO renderer takes more than 10 seconds to generate the localized page, it throws an error and responds with 503 Service Unavailable and a minimal HTML body. Frequent 503 errors signal to Google that your server is unstable, causing them to drastically reduce their crawl rate.
+
+🟠 2. High-Risk Architecture (Dynamic Rendering)
+You are using a technique called Dynamic Rendering (serving a different HTML skeleton to bots than what users see). When a bot requests the page, your server generates a stripped-down, unstyled HTML string (generateHtmlBody()) containing just <h1>, <p>, and <ul> links instead of the actual React app.
+
+Why this is dangerous:
+
+Thin Content: The stripped-down HTML is much smaller and visually simpler than the real app. Google might classify the page as "Thin Content" ("Crawled - currently not indexed").
+Cloaking Penalty Risk: If the text content differs significantly from what the user sees in the real React app, Google may flag this as "Cloaking," a severe violation that can cause complete de-indexing.
+Google officially deprecated dynamic rendering as a long-term solution.
+🟡 3. Technical SEO & Performance
+Sitemap Generation Memory Pressure: You are dynamically generating sitemaps for 60,000+ stations multiplied by multiple languages (potentially millions of URLs). This can cause high memory usage (RSS memory leaks) on the Node server, resulting in automatic process restarts, which interrupts active Googlebot crawls.
+Missing Structured Data (JSON-LD): While you have BroadcastService schema for stations, you are missing rich structured data like BreadcrumbList, and ItemList for genres and regions. This limits your chances of appearing in rich search results.
+✅ What is currently working well
+X-Robots-Tag: You are correctly overriding Replit's default noindex headers.
+Canonical URLs: Canonical URLs and hreflang tags are correctly implemented for international SEO.
+Trailing Slash & WWW Redirects: 301 Permanent Redirects are set up correctly, preventing duplicate content issues.

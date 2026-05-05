@@ -1,0 +1,68 @@
+A 502 on Railway with no app logs usually means the request is failing before it reaches your app, or Railway’s edge proxy cannot talk to the container. Railway’s own docs say this commonly happens when the app is not listening on the correct host/port, the target port is wrong, or the app is overloaded/unresponsive.
+
+For themegaradio.com, I would check these first, in this order:
+
+Make sure the app binds to Railway’s PORT
+Your server must listen on 0.0.0.0 and on the exact PORT Railway injects, not a hardcoded port like 3000/8080. Railway explicitly lists wrong host/port binding as the most common cause of 502s.
+
+Check whether the service is restarting or going unhealthy
+If it “crashes every day,” look in Railway for deployment restarts, healthcheck failures, OOM/memory spikes, or CPU saturation. Intermittent 502s with no app logs can happen when the proxy loses connection to a running or restarting container.
+
+Add a dedicated health endpoint
+Create something simple like /healthz that returns 200 OK immediately and point Railway health checks to it. This helps separate “app is alive” from “app route is slow/broken.” Community reports around intermittent 502s often mention validating healthcheck behavior first.
+
+Log at process startup before the web server starts
+Since you say there are no logs, add very early boot logs:
+
+Starting app...
+
+PORT=...
+
+NODE_ENV=... or runtime env
+
+Listening on 0.0.0.0:PORT
+
+If those never appear, the app may be failing before the server starts, or the wrong start command is being used.
+
+Check the start command / Dockerfile
+Confirm Railway is launching the correct process. A common 502 pattern is: build succeeds, container starts, but the actual web process never listens on the expected port.
+
+Disable sleep / scale-to-zero behavior if enabled
+Railway community discussions note that random 502s can occur around service wake-up or scaling events. If the project is sleeping or aggressively scaling, keep at least one instance warm.
+
+Test the app internally
+If you have shell access in the container, test:
+
+echo $PORT
+
+curl http://127.0.0.1:$PORT/healthz
+
+If that fails inside the container, it is definitely an app/startup issue, not DNS or domain config.
+
+Watch memory
+Daily crashes often mean memory exhaustion. Even if Railway doesn’t show obvious app logs, the process may be getting killed and then the proxy returns 502 until restart completes.
+
+If this is a Node app, your listener should look like this:
+
+const port = process.env.PORT || 3000;
+app.listen(port, '0.0.0.0', () => {
+  console.log(`Server listening on ${port}`);
+});
+
+And for Express, add:
+
+app.get('/healthz', (_, res) => res.status(200).send('ok'));
+
+Most likely causes here are:
+
+hardcoded port
+
+listening on localhost instead of 0.0.0.0
+
+process restarting from OOM
+
+wrong start command
+
+healthcheck hitting a slow/broken route instead of a tiny /healthz route.
+
+Paste your start command, Dockerfile or package.json scripts, and server code where it calls listen(), and I’ll pinpoint the exact issue.

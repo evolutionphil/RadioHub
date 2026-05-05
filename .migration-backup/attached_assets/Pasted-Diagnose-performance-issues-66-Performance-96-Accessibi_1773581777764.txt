@@ -1,0 +1,648 @@
+Diagnose performance issues
+66
+Performance
+96
+Accessibility
+92
+Best Practices
+92
+SEO
+66
+FCP
++9
+LCP
++18
+TBT
++7
+CLS
++25
+SI
++6
+Performance
+Values are estimated and may vary. The performance score is calculated directly from these metrics.See calculator.
+0–49
+50–89
+90–100
+Final Screenshot
+
+Metrics
+Expand view
+First Contentful Paint
+0.9 s
+Largest Contentful Paint
+1.7 s
+Total Blocking Time
+550 ms
+Cumulative Layout Shift
+0.022
+Speed Index
+2.0 s
+Captured at Mar 15, 2026, 1:31 PM UTC
+Emulated Desktop with Lighthouse 13.0.1
+Single page session
+Initial page load
+Custom throttling
+Using HeadlessChromium 145.0.7632.116 with lr
+View Treemap
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Show audits relevant to:
+
+All
+
+FCP
+
+LCP
+
+TBT
+
+CLS
+Insights
+Document request latency Est savings of 80 ms
+Your first network request is the most important. Reduce its latency by avoiding redirects, ensuring a fast server response, and enabling text compression.LCPFCPUnscored
+Had redirects (1 redirects, +77 ms)
+Server responds quickly (observed 4 ms)
+Applies text compression
+Render blocking requests Est savings of 120 ms
+Requests are blocking the page's initial render, which may delay LCP. Deferring or inlining can move these network requests out of the critical path.LCPFCPUnscored
+URL
+Transfer Size
+Duration
+themegaradio.com 1st party
+34.4 KiB	80 ms
+/assets/index-Dbmiaw88.css(themegaradio.com)
+34.4 KiB
+80 ms
+Google CDN cdn 
+2.7 KiB	200 ms
+…v1/cast_sender.js?loadCastFramework=1(www.gstatic.com)
+2.7 KiB
+200 ms
+LCP request discovery
+Optimize LCP by making the LCP image discoverable from the HTML immediately, and avoiding lazy-loadingLCPUnscored
+lazy load not applied
+fetchpriority=high should be applied
+Request is discoverable in initial document
+div.w-full > div.hero-container > picture > img.absolute
+<img src="https://themegaradio.com/images/hero-bg.webp" alt="" class="absolute inset-0 w-full h-full object-cover pointer-events-none z-0" aria-hidden="true" fetchpriority="high">
+Network dependency tree
+Avoid chaining critical requests by reducing the length of chains, reducing the download size of resources, or deferring the download of unnecessary resources to improve page load.LCPUnscored
+Maximum critical path latency: 2,508 ms
+Initial Navigation
+/en(themegaradio.com) - 194 ms, 16.92 KiB
+/en(themegaradio.com) - 194 ms, 16.92 KiB
+/assets/index-Dbmiaw88.css(themegaradio.com) - 213 ms, 34.44 KiB
+/fonts/ubuntu-500.ttf(themegaradio.com) - 616 ms, 127.91 KiB
+/fonts/ubuntu-700.ttf(themegaradio.com) - 617 ms, 119.56 KiB
+…v1/cast_sender.js?loadCastFramework=1(www.gstatic.com) - 190 ms, 2.72 KiB
+/assets/index-PhNc5zeM.js(themegaradio.com) - 242 ms, 160.26 KiB
+/assets/_id_-DUuGJ1aN.js(themegaradio.com) - 1,336 ms, 12.82 KiB
+/assets/animated-….js(themegaradio.com) - 1,327 ms, 8.87 KiB
+/assets/skeleton-Cl9P9kpJ.js(themegaradio.com) - 1,337 ms, 3.22 KiB
+/assets/TrendingStations-EDgbNDhv.js(themegaradio.com) - 1,335 ms, 41.67 KiB
+/assets/badge-QI8bGfKg.js(themegaradio.com) - 1,338 ms, 3.43 KiB
+/assets/trending-….js(themegaradio.com) - 1,340 ms, 3.36 KiB
+/assets/users-BXY0PIRF.js(themegaradio.com) - 1,339 ms, 3.41 KiB
+/assets/not-found-C-XdnLnk.js(themegaradio.com) - 1,338 ms, 7.21 KiB
+/assets/wifi-off-C_spOqJB.js(themegaradio.com) - 1,339 ms, 3.45 KiB
+/assets/search-BncKrPuY.js(themegaradio.com) - 1,342 ms, 3.35 KiB
+/assets/radio--kw2z4Te.js(themegaradio.com) - 1,341 ms, 3.44 KiB
+/assets/arrow-rig….js(themegaradio.com) - 1,345 ms, 3.33 KiB
+/assets/music-CU2wD9zf.js(themegaradio.com) - 1,341 ms, 3.36 KiB
+/assets/wifi-BDXIxITj.js(themegaradio.com) - 1,343 ms, 3.38 KiB
+/assets/messages-CBQnl-vr.js(themegaradio.com) - 1,352 ms, 9.90 KiB
+/assets/circle-CrWMBylS.js(themegaradio.com) - 1,358 ms, 3.31 KiB
+/assets/message-c….js(themegaradio.com) - 1,356 ms, 3.33 KiB
+/assets/arrow-lef….js(themegaradio.com) - 1,356 ms, 3.33 KiB
+/assets/favorites-CZREbpGP.js(themegaradio.com) - 1,353 ms, 5.82 KiB
+/assets/profile-d….js(themegaradio.com) - 1,340 ms, 6.82 KiB
+/assets/profile-s….js(themegaradio.com) - 1,350 ms, 7.52 KiB
+/assets/switch-CGjsQVWj.js(themegaradio.com) - 1,353 ms, 4.29 KiB
+/assets/test-tube-Badndt2r.js(themegaradio.com) - 1,354 ms, 3.50 KiB
+/assets/bell-41VOHpiB.js(themegaradio.com) - 1,354 ms, 3.37 KiB
+/assets/settings-hSqquIio.js(themegaradio.com) - 1,351 ms, 3.52 KiB
+/assets/notificat….js(themegaradio.com) - 1,342 ms, 5.73 KiB
+/assets/message-square-CulqhdfA.js(themegaradio.com) - 1,345 ms, 3.35 KiB
+/assets/profile-BAOfSAns.js(themegaradio.com) - 1,344 ms, 7.58 KiB
+/assets/mail-Dh1paav9.js(themegaradio.com) - 1,359 ms, 3.38 KiB
+/assets/map-pin-B-imyPxB.js(themegaradio.com) - 1,349 ms, 3.40 KiB
+/assets/calendar-By3oMkes.js(themegaradio.com) - 1,359 ms, 3.38 KiB
+/assets/clock-B7rJ-dy8.js(themegaradio.com) - 1,344 ms, 3.35 KiB
+/assets/activity-FcGaVOYi.js(themegaradio.com) - 1,354 ms, 3.38 KiB
+/assets/star-rrayDlte.js(themegaradio.com) - 1,359 ms, 3.36 KiB
+/assets/user-minus-CXmehfVR.js(themegaradio.com) - 1,355 ms, 3.40 KiB
+/assets/user-plus-BLwGN2gY.js(themegaradio.com) - 1,358 ms, 3.41 KiB
+/assets/login-CF3jHmmN.js(themegaradio.com) - 1,355 ms, 5.57 KiB
+/assets/signup-D9O_u6L-.js(themegaradio.com) - 1,352 ms, 6.18 KiB
+/assets/form-BPCO8VWQ.js(themegaradio.com) - 1,357 ms, 3.83 KiB
+/assets/ProfileLa….js(themegaradio.com) - 1,356 ms, 5.06 KiB
+/assets/login-DaJX1dMU.js(themegaradio.com) - 1,357 ms, 4.99 KiB
+/assets/radio-hea….js(themegaradio.com) - 502 ms, 11.35 KiB
+…filters/countries(themegaradio.com) - 784 ms, 4.34 KiB
+/assets/slugs-OTPv6NvP.js(themegaradio.com) - 503 ms, 3.23 KiB
+/assets/user-Cj8vHsZB.js(themegaradio.com) - 500 ms, 3.37 KiB
+/assets/radio-fro….js(themegaradio.com) - 506 ms, 18.19 KiB
+…genres/precomputed(themegaradio.com) - 2,166 ms, 3.83 KiB
+/api/countries(themegaradio.com) - 2,188 ms, 4.34 KiB
+…genres/discoverable(themegaradio.com) - 2,335 ms, 3.34 KiB
+…stations/precomputed?countryName=global&page=1&limit=36(themegaradio.com) - 2,508 ms, 9.15 KiB
+…stations/precomputed?countryName=global&page=1&limit=12(themegaradio.com) - 2,414 ms, 5.58 KiB
+…stations/precomputed?countryName=global&page=1&limit=12(themegaradio.com) - 2,507 ms, 5.59 KiB
+/assets/station-c….js(themegaradio.com) - 500 ms, 5.68 KiB
+/assets/favorite-….js(themegaradio.com) - 507 ms, 8.44 KiB
+/assets/useMutation-BfNDwnpB.js(themegaradio.com) - 516 ms, 4.30 KiB
+/styles/desktop.css(themegaradio.com) - 2,124 ms, 3.40 KiB
+/assets/Notificat….js(themegaradio.com) - 504 ms, 4.48 KiB
+…translations/de(themegaradio.com) - 2,200 ms, 20.28 KiB
+/styles/non-critical.css(themegaradio.com) - 2,247 ms, 3.55 KiB
+/assets/index-BsV43tRa.js(themegaradio.com) - 513 ms, 26.78 KiB
+/assets/dialog-D_-LrLQy.js(themegaradio.com) - 504 ms, 3.95 KiB
+/assets/index-wl0DryK-.js(themegaradio.com) - 508 ms, 5.06 KiB
+/assets/tabs-DLUrzo6O.js(themegaradio.com) - 516 ms, 4.44 KiB
+/assets/index-DBZahadb.js(themegaradio.com) - 515 ms, 4.60 KiB
+/assets/separator-C6cbhQVc.js(themegaradio.com) - 518 ms, 3.46 KiB
+/assets/eye-off-CrrDo8OP.js(themegaradio.com) - 514 ms, 3.46 KiB
+/assets/eye-BlDM1lYP.js(themegaradio.com) - 518 ms, 3.38 KiB
+/assets/usePushNo….js(themegaradio.com) - 529 ms, 5.17 KiB
+/assets/station-l….js(themegaradio.com) - 524 ms, 4.08 KiB
+/assets/thumbs-up-DDUMcFjK.js(themegaradio.com) - 509 ms, 3.42 KiB
+/assets/optimized….js(themegaradio.com) - 520 ms, 4.22 KiB
+/assets/free-mode-BoCvYTDG.js(themegaradio.com) - 528 ms, 28.82 KiB
+…stations/precomputed?countryName=global&page=1&limit=18(themegaradio.com) - 1,583 ms, 6.48 KiB
+/assets/useGlobalPlayer-DfbsoFIY.js(themegaradio.com) - 1,530 ms, 10.37 KiB
+…translations/en(themegaradio.com) - 784 ms, 11.33 KiB
+/api/location(themegaradio.com) - 784 ms, 3.18 KiB
+…stations/precomputed?countryName=global&page=1&limit=18(themegaradio.com) - 785 ms, 6.48 KiB
+/assets/free-mode-dKiYrM6Z.css(themegaradio.com) - 503 ms, 5.75 KiB
+/assets/navigatio….js(themegaradio.com) - 529 ms, 4.47 KiB
+/assets/navigation-CteQybwo.css(themegaradio.com) - 498 ms, 3.44 KiB
+/assets/SeoHead-Cl7N-W7C.js(themegaradio.com) - 517 ms, 7.77 KiB
+/assets/chevron-left-BMEsRVzL.js(themegaradio.com) - 519 ms, 3.32 KiB
+/assets/chevron-r….js(themegaradio.com) - 517 ms, 3.32 KiB
+/assets/heart-CVqEIana.js(themegaradio.com) - 522 ms, 3.38 KiB
+/assets/radio-fro….css(themegaradio.com) - 502 ms, 3.84 KiB
+/assets/footer-BeYnl6Qm.js(themegaradio.com) - 519 ms, 10.50 KiB
+…stations/precomputed?countryName=global&page=1&limit=18(themegaradio.com) - 1,965 ms, 6.48 KiB
+/api/footer-social-media(themegaradio.com) - 1,964 ms, 3.18 KiB
+/assets/textarea-C5ZrxKAU.js(themegaradio.com) - 1,149 ms, 3.40 KiB
+/assets/globe-Di7cinwM.js(themegaradio.com) - 530 ms, 3.36 KiB
+…auth/me(themegaradio.com) - 565 ms, 3.13 KiB
+…seo/page-data?url=%2Fen(themegaradio.com) - 566 ms, 14.03 KiB
+Preconnected origins
+preconnect hints help the browser establish a connection earlier in the page load, saving time when the first request for that origin is made. The following are the origins that the page preconnected to.
+no origins were preconnected
+Preconnect candidates
+Add preconnect hints to your most important origins, but try to use no more than 4.
+No additional origins are good candidates for preconnecting
+Use efficient cache lifetimes Est savings of 158 KiB
+A long cache lifetime can speed up repeat visits to your page. Learn more about caching.LCPFCPUnscored
+Request
+Cache TTL
+Transfer Size
+Amazon Web Services other 
+121 KiB
+/dist/web.global.js(flowalive-sdk.s3.eu-central-1.amazonaws.com)
+None
+121 KiB
+Google/Doubleclick Ads ad 
+178 KiB
+…m202…/show_ads_impl_fy2021.js(pagead2.googlesyndication.com)
+14d
+178 KiB
+Clarity utility 
+26 KiB
+/0.8.58-beta/clarity.js(scripts.clarity.ms)
+1d
+26 KiB
+themegaradio.com 1st party
+5 KiB
+…zaraz/s.js?z=JTdCJTIyZ…(themegaradio.com)
+None
+5 KiB
+Cloudflare utility 
+11 KiB
+/beacon.min.js/v8c78df7…(static.cloudflareinsights.com)
+1d
+11 KiB
+Improve image delivery Est savings of 230 KiB
+Reducing the download time of images can improve the perceived load time of the page and LCP. Learn more about optimizing image sizeLCPFCPUnscored
+URL
+Resource Size
+Est Savings
+themegaradio.com 1st party
+76.5 KiB	65.0 KiB
+main.pt-[70px] > div.w-full > div.hero-container > img.absolute
+<img src="/images/heroleft.png" alt="" class="absolute left-0 bottom-0 w-[300px] sm:w-[400px] lg:w-[500px] h-auto pointe…" aria-hidden="true" loading="lazy" style="opacity: 0.6; z-index: 5;" data-optimized="true">
+/images/heroleft.png(themegaradio.com)
+32.7 KiB
+28.1 KiB
+This image file is larger than it needs to be (1334x1228) for its displayed dimensions (500x460). Use responsive images to reduce the image download size.
+28.1 KiB
+main.pt-[70px] > div.w-full > div.hero-container > img.absolute
+<img src="/images/heroleft.png" alt="" class="absolute left-0 bottom-0 w-[300px] sm:w-[400px] lg:w-[500px] h-auto pointe…" aria-hidden="true" loading="lazy" style="opacity: 0.6; z-index: 5;" data-optimized="true">
+/images/heroleft.png(themegaradio.com)
+32.7 KiB
+28.1 KiB
+This image file is larger than it needs to be (1334x1228) for its displayed dimensions (500x460). Use responsive images to reduce the image download size.
+28.1 KiB
+Mega Radio music streaming logo
+<img loading="lazy" width="97" height="97" class="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h…" src="/images/logo-icon.webp" alt="Mega Radio music streaming logo" data-optimized="true">
+/images/logo-icon.webp(themegaradio.com)
+5.5 KiB
+4.4 KiB
+This image file is larger than it needs to be (212x212) for its displayed dimensions (97x97). Use responsive images to reduce the image download size.
+4.4 KiB
+Mega Radio music streaming logo
+<img loading="lazy" width="97" height="97" class="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h…" src="/images/logo-icon.webp" alt="Mega Radio music streaming logo" data-optimized="true">
+/images/logo-icon.webp(themegaradio.com)
+5.5 KiB
+4.4 KiB
+This image file is larger than it needs to be (212x212) for its displayed dimensions (97x97). Use responsive images to reduce the image download size.
+4.4 KiB
+Amazon Web Services other 
+186.1 KiB	164.7 KiB
+Listen to Fantasy Italo Radio live from The Netherlands - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Fantasy Italo Radio live from The Netherlands - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c46fbd66579311aafe9b" data-optimized="true">
+…fantasy-italo-radio-1_11aafe9b/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+14.4 KiB
+13.1 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+12.6 KiB
+Listen to Fantasy Italo Radio live from The Netherlands - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Fantasy Italo Radio live from The Netherlands - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c46fbd66579311aafe9b" data-optimized="true">
+…fantasy-italo-radio-1_11aafe9b/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+14.4 KiB
+13.1 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+12.6 KiB
+Listen to WALM - Old Time Radio live from The United States Of America - radio …
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to WALM - Old Time Radio live from The United States Of America - r…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c4a1bd66579311ab7c9a" data-optimized="true">
+…walm-old-time-radio_11ab7c9a/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+12.1 KiB
+10.8 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+10.6 KiB
+Listen to WALM - Old Time Radio live from The United States Of America - radio …
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to WALM - Old Time Radio live from The United States Of America - r…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c4a1bd66579311ab7c9a" data-optimized="true">
+…walm-old-time-radio_11ab7c9a/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+12.1 KiB
+10.8 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+10.6 KiB
+Listen to Adroit Jazz Underground live from The United States Of America - radi…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Adroit Jazz Underground live from The United States Of America -…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c45fbd66579311aad585" data-optimized="true">
+…adroit-jazz-underground_11aad585/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+11.9 KiB
+10.6 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+10.4 KiB
+Listen to Adroit Jazz Underground live from The United States Of America - radi…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Adroit Jazz Underground live from The United States Of America -…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c45fbd66579311aad585" data-optimized="true">
+…adroit-jazz-underground_11aad585/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+11.9 KiB
+10.6 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+10.4 KiB
+Listen to Dance Wave! live from Hungary - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Dance Wave! live from Hungary - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c46abd66579311aaf265" data-optimized="true">
+…dance-wave-2_11aaf265/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+10.8 KiB
+9.5 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+9.5 KiB
+Listen to Dance Wave! live from Hungary - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Dance Wave! live from Hungary - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c46abd66579311aaf265" data-optimized="true">
+…dance-wave-2_11aaf265/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+10.8 KiB
+9.5 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+9.5 KiB
+Listen to Classic Vinyl HD live from The United States Of America - radio stati…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Classic Vinyl HD live from The United States Of America - radio …" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c468bd66579311aaee0d" data-optimized="true">
+…classic-vinyl-hd-10_11aaee0d/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+9.9 KiB
+8.7 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+8.7 KiB
+Listen to Classic Vinyl HD live from The United States Of America - radio stati…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Classic Vinyl HD live from The United States Of America - radio …" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c468bd66579311aaee0d" data-optimized="true">
+…classic-vinyl-hd-10_11aaee0d/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+9.9 KiB
+8.7 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+8.7 KiB
+Listen to Christmas Vinyl HD live from The United States Of America - radio sta…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Christmas Vinyl HD live from The United States Of America - radi…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c467bd66579311aaeacb" data-optimized="true">
+…christmas-vinyl-hd-1_11aaeacb/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+8.6 KiB
+7.5 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+7.5 KiB
+Listen to Christmas Vinyl HD live from The United States Of America - radio sta…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to Christmas Vinyl HD live from The United States Of America - radi…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c467bd66579311aaeacb" data-optimized="true">
+…christmas-vinyl-hd-1_11aaeacb/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+8.6 KiB
+7.5 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+7.5 KiB
+Listen to RFE/RL Radio Farda live from Czechia - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to RFE/RL Radio Farda live from Czechia - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c496bd66579311ab6174" data-optimized="true">
+…rferl-radio-farda_11ab6174/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+7.7 KiB
+6.7 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.7 KiB
+Listen to RFE/RL Radio Farda live from Czechia - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to RFE/RL Radio Farda live from Czechia - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c496bd66579311ab6174" data-optimized="true">
+…rferl-radio-farda_11ab6174/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+7.7 KiB
+6.7 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.7 KiB
+Listen to 101 SMOOTH JAZZ live from The United States Of America - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to 101 SMOOTH JAZZ live from The United States Of America - radio s…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c45abd66579311aacaa3" data-optimized="true">
+…101-smooth-jazz-4_11aacaa3/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+6.2 KiB
+5.4 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+5.4 KiB
+Listen to 101 SMOOTH JAZZ live from The United States Of America - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to 101 SMOOTH JAZZ live from The United States Of America - radio s…" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c45abd66579311aacaa3" data-optimized="true">
+…101-smooth-jazz-4_11aacaa3/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+6.2 KiB
+5.4 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+5.4 KiB
+Listen to MANGORADIO live from Germany - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to MANGORADIO live from Germany - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c47dbd66579311ab228c" data-optimized="true">
+…mangoradio_11ab228c/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+5.8 KiB
+5.1 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+5.1 KiB
+Listen to MANGORADIO live from Germany - radio station
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to MANGORADIO live from Germany - radio station" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c47dbd66579311ab228c" data-optimized="true">
+…mangoradio_11ab228c/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+5.8 KiB
+5.1 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+5.1 KiB
+Listen to BBC World Service live from The United Kingdom Of Great Britain And N…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to BBC World Service live from The United Kingdom Of Great Britain …" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c462bd66579311aadfaf" data-optimized="true">
+…bbc-world-service-5_11aadfaf/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+5.7 KiB
+5.0 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+5.0 KiB
+Listen to BBC World Service live from The United Kingdom Of Great Britain And N…
+<img src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" alt="Listen to BBC World Service live from The United Kingdom Of Great Britain …" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c462bd66579311aadfaf" data-optimized="true">
+…bbc-world-service-5_11aadfaf/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+5.7 KiB
+5.0 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+5.0 KiB
+Layout shift culprits
+LCP breakdown
+3rd parties
+These insights are also available in the Chrome DevTools Performance Panel - record a trace to view more detailed information.
+Diagnostics
+Reduce JavaScript execution time 1.6 s
+Consider reducing the time spent parsing, compiling, and executing JS. You may find delivering smaller JS payloads helps with this. Learn how to reduce Javascript execution time.TBTUnscored
+URL
+Total CPU Time
+Script Evaluation
+Script Parse
+themegaradio.com 1st party
+1,777 ms	1,406 ms	24 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+1,650 ms
+1,401 ms
+22 ms
+/en(themegaradio.com)
+128 ms
+6 ms
+3 ms
+Unattributable
+247 ms	43 ms	0 ms
+Unattributable
+247 ms
+43 ms
+0 ms
+Google/Doubleclick Ads ad 
+116 ms	59 ms	44 ms
+…m202…/show_ads_impl_fy2021.js(pagead2.googlesyndication.com)
+116 ms
+59 ms
+44 ms
+Clarity utility 
+62 ms	49 ms	6 ms
+/0.8.58-beta/clarity.js(scripts.clarity.ms)
+62 ms
+49 ms
+6 ms
+Minimize main-thread work 2.4 s
+Consider reducing the time spent parsing, compiling and executing JS. You may find delivering smaller JS payloads helps with this. Learn how to minimize main-thread workTBTUnscored
+Category
+Time Spent
+Script Evaluation
+1,643 ms
+Other
+287 ms
+Garbage Collection
+221 ms
+Script Parsing & Compilation
+125 ms
+Style & Layout
+86 ms
+Rendering
+32 ms
+Parse HTML & CSS
+6 ms
+Reduce unused JavaScript Est savings of 333 KiB
+Reduce unused JavaScript and defer loading scripts until they are required to decrease bytes consumed by network activity. Learn how to reduce unused JavaScript.LCPFCPUnscored
+URL
+Transfer Size
+Est Savings
+Google/Doubleclick Ads ad 
+232.2 KiB	162.0 KiB
+…m202…/show_ads_impl_fy2021.js(pagead2.googlesyndication.com)
+177.8 KiB
+133.1 KiB
+…js/adsbygoogle.js?client=ca-pub-877…(pagead2.googlesyndication.com)
+54.4 KiB
+29.0 KiB
+themegaradio.com 1st party
+193.7 KiB	91.3 KiB
+/assets/index-PhNc5zeM.js(themegaradio.com)
+155.1 KiB
+56.7 KiB
+/assets/TrendingStations-EDgbNDhv.js(themegaradio.com)
+38.5 KiB
+34.6 KiB
+Amazon Web Services other 
+120.6 KiB	79.3 KiB
+/dist/web.global.js(flowalive-sdk.s3.eu-central-1.amazonaws.com)
+120.6 KiB
+79.3 KiB
+…node_modules/pako/dist/pako.esm.mjs
+46.4 KiB
+41.1 KiB
+…src/web/index.ts
+44.0 KiB
+24.1 KiB
+…src/web/web-sdk.ts
+5.2 KiB
+3.4 KiB
+…src/core/queue/offline-queue.ts
+2.2 KiB
+1.8 KiB
+…src/core/queue/batch-sender.ts
+2.2 KiB
+1.8 KiB
+Reduce unused CSS Est savings of 27 KiB
+Reduce unused rules from stylesheets and defer CSS not used for above-the-fold content to decrease bytes consumed by network activity. Learn how to reduce unused CSS.LCPFCPUnscored
+URL
+Transfer Size
+Est Savings
+themegaradio.com 1st party
+31.4 KiB	27.2 KiB
+/assets/index-Dbmiaw88.css(themegaradio.com)
+31.4 KiB
+27.2 KiB
+Avoid long main-thread tasks 9 long tasks found
+Lists the longest tasks on the main thread, useful for identifying worst contributors to input delay. Learn how to avoid long main-thread tasksTBTUnscored
+URL
+Start Time
+Duration
+themegaradio.com 1st party
+1,038 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+1,926 ms
+211 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+2,299 ms
+195 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+2,137 ms
+147 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+2,964 ms
+129 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+2,699 ms
+125 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+2,620 ms
+79 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+3,203 ms
+79 ms
+/assets/index-PhNc5zeM.js(themegaradio.com)
+2,494 ms
+73 ms
+Google/Doubleclick Ads ad 
+51 ms
+…m202…/show_ads_impl_fy2021.js(pagead2.googlesyndication.com)
+3,120 ms
+51 ms
+User Timing marks and measures 4 user timings
+Consider instrumenting your app with the User Timing API to measure your app's real-world performance during key user experiences. Learn more about User Timing marks.Unscored
+Name
+Type
+Start Time
+Duration
+head-end
+Mark
+190.78 ms
+body-start
+Mark
+216.62 ms
+critical-content-loaded
+Mark
+513.66 ms
+page-loaded
+Mark
+2,608.70 ms
+More information about the performance of your application. These numbers don't directly affect the Performance score.
+Passed audits (12)
+Show
+96
+Accessibility
+These checks highlight opportunities to improve the accessibility of your web app. Automatic detection can only detect a subset of issues and does not guarantee the accessibility of your web app, so manual testing is also encouraged.
+Contrast
+Background and foreground colors do not have a sufficient contrast ratio.
+Low-contrast text is difficult or impossible for many users to read. Learn how to provide sufficient color contrast.
+Failing Elements
+Log in
+<a href="/en/login" class="flex items-center justify-center text-white font-semibold transition-color…">
+These are opportunities to improve the legibility of your content.
+Additional items to manually check (10)
+Show
+These items address areas which an automated testing tool cannot cover. Learn more in our guide on conducting an accessibility review.
+Passed audits (23)
+Show
+Not applicable (36)
+Show
+92
+Best Practices
+General
+Browser errors were logged to the console
+Errors logged to the console indicate unresolved problems. They can come from network request failures and other browser concerns. Learn more about this errors in console diagnostic audit
+Source
+Description
+ahrefs.com
+/analytics.js:1:0(analytics.ahrefs.com)
+Failed to load resource: net::ERR_FAILED
+Amazon Web Services other 
+../src/web/index.ts:256:0	
+WebSocket connection to 'wss://flowalive-api.esimfo.com/socket.io/?deviceId=01KKRV39K267XS30TSFN6E43VY&EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_NAME_NOT_RESOLVED
+../src/web/index.ts:256:0	
+WebSocket connection to 'wss://flowalive-api.esimfo.com/socket.io/?deviceId=01KKRV39K267XS30TSFN6E43VY&EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_NAME_NOT_RESOLVED
+../src/web/index.ts:256:0	
+WebSocket connection to 'wss://flowalive-api.esimfo.com/socket.io/?deviceId=01KKRV39K267XS30TSFN6E43VY&EIO=4&transport=websocket' failed: Error in connection establishment: net::ERR_NAME_NOT_RESOLVED
+Issues were logged in the Issues panel in Chrome Devtools
+Issues logged to the Issues panel in Chrome Devtools indicate unresolved problems. They can come from network request failures, insufficient security controls, and other browser concerns. Open up the Issues panel in Chrome DevTools for more details on each issue.
+Issue type
+Blocked by cross-origin policy
+…r20190131/zrt_lookup_fy2021.html(googleads.g.doubleclick.net)
+/pagead/ads?client=…(googleads.g.doubleclick.net)
+…253/runner.html(ep2.adtrafficquality.google)
+Trust and Safety
+Ensure CSP is effective against XSS attacks
+A strong Content Security Policy (CSP) significantly reduces the risk of cross-site scripting (XSS) attacks. Learn how to use a CSP to prevent XSSUnscored
+Description
+Directive
+Severity
+Host allowlists can frequently be bypassed. Consider using CSP nonces or hashes instead, along with `'strict-dynamic'` if necessary.
+script-src
+High
+`'unsafe-inline'` allows the execution of unsafe in-page scripts and event handlers. Consider using CSP nonces or hashes to allow scripts individually.
+script-src
+High
+Mitigate DOM-based XSS with Trusted Types
+The require-trusted-types-for directive in the Content-Security-Policy (CSP) header instructs user agents to control the data passed to DOM XSS sink functions. Learn more about mitigating DOM-based XSS with Trusted Types.Unscored
+Description
+Severity
+No `Content-Security-Policy` header with Trusted Types directive found
+High
+Passed audits (11)
+Show
+Not applicable (5)
+Show
+92
+SEO
+These checks ensure that your page is following basic search engine optimization advice. There are many additional factors Lighthouse does not score here that may affect your search ranking, including performance on Core Web Vitals. Learn more about Google Search Essentials.
+Content Best Practices
+Document does not have a valid rel=canonicalPoints to the domain's root URL (the homepage), instead of an equivalent page of content
+Canonical links suggest which URL to show in search results. Learn more about canonical links.
+Format your HTML in a way that enables crawlers to better understand your app’s content.
+Additional items to manually check (1)
+Show
+Run these additional validators on your site to check additional SEO best practices.
+Passed audits (9)

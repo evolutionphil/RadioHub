@@ -1,0 +1,65 @@
+> rest-express@1.0.0 start
+> NODE_ENV=production node dist/index.js
+Starting Container
+🔐 Google OAuth configured with callback URL: https://themegaradio.com/api/auth/google/callback
+✅ Demo API keys: per-IP generation enabled (24h cooldown)
+Fontconfig error: Cannot load default config file: No such file: (null)
+Node.js v20.20.0
+> rest-express@1.0.0 start
+> NODE_ENV=production node dist/index.js
+file:///app/dist/index.js:23699
+    const status = getSocialAuthStatus();
+                   ^
+🔐 Google OAuth configured with callback URL: https://themegaradio.com/api/auth/google/callback
+✅ Demo API keys: per-IP generation enabled (24h cooldown)
+TypeError: getSocialAuthStatus is not a function
+    at file:///app/dist/index.js:23699:20
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+    at next (/app/node_modules/express/lib/router/route.js:149:13)
+    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+    at /app/node_modules/express/lib/router/index.js:284:15
+    at Function.process_params (/app/node_modules/express/lib/router/index.js:346:12)
+    at next (/app/node_modules/express/lib/router/index.js:280:10)
+    at apiKeyMiddleware (file:///app/dist/index.js:12100:12)
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+    at next (/app/node_modules/express/lib/router/index.js:280:10)
+    at apiKeyMiddleware (file:///app/dist/index.js:12100:12)
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+Node.js v20.20.0
+    at file:///app/dist/index.js:23699:20
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+file:///app/dist/index.js:23699
+    at next (/app/node_modules/express/lib/router/route.js:149:13)
+    const status = getSocialAuthStatus();
+    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)
+                   ^
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+    at /app/node_modules/express/lib/router/index.js:284:15
+    at Function.process_params (/app/node_modules/express/lib/router/index.js:346:12)
+TypeError: getSocialAuthStatus is not a function
+> rest-express@1.0.0 start
+> NODE_ENV=production node dist/index.js
+🔐 Google OAuth configured with callback URL: https://themegaradio.com/api/auth/google/callback
+✅ Demo API keys: per-IP generation enabled (24h cooldown)
+Fontconfig error: Cannot load default config file: No such file: (null)
+file:///app/dist/index.js:23699
+    const status = getSocialAuthStatus();
+    at apiKeyMiddleware (file:///app/dist/index.js:12100:12)
+                   ^
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+TypeError: getSocialAuthStatus is not a function
+    at file:///app/dist/index.js:23699:20
+Node.js v20.20.0
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+    at next (/app/node_modules/express/lib/router/route.js:149:13)
+> rest-express@1.0.0 start
+    at Route.dispatch (/app/node_modules/express/lib/router/route.js:119:3)
+> NODE_ENV=production node dist/index.js
+    at Layer.handle [as handle_request] (/app/node_modules/express/lib/router/layer.js:95:5)
+    at /app/node_modules/express/lib/router/index.js:284:15
+🔐 Google OAuth configured with callback URL: https://themegaradio.com/api/auth/google/callback
+    at Function.process_params (/app/node_modules/express/lib/router/index.js:346:12)
+✅ Demo API keys: per-IP generation enabled (24h cooldown)
+    at next (/app/node_modules/express/lib/router/index.js:280:10)
+Fontconfig error: Cannot load default config file: No such file: (null)

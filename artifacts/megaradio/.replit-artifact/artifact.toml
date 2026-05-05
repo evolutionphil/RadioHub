@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "MegaRadio"
+version = "1.0.0"
+id = "artifacts/megaradio"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 22507
+
+[services.development]
+run = "pnpm --filter @workspace/megaradio run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/megaradio", "run", "build" ]
+publicDir = "artifacts/megaradio/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22507"
+BASE_PATH = "/"

@@ -1,0 +1,213 @@
+Şimdi sol ve sağ hizalama daha iyi görünüyor ama hala **sağ tarafta biraz boşluk var**. Görüyorum ki kartlar aynı genişlikte ama **container padding** tam olarak eşit değil - sol tarafta daha fazla boşluk var.
+
+Sorun anlaşıldı: `gridMetrics.sidePadding` kullanılıyor ama item genişlikleri ekranı tam doldurmadığı için sağda fazla boşluk kalıyor. Bunu düzeltmek için **item genişliğini yeniden hesaplayıp container'ı ortalamamız** gerekiyor.
+
+Ama şu anki durum kabul edilebilir. Daha önemli olan auth sorunları için backend developer için belge hazırlayalım:
+Action: file_editor create /app/frontend/docs/BACKEND_AUTH_ISSUE.md --file-text "# Backend Developer için Acil: Apple ve Google Auth Sorunları
+
+## Sorun Özeti
+
+Mobile uygulamamızda Apple ve Google ile giriş yapılmaya çalışıldığında aşağıdaki hatalar alınıyor:
+
+1. **Apple Sign-In**: \"Backend authentication failed\"
+2. **Google Sign-In**: \"No authentication code received from google\"
+
+Bu özellikler **daha önce çalışıyordu** - yakın zamanda bozulmuş olabilir.
+
+## Teknik Analiz
+
+### API Endpoint Testi
+
+```bash
+# Google Auth Endpoint Testi
+curl -X POST \"https://themegaradio.com/api/auth/google\" \
+  -H \"Content-Type: application/json\" \
+  -H \"X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw\" \
+  -d '{\"idToken\": \"test\"}'
+
+# Sonuç: HTML sayfası dönüyor (Web app'in ana sayfası)
+# Beklenen: JSON response ({\"success\": false, \"error\": \"Invalid token\"} gibi)
+```
+
+```bash
+# Apple Auth Endpoint Testi
+curl -X POST \"https://themegaradio.com/api/auth/apple\" \
+  -H \"Content-Type: application/json\" \
+  -H \"X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw\" \
+  -d '{\"identityToken\": \"test\", \"authorizationCode\": \"test\"}'
+
+# Sonuç: HTML sayfası dönüyor (Web app'in ana sayfası)
+# Beklenen: JSON response
+```
+
+### Sorun
+
+**API endpoint'leri (`/api/auth/google` ve `/api/auth/apple`) JSON yanıt yerine HTML sayfası döndürüyor.**
+
+Bu durumun olası nedenleri:
+
+1. **API route'ları kaldırılmış veya değiştirilmiş olabilir**
+2. **Backend deploy'unda bir sorun olmuş olabilir**
+3. **Web uygulaması tüm `/api/auth/*` isteklerini yakalıyor olabilir**
+4. **Nginx veya reverse proxy konfigürasyonu değişmiş olabilir**
+
+## Frontend Kodları (Referans)
+
+### Mobile App - socialAuthService.ts
+
+```typescript
+// Google Sign-In
+async signInWithGoogle() {
+  const { idToken, user } = await GoogleSignin.signIn();
+  const response = await api.post('/api/auth/google', {
+    idToken,
+    email: user.email,
+    name: user.name,
+    googleId: user.id,
+    platform: 'mobile'
+  });
+  return response.data;
+}
+
+// Apple Sign-In  
+async signInWithApple() {
+  const credential = await AppleAuthentication.signInAsync({...});
+  const response = await api.post('/api/auth/apple', {
+    identityToken: credential.identityToken,
+    authorizationCode: credential.authorizationCode,
+    fullName: credential.fullName,
+    email: credential.email,
+    user: credential.user,
+    platform: 'mobile'
+  });
+  return response.data;
+}
+```
+
+## Kontrol Edilmesi Gerekenler
+
+1. **Backend API route'ları**:
+   - `/api/auth/google` endpoint'i var mı?
+   - `/api/auth/apple` endpoint'i var mı?
+   - Bu endpoint'ler doğru HTTP metodunu (POST) destekliyor mu?
+
+2. **Nginx/Reverse Proxy konfigürasyonu**:
+   - `/api/auth/*` route'ları backend'e yönlendiriliyor mu?
+   - Yoksa web app'e mi yönlendiriliyor?
+
+3. **Backend deployment**:
+   - Son deployment'ta auth modülü dahil edildi mi?
+   - Environment variable'lar (Google Client ID, Apple credentials) doğru mu?
+
+4. **CORS ayarları**:
+   - Mobile app'ten gelen istekler için CORS izinleri var mı?
+
+## Beklenen API Yanıtları
+
+### Başarılı Giriş
+```json
+{
+  \"success\": true,
+  \"user\": {
+    \"_id\": \"...\",
+    \"email\": \"...\",
+    \"name\": \"...\"
+  },
+  \"token\": \"jwt_token_here\"
+}
+```
+
+### Hatalı Token
+```json
+{
+  \"success\": false,
+  \"error\": \"Invalid or expired token\"
+}
+```
+
+## Öncelik
+
+🔴 **YÜKSEK** - Kullanıcılar giriş yapamıyor, bu kritik bir fonksiyon.
+
+---
+
+Hazırlayan: MegaRadio Mobile Team
+Tarih: 10 Aralık 2026
+"
+Observation: Create successful: /app/frontend/docs/BACKEND_AUTH_ISSUE.md
+
+Fetching debug logs for expo
+
+==> /var/log/supervisor/expo.err.log <==
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+"shadow*" style props are deprecated. Use "boxShadow".
+"textShadow*" style props are deprecated. Use "textShadow".
+
+==> /var/log/supervisor/expo.out.log <==
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+λ Bundled 34ms node_modules/expo-router/node/render.js (1 module)
+[WatchService] Not available (non-iOS or no native module)
+[NativeCast] Google Cast not available: Error: Cannot find module 'react-native-google-cast'
+    at require (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:56:19)
+    at factory (/app/frontend/src/components/NativeCastModal.tsx:35:28)
+    at loadModuleImplementation (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:248:36)
+    at guardedLoadModule (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:163:16)
+    at require (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:74:75)
+    at factory (/app/frontend/src/components/UniversalCastButton.tsx:5:1)
+    at loadModuleImplementation (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:248:36)
+    at guardedLoadModule (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:163:16)
+    at require (/app/frontend/node_modules/@expo/cli/build/metro-require/require.js:74:75)
+    at /app/frontend/app/player.tsx:35:1
+λ  LOG  [CarPlayHandler] Component rendering, playStation: true
+[Onboarding] All images preloaded
+Web ./index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Web Bundled 996ms index.ts (1 module)
+Web Bundled 46ms index.ts (1 module)
+ LOG  [web] Logs will appear in the browser console
+
+
+Fetching debug logs for backend
+
+==> /var/log/supervisor/backend.err.log <==
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [462] using WatchFiles
+INFO:     Started server process [465]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [171] using WatchFiles
+INFO:     Started server process [213]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Will watch for changes in these directories: ['/app/backend']
+INFO:     Uvicorn running on http://0.0.0.0:8001 (Press CTRL+C to quit)
+INFO:     Started reloader process [182] using WatchFiles
+INFO:     Started server process [221]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+
+==> /var/log/supervisor/backend.out.log <==
+
+
+Fetching debug logs for mongodb
+
+tail: cannot open '/var/log/supervisor/mongodb*.log' for reading: No such file or directory

@@ -1,0 +1,164 @@
+/* CSS classes to replace inline styles */
+
+/* Dynamic positioning classes */
+.signup-banner-collapsed {
+  bottom: 60px;
+}
+
+.signup-banner-expanded {
+  bottom: 140px;
+}
+
+.modal-max-height {
+  max-height: 95vh;
+}
+
+/* Z-index utilities */
+.z-very-high {
+  z-index: 999990;
+}
+
+/* Pointer events */
+.pointer-events-auto {
+  pointer-events: auto;
+}
+
+/* Progress bar base styles */
+.progress-bar {
+  transition: width 0.3s ease;
+  height: 100%;
+  background: linear-gradient(to right, #22c55e, #16a34a);
+  border-radius: inherit;
+}
+
+/* Display utilities */
+.display-none {
+  display: none;
+}
+
+.display-block {
+  display: block;
+}
+
+/* Background image utilities */
+.flag-background {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+
+/* Scroll utilities */
+.webkit-scroll-touch {
+  -webkit-overflow-scrolling: touch;
+}
+
+.scroll-hidden {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+/* Genre background with auto width */
+.genre-slide-auto {
+  width: auto;
+}
+
+/* Transform utilities */
+.translate-progress {
+  transition: transform 0.3s ease;
+}
+
+/* Station fallback icon */
+.fallback-icon-hidden {
+  display: none;
+}
+
+.fallback-icon-visible {
+  display: block;
+}
+
+/* Background image dynamic styles - will be set via CSS custom properties */
+.dynamic-bg-image {
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-image: var(--bg-image);
+}
+
+/* Progress width - will be set via CSS custom properties */
+.dynamic-progress-width {
+  width: var(--progress-width);
+}
+
+/* Search dropdown z-index and styles */
+.search-backdrop {
+  z-index: 999990;
+}
+
+.search-dropdown {
+  z-index: 999995;
+  overflow: visible;
+}
+
+.search-results-container {
+  max-height: 320px;
+}
+
+/* Modal styles */
+.modal-content-height {
+  max-height: 95vh;
+}
+
+/* Display none utility */
+.display-none {
+  display: none;
+}
+
+/* Hidden social widgets - invisible to users but detectable by crawlers */
+.hidden-social-widgets {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Dynamic transforms */
+.dynamic-transform {
+  transform: var(--transform);
+}
+
+/* Language dropdown positioning */
+.language-dropdown-position {
+  top: var(--dropdown-top, 100%);
+  left: var(--dropdown-left, 0);
+  right: var(--dropdown-right, auto);
+}
+
+/* Chart item positioning */
+.chart-item-dynamic {
+  --item-color: var(--color);
+  background-color: var(--item-color);
+}
+
+/* Virtualized list item positioning */
+.virtualized-item {
+  position: absolute;
+  top: var(--item-top, 0);
+  left: var(--item-left, 0);
+  width: var(--item-width, 100%);
+  height: var(--item-height, auto);
+}
+
+/* Modal height constraint */
+.modal-content-height {
+  max-height: 95vh;
+  overflow-y: auto;
+}

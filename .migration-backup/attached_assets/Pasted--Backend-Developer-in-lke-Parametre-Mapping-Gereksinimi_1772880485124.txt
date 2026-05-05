@@ -1,0 +1,300 @@
+"# 🌍 Backend Developer İçin: Ülke Parametre Mapping Gereksinimi
+
+## 📋 Özet
+
+Frontend'den gelen `country` parametresi çok farklı formatlarda gelebilir. Backend'in tüm bu formatları kabul etmesi ve aynı sonucu döndürmesi GEREKİYOR.
+
+---
+
+## 🔴 KRİTİK SORUN
+
+Şu an bazı endpoint'ler sadece **İngilizce** ülke adı kabul ediyor. Bu, kullanıcı deneyimini bozuyor.
+
+**Örnek - Avusturya için:**
+```bash
+# ✅ ÇALIŞMALI (hepsi aynı sonucu döndürmeli)
+GET /api/stations?country=Austria       # İngilizce
+GET /api/stations?country=Österreich    # Almanca (native)
+GET /api/stations?country=Avusturya     # Türkçe
+GET /api/stations?country=AT            # ISO kodu
+GET /api/stations?country=at            # ISO kodu (küçük harf)
+GET /api/stations?country=austria       # Küçük harf
+
+# ❌ ŞU AN ÇALIŞMIYOR
+GET /api/stations?country=Österreich    # Boş sonuç döndürüyor
+GET /api/stations?country=Avusturya     # Boş sonuç döndürüyor
+```
+
+---
+
+## 📊 Etkilenen Endpoint'ler
+
+| Endpoint | Parametre | Mevcut Durum |
+|----------|-----------|--------------|
+| `GET /api/stations` | `country` | ❌ Sadece İngilizce |
+| `GET /api/stations/popular` | `country` | ❌ Sadece İngilizce |
+| `GET /api/genres/{slug}/stations` | `country` | ❌ Sadece İngilizce |
+| `GET /api/genres/precomputed` | `countrycode` | ✅ ISO kodu çalışıyor |
+| `GET /api/tv/init` | `country`, `countryCode` | ❓ Kontrol edilmeli |
+
+---
+
+## 🗺️ Ülke Mapping Tablosu (Örnek)
+
+Aşağıdaki tablo, en sık kullanılan ülkeler için tüm varyasyonları gösterir:
+
+### Avusturya
+| Format | Değer |
+|--------|-------|
+| İngilizce | `Austria` |
+| Native (Almanca) | `Österreich` |
+| Türkçe | `Avusturya` |
+| ISO-2 | `AT` |
+| ISO-3 | `AUT` |
+
+### Almanya
+| Format | Değer |
+|--------|-------|
+| İngilizce | `Germany` |
+| Native | `Deutschland` |
+| Türkçe | `Almanya` |
+| ISO-2 | `DE` |
+| ISO-3 | `DEU` |
+
+### Türkiye
+| Format | Değer |
+|--------|-------|
+| İngilizce | `Turkey` |
+| Native | `Türkiye` |
+| Türkçe | `Türkiye` |
+| ISO-2 | `TR` |
+| ISO-3 | `TUR` |
+
+### İsviçre
+| Format | Değer |
+|--------|-------|
+| İngilizce | `Switzerland` |
+| Native (Almanca) | `Schweiz` |
+| Native (Fransızca) | `Suisse` |
+| Native (İtalyanca) | `Svizzera` |
+| Türkçe | `İsviçre` |
+| ISO-2 | `CH` |
+| ISO-3 | `CHE` |
+
+### Hollanda
+| Format | Değer |
+|--------|-------|
+| İngilizce | `Netherlands` |
+| Native | `Nederland` |
+| Türkçe | `Hollanda` |
+| ISO-2 | `NL` |
+| ISO-3 | `NLD` |
+| Eski isim | `Holland` |
+
+---
+
+## 💡 Önerilen Backend Çözümü
+
+### Option 1: Lookup Tablosu (MongoDB)
+
+```javascript
+// countries collection
+{
+  \"_id\": \"austria\",
+  \"canonical\": \"Austria\",  // Veritabanında kullanılan standart isim
+  \"aliases\": [
+    \"austria\",
+    \"österreich\", 
+    \"avusturya\",
+    \"at\",
+    \"aut\",
+    \"republic of austria\"
+  ],
+  \"iso2\": \"AT\",
+  \"iso3\": \"AUT\"
+}
+```
+
+```javascript
+// Normalize fonksiyonu
+async function normalizeCountry(input) {
+  if (!input) return null;
+  
+  const normalized = input.trim().toLowerCase();
+  
+  // Önce lookup tablosunda ara
+  const country = await db.countries.findOne({
+    $or: [
+      { canonical: { $regex: new RegExp(`^${normalized}$`, 'i') } },
+      { aliases: normalized },
+      { iso2: { $regex: new RegExp(`^${normalized}$`, 'i') } },
+      { iso3: { $regex: new RegExp(`^${normalized}$`, 'i') } }
+    ]
+  });
+  
+  return country?.canonical || null;
+}
+```
+
+### Option 2: In-Memory Mapping (Daha Hızlı)
+
+```python
+# Python örneği
+COUNTRY_ALIASES = {
+    # Austria
+    \"austria\": \"Austria\",
+    \"österreich\": \"Austria\",
+    \"avusturya\": \"Austria\",
+    \"at\": \"Austria\",
+    \"aut\": \"Austria\",
+    
+    # Germany
+    \"germany\": \"Germany\",
+    \"deutschland\": \"Germany\",
+    \"almanya\": \"Austria\",
+    \"de\": \"Germany\",
+    \"deu\": \"Germany\",
+    
+    # Turkey
+    \"turkey\": \"Turkey\",
+    \"türkiye\": \"Turkey\",
+    \"turkiye\": \"Turkey\",
+    \"tr\": \"Turkey\",
+    \"tur\": \"Turkey\",
+    
+    # Switzerland
+    \"switzerland\": \"Switzerland\",
+    \"schweiz\": \"Switzerland\",
+    \"suisse\": \"Switzerland\",
+    \"svizzera\": \"Switzerland\",
+    \"isviçre\": \"Switzerland\",
+    \"isvicre\": \"Switzerland\",
+    \"ch\": \"Switzerland\",
+    \"che\": \"Switzerland\",
+    
+    # Netherlands
+    \"netherlands\": \"Netherlands\",
+    \"nederland\": \"Netherlands\",
+    \"hollanda\": \"Netherlands\",
+    \"holland\": \"Netherlands\",
+    \"nl\": \"Netherlands\",
+    \"nld\": \"Netherlands\",
+    
+    # ... diğer ülkeler
+}
+
+def normalize_country(country_param: str) -> str | None:
+    \"\"\"Convert any country format to canonical name\"\"\"
+    if not country_param:
+        return None
+    
+    # Lowercase ve strip
+    normalized = country_param.strip().lower()
+    
+    # Lookup
+    canonical = COUNTRY_ALIASES.get(normalized)
+    
+    # Eğer bulunamazsa, orijinal değeri döndür (case-insensitive search için)
+    return canonical or country_param
+
+# Kullanım
+@app.get(\"/api/stations\")
+async def get_stations(country: str = None):
+    canonical_country = normalize_country(country)
+    
+    query = {}
+    if canonical_country:
+        # Case-insensitive search
+        query[\"country\"] = {\"$regex\": f\"^{canonical_country}$\", \"$options\": \"i\"}
+    
+    stations = await db.stations.find(query).to_list(100)
+    return {\"stations\": stations}
+```
+
+### Option 3: Middleware/Interceptor (En Temiz)
+
+```javascript
+// Express middleware örneği
+function normalizeCountryMiddleware(req, res, next) {
+  if (req.query.country) {
+    req.query.country = normalizeCountry(req.query.country);
+  }
+  if (req.query.countryCode) {
+    req.query.countryCode = normalizeCountryCode(req.query.countryCode);
+  }
+  next();
+}
+
+app.use('/api/stations', normalizeCountryMiddleware);
+app.use('/api/genres', normalizeCountryMiddleware);
+```
+
+---
+
+## ✅ Test Senaryoları
+
+Backend düzeltmesi sonrası tüm bu istekler **aynı sonucu** döndürmelidir:
+
+```bash
+# Avusturya istasyonları - tümü aynı sonuç
+curl \"/api/stations?country=Austria\"
+curl \"/api/stations?country=Österreich\"
+curl \"/api/stations?country=Avusturya\"
+curl \"/api/stations?country=AT\"
+curl \"/api/stations?country=at\"
+curl \"/api/stations?country=AUT\"
+
+# Türkiye istasyonları - tümü aynı sonuç  
+curl \"/api/stations?country=Turkey\"
+curl \"/api/stations?country=Türkiye\"
+curl \"/api/stations?country=TR\"
+curl \"/api/stations?country=TUR\"
+```
+
+---
+
+## 📈 Öncelik
+
+🔴 **P0 - KRİTİK**
+
+Bu düzeltme yapılmazsa:
+- Farklı dil ayarlarındaki kullanıcılar içerik göremez
+- CarPlay/Android Auto'da ülke filtresi çalışmaz
+- İlk açılışta boş ekran gösterilir
+
+---
+
+## 🔗 İlgili Frontend Dosyalar
+
+Frontend şu şekilde country gönderir:
+
+```typescript
+// locationStore.ts
+{
+  country: \"Österreich\",      // Native isim (cihaz dilinde)
+  countryCode: \"AT\",          // ISO-2 kodu
+  countryEnglish: \"Austria\"   // İngilizce isim
+}
+
+// API çağrısında countryEnglish kullanılıyor
+const apiCountry = countryEnglish || country || undefined;
+```
+
+**Ancak** bazı senaryolarda native isim gidebilir - backend hazırlıklı olmalı.
+
+---
+
+## 📝 Tam Ülke Listesi
+
+219 ülke için tam mapping listesi gerekiyorsa, ISO 3166-1 standardını kullanabilirsiniz:
+- https://en.wikipedia.org/wiki/List_of_ISO_3166_country_codes
+
+Türkçe isimler için:
+- https://tr.wikipedia.org/wiki/Ülkeler_listesi
+
+---
+
+**Doküman Sonu**
+
+*Son güncelleme: Mart 2025*
+"

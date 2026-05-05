@@ -1,0 +1,67 @@
+logger.ts:6 🎯 VLC-LIKE APPROACH: Resolving stream for Virgin Radio Türkiye
+logger.ts:6 🎵 Resolving playlist: http://provisioning.streamtheworld.com/pls/VIRGIN_RADIO.pls
+logger.ts:6 🎵 Playlist resolved: pls with 1 candidates
+logger.ts:6 🎵 Playing candidate 1/1: http://provisioning.streamtheworld.com/pls/VIRGIN_RADIO.pls?_t=1776868993312
+logger.ts:6 🎵 Direct Stream: Smart proxy routing
+logger.ts:6 🔒 HTTP stream → proxy for mixed content fix
+logger.ts:6 ✅ Safari iOS simple play approach started
+logger.ts:6 🧹 METADATA: Disconnecting previous metadata client
+logger.ts:6 🧹 METADATA: Client disconnected and cleaned up
+logger.ts:6 🎵 METADATA: Initializing metadata client for Virgin Radio Türkiye
+logger.ts:6 🎵 METADATA: Connecting to WebSocket server...
+logger.ts:6 🎵 METADATA: Subscriber added (total: 1)
+logger.ts:6 🎯 METADATA: Tracking stream for real-time metadata: http://provisioning.streamtheworld.com/pls/VIRGIN_RADIO.pls
+logger.ts:6 ⚠️ METADATA: Socket not ready, queuing message
+logger.ts:6 🔄 Audio: Loading started
+logger.ts:6 🎵 Safe play starting (direct-stream)
+logger.ts:6 ▶️ SIMPLE AUDIO: Playing
+logger.ts:6 🔄 Service Worker keep-alive started
+logger.ts:6 📍 Media Session position state set (live stream: Infinity)
+logger.ts:6 🛑 Service Worker keep-alive stopped
+logger.ts:6 🎯 RADIOLISE APPROACH: Simple audio element setup (no background monitoring)
+logger.ts:6 🔒 Wake Lock acquired - device will stay awake
+logger.ts:6 🔌 METADATA: WebSocket disconnected (code: 1005)
+logger.ts:6 🔌 METADATA: WebSocket error code: 1005
+logger.ts:6 ❌ AUDIO ERROR DETECTED
+logger.ts:6 🔍 ERROR: Code: 4 Message: PipelineStatus::DEMUXER_ERROR_COULD_NOT_OPEN: FFmpegDemuxer: open context failed
+logger.ts:6 🔍 ERROR: Network state: 3
+logger.ts:6 🔍 ERROR: Ready state: 0
+logger.ts:6 🔍 ERROR: Audio source: https://15827289-b62c-4bda-b2c3-59bf6b2347fc-00-2vkbra36r4eqr.riker.replit.dev:5000/api/stream/aHR0cDovL3Byb3Zpc2lvbmluZy5zdHJlYW10aGV3b3JsZC5jb20vcGxzL1ZJUkdJTl9SQURJTy5wbHM_X3Q9MTc3Njg2ODk5MzMxMg
+logger.ts:6 🔍 ERROR: Current position: 0
+logger.ts:6 🔄 All candidates exhausted, trying proxy fallback
+logger.ts:6 ❌ Play failed (direct-stream): NotSupportedError: Failed to load because no supported source was found.
+main.tsx:52 NotSupportedError: Failed to load because no supported source was found.
+(anonymous) @ main.tsx:52
+Promise.catch
+(anonymous) @ useGlobalPlayer.tsx:947
+setTimeout
+(anonymous) @ useGlobalPlayer.tsx:946
+await in (anonymous)
+(anonymous) @ radio-frontend.tsx:800
+(anonymous) @ station-card.tsx:119
+(anonymous) @ station-card.tsx:283
+callCallback2 @ chunk-RPCDYKBN.js?v=ed73d491:3674
+invokeGuardedCallbackDev @ chunk-RPCDYKBN.js?v=ed73d491:3699
+invokeGuardedCallback @ chunk-RPCDYKBN.js?v=ed73d491:3733
+invokeGuardedCallbackAndCatchFirstError @ chunk-RPCDYKBN.js?v=ed73d491:3736
+executeDispatch @ chunk-RPCDYKBN.js?v=ed73d491:7014
+processDispatchQueueItemsInOrder @ chunk-RPCDYKBN.js?v=ed73d491:7034
+processDispatchQueue @ chunk-RPCDYKBN.js?v=ed73d491:7043
+dispatchEventsForPlugins @ chunk-RPCDYKBN.js?v=ed73d491:7051
+(anonymous) @ chunk-RPCDYKBN.js?v=ed73d491:7174
+batchedUpdates$1 @ chunk-RPCDYKBN.js?v=ed73d491:18913
+batchedUpdates @ chunk-RPCDYKBN.js?v=ed73d491:3579
+dispatchEventForPluginEventSystem @ chunk-RPCDYKBN.js?v=ed73d491:7173
+dispatchEventWithEnableCapturePhaseSelectiveHydrationWithoutDiscreteEventReplay @ chunk-RPCDYKBN.js?v=ed73d491:5478
+dispatchEvent @ chunk-RPCDYKBN.js?v=ed73d491:5472
+dispatchDiscreteEvent @ chunk-RPCDYKBN.js?v=ed73d491:5449
+logger.ts:6 ⏸️ Audio: Paused - checking if browser background pause
+logger.ts:6 🔍 Page hidden? false Stream ended? false
+logger.ts:6 ⏸️ User-initiated pause detected (page is visible)
+logger.ts:6 🔓 Wake Lock released
+logger.ts:6 📍 Media Session position state set (live stream: Infinity)
+logger.ts:6 🎯 RADIOLISE APPROACH: Simple audio element setup (no background monitoring)
+logger.ts:6 🔓 Wake Lock released - device can sleep
+logger.ts:6 🔓 Wake Lock released - device can sleep
+logger.ts:6 ✅ METADATA: WebSocket connected
+logger.ts:6 🎵 METADATA: Service ready

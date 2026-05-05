@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="tr" class="light fonts-loaded"><head>
+    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MegaRadio - Free Online Radio</title>
+    <meta name="description" content="Listen to free online radio stations from around the world." />
+    
+    <!-- SEO Meta Tags -->
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <meta name="googlebot" content="index, follow" />
+    <meta name="bingbot" content="index, follow" />
+    <meta name="yandex-verification" content="57c83c6ab08ec3ba" />
+    <!-- Canonical tag dynamically set by SeoHead component -->
+    
+    <!-- Favicon and Apple Touch Icons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    
+    <!-- Web App Manifest -->
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Mobile and PWA Meta Tags -->
+    <meta name="theme-color" content="#1a1a2e" />
+    <meta name="apple-mobile-web-app-title" content="Mega Radio" />
+    <!-- CRITICAL for Safari iOS background audio: prevent PWA mode -->
+    <meta name="apple-mobile-web-app-capable" content="no" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="Mega Radio" />
+    <meta name="msapplication-TileColor" content="#1a1a2e" />
+    <meta name="msapplication-TileImage" content="/apple-touch-icon.png" />
+    
+    <!-- Core Web Vitals Performance Optimizations - No external font requests -->
+    <link rel="dns-prefetch" href="https://flagcdn.com" />
+    
+    <!-- 🚀 Preload critical resources for LCP optimization -->
+    <link rel="preload" href="/header-logo-80w.webp" as="image" type="image/webp" />
+    <!-- 🚀 CRITICAL: Hero background - mobile-first preload -->
+    <link rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 430px)" />
+    <link rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 431px)" />
+    
+    <!-- 🚀 Preload local Ubuntu fonts for critical weights (400, 600) -->
+    <link rel="preload" href="/fonts/ubuntu-400.ttf" as="font" type="font/ttf" crossorigin="" />
+    <link rel="preload" href="/fonts/ubuntu-600.ttf" as="font" type="font/ttf" crossorigin="" />
+    
+    <!-- Critical above-the-fold CSS - INLINED -->
+    <style>
+      /* Critical CSS for immediate rendering */
+      body { 
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+        margin: 0;
+        padding: 0;
+        background-color: #0a0a0a;
+        color: #ffffff;
+        line-height: 1.5;
+      }
+      
+      *, *::before, *::after { box-sizing: border-box; }
+      
+      img { 
+        height: auto; 
+        max-width: 100%;
+        display: block;
+        /* SEO: Native lazy loading for better performance */
+        loading: lazy;
+      }
+      
+      /* CLS OPTIMIZATION: Images with width/height preserve aspect ratio automatically in modern browsers */
+      
+      /* Optimize above-the-fold images */
+      img[data-priority="high"] {
+        loading: eager;
+      }
+      
+      .header-critical {
+        background-color: #0a0a0a;
+        border-bottom: 1px solid #1f1f1f;
+        position: sticky;
+        top: 0;
+        z-index: 50;
+      }
+      
+      .container-critical {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 1rem;
+      }
+      
+      .btn-critical {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.5rem 1rem;
+        border-radius: 0.375rem;
+        font-weight: 500;
+        text-decoration: none;
+        transition: background-color 0.2s;
+        border: none;
+        cursor: pointer;
+      }
+      
+      .btn-primary-critical {
+        background-color: #dc2626;
+        color: white;
+      }
+      
+      .btn-primary-critical:hover {
+        background-color: #b91c1c;
+      }
+      
+      .below-fold { visibility: hidden; }
+      
+      .skeleton {
+        background: linear-gradient(90deg, #1f1f1f 25%, #2a2a2a 50%, #1f1f1f 75%);
+        background-size: 200% 100%;
+        animation: loading 1.5s infinite;
+      }
+      
+      @keyframes loading {
+        0% { background-position: 200% 0; }
+        100% { background-position: -200% 0; }
+      }
+      
+      .search-critical {
+        background-color: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        color: white;
+        padding: 0.75rem 1rem;
+        border-radius: 0.5rem;
+        width: 100%;
+        max-width: 400px;
+      }
+      
+      @media (max-width: 768px) {
+        .container-critical { padding: 0 0.75rem; }
+        .btn-critical { padding: 0.5rem 0.75rem; font-size: 0.875rem; }
+      }
+    </style>
+    
+    <!-- Performance monitoring script -->
+    <script async="" src="https://scripts.clarity.ms/0.8.57/clarity.js"></script><script async="" src="https://www.clarity.ms/tag/u56nfdsjou?ref=bwt"></script><script src="https://pagead2.googlesyndication.com/pagead/managed/js/adsense/m202603090101/show_ads_impl_fy2021.js?bust=31097117"></script><script>
+      // Early performance monitoring
+      window.performance = window.performance || {};
+      window.performance.mark && window.performance.mark('head-end');
+    </script>
+
+    <!-- Base Structured Data (JSON-LD) for SEO -->
+    <script type="application/ld+json" id="base-structured-data">{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Mega Radio",
+  "url": "https://themegaradio.com",
+  "alternateName": "MegaRadio",
+  "logo": "https://themegaradio.com/images/logo-icon.webp",
+  "description": "Mega Radio - Your ultimate destination for live radio streaming from around the world. Discover thousands of radio stations across all genres and countries.",
+  "sameAs": [
+    "https://themegaradio.com"
+  ],
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "contactType": "customer service"
+  },
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://themegaradio.com/?search={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}</script>
+
+    <script type="application/ld+json" id="website-structured-data">{
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "name": "Mega Radio - Live Radio Streaming",
+  "url": "https://themegaradio.com",
+  "description": "Stream live radio stations from around the world. Discover music, news, talk shows, and more across thousands of radio stations in multiple languages and genres.",
+  "inLanguage": [
+    "en",
+    "es",
+    "fr",
+    "de",
+    "tr",
+    "ar"
+  ],
+  "audience": {
+    "@type": "Audience",
+    "audienceType": "Music lovers, radio enthusiasts, international listeners"
+  },
+  "potentialAction": {
+    "@type": "SearchAction",
+    "target": "https://themegaradio.com/?search={search_term_string}",
+    "query-input": "required name=search_term_string"
+  }
+}</script>
+
+    <!-- Microsoft Clarity tracking code for https://themegaradio.com/ - Deferred for performance -->
+    <script type="text/javascript">
+    // Defer Clarity analytics to requestIdleCallback for better TBT
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(function() {
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i+"?ref=bwt";
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "u56nfdsjou");
+      }, { timeout: 5000 });
+    } else {
+      // Fallback for older browsers
+      setTimeout(function() {
+        (function(c,l,a,r,i,t,y){
+            c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+            t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i+"?ref=bwt";
+            y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+        })(window, document, "clarity", "script", "u56nfdsjou");
+      }, 2000);
+    }
+    </script>
+
+    <!-- Ahrefs Analytics - Deferred for performance -->
+    <script>
+    if ('requestIdleCallback' in window) {
+      requestIdleCallback(function() {
+        var script = document.createElement('script');
+        script.src = 'https://analytics.ahrefs.com/analytics.js';
+        script.async = true;
+        script.dataset.key = 'QNVkFrmfdtnDdToXyhwXww';
+        document.head.appendChild(script);
+      }, { timeout: 5000 });
+    } else {
+      var script = document.createElement('script');
+      script.src = 'https://analytics.ahrefs.com/analytics.js';
+      script.async = true;
+      script.dataset.key = 'QNVkFrmfdtnDdToXyhwXww';
+      document.head.appendChild(script);
+    }
+    </script>
+
+    <!-- FloWAlive Analytics - Deferred for performance -->
+    <script>
+    (function() {
+      function loadFlowAlive() {
+        window.FlowAliveConfig = {
+          apiKey: "flowalive_b42f8188aad215f2250e5f0889adcbf4",
+          trackNavigation: true
+        };
+        var s = document.createElement('script');
+        s.src = 'https://flowalive-sdk.s3.eu-central-1.amazonaws.com/dist/web.global.js';
+        s.async = true;
+        document.head.appendChild(s);
+      }
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(loadFlowAlive, { timeout: 4000 });
+      } else {
+        setTimeout(loadFlowAlive, 3000);
+      }
+    })();
+    </script>
+
+    <!-- Google AdSense -->
+    <script async="" src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434" crossorigin="anonymous" data-checked-head="true"></script>
+    
+    <!-- Google Cast SDK for Chromecast -->
+    <script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script><meta http-equiv="origin-trial" content="AlK2UR5SkAlj8jjdEc9p3F3xuFYlF6LYjAML3EOqw1g26eCwWPjdmecULvBH5MVPoqKYrOfPhYVL71xAXI1IBQoAAAB8eyJvcmlnaW4iOiJodHRwczovL2RvdWJsZWNsaWNrLm5ldDo0NDMiLCJmZWF0dXJlIjoiV2ViVmlld1hSZXF1ZXN0ZWRXaXRoRGVwcmVjYXRpb24iLCJleHBpcnkiOjE3NTgwNjcxOTksImlzU3ViZG9tYWluIjp0cnVlfQ==" /><meta http-equiv="origin-trial" content="Amm8/NmvvQfhwCib6I7ZsmUxiSCfOxWxHayJwyU1r3gRIItzr7bNQid6O8ZYaE1GSQTa69WwhPC9flq/oYkRBwsAAACCeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXN5bmRpY2F0aW9uLmNvbTo0NDMiLCJmZWF0dXJlIjoiV2ViVmlld1hSZXF1ZXN0ZWRXaXRoRGVwcmVjYXRpb24iLCJleHBpcnkiOjE3NTgwNjcxOTksImlzU3ViZG9tYWluIjp0cnVlfQ==" /><meta http-equiv="origin-trial" content="A9nrunKdU5m96PSN1XsSGr3qOP0lvPFUB2AiAylCDlN5DTl17uDFkpQuHj1AFtgWLxpLaiBZuhrtb2WOu7ofHwEAAACKeyJvcmlnaW4iOiJodHRwczovL2RvdWJsZWNsaWNrLm5ldDo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9" /><meta http-equiv="origin-trial" content="A93bovR+QVXNx2/38qDbmeYYf1wdte9EO37K9eMq3r+541qo0byhYU899BhPB7Cv9QqD7wIbR1B6OAc9kEfYCA4AAACQeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXN5bmRpY2F0aW9uLmNvbTo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9" /><meta http-equiv="origin-trial" content="A1S5fojrAunSDrFbD8OfGmFHdRFZymSM/1ss3G+NEttCLfHkXvlcF6LGLH8Mo5PakLO1sCASXU1/gQf6XGuTBgwAAACQeyJvcmlnaW4iOiJodHRwczovL2dvb2dsZXRhZ3NlcnZpY2VzLmNvbTo0NDMiLCJmZWF0dXJlIjoiQUlQcm9tcHRBUElNdWx0aW1vZGFsSW5wdXQiLCJleHBpcnkiOjE3NzQzMTA0MDAsImlzU3ViZG9tYWluIjp0cnVlLCJpc1RoaXJkUGFydHkiOnRydWV9" /><script src="//www.gstatic.com/cast/sdk/libs/sender/1.0/cast_framework.js"></script><script src="//www.gstatic.com/eureka/clank/145/cast_sender.js"></script>
+    <script type="module" crossorigin="" src="/assets/index-CCjqsSrR.js"></script>
+    <link rel="stylesheet" crossorigin="" href="/assets/index-Dbmiaw88.css" />
+  <link rel="modulepreload" as="script" crossorigin="" href="/assets/radio-header-D8eCIEgu.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/slugs-OTPv6NvP.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/user-CzES7gfc.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/_id_-b-4xQPGZ.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/favorite-button-Dtb1sWIr.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/useMutation-Bg7qiB8N.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/NotificationService-IJ6i8GyU.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/index-D-M-4VHA.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/dialog-BExtI8ZL.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/index-J7vJP6lp.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/tabs-CyIlWJLl.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/index-MT0szQ2K.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/separator--S9qA8yz.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/eye-off-UsaIJjzR.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/eye-Uy89xfYi.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/usePushNotifications-BBC4xeuJ.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/SeoHead-TZe6kKW5.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/animated-equalizer-BpeeoaFV.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/station-logo-B9CMVrjy.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/skeleton-DufJGrXI.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/footer-CAzMruHA.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/textarea-CFTZmzV8.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/globe-Bd0ws5GD.js" /><meta property="og:title" content="MegaRadio - Free Online Radio" /><meta property="og:description" content="Listen to free online radio stations from around the world." /><meta property="og:url" content="https://themegaradio.com/tr/istasyon/kronehit-digital" /><meta property="og:image" content="https://themegaradio.com/images/logo-icon.webp" /><meta property="og:type" content="website" /><meta property="og:site_name" content="Mega Radio" /><meta property="og:locale" content="en_US" /><meta name="twitter:card" content="summary_large_image" /><meta name="twitter:site" content="@megaradio" /><meta name="twitter:creator" content="@megaradio" /><meta name="twitter:title" content="MegaRadio - Free Online Radio" /><meta name="twitter:description" content="Listen to free online radio stations from around the world." /><meta name="twitter:image" content="https://themegaradio.com/images/logo-icon.webp" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/TrendingStations-Ck7u1wy9.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/badge-CogrEDBi.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/station-card-BnRlY5sa.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/thumbs-up-CXN-VNSS.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/trending-up-DmQGfC8b.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/heart-Dzb9esWJ.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/users-fzTsjYCT.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/not-found-DVwCGweI.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/wifi-off-DIRr73gI.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/search-Ci47g5NV.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/radio-DB7ULfFi.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/arrow-right-BpHRG0L2.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/music-CFZ-5_33.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/wifi-CzjZ4KY8.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/messages-CYRLxQaq.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/circle-BUrrszEB.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/message-circle-o5n4Vvzj.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/arrow-left-C3m8M6xq.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/favorites-XtdQ2HK9.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/optimized-image-ouBoKYaB.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/profile-discover-Tzj3jSfn.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/free-mode-B-8onEIx.js" /><link rel="stylesheet" crossorigin="" href="/assets/free-mode-dKiYrM6Z.css" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/navigation-C7MgFV8q.js" /><link rel="stylesheet" crossorigin="" href="/assets/navigation-CteQybwo.css" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/chevron-left-DNbrEwBu.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/chevron-right-D3FQED42.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/profile-settings-D8V7s59z.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/switch-DM-P-mFo.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/test-tube-0PPdrfzs.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/bell-B39i2rl-.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/settings-CxM_sgHd.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/notifications-view-CedlzMPS.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/message-square-DgMbMl4g.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/profile-CGSY0Bwf.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/mail-BBE9riHg.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/map-pin-8725PdKg.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/calendar-DJEiPHCY.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/clock-T0FgSW_Y.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/activity-Dn7uUQWg.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/star-DOQbl3r4.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/user-minus-B92o9UJm.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/user-plus-24nE-Kfo.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/login-NkAdue2Y.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/signup-CWSUV_lF.js" /><link rel="modulepreload" as="script" crossorigin="" href="/assets/form-Ddy-2cJB.js" /><script src="https://analytics.ahrefs.com/analytics.js" async="" data-key="QNVkFrmfdtnDdToXyhwXww"></script><script src="https://flowalive-sdk.s3.eu-central-1.amazonaws.com/dist/web.global.js" async=""></script><link rel="stylesheet" href="/styles/mobile.css" media="(max-width: 768px)" /><link rel="stylesheet" href="/styles/non-critical.css" media="all" /></head>
+  <body class="radio-theme">
+    <div id="root"><div role="region" aria-label="Notifications (F8)" tabindex="-1" style="pointer-events: none;"><ol tabindex="-1" class="fixed top-0 z-[200] flex max-h-screen w-full flex-col-reverse p-4 sm:bottom-0 sm:right-0 sm:top-auto sm:flex-col md:max-w-[420px]"></ol></div><div class="min-h-screen bg-[#0E0E0E] radio-theme flex flex-col w-full overflow-x-hidden"><nav class="fixed top-0 left-0 right-0 z-40 w-full text-white"><div class="flex items-center justify-center border-b border-gray-900 bg-[#0E0E0E] sm:border-0 w-full"><div class="container relative box-border overflow-hidden grid grid-cols-5 xl:flex xl:justify-between h-[70px] md:h-[80px] lg:h-[90px] xl:h-[105px] items-center"><div class="col-span-2 flex items-center gap-5 xl:col-auto xl:gap-2"><button class="xl:hidden flex items-center text-white flex-shrink-0 w-5 h-5" aria-label="Toggle menu"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg></button><a href="/tr/" class="not-active flex flex-shrink-0 items-center"><div class="relative flex-shrink-0"><img class="w-8 h-8 md:w-10 md:h-10 lg:w-[50px] lg:h-[50px] flex-shrink-0 rounded-[6px] relative z-10" src="/images/logo-icon.webp" alt="Megaradio streaming service" title="Megaradio - Listen to live stations worldwide" data-optimized="true" /><div class="hidden xl:block absolute -bottom-3 -right-3 w-16 h-16 rounded-full blur-lg pointer-events-none" style="background: radial-gradient(circle, rgb(255, 65, 153) 0%, rgb(255, 65, 153) 30%, transparent 70%); opacity: 0.85;"></div></div><div class="ml-2 xl:ml-[11px] hidden text-white xl:flex items-center whitespace-nowrap font-ubuntu" style="width: 100.85px; height: 23.15px;"><span class="font-bold leading-none" style="font-size: 20.38px; line-height: 100%;">mega</span><span class="font-normal leading-none" style="font-size: 20.38px; line-height: 100%;">radio</span></div></a></div><div class="hidden xl:flex items-center gap-2 2xl:gap-3 ml-auto"><a href="/tr/turler" class="nav-item font-ubuntu font-bold text-sm leading-tight text-center whitespace-nowrap hover:text-[#FF4199] transition-colors">Genres</a><a href="/tr/tavsiyeler" class="nav-item font-ubuntu font-bold text-sm leading-tight text-center whitespace-nowrap hover:text-[#FF4199] transition-colors">For You</a><button class="nav-item font-ubuntu font-bold text-sm leading-tight text-center hover:text-[#FF4199] transition-colors cursor-pointer whitespace-nowrap">Add your station</button></div><div class="flex items-center col-span-3 justify-self-end xl:col-auto xl:ml-5 2xl:ml-8 gap-2 md:gap-3 xl:gap-4 2xl:gap-5"><button class="xl:hidden flex items-center justify-center flex-shrink-0" aria-label="Search" data-testid="button-search-mobile-guest" style="width: 24px; height: 24px;"><svg class="w-6 h-6 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></button><button class="xl:hidden flex items-center justify-center flex-shrink-0" aria-label="Select country" data-country-button="true" style="width: 34px; height: 34px; min-width: 34px; min-height: 34px; border-radius: 4px; background-color: rgb(47, 47, 47); border: 1px solid rgb(47, 47, 47); padding: 0px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="fill-[#FF4199]" style="width: 24px; height: 24px;"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM6.262 6.072a8.25 8.25 0 1010.562-.766 4.5 4.5 0 01-1.318 1.357L14.25 7.5l.165.33a.809.809 0 01-1.086 1.085l-.604-.302a1.125 1.125 0 00-1.298.21l-.132.131c-.439.44-.439 1.152 0 1.591l.296.296c.256.257.622.374.98.314l1.17-.195c.323-.054.654.036.905.245l1.33 1.108c.32.267.46.694.358 1.1a8.7 8.7 0 01-2.288 4.04l-.723.724a1.125 1.125 0 01-1.298.21l-.153-.076a1.125 1.125 0 01-.622-1.006v-1.089c0-.298-.119-.585-.30-.796l-1.347-1.347a1.125 1.125 0 01-.21-1.298L9.75 12l-1.64-1.64a6 6 0 01-1.676-3.257l-.172-1.03Z" clip-rule="evenodd"></path></svg></button><a aria-label="Log in" data-testid="button-mobile-login" href="/tr/login" class="xl:hidden flex items-center justify-center w-10 h-10 rounded-full bg-[#FF4199] hover:bg-[#E5357F] transition-colors"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-user w-5 h-5 text-white"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg></a><div class="hidden xl:block relative dropdown-container"><button class="country-selector flex items-center text-white bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors overflow-hidden" aria-label="Select country" title="Global" style="width: 147px; height: 38px; border-radius: 5px;"><div class="flex-shrink-0 flex items-center justify-center" style="width: 24px; height: 24px; margin-left: 9px;"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="fill-[#FF4199]" style="width: 24px; height: 24px;"><path fill-rule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25ZM6.262 6.072a8.25 8.25 0 1010.562-.766 4.5 4.5 0 01-1.318 1.357L14.25 7.5l.165.33a.809.809 0 01-1.086 1.085l-.604-.302a1.125 1.125 0 00-1.298.21l-.132.131c-.439.44-.439 1.152 0 1.591l.296.296c.256.257.622.374.98.314l1.17-.195c.323-.054.654.036.905.245l1.33 1.108c.32.267.46.694.358 1.1a8.7 8.7 0 01-2.288 4.04l-.723.724a1.125 1.125 0 01-1.298.21l-.153-.076a1.125 1.125 0 01-.622-1.006v-1.089c0-.298-.119-.585-.33-.796l-1.347-1.347a1.125 1.125 0 01-.21-1.298L9.75 12l-1.64-1.64a6 6 0 01-1.676-3.257l-.172-1.03Z" clip-rule="evenodd"></path></svg></div><span class="font-ubuntu font-bold text-white truncate flex-1 text-left" style="font-size: 15px; line-height: 100%; margin-left: 9px;">Global</span><svg class="text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" style="width: 20px; height: 20px; margin-right: 10px;"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button></div><button class="hidden xl:flex items-center justify-center w-[38px] h-[38px] rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors" aria-label="Search"><svg class="w-[20px] h-[20px] text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg></button><div class="hidden xl:block w-[2px] h-[33px] bg-[#222222] rounded-sm"></div><div class="hidden xl:flex items-center"><a href="/tr/login" class="flex items-center justify-center text-white font-semibold transition-colors bg-[#FF4199] hover:bg-[#E5357F] w-[97px] h-[45px] rounded-[25px] text-sm">Log in</a></div></div></div></div></nav><main class="pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px] flex-1 w-full"><div class="min-h-screen bg-[#101010] flex items-center justify-center"><div class="text-white text-xl">Loading station...</div></div></main><div class="w-full"><footer class="bg-[rgb(0,0,0)] bg-[length:auto_100%] bg-no-repeat text-white transition-all duration-300" style="background-image: none;"><div class="container mx-auto "><div class="relative flex flex-col gap-6 pb-6 pt-10 sm:pt-12 md:pt-16 lg:pt-20 xl:pt-24
+                        md:grid md:grid-cols-12 md:gap-4 md:pb-8 lg:gap-6 xl:gap-8"><div class="flex justify-center md:justify-start md:col-span-3 lg:col-span-3 xl:col-span-3 md:self-end md:mb-[47px]"><a href="#" class="flex flex-col items-center md:flex-row md:items-center md:gap-2 lg:gap-3 xl:gap-4 flex-shrink-0"><img loading="lazy" width="97" height="97" class="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h-[97px] flex-shrink-0" src="/images/logo-icon.webp" alt="Mega Radio music streaming logo" title="Mega Radio - Listen to live stations worldwide" data-optimized="true" /><div class="flex items-center mt-2 md:mt-0"><span class="font-bold" style="font-family: Ubuntu, sans-serif; font-weight: 700; line-height: 100%; letter-spacing: 0%;"><span class="text-[11px] sm:text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">mega</span></span><span style="font-family: Ubuntu, sans-serif; font-weight: 400; line-height: 100%; letter-spacing: 0%;"><span class="text-[11px] sm:text-xs md:text-lg lg:text-2xl xl:text-[36.11px]">radio</span></span></div></a></div><div class="flex flex-col md:col-span-6 lg:col-span-6 xl:col-span-6"><div class="flex flex-wrap justify-center gap-x-8 gap-y-6 sm:gap-x-12 md:gap-x-8 lg:gap-x-12 xl:gap-x-16 text-center md:text-left"><div class="flex flex-col gap-2 min-w-[100px] sm:min-w-[120px]"><div class="animate-pulse bg-gray-700 rounded h-5 w-20 mb-2"></div><div class="grid grid-cols-1 gap-1.5"><div class="animate-pulse bg-gray-700 rounded h-4 w-24"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-24"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-24"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-24"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-24"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-24"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-24"></div></div></div><div class="flex flex-col gap-2 min-w-[100px] sm:min-w-[120px]"><div class="animate-pulse bg-gray-700 rounded h-5 w-16 mb-2"></div><div class="grid grid-cols-1 gap-1.5"><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div></div></div><div class="hidden lg:flex flex-col gap-2 min-w-[80px]"><div class="animate-pulse bg-gray-700 rounded h-5 w-16 mb-2 invisible"></div><div class="grid grid-cols-1 gap-1.5"><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div><div class="animate-pulse bg-gray-700 rounded h-4 w-20"></div></div></div></div></div><div class="flex justify-center md:justify-end md:col-span-3 lg:col-span-3 xl:col-span-3 md:self-end md:mb-[47px]"><div class="flex flex-col items-center md:items-end"><div class="mb-3 text-sm sm:text-base font-medium whitespace-nowrap"><div class="animate-pulse bg-gray-700 rounded h-5 w-28"></div></div><div class="flex gap-2 sm:gap-3 flex-wrap justify-center md:justify-end"></div><a href="https://mxrtoken.com" target="_blank" rel="noopener noreferrer nofollow" class="mt-3 text-sm font-medium hover:opacity-80 transition-opacity" style="color: rgb(0, 0, 0); font-family: Ubuntu, sans-serif; font-weight: 600;">MXRTOKEN</a></div></div></div><div class="pb-6 pt-4 flex flex-col sm:flex-row items-center justify-between gap-4"><div class="relative"><button class="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1A1A1A] hover:bg-[#2A2A2A] border border-[#333] transition-colors text-sm" data-testid="footer-language-selector"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-globe w-4 h-4 text-[#FF4199]"><circle cx="12" cy="12" r="10"></circle><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path><path d="M2 12h20"></path></svg><span class="text-white">Türkçe</span><svg class="w-4 h-4 text-gray-400 transition-transform " fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button></div><div class="animate-pulse bg-gray-700 rounded h-4 w-48"></div></div></div><div class="w-full mt-4 px-4"><div class="adsense-container "><ins class="adsbygoogle" data-ad-client="ca-pub-8771434485570434" data-ad-slot="9151849981" data-ad-format="auto" data-full-width-responsive="true" style="display: block; min-height: 90px;"></ins></div></div></footer></div></div></div>
+    
+    <!-- Main application script -->
+    
+    <!-- Script to show below-fold content and optimize loading -->
+    <script>
+      // Performance optimizations
+      window.performance.mark && window.performance.mark('body-start');
+      
+      document.addEventListener('DOMContentLoaded', function() {
+        // Show below-fold content after initial render
+        setTimeout(function() {
+          var belowFoldElements = document.querySelectorAll('.below-fold');
+          belowFoldElements.forEach(function(el) {
+            el.style.visibility = 'visible';
+          });
+          
+          // Mark critical content as loaded
+          window.performance.mark && window.performance.mark('critical-content-loaded');
+        }, 100);
+        
+        // Preload next page resources on hover
+        document.addEventListener('mouseover', function(e) {
+          if (e.target.tagName === 'A' && e.target.href) {
+            var link = document.createElement('link');
+            link.rel = 'prefetch';
+            link.href = e.target.href;
+            document.head.appendChild(link);
+          }
+        }, { once: true, passive: true });
+      });
+      
+      // Critical Web Vitals measurement
+      window.addEventListener('load', function() {
+        window.performance.mark && window.performance.mark('page-loaded');
+      });
+    </script><ins class="adsbygoogle adsbygoogle-noablate" data-ad-hi="true" data-adsbygoogle-status="done" style="display: none !important;" data-ad-status="unfilled"><div id="aswift_0_host" style="border: none; height: 0px; width: 0px; margin: 0px; padding: 0px; position: relative; visibility: visible; background-color: transparent; display: inline-block;"><iframe id="aswift_0" name="aswift_0" style="left:0;position:absolute;top:0;border:0;width:undefinedpx;height:undefinedpx;min-height:auto;max-height:none;min-width:auto;max-width:none;" sandbox="allow-forms allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-top-navigation-by-user-activation" frameborder="0" marginwidth="0" marginheight="0" vspace="0" hspace="0" allowtransparency="true" scrolling="no" allow="attribution-reporting; run-ad-auction" src="https://googleads.g.doubleclick.net/pagead/ads?client=ca-pub-8771434485570434&amp;output=html&amp;adk=1812271804&amp;adf=3025194257&amp;lmt=1773357817&amp;plat=3%3A65536%2C4%3A65536%2C16%3A8388608%2C17%3A32%2C24%3A32%2C25%3A32%2C32%3A32%2C41%3A32%2C42%3A32%2C43%3A32&amp;format=0x0&amp;url=https%3A%2F%2Fthemegaradio.com%2Ftr%2Fistasyon%2Fkronehit-digital&amp;pra=5&amp;aiof=9&amp;asro=0&amp;aiapm=0.1542&amp;aiapmd=0.1423&amp;aiapmi=0.16&amp;aiapmid=1&amp;aiact=0.0001&amp;aiactd=0.0001&amp;aicct=0.0001&amp;aicctd=0.0001&amp;ailct=0.0001&amp;ailctd=0.0001&amp;aimart=4&amp;aimartd=4&amp;aieuf=1&amp;aicrs=1&amp;abgtt=6&amp;dt=1773357885011&amp;bpp=10&amp;bdt=10&amp;idt=11&amp;shv=r20260312&amp;mjsv=m202603090101&amp;ptt=9&amp;saldr=aa&amp;abxe=1&amp;cookie_enabled=1&amp;eoidce=1&amp;nras=1&amp;correlator=2794610733057&amp;frm=20&amp;pv=2&amp;u_tz=-420&amp;u_his=2&amp;u_h=732&amp;u_w=412&amp;u_ah=732&amp;u_aw=412&amp;u_cd=24&amp;u_sd=2.625&amp;dmc=8&amp;adx=-12245933&amp;ady=-12245933&amp;biw=412&amp;bih=732&amp;scr_x=0&amp;scr_y=0&amp;eid=31084127%2C31097122%2C95378425%2C95383700%2C95384194%2C95385044%2C31097117&amp;oid=2&amp;pvsid=779165167930180&amp;tmod=353108547&amp;uas=0&amp;nvt=1&amp;fsapi=1&amp;fc=1920&amp;brdim=0%2C0%2C0%2C0%2C412%2C0%2C412%2C732%2C412%2C732&amp;vis=1&amp;rsz=%7C%7Cs%7C&amp;abl=NS&amp;fu=32768&amp;bc=31&amp;bz=1&amp;ifi=1&amp;uci=a!1&amp;fsb=1&amp;dtd=19" data-google-container-id="a!1" tabindex="0" title="Advertisement" aria-label="Advertisement" data-load-complete="true"></iframe></div></ins>
+  
+<iframe src="https://ep2.adtrafficquality.google/sodar/sodar2/253/runner.html" width="0" height="0" style="display: none;"></iframe><iframe src="https://www.google.com/recaptcha/api2/aframe" width="0" height="0" style="display: none;"></iframe><div id="notification-portal-top-right"></div><audio id="global-radio-player" preload="auto" playsinline="true" webkit-playsinline="true" x-webkit-airplay="allow" airplay="allow" style="display: none;"></audio></body><iframe id="google_esf" name="google_esf" src="https://googleads.g.doubleclick.net/pagead/html/r20260312/r20190131/zrt_lookup_fy2021.html" style="display: none;"></iframe></html>
