@@ -1,3 +1,4 @@
+import mongoose from 'mongoose';
 import { Station, SyncLog } from '../shared/mongo-schemas';
 import axios from 'axios';
 import NodeCache from 'node-cache';
@@ -757,10 +758,17 @@ export class SyncService {
     let failed = 0;
 
     try {
-      const stations = await Station.find(filter)
+      type TagHydrationCandidate = {
+        _id: mongoose.Types.ObjectId;
+        stationuuid: string;
+        name?: string;
+      };
+      type RadioBrowserTagsResponse = Array<{ tags?: string }>;
+
+      const stations = (await Station.find(filter)
         .select('_id stationuuid name')
         .limit(limit)
-        .lean();
+        .lean()) as unknown as TagHydrationCandidate[];
 
       if (stations.length === 0) {
         logger.log('🏷️ No stations need tags hydration');
@@ -779,8 +787,8 @@ export class SyncService {
 
         const batchResults = await Promise.allSettled(
           batch.map(async (station) => {
-            const uuid = (station as any).stationuuid as string;
-            const apiResp = await axios.get(
+            const uuid = station.stationuuid;
+            const apiResp = await axios.get<RadioBrowserTagsResponse>(
               `https://de1.api.radio-browser.info/json/stations/byuuid/${encodeURIComponent(uuid)}`,
               {
                 timeout: 10000,
@@ -792,7 +800,7 @@ export class SyncService {
               remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
             if (!tags) return { hydrated: false, empty: true };
             await Station.updateOne(
-              { _id: (station as any)._id },
+              { _id: station._id },
               { $set: { tags } },
             );
             return { hydrated: true, empty: false };
