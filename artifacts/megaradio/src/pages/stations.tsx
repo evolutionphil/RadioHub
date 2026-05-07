@@ -47,6 +47,31 @@ function TagsStatusBadge({ onClick }: { onClick: () => void }) {
   );
 }
 
+function NeverCheckedTagsBadge({ onClick }: { onClick: () => void }) {
+  const { data } = useQuery({
+    queryKey: ['/api/admin/stations/tags-status-summary'],
+    queryFn: () => api.getStationsTagsStatusSummary(),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  if (!data || data.neverChecked <= 0) return null;
+
+  const formatted = data.neverChecked.toLocaleString();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Stations with no tags that have never been checked against Radio-Browser. Click to filter."
+      data-testid="badge-never-checked-tags"
+      className="inline-flex items-center gap-1.5 rounded-full border border-sky-300 bg-sky-50 px-3 py-1 text-xs font-medium text-sky-800 hover:bg-sky-100 transition-colors"
+    >
+      <Tag className="w-3.5 h-3.5" />
+      <span>{formatted} never checked</span>
+    </button>
+  );
+}
+
 export default function Stations() {
   const { toast } = useToast();
   const { playStation, nextStation, previousStation } = useGlobalPlayer();
@@ -979,6 +1004,13 @@ export default function Stations() {
                   setShowDuplicates(false);
                   setShowBlacklisted(false);
                   handleFilterChange('tagsStatus', 'empty-cooldown');
+                }}
+              />
+              <NeverCheckedTagsBadge
+                onClick={() => {
+                  setShowDuplicates(false);
+                  setShowBlacklisted(false);
+                  handleFilterChange('tagsStatus', 'never-checked');
                 }}
               />
             </div>
