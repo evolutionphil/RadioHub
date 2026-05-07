@@ -720,16 +720,24 @@ export default function Stations() {
   };
 
   const handleBulkRecheckAllStuck = async () => {
-    if (filters.tagsStatus !== 'empty-cooldown') return;
+    if (
+      filters.tagsStatus !== 'empty-cooldown' &&
+      filters.tagsStatus !== 'never-checked'
+    )
+      return;
     const scopeBits: string[] = [];
     if (filters.country) scopeBits.push(`country ${filters.country}`);
     if (filters.language) scopeBits.push(`language ${filters.language}`);
     if (filters.genre) scopeBits.push(`genre ${filters.genre}`);
     if (debouncedSearch) scopeBits.push(`search "${debouncedSearch}"`);
     const scope = scopeBits.length > 0 ? ` (${scopeBits.join(', ')})` : '';
+    const bucketLabel =
+      filters.tagsStatus === 'empty-cooldown'
+        ? 'stuck on the empty-tags cooldown'
+        : 'tagless and never re-checked';
     if (
       !confirm(
-        `Re-check tags from Radio-Browser for EVERY station stuck on the empty-tags cooldown${scope}? This may take a while.`,
+        `Re-check tags from Radio-Browser for EVERY station ${bucketLabel}${scope}? This may take a while.`,
       )
     )
       return;
@@ -740,7 +748,7 @@ export default function Stations() {
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          tagsStatus: 'empty-cooldown',
+          tagsStatus: filters.tagsStatus,
           countryCode: filters.country || undefined,
           language: filters.language || undefined,
           genre: filters.genre || undefined,
@@ -753,7 +761,10 @@ export default function Stations() {
       }
       toast({
         title: 'Tag re-check started',
-        description: `Cleared cooldown for ${data.cleared ?? 0} station(s) (${data.matched ?? 0} matched); hydration running in the background.`,
+        description:
+          filters.tagsStatus === 'empty-cooldown'
+            ? `Cleared cooldown for ${data.cleared ?? 0} station(s) (${data.matched ?? 0} matched); hydration running in the background.`
+            : `Queued ${data.cleared ?? 0} never-checked station(s) (${data.matched ?? 0} matched); hydration running in the background.`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
     } catch (error: any) {
@@ -1110,19 +1121,26 @@ export default function Stations() {
                     ? `Re-check Tags (${selectedStations.size})`
                     : 'Re-check Tags'}
               </Button>
-              {filters.tagsStatus === 'empty-cooldown' && (
+              {(filters.tagsStatus === 'empty-cooldown' ||
+                filters.tagsStatus === 'never-checked') && (
                 <Button
                   variant="outline"
                   onClick={handleBulkRecheckAllStuck}
                   disabled={isBulkRecheckingTags}
                   className="w-full sm:w-auto bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white border-0"
-                  title="Re-check tags for every station currently stuck on the empty-tags cooldown (matches the active filter, not just this page)"
+                  title={
+                    filters.tagsStatus === 'empty-cooldown'
+                      ? 'Re-check tags for every station currently stuck on the empty-tags cooldown (matches the active filter, not just this page)'
+                      : 'Re-check tags for every tagless station that has never been re-checked (matches the active filter, not just this page)'
+                  }
                   data-testid="button-bulk-recheck-all-stuck"
                 >
                   <Tag className="w-4 h-4 mr-2" />
                   {isBulkRecheckingTags
                     ? 'Re-checking...'
-                    : 'Re-check All Stuck'}
+                    : filters.tagsStatus === 'empty-cooldown'
+                      ? 'Re-check All Stuck'
+                      : 'Re-check All Never-Checked'}
                 </Button>
               )}
               {aiJobStatus?.status === 'running' && (
