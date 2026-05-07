@@ -844,6 +844,7 @@ export default function Stations() {
         setRecheckTagsJobId(data.jobId);
       }
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/stations/tags-status-summary'] });
     } catch (error: any) {
       toast({
         title: 'Bulk re-check failed',
