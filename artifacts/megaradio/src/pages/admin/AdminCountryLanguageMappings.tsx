@@ -849,6 +849,80 @@ export default function AdminCountryLanguageMappings() {
     setRecentClearedActions(prev => prev.filter(e => e.id !== id));
   };
 
+  // Restore every still-recoverable entry in the recent bulk actions panel
+  // sequentially. Failures are surfaced per-entry and leave that row in the
+  // panel so the admin can retry, while successful entries are removed from
+  // both state and persisted localStorage.
+  const [isRestoringAllRecent, setIsRestoringAllRecent] = useState(false);
+  const handleRestoreAllRecent = async () => {
+    if (isRestoringAllRecent) return;
+    const targets = recentClearedActions.filter(e => !e.restoring);
+    if (targets.length === 0) return;
+    setIsRestoringAllRecent(true);
+    setRecentClearedActions(prev =>
+      prev.map(e =>
+        targets.some(t => t.id === e.id) ? { ...e, restoring: true } : e,
+      ),
+    );
+    let successCount = 0;
+    let restoredMappingCount = 0;
+    const failures: { entry: RecentClearAction; message: string }[] = [];
+    // Call the restore endpoint directly here (instead of going through
+    // restoreOverridesMutation) so we don't fire one success toast per
+    // entry — the bulk action emits a single summary toast at the end.
+    for (const entry of targets) {
+      try {
+        const payload = entry.snapshot.map(m => ({
+          countryCode: m.countryCode,
+          countryName: m.countryName,
+          languageCode: m.languageCode,
+          isActive: m.isActive,
+          notes: m.notes,
+        }));
+        const res = await apiRequest(
+          'POST',
+          '/api/admin/country-language-mappings/restore',
+          { body: { mappings: payload } },
+        );
+        const data = (await res.json()) as {
+          success: boolean;
+          restoredCount: number;
+        };
+        setRecentClearedActions(prev => prev.filter(e => e.id !== entry.id));
+        successCount += 1;
+        restoredMappingCount += data?.restoredCount ?? 0;
+      } catch (err: any) {
+        const message = err?.message || 'Failed to restore mappings';
+        const when = new Date(entry.timestamp).toLocaleString();
+        const label =
+          entry.kind === 'reset-all' ? 'Reset all mappings' : 'Cleared overrides';
+        toast({
+          title: `Failed to restore ${label}`,
+          description: `${when} (${entry.snapshot.length} ${entry.snapshot.length === 1 ? 'entry' : 'entries'}): ${message}`,
+          variant: 'destructive',
+        });
+        setRecentClearedActions(prev =>
+          prev.map(e => (e.id === entry.id ? { ...e, restoring: false } : e)),
+        );
+        failures.push({ entry, message });
+      }
+    }
+    setIsRestoringAllRecent(false);
+    if (successCount > 0) {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/country-language-mappings'],
+      });
+      toast({
+        title:
+          failures.length > 0
+            ? 'Restored with some failures'
+            : 'All recent clears restored',
+        description: `Restored ${restoredMappingCount} ${restoredMappingCount === 1 ? 'mapping' : 'mappings'} from ${successCount} of ${targets.length} ${targets.length === 1 ? 'entry' : 'entries'}.${failures.length > 0 ? ` ${failures.length} left in the panel to retry.` : ''}`,
+        variant: failures.length > 0 ? 'destructive' : undefined,
+      });
+    }
+  };
+
   // Handle language change for a country
   const handleLanguageChange = (countryCode: string, languageCode: string) => {
     const newChanges = new Map(pendingChanges);
@@ -1351,15 +1425,37 @@ export default function AdminCountryLanguageMappings() {
                     (last {RECENT_CLEAR_ACTIONS_LIMIT})
                   </span>
                 </div>
-                <Button
-                  data-testid="button-clear-recent-actions"
-                  variant="ghost"
-                  size="sm"
-                  className="h-7 text-xs"
-                  onClick={() => setRecentClearedActions([])}
-                >
-                  Clear history
-                </Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    data-testid="button-restore-all-recent-actions"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => void handleRestoreAllRecent()}
+                    disabled={
+                      isRestoringAllRecent ||
+                      recentClearedActions.length === 0 ||
+                      recentClearedActions.every(e => e.restoring)
+                    }
+                  >
+                    {isRestoringAllRecent ? (
+                      <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                    ) : (
+                      <Undo2 className="mr-2 h-3 w-3" />
+                    )}
+                    Restore all
+                  </Button>
+                  <Button
+                    data-testid="button-clear-recent-actions"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => setRecentClearedActions([])}
+                    disabled={isRestoringAllRecent}
+                  >
+                    Clear history
+                  </Button>
+                </div>
               </div>
               <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                 {recentClearedActions.map((entry) => {
