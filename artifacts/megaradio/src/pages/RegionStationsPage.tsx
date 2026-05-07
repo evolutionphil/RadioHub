@@ -151,7 +151,7 @@ export default function RegionStationsPage() {
 
   // Generate structured data for region/country/city pages (moved here to fix hooks order)
   const structuredData = useMemo(() => {
-    if (!data || !data.country || !data.region || typeof window === 'undefined' || !filteredStations) return null;
+    if (!data || !data.country || !data.region || !data.pagination || typeof window === 'undefined' || !filteredStations) return null;
 
     const baseUrl = window.location.origin;
     const currentUrl = window.location.href;
@@ -199,7 +199,7 @@ export default function RegionStationsPage() {
     const region = data.region?.name ?? '';
     const country = data.country?.name ?? region;
     const city = data.city?.name;
-    const stationCount = data.pagination.total;
+    const stationCount = data.pagination?.total ?? 0;
 
     let title, description, keywords;
 
@@ -242,7 +242,7 @@ export default function RegionStationsPage() {
 
   // Generate structured data for region/country/city pages  
   const generateStructuredData = () => {
-    if (!data || !data.country || !data.region || typeof window === 'undefined' || !filteredStations) return null;
+    if (!data || !data.country || !data.region || !data.pagination || typeof window === 'undefined' || !filteredStations) return null;
 
     const baseUrl = window.location.origin;
     const currentUrl = window.location.href;
@@ -413,7 +413,7 @@ export default function RegionStationsPage() {
               </h1>
               <p className="text-slate-400 mt-1 flex items-center gap-2">
                 <Radio className="w-4 h-4" />
-                {t('regions.stations.found', `${data.pagination.total} stations found`, { count: data.pagination.total.toString() })}
+                {t('regions.stations.found', `${data.pagination?.total ?? 0} stations found`, { count: (data.pagination?.total ?? 0).toString() })}
               </p>
             </div>
           </div>
