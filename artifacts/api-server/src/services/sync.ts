@@ -940,6 +940,13 @@ export class SyncService {
    */
   async recheckStationsTagsByIds(
     stationIds: string[],
+    onProgress?: (progress: {
+      processed: number;
+      hydrated: number;
+      emptyUpstream: number;
+      failed: number;
+      total: number;
+    }) => void,
   ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number }> {
     interface StationTagProjection {
       _id: mongoose.Types.ObjectId;
@@ -969,8 +976,16 @@ export class SyncService {
 
       if (stations.length === 0) {
         logger.log('🏷️ Bulk re-check: no eligible stations found');
+        if (onProgress) {
+          try {
+            onProgress({ processed, hydrated, emptyUpstream, failed, total: 0 });
+          } catch {
+            /* ignore progress callback errors */
+          }
+        }
         return { processed, hydrated, emptyUpstream, failed };
       }
+      const total = stations.length;
 
       logger.log(
         `🏷️ Admin bulk re-check: processing ${stations.length} station(s)`,
@@ -1018,6 +1033,14 @@ export class SyncService {
           }
         }
 
+        if (onProgress) {
+          try {
+            onProgress({ processed, hydrated, emptyUpstream, failed, total });
+          } catch {
+            /* ignore progress callback errors */
+          }
+        }
+
         await new Promise((resolve) => setTimeout(resolve, 750));
       }
 
@@ -1027,6 +1050,7 @@ export class SyncService {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`❌ Admin bulk re-check failed: ${message}`);
+      throw error instanceof Error ? error : new Error(message);
     }
 
     return { processed, hydrated, emptyUpstream, failed };

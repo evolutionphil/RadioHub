@@ -24,6 +24,35 @@ const faviconUpload = multer({
   },
 });
 
+// In-memory progress tracker for bulk tag re-check jobs. Keyed by a
+// generated jobId, with periodic cleanup of finished jobs so the map
+// can't grow unbounded.
+type RecheckTagsJob = {
+  jobId: string;
+  status: 'running' | 'completed' | 'failed';
+  total: number;
+  processed: number;
+  hydrated: number;
+  emptyUpstream: number;
+  failed: number;
+  cleared: number;
+  matched: number;
+  scope?: string;
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
+};
+const recheckTagsJobs = new Map<string, RecheckTagsJob>();
+const RECHECK_TAGS_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
+function cleanupRecheckTagsJobs() {
+  const now = Date.now();
+  for (const [jobId, job] of recheckTagsJobs) {
+    if (job.finishedAt && now - job.finishedAt > RECHECK_TAGS_JOB_TTL_MS) {
+      recheckTagsJobs.delete(jobId);
+    }
+  }
+}
+
 const STATION_UPDATE_ALLOWED_FIELDS = [
   'name', 'url', 'homepage', 'favicon', 'country', 'countryCode',
   'language', 'tags', 'bitrate', 'codec', 'hls', 'noIndex'
@@ -1287,30 +1316,102 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           matched = updateResult.matchedCount ?? cleared;
         }
 
+        // Create an in-memory job so the admin UI can poll progress
+        // while the background hydration runs. Only ID-scoped paths
+        // produce per-station progress; the country hydration sweep
+        // runs as a fire-and-forget background scan that doesn't
+        // expose progress, so we leave the job in `running` until
+        // we detect it has nothing to track and mark it completed.
+        cleanupRecheckTagsJobs();
+        const jobId = new mongoose.Types.ObjectId().toString();
+        const scopeBits: string[] = [];
+        if (ids.length > 0) scopeBits.push(`${ids.length} selected`);
+        if (rawTagsStatus) scopeBits.push(rawTagsStatus);
+        if (resolvedIso ?? rawCountry) scopeBits.push(`country ${resolvedIso ?? rawCountry}`);
+        if (rawLanguage) scopeBits.push(`language ${rawLanguage}`);
+        if (rawGenre) scopeBits.push(`genre ${rawGenre}`);
+        if (rawSearch) scopeBits.push(`search "${rawSearch}"`);
+        const job: RecheckTagsJob = {
+          jobId,
+          status: 'running',
+          total: 0,
+          processed: 0,
+          hydrated: 0,
+          emptyUpstream: 0,
+          failed: 0,
+          cleared,
+          matched,
+          scope: scopeBits.join(', ') || undefined,
+          startedAt: Date.now(),
+        };
+        recheckTagsJobs.set(jobId, job);
+
+        const onProgress = (p: {
+          processed: number;
+          hydrated: number;
+          emptyUpstream: number;
+          failed: number;
+          total: number;
+        }) => {
+          const current = recheckTagsJobs.get(jobId);
+          if (!current) return;
+          current.total = p.total;
+          current.processed = p.processed;
+          current.hydrated = p.hydrated;
+          current.emptyUpstream = p.emptyUpstream;
+          current.failed = p.failed;
+          recheckTagsJobs.set(jobId, current);
+        };
+        const finish = (err?: unknown) => {
+          const current = recheckTagsJobs.get(jobId);
+          if (!current) return;
+          current.status = err ? 'failed' : 'completed';
+          current.finishedAt = Date.now();
+          if (err) {
+            current.error = err instanceof Error ? err.message : String(err);
+          }
+          recheckTagsJobs.set(jobId, current);
+        };
+
         // Kick off the actual re-query in the background so the admin
         // gets immediate feedback. Targeted ID requests use the
         // ID-scoped helper so we re-query exactly those stations;
         // country requests use the country-scoped hydration sweep
         // (which itself filters on `countryCode` ISO).
         if (ids.length > 0) {
+          job.total = ids.length;
           void syncService
-            .recheckStationsTagsByIds(ids)
-            .catch((err) => logger.error('bulk tags recheck (ids) failed', err));
+            .recheckStationsTagsByIds(ids, onProgress)
+            .then(() => finish())
+            .catch((err) => {
+              logger.error('bulk tags recheck (ids) failed', err);
+              finish(err);
+            });
         } else if (isFilterMode) {
           if (filterModeIds.length > 0) {
+            job.total = filterModeIds.length;
             void syncService
-              .recheckStationsTagsByIds(filterModeIds)
-              .catch((err) =>
-                logger.error('bulk tags recheck (filter) failed', err),
-              );
+              .recheckStationsTagsByIds(filterModeIds, onProgress)
+              .then(() => finish())
+              .catch((err) => {
+                logger.error('bulk tags recheck (filter) failed', err);
+                finish(err);
+              });
+          } else {
+            finish();
           }
         } else if (resolvedIso) {
+          job.total = matched;
           void syncService
             .hydrateMissingTagsInBackground({
               countryCode: resolvedIso,
               limit: Math.max(matched, 1000),
             })
-            .catch((err) => logger.error('bulk tags recheck (country) failed', err));
+            .then(() => finish())
+            .catch((err) => {
+              logger.error('bulk tags recheck (country) failed', err);
+              finish(err);
+            });
         } else if (rawCountry) {
           // No ISO code resolvable — fall back to ID-scoped sweep
           // over the matched stations so we still re-query them.
@@ -1320,16 +1421,24 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             .lean()) as unknown as Array<{ _id: mongoose.Types.ObjectId }>;
           const matchedIds = matchedDocs.map((d) => d._id.toString());
           if (matchedIds.length > 0) {
+            job.total = matchedIds.length;
             void syncService
-              .recheckStationsTagsByIds(matchedIds)
-              .catch((err) =>
-                logger.error('bulk tags recheck (country fallback) failed', err),
-              );
+              .recheckStationsTagsByIds(matchedIds, onProgress)
+              .then(() => finish())
+              .catch((err) => {
+                logger.error('bulk tags recheck (country fallback) failed', err);
+                finish(err);
+              });
+          } else {
+            finish();
           }
+        } else {
+          finish();
         }
 
         return res.json({
           success: true,
+          jobId,
           cleared,
           matched,
           countryCode: resolvedIso ?? rawCountry,
@@ -1343,6 +1452,24 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           .status(500)
           .json({ success: false, error: error?.message || 'Failed to bulk re-check tags' });
       }
+    },
+  );
+
+  // Poll status for a bulk tag re-check job. Returns 404 if the job is
+  // unknown or has been evicted by the TTL cleanup.
+  app.get(
+    '/api/admin/stations/recheck-tags-job-status/:jobId',
+    requireAdmin,
+    async (req, res) => {
+      const { jobId } = req.params as { jobId: string };
+      cleanupRecheckTagsJobs();
+      const job = recheckTagsJobs.get(jobId);
+      if (!job) {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Job not found' });
+      }
+      return res.json({ success: true, job });
     },
   );
 }

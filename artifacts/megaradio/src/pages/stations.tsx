@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api, type StationFilters } from "@/lib/api";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -111,6 +111,8 @@ export default function Stations() {
   const [selectedStations, setSelectedStations] = useState<Set<string>>(new Set());
   const [recheckingTagsStationId, setRecheckingTagsStationId] = useState<string | null>(null);
   const [isBulkRecheckingTags, setIsBulkRecheckingTags] = useState(false);
+  const [recheckTagsJobId, setRecheckTagsJobId] = useState<string | null>(null);
+  const recheckJobCompletedRef = useRef<Set<string>>(new Set());
   const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(new Set(['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he']));
   
   // Persist job ID to localStorage for recovery after navigation
@@ -348,6 +350,73 @@ export default function Stations() {
       return status === 'running' ? 2000 : false; // Poll every 2s if running
     },
   });
+
+  // Poll progress for the bulk tag re-check job. The server keeps an
+  // in-memory job record updated by the hydration sweep; we stop
+  // polling once it transitions to completed/failed and surface a
+  // toast (once per jobId) so the admin can see the outcome without
+  // refreshing the page.
+  const { data: recheckTagsJobStatus } = useQuery<{
+    success: boolean;
+    job?: {
+      jobId: string;
+      status: 'running' | 'completed' | 'failed';
+      total: number;
+      processed: number;
+      hydrated: number;
+      emptyUpstream: number;
+      failed: number;
+      cleared: number;
+      matched: number;
+      scope?: string;
+      error?: string;
+    };
+  } | null>({
+    queryKey: ['/api/admin/stations/recheck-tags-job-status', recheckTagsJobId],
+    queryFn: async () => {
+      if (!recheckTagsJobId) return null;
+      const response = await fetch(
+        `/api/admin/stations/recheck-tags-job-status/${recheckTagsJobId}`,
+        { credentials: 'include' },
+      );
+      if (!response.ok) return null;
+      return response.json();
+    },
+    enabled: !!recheckTagsJobId,
+    refetchInterval: (query) => {
+      const status = query.state.data?.job?.status;
+      return status === 'running' ? 2000 : false;
+    },
+  });
+
+  useEffect(() => {
+    const job = recheckTagsJobStatus?.job;
+    if (!job) return;
+    if (job.status === 'running') return;
+    if (recheckJobCompletedRef.current.has(job.jobId)) return;
+    recheckJobCompletedRef.current.add(job.jobId);
+    if (job.status === 'completed') {
+      toast({
+        title: 'Tag re-check complete',
+        description: `Processed ${job.processed}/${job.total}: ${job.hydrated} hydrated, ${job.emptyUpstream} empty upstream, ${job.failed} failed.`,
+      });
+    } else {
+      toast({
+        title: 'Tag re-check failed',
+        description: job.error || 'Background hydration job failed.',
+        variant: 'destructive',
+      });
+    }
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+    queryClient.invalidateQueries({
+      queryKey: ['/api/admin/stations/tags-status-summary'],
+    });
+    // Keep the jobId for a short moment so the indicator can show the
+    // final counts; clearing it immediately would hide the summary.
+    const timer = setTimeout(() => setRecheckTagsJobId(null), 5000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recheckTagsJobStatus]);
 
   // Handle AI generation start
   const handleStartBulkAi = () => {
@@ -706,6 +775,10 @@ export default function Stations() {
         title: 'Tag re-check started',
         description: `Cleared cooldown for ${data.cleared ?? 0} station(s); hydration running in the background.`,
       });
+      if (data.jobId) {
+        recheckJobCompletedRef.current.delete(data.jobId);
+        setRecheckTagsJobId(data.jobId);
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations/tags-status-summary'] });
     } catch (error: any) {
@@ -766,6 +839,10 @@ export default function Stations() {
             ? `Cleared cooldown for ${data.cleared ?? 0} station(s) (${data.matched ?? 0} matched); hydration running in the background.`
             : `Queued ${data.cleared ?? 0} never-checked station(s) (${data.matched ?? 0} matched); hydration running in the background.`,
       });
+      if (data.jobId) {
+        recheckJobCompletedRef.current.delete(data.jobId);
+        setRecheckTagsJobId(data.jobId);
+      }
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
     } catch (error: any) {
       toast({
@@ -1142,6 +1219,39 @@ export default function Stations() {
                       ? 'Re-check All Stuck'
                       : 'Re-check All Never-Checked'}
                 </Button>
+              )}
+              {recheckTagsJobStatus?.job && (
+                <div
+                  className="w-full sm:w-auto flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-100"
+                  data-testid="recheck-tags-progress"
+                  title={recheckTagsJobStatus.job.scope}
+                >
+                  <Tag className="w-4 h-4" />
+                  {recheckTagsJobStatus.job.status === 'running' ? (
+                    <span>
+                      Re-check in progress: {recheckTagsJobStatus.job.processed}/
+                      {recheckTagsJobStatus.job.total || '?'}
+                      {recheckTagsJobStatus.job.total > 0 &&
+                        ` (${Math.floor(
+                          (recheckTagsJobStatus.job.processed /
+                            recheckTagsJobStatus.job.total) *
+                            100,
+                        )}%)`}
+                    </span>
+                  ) : recheckTagsJobStatus.job.status === 'completed' ? (
+                    <span>
+                      Re-check done: {recheckTagsJobStatus.job.hydrated} hydrated,{' '}
+                      {recheckTagsJobStatus.job.emptyUpstream} empty,{' '}
+                      {recheckTagsJobStatus.job.failed} failed (of{' '}
+                      {recheckTagsJobStatus.job.processed})
+                    </span>
+                  ) : (
+                    <span>
+                      Re-check failed:{' '}
+                      {recheckTagsJobStatus.job.error || 'unknown error'}
+                    </span>
+                  )}
+                </div>
               )}
               {aiJobStatus?.status === 'running' && (
                 <Button 
