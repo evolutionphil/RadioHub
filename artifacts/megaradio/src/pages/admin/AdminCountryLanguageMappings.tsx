@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
@@ -22,7 +22,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, X } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -61,8 +61,44 @@ interface CountryLanguageDefault {
   languageCode: string;
 }
 
+const VIEW_PREFS_STORAGE_KEY = 'admin:country-language-mappings:view-prefs:v1';
+
+interface ViewPrefs {
+  searchTerm: string;
+  overwriteExisting: boolean;
+  updatedAtSort: 'desc' | 'asc' | null;
+}
+
+const DEFAULT_VIEW_PREFS: ViewPrefs = {
+  searchTerm: '',
+  overwriteExisting: false,
+  updatedAtSort: null,
+};
+
+function loadViewPrefs(): ViewPrefs {
+  if (typeof window === 'undefined') return DEFAULT_VIEW_PREFS;
+  try {
+    const raw = window.localStorage.getItem(VIEW_PREFS_STORAGE_KEY);
+    if (!raw) return DEFAULT_VIEW_PREFS;
+    const parsed = JSON.parse(raw) as Partial<ViewPrefs> | null;
+    if (!parsed || typeof parsed !== 'object') return DEFAULT_VIEW_PREFS;
+    const sort =
+      parsed.updatedAtSort === 'asc' || parsed.updatedAtSort === 'desc'
+        ? parsed.updatedAtSort
+        : null;
+    return {
+      searchTerm: typeof parsed.searchTerm === 'string' ? parsed.searchTerm : '',
+      overwriteExisting: parsed.overwriteExisting === true,
+      updatedAtSort: sort,
+    };
+  } catch {
+    return DEFAULT_VIEW_PREFS;
+  }
+}
+
 export default function AdminCountryLanguageMappings() {
   const { toast } = useToast();
+  const [viewPrefsLoaded, setViewPrefsLoaded] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
   const [overwriteExisting, setOverwriteExisting] = useState(false);
@@ -71,6 +107,34 @@ export default function AdminCountryLanguageMappings() {
   type SortColumn = 'country' | 'status' | 'updatedAt';
   type SortDirection = 'asc' | 'desc';
   const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
+
+  // Hydrate view preferences from localStorage on mount.
+  useEffect(() => {
+    const prefs = loadViewPrefs();
+    setSearchTerm(prefs.searchTerm);
+    setOverwriteExisting(prefs.overwriteExisting);
+    setUpdatedAtSort(prefs.updatedAtSort);
+    setViewPrefsLoaded(true);
+  }, []);
+
+  // Persist view preferences whenever they change (after hydration).
+  useEffect(() => {
+    if (!viewPrefsLoaded || typeof window === 'undefined') return;
+    try {
+      const prefs: ViewPrefs = { searchTerm, overwriteExisting, updatedAtSort };
+      window.localStorage.setItem(VIEW_PREFS_STORAGE_KEY, JSON.stringify(prefs));
+    } catch {
+      // Ignore quota / access errors — preferences are best-effort.
+    }
+  }, [viewPrefsLoaded, searchTerm, overwriteExisting, updatedAtSort]);
+
+  const hasActiveFilters =
+    searchTerm.trim() !== '' || updatedAtSort !== null;
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setUpdatedAtSort(null);
+  };
 
   // Fetch available countries
   const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
@@ -540,6 +604,17 @@ export default function AdminCountryLanguageMappings() {
                 className="pl-10"
               />
             </div>
+            <Button
+              data-testid="button-clear-filters"
+              variant="ghost"
+              size="sm"
+              onClick={handleClearFilters}
+              disabled={!hasActiveFilters}
+              className="whitespace-nowrap"
+            >
+              <X className="mr-2 h-4 w-4" />
+              Clear filters
+            </Button>
             <div className="flex items-center gap-2">
               <Checkbox
                 id="overwrite-existing"
