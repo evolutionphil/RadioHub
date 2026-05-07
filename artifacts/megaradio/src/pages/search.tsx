@@ -252,6 +252,14 @@ export default function SearchPage() {
     el?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, flatItems]);
 
+  const setActiveById = useCallback(
+    (id: string) => {
+      const idx = flatItems.findIndex((it) => it.id === id);
+      if (idx >= 0) setActiveIndex(idx);
+    },
+    [flatItems]
+  );
+
   const setItemRef = useCallback(
     (id: string) => (el: HTMLAnchorElement | null) => {
       if (el) itemRefs.current.set(id, el);
@@ -400,6 +408,7 @@ export default function SearchPage() {
                         id={id}
                         role="option"
                         aria-selected={isActive}
+                        onMouseEnter={() => setActiveById(id)}
                         className={`flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors ${isActive ? focusRingClass : ""}`}
                         data-testid={`link-genre-${g.slug}`}
                       >
@@ -442,6 +451,7 @@ export default function SearchPage() {
                         id={id}
                         role="option"
                         aria-selected={isActive}
+                        onMouseEnter={() => setActiveById(id)}
                         className={`flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors ${isActive ? focusRingClass : ""}`}
                         data-testid={`link-country-${countrySlug(c.canonical)}`}
                       >
@@ -486,6 +496,7 @@ export default function SearchPage() {
                           id={id}
                           role="option"
                           aria-selected={isActive}
+                          onMouseEnter={() => setActiveById(id)}
                           className={`flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors ${isActive ? focusRingClass : ""}`}
                           data-testid={`link-station-${slug}`}
                         >
