@@ -1,0 +1,1474 @@
+2026-05-07T15:55:22.964574903Z [inf]  scheduling build on Metal builder "production-builderv3-europe-west4-s875"
+2026-05-07T15:56:03.576933241Z [inf]  unpacking archive
+2026-05-07T15:56:04.420762521Z [inf]  [internal] load build definition from Dockerfile.web
+2026-05-07T15:56:04.420776606Z [inf]  [internal] load build definition from Dockerfile.web
+2026-05-07T15:56:04.420785461Z [inf]  [internal] load build definition from Dockerfile.web
+2026-05-07T15:56:04.461344535Z [inf]  [internal] load build definition from Dockerfile.web
+2026-05-07T15:56:04.475128396Z [inf]  [internal] load metadata for docker.io/library/node:24-slim
+2026-05-07T15:56:04.883877188Z [inf]  [internal] load metadata for docker.io/library/node:24-slim
+2026-05-07T15:56:04.883940272Z [inf]  [internal] load .dockerignore
+2026-05-07T15:56:04.883948431Z [inf]  [internal] load .dockerignore
+2026-05-07T15:56:04.887921953Z [inf]  [internal] load .dockerignore
+2026-05-07T15:56:04.912290086Z [inf]  [internal] load .dockerignore
+2026-05-07T15:56:04.922070404Z [inf]  [production  6/11] COPY artifacts/api-server/package.json ./artifacts/api-server/package.json
+2026-05-07T15:56:04.922072170Z [inf]  [production  8/11] RUN pnpm install --frozen-lockfile --prod --filter @workspace/api-server...
+2026-05-07T15:56:04.922072948Z [inf]  [internal] load build context
+2026-05-07T15:56:04.922073607Z [inf]  [base  9/12] COPY scripts ./scripts
+2026-05-07T15:56:04.922074198Z [inf]  [base  5/12] COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+2026-05-07T15:56:04.922074716Z [inf]  [production  4/11] WORKDIR /app
+2026-05-07T15:56:04.922075208Z [inf]  [production  3/11] RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-05-07T15:56:04.922075827Z [inf]  [production  2/11] RUN apt-get update && apt-get install -y     ca-certificates     && rm -rf /var/lib/apt/lists/*
+2026-05-07T15:56:04.922076323Z [inf]  [production  9/11] COPY --from=base /app/artifacts/api-server/dist ./dist
+2026-05-07T15:56:04.922076834Z [inf]  [production  5/11] COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+2026-05-07T15:56:04.922077351Z [inf]  [base  8/12] COPY lib ./lib
+2026-05-07T15:56:04.922077799Z [inf]  [base  6/12] COPY tsconfig.base.json tsconfig.json ./
+2026-05-07T15:56:04.922078364Z [inf]  [base 11/12] RUN pnpm --filter @workspace/megaradio run build
+2026-05-07T15:56:04.922078814Z [inf]  [base 10/12] RUN pnpm install --frozen-lockfile
+2026-05-07T15:56:04.922079265Z [inf]  [base  1/12] FROM docker.io/library/node:24-slim@sha256:03eae3ef7e88a9de535496fb488d67e02b9d96a063a8967bae657744ecd513f2
+2026-05-07T15:56:04.922079725Z [inf]  [base  4/12] WORKDIR /app
+2026-05-07T15:56:04.922080171Z [inf]  [base  7/12] COPY artifacts ./artifacts
+2026-05-07T15:56:04.922080822Z [inf]  [production 10/11] COPY --from=base /app/artifacts/megaradio/dist/public ./dist/public
+2026-05-07T15:56:04.922081571Z [inf]  [base 12/12] RUN ENTRY=src/index-web.ts pnpm --filter @workspace/api-server run build
+2026-05-07T15:56:04.922082194Z [inf]  [production 11/11] COPY --from=base /app/artifacts/api-server/src/fontconfig.conf* ./fontconfig.conf
+2026-05-07T15:56:04.922083149Z [inf]  [base  2/12] RUN apt-get update && apt-get install -y     python3     make     g++     ca-certificates     && rm -rf /var/lib/apt/lists/*
+2026-05-07T15:56:04.922083667Z [inf]  [production  7/11] COPY lib ./lib
+2026-05-07T15:56:04.922084644Z [inf]  [base  3/12] RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-05-07T15:56:04.922581179Z [inf]  [base  1/12] FROM docker.io/library/node:24-slim@sha256:03eae3ef7e88a9de535496fb488d67e02b9d96a063a8967bae657744ecd513f2
+2026-05-07T15:56:04.922626908Z [inf]  [internal] load build context
+2026-05-07T15:56:04.922631472Z [inf]  [internal] load build context
+2026-05-07T15:56:04.950776658Z [inf]  [base  1/12] FROM docker.io/library/node:24-slim@sha256:03eae3ef7e88a9de535496fb488d67e02b9d96a063a8967bae657744ecd513f2
+2026-05-07T15:56:04.952372855Z [inf]  [base  1/12] FROM docker.io/library/node:24-slim@sha256:03eae3ef7e88a9de535496fb488d67e02b9d96a063a8967bae657744ecd513f2
+2026-05-07T15:56:04.952374209Z [inf]  [internal] load build context
+2026-05-07T15:56:04.952375104Z [inf]  [base  2/12] RUN apt-get update && apt-get install -y     python3     make     g++     ca-certificates     && rm -rf /var/lib/apt/lists/*
+2026-05-07T15:56:04.952533853Z [inf]  [production  2/11] RUN apt-get update && apt-get install -y     ca-certificates     && rm -rf /var/lib/apt/lists/*
+2026-05-07T15:56:05.087865141Z [inf]  [internal] load build context
+2026-05-07T15:56:05.120951764Z [inf]  Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+
+2026-05-07T15:56:05.122336032Z [inf]  Get:1 http://deb.debian.org/debian bookworm InRelease [151 kB]
+
+2026-05-07T15:56:05.137739043Z [inf]  Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+
+2026-05-07T15:56:05.141945665Z [inf]  Get:2 http://deb.debian.org/debian bookworm-updates InRelease [55.4 kB]
+
+2026-05-07T15:56:05.146653654Z [inf]  Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]
+
+2026-05-07T15:56:05.146707572Z [inf]  Get:3 http://deb.debian.org/debian-security bookworm-security InRelease [48.0 kB]
+
+2026-05-07T15:56:05.206606064Z [inf]  Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8792 kB]
+
+2026-05-07T15:56:05.208430002Z [inf]  Get:4 http://deb.debian.org/debian bookworm/main amd64 Packages [8792 kB]
+
+2026-05-07T15:56:05.269972445Z [inf]  Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]
+
+2026-05-07T15:56:05.286029194Z [inf]  Get:5 http://deb.debian.org/debian bookworm-updates/main amd64 Packages [6924 B]
+
+2026-05-07T15:56:05.330808506Z [inf]  Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [299 kB]
+
+2026-05-07T15:56:05.347033988Z [inf]  Get:6 http://deb.debian.org/debian-security bookworm-security/main amd64 Packages [299 kB]
+
+2026-05-07T15:56:06.364837455Z [inf]  Fetched 9352 kB in 1s (7420 kB/s)
+Reading package lists...
+2026-05-07T15:56:06.407103408Z [inf]  Fetched 9352 kB in 1s (7223 kB/s)
+Reading package lists...
+2026-05-07T15:56:06.895021043Z [inf]  
+2026-05-07T15:56:06.917610151Z [inf]  
+2026-05-07T15:56:06.922451225Z [inf]  Reading package lists...
+2026-05-07T15:56:06.943906361Z [inf]  Reading package lists...
+2026-05-07T15:56:07.394961282Z [inf]  
+2026-05-07T15:56:07.407198626Z [inf]  
+2026-05-07T15:56:07.409947503Z [inf]  Building dependency tree...
+2026-05-07T15:56:07.42199264Z [inf]  Building dependency tree...
+2026-05-07T15:56:07.515588271Z [inf]  
+Reading state information...
+2026-05-07T15:56:07.516204576Z [inf]  
+2026-05-07T15:56:07.529374425Z [inf]  
+Reading state information...
+2026-05-07T15:56:07.529425688Z [inf]  
+2026-05-07T15:56:07.635839513Z [inf]  The following additional packages will be installed:
+
+2026-05-07T15:56:07.636016581Z [inf]    libssl3 openssl
+
+2026-05-07T15:56:07.660202518Z [inf]  The following additional packages will be installed:
+
+2026-05-07T15:56:07.660220031Z [inf]    binutils binutils-common binutils-x86-64-linux-gnu cpp cpp-12
+
+2026-05-07T15:56:07.660322027Z [inf]    fontconfig-config fonts-dejavu-core g++-12 gcc gcc-12 krb5-locales
+  libabsl20220623 libaom3 libasan8 libatomic1 libavif15 libbinutils libbrotli1
+
+2026-05-07T15:56:07.660376721Z [inf]    libbsd0 libc-dev-bin libc-devtools libc6-dev libcc1-0 libcrypt-dev
+  libctf-nobfd0 libctf0 libdav1d6 libde265-0 libdeflate0 libexpat1
+
+2026-05-07T15:56:07.660480957Z [inf]    libfontconfig1 libfreetype6 libgav1-1 libgcc-12-dev libgd3 libgomp1 libgpm2
+  libgprofng0 libgssapi-krb5-2 libheif1 libisl23 libitm1 libjansson4 libjbig0
+
+2026-05-07T15:56:07.660510158Z [inf]    libjpeg62-turbo libk5crypto3 libkeyutils1 libkrb5-3 libkrb5support0 liblerc4
+
+2026-05-07T15:56:07.66058732Z [inf]    liblsan0 libmpc3 libmpfr6 libncursesw6 libnsl-dev libnsl2 libnuma1
+  libpng16-16 libpython3-stdlib libpython3.11-minimal libpython3.11-stdlib
+
+2026-05-07T15:56:07.660796846Z [inf]    libquadmath0 librav1e0 libreadline8 libsqlite3-0 libssl3 libstdc++-12-dev
+  libsvtav1enc1 libtiff6 libtirpc-common libtirpc-dev libtirpc3 libtsan2
+
+2026-05-07T15:56:07.660831596Z [inf]    libubsan1 libwebp7 libx11-6 libx11-data libx265-199 libxau6 libxcb1
+
+2026-05-07T15:56:07.660904564Z [inf]    libxdmcp6 libxpm4 libyuv0 linux-libc-dev manpages manpages-dev media-types
+
+2026-05-07T15:56:07.660988523Z [inf]    openssl python3-minimal python3.11 python3.11-minimal readline-common
+
+2026-05-07T15:56:07.66103339Z [inf]    rpcsvc-proto
+
+2026-05-07T15:56:07.661750576Z [inf]  Suggested packages:
+  binutils-doc cpp-doc gcc-12-locales cpp-12-doc g++-multilib g++-12-multilib
+  gcc-12-doc gcc-multilib autoconf automake libtool flex bison gdb gcc-doc
+  gcc-12-multilib glibc-doc libgd-tools gpm krb5-doc krb5-user
+  libstdc++-12-doc make-doc man-browser python3-doc python3-tk python3-venv
+  python3.11-venv python3.11-doc binfmt-support readline-doc
+
+2026-05-07T15:56:07.663933577Z [inf]  The following NEW packages will be installed:
+
+2026-05-07T15:56:07.664579676Z [inf]    ca-certificates libssl3 openssl
+
+2026-05-07T15:56:07.688208328Z [inf]  0 upgraded, 3 newly installed, 0 to remove and 0 not upgraded.
+Need to get 3622 kB of archives.
+After this operation, 8933 kB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian-security bookworm-security/main amd64 libssl3 amd64 3.0.19-1~deb12u2 [2032 kB]
+
+2026-05-07T15:56:07.72011934Z [inf]  Get:2 http://deb.debian.org/debian-security bookworm-security/main amd64 openssl amd64 3.0.19-1~deb12u2 [1435 kB]
+
+2026-05-07T15:56:07.730950969Z [inf]  Get:3 http://deb.debian.org/debian bookworm/main amd64 ca-certificates all 20230311+deb12u1 [155 kB]
+
+2026-05-07T15:56:07.831391464Z [inf]  debconf: delaying package configuration, since apt-utils is not installed
+
+2026-05-07T15:56:07.857442919Z [inf]  Fetched 3622 kB in 0s (58.3 MB/s)
+
+2026-05-07T15:56:07.886957086Z [inf]  Selecting previously unselected package libssl3:amd64.
+(Reading database ... 
+2026-05-07T15:56:07.887580691Z [inf]  (Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+2026-05-07T15:56:07.889040829Z [inf]  (Reading database ... 75%
+2026-05-07T15:56:07.88950523Z [inf]  (Reading database ... 80%
+2026-05-07T15:56:07.889734165Z [inf]  (Reading database ... 85%
+2026-05-07T15:56:07.889940411Z [inf]  (Reading database ... 90%
+2026-05-07T15:56:07.890133657Z [inf]  (Reading database ... 95%
+2026-05-07T15:56:07.891031978Z [inf]  (Reading database ... 100%
+(Reading database ... 6096 files and directories currently installed.)
+
+2026-05-07T15:56:07.891479017Z [inf]  Preparing to unpack .../libssl3_3.0.19-1~deb12u2_amd64.deb ...
+
+2026-05-07T15:56:07.897233676Z [inf]  Unpacking libssl3:amd64 (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:08.051432849Z [inf]  Selecting previously unselected package openssl.
+
+2026-05-07T15:56:08.052612613Z [inf]  Preparing to unpack .../openssl_3.0.19-1~deb12u2_amd64.deb ...
+
+2026-05-07T15:56:08.055718315Z [inf]  Unpacking openssl (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:08.11371631Z [inf]  The following NEW packages will be installed:
+  binutils binutils-common binutils-x86-64-linux-gnu ca-certificates cpp
+
+2026-05-07T15:56:08.113905444Z [inf]    cpp-12 fontconfig-config fonts-dejavu-core g++ g++-12 gcc gcc-12
+  krb5-locales libabsl20220623 libaom3 libasan8 libatomic1 libavif15
+
+2026-05-07T15:56:08.113945242Z [inf]    libbinutils libbrotli1 libbsd0 libc-dev-bin libc-devtools libc6-dev libcc1-0
+  libcrypt-dev libctf-nobfd0 libctf0 libdav1d6 libde265-0 libdeflate0
+
+2026-05-07T15:56:08.114039176Z [inf]    libexpat1 libfontconfig1 libfreetype6 libgav1-1 libgcc-12-dev libgd3
+
+2026-05-07T15:56:08.114056886Z [inf]    libgomp1 libgpm2 libgprofng0 libgssapi-krb5-2 libheif1 libisl23 libitm1
+
+2026-05-07T15:56:08.114088737Z [inf]    libjansson4 libjbig0 libjpeg62-turbo libk5crypto3 libkeyutils1 libkrb5-3
+
+2026-05-07T15:56:08.114145428Z [inf]    libkrb5support0 liblerc4 liblsan0 libmpc3 libmpfr6 libncursesw6 libnsl-dev
+
+2026-05-07T15:56:08.114187146Z [inf]    libnsl2 libnuma1 libpng16-16 libpython3-stdlib libpython3.11-minimal
+
+2026-05-07T15:56:08.114597772Z [inf]    libpython3.11-stdlib libquadmath0 librav1e0 libreadline8 libsqlite3-0
+  libssl3 libstdc++-12-dev libsvtav1enc1 libtiff6 libtirpc-common libtirpc-dev
+  libtirpc3 libtsan2 libubsan1 libwebp7 libx11-6 libx11-data libx265-199
+  libxau6 libxcb1 libxdmcp6 libxpm4 libyuv0 linux-libc-dev make manpages
+
+2026-05-07T15:56:08.11475681Z [inf]    manpages-dev media-types openssl python3 python3-minimal python3.11
+
+2026-05-07T15:56:08.114809856Z [inf]    python3.11-minimal readline-common rpcsvc-proto
+
+2026-05-07T15:56:08.137216141Z [inf]  0 upgraded, 97 newly installed, 0 to remove and 0 not upgraded.
+Need to get 91.3 MB of archives.
+After this operation, 354 MB of additional disk space will be used.
+Get:1 http://deb.debian.org/debian-security bookworm-security/main amd64 libssl3 amd64 3.0.19-1~deb12u2 [2032 kB]
+
+2026-05-07T15:56:08.162617979Z [inf]  Get:2 http://deb.debian.org/debian bookworm/main amd64 libpython3.11-minimal amd64 3.11.2-6+deb12u6 [817 kB]
+
+2026-05-07T15:56:08.165575889Z [inf]  Get:3 http://deb.debian.org/debian bookworm/main amd64 libexpat1 amd64 2.5.0-1+deb12u2 [99.9 kB]
+
+2026-05-07T15:56:08.172937165Z [inf]  Get:4 http://deb.debian.org/debian bookworm/main amd64 python3.11-minimal amd64 3.11.2-6+deb12u6 [2064 kB]
+
+2026-05-07T15:56:08.180949185Z [inf]  Selecting previously unselected package ca-certificates.
+
+2026-05-07T15:56:08.181929126Z [inf]  Preparing to unpack .../ca-certificates_20230311+deb12u1_all.deb ...
+
+2026-05-07T15:56:08.183377205Z [inf]  Get:5 http://deb.debian.org/debian bookworm/main amd64 python3-minimal amd64 3.11.2-1+b1 [26.3 kB]
+
+2026-05-07T15:56:08.183794305Z [inf]  Get:6 http://deb.debian.org/debian bookworm/main amd64 media-types all 10.0.0 [26.1 kB]
+
+2026-05-07T15:56:08.184858948Z [inf]  Get:7 http://deb.debian.org/debian bookworm/main amd64 libncursesw6 amd64 6.4-4 [134 kB]
+
+2026-05-07T15:56:08.185454714Z [inf]  Get:8 http://deb.debian.org/debian bookworm/main amd64 libkrb5support0 amd64 1.20.1-2+deb12u4 [33.2 kB]
+
+2026-05-07T15:56:08.185482376Z [inf]  Unpacking ca-certificates (20230311+deb12u1) ...
+
+2026-05-07T15:56:08.185740644Z [inf]  Get:9 http://deb.debian.org/debian bookworm/main amd64 libk5crypto3 amd64 1.20.1-2+deb12u4 [79.8 kB]
+
+2026-05-07T15:56:08.186182607Z [inf]  Get:10 http://deb.debian.org/debian bookworm/main amd64 libkeyutils1 amd64 1.6.3-2 [8808 B]
+
+2026-05-07T15:56:08.186447726Z [inf]  Get:11 http://deb.debian.org/debian bookworm/main amd64 libkrb5-3 amd64 1.20.1-2+deb12u4 [334 kB]
+
+2026-05-07T15:56:08.187711256Z [inf]  Get:12 http://deb.debian.org/debian bookworm/main amd64 libgssapi-krb5-2 amd64 1.20.1-2+deb12u4 [135 kB]
+
+2026-05-07T15:56:08.188282194Z [inf]  Get:13 http://deb.debian.org/debian bookworm/main amd64 libtirpc-common all 1.3.3+ds-1 [14.0 kB]
+
+2026-05-07T15:56:08.18853834Z [inf]  Get:14 http://deb.debian.org/debian bookworm/main amd64 libtirpc3 amd64 1.3.3+ds-1 [85.2 kB]
+
+2026-05-07T15:56:08.193418085Z [inf]  Get:15 http://deb.debian.org/debian bookworm/main amd64 libnsl2 amd64 1.3.0-2 [39.5 kB]
+
+2026-05-07T15:56:08.194353511Z [inf]  Get:16 http://deb.debian.org/debian bookworm/main amd64 readline-common all 8.2-1.3 [69.0 kB]
+
+2026-05-07T15:56:08.194901471Z [inf]  Get:17 http://deb.debian.org/debian bookworm/main amd64 libreadline8 amd64 8.2-1.3 [166 kB]
+
+2026-05-07T15:56:08.195605425Z [inf]  Get:18 http://deb.debian.org/debian bookworm/main amd64 libsqlite3-0 amd64 3.40.1-2+deb12u2 [839 kB]
+
+2026-05-07T15:56:08.198729471Z [inf]  Get:19 http://deb.debian.org/debian bookworm/main amd64 libpython3.11-stdlib amd64 3.11.2-6+deb12u6 [1798 kB]
+
+2026-05-07T15:56:08.205477956Z [inf]  Get:20 http://deb.debian.org/debian bookworm/main amd64 python3.11 amd64 3.11.2-6+deb12u6 [573 kB]
+
+2026-05-07T15:56:08.207701257Z [inf]  Get:21 http://deb.debian.org/debian bookworm/main amd64 libpython3-stdlib amd64 3.11.2-1+b1 [9312 B]
+
+2026-05-07T15:56:08.207818651Z [inf]  Get:22 http://deb.debian.org/debian bookworm/main amd64 python3 amd64 3.11.2-1+b1 [26.3 kB]
+
+2026-05-07T15:56:08.208585013Z [inf]  Get:23 http://deb.debian.org/debian-security bookworm-security/main amd64 openssl amd64 3.0.19-1~deb12u2 [1435 kB]
+
+2026-05-07T15:56:08.212333379Z [inf]  Get:24 http://deb.debian.org/debian bookworm/main amd64 ca-certificates all 20230311+deb12u1 [155 kB]
+
+2026-05-07T15:56:08.213929341Z [inf]  Get:25 http://deb.debian.org/debian bookworm/main amd64 krb5-locales all 1.20.1-2+deb12u4 [63.4 kB]
+
+2026-05-07T15:56:08.219725123Z [inf]  Get:26 http://deb.debian.org/debian bookworm/main amd64 manpages all 6.03-2 [1332 kB]
+
+2026-05-07T15:56:08.229412988Z [inf]  Get:27 http://deb.debian.org/debian bookworm/main amd64 binutils-common amd64 2.40-2 [2487 kB]
+
+2026-05-07T15:56:08.232004202Z [inf]  Setting up libssl3:amd64 (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:08.238212464Z [inf]  Get:28 http://deb.debian.org/debian bookworm/main amd64 libbinutils amd64 2.40-2 [572 kB]
+
+2026-05-07T15:56:08.240762088Z [inf]  Get:29 http://deb.debian.org/debian bookworm/main amd64 libctf-nobfd0 amd64 2.40-2 [153 kB]
+
+2026-05-07T15:56:08.240966519Z [inf]  Setting up openssl (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:08.241454395Z [inf]  Get:30 http://deb.debian.org/debian bookworm/main amd64 libctf0 amd64 2.40-2 [89.8 kB]
+
+2026-05-07T15:56:08.242300836Z [inf]  Get:31 http://deb.debian.org/debian bookworm/main amd64 libgprofng0 amd64 2.40-2 [812 kB]
+
+2026-05-07T15:56:08.24567696Z [inf]  Get:32 http://deb.debian.org/debian bookworm/main amd64 libjansson4 amd64 2.14-2 [40.8 kB]
+
+2026-05-07T15:56:08.245923671Z [inf]  Get:33 http://deb.debian.org/debian bookworm/main amd64 binutils-x86-64-linux-gnu amd64 2.40-2 [2246 kB]
+
+2026-05-07T15:56:08.253628236Z [inf]  Setting up ca-certificates (20230311+deb12u1) ...
+
+2026-05-07T15:56:08.253822656Z [inf]  Get:34 http://deb.debian.org/debian bookworm/main amd64 binutils amd64 2.40-2 [65.0 kB]
+
+2026-05-07T15:56:08.254597367Z [inf]  Get:35 http://deb.debian.org/debian bookworm/main amd64 libisl23 amd64 0.25-1.1 [683 kB]
+
+2026-05-07T15:56:08.258074987Z [inf]  Get:36 http://deb.debian.org/debian bookworm/main amd64 libmpfr6 amd64 4.2.0-1 [701 kB]
+
+2026-05-07T15:56:08.261095129Z [inf]  Get:37 http://deb.debian.org/debian bookworm/main amd64 libmpc3 amd64 1.3.1-1 [51.5 kB]
+
+2026-05-07T15:56:08.261305288Z [inf]  Get:38 http://deb.debian.org/debian bookworm/main amd64 cpp-12 amd64 12.2.0-14+deb12u1 [9768 kB]
+
+2026-05-07T15:56:08.306569206Z [inf]  Get:39 http://deb.debian.org/debian bookworm/main amd64 cpp amd64 4:12.2.0-3 [6836 B]
+Get:40 http://deb.debian.org/debian bookworm/main amd64 fonts-dejavu-core all 2.37-6 [1068 kB]
+
+2026-05-07T15:56:08.311180997Z [inf]  Get:41 http://deb.debian.org/debian bookworm/main amd64 fontconfig-config amd64 2.14.1-4 [315 kB]
+
+2026-05-07T15:56:08.312395574Z [inf]  Get:42 http://deb.debian.org/debian bookworm/main amd64 libcc1-0 amd64 12.2.0-14+deb12u1 [41.7 kB]
+
+2026-05-07T15:56:08.312764642Z [inf]  Get:43 http://deb.debian.org/debian bookworm/main amd64 libgomp1 amd64 12.2.0-14+deb12u1 [116 kB]
+
+2026-05-07T15:56:08.313268435Z [inf]  Get:44 http://deb.debian.org/debian bookworm/main amd64 libitm1 amd64 12.2.0-14+deb12u1 [26.1 kB]
+
+2026-05-07T15:56:08.313518971Z [inf]  Get:45 http://deb.debian.org/debian bookworm/main amd64 libatomic1 amd64 12.2.0-14+deb12u1 [9376 B]
+
+2026-05-07T15:56:08.313736571Z [inf]  Get:46 http://deb.debian.org/debian bookworm/main amd64 libasan8 amd64 12.2.0-14+deb12u1 [2193 kB]
+
+2026-05-07T15:56:08.323222543Z [inf]  Get:47 http://deb.debian.org/debian bookworm/main amd64 liblsan0 amd64 12.2.0-14+deb12u1 [969 kB]
+
+2026-05-07T15:56:08.323330147Z [inf]  debconf: unable to initialize frontend: Dialog
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+debconf: falling back to frontend: Readline
+
+2026-05-07T15:56:08.323595271Z [inf]  debconf: unable to initialize frontend: Readline
+debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/x86_64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+debconf: falling back to frontend: Teletype
+
+2026-05-07T15:56:08.327744502Z [inf]  Get:48 http://deb.debian.org/debian bookworm/main amd64 libtsan2 amd64 12.2.0-14+deb12u1 [2197 kB]
+
+2026-05-07T15:56:08.337657701Z [inf]  Get:49 http://deb.debian.org/debian bookworm/main amd64 libubsan1 amd64 12.2.0-14+deb12u1 [883 kB]
+
+2026-05-07T15:56:08.341587901Z [inf]  Get:50 http://deb.debian.org/debian bookworm/main amd64 libquadmath0 amd64 12.2.0-14+deb12u1 [145 kB]
+
+2026-05-07T15:56:08.342183338Z [inf]  Get:51 http://deb.debian.org/debian bookworm/main amd64 libgcc-12-dev amd64 12.2.0-14+deb12u1 [2437 kB]
+
+2026-05-07T15:56:08.35353411Z [inf]  Get:52 http://deb.debian.org/debian bookworm/main amd64 gcc-12 amd64 12.2.0-14+deb12u1 [19.3 MB]
+
+2026-05-07T15:56:08.447942727Z [inf]  Get:53 http://deb.debian.org/debian bookworm/main amd64 gcc amd64 4:12.2.0-3 [5216 B]
+
+2026-05-07T15:56:08.448195273Z [inf]  Get:54 http://deb.debian.org/debian bookworm/main amd64 libc-dev-bin amd64 2.36-9+deb12u13 [47.4 kB]
+
+2026-05-07T15:56:08.448648748Z [inf]  Get:55 http://deb.debian.org/debian-security bookworm-security/main amd64 linux-libc-dev amd64 6.1.170-1 [2271 kB]
+
+2026-05-07T15:56:08.457691981Z [inf]  Get:56 http://deb.debian.org/debian bookworm/main amd64 libcrypt-dev amd64 1:4.4.33-2 [118 kB]
+
+2026-05-07T15:56:08.458473201Z [inf]  Get:57 http://deb.debian.org/debian bookworm/main amd64 libtirpc-dev amd64 1.3.3+ds-1 [191 kB]
+
+2026-05-07T15:56:08.459443359Z [inf]  Get:58 http://deb.debian.org/debian bookworm/main amd64 libnsl-dev amd64 1.3.0-2 [66.4 kB]
+
+2026-05-07T15:56:08.460077467Z [inf]  Get:59 http://deb.debian.org/debian bookworm/main amd64 rpcsvc-proto amd64 1.4.3-1 [63.3 kB]
+
+2026-05-07T15:56:08.460622143Z [inf]  Get:60 http://deb.debian.org/debian bookworm/main amd64 libc6-dev amd64 2.36-9+deb12u13 [1904 kB]
+
+2026-05-07T15:56:08.469241348Z [inf]  Get:61 http://deb.debian.org/debian bookworm/main amd64 libstdc++-12-dev amd64 12.2.0-14+deb12u1 [2047 kB]
+
+2026-05-07T15:56:08.478490467Z [inf]  Get:62 http://deb.debian.org/debian bookworm/main amd64 g++-12 amd64 12.2.0-14+deb12u1 [10.7 MB]
+
+2026-05-07T15:56:08.525967246Z [inf]  Get:63 http://deb.debian.org/debian bookworm/main amd64 g++ amd64 4:12.2.0-3 [1356 B]
+
+2026-05-07T15:56:08.526057784Z [inf]  Get:64 http://deb.debian.org/debian bookworm/main amd64 libabsl20220623 amd64 20220623.1-1+deb12u2 [391 kB]
+
+2026-05-07T15:56:08.528145762Z [inf]  Get:65 http://deb.debian.org/debian bookworm/main amd64 libaom3 amd64 3.6.0-1+deb12u2 [1850 kB]
+
+2026-05-07T15:56:08.536713087Z [inf]  Get:66 http://deb.debian.org/debian bookworm/main amd64 libdav1d6 amd64 1.0.0-2+deb12u1 [513 kB]
+
+2026-05-07T15:56:08.539444092Z [inf]  Get:67 http://deb.debian.org/debian bookworm/main amd64 libgav1-1 amd64 0.18.0-1+b1 [332 kB]
+
+2026-05-07T15:56:08.541355049Z [inf]  Get:68 http://deb.debian.org/debian bookworm/main amd64 librav1e0 amd64 0.5.1-6 [763 kB]
+
+2026-05-07T15:56:08.545004169Z [inf]  Get:69 http://deb.debian.org/debian bookworm/main amd64 libsvtav1enc1 amd64 1.4.1+dfsg-1 [2121 kB]
+
+2026-05-07T15:56:08.554560085Z [inf]  Get:70 http://deb.debian.org/debian bookworm/main amd64 libjpeg62-turbo amd64 1:2.1.5-2 [166 kB]
+
+2026-05-07T15:56:08.555641752Z [inf]  Get:71 http://deb.debian.org/debian bookworm/main amd64 libyuv0 amd64 0.0~git20230123.b2528b0-1 [168 kB]
+
+2026-05-07T15:56:08.556634511Z [inf]  Get:72 http://deb.debian.org/debian bookworm/main amd64 libavif15 amd64 0.11.1-1+deb12u1 [94.4 kB]
+
+2026-05-07T15:56:08.557174386Z [inf]  Get:73 http://deb.debian.org/debian bookworm/main amd64 libbrotli1 amd64 1.0.9-2+b6 [275 kB]
+
+2026-05-07T15:56:08.558648137Z [inf]  Get:74 http://deb.debian.org/debian bookworm/main amd64 libbsd0 amd64 0.11.7-2 [117 kB]
+
+2026-05-07T15:56:08.559868908Z [inf]  Get:75 http://deb.debian.org/debian-security bookworm-security/main amd64 libpng16-16 amd64 1.6.39-2+deb12u4 [276 kB]
+
+2026-05-07T15:56:08.560708222Z [inf]  Get:76 http://deb.debian.org/debian bookworm/main amd64 libfreetype6 amd64 2.12.1+dfsg-5+deb12u4 [398 kB]
+
+2026-05-07T15:56:08.562199691Z [inf]  Get:77 http://deb.debian.org/debian bookworm/main amd64 libfontconfig1 amd64 2.14.1-4 [386 kB]
+
+2026-05-07T15:56:08.563563981Z [inf]  Get:78 http://deb.debian.org/debian bookworm/main amd64 libde265-0 amd64 1.0.11-1+deb12u2 [185 kB]
+
+2026-05-07T15:56:08.564403397Z [inf]  Get:79 http://deb.debian.org/debian bookworm/main amd64 libnuma1 amd64 2.0.16-1 [21.0 kB]
+
+2026-05-07T15:56:08.564838012Z [inf]  Get:80 http://deb.debian.org/debian bookworm/main amd64 libx265-199 amd64 3.5-2+b1 [1150 kB]
+
+2026-05-07T15:56:08.570468869Z [inf]  Get:81 http://deb.debian.org/debian bookworm/main amd64 libheif1 amd64 1.15.1-1+deb12u1 [215 kB]
+
+2026-05-07T15:56:08.571751754Z [inf]  Get:82 http://deb.debian.org/debian bookworm/main amd64 libdeflate0 amd64 1.14-1 [61.4 kB]
+
+2026-05-07T15:56:08.572047551Z [inf]  Get:83 http://deb.debian.org/debian bookworm/main amd64 libjbig0 amd64 2.1-6.1 [31.7 kB]
+
+2026-05-07T15:56:08.572445875Z [inf]  Get:84 http://deb.debian.org/debian bookworm/main amd64 liblerc4 amd64 4.0.0+ds-2 [170 kB]
+
+2026-05-07T15:56:08.573511872Z [inf]  Get:85 http://deb.debian.org/debian bookworm/main amd64 libwebp7 amd64 1.2.4-0.2+deb12u1 [286 kB]
+
+2026-05-07T15:56:08.575001254Z [inf]  Get:86 http://deb.debian.org/debian-security bookworm-security/main amd64 libtiff6 amd64 4.5.0-6+deb12u4 [316 kB]
+
+2026-05-07T15:56:08.575605044Z [inf]  Get:87 http://deb.debian.org/debian bookworm/main amd64 libxau6 amd64 1:1.0.9-1 [19.7 kB]
+
+2026-05-07T15:56:08.575736362Z [inf]  Get:88 http://deb.debian.org/debian bookworm/main amd64 libxdmcp6 amd64 1:1.1.2-3 [26.3 kB]
+
+2026-05-07T15:56:08.575957936Z [inf]  Get:89 http://deb.debian.org/debian bookworm/main amd64 libxcb1 amd64 1.15-1 [144 kB]
+
+2026-05-07T15:56:08.576972114Z [inf]  Get:90 http://deb.debian.org/debian bookworm/main amd64 libx11-data all 2:1.8.4-2+deb12u2 [292 kB]
+
+2026-05-07T15:56:08.579984966Z [inf]  Get:91 http://deb.debian.org/debian bookworm/main amd64 libx11-6 amd64 2:1.8.4-2+deb12u2 [760 kB]
+
+2026-05-07T15:56:08.583708577Z [inf]  Get:92 http://deb.debian.org/debian bookworm/main amd64 libxpm4 amd64 1:3.5.12-1.1+deb12u1 [48.6 kB]
+
+2026-05-07T15:56:08.584114579Z [inf]  Get:93 http://deb.debian.org/debian bookworm/main amd64 libgd3 amd64 2.3.3-9 [124 kB]
+
+2026-05-07T15:56:08.584798647Z [inf]  Get:94 http://deb.debian.org/debian bookworm/main amd64 libc-devtools amd64 2.36-9+deb12u13 [55.0 kB]
+
+2026-05-07T15:56:08.585372449Z [inf]  Get:95 http://deb.debian.org/debian bookworm/main amd64 libgpm2 amd64 1.20.7-10+b1 [14.2 kB]
+
+2026-05-07T15:56:08.585481612Z [inf]  Get:96 http://deb.debian.org/debian bookworm/main amd64 make amd64 4.3-4.1 [396 kB]
+
+2026-05-07T15:56:08.587546509Z [inf]  Get:97 http://deb.debian.org/debian bookworm/main amd64 manpages-dev all 6.03-2 [2030 kB]
+
+2026-05-07T15:56:08.714123025Z [inf]  debconf: delaying package configuration, since apt-utils is not installed
+
+2026-05-07T15:56:08.720180514Z [inf]  Updating certificates in /etc/ssl/certs...
+
+2026-05-07T15:56:08.739108501Z [inf]  Fetched 91.3 MB in 0s (193 MB/s)
+
+2026-05-07T15:56:08.767136202Z [inf]  Selecting previously unselected package libssl3:amd64.
+(Reading database ... 
+2026-05-07T15:56:08.767822542Z [inf]  (Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+2026-05-07T15:56:08.769315032Z [inf]  (Reading database ... 75%
+2026-05-07T15:56:08.769697856Z [inf]  (Reading database ... 80%
+2026-05-07T15:56:08.769872124Z [inf]  (Reading database ... 85%
+2026-05-07T15:56:08.770133248Z [inf]  (Reading database ... 90%
+2026-05-07T15:56:08.770316273Z [inf]  (Reading database ... 95%
+2026-05-07T15:56:08.771263373Z [inf]  (Reading database ... 100%
+(Reading database ... 6096 files and directories currently installed.)
+
+2026-05-07T15:56:08.771883428Z [inf]  Preparing to unpack .../libssl3_3.0.19-1~deb12u2_amd64.deb ...
+
+2026-05-07T15:56:08.780391938Z [inf]  Unpacking libssl3:amd64 (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:08.941847098Z [inf]  Selecting previously unselected package libpython3.11-minimal:amd64.
+
+2026-05-07T15:56:08.942821428Z [inf]  Preparing to unpack .../libpython3.11-minimal_3.11.2-6+deb12u6_amd64.deb ...
+
+2026-05-07T15:56:08.946321121Z [inf]  Unpacking libpython3.11-minimal:amd64 (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:09.039080888Z [inf]  Selecting previously unselected package libexpat1:amd64.
+
+2026-05-07T15:56:09.040126272Z [inf]  Preparing to unpack .../libexpat1_2.5.0-1+deb12u2_amd64.deb ...
+
+2026-05-07T15:56:09.043122987Z [inf]  Unpacking libexpat1:amd64 (2.5.0-1+deb12u2) ...
+
+2026-05-07T15:56:09.080453676Z [inf]  Selecting previously unselected package python3.11-minimal.
+
+2026-05-07T15:56:09.081432659Z [inf]  Preparing to unpack .../python3.11-minimal_3.11.2-6+deb12u6_amd64.deb ...
+
+2026-05-07T15:56:09.087263301Z [inf]  Unpacking python3.11-minimal (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:09.268297981Z [inf]  Setting up libssl3:amd64 (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:09.279960726Z [inf]  Setting up libpython3.11-minimal:amd64 (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:09.28188709Z [inf]  142 added, 0 removed; done.
+
+2026-05-07T15:56:09.293487679Z [inf]  Setting up libexpat1:amd64 (2.5.0-1+deb12u2) ...
+
+2026-05-07T15:56:09.304590121Z [inf]  Setting up python3.11-minimal (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:09.31084889Z [inf]  Processing triggers for libc-bin (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:09.327267149Z [inf]  Processing triggers for ca-certificates (20230311+deb12u1) ...
+
+2026-05-07T15:56:09.334023006Z [inf]  Updating certificates in /etc/ssl/certs...
+
+2026-05-07T15:56:09.735586331Z [inf]  0 added, 0 removed; done.
+Running hooks in /etc/ca-certificates/update.d...
+
+2026-05-07T15:56:09.736533219Z [inf]  done.
+
+2026-05-07T15:56:09.897855247Z [inf]  Selecting previously unselected package python3-minimal.
+(Reading database ... 
+2026-05-07T15:56:09.898387788Z [inf]  (Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+2026-05-07T15:56:09.899797825Z [inf]  (Reading database ... 75%
+2026-05-07T15:56:09.900096815Z [inf]  (Reading database ... 80%
+2026-05-07T15:56:09.900307369Z [inf]  (Reading database ... 85%
+2026-05-07T15:56:09.900509066Z [inf]  (Reading database ... 90%
+2026-05-07T15:56:09.900701056Z [inf]  (Reading database ... 95%
+2026-05-07T15:56:09.901469151Z [inf]  (Reading database ... 100%
+(Reading database ... 6424 files and directories currently installed.)
+
+2026-05-07T15:56:09.901872158Z [inf]  Preparing to unpack .../00-python3-minimal_3.11.2-1+b1_amd64.deb ...
+
+2026-05-07T15:56:09.906852357Z [inf]  Unpacking python3-minimal (3.11.2-1+b1) ...
+
+2026-05-07T15:56:09.941790100Z [inf]  [production  2/11] RUN apt-get update && apt-get install -y     ca-certificates     && rm -rf /var/lib/apt/lists/*
+2026-05-07T15:56:09.945286396Z [inf]  [production  3/11] RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-05-07T15:56:09.948946663Z [inf]  Selecting previously unselected package media-types.
+
+2026-05-07T15:56:09.949893674Z [inf]  Preparing to unpack .../01-media-types_10.0.0_all.deb ...
+
+2026-05-07T15:56:09.954649083Z [inf]  Unpacking media-types (10.0.0) ...
+
+2026-05-07T15:56:09.987554655Z [inf]  Selecting previously unselected package libncursesw6:amd64.
+
+2026-05-07T15:56:09.98845637Z [inf]  Preparing to unpack .../02-libncursesw6_6.4-4_amd64.deb ...
+
+2026-05-07T15:56:09.992044461Z [inf]  Unpacking libncursesw6:amd64 (6.4-4) ...
+
+2026-05-07T15:56:10.033765792Z [inf]  Selecting previously unselected package libkrb5support0:amd64.
+
+2026-05-07T15:56:10.034764403Z [inf]  Preparing to unpack .../03-libkrb5support0_1.20.1-2+deb12u4_amd64.deb ...
+
+2026-05-07T15:56:10.037463129Z [inf]  Unpacking libkrb5support0:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:10.066845766Z [inf]  Selecting previously unselected package libk5crypto3:amd64.
+
+2026-05-07T15:56:10.067751607Z [inf]  Preparing to unpack .../04-libk5crypto3_1.20.1-2+deb12u4_amd64.deb ...
+
+2026-05-07T15:56:10.071121469Z [inf]  Unpacking libk5crypto3:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:10.110423324Z [inf]  Selecting previously unselected package libkeyutils1:amd64.
+
+2026-05-07T15:56:10.111453604Z [inf]  Preparing to unpack .../05-libkeyutils1_1.6.3-2_amd64.deb ...
+
+2026-05-07T15:56:10.114436718Z [inf]  Unpacking libkeyutils1:amd64 (1.6.3-2) ...
+
+2026-05-07T15:56:10.149833063Z [inf]  Selecting previously unselected package libkrb5-3:amd64.
+
+2026-05-07T15:56:10.150698875Z [inf]  Preparing to unpack .../06-libkrb5-3_1.20.1-2+deb12u4_amd64.deb ...
+
+2026-05-07T15:56:10.153881104Z [inf]  Unpacking libkrb5-3:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:10.203315469Z [inf]  Preparing pnpm@10.26.1 for immediate activation...
+
+2026-05-07T15:56:10.212551634Z [inf]  Selecting previously unselected package libgssapi-krb5-2:amd64.
+
+2026-05-07T15:56:10.213535328Z [inf]  Preparing to unpack .../07-libgssapi-krb5-2_1.20.1-2+deb12u4_amd64.deb ...
+
+2026-05-07T15:56:10.216844272Z [inf]  Unpacking libgssapi-krb5-2:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:10.25247979Z [inf]  Selecting previously unselected package libtirpc-common.
+
+2026-05-07T15:56:10.253740113Z [inf]  Preparing to unpack .../08-libtirpc-common_1.3.3+ds-1_all.deb ...
+
+2026-05-07T15:56:10.257201413Z [inf]  Unpacking libtirpc-common (1.3.3+ds-1) ...
+
+2026-05-07T15:56:10.304105175Z [inf]  Selecting previously unselected package libtirpc3:amd64.
+
+2026-05-07T15:56:10.305010921Z [inf]  Preparing to unpack .../09-libtirpc3_1.3.3+ds-1_amd64.deb ...
+
+2026-05-07T15:56:10.308397784Z [inf]  Unpacking libtirpc3:amd64 (1.3.3+ds-1) ...
+
+2026-05-07T15:56:10.344422864Z [inf]  Selecting previously unselected package libnsl2:amd64.
+
+2026-05-07T15:56:10.345295685Z [inf]  Preparing to unpack .../10-libnsl2_1.3.0-2_amd64.deb ...
+
+2026-05-07T15:56:10.348352316Z [inf]  Unpacking libnsl2:amd64 (1.3.0-2) ...
+
+2026-05-07T15:56:10.381389415Z [inf]  Selecting previously unselected package readline-common.
+
+2026-05-07T15:56:10.382348477Z [inf]  Preparing to unpack .../11-readline-common_8.2-1.3_all.deb ...
+
+2026-05-07T15:56:10.386096988Z [inf]  Unpacking readline-common (8.2-1.3) ...
+
+2026-05-07T15:56:10.421871904Z [inf]  Selecting previously unselected package libreadline8:amd64.
+
+2026-05-07T15:56:10.422786327Z [inf]  Preparing to unpack .../12-libreadline8_8.2-1.3_amd64.deb ...
+
+2026-05-07T15:56:10.42609274Z [inf]  Unpacking libreadline8:amd64 (8.2-1.3) ...
+
+2026-05-07T15:56:10.464556802Z [inf]  Selecting previously unselected package libsqlite3-0:amd64.
+
+2026-05-07T15:56:10.465764988Z [inf]  Preparing to unpack .../13-libsqlite3-0_3.40.1-2+deb12u2_amd64.deb ...
+
+2026-05-07T15:56:10.468540093Z [inf]  Unpacking libsqlite3-0:amd64 (3.40.1-2+deb12u2) ...
+
+2026-05-07T15:56:10.542466623Z [inf]  Selecting previously unselected package libpython3.11-stdlib:amd64.
+
+2026-05-07T15:56:10.543463903Z [inf]  Preparing to unpack .../14-libpython3.11-stdlib_3.11.2-6+deb12u6_amd64.deb ...
+
+2026-05-07T15:56:10.546801897Z [inf]  Unpacking libpython3.11-stdlib:amd64 (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:10.704872054Z [inf]  Selecting previously unselected package python3.11.
+
+2026-05-07T15:56:10.705963177Z [inf]  Preparing to unpack .../15-python3.11_3.11.2-6+deb12u6_amd64.deb ...
+
+2026-05-07T15:56:10.70976607Z [inf]  Unpacking python3.11 (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:10.747248056Z [inf]  Selecting previously unselected package libpython3-stdlib:amd64.
+
+2026-05-07T15:56:10.748279535Z [inf]  Preparing to unpack .../16-libpython3-stdlib_3.11.2-1+b1_amd64.deb ...
+
+2026-05-07T15:56:10.751249696Z [inf]  Unpacking libpython3-stdlib:amd64 (3.11.2-1+b1) ...
+
+2026-05-07T15:56:10.779076301Z [inf]  Setting up python3-minimal (3.11.2-1+b1) ...
+
+2026-05-07T15:56:10.924852027Z [inf]  Selecting previously unselected package python3.
+(Reading database ... 
+2026-05-07T15:56:10.925285754Z [inf]  (Reading database ... 5%
+(Reading database ... 10%
+(Reading database ... 15%
+(Reading database ... 20%
+(Reading database ... 25%
+(Reading database ... 30%
+(Reading database ... 35%
+(Reading database ... 40%
+(Reading database ... 45%
+(Reading database ... 50%
+(Reading database ... 55%
+(Reading database ... 60%
+(Reading database ... 65%
+(Reading database ... 70%
+2026-05-07T15:56:10.927106341Z [inf]  (Reading database ... 75%
+2026-05-07T15:56:10.927416952Z [inf]  (Reading database ... 80%
+2026-05-07T15:56:10.927615406Z [inf]  (Reading database ... 85%
+2026-05-07T15:56:10.927794526Z [inf]  (Reading database ... 90%
+2026-05-07T15:56:10.928650486Z [inf]  (Reading database ... 95%
+2026-05-07T15:56:10.928910559Z [inf]  (Reading database ... 100%
+(Reading database ... 6932 files and directories currently installed.)
+
+2026-05-07T15:56:10.92944639Z [inf]  Preparing to unpack .../00-python3_3.11.2-1+b1_amd64.deb ...
+
+2026-05-07T15:56:10.935337338Z [inf]  Unpacking python3 (3.11.2-1+b1) ...
+
+2026-05-07T15:56:10.962585618Z [inf]  Selecting previously unselected package openssl.
+
+2026-05-07T15:56:10.963905116Z [inf]  Preparing to unpack .../01-openssl_3.0.19-1~deb12u2_amd64.deb ...
+
+2026-05-07T15:56:10.966353795Z [inf]  Unpacking openssl (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:11.097048771Z [inf]  Selecting previously unselected package ca-certificates.
+
+2026-05-07T15:56:11.098620623Z [inf]  Preparing to unpack .../02-ca-certificates_20230311+deb12u1_all.deb ...
+
+2026-05-07T15:56:11.101716635Z [inf]  Unpacking ca-certificates (20230311+deb12u1) ...
+
+2026-05-07T15:56:11.147719039Z [inf]  Selecting previously unselected package krb5-locales.
+
+2026-05-07T15:56:11.148714336Z [inf]  Preparing to unpack .../03-krb5-locales_1.20.1-2+deb12u4_all.deb ...
+
+2026-05-07T15:56:11.151886785Z [inf]  Unpacking krb5-locales (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:11.179352962Z [inf]  Selecting previously unselected package manpages.
+
+2026-05-07T15:56:11.18028245Z [inf]  Preparing to unpack .../04-manpages_6.03-2_all.deb ...
+
+2026-05-07T15:56:11.183181445Z [inf]  Unpacking manpages (6.03-2) ...
+
+2026-05-07T15:56:11.286892031Z [inf]  Selecting previously unselected package binutils-common:amd64.
+
+2026-05-07T15:56:11.287913532Z [inf]  Preparing to unpack .../05-binutils-common_2.40-2_amd64.deb ...
+
+2026-05-07T15:56:11.291309098Z [inf]  Unpacking binutils-common:amd64 (2.40-2) ...
+
+2026-05-07T15:56:11.509805381Z [inf]  Selecting previously unselected package libbinutils:amd64.
+
+2026-05-07T15:56:11.510839717Z [inf]  Preparing to unpack .../06-libbinutils_2.40-2_amd64.deb ...
+
+2026-05-07T15:56:11.514359173Z [inf]  Unpacking libbinutils:amd64 (2.40-2) ...
+
+2026-05-07T15:56:11.687446032Z [inf]  Selecting previously unselected package libctf-nobfd0:amd64.
+
+2026-05-07T15:56:11.688646635Z [inf]  Preparing to unpack .../07-libctf-nobfd0_2.40-2_amd64.deb ...
+
+2026-05-07T15:56:11.694442978Z [inf]  Unpacking libctf-nobfd0:amd64 (2.40-2) ...
+
+2026-05-07T15:56:11.746033827Z [inf]  Selecting previously unselected package libctf0:amd64.
+
+2026-05-07T15:56:11.747069646Z [inf]  Preparing to unpack .../08-libctf0_2.40-2_amd64.deb ...
+
+2026-05-07T15:56:11.772923417Z [inf]  Unpacking libctf0:amd64 (2.40-2) ...
+
+2026-05-07T15:56:11.909684945Z [inf]  Selecting previously unselected package libgprofng0:amd64.
+
+2026-05-07T15:56:11.910699109Z [inf]  Preparing to unpack .../09-libgprofng0_2.40-2_amd64.deb ...
+
+2026-05-07T15:56:11.910854819Z [inf]  [production  3/11] RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-05-07T15:56:11.91363013Z [inf]  Unpacking libgprofng0:amd64 (2.40-2) ...
+
+2026-05-07T15:56:11.914199002Z [inf]  [production  4/11] WORKDIR /app
+2026-05-07T15:56:12.006336944Z [inf]  Selecting previously unselected package libjansson4:amd64.
+
+2026-05-07T15:56:12.007354426Z [inf]  Preparing to unpack .../10-libjansson4_2.14-2_amd64.deb ...
+
+2026-05-07T15:56:12.010545758Z [inf]  Unpacking libjansson4:amd64 (2.14-2) ...
+
+2026-05-07T15:56:12.024096967Z [inf]  [production  4/11] WORKDIR /app
+2026-05-07T15:56:12.028254546Z [inf]  [production  5/11] COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+2026-05-07T15:56:12.038755527Z [inf]  Selecting previously unselected package binutils-x86-64-linux-gnu.
+
+2026-05-07T15:56:12.039911364Z [inf]  Preparing to unpack .../11-binutils-x86-64-linux-gnu_2.40-2_amd64.deb ...
+
+2026-05-07T15:56:12.042688388Z [inf]  Unpacking binutils-x86-64-linux-gnu (2.40-2) ...
+
+2026-05-07T15:56:12.125593105Z [inf]  [production  5/11] COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+2026-05-07T15:56:12.130594510Z [inf]  [production  6/11] COPY artifacts/api-server/package.json ./artifacts/api-server/package.json
+2026-05-07T15:56:12.193098990Z [inf]  [production  6/11] COPY artifacts/api-server/package.json ./artifacts/api-server/package.json
+2026-05-07T15:56:12.198289545Z [inf]  [production  7/11] COPY lib ./lib
+2026-05-07T15:56:12.251688817Z [inf]  Selecting previously unselected package binutils.
+
+2026-05-07T15:56:12.252712675Z [inf]  Preparing to unpack .../12-binutils_2.40-2_amd64.deb ...
+
+2026-05-07T15:56:12.255621917Z [inf]  Unpacking binutils (2.40-2) ...
+
+2026-05-07T15:56:12.256616775Z [inf]  [production  7/11] COPY lib ./lib
+2026-05-07T15:56:12.261902474Z [inf]  [production  8/11] RUN pnpm install --frozen-lockfile --prod --filter @workspace/api-server...
+2026-05-07T15:56:12.296744771Z [inf]  Selecting previously unselected package libisl23:amd64.
+
+2026-05-07T15:56:12.297745179Z [inf]  Preparing to unpack .../13-libisl23_0.25-1.1_amd64.deb ...
+
+2026-05-07T15:56:12.300965718Z [inf]  Unpacking libisl23:amd64 (0.25-1.1) ...
+
+2026-05-07T15:56:12.389819624Z [inf]  Selecting previously unselected package libmpfr6:amd64.
+
+2026-05-07T15:56:12.39135754Z [inf]  Preparing to unpack .../14-libmpfr6_4.2.0-1_amd64.deb ...
+
+2026-05-07T15:56:12.394874Z [inf]  Unpacking libmpfr6:amd64 (4.2.0-1) ...
+
+2026-05-07T15:56:12.472392892Z [inf]  Selecting previously unselected package libmpc3:amd64.
+
+2026-05-07T15:56:12.473307865Z [inf]  Preparing to unpack .../15-libmpc3_1.3.1-1_amd64.deb ...
+
+2026-05-07T15:56:12.477147104Z [inf]  Unpacking libmpc3:amd64 (1.3.1-1) ...
+
+2026-05-07T15:56:12.508121502Z [inf]  Selecting previously unselected package cpp-12.
+
+2026-05-07T15:56:12.509182383Z [inf]  Preparing to unpack .../16-cpp-12_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:12.514252702Z [inf]  Unpacking cpp-12 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:12.79695646Z [inf]  Scope: 3 of 6 workspace projects
+
+2026-05-07T15:56:12.871462487Z [inf]  Lockfile is up to date, resolution step is skipped
+
+2026-05-07T15:56:12.897487405Z [inf]  Progress: resolved 1, reused 0, downloaded 0, added 0
+
+2026-05-07T15:56:12.952448565Z [inf]  .                                        | +387 ++++++++++++++++++++++++++++++++
+
+2026-05-07T15:56:13.172333526Z [inf]  Selecting previously unselected package cpp.
+
+2026-05-07T15:56:13.173703288Z [inf]  Preparing to unpack .../17-cpp_4%3a12.2.0-3_amd64.deb ...
+
+2026-05-07T15:56:13.178464799Z [inf]  Unpacking cpp (4:12.2.0-3) ...
+
+2026-05-07T15:56:13.213089164Z [inf]  Selecting previously unselected package fonts-dejavu-core.
+
+2026-05-07T15:56:13.214595778Z [inf]  Preparing to unpack .../18-fonts-dejavu-core_2.37-6_all.deb ...
+
+2026-05-07T15:56:13.219700423Z [inf]  Unpacking fonts-dejavu-core (2.37-6) ...
+
+2026-05-07T15:56:13.365660418Z [inf]  Selecting previously unselected package fontconfig-config.
+
+2026-05-07T15:56:13.367223792Z [inf]  Preparing to unpack .../19-fontconfig-config_2.14.1-4_amd64.deb ...
+
+2026-05-07T15:56:13.4695657Z [inf]  Unpacking fontconfig-config (2.14.1-4) ...
+
+2026-05-07T15:56:13.541245004Z [inf]  Selecting previously unselected package libcc1-0:amd64.
+
+2026-05-07T15:56:13.542832574Z [inf]  Preparing to unpack .../20-libcc1-0_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:13.550315Z [inf]  Unpacking libcc1-0:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:13.574004947Z [inf]  
+   ╭──────────────────────────────────────────────╮
+   │                                              │
+   │     Update available! 10.26.1 → 11.0.8.      │
+   │     Changelog: https://pnpm.io/v/11.0.8      │
+   │   To update, run: corepack use pnpm@11.0.8   │
+   │                                              │
+   ╰──────────────────────────────────────────────╯
+
+
+2026-05-07T15:56:13.605633101Z [inf]  Selecting previously unselected package libgomp1:amd64.
+
+2026-05-07T15:56:13.606915931Z [inf]  Preparing to unpack .../21-libgomp1_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:13.613190257Z [inf]  Unpacking libgomp1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:13.675096189Z [inf]  Selecting previously unselected package libitm1:amd64.
+
+2026-05-07T15:56:13.676118245Z [inf]  Preparing to unpack .../22-libitm1_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:13.683095514Z [inf]  Unpacking libitm1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:13.737175149Z [inf]  Selecting previously unselected package libatomic1:amd64.
+
+2026-05-07T15:56:13.737991881Z [inf]  Preparing to unpack .../23-libatomic1_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:13.743990446Z [inf]  Unpacking libatomic1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:13.784924106Z [inf]  Selecting previously unselected package libasan8:amd64.
+
+2026-05-07T15:56:13.785978504Z [inf]  Preparing to unpack .../24-libasan8_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:13.795291733Z [inf]  Unpacking libasan8:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:13.899023373Z [inf]  Progress: resolved 387, reused 0, downloaded 387, added 385
+
+2026-05-07T15:56:13.959996306Z [inf]  Progress: resolved 387, reused 0, downloaded 387, added 387, done
+
+2026-05-07T15:56:14.007959113Z [inf]  Selecting previously unselected package liblsan0:amd64.
+
+2026-05-07T15:56:14.00876631Z [inf]  Preparing to unpack .../25-liblsan0_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:14.011700432Z [inf]  Unpacking liblsan0:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:14.103595475Z [inf]  . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+
+2026-05-07T15:56:14.106567369Z [inf]  Selecting previously unselected package libtsan2:amd64.
+
+2026-05-07T15:56:14.107584873Z [inf]  Preparing to unpack .../26-libtsan2_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:14.110224175Z [inf]  Unpacking libtsan2:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:14.12523555Z [inf]  . preinstall: Done
+
+2026-05-07T15:56:14.140302214Z [inf]  ╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: bcrypt@6.0.0, sharp@0.34.5.                         │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+2026-05-07T15:56:14.168673967Z [inf]  Done in 1.7s using pnpm v10.26.1
+
+2026-05-07T15:56:14.3421166Z [inf]  Selecting previously unselected package libubsan1:amd64.
+
+2026-05-07T15:56:14.343130787Z [inf]  Preparing to unpack .../27-libubsan1_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:14.348140332Z [inf]  Unpacking libubsan1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:14.487125349Z [inf]  Selecting previously unselected package libquadmath0:amd64.
+
+2026-05-07T15:56:14.488220195Z [inf]  Preparing to unpack .../28-libquadmath0_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:14.492471015Z [inf]  Unpacking libquadmath0:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:14.542329615Z [inf]  [production  8/11] RUN pnpm install --frozen-lockfile --prod --filter @workspace/api-server...
+2026-05-07T15:56:14.546209277Z [inf]  Selecting previously unselected package libgcc-12-dev:amd64.
+
+2026-05-07T15:56:14.547311175Z [inf]  Preparing to unpack .../29-libgcc-12-dev_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:14.550231581Z [inf]  Unpacking libgcc-12-dev:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:14.744939593Z [inf]  Selecting previously unselected package gcc-12.
+
+2026-05-07T15:56:14.745940709Z [inf]  Preparing to unpack .../30-gcc-12_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:14.749345212Z [inf]  Unpacking gcc-12 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:15.441440855Z [inf]  Selecting previously unselected package gcc.
+
+2026-05-07T15:56:15.442724043Z [inf]  Preparing to unpack .../31-gcc_4%3a12.2.0-3_amd64.deb ...
+
+2026-05-07T15:56:15.446434537Z [inf]  Unpacking gcc (4:12.2.0-3) ...
+
+2026-05-07T15:56:15.47688901Z [inf]  Selecting previously unselected package libc-dev-bin.
+
+2026-05-07T15:56:15.477922628Z [inf]  Preparing to unpack .../32-libc-dev-bin_2.36-9+deb12u13_amd64.deb ...
+
+2026-05-07T15:56:15.481551355Z [inf]  Unpacking libc-dev-bin (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:15.507362802Z [inf]  Selecting previously unselected package linux-libc-dev:amd64.
+
+2026-05-07T15:56:15.508487353Z [inf]  Preparing to unpack .../33-linux-libc-dev_6.1.170-1_amd64.deb ...
+
+2026-05-07T15:56:15.511072387Z [inf]  Unpacking linux-libc-dev:amd64 (6.1.170-1) ...
+
+2026-05-07T15:56:15.638311631Z [inf]  Selecting previously unselected package libcrypt-dev:amd64.
+
+2026-05-07T15:56:15.639548891Z [inf]  Preparing to unpack .../34-libcrypt-dev_1%3a4.4.33-2_amd64.deb ...
+
+2026-05-07T15:56:15.647042228Z [inf]  Unpacking libcrypt-dev:amd64 (1:4.4.33-2) ...
+
+2026-05-07T15:56:15.678856447Z [inf]  Selecting previously unselected package libtirpc-dev:amd64.
+
+2026-05-07T15:56:15.67992972Z [inf]  Preparing to unpack .../35-libtirpc-dev_1.3.3+ds-1_amd64.deb ...
+
+2026-05-07T15:56:15.682939838Z [inf]  Unpacking libtirpc-dev:amd64 (1.3.3+ds-1) ...
+
+2026-05-07T15:56:15.720177042Z [inf]  Selecting previously unselected package libnsl-dev:amd64.
+
+2026-05-07T15:56:15.721370466Z [inf]  Preparing to unpack .../36-libnsl-dev_1.3.0-2_amd64.deb ...
+
+2026-05-07T15:56:15.723909588Z [inf]  Unpacking libnsl-dev:amd64 (1.3.0-2) ...
+
+2026-05-07T15:56:15.7505337Z [inf]  Selecting previously unselected package rpcsvc-proto.
+
+2026-05-07T15:56:15.75176558Z [inf]  Preparing to unpack .../37-rpcsvc-proto_1.4.3-1_amd64.deb ...
+
+2026-05-07T15:56:15.754201637Z [inf]  Unpacking rpcsvc-proto (1.4.3-1) ...
+
+2026-05-07T15:56:15.781278202Z [inf]  Selecting previously unselected package libc6-dev:amd64.
+
+2026-05-07T15:56:15.782474837Z [inf]  Preparing to unpack .../38-libc6-dev_2.36-9+deb12u13_amd64.deb ...
+
+2026-05-07T15:56:15.78494462Z [inf]  Unpacking libc6-dev:amd64 (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:15.959360756Z [inf]  Selecting previously unselected package libstdc++-12-dev:amd64.
+
+2026-05-07T15:56:15.960637328Z [inf]  Preparing to unpack .../39-libstdc++-12-dev_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:15.963467048Z [inf]  Unpacking libstdc++-12-dev:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:16.162051924Z [inf]  Selecting previously unselected package g++-12.
+
+2026-05-07T15:56:16.163509634Z [inf]  Preparing to unpack .../40-g++-12_12.2.0-14+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:16.166639589Z [inf]  Unpacking g++-12 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:16.795091925Z [inf]  Selecting previously unselected package g++.
+
+2026-05-07T15:56:16.796344404Z [inf]  Preparing to unpack .../41-g++_4%3a12.2.0-3_amd64.deb ...
+
+2026-05-07T15:56:16.798848457Z [inf]  Unpacking g++ (4:12.2.0-3) ...
+
+2026-05-07T15:56:16.822654645Z [inf]  Selecting previously unselected package libabsl20220623:amd64.
+
+2026-05-07T15:56:16.823874088Z [inf]  Preparing to unpack .../42-libabsl20220623_20220623.1-1+deb12u2_amd64.deb ...
+
+2026-05-07T15:56:16.827262762Z [inf]  Unpacking libabsl20220623:amd64 (20220623.1-1+deb12u2) ...
+
+2026-05-07T15:56:16.89269514Z [inf]  Selecting previously unselected package libaom3:amd64.
+
+2026-05-07T15:56:16.893957044Z [inf]  Preparing to unpack .../43-libaom3_3.6.0-1+deb12u2_amd64.deb ...
+
+2026-05-07T15:56:16.898046485Z [inf]  Unpacking libaom3:amd64 (3.6.0-1+deb12u2) ...
+
+2026-05-07T15:56:17.070866806Z [inf]  Selecting previously unselected package libdav1d6:amd64.
+
+2026-05-07T15:56:17.072124459Z [inf]  Preparing to unpack .../44-libdav1d6_1.0.0-2+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:17.082610432Z [inf]  Unpacking libdav1d6:amd64 (1.0.0-2+deb12u1) ...
+
+2026-05-07T15:56:17.158969447Z [inf]  Selecting previously unselected package libgav1-1:amd64.
+
+2026-05-07T15:56:17.160229104Z [inf]  Preparing to unpack .../45-libgav1-1_0.18.0-1+b1_amd64.deb ...
+
+2026-05-07T15:56:17.164420369Z [inf]  Unpacking libgav1-1:amd64 (0.18.0-1+b1) ...
+
+2026-05-07T15:56:17.218887058Z [inf]  Selecting previously unselected package librav1e0:amd64.
+
+2026-05-07T15:56:17.220116345Z [inf]  Preparing to unpack .../46-librav1e0_0.5.1-6_amd64.deb ...
+
+2026-05-07T15:56:17.22326344Z [inf]  Unpacking librav1e0:amd64 (0.5.1-6) ...
+
+2026-05-07T15:56:17.317814672Z [inf]  Selecting previously unselected package libsvtav1enc1:amd64.
+
+2026-05-07T15:56:17.319005873Z [inf]  Preparing to unpack .../47-libsvtav1enc1_1.4.1+dfsg-1_amd64.deb ...
+
+2026-05-07T15:56:17.323665231Z [inf]  Unpacking libsvtav1enc1:amd64 (1.4.1+dfsg-1) ...
+
+2026-05-07T15:56:17.527948834Z [inf]  Selecting previously unselected package libjpeg62-turbo:amd64.
+
+2026-05-07T15:56:17.529202004Z [inf]  Preparing to unpack .../48-libjpeg62-turbo_1%3a2.1.5-2_amd64.deb ...
+
+2026-05-07T15:56:17.532339841Z [inf]  Unpacking libjpeg62-turbo:amd64 (1:2.1.5-2) ...
+
+2026-05-07T15:56:17.569183735Z [inf]  Selecting previously unselected package libyuv0:amd64.
+
+2026-05-07T15:56:17.571635511Z [inf]  Preparing to unpack .../49-libyuv0_0.0~git20230123.b2528b0-1_amd64.deb ...
+
+2026-05-07T15:56:17.573746664Z [inf]  Unpacking libyuv0:amd64 (0.0~git20230123.b2528b0-1) ...
+
+2026-05-07T15:56:17.639152224Z [inf]  Selecting previously unselected package libavif15:amd64.
+
+2026-05-07T15:56:17.640420913Z [inf]  Preparing to unpack .../50-libavif15_0.11.1-1+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:17.651323267Z [inf]  Unpacking libavif15:amd64 (0.11.1-1+deb12u1) ...
+
+2026-05-07T15:56:17.795207934Z [inf]  Selecting previously unselected package libbrotli1:amd64.
+
+2026-05-07T15:56:17.796790246Z [inf]  Preparing to unpack .../51-libbrotli1_1.0.9-2+b6_amd64.deb ...
+
+2026-05-07T15:56:17.84707926Z [inf]  Unpacking libbrotli1:amd64 (1.0.9-2+b6) ...
+
+2026-05-07T15:56:17.90756522Z [inf]  Selecting previously unselected package libbsd0:amd64.
+
+2026-05-07T15:56:17.908855699Z [inf]  Preparing to unpack .../52-libbsd0_0.11.7-2_amd64.deb ...
+
+2026-05-07T15:56:17.913658367Z [inf]  Unpacking libbsd0:amd64 (0.11.7-2) ...
+
+2026-05-07T15:56:17.951884973Z [inf]  Selecting previously unselected package libpng16-16:amd64.
+
+2026-05-07T15:56:17.953361227Z [inf]  Preparing to unpack .../53-libpng16-16_1.6.39-2+deb12u4_amd64.deb ...
+
+2026-05-07T15:56:17.956647926Z [inf]  Unpacking libpng16-16:amd64 (1.6.39-2+deb12u4) ...
+
+2026-05-07T15:56:18.006294103Z [inf]  Selecting previously unselected package libfreetype6:amd64.
+
+2026-05-07T15:56:18.007565537Z [inf]  Preparing to unpack .../54-libfreetype6_2.12.1+dfsg-5+deb12u4_amd64.deb ...
+
+2026-05-07T15:56:18.010577616Z [inf]  Unpacking libfreetype6:amd64 (2.12.1+dfsg-5+deb12u4) ...
+
+2026-05-07T15:56:18.073180475Z [inf]  Selecting previously unselected package libfontconfig1:amd64.
+
+2026-05-07T15:56:18.074378003Z [inf]  Preparing to unpack .../55-libfontconfig1_2.14.1-4_amd64.deb ...
+
+2026-05-07T15:56:18.077666204Z [inf]  Unpacking libfontconfig1:amd64 (2.14.1-4) ...
+
+2026-05-07T15:56:18.122550994Z [inf]  Selecting previously unselected package libde265-0:amd64.
+
+2026-05-07T15:56:18.123787306Z [inf]  Preparing to unpack .../56-libde265-0_1.0.11-1+deb12u2_amd64.deb ...
+
+2026-05-07T15:56:18.127353483Z [inf]  Unpacking libde265-0:amd64 (1.0.11-1+deb12u2) ...
+
+2026-05-07T15:56:18.170521808Z [inf]  Selecting previously unselected package libnuma1:amd64.
+
+2026-05-07T15:56:18.172273858Z [inf]  Preparing to unpack .../57-libnuma1_2.0.16-1_amd64.deb ...
+
+2026-05-07T15:56:18.175265572Z [inf]  Unpacking libnuma1:amd64 (2.0.16-1) ...
+
+2026-05-07T15:56:18.204641849Z [inf]  Selecting previously unselected package libx265-199:amd64.
+
+2026-05-07T15:56:18.205837246Z [inf]  Preparing to unpack .../58-libx265-199_3.5-2+b1_amd64.deb ...
+
+2026-05-07T15:56:18.208661859Z [inf]  Unpacking libx265-199:amd64 (3.5-2+b1) ...
+
+2026-05-07T15:56:18.348421913Z [inf]  Selecting previously unselected package libheif1:amd64.
+
+2026-05-07T15:56:18.350900657Z [inf]  Preparing to unpack .../59-libheif1_1.15.1-1+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:18.355534371Z [inf]  Unpacking libheif1:amd64 (1.15.1-1+deb12u1) ...
+
+2026-05-07T15:56:18.563872629Z [inf]  Selecting previously unselected package libdeflate0:amd64.
+
+2026-05-07T15:56:18.565229986Z [inf]  Preparing to unpack .../60-libdeflate0_1.14-1_amd64.deb ...
+
+2026-05-07T15:56:18.587338899Z [inf]  Unpacking libdeflate0:amd64 (1.14-1) ...
+
+2026-05-07T15:56:18.622921286Z [inf]  Selecting previously unselected package libjbig0:amd64.
+
+2026-05-07T15:56:18.624236488Z [inf]  Preparing to unpack .../61-libjbig0_2.1-6.1_amd64.deb ...
+
+2026-05-07T15:56:18.627516436Z [inf]  Unpacking libjbig0:amd64 (2.1-6.1) ...
+
+2026-05-07T15:56:18.658057864Z [inf]  Selecting previously unselected package liblerc4:amd64.
+
+2026-05-07T15:56:18.659824882Z [inf]  Preparing to unpack .../62-liblerc4_4.0.0+ds-2_amd64.deb ...
+
+2026-05-07T15:56:18.664238091Z [inf]  Unpacking liblerc4:amd64 (4.0.0+ds-2) ...
+
+2026-05-07T15:56:18.705470686Z [inf]  Selecting previously unselected package libwebp7:amd64.
+
+2026-05-07T15:56:18.707255694Z [inf]  Preparing to unpack .../63-libwebp7_1.2.4-0.2+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:18.711282809Z [inf]  Unpacking libwebp7:amd64 (1.2.4-0.2+deb12u1) ...
+
+2026-05-07T15:56:18.762086494Z [inf]  Selecting previously unselected package libtiff6:amd64.
+
+2026-05-07T15:56:18.76350533Z [inf]  Preparing to unpack .../64-libtiff6_4.5.0-6+deb12u4_amd64.deb ...
+
+2026-05-07T15:56:18.76797839Z [inf]  Unpacking libtiff6:amd64 (4.5.0-6+deb12u4) ...
+
+2026-05-07T15:56:18.8180077Z [inf]  Selecting previously unselected package libxau6:amd64.
+
+2026-05-07T15:56:18.81983431Z [inf]  Preparing to unpack .../65-libxau6_1%3a1.0.9-1_amd64.deb ...
+
+2026-05-07T15:56:18.823071089Z [inf]  Unpacking libxau6:amd64 (1:1.0.9-1) ...
+
+2026-05-07T15:56:18.853530014Z [inf]  Selecting previously unselected package libxdmcp6:amd64.
+
+2026-05-07T15:56:18.855354493Z [inf]  Preparing to unpack .../66-libxdmcp6_1%3a1.1.2-3_amd64.deb ...
+
+2026-05-07T15:56:18.85847434Z [inf]  Unpacking libxdmcp6:amd64 (1:1.1.2-3) ...
+
+2026-05-07T15:56:18.889135803Z [inf]  Selecting previously unselected package libxcb1:amd64.
+
+2026-05-07T15:56:18.890411387Z [inf]  Preparing to unpack .../67-libxcb1_1.15-1_amd64.deb ...
+
+2026-05-07T15:56:18.893169427Z [inf]  Unpacking libxcb1:amd64 (1.15-1) ...
+
+2026-05-07T15:56:18.92140965Z [inf]  Selecting previously unselected package libx11-data.
+
+2026-05-07T15:56:18.922610389Z [inf]  Preparing to unpack .../68-libx11-data_2%3a1.8.4-2+deb12u2_all.deb ...
+
+2026-05-07T15:56:18.92536672Z [inf]  Unpacking libx11-data (2:1.8.4-2+deb12u2) ...
+
+2026-05-07T15:56:18.970171331Z [inf]  Selecting previously unselected package libx11-6:amd64.
+
+2026-05-07T15:56:18.97143296Z [inf]  Preparing to unpack .../69-libx11-6_2%3a1.8.4-2+deb12u2_amd64.deb ...
+
+2026-05-07T15:56:18.97439251Z [inf]  Unpacking libx11-6:amd64 (2:1.8.4-2+deb12u2) ...
+
+2026-05-07T15:56:19.047258687Z [inf]  Selecting previously unselected package libxpm4:amd64.
+
+2026-05-07T15:56:19.048431603Z [inf]  Preparing to unpack .../70-libxpm4_1%3a3.5.12-1.1+deb12u1_amd64.deb ...
+
+2026-05-07T15:56:19.052159102Z [inf]  Unpacking libxpm4:amd64 (1:3.5.12-1.1+deb12u1) ...
+
+2026-05-07T15:56:19.083820326Z [inf]  Selecting previously unselected package libgd3:amd64.
+
+2026-05-07T15:56:19.085644085Z [inf]  Preparing to unpack .../71-libgd3_2.3.3-9_amd64.deb ...
+
+2026-05-07T15:56:19.088435697Z [inf]  Unpacking libgd3:amd64 (2.3.3-9) ...
+
+2026-05-07T15:56:19.122612408Z [inf]  Selecting previously unselected package libc-devtools.
+
+2026-05-07T15:56:19.124352795Z [inf]  Preparing to unpack .../72-libc-devtools_2.36-9+deb12u13_amd64.deb ...
+
+2026-05-07T15:56:19.127254943Z [inf]  Unpacking libc-devtools (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:19.161694512Z [inf]  Selecting previously unselected package libgpm2:amd64.
+
+2026-05-07T15:56:19.163468304Z [inf]  Preparing to unpack .../73-libgpm2_1.20.7-10+b1_amd64.deb ...
+
+2026-05-07T15:56:19.167025169Z [inf]  Unpacking libgpm2:amd64 (1.20.7-10+b1) ...
+
+2026-05-07T15:56:19.19969058Z [inf]  Selecting previously unselected package make.
+
+2026-05-07T15:56:19.201440406Z [inf]  Preparing to unpack .../74-make_4.3-4.1_amd64.deb ...
+
+2026-05-07T15:56:19.205128842Z [inf]  Unpacking make (4.3-4.1) ...
+
+2026-05-07T15:56:19.262967481Z [inf]  Selecting previously unselected package manpages-dev.
+
+2026-05-07T15:56:19.264820681Z [inf]  Preparing to unpack .../75-manpages-dev_6.03-2_all.deb ...
+
+2026-05-07T15:56:19.269437793Z [inf]  Unpacking manpages-dev (6.03-2) ...
+
+2026-05-07T15:56:19.49765808Z [inf]  Setting up media-types (10.0.0) ...
+
+2026-05-07T15:56:19.51797966Z [inf]  Setting up libaom3:amd64 (3.6.0-1+deb12u2) ...
+
+2026-05-07T15:56:19.527574011Z [inf]  Setting up libabsl20220623:amd64 (20220623.1-1+deb12u2) ...
+
+2026-05-07T15:56:19.539321671Z [inf]  Setting up libxau6:amd64 (1:1.0.9-1) ...
+
+2026-05-07T15:56:19.550469613Z [inf]  Setting up libkeyutils1:amd64 (1.6.3-2) ...
+
+2026-05-07T15:56:19.563630227Z [inf]  Setting up libgpm2:amd64 (1.20.7-10+b1) ...
+
+2026-05-07T15:56:19.576074355Z [inf]  Setting up liblerc4:amd64 (4.0.0+ds-2) ...
+
+2026-05-07T15:56:19.589225151Z [inf]  Setting up manpages (6.03-2) ...
+
+2026-05-07T15:56:19.602534281Z [inf]  Setting up libtirpc-common (1.3.3+ds-1) ...
+
+2026-05-07T15:56:19.620065732Z [inf]  Setting up libbrotli1:amd64 (1.0.9-2+b6) ...
+
+2026-05-07T15:56:19.63466034Z [inf]  Setting up libsqlite3-0:amd64 (3.40.1-2+deb12u2) ...
+
+2026-05-07T15:56:19.648157738Z [inf]  Setting up binutils-common:amd64 (2.40-2) ...
+
+2026-05-07T15:56:19.663652586Z [inf]  Setting up libdeflate0:amd64 (1.14-1) ...
+
+2026-05-07T15:56:19.674568965Z [inf]  Setting up linux-libc-dev:amd64 (6.1.170-1) ...
+
+2026-05-07T15:56:19.684759954Z [inf]  Setting up libctf-nobfd0:amd64 (2.40-2) ...
+
+2026-05-07T15:56:19.695992202Z [inf]  Setting up krb5-locales (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:19.710736514Z [inf]  Setting up libsvtav1enc1:amd64 (1.4.1+dfsg-1) ...
+
+2026-05-07T15:56:19.726194382Z [inf]  Setting up libgomp1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:19.739181884Z [inf]  Setting up libjbig0:amd64 (2.1-6.1) ...
+
+2026-05-07T15:56:19.751889121Z [inf]  Setting up librav1e0:amd64 (0.5.1-6) ...
+
+2026-05-07T15:56:19.76479692Z [inf]  Setting up libjansson4:amd64 (2.14-2) ...
+
+2026-05-07T15:56:19.775834194Z [inf]  Setting up libkrb5support0:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:19.795238822Z [inf]  Setting up rpcsvc-proto (1.4.3-1) ...
+
+2026-05-07T15:56:19.829240972Z [inf]  Setting up libjpeg62-turbo:amd64 (1:2.1.5-2) ...
+
+2026-05-07T15:56:19.844209939Z [inf]  Setting up libx11-data (2:1.8.4-2+deb12u2) ...
+
+2026-05-07T15:56:19.854111214Z [inf]  Setting up make (4.3-4.1) ...
+
+2026-05-07T15:56:19.864334069Z [inf]  Setting up libmpfr6:amd64 (4.2.0-1) ...
+
+2026-05-07T15:56:19.877154771Z [inf]  Setting up libquadmath0:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:19.891400535Z [inf]  Setting up libpng16-16:amd64 (1.6.39-2+deb12u4) ...
+
+2026-05-07T15:56:19.902027634Z [inf]  Setting up libmpc3:amd64 (1.3.1-1) ...
+
+2026-05-07T15:56:19.910621908Z [inf]  Setting up libatomic1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:19.920575326Z [inf]  Setting up fonts-dejavu-core (2.37-6) ...
+
+2026-05-07T15:56:19.97276311Z [inf]  Setting up libgav1-1:amd64 (0.18.0-1+b1) ...
+
+2026-05-07T15:56:19.982822459Z [inf]  Setting up libncursesw6:amd64 (6.4-4) ...
+
+2026-05-07T15:56:19.993286919Z [inf]  Setting up libk5crypto3:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:20.006622965Z [inf]  Setting up libdav1d6:amd64 (1.0.0-2+deb12u1) ...
+
+2026-05-07T15:56:20.01816797Z [inf]  Setting up libwebp7:amd64 (1.2.4-0.2+deb12u1) ...
+
+2026-05-07T15:56:20.027543772Z [inf]  Setting up libubsan1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:20.036089041Z [inf]  Setting up libnuma1:amd64 (2.0.16-1) ...
+
+2026-05-07T15:56:20.045216495Z [inf]  Setting up libcrypt-dev:amd64 (1:4.4.33-2) ...
+
+2026-05-07T15:56:20.060636353Z [inf]  Setting up libtiff6:amd64 (4.5.0-6+deb12u4) ...
+
+2026-05-07T15:56:20.071999725Z [inf]  Setting up libasan8:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:20.081021437Z [inf]  Setting up libkrb5-3:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:20.090109837Z [inf]  Setting up libtsan2:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:20.100273484Z [inf]  Setting up libbinutils:amd64 (2.40-2) ...
+
+2026-05-07T15:56:20.111062164Z [inf]  Setting up libisl23:amd64 (0.25-1.1) ...
+
+2026-05-07T15:56:20.121304786Z [inf]  Setting up libde265-0:amd64 (1.0.11-1+deb12u2) ...
+
+2026-05-07T15:56:20.137686381Z [inf]  Setting up libc-dev-bin (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:20.14981481Z [inf]  Setting up openssl (3.0.19-1~deb12u2) ...
+
+2026-05-07T15:56:20.164490933Z [inf]  Setting up libbsd0:amd64 (0.11.7-2) ...
+
+2026-05-07T15:56:20.175525444Z [inf]  Setting up libyuv0:amd64 (0.0~git20230123.b2528b0-1) ...
+
+2026-05-07T15:56:20.185373952Z [inf]  Setting up readline-common (8.2-1.3) ...
+
+2026-05-07T15:56:20.197396985Z [inf]  Setting up libcc1-0:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:20.207478309Z [inf]  Setting up liblsan0:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:20.217250577Z [inf]  Setting up libitm1:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:20.227794214Z [inf]  Setting up libctf0:amd64 (2.40-2) ...
+
+2026-05-07T15:56:20.237436942Z [inf]  Setting up manpages-dev (6.03-2) ...
+
+2026-05-07T15:56:20.247425001Z [inf]  Setting up libxdmcp6:amd64 (1:1.1.2-3) ...
+
+2026-05-07T15:56:20.257540704Z [inf]  Setting up cpp-12 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:20.268776577Z [inf]  Setting up libxcb1:amd64 (1.15-1) ...
+
+2026-05-07T15:56:20.28044178Z [inf]  Setting up libavif15:amd64 (0.11.1-1+deb12u1) ...
+
+2026-05-07T15:56:20.291877578Z [inf]  Setting up fontconfig-config (2.14.1-4) ...
+
+2026-05-07T15:56:20.367282029Z [inf]  debconf: unable to initialize frontend: Dialog
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+debconf: falling back to frontend: Readline
+
+2026-05-07T15:56:20.367443862Z [inf]  debconf: unable to initialize frontend: Readline
+debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/x86_64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+debconf: falling back to frontend: Teletype
+
+2026-05-07T15:56:20.504062366Z [inf]  Setting up libreadline8:amd64 (8.2-1.3) ...
+
+2026-05-07T15:56:20.516940773Z [inf]  Setting up ca-certificates (20230311+deb12u1) ...
+
+2026-05-07T15:56:20.596060688Z [inf]  debconf: unable to initialize frontend: Dialog
+debconf: (TERM is not set, so the dialog frontend is not usable.)
+debconf: falling back to frontend: Readline
+
+2026-05-07T15:56:20.596263536Z [inf]  debconf: unable to initialize frontend: Readline
+debconf: (Can't locate Term/ReadLine.pm in @INC (you may need to install the Term::ReadLine module) (@INC contains: /etc/perl /usr/local/lib/x86_64-linux-gnu/perl/5.36.0 /usr/local/share/perl/5.36.0 /usr/lib/x86_64-linux-gnu/perl5/5.36 /usr/share/perl5 /usr/lib/x86_64-linux-gnu/perl-base /usr/lib/x86_64-linux-gnu/perl/5.36 /usr/share/perl/5.36 /usr/local/lib/site_perl) at /usr/share/perl5/Debconf/FrontEnd/Readline.pm line 7.)
+debconf: falling back to frontend: Teletype
+
+2026-05-07T15:56:20.982148601Z [inf]  Updating certificates in /etc/ssl/certs...
+
+2026-05-07T15:56:21.619479862Z [inf]  142 added, 0 removed; done.
+
+2026-05-07T15:56:21.649154043Z [inf]  Setting up libgprofng0:amd64 (2.40-2) ...
+
+2026-05-07T15:56:21.657925843Z [inf]  Setting up libfreetype6:amd64 (2.12.1+dfsg-5+deb12u4) ...
+
+2026-05-07T15:56:21.675082975Z [inf]  Setting up libgcc-12-dev:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:21.684037014Z [inf]  Setting up libgssapi-krb5-2:amd64 (1.20.1-2+deb12u4) ...
+
+2026-05-07T15:56:21.697023507Z [inf]  Setting up libx265-199:amd64 (3.5-2+b1) ...
+
+2026-05-07T15:56:21.705810027Z [inf]  Setting up cpp (4:12.2.0-3) ...
+
+2026-05-07T15:56:21.728106746Z [inf]  Setting up libx11-6:amd64 (2:1.8.4-2+deb12u2) ...
+
+2026-05-07T15:56:21.737894773Z [inf]  Setting up libfontconfig1:amd64 (2.14.1-4) ...
+
+2026-05-07T15:56:21.746041518Z [inf]  Setting up binutils-x86-64-linux-gnu (2.40-2) ...
+
+2026-05-07T15:56:21.75580202Z [inf]  Setting up libtirpc3:amd64 (1.3.3+ds-1) ...
+
+2026-05-07T15:56:21.76877111Z [inf]  Setting up libxpm4:amd64 (1:3.5.12-1.1+deb12u1) ...
+
+2026-05-07T15:56:21.779547473Z [inf]  Setting up libheif1:amd64 (1.15.1-1+deb12u1) ...
+
+2026-05-07T15:56:21.788236634Z [inf]  Setting up binutils (2.40-2) ...
+
+2026-05-07T15:56:21.796933618Z [inf]  Setting up libtirpc-dev:amd64 (1.3.3+ds-1) ...
+
+2026-05-07T15:56:21.816822775Z [inf]  Setting up gcc-12 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:21.826716294Z [inf]  Setting up libgd3:amd64 (2.3.3-9) ...
+
+2026-05-07T15:56:21.836772875Z [inf]  Setting up libnsl2:amd64 (1.3.0-2) ...
+
+2026-05-07T15:56:21.848010079Z [inf]  Setting up libc-devtools (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:21.861176493Z [inf]  Setting up libpython3.11-stdlib:amd64 (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:21.873535047Z [inf]  Setting up gcc (4:12.2.0-3) ...
+
+2026-05-07T15:56:21.914518563Z [inf]  Setting up libnsl-dev:amd64 (1.3.0-2) ...
+
+2026-05-07T15:56:21.926286128Z [inf]  Setting up libc6-dev:amd64 (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:21.939314245Z [inf]  Setting up libpython3-stdlib:amd64 (3.11.2-1+b1) ...
+
+2026-05-07T15:56:21.953146521Z [inf]  Setting up python3.11 (3.11.2-6+deb12u6) ...
+
+2026-05-07T15:56:22.689711475Z [inf]  Setting up libstdc++-12-dev:amd64 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:22.698191797Z [inf]  Setting up python3 (3.11.2-1+b1) ...
+
+2026-05-07T15:56:22.709080133Z [inf]  running python rtupdate hooks for python3.11...
+running python post-rtupdate hooks for python3.11...
+
+2026-05-07T15:56:22.784724858Z [inf]  Setting up g++-12 (12.2.0-14+deb12u1) ...
+
+2026-05-07T15:56:22.793933271Z [inf]  Setting up g++ (4:12.2.0-3) ...
+
+2026-05-07T15:56:22.802805467Z [inf]  update-alternatives: using /usr/bin/g++ to provide /usr/bin/c++ (c++) in auto mode
+
+2026-05-07T15:56:22.810517378Z [inf]  Processing triggers for libc-bin (2.36-9+deb12u13) ...
+
+2026-05-07T15:56:22.83316825Z [inf]  Processing triggers for ca-certificates (20230311+deb12u1) ...
+
+2026-05-07T15:56:22.839843058Z [inf]  Updating certificates in /etc/ssl/certs...
+
+2026-05-07T15:56:23.266174004Z [inf]  0 added, 0 removed; done.
+Running hooks in /etc/ca-certificates/update.d...
+
+2026-05-07T15:56:23.267124769Z [inf]  done.
+
+2026-05-07T15:56:23.385802626Z [inf]  [base  2/12] RUN apt-get update && apt-get install -y     python3     make     g++     ca-certificates     && rm -rf /var/lib/apt/lists/*
+2026-05-07T15:56:23.389612093Z [inf]  [base  3/12] RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-05-07T15:56:23.647600694Z [inf]  Preparing pnpm@10.26.1 for immediate activation...
+
+2026-05-07T15:56:24.401297454Z [inf]  [base  3/12] RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+2026-05-07T15:56:24.406344390Z [inf]  [base  4/12] WORKDIR /app
+2026-05-07T15:56:24.460809230Z [inf]  [base  4/12] WORKDIR /app
+2026-05-07T15:56:24.465326369Z [inf]  [base  5/12] COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+2026-05-07T15:56:24.519587021Z [inf]  [base  5/12] COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+2026-05-07T15:56:24.522901622Z [inf]  [base  6/12] COPY tsconfig.base.json tsconfig.json ./
+2026-05-07T15:56:24.567967274Z [inf]  [base  6/12] COPY tsconfig.base.json tsconfig.json ./
+2026-05-07T15:56:24.573709197Z [inf]  [base  7/12] COPY artifacts ./artifacts
+2026-05-07T15:56:24.647146872Z [inf]  [base  7/12] COPY artifacts ./artifacts
+2026-05-07T15:56:24.650587742Z [inf]  [base  8/12] COPY lib ./lib
+2026-05-07T15:56:24.693908250Z [inf]  [base  8/12] COPY lib ./lib
+2026-05-07T15:56:24.700188429Z [inf]  [base  9/12] COPY scripts ./scripts
+2026-05-07T15:56:24.740641296Z [inf]  [base  9/12] COPY scripts ./scripts
+2026-05-07T15:56:24.744829614Z [inf]  [base 10/12] RUN pnpm install --frozen-lockfile
+2026-05-07T15:56:25.268782013Z [inf]  Scope: all 8 workspace projects
+
+2026-05-07T15:56:25.323627456Z [inf]  uploading snapshot
+2026-05-07T15:56:25.353435961Z [inf]  Lockfile is up to date, resolution step is skipped
+
+2026-05-07T15:56:25.403215292Z [inf]  Progress: resolved 1, reused 0, downloaded 0, added 0
+
+2026-05-07T15:56:25.465949635Z [inf]  Packages: +862
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+2026-05-07T15:56:26.418945627Z [inf]  Progress: resolved 862, reused 0, downloaded 610, added 281
+
+2026-05-07T15:56:26.93288449Z [inf]  
+   ╭──────────────────────────────────────────────╮
+   │                                              │
+   │     Update available! 10.26.1 → 11.0.8.      │
+   │     Changelog: https://pnpm.io/v/11.0.8      │
+   │   To update, run: corepack use pnpm@11.0.8   │
+   │                                              │
+   ╰──────────────────────────────────────────────╯
+
+
+2026-05-07T15:56:27.42528875Z [inf]  Progress: resolved 862, reused 0, downloaded 856, added 855
+
+2026-05-07T15:56:27.801166897Z [inf]  Progress: resolved 862, reused 0, downloaded 861, added 862, done
+
+2026-05-07T15:56:28.117398267Z [inf]  .../esbuild@0.27.3/node_modules/esbuild postinstall$ node install.js
+
+2026-05-07T15:56:28.214329407Z [inf]  .../esbuild@0.27.3/node_modules/esbuild postinstall: Done
+
+2026-05-07T15:56:28.513950951Z [inf]  
+devDependencies:
++ prettier 3.8.1
++ typescript 5.9.3
+
+
+2026-05-07T15:56:28.523853631Z [inf]  . preinstall$ sh -c 'rm -f package-lock.json yarn.lock; case "$npm_config_user_agent" in pnpm/*) ;; *) echo "Use pnpm instead" >&2; exit 1 ;; esac'
+
+2026-05-07T15:56:28.569336234Z [inf]  . preinstall: Done
+
+2026-05-07T15:56:28.708409855Z [inf]  ╭ Warning ─────────────────────────────────────────────────────────────────────╮
+│                                                                              │
+│   Ignored build scripts: bcrypt@6.0.0, core-js@3.49.0, sharp@0.34.5.         │
+│   Run "pnpm approve-builds" to pick which dependencies should be allowed     │
+│   to run scripts.                                                            │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+2026-05-07T15:56:28.751796517Z [inf]  Done in 3.8s using pnpm v10.26.1
+
+2026-05-07T15:56:29.011551202Z [inf]  [base 10/12] RUN pnpm install --frozen-lockfile
+2026-05-07T15:56:29.014956477Z [inf]  [base 11/12] RUN pnpm --filter @workspace/megaradio run build
+2026-05-07T15:56:30.042473076Z [inf]  
+> @workspace/megaradio@0.0.0 build /app/artifacts/megaradio
+> vite build --config vite.config.ts
+
+
+2026-05-07T15:56:30.550470235Z [inf]  vite v7.3.2 building client environment for production...
+
+2026-05-07T15:56:30.6263896Z [inf]  transforming...
+
+2026-05-07T15:56:30.755850831Z [inf]  ✓ 3 modules transformed.
+
+2026-05-07T15:56:30.756585404Z [inf]  ✗ Build failed in 179ms
+
+2026-05-07T15:56:30.756648204Z [inf]  error during build:
+[vite:css] [postcss] Cannot find module 'tailwindcss-animate'
+Require stack:
+- /app/artifacts/megaradio/tailwind.config.ts
+file: /app/artifacts/megaradio/index.html?html-proxy&inline-css&index=0.css:undefined:NaN
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1476:15)
+    at wrapResolveFilename (node:internal/modules/cjs/loader:1049:27)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1094:12)
+    at require.resolve (node:internal/modules/helpers:171:31)
+    at _resolve (/app/node_modules/.pnpm/jiti@1.21.7/node_modules/jiti/dist/jiti.js:1:246378)
+    at jiti (/app/node_modules/.pnpm/jiti@1.21.7/node_modules/jiti/dist/jiti.js:1:249092)
+    at /app/artifacts/megaradio/tailwind.config.ts:137:5
+    at evalModule (/app/node_modules/.pnpm/jiti@1.21.7/node_modules/jiti/dist/jiti.js:1:251913)
+    at jiti (/app/node_modules/.pnpm/jiti@1.21.7/node_modules/jiti/dist/jiti.js:1:249841)
+    at /app/node_modules/.pnpm/tailwindcss@3.4.19_tsx@4.21.0_yaml@2.8.2/node_modules/tailwindcss/lib/lib/load-config.js:53:30
+
+2026-05-07T15:56:30.821348568Z [inf]  /app/artifacts/megaradio:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @workspace/megaradio@0.0.0 build: `vite build --config vite.config.ts`
+Exit status 1
+
+2026-05-07T15:56:30.958882957Z [err]  [base 11/12] RUN pnpm --filter @workspace/megaradio run build
+2026-05-07T15:56:31.000859401Z [err]  Build Failed: build daemon returned an error < failed to solve: process "/bin/sh -c pnpm --filter @workspace/megaradio run build" did not complete successfully: exit code: 1 >
