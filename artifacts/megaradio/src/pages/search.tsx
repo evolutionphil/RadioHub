@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Search as SearchIcon, Loader2, Music, Globe, Radio } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
@@ -160,6 +160,101 @@ export default function SearchPage() {
     stationsQ.isFetching || genresQ.isFetching || countriesQ.isFetching;
   const totalHits = stations.length + genres.length + countryHits.length;
 
+  const [, navigate] = useLocation();
+
+  // Build a flat list of focusable suggestions in display order:
+  // genres → countries → stations. Each item carries the href to navigate to
+  // on Enter and an id used to wire up the focus ring + scroll-into-view.
+  const flatItems = useMemo(() => {
+    const items: { id: string; href: string }[] = [];
+    for (const g of genres) {
+      items.push({
+        id: `genre-${g.slug}`,
+        href: `${langPrefix}/genres/${encodeURIComponent(g.slug)}`,
+      });
+    }
+    for (const c of countryHits) {
+      items.push({
+        id: `country-${countrySlug(c.canonical)}`,
+        href: `${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`,
+      });
+    }
+    stations.forEach((station, idx) => {
+      const slug = station.slug || station._id;
+      if (!slug) return;
+      items.push({
+        id: `station-${slug}-${idx}`,
+        href: `${langPrefix}/station/${slug}`,
+      });
+    });
+    return items;
+  }, [genres, countryHits, stations, langPrefix]);
+
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const itemRefs = useRef<Map<string, HTMLAnchorElement | null>>(new Map());
+
+  // Reset focus when the result set changes
+  useEffect(() => {
+    setActiveIndex(-1);
+  }, [debounced]);
+
+  // Keep activeIndex within bounds when results shrink
+  useEffect(() => {
+    if (activeIndex >= flatItems.length) setActiveIndex(-1);
+  }, [flatItems.length, activeIndex]);
+
+  // Scroll the focused item into view
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    const item = flatItems[activeIndex];
+    if (!item) return;
+    const el = itemRefs.current.get(item.id);
+    el?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex, flatItems]);
+
+  const setItemRef = useCallback(
+    (id: string) => (el: HTMLAnchorElement | null) => {
+      if (el) itemRefs.current.set(id, el);
+      else itemRefs.current.delete(id);
+    },
+    []
+  );
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Escape") {
+      if (query !== "") {
+        e.preventDefault();
+        setQuery("");
+        setActiveIndex(-1);
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      if (flatItems.length === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) => (i + 1) % flatItems.length);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      if (flatItems.length === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) => (i <= 0 ? flatItems.length - 1 : i - 1));
+      return;
+    }
+    if (e.key === "Enter") {
+      const target = flatItems[activeIndex] ?? flatItems[0];
+      if (target) {
+        e.preventDefault();
+        navigate(target.href);
+      }
+    }
+  };
+
+  const activeId =
+    activeIndex >= 0 ? flatItems[activeIndex]?.id ?? null : null;
+  const focusRingClass =
+    "ring-2 ring-[#FF4199] ring-offset-2 ring-offset-[#0E0E0E]";
+
   const h1 = t("search_page_h1", "Search Live Radio Stations");
   const intro = t(
     "search_page_intro",
@@ -191,6 +286,12 @@ export default function SearchPage() {
             autoFocus
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={handleKeyDown}
+            role="combobox"
+            aria-expanded={enabled && totalHits > 0}
+            aria-controls="search-results"
+            aria-activedescendant={activeId ?? undefined}
+            aria-autocomplete="list"
             placeholder={placeholder}
             className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-12 py-4 text-base text-white placeholder:text-gray-500 focus:outline-none focus:border-[#FF4199] transition-colors"
           />
@@ -235,18 +336,30 @@ export default function SearchPage() {
         )}
 
         {enabled && totalHits > 0 && (
-          <div className="space-y-10" data-testid="search-results">
+          <div
+            className="space-y-10"
+            data-testid="search-results"
+            id="search-results"
+            role="listbox"
+          >
             {genres.length > 0 && (
               <ResultSection
                 icon={<Music size={18} />}
                 title={t("search_section_genres", "Genres")}
               >
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {genres.map((g) => (
+                  {genres.map((g) => {
+                    const id = `genre-${g.slug}`;
+                    const isActive = activeId === id;
+                    return (
                     <li key={g.slug}>
                       <Link
                         href={`${langPrefix}/genres/${encodeURIComponent(g.slug)}`}
-                        className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                        ref={setItemRef(id)}
+                        id={id}
+                        role="option"
+                        aria-selected={isActive}
+                        className={`flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors ${isActive ? focusRingClass : ""}`}
                         data-testid={`link-genre-${g.slug}`}
                       >
                         <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
@@ -265,7 +378,8 @@ export default function SearchPage() {
                         </div>
                       </Link>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </ResultSection>
             )}
@@ -276,11 +390,18 @@ export default function SearchPage() {
                 title={t("search_section_countries", "Countries")}
               >
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {countryHits.map((c) => (
+                  {countryHits.map((c) => {
+                    const id = `country-${countrySlug(c.canonical)}`;
+                    const isActive = activeId === id;
+                    return (
                     <li key={c.canonical}>
                       <Link
                         href={`${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`}
-                        className="flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                        ref={setItemRef(id)}
+                        id={id}
+                        role="option"
+                        aria-selected={isActive}
+                        className={`flex items-center gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors ${isActive ? focusRingClass : ""}`}
                         data-testid={`link-country-${countrySlug(c.canonical)}`}
                       >
                         <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center flex-shrink-0">
@@ -299,7 +420,8 @@ export default function SearchPage() {
                         </div>
                       </Link>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               </ResultSection>
             )}
@@ -313,11 +435,17 @@ export default function SearchPage() {
                   {stations.map((station, idx) => {
                     const slug = station.slug || station._id;
                     if (!slug) return null;
+                    const id = `station-${slug}-${idx}`;
+                    const isActive = activeId === id;
                     return (
                       <li key={`${slug}-${idx}`}>
                         <Link
                           href={`${langPrefix}/station/${slug}`}
-                          className="flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                          ref={setItemRef(id)}
+                          id={id}
+                          role="option"
+                          aria-selected={isActive}
+                          className={`flex items-center gap-4 p-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors ${isActive ? focusRingClass : ""}`}
                           data-testid={`link-station-${slug}`}
                         >
                           <div className="w-12 h-12 rounded-lg bg-white/10 flex-shrink-0 overflow-hidden flex items-center justify-center">
