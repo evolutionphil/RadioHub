@@ -151,7 +151,7 @@ export default function RegionStationsPage() {
 
   // Generate structured data for region/country/city pages (moved here to fix hooks order)
   const structuredData = useMemo(() => {
-    if (!data || typeof window === 'undefined' || !filteredStations) return null;
+    if (!data || !data.country || !data.region || typeof window === 'undefined' || !filteredStations) return null;
 
     const baseUrl = window.location.origin;
     const currentUrl = window.location.href;
@@ -196,8 +196,8 @@ export default function RegionStationsPage() {
   const generateSeoTags = () => {
     if (!data) return { title: 'Radio Stations', description: '' };
 
-    const region = data.region.name;
-    const country = data.country.name; 
+    const region = data.region?.name ?? '';
+    const country = data.country?.name ?? region;
     const city = data.city?.name;
     const stationCount = data.pagination.total;
 
@@ -242,7 +242,7 @@ export default function RegionStationsPage() {
 
   // Generate structured data for region/country/city pages  
   const generateStructuredData = () => {
-    if (!data || typeof window === 'undefined' || !filteredStations) return null;
+    if (!data || !data.country || !data.region || typeof window === 'undefined' || !filteredStations) return null;
 
     const baseUrl = window.location.origin;
     const currentUrl = window.location.href;
@@ -374,12 +374,16 @@ export default function RegionStationsPage() {
           </Link>
           <span>/</span>
           <Link href={getLocalizedPath(`/regions/${regionSlug}`)} className="hover:text-pink-400 transition-colors">
-            {data.region.name}
+            {data.region?.name ?? regionSlug}
           </Link>
-          <span>/</span>
-          <Link href={getLocalizedPath(`/regions/${regionSlug}/${countrySlug}`)} className="hover:text-pink-400 transition-colors">
-            {data.country.name}
-          </Link>
+          {data.country && (
+            <>
+              <span>/</span>
+              <Link href={getLocalizedPath(`/regions/${regionSlug}/${countrySlug}`)} className="hover:text-pink-400 transition-colors">
+                {data.country.name}
+              </Link>
+            </>
+          )}
           {data.city && (
             <>
               <span>/</span>
@@ -405,7 +409,7 @@ export default function RegionStationsPage() {
             </div>
             <div>
               <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
-                {data.city ? data.city.name : data.country.name}
+                {data.city ? data.city.name : (data.country?.name ?? data.region?.name ?? '')}
               </h1>
               <p className="text-slate-400 mt-1 flex items-center gap-2">
                 <Radio className="w-4 h-4" />
@@ -455,7 +459,7 @@ export default function RegionStationsPage() {
           </div>
           <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 text-center">
             <div className="text-2xl font-bold text-green-400">
-              {data.country.name}
+              {data.country?.name ?? '—'}
             </div>
             <div className="text-slate-400 text-sm">
               {t('regions.stats.country')}
@@ -463,7 +467,7 @@ export default function RegionStationsPage() {
           </div>
           <div className="bg-slate-800/30 backdrop-blur-sm border border-slate-700/50 rounded-xl p-4 text-center">
             <div className="text-2xl font-bold text-blue-400">
-              {data.region.name}
+              {data.region?.name ?? '—'}
             </div>
             <div className="text-slate-400 text-sm">
               {t('regions.stats.region')}
