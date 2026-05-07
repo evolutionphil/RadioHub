@@ -48,7 +48,17 @@ function writeLocal<T>(key: string, value: T): void {
 export interface UseAdminViewPrefsResult<T> {
   prefs: T;
   setPrefs: (next: T | ((prev: T) => T)) => void;
+  clearLocal: () => void;
   loaded: boolean;
+}
+
+function removeLocal(key: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.removeItem(localStorageKey(key));
+  } catch {
+    // best-effort
+  }
 }
 
 export function useAdminViewPrefs<T>(
@@ -152,6 +162,10 @@ export function useAdminViewPrefs<T>(
     [key, flushToServer],
   );
 
+  const clearLocal = useCallback(() => {
+    removeLocal(key);
+  }, [key]);
+
   // Flush pending writes on unmount so a quick edit + nav doesn't lose data.
   useEffect(() => {
     return () => {
@@ -165,5 +179,5 @@ export function useAdminViewPrefs<T>(
     };
   }, [flushToServer]);
 
-  return { prefs, setPrefs, loaded };
+  return { prefs, setPrefs, clearLocal, loaded };
 }

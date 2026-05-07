@@ -120,7 +120,7 @@ function sanitizeViewPrefs(raw: unknown): ViewPrefs {
 
 export default function AdminCountryLanguageMappings() {
   const { toast } = useToast();
-  const { prefs, setPrefs } = useAdminViewPrefs<ViewPrefs>(
+  const { prefs, setPrefs, clearLocal: clearViewPrefsLocal } = useAdminViewPrefs<ViewPrefs>(
     VIEW_PREFS_KEY,
     DEFAULT_VIEW_PREFS,
     sanitizeViewPrefs,
@@ -156,8 +156,9 @@ export default function AdminCountryLanguageMappings() {
   const hasActiveFilters =
     searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
 
-  const handleClearFilters = () => {
+  const handleResetFilters = () => {
     setPrefs((p) => ({ ...p, searchTerm: '', sort: null, showOverridesOnly: false }));
+    clearViewPrefsLocal();
   };
 
   // Fetch available countries
@@ -994,17 +995,18 @@ export default function AdminCountryLanguageMappings() {
                 className="pl-10"
               />
             </div>
-            <Button
-              data-testid="button-clear-filters"
-              variant="ghost"
-              size="sm"
-              onClick={handleClearFilters}
-              disabled={!hasActiveFilters}
-              className="whitespace-nowrap"
-            >
-              <X className="mr-2 h-4 w-4" />
-              Clear filters
-            </Button>
+            {hasActiveFilters && (
+              <Button
+                data-testid="button-reset-filters"
+                variant="ghost"
+                size="sm"
+                onClick={handleResetFilters}
+                className="whitespace-nowrap"
+              >
+                <X className="mr-2 h-4 w-4" />
+                Reset filters
+              </Button>
+            )}
             <div className="flex items-center gap-2">
               <Checkbox
                 id="show-overrides-only"
