@@ -1,0 +1,53 @@
+FROM node:24-slim AS base
+
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+WORKDIR /app
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY tsconfig.base.json tsconfig.json ./
+COPY artifacts/api-server ./artifacts/api-server
+COPY lib ./lib
+COPY scripts ./scripts
+
+RUN pnpm install --frozen-lockfile --filter @workspace/api-server...
+
+ENV PORT=4000
+RUN ENTRY=src/index-proxy.ts pnpm --filter @workspace/api-server run build
+
+FROM node:24-slim AS production
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+
+WORKDIR /app
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY artifacts/api-server/package.json ./artifacts/api-server/package.json
+COPY lib ./lib
+
+RUN pnpm install --frozen-lockfile --prod --filter @workspace/api-server...
+
+COPY --from=base /app/artifacts/api-server/dist ./dist
+
+ENV NODE_ENV=production
+ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so.2
+ENV MALLOC_CONF=background_thread:true,dirty_decay_ms:1000,muzzy_decay_ms:1000
+
+EXPOSE 4000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD node -e "const http=require('http');http.get('http://localhost:'+(process.env.PORT||4000)+'/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));"
+
+CMD ["node", "--max-old-space-size=512", "--max-semi-space-size=16", "--expose-gc", "dist/index-proxy.mjs"]

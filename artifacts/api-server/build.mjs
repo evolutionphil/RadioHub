@@ -14,8 +14,13 @@ async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
+  // ENTRY env var lets Docker builds pick a specific server bundle:
+  //   src/index.ts (default), src/index-web.ts, src/index-api.ts, src/index-proxy.ts
+  const entryRel = process.env.ENTRY || "src/index.ts";
+  const entryAbs = path.resolve(artifactDir, entryRel);
+
   await esbuild({
-    entryPoints: [path.resolve(artifactDir, "src/index.ts")],
+    entryPoints: [entryAbs],
     platform: "node",
     bundle: true,
     format: "esm",
