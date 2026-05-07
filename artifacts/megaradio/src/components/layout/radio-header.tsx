@@ -12,6 +12,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { getImageUrl } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
+import { HighlightMatch } from "@/components/HighlightMatch";
 import { getCountryCodeFromApiName, getLanguageForCountry } from "@shared/seo-config";
 
 interface RadioHeaderProps {
@@ -799,8 +800,12 @@ export default function RadioHeader({
                             }}
                           />
                           <div className="flex-1">
-                            <div className="text-white font-medium">{station.name}</div>
-                            <div className="text-gray-400 text-sm">{station.country}</div>
+                            <div className="text-white font-medium">
+                              <HighlightMatch text={station.name} query={debouncedSearchQuery} />
+                            </div>
+                            <div className="text-gray-400 text-sm">
+                              <HighlightMatch text={station.country} query={debouncedSearchQuery} />
+                            </div>
                           </div>
                           
                           {/* Station Votes */}
