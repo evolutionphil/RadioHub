@@ -415,6 +415,12 @@ export default function AdminCountryLanguageMappings() {
   const hasChanges = pendingChanges.size > 0;
   const mappedCount = countries?.filter(c => getEffectiveLanguage(c.code)).length || 0;
   const unmappedCount = (countries?.length || 0) - mappedCount;
+  const overrideCount =
+    countries?.filter(c => {
+      const effective = getEffectiveLanguage(c.code);
+      const def = defaultsMap.get(c.code);
+      return !!effective && !!def && effective !== def;
+    }).length || 0;
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -433,6 +439,13 @@ export default function AdminCountryLanguageMappings() {
             <div className="flex items-center gap-2 text-sm">
               <XCircle className="h-4 w-4 text-gray-400" />
               <span>{unmappedCount} Unmapped</span>
+            </div>
+            <div
+              className="flex items-center gap-2 text-sm"
+              data-testid="summary-overrides"
+            >
+              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <span>{overrideCount} Overrides</span>
             </div>
             {hasChanges && (
               <div className="flex items-center gap-2 text-sm text-orange-500">
