@@ -290,6 +290,23 @@ export default function AdminCountryLanguageMappings() {
   });
 
   const hasPendingChanges = pendingChanges.size > 0;
+  const isSaving = bulkSaveMutation.isPending || deleteMappingMutation.isPending;
+
+  // Ctrl+S / Cmd+S triggers the same save flow as the Save Changes button.
+  // We only intercept (and suppress the browser's Save Page dialog) when
+  // there's actually something to save and no save is already in flight.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const isSaveShortcut =
+        (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 's';
+      if (!isSaveShortcut) return;
+      if (!hasPendingChanges || isSaving) return;
+      e.preventDefault();
+      void handleBulkSave();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
 
   // Warn before leaving the page (tab close / reload / external navigation)
   // and before in-app navigation when there are unsaved per-row edits.
