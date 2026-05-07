@@ -288,6 +288,149 @@ export default function AdminCountryLanguageMappings() {
     },
   });
 
+  const hasPendingChanges = pendingChanges.size > 0;
+
+  // Warn before leaving the page (tab close / reload / external navigation)
+  // and before in-app navigation when there are unsaved per-row edits.
+  useEffect(() => {
+    if (!hasPendingChanges) return;
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Required for Chrome to show the prompt; modern browsers display
+      // their own generic message regardless of the string returned.
+      e.returnValue = '';
+      return '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    const confirmMessage =
+      'You have unsaved mapping changes. If you leave this page, those changes will be lost. Continue?';
+
+    // Suppresses a redundant prompt from the pushState wrapper when an
+    // in-app link click has already been confirmed in the click handler.
+    // wouter's <Link> calls history.pushState synchronously after the
+    // click event resolves, so a short-lived flag is sufficient.
+    let suppressNextPushPrompt = false;
+
+    // 1) Capture-phase click handler for in-app <a href> links (wouter's
+    //    <Link> renders standard anchors). Runs before wouter's handler
+    //    so we can preventDefault on cancel without mutating history.
+    const handleLinkClick = (event: MouseEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.button !== 0 ||
+        event.metaKey ||
+        event.ctrlKey ||
+        event.shiftKey ||
+        event.altKey
+      ) {
+        return;
+      }
+
+      const target = event.target as Element | null;
+      const anchor = target?.closest?.('a[href]') as HTMLAnchorElement | null;
+      if (!anchor) return;
+      if (anchor.target && anchor.target !== '_self') return;
+      if (anchor.origin !== window.location.origin) return;
+      // Pure hash / same-route changes don't unmount this page.
+      if (
+        anchor.pathname === window.location.pathname &&
+        anchor.search === window.location.search
+      ) {
+        return;
+      }
+
+      if (!window.confirm(confirmMessage)) {
+        event.preventDefault();
+        event.stopPropagation();
+      } else {
+        // Already confirmed — suppress the duplicate prompt that
+        // wouter's pushState call would otherwise trigger.
+        suppressNextPushPrompt = true;
+        // Clear the flag after the current task in case wouter's
+        // pushState never runs (e.g. router prevents it for some
+        // reason), so we don't accidentally swallow a later prompt.
+        queueMicrotask(() => {
+          suppressNextPushPrompt = false;
+        });
+      }
+    };
+    document.addEventListener('click', handleLinkClick, true);
+
+    // 2) Programmatic navigation: wouter's setLocation calls
+    //    history.pushState. We narrowly wrap pushState to confirm only
+    //    when the target URL is a real route change (different
+    //    pathname/search), avoiding false positives for same-route
+    //    state updates (e.g. ?tab= toggles handled in-place).
+    const originalPushState = window.history.pushState.bind(window.history);
+    const originalReplaceState = window.history.replaceState.bind(window.history);
+    const isRealRouteChange = (urlArg: unknown): boolean => {
+      if (urlArg == null) return false;
+      try {
+        const next = new URL(String(urlArg), window.location.href);
+        if (next.origin !== window.location.origin) return false;
+        return (
+          next.pathname !== window.location.pathname ||
+          next.search !== window.location.search
+        );
+      } catch {
+        return false;
+      }
+    };
+    window.history.pushState = function patchedPushState(
+      data: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) {
+      if (suppressNextPushPrompt) {
+        suppressNextPushPrompt = false;
+        return originalPushState(data, unused, url);
+      }
+      if (isRealRouteChange(url) && !window.confirm(confirmMessage)) {
+        return;
+      }
+      return originalPushState(data, unused, url);
+    } as typeof window.history.pushState;
+    window.history.replaceState = function patchedReplaceState(
+      data: unknown,
+      unused: string,
+      url?: string | URL | null,
+    ) {
+      if (suppressNextPushPrompt) {
+        suppressNextPushPrompt = false;
+        return originalReplaceState(data, unused, url);
+      }
+      if (isRealRouteChange(url) && !window.confirm(confirmMessage)) {
+        return;
+      }
+      return originalReplaceState(data, unused, url);
+    } as typeof window.history.replaceState;
+
+    // 3) Browser back/forward: popstate fires *after* the URL changes,
+    //    so we can't preventDefault. On cancel, push the mappings URL
+    //    onto the stack so the user lands back on this page. We only
+    //    add an entry on an *active* cancel — no entries are added
+    //    proactively, so saving and leaving cleanly leaves no stray
+    //    history entries.
+    const guardedHref = window.location.href;
+    const handlePopState = () => {
+      if (window.confirm(confirmMessage)) {
+        return; // let navigation proceed; component will unmount
+      }
+      originalPushState(null, '', guardedHref);
+    };
+    window.addEventListener('popstate', handlePopState);
+
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('click', handleLinkClick, true);
+      window.removeEventListener('popstate', handlePopState);
+      window.history.pushState = originalPushState;
+      window.history.replaceState = originalReplaceState;
+    };
+  }, [hasPendingChanges]);
+
   // Handle language change for a country
   const handleLanguageChange = (countryCode: string, languageCode: string) => {
     const newChanges = new Map(pendingChanges);
@@ -548,7 +691,7 @@ export default function AdminCountryLanguageMappings() {
     );
   }
 
-  const hasChanges = pendingChanges.size > 0;
+  const hasChanges = hasPendingChanges;
   const mappedCount = countries?.filter(c => getEffectiveLanguage(c.code)).length || 0;
   const unmappedCount = (countries?.length || 0) - mappedCount;
   const overrideCount =
@@ -935,6 +1078,11 @@ export default function AdminCountryLanguageMappings() {
               This will permanently remove all {existingMappings?.length || 0} country-language
               mappings from the database. Every country will fall back to its hardcoded default
               language. This action cannot be undone.
+              {hasPendingChanges && (
+                <span className="mt-2 block font-medium text-destructive" data-testid="text-reset-all-pending-warning">
+                  You also have {pendingChanges.size} unsaved row{pendingChanges.size === 1 ? '' : 's'} of pending edits. Those changes will be discarded along with the database mappings.
+                </span>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
