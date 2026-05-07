@@ -947,7 +947,8 @@ export class SyncService {
       failed: number;
       total: number;
     }) => void,
-  ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number }> {
+    isCancelled?: () => boolean,
+  ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number; cancelled?: boolean }> {
     interface StationTagProjection {
       _id: mongoose.Types.ObjectId;
       stationuuid?: string;
@@ -962,6 +963,7 @@ export class SyncService {
     let hydrated = 0;
     let emptyUpstream = 0;
     let failed = 0;
+    let cancelled = false;
     if (validIds.length === 0) {
       return { processed, hydrated, emptyUpstream, failed };
     }
@@ -993,6 +995,13 @@ export class SyncService {
 
       const batchSize = 10;
       for (let i = 0; i < stations.length; i += batchSize) {
+        if (isCancelled?.()) {
+          cancelled = true;
+          logger.log(
+            `🛑 Admin bulk re-check cancelled after ${processed}/${total} processed`,
+          );
+          break;
+        }
         const batch = stations.slice(i, i + batchSize);
         const batchResults = await Promise.allSettled(
           batch.map(async (station) => {
@@ -1044,16 +1053,22 @@ export class SyncService {
         await new Promise((resolve) => setTimeout(resolve, 750));
       }
 
-      logger.log(
-        `✅ Admin bulk re-check completed: ${hydrated} hydrated, ${emptyUpstream} upstream-empty, ${failed} failed (of ${processed})`,
-      );
+      if (cancelled) {
+        logger.log(
+          `🛑 Admin bulk re-check cancelled: ${hydrated} hydrated, ${emptyUpstream} upstream-empty, ${failed} failed (of ${processed})`,
+        );
+      } else {
+        logger.log(
+          `✅ Admin bulk re-check completed: ${hydrated} hydrated, ${emptyUpstream} upstream-empty, ${failed} failed (of ${processed})`,
+        );
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       logger.error(`❌ Admin bulk re-check failed: ${message}`);
       throw error instanceof Error ? error : new Error(message);
     }
 
-    return { processed, hydrated, emptyUpstream, failed };
+    return { processed, hydrated, emptyUpstream, failed, cancelled };
   }
 }
 

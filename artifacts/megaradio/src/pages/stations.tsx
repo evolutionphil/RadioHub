@@ -369,11 +369,12 @@ export default function Stations() {
   // polling once it transitions to completed/failed and surface a
   // toast (once per jobId) so the admin can see the outcome without
   // refreshing the page.
+  const [isCancellingRecheck, setIsCancellingRecheck] = useState(false);
   const { data: recheckTagsJobStatus } = useQuery<{
     success: boolean;
     job?: {
       jobId: string;
-      status: 'running' | 'completed' | 'failed';
+      status: 'running' | 'completed' | 'failed' | 'cancelled';
       total: number;
       processed: number;
       hydrated: number;
@@ -383,6 +384,8 @@ export default function Stations() {
       matched: number;
       scope?: string;
       error?: string;
+      cancelRequested?: boolean;
+      cancellable?: boolean;
     };
   } | null>({
     queryKey: ['/api/admin/stations/recheck-tags-job-status', recheckTagsJobId],
@@ -425,6 +428,11 @@ export default function Stations() {
       toast({
         title: 'Tag re-check complete',
         description: `Processed ${job.processed}/${job.total}: ${job.hydrated} hydrated, ${job.emptyUpstream} empty upstream, ${job.failed} failed.`,
+      });
+    } else if (job.status === 'cancelled') {
+      toast({
+        title: 'Tag re-check cancelled',
+        description: `Stopped after ${job.processed}/${job.total}: ${job.hydrated} hydrated, ${job.emptyUpstream} empty upstream, ${job.failed} failed.`,
       });
     } else {
       toast({
@@ -1272,12 +1280,77 @@ export default function Stations() {
                       {recheckTagsJobStatus.job.failed} failed (of{' '}
                       {recheckTagsJobStatus.job.processed})
                     </span>
+                  ) : recheckTagsJobStatus.job.status === 'cancelled' ? (
+                    <span>
+                      Re-check cancelled: stopped after{' '}
+                      {recheckTagsJobStatus.job.processed}/
+                      {recheckTagsJobStatus.job.total || '?'} ({' '}
+                      {recheckTagsJobStatus.job.hydrated} hydrated,{' '}
+                      {recheckTagsJobStatus.job.emptyUpstream} empty,{' '}
+                      {recheckTagsJobStatus.job.failed} failed)
+                    </span>
                   ) : (
                     <span>
                       Re-check failed:{' '}
                       {recheckTagsJobStatus.job.error || 'unknown error'}
                     </span>
                   )}
+                  {recheckTagsJobStatus.job.status === 'running' &&
+                    recheckTagsJobStatus.job.cancellable && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="ml-2 h-7 px-2 text-xs"
+                        disabled={
+                          isCancellingRecheck ||
+                          recheckTagsJobStatus.job.cancelRequested
+                        }
+                        data-testid="button-cancel-recheck-tags"
+                        onClick={async () => {
+                          if (!recheckTagsJobId) return;
+                          setIsCancellingRecheck(true);
+                          try {
+                            const resp = await fetch(
+                              `/api/admin/stations/recheck-tags-job-cancel/${recheckTagsJobId}`,
+                              {
+                                method: 'POST',
+                                credentials: 'include',
+                              },
+                            );
+                            if (!resp.ok) {
+                              const body = await resp.json().catch(() => ({}));
+                              throw new Error(
+                                body.error || 'Failed to cancel re-check',
+                              );
+                            }
+                            toast({
+                              title: 'Cancellation requested',
+                              description:
+                                'The re-check will stop after the current batch.',
+                            });
+                            queryClient.invalidateQueries({
+                              queryKey: [
+                                '/api/admin/stations/recheck-tags-job-status',
+                                recheckTagsJobId,
+                              ],
+                            });
+                          } catch (err: any) {
+                            toast({
+                              title: 'Cancel failed',
+                              description: err?.message || 'Could not cancel job',
+                              variant: 'destructive',
+                            });
+                          } finally {
+                            setIsCancellingRecheck(false);
+                          }
+                        }}
+                      >
+                        {recheckTagsJobStatus.job.cancelRequested
+                          ? 'Cancelling…'
+                          : 'Cancel'}
+                      </Button>
+                    )}
                 </div>
               )}
               {aiJobStatus?.status === 'running' && (

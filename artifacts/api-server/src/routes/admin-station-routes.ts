@@ -29,7 +29,7 @@ const faviconUpload = multer({
 // can't grow unbounded.
 type RecheckTagsJob = {
   jobId: string;
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
   total: number;
   processed: number;
   hydrated: number;
@@ -41,6 +41,8 @@ type RecheckTagsJob = {
   startedAt: number;
   finishedAt?: number;
   error?: string;
+  cancelRequested?: boolean;
+  cancellable?: boolean;
 };
 const recheckTagsJobs = new Map<string, RecheckTagsJob>();
 const RECHECK_TAGS_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
@@ -1343,8 +1345,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           matched,
           scope: scopeBits.join(', ') || undefined,
           startedAt: Date.now(),
+          cancelRequested: false,
+          cancellable: false,
         };
         recheckTagsJobs.set(jobId, job);
+
+        const isCancelled = () => recheckTagsJobs.get(jobId)?.cancelRequested === true;
 
         const onProgress = (p: {
           processed: number;
@@ -1365,9 +1371,19 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         const finish = (err?: unknown) => {
           const current = recheckTagsJobs.get(jobId);
           if (!current) return;
-          current.status = err ? 'failed' : 'completed';
+          // If cancellation was requested but the loop had already finished
+          // every station before observing the flag, prefer the truthful
+          // 'completed' status so admins don't see a misleading "cancelled"
+          // label on a run that actually processed everything.
+          const fullyProcessed =
+            current.total > 0 && current.processed >= current.total;
+          if (current.cancelRequested && !fullyProcessed) {
+            current.status = 'cancelled';
+          } else {
+            current.status = err ? 'failed' : 'completed';
+          }
           current.finishedAt = Date.now();
-          if (err) {
+          if (err && current.status === 'failed') {
             current.error = err instanceof Error ? err.message : String(err);
           }
           recheckTagsJobs.set(jobId, current);
@@ -1380,8 +1396,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // (which itself filters on `countryCode` ISO).
         if (ids.length > 0) {
           job.total = ids.length;
+          job.cancellable = true;
           void syncService
-            .recheckStationsTagsByIds(ids, onProgress)
+            .recheckStationsTagsByIds(ids, onProgress, isCancelled)
             .then(() => finish())
             .catch((err) => {
               logger.error('bulk tags recheck (ids) failed', err);
@@ -1390,8 +1407,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         } else if (isFilterMode) {
           if (filterModeIds.length > 0) {
             job.total = filterModeIds.length;
+            job.cancellable = true;
             void syncService
-              .recheckStationsTagsByIds(filterModeIds, onProgress)
+              .recheckStationsTagsByIds(filterModeIds, onProgress, isCancelled)
               .then(() => finish())
               .catch((err) => {
                 logger.error('bulk tags recheck (filter) failed', err);
@@ -1422,8 +1440,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           const matchedIds = matchedDocs.map((d) => d._id.toString());
           if (matchedIds.length > 0) {
             job.total = matchedIds.length;
+            job.cancellable = true;
             void syncService
-              .recheckStationsTagsByIds(matchedIds, onProgress)
+              .recheckStationsTagsByIds(matchedIds, onProgress, isCancelled)
               .then(() => finish())
               .catch((err) => {
                 logger.error('bulk tags recheck (country fallback) failed', err);
@@ -1469,6 +1488,38 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           .status(404)
           .json({ success: false, error: 'Job not found' });
       }
+      return res.json({ success: true, job });
+    },
+  );
+
+  // Cancel a running bulk tag re-check job. The background loop in
+  // `recheckStationsTagsByIds` polls the job's `cancelRequested` flag
+  // between batches and exits cleanly, after which `finish()` will
+  // mark the job as `cancelled`. Country-scoped sweeps that go through
+  // `hydrateMissingTagsInBackground` are not cancellable (job.cancellable
+  // is false in that case).
+  app.post(
+    '/api/admin/stations/recheck-tags-job-cancel/:jobId',
+    requireAdmin,
+    async (req, res) => {
+      const { jobId } = req.params as { jobId: string };
+      const job = recheckTagsJobs.get(jobId);
+      if (!job) {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Job not found' });
+      }
+      if (job.status !== 'running') {
+        return res.json({ success: true, job, alreadyFinished: true });
+      }
+      if (!job.cancellable) {
+        return res
+          .status(409)
+          .json({ success: false, error: 'Job is not cancellable' });
+      }
+      job.cancelRequested = true;
+      recheckTagsJobs.set(jobId, job);
+      logger.log(`🛑 Bulk tag re-check job ${jobId} cancellation requested`);
       return res.json({ success: true, job });
     },
   );
