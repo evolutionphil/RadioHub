@@ -24,7 +24,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, X } from 'lucide-react';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, X, History, Undo2 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -152,6 +152,18 @@ export default function AdminCountryLanguageMappings() {
   const [confirmResetAll, setConfirmResetAll] = useState(false);
   const [confirmClearOverrides, setConfirmClearOverrides] = useState(false);
   const [confirmDiscardPending, setConfirmDiscardPending] = useState(false);
+
+  // In-memory log of recently cleared override snapshots so admins who miss
+  // the ~10s Undo toast can still recover. Capped to the last 5 entries and
+  // intentionally not persisted — session lifetime is plenty for this.
+  interface RecentClearAction {
+    id: string;
+    timestamp: number;
+    snapshot: CountryLanguageMapping[];
+    restoring?: boolean;
+  }
+  const RECENT_CLEAR_ACTIONS_LIMIT = 5;
+  const [recentClearedActions, setRecentClearedActions] = useState<RecentClearAction[]>([]);
 
   const hasActiveFilters =
     searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
@@ -379,6 +391,25 @@ export default function AdminCountryLanguageMappings() {
       const snapshot = context?.snapshot ?? [];
       const canUndo = deleted > 0 && snapshot.length > 0;
 
+      // Log this clear into the recent-actions panel so it remains
+      // recoverable after the toast's ~10s Undo window expires. We hold
+      // onto the new entry's id so the toast's Undo button can drop the
+      // matching panel row when it restores — keeping the panel strictly
+      // a list of *still-recoverable* clears.
+      const recentEntryId = canUndo
+        ? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        : null;
+      if (canUndo && recentEntryId) {
+        setRecentClearedActions(prev => {
+          const entry: RecentClearAction = {
+            id: recentEntryId,
+            timestamp: Date.now(),
+            snapshot,
+          };
+          return [entry, ...prev].slice(0, RECENT_CLEAR_ACTIONS_LIMIT);
+        });
+      }
+
       const { dismiss } = toast({
         title: deleted > 0 ? 'Overrides cleared' : 'No overrides to clear',
         description:
@@ -394,7 +425,17 @@ export default function AdminCountryLanguageMappings() {
             altText="Undo clearing overrides"
             data-testid="button-undo-clear-overrides"
             onClick={() => {
-              restoreOverridesMutation.mutate(snapshot);
+              restoreOverridesMutation.mutate(snapshot, {
+                onSuccess: () => {
+                  // Drop the matching panel entry so the history only
+                  // shows clears that haven't been restored yet.
+                  if (recentEntryId) {
+                    setRecentClearedActions(prev =>
+                      prev.filter(e => e.id !== recentEntryId),
+                    );
+                  }
+                },
+              });
               dismiss();
             }}
           >
@@ -632,6 +673,29 @@ export default function AdminCountryLanguageMappings() {
       window.history.replaceState = originalReplaceState;
     };
   }, [hasPendingChanges]);
+
+  // Restore a single entry from the recent-cleared-actions panel. Reuses
+  // the existing restore mutation, then drops the entry on success so the
+  // panel reflects what's still recoverable.
+  const handleRestoreRecent = async (id: string) => {
+    const entry = recentClearedActions.find(e => e.id === id);
+    if (!entry || entry.restoring) return;
+    setRecentClearedActions(prev =>
+      prev.map(e => (e.id === id ? { ...e, restoring: true } : e)),
+    );
+    try {
+      await restoreOverridesMutation.mutateAsync(entry.snapshot);
+      setRecentClearedActions(prev => prev.filter(e => e.id !== id));
+    } catch {
+      setRecentClearedActions(prev =>
+        prev.map(e => (e.id === id ? { ...e, restoring: false } : e)),
+      );
+    }
+  };
+
+  const handleDismissRecent = (id: string) => {
+    setRecentClearedActions(prev => prev.filter(e => e.id !== id));
+  };
 
   // Handle language change for a country
   const handleLanguageChange = (countryCode: string, languageCode: string) => {
@@ -1111,6 +1175,89 @@ export default function AdminCountryLanguageMappings() {
               )}
             </Button>
           </div>
+
+          {/* Recent bulk actions: snapshots of recently cleared overrides
+               with per-entry Restore so admins can recover after the toast
+               Undo window expires. */}
+          {recentClearedActions.length > 0 && (
+            <div
+              data-testid="panel-recent-bulk-actions"
+              className="mb-4 rounded-lg border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40"
+            >
+              <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-2 dark:border-gray-700">
+                <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                  <History className="h-4 w-4" />
+                  <span>Recent bulk actions</span>
+                  <span className="text-xs text-muted-foreground">
+                    (last {RECENT_CLEAR_ACTIONS_LIMIT})
+                  </span>
+                </div>
+                <Button
+                  data-testid="button-clear-recent-actions"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => setRecentClearedActions([])}
+                >
+                  Clear history
+                </Button>
+              </div>
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                {recentClearedActions.map((entry) => {
+                  const count = entry.snapshot.length;
+                  const when = new Date(entry.timestamp);
+                  return (
+                    <li
+                      key={entry.id}
+                      data-testid={`row-recent-action-${entry.id}`}
+                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm"
+                    >
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                        <Trash2 className="h-4 w-4 text-amber-500" />
+                        <span>
+                          Cleared {count} {count === 1 ? 'override' : 'overrides'}
+                        </span>
+                        <span
+                          className="text-xs text-muted-foreground"
+                          title={when.toLocaleString()}
+                        >
+                          · {formatDistanceToNow(when, { addSuffix: true })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          data-testid={`button-restore-recent-${entry.id}`}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void handleRestoreRecent(entry.id)}
+                          disabled={entry.restoring}
+                        >
+                          {entry.restoring ? (
+                            <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                          ) : (
+                            <Undo2 className="mr-2 h-3 w-3" />
+                          )}
+                          Restore
+                        </Button>
+                        <Button
+                          data-testid={`button-dismiss-recent-${entry.id}`}
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-muted-foreground"
+                          onClick={() => handleDismissRecent(entry.id)}
+                          disabled={entry.restoring}
+                          aria-label="Dismiss recent action"
+                          title="Dismiss"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
 
           {/* Unsaved changes banner */}
           {hasPendingChanges && (
