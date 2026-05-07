@@ -45,6 +45,7 @@ export default function Stations() {
     sortBy: 'favicon',
     sortOrder: 'desc',
     hasDescriptions: 'all',
+    tagsStatus: 'all',
   });
   
   const [editingStation, setEditingStation] = useState<any | undefined>();
@@ -1083,11 +1084,13 @@ export default function Stations() {
           language={filters.language || ''}
           genre={filters.genre || ''}
           hasDescriptions={filters.hasDescriptions || 'all'}
+          tagsStatus={filters.tagsStatus || 'all'}
           onSearchChange={(value) => handleFilterChange('search', value)}
           onCountryChange={(value) => handleFilterChange('country', value)}
           onLanguageChange={(value) => handleFilterChange('language', value)}
           onGenreChange={(value) => handleFilterChange('genre', value)}
           onHasDescriptionsChange={(value) => handleFilterChange('hasDescriptions', value)}
+          onTagsStatusChange={(value) => handleFilterChange('tagsStatus', value)}
         />
 
         <CardContent className="p-0">

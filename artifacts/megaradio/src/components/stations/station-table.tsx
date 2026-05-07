@@ -212,6 +212,72 @@ export default function StationTable({
     }
   };
 
+  const isTagsEmpty = (station: MongoStation) => {
+    const t = station.tags;
+    return !t || (typeof t === 'string' && t.trim() === '');
+  };
+
+  const formatRelativeTime = (date: Date) => {
+    const diffMs = Date.now() - date.getTime();
+    const minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return 'just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 30) return `${days}d ago`;
+    const months = Math.floor(days / 30);
+    return `${months}mo ago`;
+  };
+
+  // 30-day cooldown matches services/sync.ts (background tag-hydration job).
+  const TAGS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
+  const getTagsCheckedCell = (station: MongoStation) => {
+    const checkedAt = station.tagsCheckedAt ? new Date(station.tagsCheckedAt) : null;
+    const empty = isTagsEmpty(station);
+
+    if (!checkedAt || isNaN(checkedAt.getTime())) {
+      if (empty) {
+        return (
+          <Badge
+            variant="secondary"
+            className="bg-gray-100 text-gray-700"
+            title="Tagless and never re-checked against Radio-Browser"
+          >
+            Never re-checked
+          </Badge>
+        );
+      }
+      return <span className="text-xs text-gray-400">—</span>;
+    }
+
+    const inCooldown = Date.now() - checkedAt.getTime() < TAGS_COOLDOWN_MS;
+    const stuck = empty && inCooldown;
+    const cooldownEnds = new Date(checkedAt.getTime() + TAGS_COOLDOWN_MS);
+    const tooltip = stuck
+      ? `Stuck on empty upstream — Radio-Browser returned no tags on ${checkedAt.toLocaleString()}. Background hydration will skip this station until ${cooldownEnds.toLocaleString()}.`
+      : `Last re-checked against Radio-Browser on ${checkedAt.toLocaleString()}`;
+
+    return (
+      <div className="flex flex-col">
+        <span className="text-xs text-gray-700" title={tooltip}>
+          {formatRelativeTime(checkedAt)}
+        </span>
+        {stuck && (
+          <Badge
+            variant="secondary"
+            className="mt-1 bg-amber-100 text-amber-800 w-fit"
+            title={tooltip}
+            data-testid={`badge-tags-stuck-${station._id}`}
+          >
+            Empty (cooldown)
+          </Badge>
+        )}
+      </div>
+    );
+  };
+
   const getDescriptionStatusBadge = (station: MongoStation) => {
     const descriptions = station.descriptions;
     const languageCount = descriptions ? Object.keys(descriptions).length : 0;
@@ -455,6 +521,10 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
                   {station.lastCheckOk ? 'Online' : 'Offline'}
                 </Badge>
               </div>
+              <div className="col-span-2">
+                <span className="text-gray-500">Tags re-checked:</span>
+                <div className="ml-1 inline-block align-middle">{getTagsCheckedCell(station)}</div>
+              </div>
             </div>
           </div>
         ))}
@@ -477,6 +547,7 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
               <SortableHeader field="country">Country</SortableHeader>
               <TableHead>Description</TableHead>
               <TableHead>Genre</TableHead>
+              <SortableHeader field="tagsCheckedAt">Tags Re-checked</SortableHeader>
               <SortableHeader field="bitrate">Technical Details</SortableHeader>
               <TableHead>Status & Analytics</TableHead>
               <SortableHeader field="clickcount">Popularity</SortableHeader>
@@ -558,6 +629,7 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
                   </div>
                 )}
               </TableCell>
+              <TableCell>{getTagsCheckedCell(station)}</TableCell>
               <TableCell>
                 <div className="flex flex-col">
                   <span className="text-sm text-gray-900 dark:text-gray-100">{station.bitrate || 0} kbps</span>
@@ -699,7 +771,7 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
           ))}
           {stations.length === 0 && (
             <TableRow>
-              <TableCell colSpan={10} className="text-center py-8">
+              <TableCell colSpan={12} className="text-center py-8">
                 No stations found.
               </TableCell>
             </TableRow>

@@ -11,6 +11,7 @@ export interface StationFilters {
   sortBy?: string;
   sortOrder?: 'asc' | 'desc';
   hasDescriptions?: 'all' | 'yes' | 'no' | 'partial';
+  tagsStatus?: 'all' | 'empty-cooldown' | 'never-checked';
 }
 
 export interface DashboardStats {

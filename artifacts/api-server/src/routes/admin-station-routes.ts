@@ -125,6 +125,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         language = '', 
         genre = '',
         hasDescriptions = 'all',
+        tagsStatus = 'all',
         sortBy = 'name',
         sortOrder = 'asc'
       } = req.query;
@@ -137,6 +138,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         language: String(language),
         genre: String(genre),
         hasDescriptions: String(hasDescriptions),
+        tagsStatus: String(tagsStatus),
         sortBy: String(sortBy),
         sortOrder: String(sortOrder)
       })}`;
@@ -168,6 +170,39 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         filter.tags = { $regex: new RegExp(genre as string, 'i') };
       }
       
+      if (tagsStatus && tagsStatus !== '' && tagsStatus !== 'all') {
+        // Empty-tags predicate: tags missing, null, or empty/whitespace-only string
+        const emptyTagsPredicate = {
+          $or: [
+            { tags: { $exists: false } },
+            { tags: null },
+            { tags: '' },
+            { tags: { $regex: /^\s*$/ } },
+          ],
+        };
+        const tagsAndConds: any[] = filter.$and || [];
+        if (tagsStatus === 'empty-cooldown') {
+          // Stations whose Radio-Browser re-check returned empty AND are still
+          // inside the 30-day cooldown window — i.e. stuck waiting for the
+          // upstream to publish tags before the background hydration job will
+          // re-query them.
+          const cooldownCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+          tagsAndConds.push(emptyTagsPredicate);
+          tagsAndConds.push({ tagsCheckedAt: { $gte: cooldownCutoff } });
+          filter.$and = tagsAndConds;
+        } else if (tagsStatus === 'never-checked') {
+          // Tagless stations the background job has never re-checked yet.
+          tagsAndConds.push(emptyTagsPredicate);
+          tagsAndConds.push({
+            $or: [
+              { tagsCheckedAt: { $exists: false } },
+              { tagsCheckedAt: null },
+            ],
+          });
+          filter.$and = tagsAndConds;
+        }
+      }
+
       if (hasDescriptions && hasDescriptions !== 'all') {
         if (hasDescriptions === 'yes') {
           filter.$and = [

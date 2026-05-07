@@ -11,11 +11,13 @@ interface FiltersProps {
   language: string;
   genre: string;
   hasDescriptions?: 'all' | 'yes' | 'no' | 'partial';
+  tagsStatus?: 'all' | 'empty-cooldown' | 'never-checked';
   onSearchChange: (value: string) => void;
   onCountryChange: (value: string) => void;
   onLanguageChange: (value: string) => void;
   onGenreChange: (value: string) => void;
   onHasDescriptionsChange?: (value: 'all' | 'yes' | 'no' | 'partial') => void;
+  onTagsStatusChange?: (value: 'all' | 'empty-cooldown' | 'never-checked') => void;
 }
 
 export default function Filters({
@@ -24,11 +26,13 @@ export default function Filters({
   language,
   genre,
   hasDescriptions,
+  tagsStatus,
   onSearchChange,
   onCountryChange,
   onLanguageChange,
   onGenreChange,
   onHasDescriptionsChange,
+  onTagsStatusChange,
 }: FiltersProps) {
   const { t } = useTranslation();
   
@@ -70,7 +74,7 @@ export default function Filters({
         </div>
 
         {/* Filter dropdowns */}
-        <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           <Select value={country || "all"} onValueChange={(value) => onCountryChange(value === "all" ? "" : value)}>
             <SelectTrigger className="w-full">
               <SelectValue placeholder={t('filter_all_countries', 'All Countries')} />
@@ -142,6 +146,24 @@ export default function Filters({
                 <SelectItem value="yes">Has Descriptions</SelectItem>
                 <SelectItem value="no">No Descriptions</SelectItem>
                 <SelectItem value="partial">Partial (Missing Languages)</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
+          {onTagsStatusChange && (
+            <Select
+              value={tagsStatus || "all"}
+              onValueChange={(value) =>
+                onTagsStatusChange(value as 'all' | 'empty-cooldown' | 'never-checked')
+              }
+            >
+              <SelectTrigger className="w-full" title="Filter by Radio-Browser tag re-check status">
+                <SelectValue placeholder="Tag re-check status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All tag statuses</SelectItem>
+                <SelectItem value="empty-cooldown">Stuck on empty (in cooldown)</SelectItem>
+                <SelectItem value="never-checked">Tagless &amp; never re-checked</SelectItem>
               </SelectContent>
             </Select>
           )}
