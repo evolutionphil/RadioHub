@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
+import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -163,9 +164,10 @@ export default function AdminCountryLanguageMappings() {
   const [rememberDiscardChoice, setRememberDiscardChoice] = useState(false);
   const [rememberResetAllChoice, setRememberResetAllChoice] = useState(false);
 
-  // In-memory log of recently cleared/reset mapping snapshots so admins who
-  // miss the ~10s Undo toast can still recover. Capped to the last 5 entries
-  // and intentionally not persisted — session lifetime is plenty for this.
+  // Log of recently cleared/reset mapping snapshots so admins who miss the
+  // ~10s Undo toast can still recover. Capped to the last 5 entries and
+  // persisted in localStorage scoped to the admin user, so a reload or
+  // coming back hours later still surfaces still-recoverable actions.
   // `kind` distinguishes the two destructive actions so the panel can label
   // them ("Cleared overrides" vs "Reset all mappings").
   type RecentClearKind = 'cleared-overrides' | 'reset-all';
@@ -177,7 +179,92 @@ export default function AdminCountryLanguageMappings() {
     restoring?: boolean;
   }
   const RECENT_CLEAR_ACTIONS_LIMIT = 5;
+  // Drop entries older than this so the panel doesn't accumulate stale clears
+  // from days ago when an admin returns. 24h is long enough to span an admin's
+  // working day(s) but short enough that snapshots stay actionable.
+  const RECENT_CLEAR_ACTIONS_TTL_MS = 24 * 60 * 60 * 1000;
+  const { user } = useAuth();
+  const recentClearsStorageKey = user?._id
+    ? `admin:country-language-mappings:recent-clears:v1:${user._id}`
+    : null;
   const [recentClearedActions, setRecentClearedActions] = useState<RecentClearAction[]>([]);
+  // Track when we've hydrated from localStorage so writes don't clobber the
+  // persisted value with the initial empty state before hydration runs.
+  const [recentClearsHydrated, setRecentClearsHydrated] = useState(false);
+
+  // Hydrate recent cleared actions from localStorage once the admin user is
+  // known. Re-runs if the user changes (e.g. switching accounts) so each
+  // admin only sees their own snapshots.
+  useEffect(() => {
+    if (!recentClearsStorageKey) {
+      setRecentClearedActions([]);
+      setRecentClearsHydrated(false);
+      return;
+    }
+    if (typeof window === 'undefined') {
+      setRecentClearsHydrated(true);
+      return;
+    }
+    try {
+      const raw = window.localStorage.getItem(recentClearsStorageKey);
+      if (!raw) {
+        setRecentClearedActions([]);
+      } else {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const now = Date.now();
+          const sanitized: RecentClearAction[] = parsed
+            .filter((e): e is RecentClearAction =>
+              !!e &&
+              typeof e === 'object' &&
+              typeof e.id === 'string' &&
+              typeof e.timestamp === 'number' &&
+              Array.isArray(e.snapshot) &&
+              (e.kind === 'cleared-overrides' || e.kind === 'reset-all'),
+            )
+            .filter(e => now - e.timestamp < RECENT_CLEAR_ACTIONS_TTL_MS)
+            .map(e => ({
+              id: e.id,
+              kind: e.kind,
+              timestamp: e.timestamp,
+              snapshot: e.snapshot,
+            }))
+            .slice(0, RECENT_CLEAR_ACTIONS_LIMIT);
+          setRecentClearedActions(sanitized);
+        } else {
+          setRecentClearedActions([]);
+        }
+      }
+    } catch {
+      setRecentClearedActions([]);
+    }
+    setRecentClearsHydrated(true);
+    // RECENT_CLEAR_ACTIONS_TTL_MS / LIMIT are stable constants.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentClearsStorageKey]);
+
+  // Mirror state to localStorage whenever it changes, but only after the
+  // initial hydration so we don't overwrite a persisted list with [] on mount.
+  useEffect(() => {
+    if (!recentClearsHydrated || !recentClearsStorageKey) return;
+    if (typeof window === 'undefined') return;
+    try {
+      if (recentClearedActions.length === 0) {
+        window.localStorage.removeItem(recentClearsStorageKey);
+      } else {
+        // Strip transient fields like `restoring` before persisting.
+        const persistable = recentClearedActions.map(e => ({
+          id: e.id,
+          kind: e.kind,
+          timestamp: e.timestamp,
+          snapshot: e.snapshot,
+        }));
+        window.localStorage.setItem(recentClearsStorageKey, JSON.stringify(persistable));
+      }
+    } catch {
+      // Quota / privacy mode — best-effort only.
+    }
+  }, [recentClearedActions, recentClearsHydrated, recentClearsStorageKey]);
 
   const hasActiveFilters =
     searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
