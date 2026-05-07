@@ -2781,3 +2781,33 @@ IapEventSchema.index({ productId: 1, createdAt: -1 });
 IapEventSchema.index({ originalTransactionId: 1, createdAt: -1 });
 
 export const IapEvent = mongoose.model<IIapEvent>('IapEvent', IapEventSchema);
+
+// =====================================================================
+// Admin per-user view preferences
+//
+// Stores per-admin client UI preferences (filters, sorts, toggles, etc.)
+// keyed by a string namespace so the same mechanism can back any admin
+// page that needs cross-device sync.
+// =====================================================================
+export interface IAdminPreference extends Document {
+  adminUsername: string;
+  key: string;
+  value: any;
+  updatedAt: Date;
+  createdAt: Date;
+}
+
+const AdminPreferenceSchema = new Schema<IAdminPreference>({
+  adminUsername: { type: String, required: true },
+  key: { type: String, required: true },
+  value: { type: Schema.Types.Mixed, default: null },
+  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
+});
+
+AdminPreferenceSchema.index({ adminUsername: 1, key: 1 }, { unique: true });
+
+export const AdminPreference = mongoose.model<IAdminPreference>(
+  'AdminPreference',
+  AdminPreferenceSchema,
+);

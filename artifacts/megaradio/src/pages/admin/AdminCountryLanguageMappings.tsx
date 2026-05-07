@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -61,80 +62,99 @@ interface CountryLanguageDefault {
   languageCode: string;
 }
 
-const VIEW_PREFS_STORAGE_KEY = 'admin:country-language-mappings:view-prefs:v1';
+// Namespaced under `country-language-mappings:` so the same admin
+// preferences endpoint can serve other admin pages later. The shared
+// hook automatically prefixes with `admin:` for localStorage.
+const VIEW_PREFS_KEY = 'country-language-mappings:view-prefs:v1';
+
+type SortColumn = 'code' | 'country' | 'status' | 'updatedAt';
+type SortDirection = 'asc' | 'desc';
 
 interface ViewPrefs {
   searchTerm: string;
   overwriteExisting: boolean;
-  updatedAtSort: 'desc' | 'asc' | null;
+  showOverridesOnly: boolean;
+  sort: { column: SortColumn; direction: SortDirection } | null;
 }
 
 const DEFAULT_VIEW_PREFS: ViewPrefs = {
   searchTerm: '',
   overwriteExisting: false,
-  updatedAtSort: null,
+  showOverridesOnly: false,
+  sort: null,
 };
 
-function loadViewPrefs(): ViewPrefs {
-  if (typeof window === 'undefined') return DEFAULT_VIEW_PREFS;
-  try {
-    const raw = window.localStorage.getItem(VIEW_PREFS_STORAGE_KEY);
-    if (!raw) return DEFAULT_VIEW_PREFS;
-    const parsed = JSON.parse(raw) as Partial<ViewPrefs> | null;
-    if (!parsed || typeof parsed !== 'object') return DEFAULT_VIEW_PREFS;
-    const sort =
-      parsed.updatedAtSort === 'asc' || parsed.updatedAtSort === 'desc'
-        ? parsed.updatedAtSort
-        : null;
-    return {
-      searchTerm: typeof parsed.searchTerm === 'string' ? parsed.searchTerm : '',
-      overwriteExisting: parsed.overwriteExisting === true,
-      updatedAtSort: sort,
+function sanitizeViewPrefs(raw: unknown): ViewPrefs {
+  if (!raw || typeof raw !== 'object') return DEFAULT_VIEW_PREFS;
+  const obj = raw as Record<string, unknown>;
+
+  // Back-compat: previous schema stored only `updatedAtSort` (a direction),
+  // which corresponds to the new `{ column: 'updatedAt', direction }` shape.
+  let sort: ViewPrefs['sort'] = null;
+  const sortRaw = obj.sort as Record<string, unknown> | undefined;
+  if (
+    sortRaw &&
+    typeof sortRaw === 'object' &&
+    (sortRaw.column === 'code' ||
+      sortRaw.column === 'country' ||
+      sortRaw.column === 'status' ||
+      sortRaw.column === 'updatedAt') &&
+    (sortRaw.direction === 'asc' || sortRaw.direction === 'desc')
+  ) {
+    sort = {
+      column: sortRaw.column as SortColumn,
+      direction: sortRaw.direction as SortDirection,
     };
-  } catch {
-    return DEFAULT_VIEW_PREFS;
+  } else if (obj.updatedAtSort === 'asc' || obj.updatedAtSort === 'desc') {
+    sort = { column: 'updatedAt', direction: obj.updatedAtSort as SortDirection };
   }
+
+  return {
+    searchTerm: typeof obj.searchTerm === 'string' ? obj.searchTerm : '',
+    overwriteExisting: obj.overwriteExisting === true,
+    showOverridesOnly: obj.showOverridesOnly === true,
+    sort,
+  };
 }
 
 export default function AdminCountryLanguageMappings() {
   const { toast } = useToast();
-  const [viewPrefsLoaded, setViewPrefsLoaded] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
+  const { prefs, setPrefs } = useAdminViewPrefs<ViewPrefs>(
+    VIEW_PREFS_KEY,
+    DEFAULT_VIEW_PREFS,
+    sanitizeViewPrefs,
+  );
+
+  const searchTerm = prefs.searchTerm;
+  const overwriteExisting = prefs.overwriteExisting;
+  const showOverridesOnly = prefs.showOverridesOnly;
+  const sort = prefs.sort;
+
+  const setSearchTerm = (value: string) =>
+    setPrefs((p) => ({ ...p, searchTerm: value }));
+  const setOverwriteExisting = (value: boolean) =>
+    setPrefs((p) => ({ ...p, overwriteExisting: value }));
+  const setShowOverridesOnly = (value: boolean) =>
+    setPrefs((p) => ({ ...p, showOverridesOnly: value }));
+  const setSort = (
+    updater:
+      | ViewPrefs['sort']
+      | ((prev: ViewPrefs['sort']) => ViewPrefs['sort']),
+  ) =>
+    setPrefs((p) => ({
+      ...p,
+      sort: typeof updater === 'function' ? (updater as any)(p.sort) : updater,
+    }));
+
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
-  const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
   const [confirmResetAll, setConfirmResetAll] = useState(false);
-  type SortColumn = 'code' | 'country' | 'status' | 'updatedAt';
-  type SortDirection = 'asc' | 'desc';
-  const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
-  const [showOverridesOnly, setShowOverridesOnly] = useState(false);
-
-  // Hydrate view preferences from localStorage on mount.
-  useEffect(() => {
-    const prefs = loadViewPrefs();
-    setSearchTerm(prefs.searchTerm);
-    setOverwriteExisting(prefs.overwriteExisting);
-    setUpdatedAtSort(prefs.updatedAtSort);
-    setViewPrefsLoaded(true);
-  }, []);
-
-  // Persist view preferences whenever they change (after hydration).
-  useEffect(() => {
-    if (!viewPrefsLoaded || typeof window === 'undefined') return;
-    try {
-      const prefs: ViewPrefs = { searchTerm, overwriteExisting, updatedAtSort };
-      window.localStorage.setItem(VIEW_PREFS_STORAGE_KEY, JSON.stringify(prefs));
-    } catch {
-      // Ignore quota / access errors — preferences are best-effort.
-    }
-  }, [viewPrefsLoaded, searchTerm, overwriteExisting, updatedAtSort]);
 
   const hasActiveFilters =
-    searchTerm.trim() !== '' || updatedAtSort !== null;
+    searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
 
   const handleClearFilters = () => {
-    setSearchTerm('');
-    setUpdatedAtSort(null);
+    setPrefs((p) => ({ ...p, searchTerm: '', sort: null, showOverridesOnly: false }));
   };
 
   // Fetch available countries

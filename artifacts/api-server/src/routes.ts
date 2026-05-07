@@ -50,6 +50,7 @@ import { registerMiscRoutes } from './routes/misc-routes';
 import { registerIapValidationRoutes } from './routes/iap-validation-routes';
 import { registerAdminIapRoutes } from './routes/admin-iap-routes';
 import { registerAdminMaintenanceRoutes } from './routes/admin-maintenance-routes';
+import { registerAdminPreferencesRoutes } from './routes/admin-preferences-routes';
 import { registerSilentPushRoutes } from './routes/silent-push-routes';
 import { registerMessagesRoutes } from './routes/messages-routes';
 
@@ -602,6 +603,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerIapValidationRoutes(app);
   registerAdminIapRoutes(app, deps);
   registerAdminMaintenanceRoutes(app, deps);
+  registerAdminPreferencesRoutes(app, deps);
   registerSilentPushRoutes(app, deps);
   registerMessagesRoutes(app, chatWss, deps);
 
