@@ -1,0 +1,171 @@
+📋 MegaRadio Backend Developer — Acil Kontrol Listesi
+Aşağıdaki maddelerin hepsini lütfen kontrol et ve önceliklerine göre yap. Her madde test edildi ve canlı api.themegaradio.com üzerinde tespit edildi.
+🔴 P0 — KRİTİK GÜVENLİK AÇIĞI
+Sorun: Receipt validation çalışmıyor — fake receipt'ler premium yapıyor
+Test: testuser2026@megaradio.test hesabı ile aşağıdaki request'i attım:
+curl -X POST "https://api.themegaradio.com/api/user/subscription" \
+  -H "Authorization: Bearer <valid_token>" \
+  -H "X-API-Key: mr_VUzdIUHuXaagvWUC208Vzi_3lqEV1Vzw" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform":"ios",
+    "productId":"megaradio_premium_yearly",
+    "transactionId":"test_ios_tx_001",
+    "originalTransactionId":"test_ios_tx_001",
+    "receipt":"FAKE_BASE64_RECEIPT_FOR_TEST",
+    "isTrial":false
+  }'
+Yanıt (HTTP 200):
+{
+  "success": true,
+  "plan": "premium_yearly",
+  "expiryDate": "2027-05-07T22:08:33.915Z",
+  "isActive": true,
+  "features": ["remove_ads","song_info","spotify_link","youtube_link","hd_stream","song_history","stream_record"]
+}
+⚠️ Backend, "FAKE_BASE64_RECEIPT_FOR_TEST" string'i ile gönderilen request'i kabul etti ve kullanıcıyı 1 yıllık premium yaptı. Bu, backend'in Apple'ın receipt validation servisine sorgu atmadığı, gönderilen receipt'i blindly güvendiği anlamına geliyor. Herkes kendi token'ını alıp curl ile sahte receipt göndererek ücretsiz premium olabilir.
+Çözüm — Apple Receipt Validation (zorunlu)
+iOS + Mac App Store için Apple'ın verifyReceipt endpoint'ine POST atılmalı:
+Production: https://buy.itunes.apple.com/verifyReceipt
+Sandbox (TestFlight): https://sandbox.itunes.apple.com/verifyReceipt
+Best practice: Önce production'a POST at; eğer status == 21007 dönerse sandbox'a yönlendir.
+Apple'a gönderilecek payload:
+{
+  "receipt-data": "<base64 receipt from client>",
+  "password": "<App Store Connect Shared Secret>",
+  "exclude-old-transactions": true
+}
+Shared Secret App Store Connect'ten alınır: App Store Connect → Apps → MegaRadio → App Information → App-Specific Shared Secret veya Master Shared Secret
+Apple'ın yanıtında doğrulanacak alanlar:
+status == 0 (geçerli receipt)
+receipt.bundle_id == com.visiongo.megaradio
+latest_receipt_info[].product_id == client'ın söylediği productId ile eşleşmeli
+latest_receipt_info[].expires_date_ms > Date.now() (subscription için)
+latest_receipt_info[].original_transaction_id ile DB'de duplicate kontrolü yap
+Daha modern alternatif: StoreKit V2 (önerilen)
+Apple Şubat 2024'ten beri StoreKit V2 + JWS imzalı transaction'ları öneriyor:
+Endpoint: https://api.storekit.itunes.apple.com/inApps/v1/transactions/{transactionId}
+Auth: JWT (ES256) — App Store Connect API Key (.p8) ile imzalı
+Receipt yerine signedTransaction JWS string'i alır, kendi public key'iyle doğrular
+Ne kullanılırsa kullanılsın, client'tan gelen veriyi mutlaka Apple'a doğrulattırmak şart.
+🔴 P0 — Mac App Store platformu reddediliyor
+Sorun
+curl -X POST "https://api.themegaradio.com/api/user/subscription" \
+  -H "Authorization: Bearer <token>" \
+  -d '{"platform":"mac","productId":"megaradio_premium_yearly",...}'
+Yanıt: HTTP 400 — {"error":"platform must be ios or android"}
+Çözüm
+Validation whitelist'e mac ekle:
+const ALLOWED_PLATFORMS = ['ios', 'android', 'mac'];
+if (!ALLOWED_PLATFORMS.includes(platform)) {
+  return res.status(400).json({ error: "platform must be ios, android or mac" });
+}
+Mac receipt validation farkı
+Mac App Store receipt'inin iOS receipt ile aynı format olduğunu unutma:
+Aynı verifyReceipt endpoint'ine atılır
+Aynı bundle_id (com.visiongo.megaradio) — Universal Purchase ayarlandığı için
+Aynı product_id'ler kullanılır (megaradio_premium_yearly, _lifetime, _monthly1, megaradio_remove_ads_yearly1)
+Receipt dosya yolu cihazda farklı (Contents/_MASReceipt/receipt) ama base64 encode edilince fark yok
+Tek değişiklik: Validation kodunda platform === 'mac' dalı ios ile aynı işlemi yapmalı
+Bonus: Universal Purchase doğrulaması
+Mobile iOS'ta satın alınan premium → Mac'te de geçerli olmalı (ve tersi). Apple'ın original_transaction_id'si her iki platformda aynı olduğu için DB sorgunuz şöyle olmalı:
+// Var olan subscription kontrolü:
+const existing = await db.subscriptions.findOne({
+  userId,
+  originalTransactionId: appleResponse.original_transaction_id,
+});
+// Eğer varsa platform'u "ios+mac" olarak güncelle, expiry'yi tazele
+// Yeni satın alım gibi davranma
+🟡 P1 — DELETE endpoint'i yok
+Sorun
+curl -X DELETE "https://api.themegaradio.com/api/user/subscription"
+# HTTP 404 — Cannot DELETE /api/user/subscription
+Test sırasında kullanıcı premium yapıldığında geri alma yolu yok. Admin paneli/manuel DB temizliği gerekiyor.
+Çözüm — 2 endpoint ekle
+1. Admin reset (test/destek için):
+DELETE /api/admin/user/:userId/subscription
+Authorization: Bearer <admin_token>
+Sadece admin role'lü kullanıcılar çağırabilir.
+2. User cancel (gerçek iptal):
+POST /api/user/subscription/cancel
+Authorization: Bearer <user_token>
+Mac/iOS için: kullanıcıyı Apple'ın https://apps.apple.com/account/subscriptions sayfasına yönlendir (Apple kuralı — auto-renewable iptali sadece Apple üzerinden).
+Backend sadece cancellationDate'i kaydeder, expiryDate'e kadar premium kalır.
+Apple'ın Server-to-Server Notifications V2 webhook'unu dinleyerek iptal/yenilemeleri otomatik yakala (aşağıda P1).
+Şimdilik manuel düzeltme
+Test sırasında testuser2026@megaradio.test kullanıcısı yanlışlıkla premium_yearly (2027-05-07'ye kadar) oldu. Lütfen MongoDB'de manuel temizle:
+db.users.updateOne(
+  { email: "testuser2026@megaradio.test" },
+  { $set: { subscription: null, plan: "none", premiumExpiry: null, isActive: false } }
+);
+// veya subscription ayrı koleksiyondaysa:
+db.subscriptions.deleteOne({ 
+  userId: ObjectId("69b3f40fbe5f560e8a4a6a2f"),
+  productId: "megaradio_premium_yearly",
+  transactionId: "test_ios_tx_001"
+});
+🟡 P1 — Apple Server-to-Server Notifications (App Store Server Notifications V2)
+Auto-renewable subscription'lar için Apple, kullanıcı yenilediğinde / iptal ettiğinde / refund aldığında backend'e webhook gönderir. Bu kurulmazsa:
+Kullanıcı App Store'da iptal ederse → backend bunu öğrenmez → uygulama kullanıcıya hâlâ premium gösterir.
+Apple refund verirse → kullanıcı parayı geri alır ama premium hâlâ aktif kalır.
+Subscription expire olur → backend manuel kontrol etmediği için kullanıcı sonsuza kadar premium görünür.
+Kurulum
+App Store Connect → Apps → MegaRadio → App Information → App Store Server Notifications V2 URL
+URL: https://api.themegaradio.com/api/iap/apple-webhook
+Production + Sandbox için ayrı URL'ler verilebilir (önerilir).
+Webhook payload (özet)
+Apple, JWT (ES256) imzalı bir notification gönderir. İçinde notificationType alanı var:
+notificationType	Yapılacak işlem
+SUBSCRIBED	Yeni premium kaydı
+DID_RENEW	expiryDate'i güncelle
+DID_CHANGE_RENEWAL_STATUS	Auto-renew on/off bilgisini sakla
+EXPIRED	isActive = false
+REFUND	Premium'u iptal et + kullanıcıya bildirim gönder
+REVOKE	Family sharing iptali — premium'u kaldır
+JWS imzasını mutlaka doğrula (Apple'ın public key'leri ile).
+🟢 P2 — Google Play Developer API entegrasyonu (Android için)
+iOS/Mac doğrulanırken Android purchaseToken'ı da Google Play Developer API'ye sorulmalı:
+GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}
+Authorization: Bearer <google_oauth_token>
+Aynı şekilde sahte purchaseToken'larla premium alınmasını engellemek için bu validation şart.
+🟢 P2 — Yeni endpoint: GET /api/iap/products (opsiyonel)
+Mobile + Mac uygulamalar lokalize fiyatları Apple/Google'dan dinamik çekiyor (localizedPrice). Ama bazı analytics/admin panellerinde merkezi fiyat listesine ihtiyaç olur:
+GET /api/iap/products
+Response: [
+  { productId: "megaradio_premium_yearly", priceUsd: 29.99, type: "subscription", durationDays: 365 },
+  { productId: "megaradio_premium_lifetime", priceUsd: 59.99, type: "non_consumable" },
+  ...
+]
+✅ Test Senaryoları (yapıldıktan sonra çalıştır)
+TOKEN="<test_user_token>"
+SECRET="<apple_shared_secret>"
+
+# 1. Mac platformu kabul ediliyor mu?
+curl -X POST "https://api.themegaradio.com/api/user/subscription" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"platform":"mac","productId":"megaradio_premium_yearly","transactionId":"x","originalTransactionId":"x","receipt":"...real_sandbox_receipt..."}'
+# Beklenen: HTTP 200 + isActive:true (gerçek receipt ile)
+
+# 2. Sahte receipt reddediliyor mu?
+curl -X POST "https://api.themegaradio.com/api/user/subscription" \
+  -H "Authorization: Bearer $TOKEN" \
+  -d '{"platform":"ios","productId":"megaradio_premium_yearly","transactionId":"x","originalTransactionId":"x","receipt":"FAKE"}'
+# Beklenen: HTTP 400 + {"error":"Invalid receipt"} (şu an HTTP 200 dönüyor — bu hata)
+
+# 3. Cross-platform sync (Universal Purchase)
+# iOS'ta satın alınan premium, Mac'te aynı kullanıcıyla giriş yapınca aktif görünmeli.
+# Test: aynı originalTransactionId ile farklı platform POST'la → backend duplicate kabul etmeli, expire'ı uzatmalı.
+
+# 4. Webhook test
+# App Store Connect'te sandbox subscription'ı iptal et → backend EXPIRED bildirimi alıp isActive:false yapmalı.
+📋 Özet Checklist
+[ ] P0  Receipt validation (Apple verifyReceipt veya StoreKit V2) — sahte receipt'leri reddet
+[ ] P0  platform whitelist'e "mac" ekle
+[ ] P0  Mac receipt validation iOS ile aynı kod path'i (Universal Purchase)
+[ ] P0  testuser2026@megaradio.test kullanıcısının subscription'ını manuel temizle
+[ ] P1  DELETE/cancel endpoint'i (admin + user)
+[ ] P1  Apple Server-to-Server Notifications V2 webhook
+[ ] P2  Google Play Developer API ile Android purchaseToken doğrulama
+[ ] P2  GET /api/iap/products endpoint (opsiyonel, admin panel için)
+Önemli: P0 maddeleri tamamlanmadan Mac App Store sürümünü production satışa açmak Apple kurallarına aykırı (App Store Review Guideline 3.1.1). Apple receipt validation yapmayan uygulamalar reddedilir.
+Backend dev'iniz "platform whitelist'e mac eklendi" dediği anda haber verin, ben Electron tarafındaki bağlantı kodunu (electron/iap.js → fetch çağrısı) yazıp deploy ederim.
