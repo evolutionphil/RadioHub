@@ -23,6 +23,7 @@ RUN pnpm install --frozen-lockfile
 # Build SPA (static assets) and the web server bundle
 ENV PORT=3000
 ENV BASE_PATH=/
+ENV VITE_STREAM_PROXY_URL=https://stream.themegaradio.com
 RUN pnpm --filter @workspace/megaradio run build
 RUN ENTRY=src/index-web.ts pnpm --filter @workspace/api-server run build
 

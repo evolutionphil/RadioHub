@@ -1,0 +1,40 @@
+index-CJ0lf3sJ.js:50 LCP: 2920
+sw.js:7 [SW] Service Worker installing...
+sw.js:13 [SW] Service Worker activating...
+index-CJ0lf3sJ.js:50 FID: 1.199999988079071
+api/stream/resolve?url=http%3A%2F%2Fprovisioning.streamtheworld.com%2Fpls%2FMETRO_FMAAC.pls:1  Failed to load resource: the server responded with a status of 404 ()
+api/stream/aHR0cDovL3Byb3Zpc2lvbmluZy5zdHJlYW10aGV3b3JsZC5jb20vcGxzL01FVFJPX0ZNQUFDLnBscz9fdD0xNzc4MTgzNTc4MDg2:1  Failed to load resource: the server responded with a status of 404 ()
+api/stream/resolve?url=http%3A%2F%2Fprovisioning.streamtheworld.com%2Fpls%2FMETRO_FMAAC.pls:1  Failed to load resource: the server responded with a status of 404 ()
+api/stream/aHR0cDovL3Byb3Zpc2lvbmluZy5zdHJlYW10aGV3b3JsZC5jb20vcGxzL01FVFJPX0ZNQUFDLnBscz9fdD0xNzc4MTgzNTgwMzY1:1  Failed to load resource: the server responded with a status of 404 ()
+api/stream/aHR0cDovL3lheWluLmFyYWJlc2tmbS5iaXo6ODA0Mi8_X3Q9MTc3ODE4MzU4MTU1Mg:1  Failed to load resource: the server responded with a status of 404 ()
+api/stream/resolve?url=http%3A%2F%2Fprovisioning.streamtheworld.com%2Fpls%2FVIRGIN_RADIO.pls:1  Failed to load resource: the server responded with a status of 404 ()
+api/stream/aHR0cDovL3Byb3Zpc2lvbmluZy5zdHJlYW10aGV3b3JsZC5jb20vcGxzL1ZJUkdJTl9SQURJTy5wbHM_X3Q9MTc3ODE4MzU4MzgwMw:1  Failed to load resource: the server responded with a status of 404 ()
+interaction/?ai=CN36Rje38aaKdBLX2_c8PkvbuCK7qxe-GAaPln5T-FevF_deQDhABIKHjlKsBYKnwuoDEAaABgMyx4irIAQ…:1  Failed to load resource: net::ERR_CONNECTION_CLOSED
+interaction/?ai=CN36Rje38aaKdBLX2_c8PkvbuCK7qxe-GAaPln5T-FevF_deQDhABIKHjlKsBYKnwuoDEAaABgMyx4irIAQ…:1  Failed to load resource: net::ERR_CONNECTION_CLOSED
+interaction/?ai=CN36Rje38aaKdBLX2_c8PkvbuCK7qxe-GAaPln5T-FevF_deQDhABIKHjlKsBYKnwuoDEAaABgMyx4irIAQ…:1  Failed to load resource: net::ERR_CONNECTION_CLOSED
+api/image/aHR0cDovL2Rvc3RmbS5jb20vZmF2aWNvbi5pY28:1  Failed to load resource: the server responded with a status of 404 ()
+palstation106.com/img/logo/pal-station.ico:1  Failed to load resource: net::ERR_CERT_DATE_INVALID
+useGlobalPlayer-BTOIrgKi.js:1  GET https://themegaradio.com/api/stream/resolve?url=http%3A%2F%2F37.247.98.8%2Flisten.pls%3Fsid%3D22 404 (Not Found)
+se @ useGlobalPlayer-BTOIrgKi.js:1
+(anonymous) @ radio-frontend-BEeLIkUB.js:44
+C @ station-card-DS6xWcHG.js:1
+onClick @ station-card-DS6xWcHG.js:1
+Uh @ index-CJ0lf3sJ.js:9
+(anonymous) @ index-CJ0lf3sJ.js:9
+Gf @ index-CJ0lf3sJ.js:9
+mu @ index-CJ0lf3sJ.js:9
+Ru @ index-CJ0lf3sJ.js:10
+lS @ index-CJ0lf3sJ.js:10
+aHR0cDovLzM3LjI0Ny45OC44L2xpc3Rlbi5wbHM_c2lkPTIyJl90PTE3NzgxODM2MDI4ODY:1  GET https://themegaradio.com/api/stream/aHR0cDovLzM3LjI0Ny45OC44L2xpc3Rlbi5wbHM_c2lkPTIyJl90PTE3NzgxODM2MDI4ODY 404 (Not Found)
+useGlobalPlayer-BTOIrgKi.js:1  GET https://themegaradio.com/api/stream/resolve?url=https%3A%2F%2Flisten.powerapp.com.tr%2Fpowerpop%2F128%2Fchunks.m3u8 404 (Not Found)
+se @ useGlobalPlayer-BTOIrgKi.js:1
+(anonymous) @ radio-frontend-BEeLIkUB.js:44
+C @ station-card-DS6xWcHG.js:1
+onClick @ station-card-DS6xWcHG.js:1
+Uh @ index-CJ0lf3sJ.js:9
+(anonymous) @ index-CJ0lf3sJ.js:9
+Gf @ index-CJ0lf3sJ.js:9
+mu @ index-CJ0lf3sJ.js:9
+Ru @ index-CJ0lf3sJ.js:10
+lS @ index-CJ0lf3sJ.js:10
+aHR0cDovL2NoYW5uZWxzLmRpbmFtby5mbS9zbGVlcC1tcDM_X3Q9MTc3ODE4MzYwNzE0Mg:1  GET https://themegaradio.com/api/stream/aHR0cDovL2NoYW5uZWxzLmRpbmFtby5mbS9zbGVlcC1tcDM_X3Q9MTc3ODE4MzYwNzE0Mg 404 (Not Found)
