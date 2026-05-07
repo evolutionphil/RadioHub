@@ -68,7 +68,9 @@ export default function AdminCountryLanguageMappings() {
   const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
   const [confirmResetAll, setConfirmResetAll] = useState(false);
-  const [updatedAtSort, setUpdatedAtSort] = useState<'desc' | 'asc' | null>(null);
+  type SortColumn = 'country' | 'status' | 'updatedAt';
+  type SortDirection = 'asc' | 'desc';
+  const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
 
   // Fetch available countries
   const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
@@ -361,33 +363,103 @@ export default function AdminCountryLanguageMappings() {
         )
       : countries;
 
-    if (!updatedAtSort) return filtered;
+    if (!sort) return filtered;
 
-    // Partition: rows with a valid updatedAt vs. rows without one.
-    // Rows without updatedAt are always grouped at the bottom (alphabetical),
-    // regardless of sort direction.
-    const withDate: Array<{ country: Country; time: number }> = [];
-    const withoutDate: Country[] = [];
+    if (sort.column === 'updatedAt') {
+      // Partition: rows with a valid updatedAt vs. rows without one.
+      // Rows without updatedAt are always grouped at the bottom (alphabetical),
+      // regardless of sort direction.
+      const withDate: Array<{ country: Country; time: number }> = [];
+      const withoutDate: Country[] = [];
 
-    filtered.forEach(country => {
-      const raw = updatedAtMap.get(country.code);
-      const time = raw ? new Date(raw).getTime() : NaN;
-      if (raw && !isNaN(time)) {
-        withDate.push({ country, time });
-      } else {
-        withoutDate.push(country);
+      filtered.forEach(country => {
+        const raw = updatedAtMap.get(country.code);
+        const time = raw ? new Date(raw).getTime() : NaN;
+        if (raw && !isNaN(time)) {
+          withDate.push({ country, time });
+        } else {
+          withoutDate.push(country);
+        }
+      });
+
+      withDate.sort((a, b) =>
+        sort.direction === 'desc' ? b.time - a.time : a.time - b.time,
+      );
+
+      return [...withDate.map(entry => entry.country), ...withoutDate];
+    }
+
+    if (sort.column === 'country') {
+      const sorted = [...filtered].sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }),
+      );
+      if (sort.direction === 'desc') sorted.reverse();
+      return sorted;
+    }
+
+    // sort.column === 'status'
+    // Status precedence (asc): Pending → Override → Mapped → Default.
+    const statusRank = (country: Country): number => {
+      if (pendingChanges.has(country.code)) return 0;
+      const effective = mappingsMap.get(country.code) || '';
+      if (!effective) return 3; // Default (no mapping)
+      const def = defaultsMap.get(country.code);
+      if (def && effective !== def) return 1; // Override
+      return 2; // Mapped
+    };
+
+    const sorted = [...filtered].sort((a, b) => {
+      const ra = statusRank(a);
+      const rb = statusRank(b);
+      if (ra !== rb) {
+        return sort.direction === 'asc' ? ra - rb : rb - ra;
       }
+      // Stable secondary sort by country name for predictability within a group.
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
+    return sorted;
+  }, [countries, searchTerm, sort, updatedAtMap, pendingChanges, mappingsMap, defaultsMap]);
 
-    withDate.sort((a, b) =>
-      updatedAtSort === 'desc' ? b.time - a.time : a.time - b.time,
+  const handleToggleSort = (column: SortColumn) => {
+    setSort(prev => {
+      if (!prev || prev.column !== column) {
+        return { column, direction: 'desc' };
+      }
+      return { column, direction: prev.direction === 'desc' ? 'asc' : 'desc' };
+    });
+  };
+
+  const renderSortIcon = (column: SortColumn) => {
+    if (!sort || sort.column !== column) {
+      return (
+        <ChevronsUpDown
+          className="h-4 w-4 opacity-50"
+          data-testid={`icon-sort-${column}-none`}
+          aria-hidden="true"
+        />
+      );
+    }
+    if (sort.direction === 'desc') {
+      return (
+        <ChevronDown
+          className="h-4 w-4 text-foreground"
+          data-testid={`icon-sort-${column}-desc`}
+          aria-hidden="true"
+        />
+      );
+    }
+    return (
+      <ChevronUp
+        className="h-4 w-4 text-foreground"
+        data-testid={`icon-sort-${column}-asc`}
+        aria-hidden="true"
+      />
     );
+  };
 
-    return [...withDate.map(entry => entry.country), ...withoutDate];
-  }, [countries, searchTerm, updatedAtSort, updatedAtMap]);
-
-  const handleToggleUpdatedAtSort = () => {
-    setUpdatedAtSort(prev => (prev === 'desc' ? 'asc' : 'desc'));
+  const ariaSortFor = (column: SortColumn): 'ascending' | 'descending' | 'none' => {
+    if (!sort || sort.column !== column) return 'none';
+    return sort.direction === 'asc' ? 'ascending' : 'descending';
   };
 
   // Loading state
@@ -536,52 +608,62 @@ export default function AdminCountryLanguageMappings() {
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
                   <TableHead className="w-24">Code</TableHead>
-                  <TableHead>Country</TableHead>
+                  <TableHead className="p-0" aria-sort={ariaSortFor('country')}>
+                    <button
+                      type="button"
+                      data-testid="button-sort-country"
+                      onClick={() => handleToggleSort('country')}
+                      aria-label={
+                        sort?.column === 'country' && sort.direction === 'desc'
+                          ? 'Sorted by country, Z to A. Click to sort A to Z.'
+                          : sort?.column === 'country' && sort.direction === 'asc'
+                            ? 'Sorted by country, A to Z. Click to sort Z to A.'
+                            : 'Sort by country'
+                      }
+                      className="inline-flex w-full items-center justify-start gap-1 px-4 py-3 text-sm font-medium hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                    >
+                      <span>Country</span>
+                      {renderSortIcon('country')}
+                    </button>
+                  </TableHead>
                   <TableHead className="w-64">Language</TableHead>
-                  <TableHead className="w-24">Status</TableHead>
+                  <TableHead className="w-24 p-0" aria-sort={ariaSortFor('status')}>
+                    <button
+                      type="button"
+                      data-testid="button-sort-status"
+                      onClick={() => handleToggleSort('status')}
+                      aria-label={
+                        sort?.column === 'status' && sort.direction === 'desc'
+                          ? 'Sorted by status, reverse order. Click to group by status.'
+                          : sort?.column === 'status' && sort.direction === 'asc'
+                            ? 'Grouped by status. Click to reverse order.'
+                            : 'Sort by status'
+                      }
+                      className="inline-flex w-full items-center justify-start gap-1 px-4 py-3 text-sm font-medium hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                    >
+                      <span>Status</span>
+                      {renderSortIcon('status')}
+                    </button>
+                  </TableHead>
                   <TableHead
                     className="w-40 text-right p-0"
-                    aria-sort={
-                      updatedAtSort === 'desc'
-                        ? 'descending'
-                        : updatedAtSort === 'asc'
-                          ? 'ascending'
-                          : 'none'
-                    }
+                    aria-sort={ariaSortFor('updatedAt')}
                   >
                     <button
                       type="button"
                       data-testid="button-sort-updated-at"
-                      onClick={handleToggleUpdatedAtSort}
+                      onClick={() => handleToggleSort('updatedAt')}
                       aria-label={
-                        updatedAtSort === 'desc'
+                        sort?.column === 'updatedAt' && sort.direction === 'desc'
                           ? 'Sorted by last updated, newest first. Click to sort oldest first.'
-                          : updatedAtSort === 'asc'
+                          : sort?.column === 'updatedAt' && sort.direction === 'asc'
                             ? 'Sorted by last updated, oldest first. Click to sort newest first.'
                             : 'Sort by last updated'
                       }
                       className="inline-flex w-full items-center justify-end gap-1 px-4 py-3 text-sm font-medium hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
                     >
                       <span>Last updated</span>
-                      {updatedAtSort === 'desc' ? (
-                        <ChevronDown
-                          className="h-4 w-4 text-foreground"
-                          data-testid="icon-sort-updated-at-desc"
-                          aria-hidden="true"
-                        />
-                      ) : updatedAtSort === 'asc' ? (
-                        <ChevronUp
-                          className="h-4 w-4 text-foreground"
-                          data-testid="icon-sort-updated-at-asc"
-                          aria-hidden="true"
-                        />
-                      ) : (
-                        <ChevronsUpDown
-                          className="h-4 w-4 opacity-50"
-                          data-testid="icon-sort-updated-at-none"
-                          aria-hidden="true"
-                        />
-                      )}
+                      {renderSortIcon('updatedAt')}
                     </button>
                   </TableHead>
                   <TableHead className="w-20 text-right">Actions</TableHead>
