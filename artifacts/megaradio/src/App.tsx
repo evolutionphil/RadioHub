@@ -1132,10 +1132,57 @@ function Router() {
 
 function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   
   // Automatically scroll to top when page changes
   useScrollToTop();
+
+  // Global keyboard shortcut: Cmd/Ctrl+K or "/" opens the search page and
+  // focuses its input. Ignored when the user is already typing somewhere.
+  useEffect(() => {
+    const isEditableTarget = (el: EventTarget | null): boolean => {
+      if (!(el instanceof HTMLElement)) return false;
+      const tag = el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return true;
+      if (el.isContentEditable) return true;
+      return false;
+    };
+
+    const focusSearchInput = (attempts = 0) => {
+      const input = document.querySelector<HTMLInputElement>(
+        '[data-testid="input-search"]'
+      );
+      if (input) {
+        input.focus();
+        try { input.select(); } catch {}
+      } else if (attempts < 30) {
+        setTimeout(() => focusSearchInput(attempts + 1), 50);
+      }
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
+      const isCmdK =
+        (e.key === "k" || e.key === "K") &&
+        (e.metaKey || e.ctrlKey) &&
+        !e.altKey;
+      const isSlash =
+        e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey;
+      if (!isCmdK && !isSlash) return;
+      if (isEditableTarget(e.target)) return;
+      e.preventDefault();
+
+      const path = window.location.pathname;
+      const alreadyOnSearch = /(^|\/)search$/.test(path);
+      if (!alreadyOnSearch) {
+        setLocation("/search");
+      }
+      focusSearchInput();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [setLocation]);
 
   // 🚀 MAIN THREAD OPTIMIZATION: Defer non-critical initialization
   // Initialize Google Analytics and background playback after initial render
