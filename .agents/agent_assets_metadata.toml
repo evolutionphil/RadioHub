@@ -1,5 +1,4 @@
 uploads = []
-outputs = []
 
 [[generated]]
 id = "LRyz9dKJk2AR6Szi5oA2N"
@@ -18,3 +17,9 @@ id = "14m8lfhWZjrVqtabKT6fl"
 uri = "file://artifacts/megaradio-investor-deck/public/global-map.png"
 type = "image"
 title = "generated_image"
+
+[[outputs]]
+id = "VImJh-N8MZGBQfMlN53H7"
+uri = "file://.local/outputs/RadioHub.pdf"
+type = "pdf"
+title = "RadioHub.pdf"
