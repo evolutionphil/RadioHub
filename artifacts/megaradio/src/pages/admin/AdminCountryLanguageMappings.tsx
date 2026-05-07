@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -279,14 +280,73 @@ export default function AdminCountryLanguageMappings() {
     },
   });
 
+  // Restore a previously-cleared snapshot of overridden mappings. Powers the
+  // "Undo" action shown in the toast after Clear overrides.
+  const restoreOverridesMutation = useMutation<
+    { success: boolean; restoredCount: number; mappings?: CountryLanguageMapping[] },
+    Error,
+    CountryLanguageMapping[]
+  >({
+    mutationFn: async (snapshot) => {
+      const payload = snapshot.map(m => ({
+        countryCode: m.countryCode,
+        countryName: m.countryName,
+        languageCode: m.languageCode,
+        isActive: m.isActive,
+        notes: m.notes,
+      }));
+      const res = await apiRequest('POST', '/api/admin/country-language-mappings/restore', {
+        body: { mappings: payload },
+      });
+      return (await res.json()) as {
+        success: boolean;
+        restoredCount: number;
+        mappings?: CountryLanguageMapping[];
+      };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      const restored = data?.restoredCount ?? 0;
+      toast({
+        title: 'Overrides restored',
+        description:
+          restored > 0
+            ? `Restored ${restored} ${restored === 1 ? 'override' : 'overrides'}.`
+            : 'Nothing to restore.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to restore overrides',
+        variant: 'destructive',
+      });
+    },
+  });
+
   // Delete only the overridden mappings (those whose language differs from the
   // hardcoded COUNTRY_TO_LANGUAGE default). Other mappings are left intact.
-  const clearOverridesMutation = useMutation<{ success: boolean; deletedCount: number }>({
+  // We capture the full overridden documents in `onMutate` so the toast's
+  // "Undo" action can restore them exactly as they were (countryCode →
+  // languageCode, plus countryName / notes / isActive).
+  const clearOverridesMutation = useMutation<
+    { success: boolean; deletedCount: number },
+    Error,
+    void,
+    { snapshot: CountryLanguageMapping[] }
+  >({
     mutationFn: async () => {
       const res = await apiRequest('DELETE', '/api/admin/country-language-mappings/overrides');
       return (await res.json()) as { success: boolean; deletedCount: number };
     },
-    onSuccess: (data) => {
+    onMutate: () => {
+      const snapshot = (existingMappings ?? []).filter(m => {
+        const def = defaultsMap.get(m.countryCode);
+        return !!def && m.languageCode !== def;
+      });
+      return { snapshot };
+    },
+    onSuccess: (data, _vars, context) => {
       const deleted = data?.deletedCount ?? 0;
       // Drop pending edits for any country whose DB mapping was just removed,
       // so the row returns to "Default" instead of showing a stale pending value.
@@ -314,11 +374,32 @@ export default function AdminCountryLanguageMappings() {
         },
       );
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
-      toast({
+
+      const snapshot = context?.snapshot ?? [];
+      const canUndo = deleted > 0 && snapshot.length > 0;
+
+      const { dismiss } = toast({
         title: deleted > 0 ? 'Overrides cleared' : 'No overrides to clear',
-        description: deleted > 0
-          ? `Removed ${deleted} ${deleted === 1 ? 'override' : 'overrides'}. Affected countries will fall back to their default language.`
-          : 'No mappings differed from their hardcoded default.',
+        description:
+          deleted > 0
+            ? `Removed ${deleted} ${deleted === 1 ? 'override' : 'overrides'}. Affected countries will fall back to their default language.`
+            : 'No mappings differed from their hardcoded default.',
+        // Give admins ~10s to react. Radix's default auto-close is ~5s, so
+        // we explicitly extend the duration on the Toast.Root via this prop
+        // (the underlying ToastPrimitives.Root forwards `duration`).
+        duration: canUndo ? 10000 : 5000,
+        action: canUndo ? (
+          <ToastAction
+            altText="Undo clearing overrides"
+            data-testid="button-undo-clear-overrides"
+            onClick={() => {
+              restoreOverridesMutation.mutate(snapshot);
+              dismiss();
+            }}
+          >
+            Undo
+          </ToastAction>
+        ) : undefined,
       });
     },
     onError: (error: any) => {
@@ -1336,7 +1417,8 @@ export default function AdminCountryLanguageMappings() {
               {persistedOverrideCount === 1 ? 'mapping' : 'mappings'} that differ from the
               hardcoded defaults. Those countries will fall back to their default language.
               Saved mappings that already match the default are kept as-is, and any unsaved
-              edits in the table are not affected. This action cannot be undone.
+              edits in the table are not affected. You'll have a brief Undo window
+              (about 10 seconds) in the toast after this runs.
             </AlertDialogDescription>
           </AlertDialogHeader>
           {persistedOverrides.length > 0 && (

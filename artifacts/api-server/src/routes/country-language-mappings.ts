@@ -186,6 +186,66 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     }
   });
 
+  // Restore a snapshot of country-language mappings. Used to power the
+  // "Undo" action on the Clear overrides toast. Each entry is upserted by
+  // countryCode so the mappings are restored exactly as they were even if
+  // (rare) someone re-added a mapping for the same country in between.
+  app.post('/api/admin/country-language-mappings/restore', requireAdmin, async (req, res) => {
+    try {
+      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { mappings } = req.body as {
+        mappings?: Array<{
+          countryCode?: string;
+          countryName?: string;
+          languageCode?: string;
+          isActive?: boolean;
+          notes?: string;
+        }>;
+      };
+
+      if (!Array.isArray(mappings)) {
+        return res.status(400).json({ error: 'mappings array is required' });
+      }
+
+      const valid = mappings.filter(
+        (m): m is { countryCode: string; countryName: string; languageCode: string; isActive?: boolean; notes?: string } =>
+          !!m && typeof m.countryCode === 'string' && !!m.countryCode &&
+          typeof m.countryName === 'string' && !!m.countryName &&
+          typeof m.languageCode === 'string' && !!m.languageCode,
+      );
+
+      if (valid.length === 0) {
+        return res.json({ success: true, restoredCount: 0, mappings: [] });
+      }
+
+      const restored = await Promise.all(
+        valid.map(m =>
+          CountryLanguageMapping.findOneAndUpdate(
+            { countryCode: m.countryCode },
+            {
+              countryCode: m.countryCode,
+              countryName: m.countryName,
+              languageCode: m.languageCode,
+              isActive: m.isActive !== undefined ? m.isActive : true,
+              notes: m.notes || '',
+              updatedAt: new Date(),
+            },
+            { upsert: true, returnDocument: 'after' },
+          ),
+        ),
+      );
+
+      const { performanceCache } = await import('../performance-cache');
+      performanceCache.clearCountryLanguageMappings();
+
+      console.log(`✅ Restored ${restored.length} country-language mappings`);
+      res.json({ success: true, restoredCount: restored.length, mappings: restored });
+    } catch (error) {
+      console.error('Error restoring country-language mappings:', error);
+      res.status(500).json({ error: 'Failed to restore country-language mappings' });
+    }
+  });
+
   // Delete all country-language mappings
   app.delete('/api/admin/country-language-mappings', requireAdmin, async (_req, res) => {
     try {
