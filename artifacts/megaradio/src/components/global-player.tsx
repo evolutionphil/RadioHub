@@ -1,10 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useLocation } from "wouter";
 import { ChevronDown, ChevronUp, Play, Pause, SkipBack, SkipForward } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { cn } from "@/lib/utils";
 import StationControlButtonGroup from "@/components/ui/station-control-button-group";
+import { StationLogo } from "@/components/ui/station-logo";
 import MetaActionsButtonGroup from "@/components/ui/meta-actions-button-group";
 import FavoriteButton from "@/components/ui/favorite-button";
 import AnimatedEqualizer from "@/components/ui/animated-equalizer";
@@ -47,28 +48,6 @@ export default function GlobalPlayer() {
   };
   
   const metadata = stationMeta;
-
-  const stationLogoUrl = useMemo(() => {
-    if (!currentStation) return '/no-image.webp';
-    
-    if (currentStation.logoAssets?.status === 'completed' && currentStation.logoAssets.folder) {
-      const value = currentStation.logoAssets.webp256 || currentStation.logoAssets.webp96 || currentStation.logoAssets.webp48;
-      if (value) {
-        return value.startsWith('http') ? value : `/station-logos/${currentStation.logoAssets.folder}/${value}`;
-      }
-    }
-    
-    if (currentStation.localImagePath) {
-      return `/station-images/${currentStation.localImagePath}`;
-    }
-    
-    if (currentStation.favicon) {
-      return currentStation.favicon;
-    }
-    
-    return '/no-image.webp';
-  }, [currentStation?._id, currentStation?.favicon, currentStation?.localImagePath, currentStation?.logoAssets?.status]);
-
 
   useEffect(() => {
     if (!isAuthenticated && currentStation && isPlaying) {
@@ -237,15 +216,11 @@ export default function GlobalPlayer() {
               {/* LEFT SIDE: Small Logo + Station Name - Figma: logo 45.66x45.66, border-radius 4.57px */}
               <div className="flex items-center gap-3">
                 <div className="relative flex-shrink-0">
-                  <div className="flex items-center justify-center overflow-hidden" style={{ width: '45.66px', height: '45.66px', borderRadius: '4.57px' }}>
-                    <img
-                      src={stationLogoUrl}
-                      className="w-full h-full object-cover"
-                      style={{ borderRadius: '4.57px' }}
+                  <div className="relative flex items-center justify-center overflow-hidden" style={{ width: '45.66px', height: '45.66px', borderRadius: '4.57px' }}>
+                    <StationLogo
+                      station={currentStation}
+                      className="absolute inset-0 w-full h-full object-cover"
                       alt={`${currentStation.name} radio station logo`}
-                      onError={(e) => {
-                        e.currentTarget.src = "/no-image.webp";
-                      }}
                     />
                   </div>
                   {/* Country flag - 15x15, positioned at bottom-right corner of 45.66x45.66 logo */}
@@ -322,15 +297,11 @@ export default function GlobalPlayer() {
             <div className="flex items-center gap-4 flex-1" style={{ maxWidth: '500px' }}>
               {/* Logo with country flag */}
               <div className="relative flex-shrink-0">
-                <div className="flex items-center justify-center overflow-hidden" style={{ width: '72px', height: '72px', borderRadius: '7.2px' }}>
-                  <img
-                    src={stationLogoUrl}
-                    className="w-full h-full object-cover"
-                    style={{ borderRadius: '7.2px' }}
+                <div className="relative flex items-center justify-center overflow-hidden" style={{ width: '72px', height: '72px', borderRadius: '7.2px' }}>
+                  <StationLogo
+                    station={currentStation}
+                    className="absolute inset-0 w-full h-full object-cover"
                     alt={`${currentStation.name} radio station logo`}
-                    onError={(e) => {
-                      e.currentTarget.src = "/no-image.webp";
-                    }}
                   />
                 </div>
                 
@@ -472,17 +443,14 @@ export default function GlobalPlayer() {
             <div className="flex md:hidden w-full items-center gap-2 h-full">
               {/* Mini Logo - 40x40px with country flag */}
               <div className="relative flex-shrink-0">
-                <div 
-                  className="overflow-hidden"
+                <div
+                  className="relative overflow-hidden"
                   style={{ width: '40px', height: '40px', borderRadius: '4px' }}
                 >
-                  <img
-                    src={stationLogoUrl}
-                    className="w-full h-full object-cover"
+                  <StationLogo
+                    station={currentStation}
+                    className="absolute inset-0 w-full h-full object-cover"
                     alt={`${currentStation.name} logo`}
-                    onError={(e) => {
-                      e.currentTarget.src = "/no-image.webp";
-                    }}
                   />
                 </div>
                 {/* Country flag - scaled for 40px logo */}
@@ -555,18 +523,14 @@ export default function GlobalPlayer() {
               <div className="flex w-full gap-3 py-[8px] items-center">
                 {/* Mobile Station Logo - 73x73px per Figma */}
                 <div className="relative flex-shrink-0">
-                  <div 
-                    className="overflow-hidden"
+                  <div
+                    className="relative overflow-hidden"
                     style={{ width: '73px', height: '73px', borderRadius: '7.3px' }}
                   >
-                    <img
-                      src={stationLogoUrl}
-                      className="w-full h-full object-cover"
-                      style={{ borderRadius: '7.3px' }}
+                    <StationLogo
+                      station={currentStation}
+                      className="absolute inset-0 w-full h-full object-cover"
                       alt={`${currentStation.name} logo`}
-                      onError={(e) => {
-                        e.currentTarget.src = "/no-image.webp";
-                      }}
                     />
                   </div>
                   {currentStation.countryCode && (
