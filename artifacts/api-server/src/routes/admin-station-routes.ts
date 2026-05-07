@@ -1053,9 +1053,20 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     requireAdmin,
     async (req, res) => {
       try {
-        const { stationIds, countryCode } = (req.body || {}) as {
+        const {
+          stationIds,
+          countryCode,
+          tagsStatus,
+          search,
+          language,
+          genre,
+        } = (req.body || {}) as {
           stationIds?: unknown;
           countryCode?: unknown;
+          tagsStatus?: unknown;
+          search?: unknown;
+          language?: unknown;
+          genre?: unknown;
         };
 
         const ids = Array.isArray(stationIds)
@@ -1067,11 +1078,28 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           typeof countryCode === 'string' && countryCode.trim()
             ? countryCode.trim()
             : undefined;
+        const rawTagsStatus =
+          typeof tagsStatus === 'string' && tagsStatus.trim()
+            ? tagsStatus.trim()
+            : undefined;
+        const rawSearch =
+          typeof search === 'string' && search.trim() ? search.trim() : undefined;
+        const rawLanguage =
+          typeof language === 'string' && language.trim() && language !== 'all'
+            ? language.trim()
+            : undefined;
+        const rawGenre =
+          typeof genre === 'string' && genre.trim() && genre !== 'all'
+            ? genre.trim()
+            : undefined;
 
-        if (ids.length === 0 && !rawCountry) {
+        const isFilterMode =
+          rawTagsStatus === 'empty-cooldown' || rawTagsStatus === 'never-checked';
+
+        if (ids.length === 0 && !rawCountry && !isFilterMode) {
           return res.status(400).json({
             success: false,
-            error: 'Provide stationIds or countryCode',
+            error: 'Provide stationIds, countryCode, or tagsStatus',
           });
         }
 
@@ -1107,6 +1135,58 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         const filter: Record<string, unknown> = {};
         if (ids.length > 0) {
           filter._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+        } else if (isFilterMode) {
+          // Filter-driven bulk: target every station matching the
+          // current admin "tagsStatus" filter (and any additional
+          // search/country/language/genre filters), not just the
+          // visible page. Mirrors the predicate used by the GET
+          // /api/admin/stations endpoint. We compose every constraint
+          // inside `$and` so independent `$or` clauses (country
+          // alternatives, search alternatives, empty-tags alternatives)
+          // never clobber each other.
+          const emptyTagsPredicate: Record<string, unknown> = {
+            $or: [
+              { tags: { $exists: false } },
+              { tags: null },
+              { tags: '' },
+              { tags: { $regex: /^\s*$/ } },
+            ],
+          };
+          const andConds: Record<string, unknown>[] = [emptyTagsPredicate];
+          if (rawTagsStatus === 'empty-cooldown') {
+            const cooldownCutoff = new Date(
+              Date.now() - 30 * 24 * 60 * 60 * 1000,
+            );
+            andConds.push({ tagsCheckedAt: { $gte: cooldownCutoff } });
+          } else {
+            andConds.push({
+              $or: [
+                { tagsCheckedAt: { $exists: false } },
+                { tagsCheckedAt: null },
+              ],
+            });
+          }
+          if (Object.keys(countryFilter).length > 0) {
+            andConds.push(countryFilter);
+          }
+          if (rawSearch) {
+            andConds.push({
+              $or: [
+                { name: { $regex: new RegExp(rawSearch, 'i') } },
+                { country: { $regex: new RegExp(rawSearch, 'i') } },
+                { tags: { $regex: new RegExp(rawSearch, 'i') } },
+              ],
+            });
+          }
+          if (rawLanguage) {
+            andConds.push({
+              language: { $regex: new RegExp(rawLanguage, 'i') },
+            });
+          }
+          if (rawGenre) {
+            andConds.push({ tags: { $regex: new RegExp(rawGenre, 'i') } });
+          }
+          filter.$and = andConds;
         } else {
           Object.assign(filter, countryFilter);
           filter.$and = [
@@ -1120,12 +1200,45 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           ];
         }
 
-        const updateResult: import('mongodb').UpdateResult = await Station.updateMany(
-          filter,
-          { $unset: { tagsCheckedAt: '' } },
-        );
-        const cleared = updateResult.modifiedCount ?? 0;
-        const matched = updateResult.matchedCount ?? cleared;
+        // Resolve every matching station for filter-mode so the
+        // background re-check targets exactly the cleared rows. We
+        // page through the cursor (no fixed cap) so requests with
+        // tens of thousands of stuck stations are still fully covered.
+        let filterModeIds: string[] = [];
+        if (isFilterMode) {
+          const cursor = Station.find(filter).select('_id').lean().cursor();
+          for await (const doc of cursor) {
+            const id = (doc as { _id: mongoose.Types.ObjectId })._id;
+            if (id) filterModeIds.push(id.toString());
+          }
+        }
+
+        let cleared = 0;
+        let matched = 0;
+        if (isFilterMode) {
+          matched = filterModeIds.length;
+          // Chunk the $unset to keep each Mongo command well below the
+          // 16MB BSON limit on huge result sets.
+          const updateChunkSize = 5000;
+          for (let i = 0; i < filterModeIds.length; i += updateChunkSize) {
+            const chunk = filterModeIds.slice(i, i + updateChunkSize);
+            const chunkResult: import('mongodb').UpdateResult =
+              await Station.updateMany(
+                {
+                  _id: {
+                    $in: chunk.map((id) => new mongoose.Types.ObjectId(id)),
+                  },
+                },
+                { $unset: { tagsCheckedAt: '' } },
+              );
+            cleared += chunkResult.modifiedCount ?? 0;
+          }
+        } else {
+          const updateResult: import('mongodb').UpdateResult =
+            await Station.updateMany(filter, { $unset: { tagsCheckedAt: '' } });
+          cleared = updateResult.modifiedCount ?? 0;
+          matched = updateResult.matchedCount ?? cleared;
+        }
 
         // Kick off the actual re-query in the background so the admin
         // gets immediate feedback. Targeted ID requests use the
@@ -1136,6 +1249,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           void syncService
             .recheckStationsTagsByIds(ids)
             .catch((err) => logger.error('bulk tags recheck (ids) failed', err));
+        } else if (isFilterMode) {
+          if (filterModeIds.length > 0) {
+            void syncService
+              .recheckStationsTagsByIds(filterModeIds)
+              .catch((err) =>
+                logger.error('bulk tags recheck (filter) failed', err),
+              );
+          }
         } else if (resolvedIso) {
           void syncService
             .hydrateMissingTagsInBackground({
@@ -1166,6 +1287,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           matched,
           countryCode: resolvedIso ?? rawCountry,
           stationIdsCount: ids.length,
+          tagsStatus: rawTagsStatus,
           message: `Cleared tagsCheckedAt for ${cleared} station(s) (${matched} matched); re-check job started`,
         });
       } catch (error: any) {

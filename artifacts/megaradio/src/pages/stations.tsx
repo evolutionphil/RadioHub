@@ -667,6 +667,54 @@ export default function Stations() {
     }
   };
 
+  const handleBulkRecheckAllStuck = async () => {
+    if (filters.tagsStatus !== 'empty-cooldown') return;
+    const scopeBits: string[] = [];
+    if (filters.country) scopeBits.push(`country ${filters.country}`);
+    if (filters.language) scopeBits.push(`language ${filters.language}`);
+    if (filters.genre) scopeBits.push(`genre ${filters.genre}`);
+    if (debouncedSearch) scopeBits.push(`search "${debouncedSearch}"`);
+    const scope = scopeBits.length > 0 ? ` (${scopeBits.join(', ')})` : '';
+    if (
+      !confirm(
+        `Re-check tags from Radio-Browser for EVERY station stuck on the empty-tags cooldown${scope}? This may take a while.`,
+      )
+    )
+      return;
+    setIsBulkRecheckingTags(true);
+    try {
+      const response = await fetch('/api/admin/stations/recheck-tags-bulk', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tagsStatus: 'empty-cooldown',
+          countryCode: filters.country || undefined,
+          language: filters.language || undefined,
+          genre: filters.genre || undefined,
+          search: debouncedSearch || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to start bulk re-check');
+      }
+      toast({
+        title: 'Tag re-check started',
+        description: `Cleared cooldown for ${data.cleared ?? 0} station(s) (${data.matched ?? 0} matched); hydration running in the background.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+    } catch (error: any) {
+      toast({
+        title: 'Bulk re-check failed',
+        description: error?.message || 'Failed to start bulk re-check',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkRecheckingTags(false);
+    }
+  };
+
   const handleRestoreStation = (blacklistedStation: any) => {
     if (confirm(`Are you sure you want to restore "${blacklistedStation.name}"?`)) {
       restoreMutation.mutate(blacklistedStation._id);
@@ -994,6 +1042,21 @@ export default function Stations() {
                     ? `Re-check Tags (${selectedStations.size})`
                     : 'Re-check Tags'}
               </Button>
+              {filters.tagsStatus === 'empty-cooldown' && (
+                <Button
+                  variant="outline"
+                  onClick={handleBulkRecheckAllStuck}
+                  disabled={isBulkRecheckingTags}
+                  className="w-full sm:w-auto bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-600 hover:to-pink-600 text-white border-0"
+                  title="Re-check tags for every station currently stuck on the empty-tags cooldown (matches the active filter, not just this page)"
+                  data-testid="button-bulk-recheck-all-stuck"
+                >
+                  <Tag className="w-4 h-4 mr-2" />
+                  {isBulkRecheckingTags
+                    ? 'Re-checking...'
+                    : 'Re-check All Stuck'}
+                </Button>
+              )}
               {aiJobStatus?.status === 'running' && (
                 <Button 
                   variant="default"
