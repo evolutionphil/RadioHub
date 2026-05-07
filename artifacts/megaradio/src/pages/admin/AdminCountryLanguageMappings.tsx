@@ -152,6 +152,16 @@ export default function AdminCountryLanguageMappings() {
   const [confirmResetAll, setConfirmResetAll] = useState(false);
   const [confirmClearOverrides, setConfirmClearOverrides] = useState(false);
   const [confirmDiscardPending, setConfirmDiscardPending] = useState(false);
+  const [skipDiscardConfirm, setSkipDiscardConfirm] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem('admin-mappings:skipDiscardConfirm') === '1';
+  });
+  const [skipResetAllConfirm, setSkipResetAllConfirm] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem('admin-mappings:skipResetAllConfirm') === '1';
+  });
+  const [rememberDiscardChoice, setRememberDiscardChoice] = useState(false);
+  const [rememberResetAllChoice, setRememberResetAllChoice] = useState(false);
 
   // In-memory log of recently cleared/reset mapping snapshots so admins who
   // miss the ~10s Undo toast can still recover. Capped to the last 5 entries
@@ -171,6 +181,28 @@ export default function AdminCountryLanguageMappings() {
 
   const hasActiveFilters =
     searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
+
+  const performDiscardPending = () => {
+    setPendingChanges((prev) => {
+      const count = prev.size;
+      if (count > 0) {
+        toast({
+          title: 'Pending changes discarded',
+          description: `Cleared ${count} unsaved row${count === 1 ? '' : 's'}.`,
+        });
+      }
+      return new Map();
+    });
+  };
+
+  const handleDiscardPendingClick = () => {
+    if (skipDiscardConfirm) {
+      performDiscardPending();
+    } else {
+      setRememberDiscardChoice(false);
+      setConfirmDiscardPending(true);
+    }
+  };
 
   const handleResetFilters = () => {
     setPrefs((p) => ({ ...p, searchTerm: '', sort: null, showOverridesOnly: false }));
@@ -1163,7 +1195,14 @@ export default function AdminCountryLanguageMappings() {
             <Button
               data-testid="button-reset-all-mappings"
               variant="outline"
-              onClick={() => setConfirmResetAll(true)}
+              onClick={() => {
+                if (skipResetAllConfirm) {
+                  resetAllMutation.mutate();
+                } else {
+                  setRememberResetAllChoice(false);
+                  setConfirmResetAll(true);
+                }
+              }}
               disabled={
                 (existingMappings?.length || 0) === 0 ||
                 resetAllMutation.isPending ||
@@ -1182,7 +1221,7 @@ export default function AdminCountryLanguageMappings() {
               <Button
                 data-testid="button-discard-pending"
                 variant="outline"
-                onClick={() => setConfirmDiscardPending(true)}
+                onClick={handleDiscardPendingClick}
                 disabled={bulkSaveMutation.isPending}
               >
                 <X className="mr-2 h-4 w-4" />
@@ -1317,7 +1356,7 @@ export default function AdminCountryLanguageMappings() {
                 data-testid="button-discard-pending-banner"
                 size="sm"
                 variant="outline"
-                onClick={() => setConfirmDiscardPending(true)}
+                onClick={handleDiscardPendingClick}
                 disabled={bulkSaveMutation.isPending}
               >
                 <X className="mr-2 h-4 w-4" />
@@ -1719,6 +1758,20 @@ export default function AdminCountryLanguageMappings() {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="flex items-center gap-2 pt-1">
+            <Checkbox
+              id="reset-all-skip-confirm"
+              data-testid="checkbox-reset-all-skip-confirm"
+              checked={rememberResetAllChoice}
+              onCheckedChange={(c) => setRememberResetAllChoice(c === true)}
+            />
+            <Label
+              htmlFor="reset-all-skip-confirm"
+              className="text-sm font-normal text-gray-700"
+            >
+              Don't ask again this session
+            </Label>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-reset-all">
               Cancel
@@ -1726,6 +1779,12 @@ export default function AdminCountryLanguageMappings() {
             <AlertDialogAction
               data-testid="button-confirm-reset-all"
               onClick={() => {
+                if (rememberResetAllChoice) {
+                  setSkipResetAllConfirm(true);
+                  if (typeof window !== 'undefined') {
+                    window.sessionStorage.setItem('admin-mappings:skipResetAllConfirm', '1');
+                  }
+                }
                 resetAllMutation.mutate();
                 setConfirmResetAll(false);
               }}
@@ -1750,6 +1809,20 @@ export default function AdminCountryLanguageMappings() {
               This will clear your {pendingChanges.size} unsaved row{pendingChanges.size === 1 ? '' : 's'} of pending edits. Saved mappings in the database won't be touched.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <div className="flex items-center gap-2 pt-1">
+            <Checkbox
+              id="discard-pending-skip-confirm"
+              data-testid="checkbox-discard-pending-skip-confirm"
+              checked={rememberDiscardChoice}
+              onCheckedChange={(c) => setRememberDiscardChoice(c === true)}
+            />
+            <Label
+              htmlFor="discard-pending-skip-confirm"
+              className="text-sm font-normal text-gray-700"
+            >
+              Don't ask again this session
+            </Label>
+          </div>
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-discard-pending">
               Keep editing
@@ -1757,13 +1830,14 @@ export default function AdminCountryLanguageMappings() {
             <AlertDialogAction
               data-testid="button-confirm-discard-pending"
               onClick={() => {
-                const count = pendingChanges.size;
-                setPendingChanges(new Map());
+                if (rememberDiscardChoice) {
+                  setSkipDiscardConfirm(true);
+                  if (typeof window !== 'undefined') {
+                    window.sessionStorage.setItem('admin-mappings:skipDiscardConfirm', '1');
+                  }
+                }
                 setConfirmDiscardPending(false);
-                toast({
-                  title: 'Pending changes discarded',
-                  description: `Cleared ${count} unsaved row${count === 1 ? '' : 's'}.`,
-                });
+                performDiscardPending();
               }}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
