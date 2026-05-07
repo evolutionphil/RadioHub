@@ -187,7 +187,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
               "subscription.lastVerifiedAt": new Date(),
             },
           },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         ).select("subscription email fullName");
         if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -231,7 +231,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
               "subscription.cancelledAt": "",
             },
           },
-          { new: true, runValidators: true },
+          { returnDocument: 'after', runValidators: true },
         ).select("subscription email fullName");
         if (!user) return res.status(404).json({ error: "User not found" });
 

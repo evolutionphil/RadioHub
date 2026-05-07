@@ -519,7 +519,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const updatedUser = await User.findByIdAndUpdate(
         userId,
         { ...updates, updatedAt: new Date() },
-        { new: true, select: '-passwordHash -emailVerificationToken -resetPasswordToken -resetPasswordExpires' }
+        { returnDocument: 'after', select: '-passwordHash -emailVerificationToken -resetPasswordToken -resetPasswordExpires' }
       ).lean();
 
       if (!updatedUser) {

@@ -975,7 +975,7 @@ ${keysText}`;
           await Genre.findOneAndUpdate(
             { slug: genreData.slug },
             genreData,
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
           );
           genresCreated++;
         }
@@ -1494,7 +1494,7 @@ ${keysText}`;
             comment: comment || undefined,
             updatedAt: new Date()
           },
-          { new: true }
+          { returnDocument: 'after' }
         );
       } else {
         // Create new rating
@@ -1591,7 +1591,7 @@ ${keysText}`;
       const station = await Station.findByIdAndUpdate(
         stationId,
         { $inc: { votes: 1 } },
-        { new: true }
+        { returnDocument: 'after' }
       );
       
       if (!station) {
@@ -1654,7 +1654,7 @@ ${keysText}`;
           isPublicProfile: true,
           name: email.split('@')[0] // Use email prefix as name if no name set
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
       
       if (!user) {
@@ -1682,7 +1682,7 @@ ${keysText}`;
           isPublicProfile: true,
           name: email.split('@')[0]
         },
-        { new: true, upsert: true }
+        { returnDocument: 'after', upsert: true }
       );
       
       // logger.log(' Added favorites to user:', user.email, 'total favorites:', user.favoriteStations.length);
@@ -1709,7 +1709,7 @@ ${keysText}`;
       const user = await User.findOneAndUpdate(
         { email: email },
         { name: name },
-        { new: true }
+        { returnDocument: 'after' }
       );
       
       if (!user) {
@@ -2332,7 +2332,7 @@ ${keysText}`;
       const notification = await UserNotification.findOneAndUpdate(
         { _id: notificationId, userId: currentUserId },
         { read: true },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!notification) {
@@ -2447,7 +2447,7 @@ ${keysText}`;
       logger.log(`✅ Generated slug from "${slugSource}": ${updateData.slug}`);
       
       logger.log('🔧 About to update user with data:', updateData);
-      const updatedUser = await User.findByIdAndUpdate(user._id, updateData, { new: true });
+      const updatedUser = await User.findByIdAndUpdate(user._id, updateData, { returnDocument: 'after' });
       logger.log('✅ User updated successfully. Full user object:');
       logger.log('  - _id:', updatedUser?._id);
       logger.log('  - fullName:', updatedUser?.fullName);

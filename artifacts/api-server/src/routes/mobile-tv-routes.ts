@@ -272,7 +272,7 @@ If you have any questions about this privacy policy or our data practices, pleas
           isActive: true,
           updatedAt: new Date()
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       res.json({ success: true, message: "Push token saved successfully" });
@@ -606,7 +606,7 @@ If you have any questions about this privacy policy or our data practices, pleas
           pairedAt: new Date(),
           isActive: true,
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       const user = await User.findById(userId).select('fullName username').lean();

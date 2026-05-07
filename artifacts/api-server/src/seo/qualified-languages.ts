@@ -161,7 +161,7 @@ async function persistLkg(languages: string[], hash: string): Promise<void> {
           expiresAt: new Date(now.getTime() + LKG_TTL_MS),
         },
       },
-      { upsert: true, new: true },
+      { upsert: true, returnDocument: 'after' },
     );
   } catch (err) {
     logger.error('❌ qualified-languages: LKG persist failed', err);
@@ -311,7 +311,7 @@ export async function initializeQualifiedLanguages(): Promise<QualifiedLanguages
               expiresAt: new Date(now.getTime() + LKG_TTL_MS),
             },
           },
-          { upsert: true, new: true },
+          { upsert: true, returnDocument: 'after' },
         );
         logger.warn(
           `⚠️ qualified-languages: seeded LKG with emergency fallback (${seed.length} langs, hash=${hash})`,

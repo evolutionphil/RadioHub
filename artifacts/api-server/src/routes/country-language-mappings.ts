@@ -84,7 +84,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
           notes: notes || '',
           updatedAt: new Date()
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
       // Clear performance cache to force reload
@@ -125,7 +125,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
               notes: mapping.notes || '',
               updatedAt: new Date()
             },
-            { upsert: true, new: true }
+            { upsert: true, returnDocument: 'after' }
           );
         })
       );

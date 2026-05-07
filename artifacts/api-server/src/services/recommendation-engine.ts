@@ -370,7 +370,7 @@ export class RecommendationEngine {
           profileStrength,
           updatedAt: new Date()
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: 'after' }
       );
 
     } catch (error) {

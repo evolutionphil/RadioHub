@@ -90,7 +90,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
           isPlural,
           updatedAt: new Date()
         },
-        { new: true }
+        { returnDocument: 'after' }
       );
 
       if (!updatedKey) {
@@ -312,7 +312,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
             createdAt: new Date(),
             updatedAt: new Date()
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
 
         // Create or update the English translation
@@ -326,7 +326,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
             lastModified: new Date(),
             createdAt: new Date()
           },
-          { upsert: true, new: true }
+          { upsert: true, returnDocument: 'after' }
         );
 
         logger.log(`✅ Added English translation for: ${item.key} = "${item.en}"`);
@@ -473,7 +473,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
           },
           { 
             upsert: true, 
-            new: true 
+            returnDocument: 'after' 
           }
         );
         

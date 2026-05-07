@@ -94,7 +94,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   app.patch("/api/admin/advertisements/:id", requireAdmin, async (req, res) => {
     try {
-      const ad = await Advertisement.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+      const ad = await Advertisement.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { returnDocument: 'after' });
       if (!ad) return res.status(404).json({ error: 'Advertisement not found' });
       res.json(ad);
     } catch (error) {
@@ -144,7 +144,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   app.patch("/api/admin/footer-social-media/:id", requireAdmin, async (req, res) => {
     try {
-      const socialLink = await FooterSocialMedia.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+      const socialLink = await FooterSocialMedia.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { returnDocument: 'after' });
       if (!socialLink) return res.status(404).json({ error: 'Social media link not found' });
       res.json(socialLink);
     } catch (error) {
@@ -239,7 +239,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       if (profilePicture) updateData.profilePicture = profilePicture;
       if (isActive !== undefined) updateData.isActive = isActive;
       updateData.updatedAt = new Date();
-      const user = await User.findByIdAndUpdate(req.params.id, updateData, { new: true }).select('_id email fullName profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive');
+      const user = await User.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' }).select('_id email fullName profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive');
       if (!user) return res.status(404).json({ error: 'User not found' });
       const favoriteCount = await UserFavorite.countDocuments({ userId: user._id.toString() });
       res.json({
@@ -377,7 +377,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       const user = await User.findByIdAndUpdate(
         userId,
         { $set: subscriptionData },
-        { new: true }
+        { returnDocument: 'after' }
       ).select('subscription');
 
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -441,7 +441,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
             'subscription.cancelledAt': new Date(),
           }
         },
-        { new: true }
+        { returnDocument: 'after' }
       ).select('subscription');
 
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -482,7 +482,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       const user = await User.findByIdAndUpdate(
         req.params.id,
         { $set: updateData },
-        { new: true, runValidators: true }
+        { returnDocument: 'after', runValidators: true }
       ).select('subscription fullName email');
 
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -705,7 +705,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   app.patch("/api/admin/seo-metadata/:id", requireAdmin, async (req, res) => {
     try {
-      const entry = await SeoMetadata.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { new: true });
+      const entry = await SeoMetadata.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { returnDocument: 'after' });
       if (!entry) return res.status(404).json({ error: 'SEO metadata entry not found' });
       res.json(entry);
     } catch (error) {

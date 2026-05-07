@@ -36,7 +36,7 @@ export class TranslationVersionService {
           }
         },
         { 
-          new: true,
+          returnDocument: 'after',
           upsert: true
         }
       );

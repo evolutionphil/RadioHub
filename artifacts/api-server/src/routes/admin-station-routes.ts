@@ -533,7 +533,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const updated = await Station.findByIdAndUpdate(
         stationId,
         { $set: update },
-        { new: true, runValidators: false }
+        { returnDocument: 'after', runValidators: false }
       ).lean();
 
       // If favicon URL changed AND it's not already an S3 URL → mirror it to S3 in background.

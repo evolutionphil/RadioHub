@@ -190,7 +190,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     VisitorSession.findOneAndUpdate(
       { ipAddress },
       { $set: { lastActiveDate: new Date(), userAgent: req.get('user-agent') }, $inc: { visitCount: 1 } },
-      { upsert: true, new: true }
+      { upsert: true, returnDocument: 'after' }
     ).catch(() => {});
     next();
   });
