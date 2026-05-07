@@ -198,7 +198,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
   app.get("/api/image/*path", async (req, res) => {
     let slotAcquired = false;
     try {
-      const urlPath = (req.params as any)[0];
+      const rawParam = (req.params as any).path ?? (req.params as any)[0];
+      const urlPath = Array.isArray(rawParam) ? rawParam.join('/') : (rawParam ?? '');
       let originalUrl;
       
       try {
@@ -543,7 +544,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
     let originalUrl: string | undefined;
     try {
-      const urlPath = (req.params as any)[0];
+      const rawParam = (req.params as any).path ?? (req.params as any)[0];
+      const urlPath = Array.isArray(rawParam) ? rawParam.join('/') : (rawParam ?? '');
       try {
         const base64 = urlPath.replace(/-/g, '+').replace(/_/g, '/');
         const padded = base64 + '='.repeat((4 - base64.length % 4) % 4);
