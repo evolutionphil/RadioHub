@@ -201,7 +201,13 @@ export default function SearchPage() {
   // editable control so we don't hijack typing in unrelated inputs.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (
+        e.key !== "ArrowDown" &&
+        e.key !== "ArrowUp" &&
+        e.key !== "Home" &&
+        e.key !== "End"
+      )
+        return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
       const input = inputRef.current;
       if (!input) return;
@@ -226,7 +232,13 @@ export default function SearchPage() {
         if (e.key === "ArrowDown") {
           return i < 0 ? 0 : (i + 1) % flatItems.length;
         }
-        return i <= 0 ? flatItems.length - 1 : i - 1;
+        if (e.key === "ArrowUp") {
+          return i <= 0 ? flatItems.length - 1 : i - 1;
+        }
+        if (e.key === "Home") {
+          return 0;
+        }
+        return flatItems.length - 1;
       });
     };
     window.addEventListener("keydown", onKey);
@@ -287,6 +299,18 @@ export default function SearchPage() {
       if (flatItems.length === 0) return;
       e.preventDefault();
       setActiveIndex((i) => (i <= 0 ? flatItems.length - 1 : i - 1));
+      return;
+    }
+    if (e.key === "Home") {
+      if (flatItems.length === 0) return;
+      e.preventDefault();
+      setActiveIndex(0);
+      return;
+    }
+    if (e.key === "End") {
+      if (flatItems.length === 0) return;
+      e.preventDefault();
+      setActiveIndex(flatItems.length - 1);
       return;
     }
     if (e.key === "Enter") {
