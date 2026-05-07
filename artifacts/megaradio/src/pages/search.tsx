@@ -254,7 +254,7 @@ export default function SearchPage() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold truncate capitalize">
-                            {g.name}
+                            <HighlightMatch text={g.name} query={debounced} />
                           </div>
                           {typeof g.stationCount === "number" && (
                             <div className="text-xs text-gray-400">
@@ -287,7 +287,9 @@ export default function SearchPage() {
                           <Globe size={16} className="text-[#FF4199]" />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="font-semibold truncate">{c.name}</div>
+                          <div className="font-semibold truncate">
+                            <HighlightMatch text={c.name} query={debounced} />
+                          </div>
                           {typeof c.stationCount === "number" && (
                             <div className="text-xs text-gray-400">
                               {c.stationCount.toLocaleString()}{" "}
@@ -336,7 +338,10 @@ export default function SearchPage() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="font-semibold truncate">
-                              {station.name}
+                              <HighlightMatch
+                                text={station.name}
+                                query={debounced}
+                              />
                             </div>
                             <div className="text-xs text-gray-400 truncate">
                               {[station.country, station.genre]
@@ -356,6 +361,37 @@ export default function SearchPage() {
       </div>
     </div>
   );
+}
+
+function HighlightMatch({ text, query }: { text: string; query: string }) {
+  if (!query) return <>{text}</>;
+  const haystack = text;
+  const needle = query;
+  const lowerHay = haystack.toLowerCase();
+  const lowerNeedle = needle.toLowerCase();
+  if (!lowerNeedle || !lowerHay.includes(lowerNeedle)) return <>{text}</>;
+
+  const parts: React.ReactNode[] = [];
+  let i = 0;
+  let key = 0;
+  while (i < haystack.length) {
+    const idx = lowerHay.indexOf(lowerNeedle, i);
+    if (idx === -1) {
+      parts.push(haystack.slice(i));
+      break;
+    }
+    if (idx > i) parts.push(haystack.slice(i, idx));
+    parts.push(
+      <mark
+        key={key++}
+        className="bg-transparent text-[#FF4199] font-bold"
+      >
+        {haystack.slice(idx, idx + needle.length)}
+      </mark>
+    );
+    i = idx + needle.length;
+  }
+  return <>{parts}</>;
 }
 
 function ResultSection({
