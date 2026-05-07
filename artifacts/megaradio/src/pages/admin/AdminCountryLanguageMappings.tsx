@@ -150,6 +150,7 @@ export default function AdminCountryLanguageMappings() {
   const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
   const [confirmResetAll, setConfirmResetAll] = useState(false);
   const [confirmClearOverrides, setConfirmClearOverrides] = useState(false);
+  const [confirmDiscardPending, setConfirmDiscardPending] = useState(false);
 
   const hasActiveFilters =
     searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
@@ -948,6 +949,17 @@ export default function AdminCountryLanguageMappings() {
               )}
               Reset all mappings
             </Button>
+            {hasPendingChanges && (
+              <Button
+                data-testid="button-discard-pending"
+                variant="outline"
+                onClick={() => setConfirmDiscardPending(true)}
+                disabled={bulkSaveMutation.isPending}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Discard pending changes
+              </Button>
+            )}
             <Button
               data-testid="button-save-mappings"
               onClick={handleBulkSave}
@@ -983,6 +995,17 @@ export default function AdminCountryLanguageMappings() {
                   {pendingChanges.size === 1 ? 'change' : 'changes'}.
                 </span>
               </div>
+              <div className="flex items-center gap-2">
+              <Button
+                data-testid="button-discard-pending-banner"
+                size="sm"
+                variant="outline"
+                onClick={() => setConfirmDiscardPending(true)}
+                disabled={bulkSaveMutation.isPending}
+              >
+                <X className="mr-2 h-4 w-4" />
+                Discard
+              </Button>
               <Button
                 data-testid="button-save-mappings-banner"
                 size="sm"
@@ -1001,6 +1024,7 @@ export default function AdminCountryLanguageMappings() {
                   </>
                 )}
               </Button>
+              </div>
             </div>
           )}
 
@@ -1346,6 +1370,42 @@ export default function AdminCountryLanguageMappings() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Reset all mappings
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={confirmDiscardPending}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDiscardPending(false);
+        }}
+      >
+        <AlertDialogContent className="bg-white border border-gray-200 shadow-lg text-gray-900" data-testid="dialog-confirm-discard-pending">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard pending changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear your {pendingChanges.size} unsaved row{pendingChanges.size === 1 ? '' : 's'} of pending edits. Saved mappings in the database won't be touched.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-discard-pending">
+              Keep editing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-discard-pending"
+              onClick={() => {
+                const count = pendingChanges.size;
+                setPendingChanges(new Map());
+                setConfirmDiscardPending(false);
+                toast({
+                  title: 'Pending changes discarded',
+                  description: `Cleared ${count} unsaved row${count === 1 ? '' : 's'}.`,
+                });
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Discard changes
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
