@@ -3,6 +3,15 @@ import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppL
 import { logger } from "../utils/logger";
 import crypto from 'crypto';
 import { isQuotaExceeded, safeWrite, handleQuotaError, isQuotaError } from "../utils/quota-guard";
+import {
+  PRODUCT_TO_PLAN as IAP_PRODUCT_TO_PLAN,
+  PLAN_FEATURES as IAP_PLAN_FEATURES,
+  APPLE_PLATFORMS as IAP_APPLE_PLATFORMS,
+  normalizePlatform as iapNormalizePlatform,
+  verifyAppleReceipt as iapVerifyAppleReceipt,
+  verifyGoogleReceipt as iapVerifyGoogleReceipt,
+  type Platform as IapPlatform,
+} from "../services/iap-verify";
 
 // Escape regex meta-chars so user input cannot trigger NoSQL ReDoS / regex
 // injection on $regex queries. See OWASP "ReDoS" + Mongo $regex docs.
@@ -316,81 +325,120 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
     }
   }
 
+  // SECURITY: This endpoint USED to accept any client-provided receipt and
+  // grant premium without contacting Apple/Google — a critical broken access
+  // control bug exploitable with a single curl. It now defers entirely to the
+  // same Apple verifyReceipt / Google Play Developer API path used by
+  // POST /api/iap/validate, ignores client-provided plan/expiresAt/transactionId,
+  // and rejects unknown platforms. `mac`/`macos`/`tvos` are accepted as Apple
+  // (Universal Purchase: Mac App Store receipts use the same bundle_id and
+  // verifyReceipt endpoint as iOS).
   app.post("/api/user/subscription", requireAuth, async (req, res) => {
     try {
       const userId = req.session?.user?.userId || req.session?.userId;
       if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
-      const { plan, platform, productId, transactionId, originalTransactionId, receipt, purchaseToken, expiresAt, isTrial } = req.body;
+      const { platform: rawPlatform, productId, receipt, purchaseToken } = req.body || {};
 
-      if (!platform || !['ios', 'android'].includes(platform)) {
-        return res.status(400).json({ error: 'platform must be ios or android' });
+      const platform = iapNormalizePlatform(rawPlatform);
+      if (!platform) {
+        return res.status(400).json({
+          error: 'platform must be one of: ios, android, mac, macos, tvos',
+        });
       }
-      if (!productId || !transactionId) {
-        return res.status(400).json({ error: 'productId and transactionId are required' });
+      if (!productId || typeof productId !== 'string') {
+        return res.status(400).json({ error: 'productId is required' });
       }
-
-      const resolvedPlan = plan && VALID_PLANS.includes(plan) ? plan : PRODUCT_TO_PLAN[productId];
-      if (!resolvedPlan || resolvedPlan === 'none') {
-        return res.status(400).json({ error: `Unknown productId: ${productId}. Valid: ${Object.keys(PRODUCT_TO_PLAN).join(', ')}` });
-      }
-
-      const existingUser = await User.findById(userId).select('subscription').lean();
-      if (existingUser) {
-        const existingSub = (existingUser as any).subscription;
-        if (existingSub?.transactionId === transactionId && existingSub?.isActive) {
-          return res.json({
-            success: true,
-            plan: existingSub.plan,
-            expiryDate: existingSub.expiresAt || null,
-            isActive: true,
-            features: PLAN_FEATURES[existingSub.plan as PremiumPlan] || [],
-            note: 'already_active',
-          });
-        }
+      const plan = IAP_PRODUCT_TO_PLAN[productId];
+      if (!plan || plan === 'none') {
+        return res.status(400).json({
+          error: `Unknown productId: ${productId}. Valid: ${Object.keys(IAP_PRODUCT_TO_PLAN).join(', ')}`,
+        });
       }
 
-      let parsedExpiry: Date | null;
-      if (expiresAt) {
-        const d = new Date(expiresAt);
-        parsedExpiry = isNaN(d.getTime()) ? getExpiryForPlan(resolvedPlan) : d;
-      } else {
-        parsedExpiry = getExpiryForPlan(resolvedPlan);
+      // Apple uses `receipt` (base64), Android uses `purchaseToken`. Accept either
+      // field name for backwards compatibility with older mobile clients.
+      const isAndroid = platform === 'android';
+      const credential = isAndroid
+        ? (typeof purchaseToken === 'string' && purchaseToken) || (typeof receipt === 'string' && receipt)
+        : (typeof receipt === 'string' && receipt) || (typeof purchaseToken === 'string' && purchaseToken);
+      if (!credential || typeof credential !== 'string') {
+        return res.status(400).json({
+          error: isAndroid
+            ? 'purchaseToken is required for android'
+            : 'receipt (base64 receipt-data) is required for ios/mac/tvos',
+        });
       }
 
-      const subscriptionData: any = {
-        'subscription.plan': resolvedPlan,
+      const result = IAP_APPLE_PLATFORMS.includes(platform)
+        ? await iapVerifyAppleReceipt(credential, productId)
+        : await iapVerifyGoogleReceipt(credential, productId);
+
+      if (!result.valid) {
+        logger.log(`[IAP] /api/user/subscription rejected: ${result.code} — ${result.error}`);
+        return res.status(400).json({ error: result.error, code: String(result.code ?? 'invalid_receipt') });
+      }
+
+      // Same global replay-guard as /api/iap/validate: a single transaction may
+      // only be attached to one user, otherwise an attacker who lapses their
+      // sub could re-attach the same receipt to a fresh account.
+      const replayQuery: any = {
+        _id: { $ne: userId },
+        $or: [{ 'subscription.originalTransactionId': result.originalTransactionId }],
+      };
+      if (isAndroid) replayQuery.$or.push({ 'subscription.purchaseToken': credential });
+      const conflict = await User.findOne(replayQuery).select('_id').lean();
+      if (conflict) {
+        logger.log(`[IAP] Replay blocked at /api/user/subscription: txn=${result.originalTransactionId} requested by user=${userId}, owned by user=${(conflict as any)._id}`);
+        return res.status(409).json({
+          error: 'Receipt is already attached to another account',
+          code: 'receipt_replay',
+        });
+      }
+
+      const expiresAtDate = result.isLifetime ? null : (result.expiresAt ? new Date(result.expiresAt) : null);
+
+      const existing = await User.findById(userId).select('subscription').lean();
+      const existingSub: any = (existing as any)?.subscription;
+      const isSameTxn =
+        existingSub?.originalTransactionId === result.originalTransactionId && existingSub?.isActive;
+
+      const setFields: any = {
+        'subscription.plan': plan,
         'subscription.platform': platform,
-        'subscription.productId': productId,
-        'subscription.transactionId': transactionId,
+        'subscription.productId': result.productId,
+        'subscription.transactionId': result.originalTransactionId,
+        'subscription.originalTransactionId': result.originalTransactionId,
         'subscription.isActive': true,
         'subscription.lastVerifiedAt': new Date(),
-        'subscription.startedAt': new Date(),
-        'subscription.expiresAt': parsedExpiry,
+        'subscription.expiresAt': expiresAtDate,
       };
+      const unsetFields: any = {};
+      if (isAndroid) {
+        setFields['subscription.purchaseToken'] = credential;
+        unsetFields['subscription.receipt'] = '';
+      } else {
+        setFields['subscription.receipt'] = credential;
+      }
+      if (!isSameTxn && !existingSub?.startedAt) setFields['subscription.startedAt'] = new Date();
 
-      if (originalTransactionId) subscriptionData['subscription.originalTransactionId'] = originalTransactionId;
-      if (receipt) subscriptionData['subscription.receipt'] = receipt;
-      if (purchaseToken) subscriptionData['subscription.purchaseToken'] = purchaseToken;
-      if (typeof isTrial === 'boolean') subscriptionData['subscription.isTrial'] = isTrial;
+      const op: any = { $set: setFields };
+      if (Object.keys(unsetFields).length) op.$unset = unsetFields;
 
-      const user = await User.findByIdAndUpdate(
-        userId,
-        { $set: subscriptionData },
-        { returnDocument: 'after' }
-      ).select('subscription');
-
+      const user = await User.findByIdAndUpdate(userId, op, { returnDocument: 'after', runValidators: true })
+        .select('subscription');
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       res.json({
         success: true,
-        plan: resolvedPlan,
-        expiryDate: parsedExpiry,
+        plan,
+        expiryDate: expiresAtDate,
         isActive: true,
-        features: PLAN_FEATURES[resolvedPlan],
+        features: IAP_PLAN_FEATURES[plan],
+        ...(result.environment ? { environment: result.environment } : {}),
       });
     } catch (error: any) {
-      console.error('Subscription update error:', error.message);
+      logger.error('[IAP] /api/user/subscription update error:', error?.message || error);
       res.status(500).json({ error: 'Failed to update subscription' });
     }
   });
@@ -427,10 +475,37 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
     }
   });
 
+  // SECURITY/UX: Store-billed subscriptions (Apple/Google) MUST be cancelled
+  // through the user's App Store / Play Store account — flipping isActive=false
+  // here would silently downgrade entitlements while the store keeps charging.
+  // For those platforms we return 409 with an actionRequired hint so the
+  // mobile client can deep-link into the store's manage-subscription screen.
+  // Lifetime, admin-granted, and web-billed plans (none of which exist yet
+  // but are reserved) can still be cancelled locally.
   app.post("/api/user/subscription/cancel", requireAuth, async (req, res) => {
     try {
       const userId = req.session?.user?.userId || req.session?.userId;
       if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+      const existing = await User.findById(userId).select('subscription').lean();
+      if (!existing) return res.status(404).json({ error: 'User not found' });
+      const sub: any = (existing as any).subscription;
+      const platform = sub?.platform;
+      const isStoreBilled = platform === 'ios' || platform === 'macos' || platform === 'tvos' || platform === 'android';
+      const isLifetime = sub?.plan === 'premium_lifetime';
+
+      if (isStoreBilled && !isLifetime) {
+        const manageUrl = (platform === 'android')
+          ? 'https://play.google.com/store/account/subscriptions'
+          : 'https://apps.apple.com/account/subscriptions';
+        return res.status(409).json({
+          error: 'Subscriptions purchased through the App Store / Play Store must be cancelled there.',
+          code: 'manage_in_store',
+          actionRequired: 'open_store_subscriptions',
+          platform,
+          manageUrl,
+        });
+      }
 
       const user = await User.findByIdAndUpdate(
         userId,
@@ -446,9 +521,10 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
       if (!user) return res.status(404).json({ error: 'User not found' });
 
+      logger.log(`[IAP] /cancel local-cancel user=${userId} previousPlatform=${platform || 'none'}`);
       res.json({ success: true, plan: 'none', isActive: false, features: [] });
     } catch (error: any) {
-      console.error('Subscription cancel error:', error.message);
+      logger.error('[IAP] /cancel error:', error?.message || error);
       res.status(500).json({ error: 'Failed to cancel subscription' });
     }
   });

@@ -49,6 +49,7 @@ import { registerRegionsRecommendationsRoutes } from './routes/regions-recommend
 import { registerMiscRoutes } from './routes/misc-routes';
 import { registerIapValidationRoutes } from './routes/iap-validation-routes';
 import { registerAdminIapRoutes } from './routes/admin-iap-routes';
+import { registerAppleWebhookRoutes } from './routes/iap-apple-webhook';
 import { registerAdminMaintenanceRoutes } from './routes/admin-maintenance-routes';
 import { registerAdminPreferencesRoutes } from './routes/admin-preferences-routes';
 import { registerSilentPushRoutes } from './routes/silent-push-routes';
@@ -602,6 +603,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerMiscRoutes(app, deps, { apiOnly: isApiOnly });
   registerIapValidationRoutes(app);
   registerAdminIapRoutes(app, deps);
+  registerAppleWebhookRoutes(app);
   registerAdminMaintenanceRoutes(app, deps);
   registerAdminPreferencesRoutes(app, deps);
   registerSilentPushRoutes(app, deps);

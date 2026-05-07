@@ -2811,3 +2811,41 @@ export const AdminPreference = mongoose.model<IAdminPreference>(
   'AdminPreference',
   AdminPreferenceSchema,
 );
+
+// =====================================================================
+// AppleWebhookEvent — idempotency store for App Store Server Notifications V2
+//
+// Apple may retry the same notification many times (network failures, our 5xx,
+// out-of-order delivery, etc.). The notificationUUID is the unique payload
+// identifier per Apple docs. We do an insert-or-409 on this collection to
+// short-circuit replays before mutating User.subscription.
+// =====================================================================
+export interface IAppleWebhookEvent {
+  notificationUUID: string;
+  notificationType: string;
+  subtype?: string;
+  signedDate?: Date;
+  originalTransactionId?: string;
+  bundleId?: string;
+  environment?: string;
+  receivedAt: Date;
+}
+
+const AppleWebhookEventSchema = new Schema<IAppleWebhookEvent>({
+  notificationUUID: { type: String, required: true, unique: true, index: true },
+  notificationType: { type: String, required: true },
+  subtype: { type: String, default: '' },
+  signedDate: { type: Date, default: null },
+  originalTransactionId: { type: String, default: '', index: true },
+  bundleId: { type: String, default: '' },
+  environment: { type: String, default: '' },
+  // 90-day TTL — Apple won't retry beyond a few days but we keep a window for forensics.
+  receivedAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 90 },
+});
+
+AppleWebhookEventSchema.index({ originalTransactionId: 1, signedDate: -1 });
+
+export const AppleWebhookEvent = mongoose.model<IAppleWebhookEvent>(
+  'AppleWebhookEvent',
+  AppleWebhookEventSchema,
+);

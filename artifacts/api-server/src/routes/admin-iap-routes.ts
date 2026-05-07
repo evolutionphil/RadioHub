@@ -201,6 +201,102 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
   );
 
   // -------------------------------------------------------------
+  // DELETE /api/admin/users/:id/subscription
+  // Hard revoke: clears all subscription fields back to the default "none"
+  // shape. Used by support to fully detach a user from a refunded/disputed
+  // purchase or to clear a fraudulently-attached receipt that was caught by
+  // the IAP audit log. Different from /cancel which preserves productId/txn
+  // history. Writes an IapEvent with result='success', platform='unknown',
+  // and providerCode='admin_revoke' so the action shows up in the audit log.
+  // -------------------------------------------------------------
+  app.delete(
+    "/api/admin/users/:id/subscription",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const id = String(req.params.id || "");
+        if (!mongoose.isValidObjectId(id)) {
+          return res.status(400).json({ error: "Invalid user id" });
+        }
+
+        const before = await User.findById(id).select("subscription email").lean();
+        if (!before) return res.status(404).json({ error: "User not found" });
+        const prevSub: any = (before as any).subscription || {};
+
+        const user = await User.findByIdAndUpdate(
+          id,
+          {
+            $set: {
+              "subscription.plan": "none",
+              "subscription.isActive": false,
+              "subscription.cancelledAt": new Date(),
+              "subscription.lastVerifiedAt": new Date(),
+            },
+            $unset: {
+              "subscription.platform": "",
+              "subscription.productId": "",
+              "subscription.transactionId": "",
+              "subscription.originalTransactionId": "",
+              "subscription.receipt": "",
+              "subscription.purchaseToken": "",
+              "subscription.expiresAt": "",
+              "subscription.startedAt": "",
+              "subscription.isTrial": "",
+            },
+          },
+          { returnDocument: "after", runValidators: true },
+        ).select("subscription email fullName");
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        // Audit row so the revoke shows up alongside Apple/Google IAP events.
+        try {
+          await IapEvent.create({
+            userId: new mongoose.Types.ObjectId(id),
+            platform:
+              prevSub.platform === "android"
+                ? "android"
+                : prevSub.platform === "ios" || prevSub.platform === "macos" || prevSub.platform === "tvos"
+                ? "ios"
+                : "unknown",
+            productId: prevSub.productId || "",
+            transactionId: prevSub.transactionId || "",
+            originalTransactionId: prevSub.originalTransactionId || "",
+            result: "success",
+            providerCode: "admin_revoke",
+            statusCode: 200,
+            errorMessage: `Admin revoke (was plan=${prevSub.plan || "none"}, platform=${prevSub.platform || "none"})`,
+            plan: "none",
+            expiresAt: null,
+            isLifetime: false,
+            ip:
+              (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() ||
+              req.ip ||
+              "",
+            userAgent: (req.headers["user-agent"] as string) || "",
+          });
+        } catch (auditErr: any) {
+          logger.error("[admin] revoke audit write failed:", auditErr?.message || auditErr);
+        }
+
+        logger.log(`[admin] subscription HARD-REVOKED user=${id} email=${(user as any).email} previousPlan=${prevSub.plan || "none"}`);
+        return res.json({
+          success: true,
+          subscription: (user as any).subscription,
+          previousSubscription: {
+            plan: prevSub.plan,
+            platform: prevSub.platform,
+            productId: prevSub.productId,
+            originalTransactionId: prevSub.originalTransactionId,
+          },
+        });
+      } catch (err: any) {
+        logger.error("[admin] subscription revoke failed:", err?.message || err);
+        return res.status(500).json({ error: "Failed to revoke subscription" });
+      }
+    },
+  );
+
+  // -------------------------------------------------------------
   // POST /api/admin/users/:id/subscription/grant-lifetime
   // Admin override: grants the lifetime premium plan. Sets platform='admin'
   // so it's clear in the audit trail this didn't come from Apple/Google.
