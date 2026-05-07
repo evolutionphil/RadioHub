@@ -818,6 +818,26 @@ export default function AdminCountryLanguageMappings() {
       return !!def && m.languageCode !== def;
     }).length || 0;
 
+  // Detailed list of overrides shown in the "Clear overrides" confirmation
+  // dialog so admins can see exactly which countries will be reset and what
+  // language each one will fall back to. Sorted alphabetically by country
+  // name for predictable scanning.
+  const persistedOverrides = useMemo(() => {
+    if (!existingMappings) return [];
+    return existingMappings
+      .filter(m => {
+        const def = defaultsMap.get(m.countryCode);
+        return !!def && m.languageCode !== def;
+      })
+      .map(m => ({
+        countryCode: m.countryCode,
+        countryName: m.countryName || m.countryCode,
+        currentLanguageCode: m.languageCode,
+        defaultLanguageCode: defaultsMap.get(m.countryCode) || '',
+      }))
+      .sort((a, b) => a.countryName.localeCompare(b.countryName));
+  }, [existingMappings, defaultsMap]);
+
   return (
     <div className="container mx-auto py-8 px-4">
       <Card>
@@ -1319,6 +1339,50 @@ export default function AdminCountryLanguageMappings() {
               edits in the table are not affected. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {persistedOverrides.length > 0 && (
+            <div
+              className="max-h-64 overflow-y-auto rounded-md border border-gray-200 bg-gray-50"
+              data-testid="list-clear-overrides-preview"
+            >
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Country</th>
+                    <th className="px-3 py-2 font-medium">Current</th>
+                    <th className="px-3 py-2 font-medium">Falls back to</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {persistedOverrides.map((o) => {
+                    const currentName = languageNameMap.get(o.currentLanguageCode);
+                    const defaultName = languageNameMap.get(o.defaultLanguageCode);
+                    return (
+                      <tr
+                        key={o.countryCode}
+                        className="border-t border-gray-200"
+                        data-testid={`row-clear-overrides-preview-${o.countryCode}`}
+                      >
+                        <td className="px-3 py-2">
+                          <span className="font-medium text-gray-900">{o.countryName}</span>{' '}
+                          <span className="text-xs text-gray-500">({o.countryCode})</span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          {currentName
+                            ? `${currentName} (${o.currentLanguageCode})`
+                            : o.currentLanguageCode}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          {defaultName
+                            ? `${defaultName} (${o.defaultLanguageCode})`
+                            : o.defaultLanguageCode}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel data-testid="button-cancel-clear-overrides">
               Cancel
