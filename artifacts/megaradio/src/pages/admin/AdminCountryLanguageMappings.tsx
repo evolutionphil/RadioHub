@@ -107,6 +107,7 @@ export default function AdminCountryLanguageMappings() {
   type SortColumn = 'country' | 'status' | 'updatedAt';
   type SortDirection = 'asc' | 'desc';
   const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
+  const [showOverridesOnly, setShowOverridesOnly] = useState(false);
 
   // Hydrate view preferences from localStorage on mount.
   useEffect(() => {
@@ -562,13 +563,22 @@ export default function AdminCountryLanguageMappings() {
     if (!countries) return [];
 
     const term = searchTerm.trim().toLowerCase();
-    const filtered = term
+    let filtered = term
       ? countries.filter(
           country =>
             country.name.toLowerCase().includes(term) ||
             country.code.toLowerCase().includes(term)
         )
       : countries;
+
+    if (showOverridesOnly) {
+      filtered = filtered.filter(country => {
+        const effective =
+          pendingChanges.get(country.code) ?? mappingsMap.get(country.code) ?? '';
+        const defaultLanguage = defaultsMap.get(country.code);
+        return !!effective && !!defaultLanguage && effective !== defaultLanguage;
+      });
+    }
 
     if (!sort) return filtered;
 
@@ -625,7 +635,7 @@ export default function AdminCountryLanguageMappings() {
       return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
     });
     return sorted;
-  }, [countries, searchTerm, sort, updatedAtMap, pendingChanges, mappingsMap, defaultsMap]);
+  }, [countries, searchTerm, sort, updatedAtMap, pendingChanges, mappingsMap, defaultsMap, showOverridesOnly]);
 
   const handleToggleSort = (column: SortColumn) => {
     setSort(prev => {
@@ -760,6 +770,20 @@ export default function AdminCountryLanguageMappings() {
             </Button>
             <div className="flex items-center gap-2">
               <Checkbox
+                id="show-overrides-only"
+                data-testid="checkbox-show-overrides-only"
+                checked={showOverridesOnly}
+                onCheckedChange={(checked) => setShowOverridesOnly(checked === true)}
+              />
+              <Label
+                htmlFor="show-overrides-only"
+                className="text-sm font-normal cursor-pointer whitespace-nowrap"
+              >
+                Show overrides only
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
                 id="overwrite-existing"
                 data-testid="checkbox-overwrite-existing"
                 checked={overwriteExisting}
@@ -890,8 +914,16 @@ export default function AdminCountryLanguageMappings() {
               <TableBody>
                 {filteredCountries.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                      No countries found
+                    <TableCell
+                      colSpan={7}
+                      className="text-center py-8 text-muted-foreground"
+                      data-testid="text-empty-state"
+                    >
+                      {showOverridesOnly
+                        ? searchTerm.trim()
+                          ? 'No overrides match your search.'
+                          : 'No overrides yet — every mapped country uses its default language.'
+                        : 'No countries found'}
                     </TableCell>
                   </TableRow>
                 ) : (
