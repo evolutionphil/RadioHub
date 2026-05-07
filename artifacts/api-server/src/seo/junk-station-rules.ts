@@ -218,21 +218,7 @@ export function isJunkStation(station: any): boolean {
   return evaluateJunkStation(station).isJunk;
 }
 
-/**
- * Architect Fix #2 — numeric-only slug detection (Phase A: soft noindex).
- *
- * Slugs like `-911`, `-2330`, `-1975`, `12345` carry no semantic content for a
- * station detail page. Search Console reports them en-masse in the
- * "Crawled - currently not indexed" bucket. We do NOT mark them junk (which
- * would 410 them) yet, because some legitimate brands use numeric callsigns
- * — instead we mark the page noindex (200 + meta robots noindex + matching
- * X-Robots-Tag header via Fix #1) and let Google drop them from the index
- * organically. Phase B (after measurement) may upgrade these to 410.
- *
- * Pattern: an optional leading `-`, then 1+ digits, nothing else.
- *   matches: "1234", "-1234", "9", "-0"
- *   rejects: "104-9fm", "radio-100", "abc", "1234abc"
- */
+/** Slug is a bare number (with optional leading `-`), e.g. `1234` or `-911`. */
 export function isNumericOnlySlug(slug?: string | null): boolean {
   if (!slug || typeof slug !== 'string') return false;
   return /^-?\d+$/.test(slug.trim().toLowerCase());
