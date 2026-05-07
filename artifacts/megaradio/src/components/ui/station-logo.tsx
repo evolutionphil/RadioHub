@@ -44,21 +44,35 @@ const SIZES = {
 
 const FALLBACK_IMAGE = '/images/no-image.webp';
 
-// NoImage Fallback Component - #3E3E3E background with musikno8.svg icon centered
+// NoImage Fallback Component - #3E3E3E background with inline music-note icon
 function NoImageFallback({ className }: { className?: string }) {
   return (
-    <div 
+    <div
       className={cn("flex items-center justify-center", className)}
-      style={{ 
+      style={{
         backgroundColor: '#3E3E3E',
-        borderRadius: '9.95px'
+        borderRadius: '9.95px',
       }}
+      aria-label="No image"
+      role="img"
     >
-      <img 
-        src="/icons/musikno8.svg" 
-        alt="No image" 
-        className="w-[44%] h-[43%] object-contain"
-      />
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="w-[44%] h-[43%]"
+        aria-hidden="true"
+      >
+        <path
+          d="M9 18V5l12-2v13"
+          stroke="#FFFFFF"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        <circle cx="6" cy="18" r="3" fill="#FFFFFF" />
+        <circle cx="18" cy="16" r="3" fill="#FFFFFF" />
+      </svg>
     </div>
   );
 }
