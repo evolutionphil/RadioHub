@@ -5,7 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2, Crown, Sparkles, AlertTriangle } from "lucide-react";
+import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2, Crown, Sparkles, AlertTriangle, Tag } from "lucide-react";
 import StationTable from "@/components/stations/station-table";
 import StationForm from "@/components/stations/station-form";
 import Filters from "@/components/stations/filters";
@@ -58,6 +58,8 @@ export default function Stations() {
   const [generatingStationId, setGeneratingStationId] = useState<string | null>(null);
   const [generatingStationName, setGeneratingStationName] = useState<string>('');
   const [selectedStations, setSelectedStations] = useState<Set<string>>(new Set());
+  const [recheckingTagsStationId, setRecheckingTagsStationId] = useState<string | null>(null);
+  const [isBulkRecheckingTags, setIsBulkRecheckingTags] = useState(false);
   const [selectedLanguages, setSelectedLanguages] = useState<Set<string>>(new Set(['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he']));
   
   // Persist job ID to localStorage for recovery after navigation
@@ -574,6 +576,96 @@ export default function Stations() {
     }
   };
 
+  const handleRecheckStationTags = async (station: any) => {
+    const stationId = station._id || station.id;
+    if (!stationId) return;
+    setRecheckingTagsStationId(stationId);
+    try {
+      const response = await fetch(
+        `/api/admin/stations/${stationId}/recheck-tags`,
+        {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+        },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to re-check tags');
+      }
+      if (data.hydrated) {
+        toast({
+          title: 'Tags refreshed',
+          description: `"${station.name}" → ${data.tags || ''}`,
+        });
+      } else if (data.emptyUpstream) {
+        toast({
+          title: 'Still empty upstream',
+          description: `Radio-Browser returned no tags for "${station.name}".`,
+        });
+      } else {
+        toast({ title: 'Tags re-checked', description: station.name });
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+      refetch();
+    } catch (error: any) {
+      toast({
+        title: 'Re-check failed',
+        description: error?.message || 'Failed to re-check tags',
+        variant: 'destructive',
+      });
+    } finally {
+      setRecheckingTagsStationId(null);
+    }
+  };
+
+  const handleBulkRecheckTags = async () => {
+    const ids = Array.from(selectedStations);
+    const country = ids.length === 0 ? filters.country : undefined;
+    if (ids.length === 0 && !country) {
+      toast({
+        title: 'Nothing to re-check',
+        description: 'Select stations or pick a country filter first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const scope =
+      ids.length > 0
+        ? `${ids.length} selected station${ids.length === 1 ? '' : 's'}`
+        : `country ${country}`;
+    if (!confirm(`Re-check tags from Radio-Browser for ${scope}?`)) return;
+    setIsBulkRecheckingTags(true);
+    try {
+      const response = await fetch('/api/admin/stations/recheck-tags-bulk', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          stationIds: ids.length > 0 ? ids : undefined,
+          countryCode: country || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data?.success === false) {
+        throw new Error(data?.error || 'Failed to start bulk re-check');
+      }
+      toast({
+        title: 'Tag re-check started',
+        description: `Cleared cooldown for ${data.cleared ?? 0} station(s); hydration running in the background.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+    } catch (error: any) {
+      toast({
+        title: 'Bulk re-check failed',
+        description: error?.message || 'Failed to start bulk re-check',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkRecheckingTags(false);
+    }
+  };
+
   const handleRestoreStation = (blacklistedStation: any) => {
     if (confirm(`Are you sure you want to restore "${blacklistedStation.name}"?`)) {
       restoreMutation.mutate(blacklistedStation._id);
@@ -879,6 +971,27 @@ export default function Stations() {
               >
                 <AlertTriangle className="w-4 h-4 mr-2" />
                 {isDetectingTranslated ? 'Scanning...' : 'Fix Translated Names'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleBulkRecheckTags}
+                disabled={isBulkRecheckingTags || (selectedStations.size === 0 && !filters.country)}
+                className="w-full sm:w-auto bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white border-0"
+                title={
+                  selectedStations.size > 0
+                    ? `Re-check tags from Radio-Browser for ${selectedStations.size} selected station(s)`
+                    : filters.country
+                      ? `Re-check tags from Radio-Browser for empty-tag stations in ${filters.country}`
+                      : 'Select stations or pick a country first'
+                }
+                data-testid="button-bulk-recheck-tags"
+              >
+                <Tag className="w-4 h-4 mr-2" />
+                {isBulkRecheckingTags
+                  ? 'Re-checking...'
+                  : selectedStations.size > 0
+                    ? `Re-check Tags (${selectedStations.size})`
+                    : 'Re-check Tags'}
               </Button>
               {aiJobStatus?.status === 'running' && (
                 <Button 
@@ -1294,10 +1407,12 @@ export default function Stations() {
               onPlay={handlePlayStation}
               onGenerateAi={handleGenerateAiDescription}
               onTranslate={handleTranslateDescriptions}
+              onRecheckTags={handleRecheckStationTags}
               onSort={handleSort}
               sortBy={filters.sortBy || 'name'}
               sortOrder={filters.sortOrder || 'asc'}
               generatingStationId={generatingStationId}
+              recheckingTagsStationId={recheckingTagsStationId}
               selectedStations={selectedStations}
               onSelectedStationsChange={setSelectedStations}
             />

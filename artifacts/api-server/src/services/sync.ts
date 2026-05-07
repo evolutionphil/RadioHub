@@ -853,6 +853,184 @@ export class SyncService {
 
     return { processed, hydrated, emptyUpstream, failed };
   }
+
+  /**
+   * Admin-triggered: re-query Radio-Browser tags for a single station and
+   * write the result back. Bypasses the `tagsCheckedAt` cooldown that
+   * `hydrateMissingTagsInBackground` honours, so admins can force a refresh
+   * for stations stamped as upstream-empty.
+   */
+  async recheckStationTags(
+    stationId: string,
+  ): Promise<{
+    success: boolean;
+    hydrated: boolean;
+    emptyUpstream: boolean;
+    tags?: string;
+    error?: string;
+  }> {
+    type RadioBrowserTagsResponse = Array<{ tags?: string }>;
+    interface StationTagProjection {
+      _id: mongoose.Types.ObjectId;
+      stationuuid?: string;
+      name?: string;
+    }
+    if (!mongoose.Types.ObjectId.isValid(stationId)) {
+      return { success: false, hydrated: false, emptyUpstream: false, error: 'Invalid stationId' };
+    }
+    const station = (await Station.findById(stationId)
+      .select('_id stationuuid name')
+      .lean()) as unknown as StationTagProjection | null;
+    if (!station) {
+      return { success: false, hydrated: false, emptyUpstream: false, error: 'Station not found' };
+    }
+    const uuid = station.stationuuid;
+    if (!uuid) {
+      return {
+        success: false,
+        hydrated: false,
+        emptyUpstream: false,
+        error: 'Station has no stationuuid; cannot query Radio-Browser',
+      };
+    }
+    try {
+      const apiResp = await axios.get<RadioBrowserTagsResponse>(
+        `https://de1.api.radio-browser.info/json/stations/byuuid/${encodeURIComponent(uuid)}`,
+        {
+          timeout: 10000,
+          headers: { 'User-Agent': 'MegaRadio/1.0 (tags-recheck-admin)' },
+        },
+      );
+      const remote = Array.isArray(apiResp.data) ? apiResp.data[0] : null;
+      const tags =
+        remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
+      const now = new Date();
+      if (!tags) {
+        await Station.updateOne(
+          { _id: station._id },
+          { $set: { tagsCheckedAt: now } },
+        );
+        return { success: true, hydrated: false, emptyUpstream: true, tags: '' };
+      }
+      await Station.updateOne(
+        { _id: station._id },
+        { $set: { tags, tagsCheckedAt: now } },
+      );
+      return { success: true, hydrated: true, emptyUpstream: false, tags };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn(`🏷️ recheckStationTags failed for ${uuid}: ${message}`);
+      return {
+        success: false,
+        hydrated: false,
+        emptyUpstream: false,
+        error: message || 'Radio-Browser request failed',
+      };
+    }
+  }
+
+  /**
+   * Admin-triggered: re-query Radio-Browser tags for an explicit set of
+   * station IDs. Like `recheckStationTags` but processes multiple
+   * stations in batches with conservative concurrency, and bypasses the
+   * `tagsCheckedAt` cooldown. Used by the bulk admin re-check route so
+   * targeted requests actually hit the targeted stations (instead of
+   * the global candidate pool that `hydrateMissingTagsInBackground`
+   * scans).
+   */
+  async recheckStationsTagsByIds(
+    stationIds: string[],
+  ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number }> {
+    interface StationTagProjection {
+      _id: mongoose.Types.ObjectId;
+      stationuuid?: string;
+      name?: string;
+    }
+    type RadioBrowserTagsResponse = Array<{ tags?: string }>;
+
+    const validIds = stationIds.filter((id) =>
+      mongoose.Types.ObjectId.isValid(id),
+    );
+    let processed = 0;
+    let hydrated = 0;
+    let emptyUpstream = 0;
+    let failed = 0;
+    if (validIds.length === 0) {
+      return { processed, hydrated, emptyUpstream, failed };
+    }
+
+    try {
+      const stations = (await Station.find({
+        _id: { $in: validIds.map((id) => new mongoose.Types.ObjectId(id)) },
+        stationuuid: { $exists: true, $nin: [null, ''] },
+      })
+        .select('_id stationuuid name')
+        .lean()) as unknown as StationTagProjection[];
+
+      if (stations.length === 0) {
+        logger.log('🏷️ Bulk re-check: no eligible stations found');
+        return { processed, hydrated, emptyUpstream, failed };
+      }
+
+      logger.log(
+        `🏷️ Admin bulk re-check: processing ${stations.length} station(s)`,
+      );
+
+      const batchSize = 10;
+      for (let i = 0; i < stations.length; i += batchSize) {
+        const batch = stations.slice(i, i + batchSize);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (station) => {
+            const uuid = station.stationuuid as string;
+            const apiResp = await axios.get<RadioBrowserTagsResponse>(
+              `https://de1.api.radio-browser.info/json/stations/byuuid/${encodeURIComponent(uuid)}`,
+              {
+                timeout: 10000,
+                headers: { 'User-Agent': 'MegaRadio/1.0 (tags-recheck-admin-bulk)' },
+              },
+            );
+            const remote = Array.isArray(apiResp.data) ? apiResp.data[0] : null;
+            const tags =
+              remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
+            const now = new Date();
+            if (!tags) {
+              await Station.updateOne(
+                { _id: station._id },
+                { $set: { tagsCheckedAt: now } },
+              );
+              return { hydrated: false, empty: true };
+            }
+            await Station.updateOne(
+              { _id: station._id },
+              { $set: { tags, tagsCheckedAt: now } },
+            );
+            return { hydrated: true, empty: false };
+          }),
+        );
+
+        for (const r of batchResults) {
+          processed++;
+          if (r.status === 'fulfilled') {
+            if (r.value.hydrated) hydrated++;
+            else if (r.value.empty) emptyUpstream++;
+          } else {
+            failed++;
+          }
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 750));
+      }
+
+      logger.log(
+        `✅ Admin bulk re-check completed: ${hydrated} hydrated, ${emptyUpstream} upstream-empty, ${failed} failed (of ${processed})`,
+      );
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`❌ Admin bulk re-check failed: ${message}`);
+    }
+
+    return { processed, hydrated, emptyUpstream, failed };
+  }
 }
 
 export const syncService = new SyncService();

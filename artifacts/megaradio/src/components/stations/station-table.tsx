@@ -2,7 +2,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Edit, Play, Pause, Trash2, ArrowUpDown, Radio, Circle, Sparkles } from "lucide-react";
+import { Edit, Play, Pause, Trash2, ArrowUpDown, Radio, Circle, Sparkles, Tag } from "lucide-react";
 import { useState, useRef } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
 // MongoDB stations use _id instead of id
@@ -36,9 +36,11 @@ interface StationTableProps {
   onPlay: (station: MongoStation) => void;
   onGenerateAi?: (station: MongoStation) => void;
   onTranslate?: (station: MongoStation) => void;
+  onRecheckTags?: (station: MongoStation) => void;
   sortBy: string;
   sortOrder: 'asc' | 'desc';
   generatingStationId?: string | null;
+  recheckingTagsStationId?: string | null;
   selectedStations?: Set<string>;
   onSelectedStationsChange?: (selected: Set<string>) => void;
 }
@@ -51,9 +53,11 @@ export default function StationTable({
   onPlay,
   onGenerateAi,
   onTranslate,
+  onRecheckTags,
   sortBy,
   sortOrder,
   generatingStationId,
+  recheckingTagsStationId,
   selectedStations = new Set(),
   onSelectedStationsChange,
 }: StationTableProps) {
@@ -400,6 +404,19 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
                     🌍
                   </Button>
                 )}
+                {onRecheckTags && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onRecheckTags(station)}
+                    disabled={recheckingTagsStationId === station._id}
+                    className={`h-8 w-8 p-0 ${recheckingTagsStationId === station._id ? 'text-emerald-400 opacity-50 cursor-not-allowed animate-pulse' : 'text-emerald-600 hover:text-emerald-700'}`}
+                    title={recheckingTagsStationId === station._id ? 'Re-checking tags...' : 'Re-check tags from Radio-Browser'}
+                    data-testid={`button-recheck-tags-${station._id}`}
+                  >
+                    <Tag className="h-3 w-3" />
+                  </Button>
+                )}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -643,6 +660,19 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
                       title="Translate to common languages"
                     >
                       🌍
+                    </Button>
+                  )}
+                  {onRecheckTags && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onRecheckTags(station)}
+                      disabled={recheckingTagsStationId === station._id}
+                      className={`w-8 h-8 p-0 ${recheckingTagsStationId === station._id ? 'text-emerald-400 opacity-50 cursor-not-allowed animate-pulse' : 'text-emerald-600 hover:text-emerald-700'}`}
+                      title={recheckingTagsStationId === station._id ? 'Re-checking tags...' : 'Re-check tags from Radio-Browser'}
+                      data-testid={`button-recheck-tags-desktop-${station._id}`}
+                    >
+                      <Tag className="w-4 h-4" />
                     </Button>
                   )}
                   <Button

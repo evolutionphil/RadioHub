@@ -4,7 +4,7 @@ import mongoose from "mongoose";
 import multer from "multer";
 import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob } from "../shared/mongo-schemas";
 import { logger } from "../utils/logger";
-import { normalizeCountryFilter } from "../utils/normalize-country";
+import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
 import { PrecomputedStationsService } from "../services/precomputed-stations";
 import { logoProcessor } from "../services/logo-processor";
@@ -982,4 +982,163 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       res.status(500).json({ error: 'Failed to drop collection', details: error.message });
     }
   });
+
+  // Re-check tags from Radio-Browser for a single station (admin override).
+  // Bypasses the `tagsCheckedAt` cooldown that the background hydration job
+  // honours, so admins can force a refresh on stations stamped as
+  // upstream-empty.
+  app.post(
+    "/api/admin/stations/:stationId/recheck-tags",
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { stationId } = req.params;
+        const result = await syncService.recheckStationTags(stationId);
+        if (!result.success) {
+          return res.status(400).json(result);
+        }
+        return res.json(result);
+      } catch (error: any) {
+        logger.error('recheck-tags single failed', error);
+        return res
+          .status(500)
+          .json({ success: false, error: error?.message || 'Failed to re-check tags' });
+      }
+    },
+  );
+
+  // Bulk re-check tags. Clears `tagsCheckedAt` for the targeted stations
+  // (so the next hydration sweep re-queries them) and immediately kicks off
+  // the hydration job in the background. Targeting is via either
+  // `stationIds` (specific stations) or `countryCode` (all empty-tag
+  // stations in that country). At least one must be provided.
+  app.post(
+    "/api/admin/stations/recheck-tags-bulk",
+    express.json({ limit: '1mb' }),
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { stationIds, countryCode } = (req.body || {}) as {
+          stationIds?: unknown;
+          countryCode?: unknown;
+        };
+
+        const ids = Array.isArray(stationIds)
+          ? (stationIds.filter(
+              (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id),
+            ) as string[])
+          : [];
+        const rawCountry =
+          typeof countryCode === 'string' && countryCode.trim()
+            ? countryCode.trim()
+            : undefined;
+
+        if (ids.length === 0 && !rawCountry) {
+          return res.status(400).json({
+            success: false,
+            error: 'Provide stationIds or countryCode',
+          });
+        }
+
+        // Country input may arrive as either an ISO code (e.g. "DE")
+        // or a full DB country name (e.g. "Germany") — the admin
+        // filters dropdown sends the latter via `/api/filters/countries`.
+        // Resolve both forms so the bulk path matches reliably.
+        let resolvedIso: string | undefined;
+        let countryFilter: Record<string, unknown> = {};
+        if (rawCountry) {
+          const dbName = resolveToDbName(rawCountry);
+          if (dbName) {
+            const iso = dbNameToIso(dbName);
+            if (iso) {
+              resolvedIso = iso.toUpperCase();
+              countryFilter = {
+                $or: [
+                  { countryCode: resolvedIso },
+                  { country: { $regex: new RegExp(`^${dbName}$`, 'i') } },
+                ],
+              };
+            } else {
+              countryFilter = {
+                country: { $regex: new RegExp(`^${dbName}$`, 'i') },
+              };
+            }
+          } else {
+            // Fall back to a regex match on the raw input.
+            countryFilter = normalizeCountryFilter(rawCountry);
+          }
+        }
+
+        const filter: Record<string, unknown> = {};
+        if (ids.length > 0) {
+          filter._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+        } else {
+          Object.assign(filter, countryFilter);
+          filter.$and = [
+            {
+              $or: [
+                { tags: { $exists: false } },
+                { tags: null },
+                { tags: '' },
+              ],
+            },
+          ];
+        }
+
+        const updateResult: import('mongodb').UpdateResult = await Station.updateMany(
+          filter,
+          { $unset: { tagsCheckedAt: '' } },
+        );
+        const cleared = updateResult.modifiedCount ?? 0;
+        const matched = updateResult.matchedCount ?? cleared;
+
+        // Kick off the actual re-query in the background so the admin
+        // gets immediate feedback. Targeted ID requests use the
+        // ID-scoped helper so we re-query exactly those stations;
+        // country requests use the country-scoped hydration sweep
+        // (which itself filters on `countryCode` ISO).
+        if (ids.length > 0) {
+          void syncService
+            .recheckStationsTagsByIds(ids)
+            .catch((err) => logger.error('bulk tags recheck (ids) failed', err));
+        } else if (resolvedIso) {
+          void syncService
+            .hydrateMissingTagsInBackground({
+              countryCode: resolvedIso,
+              limit: Math.max(matched, 1000),
+            })
+            .catch((err) => logger.error('bulk tags recheck (country) failed', err));
+        } else if (rawCountry) {
+          // No ISO code resolvable — fall back to ID-scoped sweep
+          // over the matched stations so we still re-query them.
+          const matchedDocs = (await Station.find(filter)
+            .select('_id')
+            .limit(5000)
+            .lean()) as unknown as Array<{ _id: mongoose.Types.ObjectId }>;
+          const matchedIds = matchedDocs.map((d) => d._id.toString());
+          if (matchedIds.length > 0) {
+            void syncService
+              .recheckStationsTagsByIds(matchedIds)
+              .catch((err) =>
+                logger.error('bulk tags recheck (country fallback) failed', err),
+              );
+          }
+        }
+
+        return res.json({
+          success: true,
+          cleared,
+          matched,
+          countryCode: resolvedIso ?? rawCountry,
+          stationIdsCount: ids.length,
+          message: `Cleared tagsCheckedAt for ${cleared} station(s) (${matched} matched); re-check job started`,
+        });
+      } catch (error: any) {
+        logger.error('recheck-tags bulk failed', error);
+        return res
+          .status(500)
+          .json({ success: false, error: error?.message || 'Failed to bulk re-check tags' });
+      }
+    },
+  );
 }
