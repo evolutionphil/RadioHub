@@ -582,6 +582,7 @@ export class SeoRenderer {
           isJunkStation,
           getIndexableLanguagesForStation,
           isStationIndexableInLanguage,
+          isNumericOnlySlug,
         } = await import('./seo/junk-station-rules');
         const { getCachedQualifiedLanguages } = await import('./seo/qualified-languages');
 
@@ -595,8 +596,12 @@ export class SeoRenderer {
         const indexable = getIndexableLanguagesForStation(stationData, qualifiedLangs);
         const langIneligible =
           !isJunk && !isStationIndexableInLanguage(stationData, language, qualifiedLangs);
+        // Architect Fix #2 (Phase A): numeric-only slugs (`-911`, `1234`, …)
+        // serve as 200/noindex so Google drops them from the index without
+        // 410-ing legitimate numeric-callsign brands. Phase B may escalate.
+        const numericOnlySlug = !isJunk && isNumericOnlySlug(stationData.slug);
 
-        if (isJunk || langIneligible) {
+        if (isJunk || langIneligible || numericOnlySlug) {
           seoTags.robots = 'noindex, follow';
           seoTags.noIndex = true;
 

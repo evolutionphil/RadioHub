@@ -614,6 +614,26 @@ app.use('/api/stream', streamServiceProxy);
         sendJunkGone(res);
         return;
       }
+      // Architect Fix #1: sync X-Robots-Tag header with HTML <meta robots>.
+      // Global middleware sets `index, follow` by default; if SSR decided this
+      // page should be noindex (langIneligible / noIndex flag) the cached HTML
+      // already contains <meta name="robots" content="noindex, follow"> — but
+      // the header still says index. Google treats the contradiction as a
+      // negative signal → "Crawled - currently not indexed". Mirror the meta.
+      //
+      // Cache coherence note (architect review): seoHtmlCache (8000 keys) and
+      // pageDataCache (5000 keys) can diverge — and pageData is sometimes
+      // keyed by `cleanUrl|lang=…` while seoHtml is keyed by `cleanUrl` only.
+      // So `cachedPage?.seoTags?.noIndex` can miss for language-pinned bots.
+      // We fall back to a substring check on the cached HTML (cheap, O(n))
+      // so the header always matches the meta even when pageData is evicted.
+      const cachedNoIndex =
+        cachedPage?.seoTags?.noIndex === true ||
+        /<meta[^>]+name=["']robots["'][^>]+content=["'][^"']*noindex/i.test(cachedHtml);
+      if (cachedNoIndex) {
+        res.removeHeader('X-Robots-Tag');
+        res.setHeader('X-Robots-Tag', 'noindex, follow');
+      }
       res.status(200).set({
         'Content-Type': 'text/html',
         'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
@@ -776,6 +796,18 @@ app.use('/api/stream', streamServiceProxy);
 
         if (!stationNotFound) {
           performanceCache.setSeoHtml(cleanUrl, htmlContent);
+        }
+        // Architect Fix #1: sync X-Robots-Tag header with HTML <meta robots>.
+        // langIneligible station pages (and other noIndex-flagged pages) emit
+        // <meta name="robots" content="noindex, follow"> in the HTML. The
+        // global middleware (index-web.ts:165-172) defaults the header to
+        // `index, follow` for non-auth paths, which contradicts the meta.
+        // Google logs the inconsistency and parks the URL in
+        // "Crawled - currently not indexed". Mirror the meta on the header
+        // for both 200 and 404 responses.
+        if (seoTags?.noIndex === true) {
+          res.removeHeader('X-Robots-Tag');
+          res.setHeader('X-Robots-Tag', 'noindex, follow');
         }
         res.status(stationNotFound ? 404 : 200).set({
           'Content-Type': 'text/html',
