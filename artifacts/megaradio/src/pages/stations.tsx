@@ -83,6 +83,10 @@ export default function Stations() {
       setBulkAiJobId(savedJobId);
       setShowAiDialog(true);
     }
+    const savedRecheckJobId = localStorage.getItem('recheckTagsJobId');
+    if (savedRecheckJobId) {
+      setRecheckTagsJobId(savedRecheckJobId);
+    }
   }, []);
 
   const [filters, setFilters] = useState<StationFilters>({
@@ -123,6 +127,15 @@ export default function Stations() {
       localStorage.removeItem('bulkAiJobId');
     }
   }, [bulkAiJobId]);
+
+  // Persist tag re-check job ID for recovery after page reload
+  useEffect(() => {
+    if (recheckTagsJobId) {
+      localStorage.setItem('recheckTagsJobId', recheckTagsJobId);
+    } else {
+      localStorage.removeItem('recheckTagsJobId');
+    }
+  }, [recheckTagsJobId]);
   
   // Debounce search to avoid too many API calls
   const debouncedSearch = useDebounce(filters.search, 300);
@@ -379,7 +392,11 @@ export default function Stations() {
         `/api/admin/stations/recheck-tags-job-status/${recheckTagsJobId}`,
         { credentials: 'include' },
       );
-      if (!response.ok) return null;
+      if (!response.ok) {
+        // Job is no longer known to the server (expired/evicted after a
+        // reload). Clear the persisted id so the stale indicator goes away.
+        return { success: false } as const;
+      }
       return response.json();
     },
     enabled: !!recheckTagsJobId,
@@ -390,8 +407,17 @@ export default function Stations() {
   });
 
   useEffect(() => {
+    if (!recheckTagsJobId) return;
+    if (recheckTagsJobStatus === undefined) return;
     const job = recheckTagsJobStatus?.job;
-    if (!job) return;
+    if (!job) {
+      // Server has no record of this job (likely expired after a reload).
+      // Drop the persisted id so the indicator clears gracefully.
+      if (recheckTagsJobStatus && recheckTagsJobStatus.success === false) {
+        setRecheckTagsJobId(null);
+      }
+      return;
+    }
     if (job.status === 'running') return;
     if (recheckJobCompletedRef.current.has(job.jobId)) return;
     recheckJobCompletedRef.current.add(job.jobId);
@@ -416,7 +442,7 @@ export default function Stations() {
     const timer = setTimeout(() => setRecheckTagsJobId(null), 5000);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recheckTagsJobStatus]);
+  }, [recheckTagsJobStatus, recheckTagsJobId]);
 
   // Handle AI generation start
   const handleStartBulkAi = () => {
