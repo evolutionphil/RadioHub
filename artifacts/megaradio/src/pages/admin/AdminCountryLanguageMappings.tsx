@@ -153,11 +153,15 @@ export default function AdminCountryLanguageMappings() {
   const [confirmClearOverrides, setConfirmClearOverrides] = useState(false);
   const [confirmDiscardPending, setConfirmDiscardPending] = useState(false);
 
-  // In-memory log of recently cleared override snapshots so admins who miss
-  // the ~10s Undo toast can still recover. Capped to the last 5 entries and
-  // intentionally not persisted — session lifetime is plenty for this.
+  // In-memory log of recently cleared/reset mapping snapshots so admins who
+  // miss the ~10s Undo toast can still recover. Capped to the last 5 entries
+  // and intentionally not persisted — session lifetime is plenty for this.
+  // `kind` distinguishes the two destructive actions so the panel can label
+  // them ("Cleared overrides" vs "Reset all mappings").
+  type RecentClearKind = 'cleared-overrides' | 'reset-all';
   interface RecentClearAction {
     id: string;
+    kind: RecentClearKind;
     timestamp: number;
     snapshot: CountryLanguageMapping[];
     restoring?: boolean;
@@ -403,6 +407,7 @@ export default function AdminCountryLanguageMappings() {
         setRecentClearedActions(prev => {
           const entry: RecentClearAction = {
             id: recentEntryId,
+            kind: 'cleared-overrides',
             timestamp: Date.now(),
             snapshot,
           };
@@ -485,6 +490,26 @@ export default function AdminCountryLanguageMappings() {
       const snapshot = context?.snapshot ?? [];
       const canUndo = count > 0 && snapshot.length > 0;
 
+      // Mirror the Clear-overrides flow: log a snapshot into the recent
+      // bulk actions panel so admins can recover the full mappings list
+      // after the toast Undo window expires. Reset all is the most
+      // destructive action on the page, so this safety net matters most
+      // here.
+      const recentEntryId = canUndo
+        ? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+        : null;
+      if (canUndo && recentEntryId) {
+        setRecentClearedActions(prev => {
+          const entry: RecentClearAction = {
+            id: recentEntryId,
+            kind: 'reset-all',
+            timestamp: Date.now(),
+            snapshot,
+          };
+          return [entry, ...prev].slice(0, RECENT_CLEAR_ACTIONS_LIMIT);
+        });
+      }
+
       const { dismiss } = toast({
         title: count > 0 ? 'All mappings cleared' : 'No mappings to clear',
         description: count > 0
@@ -496,7 +521,15 @@ export default function AdminCountryLanguageMappings() {
             altText="Undo resetting all mappings"
             data-testid="button-undo-reset-all"
             onClick={() => {
-              restoreOverridesMutation.mutate(snapshot);
+              restoreOverridesMutation.mutate(snapshot, {
+                onSuccess: () => {
+                  if (recentEntryId) {
+                    setRecentClearedActions(prev =>
+                      prev.filter(e => e.id !== recentEntryId),
+                    );
+                  }
+                },
+              });
               dismiss();
             }}
           >
@@ -1206,17 +1239,22 @@ export default function AdminCountryLanguageMappings() {
                 {recentClearedActions.map((entry) => {
                   const count = entry.snapshot.length;
                   const when = new Date(entry.timestamp);
+                  const isResetAll = entry.kind === 'reset-all';
+                  const ActionIcon = isResetAll ? Trash : Trash2;
+                  const iconColor = isResetAll ? 'text-destructive' : 'text-amber-500';
+                  const label = isResetAll
+                    ? `Reset all mappings (${count} ${count === 1 ? 'mapping' : 'mappings'})`
+                    : `Cleared overrides (${count} ${count === 1 ? 'override' : 'overrides'})`;
                   return (
                     <li
                       key={entry.id}
                       data-testid={`row-recent-action-${entry.id}`}
+                      data-action-kind={entry.kind}
                       className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm"
                     >
                       <div className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
-                        <Trash2 className="h-4 w-4 text-amber-500" />
-                        <span>
-                          Cleared {count} {count === 1 ? 'override' : 'overrides'}
-                        </span>
+                        <ActionIcon className={`h-4 w-4 ${iconColor}`} />
+                        <span>{label}</span>
                         <span
                           className="text-xs text-muted-foreground"
                           title={when.toLocaleString()}
