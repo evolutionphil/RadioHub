@@ -104,7 +104,7 @@ export default function AdminCountryLanguageMappings() {
   const [overwriteExisting, setOverwriteExisting] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
   const [confirmResetAll, setConfirmResetAll] = useState(false);
-  type SortColumn = 'country' | 'status' | 'updatedAt';
+  type SortColumn = 'code' | 'country' | 'status' | 'updatedAt';
   type SortDirection = 'asc' | 'desc';
   const [sort, setSort] = useState<{ column: SortColumn; direction: SortDirection } | null>(null);
   const [showOverridesOnly, setShowOverridesOnly] = useState(false);
@@ -614,6 +614,14 @@ export default function AdminCountryLanguageMappings() {
       return sorted;
     }
 
+    if (sort.column === 'code') {
+      const sorted = [...filtered].sort((a, b) =>
+        a.code.localeCompare(b.code, undefined, { sensitivity: 'base' }),
+      );
+      if (sort.direction === 'desc') sorted.reverse();
+      return sorted;
+    }
+
     // sort.column === 'status'
     // Status precedence (asc): Pending → Override → Mapped → Default.
     const statusRank = (country: Country): number => {
@@ -885,7 +893,24 @@ export default function AdminCountryLanguageMappings() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12">#</TableHead>
-                  <TableHead className="w-24">Code</TableHead>
+                  <TableHead className="w-24 p-0" aria-sort={ariaSortFor('code')}>
+                    <button
+                      type="button"
+                      data-testid="button-sort-code"
+                      onClick={() => handleToggleSort('code')}
+                      aria-label={
+                        sort?.column === 'code' && sort.direction === 'desc'
+                          ? 'Sorted by code, Z to A. Click to sort A to Z.'
+                          : sort?.column === 'code' && sort.direction === 'asc'
+                            ? 'Sorted by code, A to Z. Click to sort Z to A.'
+                            : 'Sort by code'
+                      }
+                      className="inline-flex w-full items-center justify-start gap-1 px-4 py-3 text-sm font-medium hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm"
+                    >
+                      <span>Code</span>
+                      {renderSortIcon('code')}
+                    </button>
+                  </TableHead>
                   <TableHead className="p-0" aria-sort={ariaSortFor('country')}>
                     <button
                       type="button"
