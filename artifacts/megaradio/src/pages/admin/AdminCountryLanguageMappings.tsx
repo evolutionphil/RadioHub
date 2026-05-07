@@ -149,6 +149,7 @@ export default function AdminCountryLanguageMappings() {
   const [pendingChanges, setPendingChanges] = useState<Map<string, string>>(new Map());
   const [pendingDelete, setPendingDelete] = useState<Country | null>(null);
   const [confirmResetAll, setConfirmResetAll] = useState(false);
+  const [confirmClearOverrides, setConfirmClearOverrides] = useState(false);
 
   const hasActiveFilters =
     searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
@@ -272,6 +273,57 @@ export default function AdminCountryLanguageMappings() {
       toast({
         title: 'Error',
         description: error.message || 'Failed to clear mapping',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  // Delete only the overridden mappings (those whose language differs from the
+  // hardcoded COUNTRY_TO_LANGUAGE default). Other mappings are left intact.
+  const clearOverridesMutation = useMutation<{ success: boolean; deletedCount: number }>({
+    mutationFn: async () => {
+      const res = await apiRequest('DELETE', '/api/admin/country-language-mappings/overrides');
+      return (await res.json()) as { success: boolean; deletedCount: number };
+    },
+    onSuccess: (data) => {
+      const deleted = data?.deletedCount ?? 0;
+      // Drop pending edits for any country whose DB mapping was just removed,
+      // so the row returns to "Default" instead of showing a stale pending value.
+      setPendingChanges(prev => {
+        if (prev.size === 0) return prev;
+        const next = new Map<string, string>();
+        prev.forEach((value, code) => {
+          const existing = mappingsMap.get(code);
+          const def = defaultsMap.get(code);
+          const wasOverride = !!existing && !!def && existing !== def;
+          if (!wasOverride) next.set(code, value);
+        });
+        return next;
+      });
+      // Optimistically drop overridden mappings from the cache so the
+      // overrides-only filter shows the empty state immediately.
+      queryClient.setQueryData<CountryLanguageMapping[]>(
+        ['/api/admin/country-language-mappings'],
+        (old) => {
+          if (!old) return old;
+          return old.filter(m => {
+            const def = defaultsMap.get(m.countryCode);
+            return !def || m.languageCode === def;
+          });
+        },
+      );
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      toast({
+        title: deleted > 0 ? 'Overrides cleared' : 'No overrides to clear',
+        description: deleted > 0
+          ? `Removed ${deleted} ${deleted === 1 ? 'override' : 'overrides'}. Affected countries will fall back to their default language.`
+          : 'No mappings differed from their hardcoded default.',
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to clear overrides',
         variant: 'destructive',
       });
     },
@@ -755,6 +807,15 @@ export default function AdminCountryLanguageMappings() {
       const def = defaultsMap.get(c.code);
       return !!effective && !!def && effective !== def;
     }).length || 0;
+  // Counts only persisted DB mappings whose languageCode differs from the
+  // hardcoded default. This is what the "Clear overrides" backend deletes,
+  // so it must drive the button enabled state and the confirmation copy —
+  // unsaved pending edits don't get touched by that action.
+  const persistedOverrideCount =
+    existingMappings?.filter(m => {
+      const def = defaultsMap.get(m.countryCode);
+      return !!def && m.languageCode !== def;
+    }).length || 0;
 
   return (
     <div className="container mx-auto py-8 px-4">
@@ -849,6 +910,25 @@ export default function AdminCountryLanguageMappings() {
             >
               <Wand2 className="mr-2 h-4 w-4" />
               Auto-fill from defaults
+            </Button>
+            <Button
+              data-testid="button-clear-overrides"
+              variant="outline"
+              onClick={() => setConfirmClearOverrides(true)}
+              disabled={
+                persistedOverrideCount === 0 ||
+                clearOverridesMutation.isPending ||
+                resetAllMutation.isPending ||
+                bulkSaveMutation.isPending
+              }
+              className="text-destructive hover:text-destructive"
+            >
+              {clearOverridesMutation.isPending ? (
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="mr-2 h-4 w-4" />
+              )}
+              Clear overrides
             </Button>
             <Button
               data-testid="button-reset-all-mappings"
@@ -1190,6 +1270,44 @@ export default function AdminCountryLanguageMappings() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Clear mapping
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={confirmClearOverrides}
+        onOpenChange={(open) => {
+          if (!open) setConfirmClearOverrides(false);
+        }}
+      >
+        <AlertDialogContent
+          className="bg-white border border-gray-200 shadow-lg text-gray-900"
+          data-testid="dialog-confirm-clear-overrides"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear overridden mappings?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the {persistedOverrideCount} saved country{' '}
+              {persistedOverrideCount === 1 ? 'mapping' : 'mappings'} that differ from the
+              hardcoded defaults. Those countries will fall back to their default language.
+              Saved mappings that already match the default are kept as-is, and any unsaved
+              edits in the table are not affected. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-clear-overrides">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-clear-overrides"
+              onClick={() => {
+                clearOverridesMutation.mutate();
+                setConfirmClearOverrides(false);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Clear overrides
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

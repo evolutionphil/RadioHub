@@ -148,6 +148,44 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     }
   });
 
+  // Delete only the country-language mappings whose languageCode differs from
+  // the hardcoded COUNTRY_TO_LANGUAGE default. After deletion, the affected
+  // countries fall back to that default. Mappings that already match the
+  // default (or whose country is missing from the default map) are left alone.
+  app.delete('/api/admin/country-language-mappings/overrides', requireAdmin, async (_req, res) => {
+    try {
+      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { COUNTRY_TO_LANGUAGE } = await import('../shared/seo-config');
+
+      const allMappings = await CountryLanguageMapping
+        .find({}, { countryCode: 1, languageCode: 1 })
+        .lean<Array<{ countryCode: string; languageCode: string }>>();
+      const defaults = COUNTRY_TO_LANGUAGE as Record<string, string>;
+      const overrideCountryCodes = allMappings
+        .filter(m => {
+          const def = defaults[m.countryCode];
+          return !!def && m.languageCode !== def;
+        })
+        .map(m => m.countryCode);
+
+      if (overrideCountryCodes.length === 0) {
+        return res.json({ success: true, deletedCount: 0 });
+      }
+
+      const result = await CountryLanguageMapping.deleteMany({ countryCode: { $in: overrideCountryCodes } });
+
+      // Clear performance cache to force reload
+      const { performanceCache } = await import('../performance-cache');
+      performanceCache.clearCountryLanguageMappings();
+
+      console.log(`✅ Deleted ${result.deletedCount} overridden country-language mappings`);
+      res.json({ success: true, deletedCount: result.deletedCount });
+    } catch (error) {
+      console.error('Error deleting overridden country-language mappings:', error);
+      res.status(500).json({ error: 'Failed to delete overridden country-language mappings' });
+    }
+  });
+
   // Delete all country-language mappings
   app.delete('/api/admin/country-language-mappings', requireAdmin, async (_req, res) => {
     try {
