@@ -843,6 +843,42 @@ export default function AdminCountryLanguageMappings() {
             </Button>
           </div>
 
+          {/* Unsaved changes banner */}
+          {hasPendingChanges && (
+            <div
+              data-testid="banner-unsaved-changes"
+              role="status"
+              aria-live="polite"
+              className="sticky top-0 z-20 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-orange-500/40 bg-orange-50 px-4 py-3 shadow-sm dark:bg-orange-950/40"
+            >
+              <div className="flex items-center gap-2 text-sm text-orange-900 dark:text-orange-100">
+                <AlertTriangle className="h-4 w-4 text-orange-500" />
+                <span>
+                  You have {pendingChanges.size} unsaved{' '}
+                  {pendingChanges.size === 1 ? 'change' : 'changes'}.
+                </span>
+              </div>
+              <Button
+                data-testid="button-save-mappings-banner"
+                size="sm"
+                onClick={handleBulkSave}
+                disabled={bulkSaveMutation.isPending}
+              >
+                {bulkSaveMutation.isPending ? (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="mr-2 h-4 w-4" />
+                    Save Changes
+                  </>
+                )}
+              </Button>
+            </div>
+          )}
+
           {/* Mappings Table */}
           <div className="border rounded-lg">
             <Table>
