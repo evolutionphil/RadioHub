@@ -308,17 +308,17 @@ export default function AdminCountryLanguageMappings() {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
       const restored = data?.restoredCount ?? 0;
       toast({
-        title: 'Overrides restored',
+        title: 'Mappings restored',
         description:
           restored > 0
-            ? `Restored ${restored} ${restored === 1 ? 'override' : 'overrides'}.`
+            ? `Restored ${restored} ${restored === 1 ? 'mapping' : 'mappings'}.`
             : 'Nothing to restore.',
       });
     },
     onError: (error: any) => {
       toast({
         title: 'Error',
-        description: error.message || 'Failed to restore overrides',
+        description: error.message || 'Failed to restore mappings',
         variant: 'destructive',
       });
     },
@@ -411,13 +411,25 @@ export default function AdminCountryLanguageMappings() {
     },
   });
 
-  // Delete all country-language mappings
-  const resetAllMutation = useMutation<{ success: boolean; deletedCount: number }>({
+  // Delete all country-language mappings. Captures the full snapshot in
+  // `onMutate` so the toast's "Undo" action can restore every mapping
+  // (countryCode, countryName, languageCode, isActive, notes) exactly as
+  // it was, reusing the existing /restore endpoint.
+  const resetAllMutation = useMutation<
+    { success: boolean; deletedCount: number },
+    Error,
+    void,
+    { snapshot: CountryLanguageMapping[] }
+  >({
     mutationFn: async () => {
       const res = await apiRequest('DELETE', '/api/admin/country-language-mappings');
       return (await res.json()) as { success: boolean; deletedCount: number };
     },
-    onSuccess: (data) => {
+    onMutate: () => {
+      const snapshot = (existingMappings ?? []).map(m => ({ ...m }));
+      return { snapshot };
+    },
+    onSuccess: (data, _vars, context) => {
       // Clear any pending changes since the table is now empty
       setPendingChanges(new Map());
       // Optimistically empty the cache so the UI updates immediately
@@ -427,11 +439,28 @@ export default function AdminCountryLanguageMappings() {
       );
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
       const count = data?.deletedCount ?? 0;
-      toast({
-        title: 'All mappings cleared',
+
+      const snapshot = context?.snapshot ?? [];
+      const canUndo = count > 0 && snapshot.length > 0;
+
+      const { dismiss } = toast({
+        title: count > 0 ? 'All mappings cleared' : 'No mappings to clear',
         description: count > 0
           ? `Removed ${count} ${count === 1 ? 'mapping' : 'mappings'}. All countries will fall back to defaults.`
           : 'All mappings have been removed.',
+        duration: canUndo ? 10000 : 5000,
+        action: canUndo ? (
+          <ToastAction
+            altText="Undo resetting all mappings"
+            data-testid="button-undo-reset-all"
+            onClick={() => {
+              restoreOverridesMutation.mutate(snapshot);
+              dismiss();
+            }}
+          >
+            Undo
+          </ToastAction>
+        ) : undefined,
       });
     },
     onError: (error: any) => {
@@ -1495,7 +1524,7 @@ export default function AdminCountryLanguageMappings() {
             <AlertDialogDescription>
               This will permanently remove all {existingMappings?.length || 0} country-language
               mappings from the database. Every country will fall back to its hardcoded default
-              language. This action cannot be undone.
+              language. You'll have a brief window to undo this from the toast.
               {hasPendingChanges && (
                 <span className="mt-2 block font-medium text-destructive" data-testid="text-reset-all-pending-warning">
                   You also have {pendingChanges.size} unsaved row{pendingChanges.size === 1 ? '' : 's'} of pending edits. Those changes will be discarded along with the database mappings.
