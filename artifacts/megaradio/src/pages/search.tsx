@@ -193,6 +193,45 @@ export default function SearchPage() {
 
   const [activeIndex, setActiveIndex] = useState(-1);
   const itemRefs = useRef<Map<string, HTMLAnchorElement | null>>(new Map());
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  // Snap focus back to the search input when the user presses Arrow Up/Down
+  // anywhere on the page, so keyboard navigation keeps working even after a
+  // click moves focus elsewhere. We skip when focus is already in another
+  // editable control so we don't hijack typing in unrelated inputs.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const input = inputRef.current;
+      if (!input) return;
+      const active = document.activeElement as HTMLElement | null;
+      if (active === input) return;
+      if (
+        active &&
+        (active.tagName === "INPUT" ||
+          active.tagName === "TEXTAREA" ||
+          active.tagName === "SELECT" ||
+          active.isContentEditable)
+      ) {
+        return;
+      }
+      if (flatItems.length === 0) {
+        input.focus();
+        return;
+      }
+      e.preventDefault();
+      input.focus();
+      setActiveIndex((i) => {
+        if (e.key === "ArrowDown") {
+          return i < 0 ? 0 : (i + 1) % flatItems.length;
+        }
+        return i <= 0 ? flatItems.length - 1 : i - 1;
+      });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [flatItems.length]);
 
   // Reset focus when the result set changes
   useEffect(() => {
@@ -283,6 +322,7 @@ export default function SearchPage() {
           />
           <input
             data-testid="input-search"
+            ref={inputRef}
             type="search"
             autoFocus
             value={query}
