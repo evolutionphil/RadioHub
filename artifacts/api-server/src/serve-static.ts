@@ -24,7 +24,7 @@ export function serveStatic(app: Express) {
 
   app.use(express.static(distPath));
 
-  app.use("*", (_req, res) => {
+  app.use("/*splat", (_req, res) => {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
