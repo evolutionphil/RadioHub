@@ -122,6 +122,12 @@ export const api = {
     return response.json();
   },
 
+  // Tags-status summary (counts of stations stuck in the empty-tags cooldown)
+  getStationsTagsStatusSummary: async (): Promise<{ emptyCooldown: number; neverChecked: number }> => {
+    const response = await apiRequest('GET', '/api/admin/stations/tags-status-summary');
+    return response.json();
+  },
+
   // Sync
   forceSync: async () => {
     const response = await apiRequest('POST', '/api/sync/force');

@@ -22,6 +22,31 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 
+function TagsStatusBadge({ onClick }: { onClick: () => void }) {
+  const { data } = useQuery({
+    queryKey: ['/api/admin/stations/tags-status-summary'],
+    queryFn: () => api.getStationsTagsStatusSummary(),
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  if (!data || data.emptyCooldown <= 0) return null;
+
+  const formatted = data.emptyCooldown.toLocaleString();
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title="Stations with no tags whose latest Radio-Browser re-check came back empty and are still inside the 30-day cooldown. Click to filter."
+      data-testid="badge-empty-tags-cooldown"
+      className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+    >
+      <Tag className="w-3.5 h-3.5" />
+      <span>{formatted} stuck on empty (cooldown)</span>
+    </button>
+  );
+}
+
 export default function Stations() {
   const { toast } = useToast();
   const { playStation, nextStation, previousStation } = useGlobalPlayer();
@@ -608,6 +633,7 @@ export default function Stations() {
         toast({ title: 'Tags re-checked', description: station.name });
       }
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/stations/tags-status-summary'] });
       refetch();
     } catch (error: any) {
       toast({
@@ -656,6 +682,7 @@ export default function Stations() {
         description: `Cleared cooldown for ${data.cleared ?? 0} station(s); hydration running in the background.`,
       });
       queryClient.invalidateQueries({ queryKey: ['/api/admin/stations'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/stations/tags-status-summary'] });
     } catch (error: any) {
       toast({
         title: 'Bulk re-check failed',
@@ -945,7 +972,16 @@ export default function Stations() {
       <Card>
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
-            <CardTitle className="text-lg sm:text-xl">Station Management</CardTitle>
+            <div className="flex items-center gap-3 flex-wrap">
+              <CardTitle className="text-lg sm:text-xl">Station Management</CardTitle>
+              <TagsStatusBadge
+                onClick={() => {
+                  setShowDuplicates(false);
+                  setShowBlacklisted(false);
+                  handleFilterChange('tagsStatus', 'empty-cooldown');
+                }}
+              />
+            </div>
             <div className="mt-4 sm:mt-0 flex flex-col sm:flex-row gap-2 sm:gap-3">
               <Button onClick={handleAddStation} className="w-full sm:w-auto">
                 <Plus className="w-4 h-4 mr-2" />

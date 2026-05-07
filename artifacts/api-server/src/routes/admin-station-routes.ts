@@ -293,6 +293,53 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // TAGS-STATUS SUMMARY - Count stations stuck in the 30-day Radio-Browser
+  // empty-tag cooldown (and the never-checked tagless bucket) so the admin UI
+  // can surface a live KPI without applying the filter manually.
+  app.get('/api/admin/stations/tags-status-summary', requireAdmin, async (req, res) => {
+    try {
+      const cacheKey = 'admin:stations:tags-status-summary';
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+
+      const emptyTagsPredicate = {
+        $or: [
+          { tags: { $exists: false } },
+          { tags: null },
+          { tags: '' },
+          { tags: { $regex: /^\s*$/ } },
+        ],
+      };
+      const cooldownCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+      const [emptyCooldown, neverChecked] = await Promise.all([
+        Station.countDocuments({
+          $and: [emptyTagsPredicate, { tagsCheckedAt: { $gte: cooldownCutoff } }],
+        }),
+        Station.countDocuments({
+          $and: [
+            emptyTagsPredicate,
+            {
+              $or: [
+                { tagsCheckedAt: { $exists: false } },
+                { tagsCheckedAt: null },
+              ],
+            },
+          ],
+        }),
+      ]);
+
+      const result = { emptyCooldown, neverChecked };
+      await CacheManager.set(cacheKey, result, { ttl: 300 });
+      res.json(result);
+    } catch (error: any) {
+      logger.error(`Error in /api/admin/stations/tags-status-summary: ${error?.message || error}`);
+      res.status(500).json({ error: 'Failed to fetch tags status summary' });
+    }
+  });
+
   // PRECOMPUTED ADMIN API - Status and triggers
   app.get('/api/admin/precomputed/status', requireAdmin, async (req, res) => {
     try {
