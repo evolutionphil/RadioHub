@@ -259,6 +259,33 @@ export default function SearchPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [flatItems.length]);
 
+  // Escape closes the search page when the input is empty, or clears the
+  // input first when there's text. Works regardless of where focus is, so
+  // users can dismiss /search without first clicking back into the input.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      if (query !== "") {
+        setQuery("");
+        setActiveIndex(-1);
+        inputRef.current?.focus();
+        return;
+      }
+      if (
+        typeof window !== "undefined" &&
+        window.history.length > 1
+      ) {
+        window.history.back();
+      } else {
+        navigate(langPrefix || "/");
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [query, navigate, langPrefix]);
+
   // Reset focus when the result set changes
   useEffect(() => {
     setActiveIndex(-1);
@@ -296,14 +323,9 @@ export default function SearchPage() {
   );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Escape") {
-      if (query !== "") {
-        e.preventDefault();
-        setQuery("");
-        setActiveIndex(-1);
-      }
-      return;
-    }
+    // Escape is handled by the global window listener above so the same
+    // logic runs whether the input is focused or not — see the Escape
+    // useEffect for the clear-then-close behavior.
     if (e.key === "ArrowDown") {
       if (flatItems.length === 0) return;
       e.preventDefault();
