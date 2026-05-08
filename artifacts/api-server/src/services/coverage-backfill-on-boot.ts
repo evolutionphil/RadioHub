@@ -24,6 +24,11 @@
  * cron-written rows. Even so, the day-count gate prevents the seeder
  * from being re-run on every restart once the collection has been seeded.
  *
+ * Status visibility (Task #232): every decision and outcome is also
+ * persisted into the singleton `coveragebackfillstatuses` doc so the
+ * admin coverage page can show the last boot-backfill outcome without
+ * forcing admins to grep stdout.
+ *
  * Safety knobs:
  *   - `SKIP_COVERAGE_BACKFILL_ON_BOOT=true` short-circuits this entirely.
  *     Useful for split deployments where only one replica should run it,
@@ -33,7 +38,11 @@
  *     (default 30, matching the admin sparkline window).
  */
 
-import { CoverageSnapshot } from '@workspace/db-shared/mongo-schemas';
+import {
+  CoverageSnapshot,
+  CoverageBackfillStatus,
+  type CoverageBackfillBootOutcome,
+} from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { runCoverageBackfill } from '../scripts/backfill-coverage-snapshots';
 
@@ -55,6 +64,82 @@ function todayUtcMidnight(): Date {
 let hasRunOnce = false;
 
 /**
+ * Persist the latest boot-backfill outcome into the singleton status doc
+ * so the admin coverage page can read it. Best-effort — a write failure
+ * here must never crash boot or hide the real seeder result.
+ */
+// All optional fields on the status doc. Listed centrally so each
+// `recordStatus` call clears the ones it doesn't supply via `$unset` —
+// otherwise a previous outcome's fields (e.g. `error` from a `failed`
+// run, or `inserted`/`preserved` counters from a previous `done` run)
+// would linger on the singleton doc and the admin UI would show stale
+// counters/error text under the new outcome.
+const OPTIONAL_STATUS_FIELDS = [
+  'startedAt',
+  'finishedAt',
+  'durationMs',
+  'thresholdDays',
+  'historicalDayCount',
+  'seedDays',
+  'daysSeeded',
+  'inserted',
+  'preserved',
+  'error',
+] as const;
+
+type OptionalStatusFields = Partial<{
+  startedAt: Date;
+  finishedAt: Date;
+  durationMs: number;
+  thresholdDays: number;
+  historicalDayCount: number;
+  seedDays: number;
+  daysSeeded: number;
+  inserted: number;
+  preserved: number;
+  error: string;
+}>;
+
+async function recordStatus(
+  outcome: CoverageBackfillBootOutcome,
+  message: string,
+  fields: OptionalStatusFields = {},
+): Promise<void> {
+  try {
+    const now = new Date();
+    const setOps: Record<string, unknown> = {
+      key: 'latest',
+      outcome,
+      message,
+      observedAt: now,
+      updatedAt: now,
+    };
+    const unsetOps: Record<string, ''> = {};
+    for (const name of OPTIONAL_STATUS_FIELDS) {
+      const value = (fields as Record<string, unknown>)[name];
+      if (value !== undefined) {
+        setOps[name] = value;
+      } else {
+        unsetOps[name] = '';
+      }
+    }
+    const update: Record<string, unknown> = { $set: setOps };
+    if (Object.keys(unsetOps).length > 0) {
+      update.$unset = unsetOps;
+    }
+    await CoverageBackfillStatus.updateOne(
+      { key: 'latest' },
+      update,
+      { upsert: true },
+    );
+  } catch (err: any) {
+    logger.warn(
+      `⚠️  Coverage boot backfill: status write failed (${outcome}): ${err?.message || err}`,
+    );
+  }
+}
+
+/**
  * Decide whether to run the historical coverage backfill, and if so kick
  * it off in the background. Safe to call multiple times — the in-process
  * `hasRunOnce` guard combined with the row-count check prevents re-runs
@@ -69,9 +154,9 @@ export async function maybeRunCoverageBackfillOnBoot(): Promise<void> {
   hasRunOnce = true;
 
   if (process.env.SKIP_COVERAGE_BACKFILL_ON_BOOT === 'true') {
-    logger.log(
-      '📈 Coverage boot backfill: SKIPPED (SKIP_COVERAGE_BACKFILL_ON_BOOT=true)',
-    );
+    const msg = 'Skipped on this boot: SKIP_COVERAGE_BACKFILL_ON_BOOT=true';
+    logger.log(`📈 Coverage boot backfill: SKIPPED (${msg})`);
+    await recordStatus('skipped-env', msg);
     return;
   }
 
@@ -91,21 +176,44 @@ export async function maybeRunCoverageBackfillOnBoot(): Promise<void> {
     });
     historicalDayCount = Array.isArray(distinctDays) ? distinctDays.length : 0;
   } catch (err: any) {
+    const errMsg = err?.message || String(err);
     logger.warn(
-      `⚠️  Coverage boot backfill: SKIPPED — could not count historical days: ${err?.message || err}`,
+      `⚠️  Coverage boot backfill: SKIPPED — could not count historical days: ${errMsg}`,
+    );
+    await recordStatus(
+      'skipped-count-error',
+      `Could not count existing historical snapshots: ${errMsg}`,
+      { thresholdDays: minDays, seedDays, error: errMsg },
     );
     return;
   }
 
   if (historicalDayCount >= minDays) {
+    const msg = `${historicalDayCount} historical day(s) already present (threshold ${minDays}); seeder not needed`;
     logger.log(
       `📈 Coverage boot backfill: SKIPPED (${historicalDayCount} historical day(s) already present, threshold=${minDays})`,
     );
+    await recordStatus('skipped-already-seeded', msg, {
+      thresholdDays: minDays,
+      historicalDayCount,
+      seedDays,
+    });
     return;
   }
 
+  const startedAt = new Date();
   logger.log(
     `📈 Coverage boot backfill: STARTING (only ${historicalDayCount} historical day(s) found, threshold=${minDays}) — seeding ${seedDays} days in background`,
+  );
+  await recordStatus(
+    'running',
+    `Seeding ${seedDays} day(s) of historical coverage in the background (only ${historicalDayCount} day(s) already present, threshold ${minDays}).`,
+    {
+      startedAt,
+      thresholdDays: minDays,
+      historicalDayCount,
+      seedDays,
+    },
   );
 
   // Fire-and-forget. The seeder iterates day-by-day and aggregates the
@@ -114,20 +222,62 @@ export async function maybeRunCoverageBackfillOnBoot(): Promise<void> {
   // block boot. Errors are swallowed (logged) so a regression here
   // can't crash the API.
   runCoverageBackfill({ days: seedDays, dryRun: false })
-    .then((res) => {
+    .then(async (res) => {
+      const finishedAt = new Date();
+      const durationMs = finishedAt.getTime() - startedAt.getTime();
       if (res.skippedReason === 'no-stations') {
         logger.log(
           '📈 Coverage boot backfill: DONE — stations collection empty, nothing seeded',
+        );
+        await recordStatus(
+          'done-no-stations',
+          'Stations collection was empty — nothing to reconstruct.',
+          {
+            startedAt,
+            finishedAt,
+            durationMs,
+            thresholdDays: minDays,
+            historicalDayCount,
+            seedDays,
+            daysSeeded: 0,
+            inserted: 0,
+            preserved: 0,
+          },
         );
         return;
       }
       logger.log(
         `📈 Coverage boot backfill: DONE — daysSeeded=${res.daysSeeded} inserted=${res.inserted} preserved=${res.preserved}`,
       );
-    })
-    .catch((err: any) => {
-      logger.error(
-        `❌ Coverage boot backfill: FAILED — ${err?.message || err}`,
+      await recordStatus(
+        'done',
+        `Seeded ${res.daysSeeded} day(s); inserted ${res.inserted} row(s), preserved ${res.preserved} pre-existing row(s).`,
+        {
+          startedAt,
+          finishedAt,
+          durationMs,
+          thresholdDays: minDays,
+          historicalDayCount,
+          seedDays,
+          daysSeeded: res.daysSeeded,
+          inserted: res.inserted,
+          preserved: res.preserved,
+        },
       );
+    })
+    .catch(async (err: any) => {
+      const finishedAt = new Date();
+      const durationMs = finishedAt.getTime() - startedAt.getTime();
+      const errMsg = err?.message || String(err);
+      logger.error(`❌ Coverage boot backfill: FAILED — ${errMsg}`);
+      await recordStatus('failed', `Backfill failed: ${errMsg}`, {
+        startedAt,
+        finishedAt,
+        durationMs,
+        thresholdDays: minDays,
+        historicalDayCount,
+        seedDays,
+        error: errMsg,
+      });
     });
 }

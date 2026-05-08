@@ -225,6 +225,37 @@ interface CoverageDropAlertResponse {
   alert: CoverageDropAlert | null;
 }
 
+// Mirrors the GET /api/admin/coverage/backfill-status response. Every
+// numeric field is nullable because the boot service only fills in the
+// fields that apply to a given outcome (e.g. a "skipped-env" status
+// has none of the seed counters).
+interface CoverageBackfillBootStatus {
+  outcome:
+    | 'skipped-env'
+    | 'skipped-already-seeded'
+    | 'skipped-count-error'
+    | 'running'
+    | 'done'
+    | 'done-no-stations'
+    | 'failed';
+  message: string;
+  observedAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  durationMs?: number | null;
+  thresholdDays?: number | null;
+  historicalDayCount?: number | null;
+  seedDays?: number | null;
+  daysSeeded?: number | null;
+  inserted?: number | null;
+  preserved?: number | null;
+  error?: string | null;
+}
+
+interface CoverageBackfillBootStatusResponse {
+  status: CoverageBackfillBootStatus | null;
+}
+
 interface CoverageJobStatus {
   jobId: string;
   countryCode: string;
@@ -781,6 +812,8 @@ export default function AdminCoverage() {
         </Button>
         </div>
       </div>
+
+      <CoverageBackfillBootStatusCard />
 
       <CoverageDropAlertSettingsCard />
 
@@ -2074,5 +2107,236 @@ function ReconstructHistoryButton() {
       )}
       Reconstruct sparkline history
     </Button>
+  );
+}
+
+// Task #232: read-only status card showing the outcome of the
+// first-deploy historical backfill (`services/coverage-backfill-on-boot.ts`).
+// The boot service writes a singleton status doc on every boot decision
+// (skipped/started/done/failed) and we just render whatever we find.
+function CoverageBackfillBootStatusCard() {
+  const { data, isLoading } = useQuery<CoverageBackfillBootStatusResponse>({
+    queryKey: ['/api/admin/coverage/backfill-status'],
+    // While a seeder is still running we want the card to flip to "done"
+    // promptly without forcing a manual refresh; otherwise an admin who
+    // opens the page right after deploy can sit on a stale "running"
+    // banner. Refetch every 5s only while the latest known outcome is
+    // 'running'; the result of this query feeds the interval below.
+    refetchOnWindowFocus: false,
+    staleTime: 30_000,
+  });
+
+  // While the latest known outcome is 'running', keep polling so the
+  // card flips to its terminal state without a manual refresh.
+  const outcome = data?.status?.outcome ?? null;
+  useEffect(() => {
+    if (outcome !== 'running') return;
+    const interval = window.setInterval(() => {
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/backfill-status'],
+      });
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [outcome]);
+
+  const status = data?.status ?? null;
+
+  const meta = (() => {
+    switch (status?.outcome) {
+      case 'done':
+        return {
+          label: 'Backfill ran',
+          tone: 'bg-green-100 text-green-800 border-green-200',
+        };
+      case 'done-no-stations':
+        return {
+          label: 'Backfill ran (no stations)',
+          tone: 'bg-amber-100 text-amber-800 border-amber-200',
+        };
+      case 'running':
+        return {
+          label: 'Backfill running…',
+          tone: 'bg-blue-100 text-blue-800 border-blue-200',
+        };
+      case 'failed':
+        return {
+          label: 'Backfill failed',
+          tone: 'bg-red-100 text-red-800 border-red-200',
+        };
+      case 'skipped-env':
+        return {
+          label: 'Skipped (env)',
+          tone: 'bg-muted text-muted-foreground border-border',
+        };
+      case 'skipped-already-seeded':
+        return {
+          label: 'Skipped (not needed)',
+          tone: 'bg-muted text-muted-foreground border-border',
+        };
+      case 'skipped-count-error':
+        return {
+          label: 'Skipped (DB error)',
+          tone: 'bg-amber-100 text-amber-800 border-amber-200',
+        };
+      default:
+        return {
+          label: 'Unknown',
+          tone: 'bg-muted text-muted-foreground border-border',
+        };
+    }
+  })();
+
+  function fmtDate(iso?: string | null) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  }
+
+  function fmtDuration(ms?: number | null) {
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
+    if (ms < 1000) return `${ms} ms`;
+    const s = Math.round(ms / 100) / 10;
+    if (s < 60) return `${s.toFixed(1)} s`;
+    const m = Math.floor(s / 60);
+    const rem = Math.round(s - m * 60);
+    return `${m}m ${rem}s`;
+  }
+
+  return (
+    <Card data-testid="card-coverage-backfill-boot-status">
+      <CardHeader>
+        <CardTitle>Sparkline data — first-deploy backfill</CardTitle>
+        <CardDescription>
+          Whether the historical coverage seeder ran on the most recent
+          boot, and what it did. Updated automatically by the API on
+          startup; restart the API to re-evaluate.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading ? (
+          <div className="flex items-center gap-2 py-6 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading status…
+          </div>
+        ) : !status ? (
+          <p
+            className="text-sm text-muted-foreground"
+            data-testid="text-backfill-boot-status-none"
+          >
+            No boot run recorded yet. The API hasn't evaluated the
+            historical backfill on this database since the status doc
+            was added.
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge
+                variant="outline"
+                className={meta.tone}
+                data-testid="badge-backfill-boot-outcome"
+              >
+                {meta.label}
+              </Badge>
+              <span
+                className="text-xs text-muted-foreground"
+                data-testid="text-backfill-boot-observed-at"
+              >
+                last evaluated {fmtDate(status.observedAt)}
+              </span>
+            </div>
+            <p
+              className="text-sm"
+              data-testid="text-backfill-boot-message"
+            >
+              {status.message}
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">
+                  Started
+                </div>
+                <div data-testid="text-backfill-boot-started-at">
+                  {fmtDate(status.startedAt)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">
+                  Finished
+                </div>
+                <div data-testid="text-backfill-boot-finished-at">
+                  {fmtDate(status.finishedAt)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">
+                  Duration
+                </div>
+                <div data-testid="text-backfill-boot-duration">
+                  {fmtDuration(status.durationMs)}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">
+                  Days seeded
+                </div>
+                <div data-testid="text-backfill-boot-days-seeded">
+                  {status.daysSeeded ?? '—'}
+                  {status.seedDays != null ? (
+                    <span className="text-muted-foreground">
+                      {' '}
+                      / {status.seedDays} requested
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">
+                  Rows inserted
+                </div>
+                <div data-testid="text-backfill-boot-inserted">
+                  {status.inserted ?? '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">
+                  Rows preserved
+                </div>
+                <div data-testid="text-backfill-boot-preserved">
+                  {status.preserved ?? '—'}
+                </div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-muted-foreground">
+                  Existing days
+                </div>
+                <div data-testid="text-backfill-boot-historical-days">
+                  {status.historicalDayCount ?? '—'}
+                  {status.thresholdDays != null ? (
+                    <span className="text-muted-foreground">
+                      {' '}
+                      / threshold {status.thresholdDays}
+                    </span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+            {status.error ? (
+              <Alert
+                variant="destructive"
+                data-testid="alert-backfill-boot-error"
+              >
+                <AlertTriangle className="w-4 h-4" />
+                <AlertTitle>Last seeder error</AlertTitle>
+                <AlertDescription>
+                  <code className="text-xs break-all">{status.error}</code>
+                </AlertDescription>
+              </Alert>
+            ) : null}
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

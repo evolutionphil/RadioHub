@@ -724,6 +724,50 @@ export interface ICoverageSnapshot extends Document {
   createdAt: Date;
 }
 
+// Task #232: persisted status of the first-deploy historical coverage
+// backfill (`services/coverage-backfill-on-boot.ts`). The seeder runs in
+// the background and only logs to stdout, which leaves admins with no
+// in-app way to tell whether it ran on this deploy, when, or whether it
+// failed. We persist a single "latest" doc that the admin coverage page
+// reads so the outcome is visible without grepping logs.
+//
+// Singleton-style: there is exactly one document in this collection,
+// keyed on `key: 'latest'` so re-runs on the same node and across
+// restarts simply overwrite the previous status. The collection is
+// intentionally tiny — no history, just "what happened most recently".
+export type CoverageBackfillBootOutcome =
+  | 'skipped-env'             // SKIP_COVERAGE_BACKFILL_ON_BOOT=true
+  | 'skipped-already-seeded'  // historical day count >= threshold
+  | 'skipped-count-error'     // distinct() on snapshots failed; never started
+  | 'running'                 // kicked off, not yet returned
+  | 'done'                    // finished, rows seeded
+  | 'done-no-stations'        // finished, stations collection empty
+  | 'failed';                 // seeder threw
+
+export interface ICoverageBackfillStatus extends Document {
+  key: 'latest';
+  outcome: CoverageBackfillBootOutcome;
+  message: string;
+  // When the boot evaluation observed this outcome. For 'running' this
+  // is the start time; for terminal outcomes this is the boot
+  // evaluation time and `finishedAt` is the seeder completion time.
+  observedAt: Date;
+  startedAt?: Date;
+  finishedAt?: Date;
+  durationMs?: number;
+  // Threshold + observed counts that drove the boot decision.
+  thresholdDays?: number;
+  historicalDayCount?: number;
+  // Configured + actual seed window.
+  seedDays?: number;
+  daysSeeded?: number;
+  inserted?: number;
+  preserved?: number;
+  // Populated for `failed` outcomes.
+  error?: string;
+  updatedAt: Date;
+}
+
 // Task #132: weekly genre-slug cleanup audit log. Mirrors the BackfillRun
 // shape so admins can see "scanned 1284, normalized 3, demoted 2" without
 // having to grep server logs. See `services/scheduled-genre-slug-cleanup.ts`.
@@ -1209,6 +1253,41 @@ const CoverageSnapshotSchema = new Schema<ICoverageSnapshot>({
 // upsert today's row).
 CoverageSnapshotSchema.index({ countryCode: 1, snapshotDate: 1 }, { unique: true });
 CoverageSnapshotSchema.index({ snapshotDate: -1 });
+
+// Task #232: singleton-style status for the boot-time historical
+// coverage backfill. See ICoverageBackfillStatus for field-level
+// notes. The unique index on `key` enforces the singleton invariant
+// even if two replicas race to write at the same time.
+const CoverageBackfillStatusSchema = new Schema<ICoverageBackfillStatus>({
+  key: { type: String, required: true, default: 'latest' },
+  outcome: {
+    type: String,
+    enum: [
+      'skipped-env',
+      'skipped-already-seeded',
+      'skipped-count-error',
+      'running',
+      'done',
+      'done-no-stations',
+      'failed',
+    ],
+    required: true,
+  },
+  message: { type: String, required: true },
+  observedAt: { type: Date, required: true },
+  startedAt: Date,
+  finishedAt: Date,
+  durationMs: Number,
+  thresholdDays: Number,
+  historicalDayCount: Number,
+  seedDays: Number,
+  daysSeeded: Number,
+  inserted: Number,
+  preserved: Number,
+  error: String,
+  updatedAt: { type: Date, default: Date.now },
+});
+CoverageBackfillStatusSchema.index({ key: 1 }, { unique: true });
 
 const GenreSlugCleanupRunSchema = new Schema<IGenreSlugCleanupRun>({
   trigger: { type: String, required: true, index: true },
@@ -1915,6 +1994,10 @@ export const Codec = mongoose.model<ICodec>('Codec', CodecSchema);
 export const SyncLog = mongoose.model<ISyncLog>('SyncLog', SyncLogSchema);
 export const BackfillRun = mongoose.model<IBackfillRun>('BackfillRun', BackfillRunSchema);
 export const CoverageSnapshot = mongoose.model<ICoverageSnapshot>('CoverageSnapshot', CoverageSnapshotSchema);
+export const CoverageBackfillStatus = mongoose.model<ICoverageBackfillStatus>(
+  'CoverageBackfillStatus',
+  CoverageBackfillStatusSchema,
+);
 export const GenreSlugCleanupRun = mongoose.model<IGenreSlugCleanupRun>(
   'GenreSlugCleanupRun',
   GenreSlugCleanupRunSchema,

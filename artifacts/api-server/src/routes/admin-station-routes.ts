@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting } from '@workspace/db-shared/mongo-schemas';
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting, CoverageBackfillStatus } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -1956,6 +1956,75 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         logger.error('coverage by-country failed', error);
         return void res.status(500).json({
           error: error?.message || 'Failed to compute country coverage',
+        });
+      }
+    },
+  );
+
+  // COVERAGE BACKFILL BOOT STATUS (Task #232) — surface the outcome of
+  // the first-deploy historical backfill (`services/coverage-backfill-on-boot.ts`)
+  // so admins can tell from the UI whether the seeder ran on the current
+  // deploy, when, how many rows it inserted, and whether it failed —
+  // without having to dig through stdout. The status doc is a singleton
+  // updated by the boot service; we just read it back. Returns
+  // `{ status: null }` when the seeder has never run on any boot
+  // observed by this Mongo (e.g. fresh DB), so the UI can show "no
+  // boot run recorded yet" instead of an error.
+  app.get(
+    '/api/admin/coverage/backfill-status',
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const doc = await CoverageBackfillStatus.findOne({ key: 'latest' })
+          .lean<{
+            outcome: string;
+            message: string;
+            observedAt: Date;
+            startedAt?: Date;
+            finishedAt?: Date;
+            durationMs?: number;
+            thresholdDays?: number;
+            historicalDayCount?: number;
+            seedDays?: number;
+            daysSeeded?: number;
+            inserted?: number;
+            preserved?: number;
+            error?: string;
+            updatedAt?: Date;
+          }>();
+        if (!doc) {
+          return void res.json({ status: null });
+        }
+        return void res.json({
+          status: {
+            outcome: doc.outcome,
+            message: doc.message,
+            observedAt:
+              doc.observedAt instanceof Date
+                ? doc.observedAt.toISOString()
+                : doc.observedAt,
+            startedAt:
+              doc.startedAt instanceof Date
+                ? doc.startedAt.toISOString()
+                : doc.startedAt,
+            finishedAt:
+              doc.finishedAt instanceof Date
+                ? doc.finishedAt.toISOString()
+                : doc.finishedAt,
+            durationMs: doc.durationMs ?? null,
+            thresholdDays: doc.thresholdDays ?? null,
+            historicalDayCount: doc.historicalDayCount ?? null,
+            seedDays: doc.seedDays ?? null,
+            daysSeeded: doc.daysSeeded ?? null,
+            inserted: doc.inserted ?? null,
+            preserved: doc.preserved ?? null,
+            error: doc.error ?? null,
+          },
+        });
+      } catch (error: any) {
+        logger.error('coverage backfill-status failed', error);
+        return void res.status(500).json({
+          error: error?.message || 'Failed to load coverage backfill status',
         });
       }
     },
