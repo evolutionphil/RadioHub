@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { GenreCleanupRunDemotions } from "./genre-slug-cleanup-demotions";
 
 // Task #198: surface the weekly genre-slug cleanup history (persisted as
 // `GenreSlugCleanupRun` rows by `services/scheduled-genre-slug-cleanup.ts`)
@@ -63,6 +64,7 @@ function wouldHaveAlerted(run: GenreSlugCleanupRun, threshold: number): boolean 
 export default function AdminGenreSlugCleanupPage() {
   const [trigger, setTrigger] = useState<RunsTriggerFilter>("");
   const [runError, setRunError] = useState<string | null>(null);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
 
   const runsQuery = useQuery<GenreSlugCleanupRunsResponse>({
     queryKey: ["/api/admin/maintenance/genre-slug-cleanup/runs", trigger],
@@ -260,19 +262,33 @@ export default function AdminGenreSlugCleanupPage() {
                     const alerted = wouldHaveAlerted(run, threshold);
                     const failed = run.status === "failed";
                     const changed = run.normalized + run.markedUndiscoverable;
+                    const isExpanded = expandedRunId === run._id;
+                    const canExpand = run.markedUndiscoverable > 0;
                     return (
+                      <Fragment key={run._id}>
                       <tr
-                        key={run._id}
                         className={`border-b border-slate-100 ${
                           failed
                             ? "bg-rose-50"
                             : alerted
                             ? "bg-amber-50"
                             : "hover:bg-slate-50"
-                        }`}
+                        } ${canExpand ? "cursor-pointer" : ""}`}
+                        onClick={() => {
+                          if (!canExpand) return;
+                          setExpandedRunId(isExpanded ? null : run._id);
+                        }}
                         data-testid={`row-cleanup-run-${run._id}`}
                       >
                         <td className="py-2 pr-3 whitespace-nowrap">
+                          {canExpand && (
+                            <span
+                              className="inline-block w-4 text-slate-400"
+                              data-testid={`toggle-cleanup-run-${run._id}`}
+                            >
+                              {isExpanded ? "▾" : "▸"}
+                            </span>
+                          )}
                           {new Date(run.startedAt).toLocaleString()}
                         </td>
                         <td className="py-2 pr-3">
@@ -356,6 +372,17 @@ export default function AdminGenreSlugCleanupPage() {
                           )}
                         </td>
                       </tr>
+                      {isExpanded && (
+                        <tr
+                          className="border-b border-slate-100 bg-slate-50"
+                          data-testid={`row-cleanup-demotions-${run._id}`}
+                        >
+                          <td colSpan={10} className="p-3">
+                            <GenreCleanupRunDemotions runId={run._id} />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     );
                   })}
                 </tbody>

@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import {
   Station,
   BackfillRun,
+  Genre,
   GenreSlugCleanupRun,
   type IBackfillRun,
 } from '@workspace/db-shared/mongo-schemas';
@@ -627,6 +628,91 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
       } catch (err: any) {
         logger.error(
           "[genre-slug-cleanup runs] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
+  // Task #264: drill-down for a single GenreSlugCleanupRun. When the
+  // alert fires the next question is always "which genres got hit?" —
+  // this endpoint joins the run's [startedAt, finishedAt] window
+  // against `Genre.cleanupDemotion.demotedAt` so the dashboard can
+  // expand the row inline without anyone having to hit Mongo. Mirrors
+  // the run's status: if the run is still `running`, we cap the
+  // window at "now" so the partial demotions show up live.
+  app.get(
+    "/api/admin/maintenance/genre-slug-cleanup/runs/:id/demotions",
+    requireAdmin,
+    async (req: Request, res: Response): Promise<void> => {
+      try {
+        const id = String(req.params.id ?? "");
+        if (!mongoose.Types.ObjectId.isValid(id)) {
+          res.status(400).json({ error: "invalid_run_id" });
+          return;
+        }
+        const run = await GenreSlugCleanupRun.findById(id)
+          .select({ startedAt: 1, finishedAt: 1, status: 1 })
+          .lean<{
+            startedAt: Date;
+            finishedAt?: Date;
+            status: string;
+          } | null>();
+        if (!run) {
+          res.status(404).json({ error: "run_not_found" });
+          return;
+        }
+        const windowEnd = run.finishedAt ?? new Date();
+        const limit = Math.max(
+          1,
+          Math.min(500, Number(req.query.limit) || 200),
+        );
+        const demotions = await Genre.find({
+          "cleanupDemotion.demotedAt": {
+            $gte: run.startedAt,
+            $lte: windowEnd,
+          },
+        })
+          .select({
+            _id: 1,
+            name: 1,
+            slug: 1,
+            cleanupDemotion: 1,
+          })
+          .sort({ "cleanupDemotion.demotedAt": 1 })
+          .limit(limit)
+          .lean();
+        res.json({
+          runId: id,
+          window: {
+            startedAt: run.startedAt,
+            endedAt: windowEnd,
+            runStatus: run.status,
+            isOpenEnded: !run.finishedAt,
+          },
+          demotions: demotions.map((g: any) => ({
+            _id: String(g._id),
+            name: g.name,
+            currentSlug: g.slug,
+            reason: g.cleanupDemotion?.reason ?? null,
+            originalSlug: g.cleanupDemotion?.originalSlug ?? null,
+            normalizedSlug: g.cleanupDemotion?.normalizedSlug ?? null,
+            collisionWinnerId: g.cleanupDemotion?.collisionWinnerId
+              ? String(g.cleanupDemotion.collisionWinnerId)
+              : null,
+            collisionWinnerSlug:
+              g.cleanupDemotion?.collisionWinnerSlug ?? null,
+            collisionWinnerName:
+              g.cleanupDemotion?.collisionWinnerName ?? null,
+            demotedAt: g.cleanupDemotion?.demotedAt ?? null,
+          })),
+          total: demotions.length,
+          limit,
+        });
+      } catch (err: any) {
+        logger.error(
+          "[genre-slug-cleanup demotions] error:",
           err?.message || err,
         );
         res.status(500).json({ error: err?.message || "internal_error" });
