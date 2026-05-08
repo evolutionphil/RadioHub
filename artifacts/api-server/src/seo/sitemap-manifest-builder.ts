@@ -31,7 +31,7 @@ import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from '
 import { getIndexableLanguagesForStation } from './junk-station-rules';
 import { isWhitelistedGenreSlug, MIN_STATIONS_FOR_GENRE_INDEX } from './genre-whitelist';
 import { RESERVED_GENRE_SLUGS } from './reserved-genre-slugs';
-import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from '../shared/country-regions';
+import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from '@workspace/seo-shared/country-regions';
 
 // Re-export so other modules importing from the manifest builder still
 // get a single source of truth (task #148).

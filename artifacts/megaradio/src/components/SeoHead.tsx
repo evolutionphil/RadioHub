@@ -3,6 +3,7 @@ import { useLocation } from 'wouter';
 import { useTranslation } from '@/hooks/useTranslation';
 import { generateSeoTags, getLanguageFromPath, generateLanguageUrls } from '@workspace/seo-shared/seo-config';
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
+import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { useQuery } from '@tanstack/react-query';
 import { 
   generateOrganizationSchema, 
@@ -86,6 +87,23 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
       seoTags.ogDescription = genreSeo.description;
       seoTags.twitterTitle = genreSeo.title;
       seoTags.twitterDescription = genreSeo.description;
+    }
+
+    // Search override: keeps client hydration aligned with server SSR for the
+    // search results page. seo-config's static `search` template only covers DB
+    // translation keys, so non-top-15 languages without DB strings would fall
+    // back to the SAME English title and description on every /xx/search page —
+    // the same duplicate-content trap regions and genres had before they were
+    // localised. buildSearchSeo emits the per-language template when DB keys
+    // are missing in the requested language.
+    if (pageType === 'search') {
+      const searchSeo = buildSearchSeo(language, translationMap);
+      seoTags.title = searchSeo.title;
+      seoTags.description = searchSeo.description;
+      seoTags.ogTitle = searchSeo.title;
+      seoTags.ogDescription = searchSeo.description;
+      seoTags.twitterTitle = searchSeo.title;
+      seoTags.twitterDescription = searchSeo.description;
     }
 
     // Update title

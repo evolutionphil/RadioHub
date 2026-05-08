@@ -41,6 +41,7 @@ import { trackOperation } from './utils/operation-tracker';
 import { isJunkStation } from './seo/junk-station-rules';
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-seo-templates';
+import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
 import {
   getCanonicalGenreSlug,
@@ -1020,8 +1021,16 @@ export class SeoRenderer {
     }
 
     if (pageType === 'search') {
-      baseSeoTags.title = getTranslation('search_page_title');
-      baseSeoTags.description = getTranslation('search_page_description');
+      // Use multilingual SEO templates (shared/search-seo-templates.ts).
+      // DB translation keys (search_page_title/_description) win when present in
+      // the requested language; otherwise we fall back to the natural per-language
+      // template so non-top-15 languages don't all serve the SAME English title and
+      // description (which Google previously collapsed as duplicates the same way
+      // it did for regions and genres before those were localised).
+      const searchSeo = buildSearchSeo(language, translations);
+      baseSeoTags.title = searchSeo.title;
+      baseSeoTags.description = searchSeo.description;
+      baseSeoTags.keywords = searchSeo.keywords;
       baseSeoTags.ogType = 'website';
       // Search result pages should not be indexed (Google guidance) but should be crawlable for links
       baseSeoTags.robots = 'noindex, follow';
@@ -1176,7 +1185,7 @@ export class SeoRenderer {
         return 'Privacy Policy - Mega Radio';
 
       case 'search':
-        return getLocalizedText('search_page_h1');
+        return buildSearchSeo(language, translations).h1;
 
       case 'faq':
         return getLocalizedText('faq_page_h1');
@@ -1557,11 +1566,12 @@ export class SeoRenderer {
       case 'search':
         {
           const langPrefix = `/${language}`;
+          const searchSeo = buildSearchSeo(language, translations);
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
             <section>
-              <p>${this.escapeHtml(getLocalizedText('search_page_intro', 'Search Mega Radio\'s catalogue of 60,000+ live radio stations from 120+ countries. Type a station name, music genre, language, or country to start streaming free online radio instantly.'))}</p>
+              <p>${this.escapeHtml(searchSeo.bodyIntro)}</p>
             </section>
             <nav>
               <ul>
