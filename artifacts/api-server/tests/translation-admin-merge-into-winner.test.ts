@@ -131,7 +131,7 @@ const FakeStationModel = {
 // Module mocks — installed BEFORE the route module is imported.
 // ---------------------------------------------------------------------------
 
-mock.module(new URL('../src/shared/mongo-schemas.ts', import.meta.url).href, {
+mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: {
     Genre: FakeGenreModel,
     Station: FakeStationModel,
@@ -413,12 +413,12 @@ test('merge-into-winner returns 400 when the genre is not a collision-demoted ro
   );
   assert.equal(res.status, 400);
   const body = (await res.json()) as { error?: string };
-  assert.match(body.error ?? '', /not a collision-demoted row/i);
+  assert.match(body.error ?? '', /not a slug-cleanup demoted row/i);
   // Genre must still exist — 400 must be a no-op.
   assert.ok(genres.find((g) => g._id === 'plain-1'));
 });
 
-test('merge-into-winner returns 400 when cleanupDemotion has a non-collision reason', async () => {
+test('merge-into-winner returns 400 when cleanupDemotion has no recorded winner and no target supplied', async () => {
   genres.push({
     _id: 'demoted-empty',
     name: 'Empty Genre',
@@ -432,7 +432,7 @@ test('merge-into-winner returns 400 when cleanupDemotion has a non-collision rea
   );
   assert.equal(res.status, 400);
   const body = (await res.json()) as { error?: string };
-  assert.match(body.error ?? '', /not a collision-demoted row/i);
+  assert.match(body.error ?? '', /no recorded winner/i);
 });
 
 test('merge-into-winner returns 409 when the recorded collision winner is missing', async () => {

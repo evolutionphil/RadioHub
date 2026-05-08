@@ -291,7 +291,7 @@ const FakeClearedOverridesAuditLog = {
 // Module mocks — must be installed BEFORE the routes module is imported.
 // ---------------------------------------------------------------------------
 
-mock.module(new URL('../src/shared/mongo-schemas.ts', import.meta.url).href, {
+mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: {
     CountryLanguageMapping: FakeCountryLanguageMapping,
     ClearedOverridesAuditLog: FakeClearedOverridesAuditLog,
