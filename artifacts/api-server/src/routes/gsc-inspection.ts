@@ -12,7 +12,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { GscUrlInspection } from '@workspace/db-shared/mongo-schemas';
+import { GscUrlInspection, GscIndexingSnapshot } from '@workspace/db-shared/mongo-schemas';
 import { gscInspectionService, isGscConfigured } from '../services/gsc-inspection';
 import { logger } from '../utils/logger';
 
@@ -212,6 +212,151 @@ router.post('/resubmit-stuck', async (_req: Request, res: Response) => {
       'GSC inspection /resubmit-stuck failed:',
       err?.message ?? err,
     );
+    return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
+  }
+});
+
+
+/**
+ * Task #267 — Time-series trends.
+ *
+ * Returns one row per (date, language, group) over the requested window.
+ * Default window is 30 days; max 365. The dashboard uses
+ * `language=all&group=all` for the headline trend chart and lets admins
+ * drill into any combination via the optional filters.
+ */
+router.get('/trends', async (req: Request, res: Response) => {
+  try {
+    const days = Math.max(
+      1,
+      Math.min(365, parseInt(String(req.query.days ?? '30'), 10) || 30),
+    );
+    const language = String(req.query.language ?? 'all');
+    const group = String(req.query.group ?? 'all');
+
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (days - 1));
+
+    const filter: Record<string, unknown> = { date: { $gte: since } };
+    if (language !== 'any') filter.language = language;
+    if (group !== 'any') filter.group = group;
+
+    const rows = await GscIndexingSnapshot.find(filter)
+      .sort({ date: 1, language: 1, group: 1 })
+      .lean();
+
+    res.json({
+      days,
+      language,
+      group,
+      rows: rows.map((r: any) => ({
+        date: r.date,
+        language: r.language,
+        group: r.group,
+        total: r.total,
+        indexed: r.indexed,
+        crawledNotIndexed: r.crawledNotIndexed,
+        discoveredNotIndexed: r.discoveredNotIndexed,
+        excluded: r.excluded,
+        error: r.error,
+        pending: r.pending,
+        unknown: r.unknown,
+      })),
+    });
+  } catch (err: any) {
+    logger.error('GSC inspection /trends failed:', err?.message ?? err);
+    res.status(500).json({ error: 'failed to fetch trends' });
+  }
+});
+
+/**
+ * Task #267 — CSV export of the snapshot history. Optional filters mirror
+ * /trends. Defaults to the last 90 days across every (language, group)
+ * combination so admins can pivot in a spreadsheet.
+ */
+router.get('/history.csv', async (req: Request, res: Response) => {
+  try {
+    const days = Math.max(
+      1,
+      Math.min(365, parseInt(String(req.query.days ?? '90'), 10) || 90),
+    );
+    const language = String(req.query.language ?? 'any');
+    const group = String(req.query.group ?? 'any');
+
+    const since = new Date();
+    since.setUTCHours(0, 0, 0, 0);
+    since.setUTCDate(since.getUTCDate() - (days - 1));
+
+    const filter: Record<string, unknown> = { date: { $gte: since } };
+    if (language !== 'any') filter.language = language;
+    if (group !== 'any') filter.group = group;
+
+    const rows = await GscIndexingSnapshot.find(filter)
+      .sort({ date: 1, language: 1, group: 1 })
+      .lean();
+
+    const headers = [
+      'date',
+      'language',
+      'group',
+      'total',
+      'indexed',
+      'crawled_not_indexed',
+      'discovered_not_indexed',
+      'excluded',
+      'error',
+      'pending',
+      'unknown',
+    ];
+    const escape = (v: unknown) => {
+      const s = v === null || v === undefined ? '' : String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const lines = [headers.join(',')];
+    for (const r of rows as any[]) {
+      const dateStr = new Date(r.date).toISOString().slice(0, 10);
+      lines.push(
+        [
+          dateStr,
+          r.language,
+          r.group,
+          r.total,
+          r.indexed,
+          r.crawledNotIndexed,
+          r.discoveredNotIndexed,
+          r.excluded,
+          r.error,
+          r.pending,
+          r.unknown,
+        ]
+          .map(escape)
+          .join(','),
+      );
+    }
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="gsc-indexing-history-${days}d.csv"`,
+    );
+    res.send(lines.join('\n'));
+  } catch (err: any) {
+    logger.error('GSC inspection /history.csv failed:', err?.message ?? err);
+    res.status(500).json({ error: 'failed to export history' });
+  }
+});
+
+/**
+ * Task #267 — Manually record a daily aggregate snapshot. The cron also
+ * fires nightly at 23:55 Berlin time, but admins can force one after a
+ * big sitemap change to capture the impact immediately.
+ */
+router.post('/snapshot', async (_req: Request, res: Response) => {
+  try {
+    const stats = await gscInspectionService.recordDailySnapshot('admin-manual');
+    return res.json({ ok: true, stats });
+  } catch (err: any) {
+    logger.error('GSC inspection /snapshot failed:', err?.message ?? err);
     return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
   }
 });

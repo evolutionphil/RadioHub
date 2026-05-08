@@ -35,6 +35,7 @@ import { JWT } from 'google-auth-library';
 import axios from 'axios';
 import {
   GscUrlInspection,
+  GscIndexingSnapshot,
   Station,
   Genre,
   type IGscUrlInspection,
@@ -455,6 +456,9 @@ class GscInspectionService {
     failed: number;
     sitemapRebuilt: boolean;
   } | null = null;
+  private snapshotRunning = false;
+  private lastSnapshotAt: Date | null = null;
+  private lastSnapshotStats: { rows: number; date: string } | null = null;
 
   static getInstance(): GscInspectionService {
     if (!GscInspectionService.instance) {
@@ -509,8 +513,21 @@ class GscInspectionService {
       { timezone: 'Europe/Berlin' },
     );
 
+    // Task #267 — daily aggregate snapshot: 23:55 Berlin time. Idempotent
+    // — re-running the same UTC day overwrites the previous row via
+    // $set/upsert, so an accidental double-trigger is harmless.
+    cron.schedule(
+      '55 23 * * *',
+      () => {
+        this.recordDailySnapshot('cron').catch((err) =>
+          logger.error('❌ GSC snapshot cron crashed:', err),
+        );
+      },
+      { timezone: 'Europe/Berlin' },
+    );
+
     logger.log(
-      `🔍 GSC inspection cron initialized (discovery 03:15+15:15, inspection hourly :07, resubmit 04:30, batch=${DEFAULT_BATCH_SIZE}/run, stuck>${RESUBMIT_STUCK_DAYS}d)`,
+      `🔍 GSC inspection cron initialized (discovery 03:15+15:15, inspection hourly :07, resubmit 04:30, snapshot 23:55, batch=${DEFAULT_BATCH_SIZE}/run, stuck>${RESUBMIT_STUCK_DAYS}d)`,
     );
 
     // Cold-start: kick off a discovery shortly after boot so a freshly
@@ -575,12 +592,227 @@ class GscInspectionService {
       lastDiscoveryStats: this.lastDiscoveryStats,
       lastInspectionStats: this.lastInspectionStats,
       lastResubmitStats: this.lastResubmitStats,
+      lastSnapshotAt: this.lastSnapshotAt,
+      lastSnapshotStats: this.lastSnapshotStats,
       defaultBatchSize: DEFAULT_BATCH_SIZE,
       stationDiscoveryCapPerLanguage: STATION_DISCOVERY_CAP_PER_LANG,
       resubmitStuckDays: RESUBMIT_STUCK_DAYS,
       resubmitCooldownDays: RESUBMIT_COOLDOWN_DAYS,
       resubmitBatchLimit: RESUBMIT_BATCH_LIMIT,
     };
+  }
+
+  /**
+   * Roll up the current per-URL inspection state into one row per
+   * (UTC day, language, group) plus an `all`/`all` cross-cutting row.
+   * Idempotent for the same UTC day, so a manual trigger after the cron
+   * just overwrites the day's numbers with the latest counts.
+   */
+  async recordDailySnapshot(
+    trigger: string = 'manual',
+  ): Promise<{ rows: number; date: string } | null> {
+    if (this.snapshotRunning) {
+      logger.log(
+        `⏭️  GSC snapshot: skip (${trigger}) — previous run in progress`,
+      );
+      return null;
+    }
+    this.snapshotRunning = true;
+    const start = Date.now();
+    try {
+      // Anchor the date at UTC midnight of "today" so the unique
+      // (date, language, group) index makes the upsert idempotent
+      // regardless of run time during the day.
+      const now = new Date();
+      const date = new Date(
+        Date.UTC(
+          now.getUTCFullYear(),
+          now.getUTCMonth(),
+          now.getUTCDate(),
+        ),
+      );
+
+      // Per (language, group)
+      const perGroup = await GscUrlInspection.aggregate<{
+        _id: { language: string; group: IGscUrlInspection['group'] };
+        total: number;
+        indexed: number;
+        crawledNotIndexed: number;
+        discoveredNotIndexed: number;
+        excluded: number;
+        error: number;
+        pending: number;
+        unknown: number;
+      }>([
+        {
+          $group: {
+            _id: { language: '$language', group: '$group' },
+            total: { $sum: 1 },
+            indexed: {
+              $sum: { $cond: [{ $eq: ['$state', 'indexed'] }, 1, 0] },
+            },
+            crawledNotIndexed: {
+              $sum: {
+                $cond: [{ $eq: ['$state', 'crawled-not-indexed'] }, 1, 0],
+              },
+            },
+            discoveredNotIndexed: {
+              $sum: {
+                $cond: [
+                  { $eq: ['$state', 'discovered-not-indexed'] },
+                  1,
+                  0,
+                ],
+              },
+            },
+            excluded: {
+              $sum: { $cond: [{ $eq: ['$state', 'excluded'] }, 1, 0] },
+            },
+            error: { $sum: { $cond: [{ $eq: ['$state', 'error'] }, 1, 0] } },
+            pending: {
+              $sum: { $cond: [{ $eq: ['$state', 'pending'] }, 1, 0] },
+            },
+            unknown: {
+              $sum: { $cond: [{ $eq: ['$state', 'unknown'] }, 1, 0] },
+            },
+          },
+        },
+      ]);
+
+      type Row = {
+        date: Date;
+        language: string;
+        group: IGscUrlInspection['group'] | 'all';
+        total: number;
+        indexed: number;
+        crawledNotIndexed: number;
+        discoveredNotIndexed: number;
+        excluded: number;
+        error: number;
+        pending: number;
+        unknown: number;
+      };
+
+      const rows: Row[] = [];
+      // language -> aggregated row
+      const perLang = new Map<string, Row>();
+      // group -> aggregated row
+      const perGrp = new Map<string, Row>();
+      const overall: Row = {
+        date,
+        language: 'all',
+        group: 'all',
+        total: 0,
+        indexed: 0,
+        crawledNotIndexed: 0,
+        discoveredNotIndexed: 0,
+        excluded: 0,
+        error: 0,
+        pending: 0,
+        unknown: 0,
+      };
+
+      const addInto = (target: Row, src: Row) => {
+        target.total += src.total;
+        target.indexed += src.indexed;
+        target.crawledNotIndexed += src.crawledNotIndexed;
+        target.discoveredNotIndexed += src.discoveredNotIndexed;
+        target.excluded += src.excluded;
+        target.error += src.error;
+        target.pending += src.pending;
+        target.unknown += src.unknown;
+      };
+
+      for (const r of perGroup) {
+        const row: Row = {
+          date,
+          language: r._id.language,
+          group: r._id.group,
+          total: r.total,
+          indexed: r.indexed,
+          crawledNotIndexed: r.crawledNotIndexed,
+          discoveredNotIndexed: r.discoveredNotIndexed,
+          excluded: r.excluded,
+          error: r.error,
+          pending: r.pending,
+          unknown: r.unknown,
+        };
+        rows.push(row);
+
+        const langKey = row.language;
+        if (!perLang.has(langKey)) {
+          perLang.set(langKey, {
+            date,
+            language: langKey,
+            group: 'all',
+            total: 0,
+            indexed: 0,
+            crawledNotIndexed: 0,
+            discoveredNotIndexed: 0,
+            excluded: 0,
+            error: 0,
+            pending: 0,
+            unknown: 0,
+          });
+        }
+        addInto(perLang.get(langKey)!, row);
+
+        const grpKey = String(row.group);
+        if (!perGrp.has(grpKey)) {
+          perGrp.set(grpKey, {
+            date,
+            language: 'all',
+            group: row.group,
+            total: 0,
+            indexed: 0,
+            crawledNotIndexed: 0,
+            discoveredNotIndexed: 0,
+            excluded: 0,
+            error: 0,
+            pending: 0,
+            unknown: 0,
+          });
+        }
+        addInto(perGrp.get(grpKey)!, row);
+
+        addInto(overall, row);
+      }
+
+      rows.push(...perLang.values(), ...perGrp.values(), overall);
+
+      if (rows.length > 0) {
+        const ops = rows.map((r) => ({
+          updateOne: {
+            filter: { date: r.date, language: r.language, group: r.group },
+            update: {
+              $set: {
+                total: r.total,
+                indexed: r.indexed,
+                crawledNotIndexed: r.crawledNotIndexed,
+                discoveredNotIndexed: r.discoveredNotIndexed,
+                excluded: r.excluded,
+                error: r.error,
+                pending: r.pending,
+                unknown: r.unknown,
+              },
+              $setOnInsert: { createdAt: new Date() },
+            },
+            upsert: true,
+          },
+        }));
+        await GscIndexingSnapshot.bulkWrite(ops, { ordered: false });
+      }
+
+      const stats = { rows: rows.length, date: date.toISOString() };
+      this.lastSnapshotAt = new Date();
+      this.lastSnapshotStats = stats;
+      logger.log(
+        `🔍 GSC snapshot DONE (${trigger}): ${rows.length} rows for ${stats.date} in ${Math.round((Date.now() - start) / 1000)}s`,
+      );
+      return stats;
+    } finally {
+      this.snapshotRunning = false;
+    }
   }
 
   async runDiscoveryOnce(trigger: string = 'manual'): Promise<{

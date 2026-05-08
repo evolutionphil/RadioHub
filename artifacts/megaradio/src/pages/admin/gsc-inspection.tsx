@@ -29,12 +29,23 @@ import {
   AlertCircle,
   CheckCircle2,
   Clock,
+  Download,
   ExternalLink,
   RefreshCcw,
   Search as SearchIcon,
   XCircle,
 } from 'lucide-react';
 import { format } from 'date-fns';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 
 interface StatusResponse {
   configured: boolean;
@@ -70,6 +81,29 @@ interface StatusResponse {
   resubmitBatchLimit: number;
   totalUrls: number;
   stuckUrls: number;
+  lastSnapshotAt?: string | null;
+  lastSnapshotStats?: { rows: number; date: string } | null;
+}
+
+interface TrendRow {
+  date: string;
+  language: string;
+  group: string;
+  total: number;
+  indexed: number;
+  crawledNotIndexed: number;
+  discoveredNotIndexed: number;
+  excluded: number;
+  error: number;
+  pending: number;
+  unknown: number;
+}
+
+interface TrendsResponse {
+  days: number;
+  language: string;
+  group: string;
+  rows: TrendRow[];
 }
 
 type GscState =
@@ -175,6 +209,9 @@ export default function GscInspectionPage() {
   const [state, setState] = useState('all');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [trendDays, setTrendDays] = useState<'30' | '90'>('30');
+  const [trendLanguage, setTrendLanguage] = useState('all');
+  const [trendGroup, setTrendGroup] = useState('all');
 
   const { data: status, isLoading: statusLoading } = useQuery<StatusResponse>({
     queryKey: ['/api/admin/gsc-inspection/status'],
@@ -257,6 +294,46 @@ export default function GscInspectionPage() {
     },
   });
 
+  const { data: trends, isLoading: trendsLoading } = useQuery<TrendsResponse>({
+    queryKey: [
+      '/api/admin/gsc-inspection/trends',
+      { days: trendDays, language: trendLanguage, group: trendGroup },
+    ],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set('days', trendDays);
+      params.set('language', trendLanguage);
+      params.set('group', trendGroup);
+      const r = await fetch(
+        `/api/admin/gsc-inspection/trends?${params.toString()}`,
+      );
+      if (!r.ok) throw new Error('Failed to load trends');
+      return r.json();
+    },
+    refetchInterval: 60_000,
+  });
+
+  const recordSnapshot = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/admin/gsc-inspection/snapshot', {
+        method: 'POST',
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/gsc-inspection/status'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/gsc-inspection/trends'],
+      });
+    },
+  });
+
   const rediscover = useMutation({
     mutationFn: async () => {
       const r = await fetch('/api/admin/gsc-inspection/discover', {
@@ -280,6 +357,62 @@ export default function GscInspectionPage() {
       });
     },
   });
+
+  // Collapse the trend rows into a chart-friendly array. The /trends
+  // endpoint already filtered by language+group, but if both are 'all'
+  // we still get 1 row per day (the cross-cutting overall row); if the
+  // admin drills into e.g. language=de + group=all we get 1 row per day
+  // for that combination.
+  const trendChartData = useMemo(() => {
+    if (!trends?.rows.length) return [] as Array<{
+      date: string;
+      label: string;
+      total: number;
+      indexed: number;
+      crawledNotIndexed: number;
+      discoveredNotIndexed: number;
+      indexedPct: number;
+    }>;
+    // Group by date in case multiple rows match (shouldn't happen given
+    // the filter, but defensive).
+    const byDate = new Map<
+      string,
+      {
+        date: string;
+        label: string;
+        total: number;
+        indexed: number;
+        crawledNotIndexed: number;
+        discoveredNotIndexed: number;
+      }
+    >();
+    for (const r of trends.rows) {
+      const d = new Date(r.date);
+      const key = d.toISOString().slice(0, 10);
+      const existing = byDate.get(key);
+      if (existing) {
+        existing.total += r.total;
+        existing.indexed += r.indexed;
+        existing.crawledNotIndexed += r.crawledNotIndexed;
+        existing.discoveredNotIndexed += r.discoveredNotIndexed;
+      } else {
+        byDate.set(key, {
+          date: key,
+          label: format(d, 'MMM dd'),
+          total: r.total,
+          indexed: r.indexed,
+          crawledNotIndexed: r.crawledNotIndexed,
+          discoveredNotIndexed: r.discoveredNotIndexed,
+        });
+      }
+    }
+    return Array.from(byDate.values())
+      .sort((a, b) => (a.date < b.date ? -1 : 1))
+      .map((d) => ({
+        ...d,
+        indexedPct: d.total ? Math.round((d.indexed / d.total) * 1000) / 10 : 0,
+      }));
+  }, [trends]);
 
   const indexedPct = useMemo(() => {
     if (!stats || !stats.total) return 0;
@@ -416,6 +549,202 @@ export default function GscInspectionPage() {
             </CardContent>
           </Card>
         </div>
+
+        <Card className="bg-[#1A1A1A] border-gray-800">
+          <CardHeader>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div>
+                <CardTitle>Indexing trend</CardTitle>
+                <CardDescription className="text-gray-400">
+                  Daily snapshots of total / indexed / crawled-not-indexed /
+                  discovered-not-indexed counts. Snapshot job runs nightly at
+                  23:55 Berlin time.
+                  {status?.lastSnapshotAt
+                    ? ` Last snapshot: ${fmt(status.lastSnapshotAt)}.`
+                    : ' No snapshot recorded yet.'}
+                </CardDescription>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Select
+                  value={trendDays}
+                  onValueChange={(v) => setTrendDays(v as '30' | '90')}
+                >
+                  <SelectTrigger className="w-[120px] bg-[#0E0E0E] border-gray-700">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                    <SelectItem value="30">Last 30 days</SelectItem>
+                    <SelectItem value="90">Last 90 days</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={trendLanguage}
+                  onValueChange={setTrendLanguage}
+                >
+                  <SelectTrigger className="w-[140px] bg-[#0E0E0E] border-gray-700">
+                    <SelectValue placeholder="Language" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                    <SelectItem value="all">All languages</SelectItem>
+                    {languages.map((l) => (
+                      <SelectItem key={l} value={l}>
+                        {l}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select value={trendGroup} onValueChange={setTrendGroup}>
+                  <SelectTrigger className="w-[140px] bg-[#0E0E0E] border-gray-700">
+                    <SelectValue placeholder="Group" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                    <SelectItem value="all">All groups</SelectItem>
+                    <SelectItem value="static">Static</SelectItem>
+                    <SelectItem value="country">Country</SelectItem>
+                    <SelectItem value="genre">Genre</SelectItem>
+                    <SelectItem value="station">Station</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-gray-700"
+                  disabled={recordSnapshot.isPending}
+                  onClick={() => recordSnapshot.mutate()}
+                  title="Force a daily snapshot now (cron also runs nightly)"
+                >
+                  <RefreshCcw className="w-4 h-4 mr-2" />
+                  {recordSnapshot.isPending ? 'Snapshotting…' : 'Snapshot now'}
+                </Button>
+                <a
+                  href={(() => {
+                    const p = new URLSearchParams();
+                    p.set('days', trendDays);
+                    // 'all' is the aggregate bucket (overall row); 'any'
+                    // is the wildcard returning every (lang, group) combo.
+                    // From the dashboard filter, 'all' means the user
+                    // selected the aggregate row, so we honor it as-is.
+                    p.set('language', trendLanguage);
+                    p.set('group', trendGroup);
+                    return `/api/admin/gsc-inspection/history.csv?${p.toString()}`;
+                  })()}
+                  className="inline-flex items-center text-sm border border-gray-700 rounded-md px-3 py-1.5 hover:bg-gray-800"
+                  title="Download the snapshot history as CSV (matches the current filters)"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export CSV
+                </a>
+              </div>
+            </div>
+            {recordSnapshot.error && (
+              <p className="text-sm text-red-400 mt-2">
+                {(recordSnapshot.error as Error).message}
+              </p>
+            )}
+          </CardHeader>
+          <CardContent>
+            {trendsLoading ? (
+              <div className="text-center text-gray-400 py-12">
+                Loading trend…
+              </div>
+            ) : trendChartData.length === 0 ? (
+              <div className="text-center text-gray-400 py-12">
+                No snapshots yet for this filter. The first snapshot is
+                recorded automatically tonight at 23:55 Berlin time, or you
+                can click "Snapshot now" to capture today's numbers
+                immediately.
+              </div>
+            ) : (
+              <div className="w-full" style={{ height: 320 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={trendChartData}
+                    margin={{ top: 10, right: 24, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#2a2a2a" />
+                    <XAxis
+                      dataKey="label"
+                      stroke="#9ca3af"
+                      tick={{ fontSize: 12 }}
+                      minTickGap={20}
+                    />
+                    <YAxis
+                      yAxisId="left"
+                      stroke="#9ca3af"
+                      tick={{ fontSize: 12 }}
+                      width={60}
+                      allowDecimals={false}
+                    />
+                    <YAxis
+                      yAxisId="right"
+                      orientation="right"
+                      stroke="#9ca3af"
+                      tick={{ fontSize: 12 }}
+                      width={50}
+                      tickFormatter={(v) => `${v}%`}
+                      domain={[0, 100]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: '#0E0E0E',
+                        border: '1px solid #374151',
+                        color: '#fff',
+                      }}
+                      labelStyle={{ color: '#9ca3af' }}
+                    />
+                    <Legend wrapperStyle={{ color: '#9ca3af' }} />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="total"
+                      name="Total URLs"
+                      stroke="#9ca3af"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="indexed"
+                      name="Indexed"
+                      stroke="#22c55e"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="crawledNotIndexed"
+                      name="Crawled, not indexed"
+                      stroke="#f59e0b"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                    <Line
+                      yAxisId="left"
+                      type="monotone"
+                      dataKey="discoveredNotIndexed"
+                      name="Discovered, not indexed"
+                      stroke="#fb923c"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                    <Line
+                      yAxisId="right"
+                      type="monotone"
+                      dataKey="indexedPct"
+                      name="Indexed %"
+                      stroke="#60a5fa"
+                      strokeDasharray="4 4"
+                      dot={false}
+                      strokeWidth={2}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card className="bg-[#1A1A1A] border-gray-800">
           <CardHeader>

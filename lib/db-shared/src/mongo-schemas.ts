@@ -917,6 +917,29 @@ export interface IGscUrlInspection extends Document {
   resubmitCount: number;
 }
 
+/**
+ * Task #267 — Daily aggregate snapshot of GSC indexing state, so admins
+ * can see trends (last 30/90 days) instead of just the latest snapshot.
+ *
+ * One row per (date UTC midnight, language, group). `language='all'` and
+ * `group='all'` rows store the cross-cutting totals so the dashboard can
+ * draw an overall trend line without an extra aggregate query.
+ */
+export interface IGscIndexingSnapshot extends Document {
+  date: Date;
+  language: string;
+  group: 'static' | 'country' | 'station' | 'genre' | 'all';
+  total: number;
+  indexed: number;
+  crawledNotIndexed: number;
+  discoveredNotIndexed: number;
+  excluded: number;
+  error: number;
+  pending: number;
+  unknown: number;
+  createdAt: Date;
+}
+
 export interface IIndexNowLog extends Document {
   timestamp: Date;
   host: string;
@@ -2509,6 +2532,31 @@ GscUrlInspectionSchema.index({ lastInspectedAt: 1, discoveredAt: -1 });
 // Task #266 — fast lookup of stuck rows by (state, notIndexedSince).
 GscUrlInspectionSchema.index({ state: 1, notIndexedSince: 1 });
 
+const GscIndexingSnapshotSchema = new Schema<IGscIndexingSnapshot>({
+  date: { type: Date, required: true },
+  language: { type: String, required: true },
+  group: {
+    type: String,
+    enum: ['static', 'country', 'station', 'genre', 'all'],
+    required: true,
+  },
+  total: { type: Number, required: true, default: 0 },
+  indexed: { type: Number, required: true, default: 0 },
+  crawledNotIndexed: { type: Number, required: true, default: 0 },
+  discoveredNotIndexed: { type: Number, required: true, default: 0 },
+  excluded: { type: Number, required: true, default: 0 },
+  error: { type: Number, required: true, default: 0 },
+  pending: { type: Number, required: true, default: 0 },
+  unknown: { type: Number, required: true, default: 0 },
+  createdAt: { type: Date, default: Date.now },
+});
+// Idempotent daily snapshot: one row per (date, language, group).
+GscIndexingSnapshotSchema.index(
+  { date: 1, language: 1, group: 1 },
+  { unique: true },
+);
+GscIndexingSnapshotSchema.index({ date: -1 });
+
 const IndexNowLogSchema = new Schema<IIndexNowLog>({
   timestamp: { type: Date, default: Date.now, required: true },
   host: { type: String, required: true },
@@ -2621,6 +2669,7 @@ const SitemapUrlSnapshotSchema = new Schema<ISitemapUrlSnapshot>({
 SitemapUrlSnapshotSchema.index({ type: 1, language: 1 }, { unique: true });
 export const SitemapUrlSnapshot = mongoose.model<ISitemapUrlSnapshot>('SitemapUrlSnapshot', SitemapUrlSnapshotSchema);
 export const GscUrlInspection = mongoose.model<IGscUrlInspection>('GscUrlInspection', GscUrlInspectionSchema);
+export const GscIndexingSnapshot = mongoose.model<IGscIndexingSnapshot>('GscIndexingSnapshot', GscIndexingSnapshotSchema);
 export const BulkDescriptionJob = mongoose.model<IBulkDescriptionJob>('BulkDescriptionJob', BulkDescriptionJobSchema);
 export const Advertisement = mongoose.model<IAdvertisement>('Advertisement', AdvertisementSchema);
 export const FooterSocialMedia = mongoose.model<IFooterSocialMedia>('FooterSocialMedia', FooterSocialMediaSchema);
