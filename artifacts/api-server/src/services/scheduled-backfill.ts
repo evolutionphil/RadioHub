@@ -8,7 +8,16 @@ import {
 } from '@workspace/db-shared/mongo-schemas';
 import { SyncService } from './sync';
 import { logger } from '../utils/logger';
-import { notifyBackfillResult } from './backfill-notifier';
+import {
+  notifyBackfillResult,
+  notifyBackfillPhaseSlowdowns,
+  getBackfillPhaseSlowdownLookback,
+  getBackfillPhaseSlowdownMinSamples,
+  getBackfillPhaseSlowdownMultiplier,
+  getBackfillPhaseSlowdownMinBaselineMs,
+  type BackfillPhaseSlowdown,
+  type BackfillPhase,
+} from './backfill-notifier';
 
 /**
  * Weekly cross-country backfill that mirrors the per-country
@@ -371,6 +380,131 @@ async function topCountriesByFilter(
     .map((r) => ({ countryCode: r._id as string, count: r.count }));
 }
 
+/**
+ * Compute the median of a list of numbers. Caller is responsible for
+ * filtering out non-finite values; we just sort + pick the middle.
+ */
+function median(values: number[]): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const mid = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? (sorted[mid - 1]! + sorted[mid]!) / 2
+    : sorted[mid]!;
+}
+
+/**
+ * Inspect the just-finished run for per-country phases that ran
+ * dramatically slower than the median of recent completed runs for
+ * the same country/phase (Task #311). The weekly cron already
+ * persists per-country `durationMs` for both the logo-enqueue and
+ * tag-hydration phases (Task #235); this just compares the latest
+ * row against the historical baseline so a phase that jumps from
+ * 30s→8m surfaces automatically instead of waiting for an admin to
+ * eyeball the run detail page.
+ *
+ * Tunables are env-overridable via the same module that owns the
+ * other alert thresholds (`backfill-notifier.ts`):
+ *   - lookback window (how many recent completed runs to consider)
+ *   - minimum sample size (don't alert on a brand-new market)
+ *   - minimum baseline duration (ignore sub-second phases)
+ *   - multiplier (e.g. 3x median)
+ *
+ * Returns an empty array on any error — slowdown detection is a
+ * nice-to-have signal, never something that should fail the run
+ * that just completed successfully.
+ */
+export async function detectBackfillPhaseSlowdowns(
+  currentRun: IBackfillRun,
+): Promise<BackfillPhaseSlowdown[]> {
+  const multiplier = getBackfillPhaseSlowdownMultiplier();
+  const lookback = getBackfillPhaseSlowdownLookback();
+  const minSamples = getBackfillPhaseSlowdownMinSamples();
+  const minBaseline = getBackfillPhaseSlowdownMinBaselineMs();
+
+  // Collect (country, phase) pairs the current run actually measured.
+  // Skip entries with no durationMs — older rows might not have it.
+  const targets: Array<{ countryCode: string; phase: BackfillPhase; durationMs: number }> = [];
+  for (const l of currentRun.logos) {
+    if (typeof l.durationMs === 'number' && l.durationMs > 0 && l.countryCode) {
+      targets.push({ countryCode: l.countryCode, phase: 'logos', durationMs: l.durationMs });
+    }
+  }
+  for (const t of currentRun.tags) {
+    if (typeof t.durationMs === 'number' && t.durationMs > 0 && t.countryCode) {
+      targets.push({ countryCode: t.countryCode, phase: 'tags', durationMs: t.durationMs });
+    }
+  }
+  if (targets.length === 0) return [];
+
+  try {
+    // One Mongo query: pull the recent completed runs once, then
+    // bucket their per-country phase timings client-side. Cheaper
+    // than an aggregation per (country, phase) target on top of a
+    // collection capped at a few hundred rows by the retention sweep.
+    type HistoryRow = {
+      _id: unknown;
+      logos?: Array<{ countryCode?: string; durationMs?: number }>;
+      tags?: Array<{ countryCode?: string; durationMs?: number }>;
+    };
+    const history = (await BackfillRun.find({
+      status: 'completed',
+      _id: { $ne: currentRun._id },
+    })
+      .sort({ startedAt: -1 })
+      .limit(lookback)
+      .select({ logos: 1, tags: 1 })
+      .lean()) as unknown as HistoryRow[];
+
+    if (history.length === 0) return [];
+
+    // Build baseline samples per (country, phase).
+    const baselines = new Map<string, number[]>();
+    const key = (cc: string, phase: BackfillPhase) => `${phase}:${cc}`;
+    for (const row of history) {
+      for (const l of row.logos ?? []) {
+        if (typeof l.durationMs === 'number' && l.durationMs > 0 && l.countryCode) {
+          const k = key(l.countryCode, 'logos');
+          const arr = baselines.get(k) ?? [];
+          arr.push(l.durationMs);
+          baselines.set(k, arr);
+        }
+      }
+      for (const t of row.tags ?? []) {
+        if (typeof t.durationMs === 'number' && t.durationMs > 0 && t.countryCode) {
+          const k = key(t.countryCode, 'tags');
+          const arr = baselines.get(k) ?? [];
+          arr.push(t.durationMs);
+          baselines.set(k, arr);
+        }
+      }
+    }
+
+    const slowdowns: BackfillPhaseSlowdown[] = [];
+    for (const target of targets) {
+      const samples = baselines.get(key(target.countryCode, target.phase)) ?? [];
+      if (samples.length < minSamples) continue;
+      const baseline = median(samples);
+      if (baseline < minBaseline) continue;
+      const observedMultiplier = target.durationMs / baseline;
+      if (observedMultiplier >= multiplier) {
+        slowdowns.push({
+          countryCode: target.countryCode,
+          phase: target.phase,
+          durationMs: target.durationMs,
+          baselineMs: Math.round(baseline),
+          multiplier: Math.round(observedMultiplier * 100) / 100,
+          sampleSize: samples.length,
+        });
+      }
+    }
+    return slowdowns;
+  } catch (err) {
+    logger.warn('⚠️  detectBackfillPhaseSlowdowns failed (non-fatal):', err);
+    return [];
+  }
+}
+
 class ScheduledBackfillService {
   private static instance: ScheduledBackfillService;
   private isInitialized = false;
@@ -577,6 +711,19 @@ class ScheduledBackfillService {
         // count clears the configured threshold and stays silent for
         // clean first-try runs.
         await notifyBackfillResult(run);
+        // Phase-slowdown alert (Task #311): even on a successful run,
+        // flag any per-country phase that ran much slower than the
+        // recent baseline so admins can catch regressions before they
+        // turn into a stuck/failing sweep next week. Detection is
+        // best-effort; it never throws or affects the run outcome.
+        try {
+          const slowdowns = await detectBackfillPhaseSlowdowns(run);
+          if (slowdowns.length > 0) {
+            await notifyBackfillPhaseSlowdowns(run, slowdowns);
+          }
+        } catch (err) {
+          logger.warn('⚠️  Phase-slowdown detection failed (non-fatal):', err);
+        }
       } else {
         run.status = 'failed';
         run.finishedAt = finishedAt;
