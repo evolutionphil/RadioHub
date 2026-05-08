@@ -9,6 +9,7 @@ interface RunCountryLogos {
   countryCode: string;
   candidates: number;
   enqueued: number;
+  durationMs?: number;
 }
 interface RunCountryTags {
   countryCode: string;
@@ -16,6 +17,7 @@ interface RunCountryTags {
   hydrated: number;
   emptyUpstream: number;
   failed: number;
+  durationMs?: number;
 }
 interface RunAttempt {
   attempt: number;
@@ -246,6 +248,7 @@ export default function AdminSeoMaintenanceRunPage() {
                         <th className="py-2 pr-3">Ülke</th>
                         <th className="py-2 pr-3">Aday</th>
                         <th className="py-2 pr-3">Enqueued</th>
+                        <th className="py-2 pr-3">Süre</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -260,6 +263,12 @@ export default function AdminSeoMaintenanceRunPage() {
                           <td className="py-2 pr-3">{c.candidates}</td>
                           <td className="py-2 pr-3 text-emerald-600 font-semibold">
                             {c.enqueued}
+                          </td>
+                          <td
+                            className="py-2 pr-3 text-slate-500 font-mono text-xs"
+                            data-testid={`cell-logo-duration-${c.countryCode}`}
+                          >
+                            {formatDuration(c.durationMs)}
                           </td>
                         </tr>
                       ))}
@@ -290,6 +299,7 @@ export default function AdminSeoMaintenanceRunPage() {
                         <th className="py-2 pr-3">Hydrated</th>
                         <th className="py-2 pr-3">Upstream boş</th>
                         <th className="py-2 pr-3">Fail</th>
+                        <th className="py-2 pr-3">Süre</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -316,6 +326,12 @@ export default function AdminSeoMaintenanceRunPage() {
                             }`}
                           >
                             {c.failed}
+                          </td>
+                          <td
+                            className="py-2 pr-3 text-slate-500 font-mono text-xs"
+                            data-testid={`cell-tag-duration-${c.countryCode}`}
+                          >
+                            {formatDuration(c.durationMs)}
                           </td>
                         </tr>
                       ))}

@@ -466,17 +466,34 @@ class ScheduledBackfillService {
     const sync = new SyncService();
 
     for (const c of topLogos) {
+      // Per-phase timing (Task #235): wrap each per-country logo enqueue
+      // so the detail page can flag which market dominated the sweep,
+      // not just the total `durationMs`. Errors still record duration so
+      // a country that times out shows up as "slow + failed" rather than
+      // disappearing from the breakdown.
+      const phaseStart = Date.now();
       try {
         const r = await enqueueLogosForCountry(c.countryCode);
-        run.logos.push({ countryCode: c.countryCode, candidates: r.candidates, enqueued: r.enqueued });
+        run.logos.push({
+          countryCode: c.countryCode,
+          candidates: r.candidates,
+          enqueued: r.enqueued,
+          durationMs: Date.now() - phaseStart,
+        });
         logger.log(`📥 ${c.countryCode}: enqueued ${r.enqueued}/${r.candidates} logos`);
       } catch (err) {
         logger.error(`❌ Logo enqueue failed for ${c.countryCode}:`, err);
-        run.logos.push({ countryCode: c.countryCode, candidates: c.count, enqueued: 0 });
+        run.logos.push({
+          countryCode: c.countryCode,
+          candidates: c.count,
+          enqueued: 0,
+          durationMs: Date.now() - phaseStart,
+        });
       }
     }
 
     for (const c of topTags) {
+      const phaseStart = Date.now();
       try {
         const r = await sync.hydrateMissingTagsInBackground({
           countryCode: c.countryCode,
@@ -488,6 +505,7 @@ class ScheduledBackfillService {
           hydrated: r.hydrated,
           emptyUpstream: r.emptyUpstream,
           failed: r.failed,
+          durationMs: Date.now() - phaseStart,
         });
         logger.log(
           `🏷️  ${c.countryCode}: tags processed=${r.processed} hydrated=${r.hydrated} empty=${r.emptyUpstream} failed=${r.failed}`,
@@ -500,6 +518,7 @@ class ScheduledBackfillService {
           hydrated: 0,
           emptyUpstream: 0,
           failed: 0,
+          durationMs: Date.now() - phaseStart,
         });
       }
     }

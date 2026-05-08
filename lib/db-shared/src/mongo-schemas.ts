@@ -656,6 +656,10 @@ export interface IBackfillRunCountryLogos {
   countryCode: string;
   candidates: number;
   enqueued: number;
+  // Per-country wall time for the logo-enqueue phase (Task #235), so the
+  // detail page can show which country/step actually dominated a slow
+  // Sunday sweep instead of just the overall `durationMs`.
+  durationMs?: number;
 }
 export interface IBackfillRunCountryTags {
   countryCode: string;
@@ -663,6 +667,10 @@ export interface IBackfillRunCountryTags {
   hydrated: number;
   emptyUpstream: number;
   failed: number;
+  // Per-country wall time for the tag-hydration phase (Task #235). This
+  // is the radio-browser-bound step so it's typically the long pole on
+  // markets with thousands of un-hydrated stations.
+  durationMs?: number;
 }
 export interface IBackfillRun extends Document {
   trigger: string; // 'cron:weekly' | 'manual:logos:<CC>' | 'manual:tags:<CC>'
@@ -1158,6 +1166,7 @@ const BackfillRunSchema = new Schema<IBackfillRun>({
     countryCode: { type: String, required: true },
     candidates: { type: Number, default: 0 },
     enqueued: { type: Number, default: 0 },
+    durationMs: Number,
   }],
   tags: [{
     _id: false,
@@ -1166,6 +1175,7 @@ const BackfillRunSchema = new Schema<IBackfillRun>({
     hydrated: { type: Number, default: 0 },
     emptyUpstream: { type: Number, default: 0 },
     failed: { type: Number, default: 0 },
+    durationMs: Number,
   }],
   errorMessage: String,
   attempts: {
