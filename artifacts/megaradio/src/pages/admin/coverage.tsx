@@ -1267,10 +1267,21 @@ export default function AdminCoverage() {
                             <CoverageJobProgressRow
                               job={job}
                               cancelPending={cancellingJobIds.has(job.jobId)}
+                              resumePending={
+                                enqueueMutation.isPending &&
+                                enqueuing ===
+                                  `${job.countryCode}:${job.scope}`
+                              }
                               onCancel={() =>
                                 cancelMutation.mutate({
                                   countryCode: job.countryCode,
                                   jobId: job.jobId,
+                                  scope: job.scope,
+                                })
+                              }
+                              onResume={() =>
+                                enqueueMutation.mutate({
+                                  countryCode: job.countryCode,
                                   scope: job.scope,
                                 })
                               }
@@ -1298,11 +1309,15 @@ function CoverageJobProgressRow({
   job,
   onCancel,
   cancelPending,
+  onResume,
+  resumePending,
   onDismiss,
 }: {
   job: CoverageJobStatus;
   onCancel: () => void;
   cancelPending: boolean;
+  onResume: () => void;
+  resumePending: boolean;
   onDismiss: () => void;
 }) {
   const isRunning = job.status === 'running';
@@ -1382,15 +1397,28 @@ function CoverageJobProgressRow({
           </Button>
         ) : null}
         {isCancelled ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 px-2 text-xs ml-auto"
-            onClick={onDismiss}
-            data-testid={`button-dismiss-coverage-${job.countryCode}`}
-          >
-            Dismiss
-          </Button>
+          <div className="flex items-center gap-1 ml-auto">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs"
+              disabled={resumePending}
+              onClick={onResume}
+              data-testid={`button-resume-coverage-${job.countryCode}`}
+            >
+              <Undo2 className="w-3 h-3 mr-1" />
+              {resumePending ? 'Resuming…' : 'Resume'}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-6 px-2 text-xs"
+              onClick={onDismiss}
+              data-testid={`button-dismiss-coverage-${job.countryCode}`}
+            >
+              Dismiss
+            </Button>
+          </div>
         ) : null}
       </div>
       {isCancelled ? (
