@@ -6,6 +6,7 @@ import { URL_TRANSLATIONS } from './shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
 import { isJunkStation } from './seo/junk-station-rules';
 import { buildGenreSeo } from './shared/genre-seo-templates';
+import { buildCountrySeo, buildRegionSeo } from './shared/region-seo-templates';
 
 // Concurrency raised 5 → 15 → 50 → 200 → 1000 → 2500: paired with MongoDB
 // pool 100, heap 10 GB and RSS warning 7 GB on a 24 GB Railway replica to
@@ -804,16 +805,23 @@ export class SeoRenderer {
     // Enhance with more specific content based on page type and additional data
     // Same logic as before, but using database translations
     if (pageType === 'regions' && additionalData) {
+      // Use multilingual SEO templates (shared/region-seo-templates.ts).
+      // Without this, every non-English language served the SAME English title
+      // ("Germany Radio Stations - Regional Broadcasting | Mega Radio") and
+      // description across ~120 countries × 44 languages. Google was collapsing
+      // the duplicates into one EN canonical and dropping the rest.
       if (additionalData.country) {
         const countryName = additionalData.country.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
-        baseSeoTags.title = `${countryName} ${getTranslation('seo_radio_stations')} - ${getTranslation('seo_listen_live_online')} | Mega Radio`;
-        baseSeoTags.description = `${getTranslation('seo_listen_to_live_radio_from')} ${countryName}. ${getTranslation('seo_discover_local')} ${countryName} ${getTranslation('seo_radio_broadcasting_free')}.`;
-        baseSeoTags.keywords = `${countryName} radio, ${countryName} radio stations, ${countryName} live radio`;
+        const seo = buildCountrySeo(countryName, language, translations);
+        baseSeoTags.title = seo.title;
+        baseSeoTags.description = seo.description;
+        baseSeoTags.keywords = seo.keywords;
       } else if (additionalData.region) {
         const regionName = additionalData.region.replace(/-/g, ' ').replace(/\b\w/g, (l: string) => l.toUpperCase());
-        baseSeoTags.title = `${regionName} ${getTranslation('seo_radio_stations')} - ${getTranslation('seo_regional_broadcasting')} | Mega Radio`;
-        baseSeoTags.description = `${getTranslation('seo_explore_radio_stations_from')} ${regionName}. ${getTranslation('seo_listen_to_regional_broadcasting')}.`;
-        baseSeoTags.keywords = `${regionName} radio, ${regionName} broadcasting, regional radio`;
+        const seo = buildRegionSeo(regionName, language, translations);
+        baseSeoTags.title = seo.title;
+        baseSeoTags.description = seo.description;
+        baseSeoTags.keywords = seo.keywords;
       }
     }
     
@@ -1339,6 +1347,13 @@ export class SeoRenderer {
           const langPrefix = `/${language}`;
           const cc = additionalData?.countryCode;
           const flagSrc = cc && /^[a-z]{2}$/i.test(cc) ? `https://flagcdn.com/w320/${cc.toLowerCase()}.png` : '';
+          // Multilingual body intro/availability — see shared/region-seo-templates.ts.
+          // Without this every language reused the same English fallback fragments.
+          const regionSeo = regionName
+            ? (additionalData?.country
+                ? buildCountrySeo(regionName, language, translations)
+                : buildRegionSeo(regionName, language, translations))
+            : null;
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
@@ -1349,10 +1364,10 @@ export class SeoRenderer {
               <figcaption>${this.escapeHtml(regionName)}</figcaption>
             </figure>
             ` : ''}
-            ${regionName ? `
+            ${regionSeo ? `
             <section>
-              <p>${this.escapeHtml(getLocalizedText('seo_explore_radio_stations_from', 'Explore radio stations from'))} ${this.escapeHtml(regionName)}. ${this.escapeHtml(getLocalizedText('seo_listen_to_regional_broadcasting', 'Listen to regional broadcasting'))} ${this.escapeHtml(getLocalizedText('streaming_free', 'for free on Mega Radio'))}.</p>
-              <p>${this.escapeHtml(getLocalizedText('hero_over_100_countries', 'Browse 60,000+ radio stations from 120+ countries'))} — ${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('seo_radio_stations', 'Radio Stations'))} ${this.escapeHtml(getLocalizedText('streaming_available_24_7', 'available 24/7'))}.</p>
+              <p>${this.escapeHtml(regionSeo.bodyIntro)}</p>
+              <p>${this.escapeHtml(regionSeo.bodyAvailability)}</p>
             </section>` : ''}
             ${additionalData?.popularStations && additionalData.popularStations.length > 0 ? `
             <!-- DALGA 2 W2.2: Top stations from this country — SEO image surface -->
