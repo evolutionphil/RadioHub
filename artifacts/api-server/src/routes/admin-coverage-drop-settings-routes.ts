@@ -1,5 +1,8 @@
 import type { Express, Request, Response } from 'express';
-import { AdminSetting } from '@workspace/db-shared/mongo-schemas';
+import {
+  AdminSetting,
+  AdminSettingHistory,
+} from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import {
   COVERAGE_DROP_SETTINGS_KEY,
@@ -135,6 +138,9 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
 
         const adminUsername = getAdminUsername(req);
         const now = new Date();
+        const previousDoc = await AdminSetting.findOne({
+          key: COVERAGE_DROP_SETTINGS_KEY,
+        }).lean();
         await AdminSetting.findOneAndUpdate(
           { key: COVERAGE_DROP_SETTINGS_KEY },
           {
@@ -147,6 +153,22 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
           },
           { upsert: true, new: true },
         );
+
+        try {
+          await AdminSettingHistory.create({
+            key: COVERAGE_DROP_SETTINGS_KEY,
+            action: 'update',
+            previousValue: previousDoc?.value ?? null,
+            newValue: next,
+            changedBy: adminUsername,
+            changedAt: now,
+          });
+        } catch (historyErr: any) {
+          logger.error(
+            'Failed to write coverage drop settings history:',
+            historyErr,
+          );
+        }
 
         invalidateCoverageDropSettingsCache();
         const payload = await buildResponse();
@@ -217,15 +239,72 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
   app.delete(
     '/api/admin/settings/coverage-drop-alert',
     requireAdmin,
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       try {
-        await AdminSetting.deleteOne({ key: COVERAGE_DROP_SETTINGS_KEY });
+        const adminUsername = getAdminUsername(req);
+        const now = new Date();
+        const previousDoc = await AdminSetting.findOne({
+          key: COVERAGE_DROP_SETTINGS_KEY,
+        }).lean();
+        await AdminSetting.deleteOne({
+          key: COVERAGE_DROP_SETTINGS_KEY,
+        });
+
+        try {
+          await AdminSettingHistory.create({
+            key: COVERAGE_DROP_SETTINGS_KEY,
+            action: 'clear',
+            previousValue: previousDoc?.value ?? null,
+            newValue: null,
+            changedBy: adminUsername,
+            changedAt: now,
+          });
+        } catch (historyErr: any) {
+          logger.error(
+            'Failed to write coverage drop settings history:',
+            historyErr,
+          );
+        }
+
         invalidateCoverageDropSettingsCache();
         const payload = await buildResponse();
         return void res.json(payload);
       } catch (error: any) {
         logger.error('Error clearing coverage drop settings:', error);
         return void res.status(500).json({ error: 'Failed to clear settings' });
+      }
+    },
+  );
+
+  app.get(
+    '/api/admin/settings/coverage-drop-alert/history',
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const limitParam = Number(req.query.limit);
+        const limit =
+          Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
+            ? Math.floor(limitParam)
+            : 20;
+        const rows = await AdminSettingHistory.find({
+          key: COVERAGE_DROP_SETTINGS_KEY,
+        })
+          .sort({ changedAt: -1 })
+          .limit(limit)
+          .lean();
+        return void res.json({
+          entries: rows.map((r) => ({
+            id: String(r._id),
+            action: r.action,
+            previousValue: r.previousValue ?? null,
+            newValue: r.newValue ?? null,
+            changedBy: r.changedBy ?? null,
+            changedAt: r.changedAt,
+          })),
+        });
+      } catch (error: any) {
+        logger.error('Error reading coverage drop settings history:', error);
+        return void res.status(500).json({ error: 'Failed to read history' });
       }
     },
   );

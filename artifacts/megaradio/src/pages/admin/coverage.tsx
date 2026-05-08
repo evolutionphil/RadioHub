@@ -36,6 +36,9 @@ import {
   Tag,
   AlertTriangle,
   Download,
+  ChevronDown,
+  ChevronRight,
+  Undo2,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -1444,11 +1447,58 @@ function sourceLabel(source: 'db' | 'env' | 'default' | 'none'): string {
   }
 }
 
+interface CoverageDropAlertHistoryEntry {
+  id: string;
+  action: 'update' | 'clear';
+  previousValue: {
+    thresholdPp: number | null;
+    minStations: number | null;
+    webhookUrl: string | null;
+  } | null;
+  newValue: {
+    thresholdPp: number | null;
+    minStations: number | null;
+    webhookUrl: string | null;
+  } | null;
+  changedBy: string | null;
+  changedAt: string;
+}
+
+interface CoverageDropAlertHistoryResponse {
+  entries: CoverageDropAlertHistoryEntry[];
+}
+
+function describeSettingValue(
+  value: CoverageDropAlertHistoryEntry['previousValue'],
+): string {
+  if (!value) return 'cleared (env / defaults)';
+  const parts: string[] = [];
+  parts.push(
+    `threshold ${value.thresholdPp != null ? `${value.thresholdPp}pp` : '—'}`,
+  );
+  parts.push(
+    `min stations ${value.minStations != null ? `n≥${value.minStations}` : '—'}`,
+  );
+  parts.push(`webhook ${value.webhookUrl ? 'set' : 'none'}`);
+  return parts.join(', ');
+}
+
 function CoverageDropAlertSettingsCard() {
   const { toast } = useToast();
   const { data, isLoading, refetch } = useQuery<CoverageDropAlertSettingsResponse>({
     queryKey: ['/api/admin/settings/coverage-drop-alert'],
     staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const {
+    data: historyData,
+    isLoading: historyLoading,
+    refetch: refetchHistory,
+  } = useQuery<CoverageDropAlertHistoryResponse>({
+    queryKey: ['/api/admin/settings/coverage-drop-alert/history'],
+    enabled: historyOpen,
+    staleTime: 30_000,
     refetchOnWindowFocus: false,
   });
 
@@ -1491,6 +1541,9 @@ function CoverageDropAlertSettingsCard() {
         ['/api/admin/settings/coverage-drop-alert'],
         next,
       );
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/settings/coverage-drop-alert/history'],
+      });
       setHydrated(false);
     },
     onError: (err: any) => {
@@ -1594,6 +1647,9 @@ function CoverageDropAlertSettingsCard() {
         ['/api/admin/settings/coverage-drop-alert'],
         next,
       );
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/settings/coverage-drop-alert/history'],
+      });
       setHydrated(false);
     },
     onError: (err: any) => {
@@ -1604,6 +1660,57 @@ function CoverageDropAlertSettingsCard() {
       });
     },
   });
+
+  const revertToHistoryMutation = useMutation({
+    mutationFn: async (entry: CoverageDropAlertHistoryEntry) => {
+      const target = entry.newValue;
+      if (target === null) {
+        const res = await apiRequest(
+          'DELETE',
+          '/api/admin/settings/coverage-drop-alert',
+        );
+        return (await res.json()) as CoverageDropAlertSettingsResponse;
+      }
+      const res = await apiRequest(
+        'PUT',
+        '/api/admin/settings/coverage-drop-alert',
+        {
+          body: {
+            thresholdPp: target.thresholdPp,
+            minStations: target.minStations,
+            webhookUrl: target.webhookUrl,
+          },
+        },
+      );
+      return (await res.json()) as CoverageDropAlertSettingsResponse;
+    },
+    onSuccess: (next) => {
+      toast({
+        title: 'Reverted to previous value',
+        description: `Effective: >${next.effective.thresholdPp}pp drop, n≥${next.effective.minStations}.`,
+      });
+      queryClient.setQueryData(
+        ['/api/admin/settings/coverage-drop-alert'],
+        next,
+      );
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/settings/coverage-drop-alert/history'],
+      });
+      setHydrated(false);
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Failed to revert',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const anyMutationPending =
+    saveMutation.isPending ||
+    resetMutation.isPending ||
+    revertToHistoryMutation.isPending;
 
   return (
     <Card data-testid="card-coverage-drop-settings">
@@ -1739,7 +1846,7 @@ function CoverageDropAlertSettingsCard() {
                     setHydrated(false);
                     void refetch();
                   }}
-                  disabled={saveMutation.isPending || resetMutation.isPending}
+                  disabled={anyMutationPending}
                   data-testid="button-coverage-drop-revert"
                 >
                   Revert
@@ -1749,8 +1856,7 @@ function CoverageDropAlertSettingsCard() {
                   size="sm"
                   onClick={() => resetMutation.mutate()}
                   disabled={
-                    saveMutation.isPending ||
-                    resetMutation.isPending ||
+                    anyMutationPending ||
                     (data.stored.thresholdPp == null &&
                       data.stored.minStations == null &&
                       data.stored.webhookUrl == null)
@@ -1765,7 +1871,7 @@ function CoverageDropAlertSettingsCard() {
                 <Button
                   size="sm"
                   onClick={() => saveMutation.mutate()}
-                  disabled={saveMutation.isPending || resetMutation.isPending}
+                  disabled={anyMutationPending}
                   data-testid="button-coverage-drop-save"
                 >
                   {saveMutation.isPending ? (
@@ -1774,6 +1880,99 @@ function CoverageDropAlertSettingsCard() {
                   Save
                 </Button>
               </div>
+            </div>
+
+            <div className="border-t pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const next = !historyOpen;
+                  setHistoryOpen(next);
+                  if (next) void refetchHistory();
+                }}
+                className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+                aria-expanded={historyOpen}
+                data-testid="button-coverage-drop-history-toggle"
+              >
+                {historyOpen ? (
+                  <ChevronDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronRight className="w-3.5 h-3.5" />
+                )}
+                Recent changes
+                {historyData?.entries?.length
+                  ? ` (${historyData.entries.length})`
+                  : ''}
+              </button>
+
+              {historyOpen ? (
+                <div
+                  className="mt-3"
+                  data-testid="panel-coverage-drop-history"
+                >
+                  {historyLoading ? (
+                    <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />{' '}
+                      Loading history…
+                    </div>
+                  ) : !historyData || historyData.entries.length === 0 ? (
+                    <p className="py-3 text-xs text-muted-foreground">
+                      No changes recorded yet. Saving or clearing the
+                      settings above will start the audit log.
+                    </p>
+                  ) : (
+                    <ul className="space-y-2">
+                      {historyData.entries.map((entry) => {
+                        const when = new Date(entry.changedAt);
+                        const who = entry.changedBy ?? 'unknown admin';
+                        const actionLabel =
+                          entry.action === 'clear'
+                            ? 'Cleared override'
+                            : 'Updated';
+                        return (
+                          <li
+                            key={entry.id}
+                            className="rounded-md border bg-muted/30 px-3 py-2 text-xs"
+                            data-testid={`history-row-${entry.id}`}
+                          >
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="space-y-1">
+                                <div>
+                                  <strong>{actionLabel}</strong> by{' '}
+                                  {who} ·{' '}
+                                  <span title={when.toISOString()}>
+                                    {when.toLocaleString()}
+                                  </span>
+                                </div>
+                                <div className="text-muted-foreground">
+                                  From: {describeSettingValue(entry.previousValue)}
+                                </div>
+                                <div className="text-muted-foreground">
+                                  To: {describeSettingValue(entry.newValue)}
+                                </div>
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-xs"
+                                disabled={anyMutationPending}
+                                onClick={() =>
+                                  revertToHistoryMutation.mutate(entry)
+                                }
+                                data-testid={`button-coverage-drop-history-revert-${entry.id}`}
+                                title="Re-apply the value from this history row"
+                              >
+                                <Undo2 className="w-3.5 h-3.5 mr-1" />
+                                Revert to this value
+                              </Button>
+                            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              ) : null}
             </div>
           </>
         )}

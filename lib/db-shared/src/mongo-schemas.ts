@@ -3191,6 +3191,41 @@ export const AdminSetting = mongoose.model<IAdminSetting>(
 );
 
 // =====================================================================
+// AdminSettingHistory — append-only audit log of every PUT/DELETE made
+// against an `AdminSetting` row (Task #243). Lets the admin UI surface
+// "who changed what, when" so threshold tuning is reversible without
+// digging through database backups. We persist both the previous and
+// next value so the UI can offer a one-click revert without recomputing
+// state from a sequence of diffs.
+// =====================================================================
+export type AdminSettingHistoryAction = 'update' | 'clear';
+
+export interface IAdminSettingHistory extends Document {
+  key: string;
+  action: AdminSettingHistoryAction;
+  previousValue: any;
+  newValue: any;
+  changedBy?: string | null;
+  changedAt: Date;
+}
+
+const AdminSettingHistorySchema = new Schema<IAdminSettingHistory>({
+  key: { type: String, required: true, index: true },
+  action: { type: String, enum: ['update', 'clear'], required: true },
+  previousValue: { type: Schema.Types.Mixed, default: null },
+  newValue: { type: Schema.Types.Mixed, default: null },
+  changedBy: { type: String, default: null },
+  changedAt: { type: Date, default: Date.now, index: true },
+});
+
+AdminSettingHistorySchema.index({ key: 1, changedAt: -1 });
+
+export const AdminSettingHistory = mongoose.model<IAdminSettingHistory>(
+  'AdminSettingHistory',
+  AdminSettingHistorySchema,
+);
+
+// =====================================================================
 // GenreWhitelistOverride — admin-managed deltas on top of the static
 // genre whitelist seed (`seo/genre-whitelist.ts`). Lets the team add or
 // remove canonical genre slugs and source→canonical aliases without
