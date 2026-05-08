@@ -528,6 +528,150 @@ export default function RadioHeader({
     activeSearchIndex >= 0 ? flatSearchItems[activeSearchIndex]?.id ?? null : null;
   const searchFocusRingClass = 'ring-2 ring-[#FF4199] ring-offset-2 ring-offset-[#1D1D1D]';
 
+  // ---------- Country picker keyboard navigation ----------
+  const countryItems = useMemo(() => {
+    const items: Array<{ id: string; activate: () => void }> = [
+      {
+        id: 'global',
+        activate: () => {
+          onCountryChange?.("all", true);
+          setIsCountryDropdownOpen(false);
+          setCountrySearchQuery("");
+        },
+      },
+    ];
+    for (const country of filteredCountries) {
+      const code = country.code || country.name;
+      items.push({
+        id: `country-${code}`,
+        activate: () => {
+          onCountryChange?.(country.name, true);
+          if (isAuthenticated) {
+            setSelectedCountryObj({ name: country.name, code: country.code });
+          }
+          localStorage.setItem('selectedCountry', country.name);
+          localStorage.setItem('countryPreference', 'manual');
+          setIsCountryDropdownOpen(false);
+          setCountrySearchQuery("");
+        },
+      });
+    }
+    return items;
+  }, [filteredCountries, isAuthenticated, onCountryChange]);
+
+  const [activeCountryIndex, setActiveCountryIndex] = useState(-1);
+  const countryItemRefs = useRef<Map<string, HTMLElement | null>>(new Map());
+  const suppressCountryHoverRef = useRef(false);
+
+  useEffect(() => {
+    const onMove = () => { suppressCountryHoverRef.current = false; };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
+  // Reset highlight when search query changes or dropdown closes
+  useEffect(() => {
+    setActiveCountryIndex(-1);
+  }, [countrySearchQuery]);
+  useEffect(() => {
+    if (!isCountryDropdownOpen) setActiveCountryIndex(-1);
+  }, [isCountryDropdownOpen]);
+  useEffect(() => {
+    if (activeCountryIndex >= countryItems.length) setActiveCountryIndex(-1);
+  }, [countryItems.length, activeCountryIndex]);
+
+  // Scroll the highlighted country into view
+  useEffect(() => {
+    if (activeCountryIndex < 0) return;
+    const item = countryItems[activeCountryIndex];
+    if (!item) return;
+    const el = countryItemRefs.current.get(item.id);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [activeCountryIndex, countryItems]);
+
+  const setCountryItemRef = useCallback(
+    (id: string) => (el: HTMLElement | null) => {
+      if (el) countryItemRefs.current.set(id, el);
+      else countryItemRefs.current.delete(id);
+    },
+    []
+  );
+
+  const setActiveCountryById = useCallback(
+    (id: string) => {
+      if (suppressCountryHoverRef.current) return;
+      const idx = countryItems.findIndex((it) => it.id === id);
+      if (idx >= 0) setActiveCountryIndex(idx);
+    },
+    [countryItems]
+  );
+
+  const handleCountryKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (countrySearchQuery !== '') {
+        setCountrySearchQuery('');
+        setActiveCountryIndex(-1);
+      } else {
+        setIsCountryDropdownOpen(false);
+      }
+      return;
+    }
+    if (countryItems.length === 0) {
+      if (e.key === 'Enter') e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      suppressCountryHoverRef.current = true;
+      setActiveCountryIndex((i) => (i < 0 ? 0 : (i + 1) % countryItems.length));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      suppressCountryHoverRef.current = true;
+      setActiveCountryIndex((i) => (i <= 0 ? countryItems.length - 1 : i - 1));
+      return;
+    }
+    if (e.key === 'Home') {
+      e.preventDefault();
+      suppressCountryHoverRef.current = true;
+      setActiveCountryIndex(0);
+      return;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      suppressCountryHoverRef.current = true;
+      setActiveCountryIndex(countryItems.length - 1);
+      return;
+    }
+    if (e.key === 'PageDown') {
+      e.preventDefault();
+      suppressCountryHoverRef.current = true;
+      setActiveCountryIndex((i) => Math.min((i < 0 ? 0 : i) + PAGE_STEP, countryItems.length - 1));
+      return;
+    }
+    if (e.key === 'PageUp') {
+      e.preventDefault();
+      suppressCountryHoverRef.current = true;
+      setActiveCountryIndex((i) => Math.max((i < 0 ? 0 : i) - PAGE_STEP, 0));
+      return;
+    }
+    if (e.key === 'Enter') {
+      const target = countryItems[activeCountryIndex] ?? countryItems[0];
+      if (target) {
+        e.preventDefault();
+        target.activate();
+      }
+    }
+  };
+
+  const activeCountryId =
+    activeCountryIndex >= 0 ? countryItems[activeCountryIndex]?.id ?? null : null;
+  const countryFocusRingClass = 'ring-2 ring-[#FF4199] ring-inset';
+
   return (
     <>
       {/* OPTIMIZED HEADER - Compact, responsive, balanced from all sides */}
@@ -1254,18 +1398,33 @@ export default function RadioHeader({
                 value={countrySearchQuery}
                 onChange={(e) => setCountrySearchQuery(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={handleCountryKeyDown}
+                role="combobox"
+                aria-expanded={true}
+                aria-controls="header-country-list-auth"
+                aria-activedescendant={activeCountryId ? `header-country-auth-${activeCountryId}` : undefined}
+                aria-autocomplete="list"
                 className="w-full rounded-lg bg-[#2A2A2A] border border-[#444] px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-[#FF4199] transition-colors"
                 placeholder={t('general_search_countries', 'Search countries...')}
+                autoFocus
               />
             </div>
-            <div className="max-h-80 overflow-y-auto scrollbar-none scroll-smooth"
+            <div
+              id="header-country-list-auth"
+              role="listbox"
+              className="max-h-80 overflow-y-auto scrollbar-none scroll-smooth"
                  style={{ 
                    scrollbarWidth: 'none', 
                    msOverflowStyle: 'none',
                    WebkitOverflowScrolling: 'touch'
                  }}>
               <div 
-                className="relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A]"
+                ref={setCountryItemRef('global')}
+                id="header-country-auth-global"
+                role="option"
+                aria-selected={activeCountryId === 'global'}
+                onMouseEnter={() => setActiveCountryById('global')}
+                className={`relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A] ${activeCountryId === 'global' ? countryFocusRingClass : ''}`}
                 onClick={() => {
                   onCountryChange?.("all", true);
                   setIsCountryDropdownOpen(false); 
@@ -1279,10 +1438,18 @@ export default function RadioHeader({
                 </span>
                 <span className="block truncate text-white">{t('nav_global', 'Global')}</span>
               </div>
-              {filteredCountries.map((country, index: number) => (
+              {filteredCountries.map((country, index: number) => {
+                const itemId = `country-${country.code || country.name}`;
+                const isActive = activeCountryId === itemId;
+                return (
                 <div 
                   key={`mobile-portal-${country.name || index}`}
-                  className="relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A]"
+                  ref={setCountryItemRef(itemId)}
+                  id={`header-country-auth-${itemId}`}
+                  role="option"
+                  aria-selected={isActive}
+                  onMouseEnter={() => setActiveCountryById(itemId)}
+                  className={`relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A] ${isActive ? countryFocusRingClass : ''}`}
                   onClick={() => {
                     onCountryChange?.(country.name, true);
                     setSelectedCountryObj({ name: country.name, code: country.code });
@@ -1314,7 +1481,8 @@ export default function RadioHeader({
                   </span>
                   <span className="flex-1 min-w-0 truncate text-white">{country.name}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>,
@@ -1356,18 +1524,33 @@ export default function RadioHeader({
                 value={countrySearchQuery}
                 onChange={(e) => setCountrySearchQuery(e.target.value)}
                 onClick={(e) => e.stopPropagation()}
+                onKeyDown={handleCountryKeyDown}
+                role="combobox"
+                aria-expanded={true}
+                aria-controls="header-country-list-unauth"
+                aria-activedescendant={activeCountryId ? `header-country-unauth-${activeCountryId}` : undefined}
+                aria-autocomplete="list"
                 className="w-full rounded-lg bg-[#2A2A2A] border border-[#444] px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-[#FF4199] transition-colors"
                 placeholder={t('general_search_countries', 'Search countries...')}
+                autoFocus
               />
             </div>
-            <div className="max-h-80 overflow-y-auto scrollbar-none scroll-smooth"
+            <div
+              id="header-country-list-unauth"
+              role="listbox"
+              className="max-h-80 overflow-y-auto scrollbar-none scroll-smooth"
                  style={{ 
                    scrollbarWidth: 'none', 
                    msOverflowStyle: 'none',
                    WebkitOverflowScrolling: 'touch'
                  }}>
               <div 
-                className="relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A]"
+                ref={setCountryItemRef('global')}
+                id="header-country-unauth-global"
+                role="option"
+                aria-selected={activeCountryId === 'global'}
+                onMouseEnter={() => setActiveCountryById('global')}
+                className={`relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A] ${activeCountryId === 'global' ? countryFocusRingClass : ''}`}
                 onClick={() => {
                   onCountryChange?.("all", true);
                   setIsCountryDropdownOpen(false); 
@@ -1381,13 +1564,18 @@ export default function RadioHeader({
                 </span>
                 <span className="flex-1 min-w-0 truncate text-white font-medium">{t('nav_global', 'Global')}</span>
               </div>
-              {(countrySearchQuery ? 
-                countries?.filter((c) => c.name.toLowerCase().includes(countrySearchQuery.toLowerCase())) 
-                : countries
-              )?.map((country) => (
+              {filteredCountries.map((country) => {
+                const itemId = `country-${country.code || country.name}`;
+                const isActive = activeCountryId === itemId;
+                return (
                 <div 
                   key={country.code || country.name}
-                  className="relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A]"
+                  ref={setCountryItemRef(itemId)}
+                  id={`header-country-unauth-${itemId}`}
+                  role="option"
+                  aria-selected={isActive}
+                  onMouseEnter={() => setActiveCountryById(itemId)}
+                  className={`relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A] ${isActive ? countryFocusRingClass : ''}`}
                   onClick={() => {
                     onCountryChange?.(country.name, true);
                     localStorage.setItem('selectedCountry', country.name);
@@ -1418,7 +1606,8 @@ export default function RadioHeader({
                   </span>
                   <span className="flex-1 min-w-0 truncate text-white">{country.name}</span>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>,
