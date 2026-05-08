@@ -160,6 +160,26 @@ mock.module('@workspace/db-shared/mongo-schemas', {
     Station: FakeStationModel,
     Genre: FakeGenreModel,
     GenreWhitelistOverride: FakeOverrideModel,
+    // genre-whitelist-push-notifier (transitively imported by
+    // admin-genre-whitelist-routes) reads these. Empty stubs keep the
+    // notifier a harmless no-op during tests instead of crashing module
+    // instantiation with "does not provide an export named 'User'".
+    User: {
+      find: () => ({
+        lean: async () => [] as Array<{ _id: string }>,
+      }),
+    },
+    UserNotification: {
+      insertMany: async () => [],
+      create: async () => ({}),
+    },
+    GenreWhitelistPushLog: {
+      create: async () => ({}),
+      find: () => ({
+        sort: () => ({ limit: () => ({ lean: async () => [] }) }),
+        lean: async () => [],
+      }),
+    },
     SAFE_GENRE_SLUG_RE: /^[a-z0-9-]+$/,
     normalizeGenreSlug: (slug: string) =>
       String(slug ?? '')

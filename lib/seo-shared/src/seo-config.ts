@@ -74,16 +74,23 @@ export const OPTIONAL_STATION_SEO_KEYS = [
 
 export const SEO_LANGUAGES: SeoLanguage[] = [
   // Primary languages with translations
-  { code: 'en', name: 'English', iso: 'en-US', enabled: true, isDefault: true },
+  // BCP47 fix (2026-05-08, audit round 7): for languages spoken across many
+  // regions we drop the country subtag and emit the bare language code as
+  // hreflang. This matches Google's official guidance: "If you don't have
+  // a country-specific page, use the language code only" — pinning `en-US`
+  // would tell Google our English page is for US users only and exclude
+  // GB/IN/AU/CA/etc. from the cluster. Same logic for `es` (LatAm >> ES),
+  // `fr` (CA/BE/CH/AF), `de` (AT/CH), `ar` (pan-Arabic), `pt` (BR >> PT).
+  { code: 'en', name: 'English', iso: 'en', enabled: true, isDefault: true },
   { code: 'tr', name: 'Türkçe', iso: 'tr-TR', enabled: true, isDefault: false },
-  { code: 'es', name: 'Español', iso: 'es-ES', enabled: true, isDefault: false },
-  { code: 'fr', name: 'Français', iso: 'fr-FR', enabled: true, isDefault: false },
-  { code: 'de', name: 'Deutsch', iso: 'de-DE', enabled: true, isDefault: false },
-  { code: 'ar', name: 'العربية', iso: 'ar-SA', enabled: true, isDefault: false },
+  { code: 'es', name: 'Español', iso: 'es', enabled: true, isDefault: false },
+  { code: 'fr', name: 'Français', iso: 'fr', enabled: true, isDefault: false },
+  { code: 'de', name: 'Deutsch', iso: 'de', enabled: true, isDefault: false },
+  { code: 'ar', name: 'العربية', iso: 'ar', enabled: true, isDefault: false },
   
   // Additional European languages
   { code: 'it', name: 'Italiano', iso: 'it-IT', enabled: true, isDefault: false },
-  { code: 'pt', name: 'Português', iso: 'pt-PT', enabled: true, isDefault: false },
+  { code: 'pt', name: 'Português', iso: 'pt', enabled: true, isDefault: false },
   { code: 'nl', name: 'Nederlands', iso: 'nl-NL', enabled: true, isDefault: false },
   { code: 'ru', name: 'Русский', iso: 'ru-RU', enabled: true, isDefault: false },
   { code: 'pl', name: 'Polski', iso: 'pl-PL', enabled: true, isDefault: false },
@@ -124,7 +131,11 @@ export const SEO_LANGUAGES: SeoLanguage[] = [
   { code: 'vi', name: 'Tiếng Việt', iso: 'vi-VN', enabled: true, isDefault: false },
   { code: 'id', name: 'Bahasa Indonesia', iso: 'id-ID', enabled: true, isDefault: false },
   { code: 'ms', name: 'Bahasa Melayu', iso: 'ms-MY', enabled: true, isDefault: false },
-  { code: 'tl', name: 'Filipino', iso: 'tl-PH', enabled: true, isDefault: false },
+  // BCP47 fix: Google explicitly recommends `fil` (Filipino) over `tl`
+  // (Tagalog) as the hreflang/lang tag — `tl` is the underlying language,
+  // `fil` is the standardized national variant. The URL path stays /tl/
+  // for backlink stability.
+  { code: 'tl', name: 'Filipino', iso: 'fil', enabled: true, isDefault: false },
   
   // Other major languages
   { code: 'he', name: 'עברית', iso: 'he-IL', enabled: true, isDefault: false },
@@ -145,11 +156,16 @@ export const SEO_LANGUAGES: SeoLanguage[] = [
   
   // Additional languages with DB translations
   { code: 'sq', name: 'Shqip', iso: 'sq-AL', enabled: true, isDefault: false }, // Albanian
-  { code: 'az', name: 'Azərbaycan', iso: 'az-AZ', enabled: true, isDefault: false }, // Azerbaijani
+  // BCP47 fix: Azerbaijani uses both Latin and Cyrillic scripts; `az-AZ`
+  // is ambiguous. The visible label "Azərbaycan" is Latin, so pin script.
+  { code: 'az', name: 'Azərbaycan', iso: 'az-Latn', enabled: true, isDefault: false }, // Azerbaijani
   { code: 'hy', name: 'Հայերեն', iso: 'hy-AM', enabled: true, isDefault: false }, // Armenian
   { code: 'so', name: 'Soomaali', iso: 'so-SO', enabled: true, isDefault: false }, // Somali
   { code: 'uk', name: 'Українська', iso: 'uk-UA', enabled: true, isDefault: false }, // Ukrainian
-  { code: 'bs', name: 'Bosanski', iso: 'bs-BA', enabled: true, isDefault: false }, // Bosnian
+  // BCP47 fix: Bosnian uses both Latin and Cyrillic scripts; pin to Latin
+  // since the visible label "Bosanski" is in Latin script (the dominant
+  // form in BiH today).
+  { code: 'bs', name: 'Bosanski', iso: 'bs-Latn', enabled: true, isDefault: false }, // Bosnian
 ];
 
 export const DEFAULT_LANGUAGE = SEO_LANGUAGES.find(lang => lang.isDefault)?.code || 'en';
@@ -1263,10 +1279,17 @@ export function generateLanguageUrls(
         url = `${currentDomain}/${lang.code}${translatedPath}`;
       }
       
-      // CRITICAL SEO FIX: Use the full ISO BCP-47 code (e.g. "nb-NO", "pt-BR")
-      // for the hreflang attribute. Using just the 2-letter code (e.g. "no")
-      // causes Google to ignore the alternate (Norwegian must be "nb-NO" or
-      // "no" with a region) and merges Brazilian/European Portuguese, etc.
+      // Emit the BCP47 tag exactly as configured in SEO_LANGUAGES.iso.
+      // Per Google's hreflang guidance:
+      //   - bare language codes (`en`, `es`, `fr`, `de`, `ar`, `pt`) for
+      //     globally-spoken languages so we don't exclude regional variants;
+      //   - region subtag (`tr-TR`, `it-IT`, …) for mono-country languages;
+      //   - script subtag (`zh-Hans`, `sr-Cyrl`, `az-Latn`, `bs-Latn`) for
+      //     dual-script languages so GSC doesn't merge variants;
+      //   - `nb-NO` for Norwegian (Google rejects bare `no`);
+      //   - `fil` for Filipino (Google's preferred tag, not `tl`).
+      // The `iso` value is the source of truth — never substitute `lang.code`
+      // here unless `iso` is genuinely missing.
       const hreflang = lang.iso || lang.code;
 
       return {
@@ -2071,17 +2094,39 @@ export function generateSeoTags(
   // Generate canonical URL
   const canonicalUrl = `${currentDomain}${canonicalPath}`;
   
-  // Generate og:locale dynamically from SEO_LANGUAGES using the iso field
-  // Convert from hreflang format (tr-TR) to OG locale format (tr_TR)
+  // Generate og:locale from SEO_LANGUAGES. Hreflang allows bare language
+  // codes ("en", "es") for "any region speaking this language", but Facebook's
+  // OG protocol *requires* `language_TERRITORY` (e.g. `en_US`). After the
+  // round-7 BCP47 cleanup, several iso entries lost their region subtag
+  // (en, es, fr, de, ar, pt, fil) — for OG we backfill a sensible default
+  // territory so the og:locale stays valid. Script-only tags (zh-Hans,
+  // sr-Cyrl, az-Latn, bs-Latn) also need a territory rather than a script.
+  const OG_LOCALE_FALLBACK: Record<string, string> = {
+    en: 'en_US',
+    es: 'es_ES',
+    fr: 'fr_FR',
+    de: 'de_DE',
+    ar: 'ar_AR',
+    pt: 'pt_BR', // Brazil is the largest Portuguese-speaking market
+    fil: 'fil_PH',
+    'zh-Hans': 'zh_CN',
+    'sr-Cyrl': 'sr_RS',
+    'az-Latn': 'az_AZ',
+    'bs-Latn': 'bs_BA',
+    'nb-NO': 'nb_NO',
+  };
+  const toOgLocale = (iso: string): string =>
+    OG_LOCALE_FALLBACK[iso] ?? iso.replace('-', '_');
+
   const currentLangConfig = SEO_LANGUAGES.find(l => l.code === language);
-  const ogLocale = currentLangConfig?.iso.replace('-', '_') || 'en_US';
-  
+  const ogLocale = currentLangConfig ? toOgLocale(currentLangConfig.iso) : 'en_US';
+
   // Generate og:locale:alternate tags for all other enabled languages (Facebook/social media)
   // This tells social media platforms about all language versions of the same content
   // Using dynamic locale generation ensures all 56 languages are covered
   const ogLocaleAlternates = SEO_LANGUAGES
     .filter(lang => lang.enabled && lang.code !== language)
-    .map(lang => lang.iso.replace('-', '_')); // Convert tr-TR → tr_TR format
+    .map(lang => toOgLocale(lang.iso));
   
   // Ensure images have absolute URLs for social sharing
   const makeAbsoluteUrl = (url?: string): string | undefined => {
