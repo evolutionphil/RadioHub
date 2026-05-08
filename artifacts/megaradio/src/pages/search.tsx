@@ -460,11 +460,14 @@ export default function SearchPage() {
                 ? t("search_esc_hint_clear_title", "Press Esc to clear")
                 : t("search_esc_hint_close_title", "Press Esc to close search")
             }
-            className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center px-2 py-0.5 rounded-md border border-white/15 bg-white/5 text-[11px] font-medium text-gray-400 pointer-events-none select-none"
+            className="absolute right-3 top-1/2 -translate-y-1/2 inline-flex items-center px-2 py-0.5 rounded-md border border-white/15 bg-white/5 text-[11px] font-medium text-gray-400 pointer-events-none select-none"
           >
-            {query
-              ? t("search_esc_hint_clear", "Esc to clear")
-              : t("search_esc_hint_close", "Esc")}
+            <span className="sm:hidden">{t("search_esc_hint_close", "Esc")}</span>
+            <span className="hidden sm:inline">
+              {query
+                ? t("search_esc_hint_clear", "Esc to clear")
+                : t("search_esc_hint_close", "Esc")}
+            </span>
           </kbd>
         </div>
 
