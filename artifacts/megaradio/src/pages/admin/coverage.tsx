@@ -213,6 +213,9 @@ interface CoverageDropAlert {
   thresholdPp: number | null;
   message: string;
   drops: CoverageDropAlertEntry[];
+  acknowledged?: boolean;
+  acknowledgedAt?: string | null;
+  acknowledgedBy?: string | null;
 }
 
 interface CoverageDropAlertResponse {
@@ -286,16 +289,20 @@ export default function AdminCoverage() {
 
   const trendsByCountry = trendsData?.trends ?? {};
   const latestAlert = dropAlertData?.alert ?? null;
+  const isAlertAcknowledged = latestAlert?.acknowledged === true;
 
   // Index the latest alert's drops by country code so each row can show a
   // badge — and remember which metrics dropped so we can colour the badge
   // distinctly. A single country may show up twice (logo + tag); merge them.
+  // When the alert has been acknowledged we deliberately return an empty
+  // map so neither the banner nor the per-row badges render until a newer
+  // alert (different snapshotDate) arrives.
   const alertedByCountry = useMemo(() => {
     const map: Record<
       string,
       { metrics: Set<'logo' | 'tag'>; entries: CoverageDropAlertEntry[] }
     > = {};
-    if (!latestAlert) return map;
+    if (!latestAlert || isAlertAcknowledged) return map;
     for (const drop of latestAlert.drops) {
       const code = drop.countryCode.toUpperCase();
       if (!map[code]) map[code] = { metrics: new Set(), entries: [] };
@@ -303,7 +310,40 @@ export default function AdminCoverage() {
       map[code].entries.push(drop);
     }
     return map;
-  }, [latestAlert]);
+  }, [latestAlert, isAlertAcknowledged]);
+
+  const acknowledgeAlertMutation = useMutation({
+    mutationFn: async (snapshotDate: string) => {
+      const res = await apiRequest(
+        'POST',
+        '/api/admin/coverage/drop-alerts/acknowledge',
+        { body: { snapshotDate } },
+      );
+      return (await res.json()) as {
+        acknowledged: boolean;
+        snapshotDate: string;
+        acknowledgedAt: string;
+        acknowledgedBy: string | null;
+      };
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/drop-alerts'],
+      });
+      toast({
+        title: 'Coverage drop alert acknowledged',
+        description:
+          'The banner is hidden until a newer alert arrives. Earlier alerts remain in your notifications.',
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Could not acknowledge alert',
+        description: err?.message ?? 'Please refresh and try again.',
+        variant: 'destructive',
+      });
+    },
+  });
 
   const enqueueMutation = useMutation({
     mutationFn: async (vars: {
@@ -741,7 +781,7 @@ export default function AdminCoverage() {
 
       <CoverageDropAlertSettingsCard />
 
-      {latestAlert && latestAlert.drops.length > 0 ? (
+      {latestAlert && latestAlert.drops.length > 0 && !isAlertAcknowledged ? (
         <Alert
           variant="destructive"
           data-testid="alert-coverage-drop"
@@ -758,6 +798,25 @@ export default function AdminCoverage() {
                   : null}
               </span>
             ) : null}
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto h-7 border-red-300 bg-white/70 px-2 text-xs text-red-800 hover:bg-white"
+              onClick={() => {
+                if (!latestAlert.snapshotDate) return;
+                acknowledgeAlertMutation.mutate(latestAlert.snapshotDate);
+              }}
+              disabled={
+                !latestAlert.snapshotDate || acknowledgeAlertMutation.isPending
+              }
+              data-testid="button-acknowledge-coverage-drop"
+              title="Hide this banner for everyone until a newer alert arrives"
+            >
+              {acknowledgeAlertMutation.isPending ? (
+                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              ) : null}
+              Acknowledge
+            </Button>
           </AlertTitle>
           <AlertDescription>
             <div className="mt-1 text-sm">

@@ -679,6 +679,12 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`);
 
+      // S20 FIX (2026-05-08): emit <lastmod> on main pages too. Without it
+      // Google falls back to its own crawl heuristics and recrawls homepage
+      // weekly instead of when content actually changes. Use the manifest's
+      // maxUpdatedAt — flips when stations/genres/countries shift, which is
+      // exactly when home/genres/regions have new content.
+      const mainLastmod = manifest.maxUpdatedAt ? formatLastmod(new Date(manifest.maxUpdatedAt as any)) : '';
       for (const page of mainPages) {
         const localizedPath = buildLocalizedUrl(page, lang, undefined, urlTranslations);
         const fullUrl = `${baseUrl}${localizedPath}`;
@@ -687,7 +693,8 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
         parts.push(`
   <url>
-    <loc>${escapeXml(fullUrl)}</loc>
+    <loc>${escapeXml(fullUrl)}</loc>${mainLastmod ? `
+    <lastmod>${mainLastmod}</lastmod>` : ''}
     <changefreq>${changefreq}</changefreq>
     <priority>${priority}</priority>`);
 
@@ -708,7 +715,8 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         const fullUrl = `${baseUrl}${localizedPath}`;
         parts.push(`
   <url>
-    <loc>${escapeXml(fullUrl)}</loc>
+    <loc>${escapeXml(fullUrl)}</loc>${mainLastmod ? `
+    <lastmod>${mainLastmod}</lastmod>` : ''}
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>`);
         for (const altLang of qualifiedLanguages) {
@@ -746,7 +754,15 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   app.get("/sitemap-stations-:lang-:chunk.xml", async (req, res) => {
     const startTime = Date.now();
     const lang = req.params.lang;
-    const chunk = parseInt(req.params.chunk) || 1;
+    // S26 FIX (2026-05-08): strict chunk parsing. `parseInt('abc') || 1`
+    // silently coerced any garbage (including `0`, `-5`, `99999`) to chunk 1,
+    // returning a 200 OK XML for URLs Google would later flag as duplicate
+    // content. Reject anything that isn't a positive integer ≤ 9999 with a
+    // 410 Gone so the bad URL drops out of the index cleanly.
+    if (!/^[1-9]\d{0,3}$/.test(req.params.chunk)) {
+      return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
+    }
+    const chunk = parseInt(req.params.chunk, 10);
     const childCacheControl = `public, max-age=${SITEMAP_CONFIG.childCacheTtlSeconds}, s-maxage=${SITEMAP_CONFIG.childCacheTtlSeconds}, stale-while-revalidate=${SITEMAP_CONFIG.childStaleWhileRevalidateSec}`;
 
     try {

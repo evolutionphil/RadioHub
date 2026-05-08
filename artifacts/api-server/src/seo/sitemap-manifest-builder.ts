@@ -470,10 +470,23 @@ async function computeTopCountriesForMain(limit: number): Promise<{
   rawCountryNames: string[];
 }> {
   try {
+    // S5/S29 FIX (2026-05-08): also exclude junk-flagged stations from the
+    // leaderboard count (they are excluded from sitemap-stations.xml so they
+    // shouldn't influence the country ranking either) and add a deterministic
+    // tie-break (alphabetical by canonical country name) so two countries
+    // with identical counts produce a stable order across replicas — without
+    // this, Cloudflare can cache divergent main sitemaps from different pods.
     const rows: Array<{ _id: string; count: number; maxUpdatedAt?: Date }> = await Station.aggregate([
-      { $match: { country: { $exists: true, $ne: '' }, $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }] } },
+      { $match: {
+          country: { $exists: true, $ne: '' },
+          $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+          $and: [
+            { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
+            { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
+          ],
+      } },
       { $group: { _id: '$country', count: { $sum: 1 }, maxUpdatedAt: { $max: '$updatedAt' } } },
-      { $sort: { count: -1 } },
+      { $sort: { count: -1, _id: 1 } },
       { $limit: limit * 2 },
     ]).allowDiskUse(true);
 

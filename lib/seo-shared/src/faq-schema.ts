@@ -126,16 +126,42 @@ export const FAQ_PAGE_ITEMS: FAQTranslatedItem[] = [
   },
 ];
 
+/**
+ * S19 FIX (2026-05-08): strip Markdown control characters before serialising
+ * Q&A into JSON-LD. Some translation entries arrive with `**bold**`, `*em*`,
+ * backticks, or stray `\n` that the visible /faq page renders as plain text
+ * (because we don't run Markdown there). Google flags the schema vs visible
+ * mismatch as deceptive structured data, so the FAQPage JSON-LD must serve
+ * the same plain text the user sees on the page.
+ */
+function stripFaqMarkdown(input: string): string {
+  if (!input) return '';
+  let s = String(input);
+  // Code fences / inline code
+  s = s.replace(/```[\s\S]*?```/g, ' ').replace(/`([^`]+)`/g, '$1');
+  // Bold/italic/strikethrough markers (keep inner text)
+  s = s.replace(/(\*\*\*|\*\*|\*|___|__|_|~~)([^*_~]+)\1/g, '$2');
+  // Markdown links [text](url) -> text
+  s = s.replace(/\[([^\]]+)\]\([^)]*\)/g, '$1');
+  // HTML tags
+  s = s.replace(/<[^>]+>/g, '');
+  // Headings / blockquotes / list markers at line start
+  s = s.replace(/^\s{0,3}(#{1,6}\s+|>+\s*|[-*+]\s+|\d+\.\s+)/gm, '');
+  // Collapse whitespace
+  s = s.replace(/\r?\n+/g, ' ').replace(/\s{2,}/g, ' ').trim();
+  return s;
+}
+
 export function generateFAQSchema(faqItems: FAQItem[], domain: string): any {
   return {
     "@context": "https://schema.org",
     "@type": "FAQPage",
     "mainEntity": faqItems.map(item => ({
       "@type": "Question",
-      "name": item.question,
+      "name": stripFaqMarkdown(item.question),
       "acceptedAnswer": {
         "@type": "Answer",
-        "text": item.answer
+        "text": stripFaqMarkdown(item.answer)
       }
     }))
   };

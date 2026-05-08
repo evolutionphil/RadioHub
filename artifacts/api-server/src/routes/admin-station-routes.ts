@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot } from '@workspace/db-shared/mongo-schemas';
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -16,6 +16,11 @@ import { performanceCache } from "../performance-cache";
 import { stripPlaceholders } from "./shared-utils";
 import { triggerGenreStationCountsRecompute } from "../services/genre-station-counts";
 import { runCoverageBackfill } from "../services/coverage-snapshot-backfill";
+
+// AdminSetting key used to record the most recent coverage drop alert
+// acknowledgement (Task #238). The stored value is keyed by snapshotDate
+// so a newer alert automatically un-suppresses the banner.
+const COVERAGE_DROP_ACK_KEY = 'coverage-drop-alert-ack';
 
 const faviconUpload = multer({
   storage: multer.memoryStorage(),
@@ -2086,6 +2091,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   // without forcing admins to dig through the generic notifications UI.
   // We return the latest single alert (most recent snapshotDate) — earlier
   // alerts are still available in the notifications surface.
+  //
+  // Acknowledgement (Task #238): admins can dismiss the banner for the
+  // current alert via POST /api/admin/coverage/drop-alerts/acknowledge.
+  // The acknowledgement is keyed by snapshotDate and stored in
+  // `AdminSetting` under `coverage-drop-alert-ack`, so it is shared
+  // across admins and survives reloads. Once a newer alert (different
+  // snapshotDate) arrives the banner shows again automatically.
   app.get(
     '/api/admin/coverage/drop-alerts',
     requireAdmin,
@@ -2124,6 +2136,23 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         };
 
         const drops = Array.isArray(data.drops) ? data.drops : [];
+
+        // Look up any acknowledgement that matches this alert's
+        // snapshotDate. We always resolve `acknowledged` so the client
+        // can decide whether to render the banner.
+        const ackDoc = await AdminSetting.findOne({
+          key: COVERAGE_DROP_ACK_KEY,
+        }).lean();
+        const ackValue = (ackDoc?.value ?? null) as {
+          snapshotDate?: string | null;
+          acknowledgedAt?: string | null;
+          acknowledgedBy?: string | null;
+        } | null;
+        const ackMatches =
+          !!ackValue &&
+          typeof ackValue.snapshotDate === 'string' &&
+          ackValue.snapshotDate === (data.snapshotDate ?? null);
+
         return void res.json({
           alert: {
             createdAt:
@@ -2142,12 +2171,92 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               deltaPp: Number(d.deltaPp) || 0,
               total: Number(d.total) || 0,
             })),
+            acknowledged: ackMatches,
+            acknowledgedAt: ackMatches ? ackValue?.acknowledgedAt ?? null : null,
+            acknowledgedBy: ackMatches ? ackValue?.acknowledgedBy ?? null : null,
           },
         });
       } catch (error: any) {
         logger.error('coverage drop-alerts failed', error);
         return void res.status(500).json({
           error: error?.message || 'Failed to fetch coverage drop alerts',
+        });
+      }
+    },
+  );
+
+  // Acknowledge the most recent coverage drop alert (Task #238). The
+  // client passes the `snapshotDate` of the alert it currently sees so
+  // we don't accidentally suppress a newer alert that arrived between
+  // page load and the click. Acknowledgement is shared across admins
+  // and persists until a newer alert (different snapshotDate) shows up.
+  app.post(
+    '/api/admin/coverage/drop-alerts/acknowledge',
+    express.json(),
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const body = (req.body ?? {}) as { snapshotDate?: unknown };
+        const snapshotDate =
+          typeof body.snapshotDate === 'string' && body.snapshotDate.trim().length > 0
+            ? body.snapshotDate.trim()
+            : null;
+        if (!snapshotDate) {
+          return void res
+            .status(400)
+            .json({ error: 'snapshotDate is required' });
+        }
+
+        // Confirm the latest alert actually has the snapshotDate the
+        // client is acknowledging — otherwise an out-of-date client
+        // could silence a freshly-arrived alert.
+        const latest = await UserNotification.findOne(
+          { type: 'system', 'data.kind': 'coverage_drop' },
+          { data: 1 },
+        )
+          .sort({ 'data.snapshotDate': -1, createdAt: -1 })
+          .lean();
+        const latestSnapshotDate =
+          (latest?.data as { snapshotDate?: string } | undefined)?.snapshotDate ?? null;
+        if (!latest || latestSnapshotDate !== snapshotDate) {
+          return void res.status(409).json({
+            error:
+              'A newer coverage drop alert is available; refresh before acknowledging.',
+            latestSnapshotDate,
+          });
+        }
+
+        const adminUsername =
+          ((req.session as any)?.adminAuth?.username as string | undefined) ?? null;
+        const acknowledgedAt = new Date().toISOString();
+        const now = new Date();
+        await AdminSetting.findOneAndUpdate(
+          { key: COVERAGE_DROP_ACK_KEY },
+          {
+            $set: {
+              value: {
+                snapshotDate,
+                acknowledgedAt,
+                acknowledgedBy: adminUsername,
+              },
+              updatedAt: now,
+              updatedBy: adminUsername,
+            },
+            $setOnInsert: { createdAt: now, key: COVERAGE_DROP_ACK_KEY },
+          },
+          { upsert: true, new: true },
+        );
+
+        return void res.json({
+          acknowledged: true,
+          snapshotDate,
+          acknowledgedAt,
+          acknowledgedBy: adminUsername,
+        });
+      } catch (error: any) {
+        logger.error('coverage drop-alerts acknowledge failed', error);
+        return void res.status(500).json({
+          error: error?.message || 'Failed to acknowledge coverage drop alert',
         });
       }
     },

@@ -253,30 +253,43 @@ function updateLinkTag(rel: string, href?: string) {
   link.href = href;
 }
 
-function updateHrefLangTags(hreflangs: Array<{ lang: string; url: string; hreflang: string }>) {
-  // Remove existing hreflang tags
-  const existingHreflangs = document.querySelectorAll('link[rel="alternate"][hreflang]');
-  existingHreflangs.forEach(link => link.remove());
+// S2 FIX (2026-05-08): scoped tag management. The previous implementation
+// removed EVERY `<link rel=alternate hreflang>` and EVERY `<script
+// type=application/ld+json>` from the document head on each render —
+// including the SSR-baked tags. Googlebot's WRS can snapshot the head
+// during the brief window between the wipe and the re-insert, recording
+// "no hreflang" and "no JSON-LD" for the page. We now mark client-managed
+// tags with a `data-managed="seo-head"` attribute so we only ever touch
+// our own tags and leave SSR output untouched on first paint.
+const MANAGED_ATTR = 'data-managed';
+const MANAGED_VALUE = 'seo-head';
 
-  // Add new hreflang tags
+function updateHrefLangTags(hreflangs: Array<{ lang: string; url: string; hreflang: string }>) {
+  if (!hreflangs.length) return;
+  const existing = document.querySelectorAll(
+    `link[rel="alternate"][hreflang][${MANAGED_ATTR}="${MANAGED_VALUE}"]`,
+  );
+  existing.forEach(link => link.remove());
   hreflangs.forEach(({ url, hreflang }) => {
     const link = document.createElement('link');
     link.rel = 'alternate';
     link.hreflang = hreflang;
     link.href = url;
+    link.setAttribute(MANAGED_ATTR, MANAGED_VALUE);
     document.head.appendChild(link);
   });
 }
 
 function updateStructuredData(schemas: StructuredDataConfig[]) {
-  // Remove existing structured data
-  const existingSchemas = document.querySelectorAll('script[type="application/ld+json"]');
-  existingSchemas.forEach(script => script.remove());
-
-  // Add new structured data
+  if (!schemas.length) return;
+  const existing = document.querySelectorAll(
+    `script[type="application/ld+json"][${MANAGED_ATTR}="${MANAGED_VALUE}"]`,
+  );
+  existing.forEach(script => script.remove());
   schemas.forEach(schema => {
     const script = document.createElement('script');
     script.type = 'application/ld+json';
+    script.setAttribute(MANAGED_ATTR, MANAGED_VALUE);
     script.textContent = JSON.stringify(schema, null, 2);
     document.head.appendChild(script);
   });

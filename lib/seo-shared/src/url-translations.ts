@@ -416,6 +416,41 @@ export const URL_TRANSLATIONS: UrlTranslations = {
     'users': 'korisnici',
   },
 
+  // Bosnian URL translations (S3 FIX 2026-05-08: Bosnian shares lexicon with
+  // Croatian/Serbian Latin — clone the Croatian segment map so /bs/* URLs
+  // localize correctly instead of silently falling back to English segments).
+  bs: {
+    'about': 'o-nama',
+    'album': 'album',
+    'applications': 'aplikacije',
+    'artist': 'umjetnik',
+    'change-password': 'promijeni-lozinku',
+    'contact': 'kontakt',
+    'discover': 'otkrij',
+    'favorites': 'omiljeni',
+    'feedback': 'povratne-informacije',
+    'forgot-password': 'zaboravljena-lozinka',
+    'genres': 'zanrovi',
+    'login': 'login',
+    'notifications': 'obavjestenja',
+    'pages': 'stranice',
+    'privacy-policy': 'pravila-privatnosti',
+    'profile': 'profil',
+    'radios': 'radio',
+    'recommendations': 'preporuke',
+    'records': 'zapisi',
+    'regions': 'regije',
+    'request-station': 'zatrazi-stanicu',
+    'settings': 'postavke',
+    'signup': 'signup',
+    'song': 'pjesma',
+    'station': 'stanica',
+    'stations': 'stanice',
+    'terms-and-conditions': 'uslovi-koristenja',
+    'trending': 'popularno',
+    'users': 'korisnici',
+  },
+
   // Hungarian URL translations
   hu: {
     'about': 'rolunk',

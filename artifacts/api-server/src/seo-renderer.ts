@@ -202,7 +202,25 @@ export class SeoRenderer {
     if (customMetadata.twitterTitle) baseSeoTags.twitterTitle = customMetadata.twitterTitle;
     if (customMetadata.twitterDescription) baseSeoTags.twitterDescription = customMetadata.twitterDescription;
     if (customMetadata.twitterImageUrl) baseSeoTags.twitterImage = customMetadata.twitterImageUrl;
-    if (customMetadata.canonicalUrl) baseSeoTags.canonical = customMetadata.canonicalUrl;
+    if (customMetadata.canonicalUrl) {
+      // S11 FIX (2026-05-08): admin-supplied canonical can be relative
+      // ("/en/about"), absolute on a different host, or missing scheme.
+      // Normalize to an absolute URL on the request's domain so we never
+      // emit a self-pointing/relative <link rel=canonical> (Google ignores
+      // relative canonicals in the head and treats it as missing).
+      const raw = String(customMetadata.canonicalUrl).trim();
+      if (raw) {
+        try {
+          const base = baseSeoTags.canonical && /^https?:\/\//i.test(baseSeoTags.canonical)
+            ? baseSeoTags.canonical
+            : 'https://themegaradio.com/';
+          const u = new URL(raw, base);
+          baseSeoTags.canonical = u.toString();
+        } catch {
+          baseSeoTags.canonical = raw;
+        }
+      }
+    }
     if (customMetadata.metaKeywords) baseSeoTags.keywords = customMetadata.metaKeywords;
     if (customMetadata.noIndex) baseSeoTags.noIndex = customMetadata.noIndex;
     if (customMetadata.noFollow) baseSeoTags.noFollow = customMetadata.noFollow;

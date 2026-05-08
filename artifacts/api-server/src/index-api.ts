@@ -141,12 +141,10 @@ import path from 'path';
 const distPublicPath = path.join(process.cwd(), 'dist', 'public');
 const publicPath = path.join(process.cwd(), 'public');
 
-app.get('/robots.txt', (_req, res) => {
-  res.setHeader('Content-Type', 'text/plain');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-  res.send(`User-agent: *
-Disallow: /`);
-});
+// S1 FIX (2026-05-08): the early "Disallow: /" handler shadowed the proper
+// allow-list robots.txt registered later in seo-sitemap-routes.ts (the first
+// matching `app.get` wins). Removed so the real handler — which advertises
+// the sitemap and only blocks /api/admin etc — is the one that responds.
 
 app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   if (req.path === '/healthz') {
@@ -358,11 +356,18 @@ app.use((req, res, next) => {
 });
 
 const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot/i;
+// S15 FIX (2026-05-08): always gzip XML/sitemap/robots regardless of UA.
+// Sitemap files are 5-10MB uncompressed; sending them raw to Googlebot bloats
+// crawl budget and slows GSC fetches. The bot-skip rule only made sense for
+// HTML responses where some legacy crawlers stumbled on gzip — XML clients
+// (Googlebot, Bingbot, Yandex) all support gzip and prefer it.
+const SITEMAP_PATH_RE = /^\/(sitemap[\w-]*\.xml|robots\.txt)$/i;
 app.use(compression({
   level: 1,
   threshold: 1024,
   filter: (req, res) => {
     if (req.headers['upgrade']) return false;
+    if (SITEMAP_PATH_RE.test(req.path)) return true;
     const ua = req.headers['user-agent'] || '';
     if (BOT_UA_RE.test(ua)) return false;
     const contentType = res.getHeader('Content-Type') as string;
