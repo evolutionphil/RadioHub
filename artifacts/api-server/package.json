@@ -8,6 +8,7 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "tsx --test tests/**/*.test.ts",
     "backfill:tr-logos": "tsx src/scripts/backfill-tr-logos.ts",
     "backfill:tr-tags": "tsx src/scripts/backfill-tr-tags.ts",
     "backfill:logos": "tsx src/scripts/backfill-tr-logos.ts",
