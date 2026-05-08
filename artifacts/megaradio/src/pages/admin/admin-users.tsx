@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -142,12 +142,37 @@ type SortColumn =
   | "favorites";
 type SortDirection = "asc" | "desc";
 
+// Stable identifiers for every column in the users table. Used as keys in
+// the persisted columnWidths map so widths survive column reorders or
+// future visibility toggles without getting mis-applied.
+const COLUMN_KEYS = [
+  "name",
+  "email",
+  "followers",
+  "authMethod",
+  "plan",
+  "favorites",
+  "createdAt",
+  "updatedAt",
+  "userId",
+  "actions",
+] as const;
+type ColumnKey = (typeof COLUMN_KEYS)[number];
+
+const COLUMN_KEY_SET: ReadonlySet<string> = new Set(COLUMN_KEYS);
+
+// Hard limits so a runaway drag (or a corrupted localStorage value) can
+// never make a column unusably narrow or push the table absurdly wide.
+const MIN_COLUMN_WIDTH = 60;
+const MAX_COLUMN_WIDTH = 800;
+
 interface UsersViewPrefs {
   searchQuery: string;
   planFilter: PlanFilter;
   authMethodFilter: AuthMethodFilter;
   platformFilter: PlatformFilter;
   sort: { column: SortColumn; direction: SortDirection } | null;
+  columnWidths: Partial<Record<ColumnKey, number>>;
 }
 
 const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
@@ -156,6 +181,7 @@ const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
   authMethodFilter: "all",
   platformFilter: "all",
   sort: null,
+  columnWidths: {},
 };
 
 const SORT_COLUMNS: ReadonlyArray<SortColumn> = [
@@ -194,6 +220,22 @@ function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
       direction: sortRaw.direction as SortDirection,
     };
   }
+  // Drop unknown column keys and clamp widths so a tampered or stale
+  // payload (e.g. one persisted before a column was renamed) can't break
+  // the table layout.
+  const columnWidths: Partial<Record<ColumnKey, number>> = {};
+  const widthsRaw = obj.columnWidths;
+  if (widthsRaw && typeof widthsRaw === "object") {
+    for (const [k, v] of Object.entries(widthsRaw as Record<string, unknown>)) {
+      if (!COLUMN_KEY_SET.has(k)) continue;
+      if (typeof v !== "number" || !Number.isFinite(v)) continue;
+      const clamped = Math.max(
+        MIN_COLUMN_WIDTH,
+        Math.min(MAX_COLUMN_WIDTH, Math.round(v)),
+      );
+      columnWidths[k as ColumnKey] = clamped;
+    }
+  }
   return {
     searchQuery: typeof obj.searchQuery === "string" ? obj.searchQuery : "",
     planFilter:
@@ -212,6 +254,7 @@ function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
         ? (platformRaw as PlatformFilter)
         : "all",
     sort,
+    columnWidths,
   };
 }
 
@@ -311,12 +354,101 @@ export default function AdminUsers() {
         : { column, direction: sort.direction === "desc" ? "asc" : "desc" },
     );
   };
+  const columnWidths = prefs.columnWidths;
+  const hasCustomColumnWidths = Object.keys(columnWidths).length > 0;
+  // When a drag starts we snapshot every column's currently-rendered width
+  // and switch the table to fixed layout so subsequent drags only move the
+  // dragged edge instead of reflowing the whole row.
+  const handleColumnResizeStart = useCallback(
+    (event: ReactMouseEvent<HTMLSpanElement>, columnKey: ColumnKey) => {
+      // Don't let the click bubble up to the sort button beneath the handle.
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.button !== 0) return;
+      const handle = event.currentTarget;
+      const th = handle.closest("th") as HTMLTableCellElement | null;
+      if (!th) return;
+      const tr = th.parentElement;
+      if (!tr) return;
+      const measured: Partial<Record<ColumnKey, number>> = {};
+      for (const cell of Array.from(tr.children) as HTMLTableCellElement[]) {
+        const key = cell.dataset.columnKey;
+        if (key && COLUMN_KEY_SET.has(key)) {
+          measured[key as ColumnKey] = Math.round(
+            cell.getBoundingClientRect().width,
+          );
+        }
+      }
+      const startX = event.clientX;
+      const startWidth =
+        measured[columnKey] ?? Math.round(th.getBoundingClientRect().width);
+
+      // Seed widths for any column the admin hasn't sized yet so the
+      // switch to fixed layout doesn't cause a visual jump. Existing
+      // user-set widths (in `prev`) win over the freshly-measured ones.
+      setPrefs((prev) => ({
+        ...prev,
+        columnWidths: {
+          ...measured,
+          ...prev.columnWidths,
+          [columnKey]: startWidth,
+        },
+      }));
+
+      const onMove = (ev: MouseEvent) => {
+        const next = Math.max(
+          MIN_COLUMN_WIDTH,
+          Math.min(
+            MAX_COLUMN_WIDTH,
+            Math.round(startWidth + (ev.clientX - startX)),
+          ),
+        );
+        setPrefs((prev) => {
+          if (prev.columnWidths[columnKey] === next) return prev;
+          return {
+            ...prev,
+            columnWidths: { ...prev.columnWidths, [columnKey]: next },
+          };
+        });
+      };
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+      document.body.style.cursor = "col-resize";
+      document.body.style.userSelect = "none";
+    },
+    [setPrefs],
+  );
+  const columnStyle = (key: ColumnKey): CSSProperties | undefined => {
+    const width = columnWidths[key];
+    return width != null ? { width } : undefined;
+  };
+  const renderResizeHandle = (key: ColumnKey) => (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${key} column`}
+      data-testid={`resize-handle-${key}`}
+      onMouseDown={(e) => handleColumnResizeStart(e, key)}
+      // Swallow the click so it never reaches a sort button under the handle.
+      onClick={(e) => e.stopPropagation()}
+      className="absolute top-0 right-0 z-10 h-full w-1.5 cursor-col-resize select-none bg-transparent hover:bg-gray-300/60 active:bg-gray-400"
+    />
+  );
   const hasActiveFilters =
     planFilter !== "all" ||
     authMethodFilter !== "all" ||
     platformFilter !== "all";
   const hasNonDefaultViewPrefs =
-    searchQuery.trim() !== "" || hasActiveFilters || sort !== null;
+    searchQuery.trim() !== "" ||
+    hasActiveFilters ||
+    sort !== null ||
+    hasCustomColumnWidths;
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
   // Local form state for the "Admin Overrides" section in the edit modal.
@@ -932,8 +1064,8 @@ export default function AdminUsers() {
             <ResetViewButton
               hasNonDefaultPrefs={hasNonDefaultViewPrefs}
               reset={resetViewPrefs}
-              toastDescription="Search, filters, and sort restored to defaults on this device and your account."
-              title="Clear search, filters, and sort on this device and your account"
+              toastDescription="Search, filters, sort, and column widths restored to defaults on this device and your account."
+              title="Clear search, filters, sort, and column widths on this device and your account"
             />
           </div>
         </CardContent>
@@ -983,11 +1115,17 @@ export default function AdminUsers() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <Table>
+              <Table
+                style={
+                  hasCustomColumnWidths ? { tableLayout: "fixed" } : undefined
+                }
+              >
                 <TableHeader>
                   <TableRow className="bg-gray-50 hover:bg-gray-50">
                     <TableHead
-                      className="font-bold"
+                      data-column-key="name"
+                      style={columnStyle("name")}
+                      className="font-bold relative"
                       aria-sort={ariaSortFor("name")}
                     >
                       <button
@@ -1006,9 +1144,12 @@ export default function AdminUsers() {
                         <span>Name</span>
                         {renderSortIcon("name")}
                       </button>
+                      {renderResizeHandle("name")}
                     </TableHead>
                     <TableHead
-                      className="font-bold"
+                      data-column-key="email"
+                      style={columnStyle("email")}
+                      className="font-bold relative"
                       aria-sort={ariaSortFor("email")}
                     >
                       <button
@@ -1027,9 +1168,12 @@ export default function AdminUsers() {
                         <span>Email</span>
                         {renderSortIcon("email")}
                       </button>
+                      {renderResizeHandle("email")}
                     </TableHead>
                     <TableHead
-                      className="font-bold text-center"
+                      data-column-key="followers"
+                      style={columnStyle("followers")}
+                      className="font-bold text-center relative"
                       aria-sort={ariaSortFor("followers")}
                     >
                       <button
@@ -1048,10 +1192,20 @@ export default function AdminUsers() {
                         <span>Followers</span>
                         {renderSortIcon("followers")}
                       </button>
+                      {renderResizeHandle("followers")}
                     </TableHead>
-                    <TableHead className="font-bold">Auth Method</TableHead>
                     <TableHead
-                      className="font-bold text-center"
+                      data-column-key="authMethod"
+                      style={columnStyle("authMethod")}
+                      className="font-bold relative"
+                    >
+                      Auth Method
+                      {renderResizeHandle("authMethod")}
+                    </TableHead>
+                    <TableHead
+                      data-column-key="plan"
+                      style={columnStyle("plan")}
+                      className="font-bold text-center relative"
                       aria-sort={ariaSortFor("plan")}
                     >
                       <button
@@ -1070,9 +1224,12 @@ export default function AdminUsers() {
                         <span>Plan</span>
                         {renderSortIcon("plan")}
                       </button>
+                      {renderResizeHandle("plan")}
                     </TableHead>
                     <TableHead
-                      className="font-bold text-center"
+                      data-column-key="favorites"
+                      style={columnStyle("favorites")}
+                      className="font-bold text-center relative"
                       aria-sort={ariaSortFor("favorites")}
                     >
                       <button
@@ -1091,9 +1248,12 @@ export default function AdminUsers() {
                         <span>Favorites</span>
                         {renderSortIcon("favorites")}
                       </button>
+                      {renderResizeHandle("favorites")}
                     </TableHead>
                     <TableHead
-                      className="font-bold"
+                      data-column-key="createdAt"
+                      style={columnStyle("createdAt")}
+                      className="font-bold relative"
                       aria-sort={ariaSortFor("createdAt")}
                     >
                       <button
@@ -1112,9 +1272,12 @@ export default function AdminUsers() {
                         <span>Created</span>
                         {renderSortIcon("createdAt")}
                       </button>
+                      {renderResizeHandle("createdAt")}
                     </TableHead>
                     <TableHead
-                      className="font-bold"
+                      data-column-key="updatedAt"
+                      style={columnStyle("updatedAt")}
+                      className="font-bold relative"
                       aria-sort={ariaSortFor("updatedAt")}
                     >
                       <button
@@ -1133,9 +1296,24 @@ export default function AdminUsers() {
                         <span>Last Update</span>
                         {renderSortIcon("updatedAt")}
                       </button>
+                      {renderResizeHandle("updatedAt")}
                     </TableHead>
-                    <TableHead className="font-bold">User ID</TableHead>
-                    <TableHead className="font-bold text-center">Actions</TableHead>
+                    <TableHead
+                      data-column-key="userId"
+                      style={columnStyle("userId")}
+                      className="font-bold relative"
+                    >
+                      User ID
+                      {renderResizeHandle("userId")}
+                    </TableHead>
+                    <TableHead
+                      data-column-key="actions"
+                      style={columnStyle("actions")}
+                      className="font-bold text-center relative"
+                    >
+                      Actions
+                      {renderResizeHandle("actions")}
+                    </TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
