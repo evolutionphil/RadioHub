@@ -171,6 +171,163 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
     }
   });
 
+  // Streaming CSV export of all users matching the same filters as the
+  // admin list query. Uses a Mongoose cursor so we never load the full set
+  // into memory — important once the user base grows past the in-browser
+  // build's practical limit (tens of thousands of rows).
+  app.get("/api/admin/users/export.csv", requireAdmin, async (req, res) => {
+    try {
+      const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+      const planRaw = typeof req.query.plan === 'string' ? req.query.plan : 'all';
+      const authRaw = typeof req.query.authMethod === 'string' ? req.query.authMethod : 'all';
+      const PLAN_VALUES = new Set([
+        'all', 'none', 'remove_ads', 'any_premium',
+        'premium_monthly', 'premium_yearly', 'premium_lifetime',
+      ]);
+      const AUTH_VALUES = new Set(['all', 'email', 'google', 'facebook', 'apple']);
+      const planFilter = PLAN_VALUES.has(planRaw) ? planRaw : 'all';
+      const authFilter = AUTH_VALUES.has(authRaw) ? authRaw : 'all';
+
+      const filter: any = {};
+      if (search) {
+        const safe = escapeRegex(search);
+        filter.$or = [
+          { email: { $regex: safe, $options: 'i' } },
+          { fullName: { $regex: safe, $options: 'i' } },
+        ];
+      }
+      if (planFilter === 'none') {
+        filter.$and = (filter.$and || []).concat([{
+          $or: [
+            { subscription: { $exists: false } },
+            { subscription: null },
+            { 'subscription.isActive': { $ne: true } },
+            { 'subscription.plan': 'none' },
+          ],
+        }]);
+      } else if (planFilter === 'any_premium') {
+        filter['subscription.isActive'] = true;
+        filter['subscription.plan'] = { $in: ['premium_monthly', 'premium_yearly', 'premium_lifetime'] };
+      } else if (planFilter !== 'all') {
+        filter['subscription.isActive'] = true;
+        filter['subscription.plan'] = planFilter;
+      }
+      if (authFilter === 'email') {
+        filter.$and = (filter.$and || []).concat([{
+          $or: [
+            { authProvider: { $exists: false } },
+            { authProvider: null },
+            { authProvider: '' },
+            { authProvider: { $regex: '^email$', $options: 'i' } },
+          ],
+        }]);
+      } else if (authFilter !== 'all') {
+        filter.authProvider = { $regex: `^${authFilter}$`, $options: 'i' };
+      }
+
+      const ts = new Date()
+        .toISOString()
+        .replace(/[:.]/g, '-')
+        .replace('T', '_')
+        .replace('Z', '');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="megaradio-users-${ts}.csv"`,
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+
+      const csvField = (value: unknown): string => {
+        if (value === null || value === undefined) return '""';
+        let str = String(value);
+        if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
+        return `"${str.replace(/"/g, '""')}"`;
+      };
+      const csvDate = (s?: Date | string | null): string => {
+        if (!s) return '';
+        const d = s instanceof Date ? s : new Date(s);
+        return Number.isFinite(d.getTime()) ? d.toISOString() : '';
+      };
+
+      const headers = [
+        'id', 'name', 'email', 'auth_method', 'plan', 'plan_active',
+        'expires_at', 'followers', 'favorites', 'created_at', 'updated_at',
+      ];
+      // BOM so Excel opens UTF-8 names/emails correctly.
+      res.write('\uFEFF' + headers.map(csvField).join(',') + '\r\n');
+
+      const BATCH = 500;
+      const cursor = User.find(filter)
+        .select('_id email fullName authProvider followersCount createdAt updatedAt subscription')
+        .sort({ createdAt: -1 })
+        .lean()
+        .cursor({ batchSize: BATCH });
+
+      let buffer: any[] = [];
+      let aborted = false;
+      req.on('close', () => { aborted = true; });
+
+      const flush = async () => {
+        if (buffer.length === 0) return;
+        const ids = buffer.map((u) => u._id.toString());
+        let favoriteMap: Record<string, number> = {};
+        try {
+          const favoriteCounts = await UserFavorite.aggregate([
+            { $match: { userId: { $in: ids } } },
+            { $group: { _id: '$userId', count: { $sum: 1 } } },
+          ]).option({ maxTimeMS: 15000 });
+          for (const doc of favoriteCounts) favoriteMap[doc._id] = doc.count;
+        } catch (favErr: any) {
+          logger.error('Admin users export: favorite count query failed (non-fatal):', favErr.message);
+        }
+        let chunk = '';
+        for (const u of buffer) {
+          const sub = u.subscription;
+          const plan = sub?.plan ?? 'none';
+          const planActive = sub?.isActive === true;
+          const row = [
+            u._id,
+            u.fullName || '',
+            u.email,
+            (u.authProvider || 'email').toLowerCase(),
+            plan,
+            planActive ? 'true' : 'false',
+            csvDate(sub?.expiresAt ?? undefined),
+            u.followersCount ?? 0,
+            favoriteMap[u._id.toString()] ?? 0,
+            csvDate(u.createdAt),
+            csvDate(u.updatedAt),
+          ];
+          chunk += row.map(csvField).join(',') + '\r\n';
+        }
+        buffer = [];
+        if (!res.write(chunk)) {
+          await new Promise<void>((resolve) => res.once('drain', () => resolve()));
+        }
+      };
+
+      try {
+        for await (const user of cursor as any) {
+          if (aborted) break;
+          buffer.push(user);
+          if (buffer.length >= BATCH) await flush();
+        }
+        if (!aborted) await flush();
+      } finally {
+        try { await cursor.close(); } catch {}
+      }
+      res.end();
+    } catch (error: any) {
+      logger.error('Admin users export error:', error.message || error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Failed to export users', details: error.message });
+      } else {
+        try { res.end(); } catch {}
+      }
+    }
+  });
+
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);

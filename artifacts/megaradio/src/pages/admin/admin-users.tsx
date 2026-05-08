@@ -651,26 +651,9 @@ export default function AdminUsers() {
     return sort.direction === "asc" ? "ascending" : "descending";
   };
 
-  // Quote a single CSV field per RFC 4180: wrap in double quotes and escape
-  // any embedded double quotes by doubling them. We always quote so commas,
-  // newlines, and leading "=" (Excel formula injection) are safe.
-  const csvField = (value: unknown): string => {
-    if (value === null || value === undefined) return '""';
-    let str = String(value);
-    // Defuse spreadsheet formula injection by prefixing risky leading chars.
-    if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
-    return `"${str.replace(/"/g, '""')}"`;
-  };
-
-  const csvDate = (s?: string): string => {
-    if (!s) return "";
-    const d = new Date(s);
-    return Number.isFinite(d.getTime()) ? d.toISOString() : "";
-  };
-
-  // Shared row builder so CSV and XLSX always export the same columns in
-  // the same order. Returns typed values (number | Date | string | null)
-  // so XLSX can write real number/date cells; CSV stringifies as needed.
+  // Shared row builder for the client-side XLSX export. CSV is exported
+  // server-side via a streaming endpoint (see `handleDownloadCsv` below),
+  // so we don't need a CSV-specific row builder here.
   type ExportRow = {
     id: string;
     name: string;
@@ -774,48 +757,21 @@ export default function AdminUsers() {
     URL.revokeObjectURL(url);
   };
 
+  // Hits the server-side streaming endpoint so the export reflects the
+  // full result set (not just the page currently in memory) and stays
+  // memory-safe as the user base grows. Filters are passed through query
+  // string so the server applies the same search/plan/auth-method scope.
   const handleDownloadCsv = () => {
-    const headers = [
-      "id",
-      "name",
-      "email",
-      "auth_method",
-      "plan",
-      "plan_active",
-      "expires_at",
-      "followers",
-      "favorites",
-      "created_at",
-      "updated_at",
-    ];
-    const rows = buildExportRows().map((r) => [
-      r.id,
-      r.name,
-      r.email,
-      r.auth_method,
-      r.plan,
-      r.plan_active ? "true" : "false",
-      r.expires_at ? r.expires_at.toISOString() : "",
-      r.followers,
-      r.favorites,
-      r.created_at ? r.created_at.toISOString() : "",
-      r.updated_at ? r.updated_at.toISOString() : "",
-    ]);
-    const csv =
-      [headers, ...rows].map((r) => r.map(csvField).join(",")).join("\r\n") +
-      "\r\n";
-    // Prepend BOM so Excel opens UTF-8 names/emails correctly.
-    const blob = new Blob(["\uFEFF" + csv], {
-      type: "text/csv;charset=utf-8;",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `megaradio-users-${exportTimestamp()}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const params = new URLSearchParams();
+    const trimmed = searchQuery.trim();
+    if (trimmed) params.set("search", trimmed);
+    if (planFilter !== "all") params.set("plan", planFilter);
+    if (authMethodFilter !== "all") params.set("authMethod", authMethodFilter);
+    const qs = params.toString();
+    // Same-origin navigation through the shared proxy. The browser handles
+    // streaming + the file save dialog without any in-memory build.
+    window.location.href =
+      `/api/admin/users/export.csv${qs ? `?${qs}` : ""}`;
   };
 
   const sortableHeaderClass =
