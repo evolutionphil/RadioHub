@@ -415,9 +415,18 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
  * Has zero dynamic IDs; chunk count is always 1. */
 function buildMainChunks(): { chunk: ISitemapManifestChunk; totalUrls: number } {
   // Static main pages — must mirror sitemap-main-:lang.xml route.
+  // Task #128: includes /faq, /contact, /privacy-policy, /terms-and-conditions,
+  // /applications so Google has a discovery path to those pages. The route
+  // additionally appends top-country region URLs at request time.
+  // NOTE: totalUrls counts STATIC pages only. The route also appends ~30
+  // top-country URLs per language at request time which are NOT included in
+  // this count — the manifest's urlCount will under-report actual emitted
+  // URLs. Top-country invalidation is handled via the topCountriesSig folded
+  // into the route's ETag + cache key (see seo-sitemap-routes.ts).
   const PAGES = ['', '/stations', '/genres', '/about', '/regions',
     '/regions/europe', '/regions/asia', '/regions/africa',
-    '/regions/north-america', '/regions/south-america', '/regions/oceania'];
+    '/regions/north-america', '/regions/south-america', '/regions/oceania',
+    '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications'];
   return {
     chunk: { chunk: 1, stationIds: [], urlCount: PAGES.length, maxUpdatedAt: undefined },
     totalUrls: PAGES.length,

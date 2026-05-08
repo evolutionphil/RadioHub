@@ -10,6 +10,7 @@ import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
 import { sendSitemapGone } from "../seo/send-sitemap-gone";
+import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from "../shared/country-regions";
 import {
   getCachedQualifiedLanguages,
   getQualifiedLanguagesState,
@@ -130,6 +131,47 @@ function send304IfNotModifiedSince(req: any, res: any, date: Date | null | undef
     return true;
   }
   return false;
+}
+
+// Top-countries cache for sitemap-main-{lang}.xml. Lists are very stable
+// (countries don't churn) so we cache for 1h to avoid hammering Mongo on
+// every sitemap request. Each entry: { regionSlug, countrySlug } usable with
+// buildLocalizedUrl('/regions/<region>/<country>', ...).
+const TOP_COUNTRIES_CACHE_TTL_MS = 60 * 60 * 1000;
+let topCountriesCache: { at: number; entries: Array<{ regionSlug: string; countrySlug: string }> } | null = null;
+async function getTopCountriesForSitemap(limit = 30): Promise<Array<{ regionSlug: string; countrySlug: string }>> {
+  if (topCountriesCache && Date.now() - topCountriesCache.at < TOP_COUNTRIES_CACHE_TTL_MS) {
+    return topCountriesCache.entries;
+  }
+  try {
+    const rows: Array<{ _id: string; count: number }> = await Station.aggregate([
+      { $match: { country: { $exists: true, $ne: '' }, $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }] } },
+      { $group: { _id: '$country', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: limit * 2 }, // overfetch — some countries may not map to a region
+    ]).allowDiskUse(true);
+    const entries: Array<{ regionSlug: string; countrySlug: string }> = [];
+    const seen = new Set<string>();
+    for (const r of rows) {
+      const canonical = canonicalizeCountry(String(r._id || ''));
+      if (!canonical) continue;
+      const region = getRegionSlugForCountry(canonical);
+      if (!region) continue;
+      const slug = countrySlug(canonical);
+      if (!slug) continue;
+      const key = `${region}/${slug}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ regionSlug: region, countrySlug: slug });
+      if (entries.length >= limit) break;
+    }
+    topCountriesCache = { at: Date.now(), entries };
+    return entries;
+  } catch (err) {
+    logger.error('❌ getTopCountriesForSitemap failed:', err);
+    // Best-effort: keep serving sitemap with static entries only.
+    return topCountriesCache?.entries ?? [];
+  }
 }
 
 /** Stable ETag = sha256(prefix|hash|version|lastmod). 16-char hex. */
@@ -444,6 +486,34 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
     return;
   }
 
+  // Task #128: /llms.txt advertises crawl-friendly entry points to AI agents
+  // and Google's LLM probes. Must be plain-text — without this route the SPA
+  // shell was served as HTML 200, breaking the contract.
+  app.get("/llms.txt", (req, res) => {
+    const baseUrl = getBaseUrl(req);
+    const body = `# MegaRadio
+# https://llmstxt.org/
+${baseUrl}/
+
+## Sitemaps
+${baseUrl}/sitemap-index.xml
+${baseUrl}/robots.txt
+
+## Key sections
+${baseUrl}/en/stations
+${baseUrl}/en/genres
+${baseUrl}/en/regions
+${baseUrl}/en/about
+${baseUrl}/en/faq
+${baseUrl}/en/contact
+${baseUrl}/en/privacy-policy
+${baseUrl}/en/terms-and-conditions
+`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.status(200).send(body);
+  });
+
   // Robots.txt generator
   app.get("/robots.txt", async (req, res) => {
     const baseUrl = getBaseUrl(req);
@@ -577,12 +647,20 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         return res.status(503).send('Manifest building — retry shortly');
       }
 
+      // Task #128: top countries are appended dynamically — fold their
+      // signature into the ETag + cache key so additions/removals invalidate
+      // CDN/304s correctly even though they aren't tracked by the manifest.
+      const topCountries = await getTopCountriesForSitemap(30);
+      const topCountriesSig = crypto.createHash('sha256')
+        .update(topCountries.map(c => `${c.regionSlug}/${c.countrySlug}`).join('|'))
+        .digest('hex').slice(0, 12);
+
       const lastmod = formatLastmod(manifest.maxUpdatedAt);
-      const etag = makeManifestEtag(['main', lang, state.hash, manifest.version, lastmod]);
+      const etag = makeManifestEtag(['main', lang, state.hash, manifest.version, lastmod, topCountriesSig]);
       if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
-      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}`;
+      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}:${topCountriesSig}`;
       const cached = await CacheManager.get<string>(cacheKey);
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');
@@ -595,9 +673,16 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       const baseUrl = getBaseUrl(req);
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
 
+      // Static main pages — must mirror MAIN_STATIC_PAGES in
+      // sitemap-manifest-builder.ts so urlCount/maxUpdatedAt stay in sync.
+      // Task #128: expanded to include FAQ/Contact/Privacy/Terms/Applications
+      // so Google has a discovery path to those previously-orphaned pages.
       const mainPages = ['', '/stations', '/genres', '/about', '/regions',
         '/regions/europe', '/regions/asia', '/regions/africa',
-        '/regions/north-america', '/regions/south-america', '/regions/oceania'];
+        '/regions/north-america', '/regions/south-america', '/regions/oceania',
+        '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications'];
+
+      // topCountries was computed above for ETag/cache-key purposes; reuse it.
 
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
@@ -625,6 +710,27 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(baseUrl + enPath)}"/>
   </url>`);
       }
+      // Top-country region pages (e.g. /<lang>/regions/europe/germany).
+      for (const { regionSlug, countrySlug: cSlug } of topCountries) {
+        const enginePath = `/regions/${regionSlug}/${cSlug}`;
+        const localizedPath = buildLocalizedUrl(enginePath, lang, undefined, urlTranslations);
+        const fullUrl = `${baseUrl}${localizedPath}`;
+        parts.push(`
+  <url>
+    <loc>${escapeXml(fullUrl)}</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>`);
+        for (const altLang of qualifiedLanguages) {
+          const altPath = buildLocalizedUrl(enginePath, altLang, undefined, urlTranslations);
+          parts.push(`
+    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
+        }
+        const enPath = buildLocalizedUrl(enginePath, 'en', undefined, urlTranslations);
+        parts.push(`
+    <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(baseUrl + enPath)}"/>
+  </url>`);
+      }
+
       parts.push(`
 </urlset>`);
       const xml = parts.join('');
@@ -636,7 +742,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       res.setHeader('Cache-Control', childCacheControl);
       res.send(xml);
 
-      logger.log(`✅ sitemap-main-${lang}.xml (${mainPages.length} URLs) ${Date.now() - startTime}ms`);
+      logger.log(`✅ sitemap-main-${lang}.xml (${mainPages.length + topCountries.length} URLs) ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-main-${lang}.xml:`, error);
       res.status(500).send('Error generating sitemap');
@@ -931,7 +1037,10 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
   //
   // Cache: 600s (indexCacheTtlSeconds) — short so manifest swaps propagate
   // through Cloudflare within ~10min instead of 24h.
-  app.get("/sitemap-index.xml", async (req, res) => {
+  // Task #128: /sitemap.xml is Google's default probe path. Serve the same
+  // sitemap-index XML directly (rather than 301) so the response satisfies
+  // GSC's strict "must be a sitemap document" check on the literal URL.
+  app.get(["/sitemap-index.xml", "/sitemap.xml"], async (req, res) => {
     const indexCacheControl = `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}, s-maxage=${SITEMAP_CONFIG.indexCacheTtlSeconds}`;
 
     try {
