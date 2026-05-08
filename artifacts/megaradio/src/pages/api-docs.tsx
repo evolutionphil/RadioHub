@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useState, useEffect, useCallback, memo, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
 import { Copy, Check, ChevronRight, Search, Radio, Zap, Shield, Globe, Tv, Cast, Code, BookOpen, AlertTriangle, Users, Heart, Menu, X, ExternalLink, ArrowRight, Bell, Clock, Music, MessageSquare } from "lucide-react";
@@ -2431,7 +2432,7 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
   );
 }
 
-const SECTION_CONTENT: Record<string, () => JSX.Element> = {
+const SECTION_CONTENT: Record<string, () => React.JSX.Element> = {
   introduction: () => <IntroductionContent />,
   authentication: () => <AuthenticationContent />,
   "rate-limits": () => <RateLimitsContent />,

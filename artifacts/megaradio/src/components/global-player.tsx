@@ -56,9 +56,9 @@ export default function GlobalPlayer() {
       }, 5000);
       
       return () => clearTimeout(timer);
-    } else {
-      setShowSignupBanner(false);
     }
+    setShowSignupBanner(false);
+    return undefined;
   }, [isAuthenticated, currentStation, isPlaying]);
 
   useEffect(() => {
@@ -70,9 +70,9 @@ export default function GlobalPlayer() {
       }, 30000);
       
       return () => clearTimeout(timer);
-    } else {
-      setShowSignupModal(false);
     }
+    setShowSignupModal(false);
+    return undefined;
   }, [isAuthenticated, currentStation]);
 
 

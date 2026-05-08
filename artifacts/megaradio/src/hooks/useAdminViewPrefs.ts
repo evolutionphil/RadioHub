@@ -1,7 +1,18 @@
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { toast } from '@/hooks/use-toast';
-import { ToastAction } from '@/components/ui/toast';
+import { ToastAction, type ToastActionElement } from '@/components/ui/toast';
+
+function buildUndoAction(onUndo: () => void): ToastActionElement {
+  return createElement(
+    ToastAction,
+    {
+      altText: 'Undo filter change',
+      onClick: onUndo,
+    },
+    'Undo',
+  );
+}
 
 const CROSS_TAB_TOAST_MS = 5000;
 
@@ -261,14 +272,7 @@ export function useAdminViewPrefs<T>(
         toast({
           title: 'Filters updated from another tab',
           duration: CROSS_TAB_TOAST_MS,
-          action: createElement(
-            ToastAction,
-            {
-              altText: 'Undo filter change',
-              onClick: () => undoToRef.current(previous),
-            },
-            'Undo',
-          ),
+          action: buildUndoAction(() => undoToRef.current(previous)),
         });
       } catch {
         // Ignore malformed payloads from other tabs.
@@ -312,14 +316,7 @@ export function useAdminViewPrefs<T>(
         toast({
           title: 'Filters updated from another tab',
           duration: CROSS_TAB_TOAST_MS,
-          action: createElement(
-            ToastAction,
-            {
-              altText: 'Undo filter change',
-              onClick: () => undoToRef.current(previous),
-            },
-            'Undo',
-          ),
+          action: buildUndoAction(() => undoToRef.current(previous)),
         });
       } catch {
         // Best-effort — leave existing state untouched.

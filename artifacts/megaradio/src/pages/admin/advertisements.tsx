@@ -223,8 +223,8 @@ export default function AdvertisementsAdmin() {
             <div className="text-2xl mb-2">🖥️</div>
             <h3 className="font-bold text-lg mb-1">Desktop Ad</h3>
             <p className="text-sm text-muted-foreground">Sidebar ad (h-56, square)</p>
-            {ads?.filter(a => a.position === 'desktop_sidebar').length > 0 && (
-              <p className="text-xs text-green-600 mt-2">✓ {ads?.filter(a => a.position === 'desktop_sidebar').length} ad(s)</p>
+            {(ads ?? []).filter(a => a.position === 'desktop_sidebar').length > 0 && (
+              <p className="text-xs text-green-600 mt-2">✓ {(ads ?? []).filter(a => a.position === 'desktop_sidebar').length} ad(s)</p>
             )}
           </button>
 
@@ -239,8 +239,8 @@ export default function AdvertisementsAdmin() {
             <div className="text-2xl mb-2">📱</div>
             <h3 className="font-bold text-lg mb-1">Mobile Ad</h3>
             <p className="text-sm text-muted-foreground">Bottom ad (h-64, rectangle)</p>
-            {ads?.filter(a => a.position === 'mobile_bottom').length > 0 && (
-              <p className="text-xs text-green-600 mt-2">✓ {ads?.filter(a => a.position === 'mobile_bottom').length} ad(s)</p>
+            {(ads ?? []).filter(a => a.position === 'mobile_bottom').length > 0 && (
+              <p className="text-xs text-green-600 mt-2">✓ {(ads ?? []).filter(a => a.position === 'mobile_bottom').length} ad(s)</p>
             )}
           </button>
 
@@ -255,8 +255,8 @@ export default function AdvertisementsAdmin() {
             <div className="text-2xl mb-2">📊</div>
             <h3 className="font-bold text-lg mb-1">Middle Ad</h3>
             <p className="text-sm text-muted-foreground">Between sections (h-40, wide)</p>
-            {ads?.filter(a => a.position === 'middle_section').length > 0 && (
-              <p className="text-xs text-green-600 mt-2">✓ {ads?.filter(a => a.position === 'middle_section').length} ad(s)</p>
+            {(ads ?? []).filter(a => a.position === 'middle_section').length > 0 && (
+              <p className="text-xs text-green-600 mt-2">✓ {(ads ?? []).filter(a => a.position === 'middle_section').length} ad(s)</p>
             )}
           </button>
         </div>

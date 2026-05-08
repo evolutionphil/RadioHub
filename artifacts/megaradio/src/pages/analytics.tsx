@@ -287,15 +287,15 @@ export default function AnalyticsPage() {
             <div className="text-center py-8">Loading analytics data...</div>
           ) : (
             <div className="space-y-2">
-              {analyticsData?.slice(0, 20).map((event) => {
-                const Icon = eventIcons[event.event];
+              {analyticsData?.slice(0, 20).map((event: AnalyticsEvent) => {
+                const Icon = eventIcons[event.event as keyof typeof eventIcons];
                 return (
                   <div key={event._id} className="flex items-center justify-between p-3 border rounded-lg">
                     <div className="flex items-center space-x-3">
                       <Icon className="h-4 w-4 text-muted-foreground" />
                       <div>
                         <div className="font-medium">
-                          <Badge variant="outline" className={eventColors[event.event]}>
+                          <Badge variant="outline" className={eventColors[event.event as keyof typeof eventColors]}>
                             {event.event}
                           </Badge>
                         </div>

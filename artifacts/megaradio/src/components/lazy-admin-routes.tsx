@@ -19,7 +19,9 @@ export const StatusMonitoring = lazy(() => import("@/pages/status-monitoring"));
 export const Settings = lazy(() => import("@/pages/settings"));
 export const AdminTranslations = lazy(() => import("@/pages/admin/translations"));
 export const AdminTranslationLanguages = lazy(() => import("@/pages/admin/translation-languages"));
-export const AdminErrorLogs = lazy(() => import("@/pages/admin-error-logs"));
+export const AdminErrorLogs = lazy(() =>
+  import("@/pages/admin-error-logs").then((m) => ({ default: m.AdminErrorLogs })),
+);
 export const AdminCountryLanguageMappings = lazy(() => import("@/pages/admin/AdminCountryLanguageMappings"));
 export const AdminUrlTranslations = lazy(() => import("@/pages/admin/AdminUrlTranslations"));
 export const AdminSeoPreview = lazy(() => import("@/pages/admin/seo-preview"));

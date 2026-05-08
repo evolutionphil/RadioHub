@@ -1,5 +1,5 @@
-import { memo, useMemo } from "react";
-import { FixedSizeList as List } from "react-window";
+import { memo, useMemo, useCallback } from "react";
+import { List, type RowComponentProps } from "react-window";
 import StationCard from "@/components/ui/station-card";
 import StationCardSkeleton from "@/components/ui/station-card-skeleton";
 
@@ -16,8 +16,18 @@ interface VirtualizedStationListProps {
   onToggleFavorite?: (stationId: string) => void;
 }
 
-const ITEM_HEIGHT = 120; // Height of each station card
-const DEFAULT_HEIGHT = 600; // Default container height
+const ITEM_HEIGHT = 120;
+const DEFAULT_HEIGHT = 600;
+
+interface RowProps {
+  stations: any[];
+  playlistName: string;
+  showVotes: boolean;
+  onNavigate?: (station: any) => void;
+  onPlay?: (station: any) => void;
+  onStop?: () => void;
+  onToggleFavorite?: (stationId: string) => void;
+}
 
 const VirtualizedStationList = memo(function VirtualizedStationList({
   stations,
@@ -31,38 +41,35 @@ const VirtualizedStationList = memo(function VirtualizedStationList({
   onStop,
   onToggleFavorite,
 }: VirtualizedStationListProps) {
-  
-  // Memoize the station data to prevent unnecessary re-renders
   const memoizedStations = useMemo(() => stations, [stations]);
 
-  // Render individual station item in the virtual list
-  const StationItem = memo(({ index, style }: { index: number; style: React.CSSProperties }) => {
-    const station = memoizedStations[index];
-    
-    if (!station) {
+  const RowComponent = useCallback(
+    ({ index, style, stations: rowStations, playlistName: pName, showVotes: sv, onNavigate: oN, onPlay: oP, onStop: oS, onToggleFavorite: oF }: RowComponentProps<RowProps>) => {
+      const station = rowStations[index];
+      if (!station) {
+        return (
+          <div style={style} className="px-4 py-2">
+            <StationCardSkeleton />
+          </div>
+        );
+      }
       return (
         <div style={style} className="px-4 py-2">
-          <StationCardSkeleton />
+          <StationCard
+            station={station}
+            playlistName={pName}
+            showVotes={sv}
+            onNavigate={oN}
+            onPlay={oP}
+            onStop={oS}
+            onToggleFavorite={oF}
+          />
         </div>
       );
-    }
+    },
+    [],
+  );
 
-    return (
-      <div style={style} className="px-4 py-2">
-        <StationCard
-          station={station}
-          playlistName={playlistName}
-          showVotes={showVotes}
-          onNavigate={onNavigate}
-          onPlay={onPlay}
-          onStop={onStop}
-          onToggleFavorite={onToggleFavorite}
-        />
-      </div>
-    );
-  });
-
-  // Show skeleton loading state
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -73,7 +80,6 @@ const VirtualizedStationList = memo(function VirtualizedStationList({
     );
   }
 
-  // Show empty state
   if (!memoizedStations || memoizedStations.length === 0) {
     return (
       <div className="text-center py-8">
@@ -82,7 +88,6 @@ const VirtualizedStationList = memo(function VirtualizedStationList({
     );
   }
 
-  // For small lists (< 50 items), use regular rendering for better performance
   if (memoizedStations.length < 50) {
     return (
       <div className="space-y-4">
@@ -102,20 +107,24 @@ const VirtualizedStationList = memo(function VirtualizedStationList({
     );
   }
 
-  // Use virtual scrolling for large lists
   return (
-    <div className="virtualized-list-container">
+    <div className="virtualized-list-container" style={{ height }}>
       <List
-        height={height}
-        width="100%"
-        itemCount={memoizedStations.length}
-        itemSize={itemHeight}
-        itemData={memoizedStations}
-        overscanCount={5} // Render 5 extra items outside viewport
+        rowCount={memoizedStations.length}
+        rowHeight={itemHeight}
+        rowComponent={RowComponent}
+        rowProps={{
+          stations: memoizedStations,
+          playlistName,
+          showVotes,
+          onNavigate,
+          onPlay,
+          onStop,
+          onToggleFavorite,
+        }}
+        overscanCount={5}
         className="scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800"
-      >
-        {StationItem}
-      </List>
+      />
     </div>
   );
 });

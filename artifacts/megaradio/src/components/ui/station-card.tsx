@@ -56,14 +56,25 @@ const getDisplayCountryName = (country: string): string => {
   return COUNTRY_DISPLAY_NAMES[country] || country;
 };
 
+interface StationEngagement {
+  totalFavorites?: number;
+  averageRating?: number;
+  totalRatings?: number;
+  trendingScore?: number;
+  weeklyFavorites?: number;
+}
+
 interface StationCardProps {
   station: any;
   playlistName?: string;
   onNavigate?: (station: any) => void;
-  onPlay?: (station: any, playlistName: string) => void;
+  onPlay?: (station: any, playlistName: string) => void | Promise<void>;
   onStop?: () => void;
   onToggleFavorite?: (stationId: string, isFavorite: boolean) => void;
+  onFavorite?: (stationId: string, isFavorite: boolean) => void;
   showVotes?: boolean; // Control whether to show votes
+  showEngagement?: boolean;
+  engagement?: StationEngagement;
 }
 
 const StationCard = memo(function StationCard({ 

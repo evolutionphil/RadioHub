@@ -178,8 +178,10 @@ export default function SeoMaintenancePage() {
     mutationFn: async () => {
       const trimmed = tagsCountry.trim();
       return apiRequest("POST", "/api/admin/maintenance/tags-backfill", {
-        country: trimmed || undefined,
-        limit: tagsLimit,
+        body: {
+          country: trimmed || undefined,
+          limit: tagsLimit,
+        },
       });
     },
     onSuccess: () => {
@@ -329,7 +331,7 @@ export default function SeoMaintenancePage() {
       return apiRequest(
         "PUT",
         "/api/admin/settings/backfill-retention",
-        body,
+        { body },
       );
     },
     onSuccess: () => {
@@ -351,7 +353,7 @@ export default function SeoMaintenancePage() {
   });
   const resetRetention = useMutation({
     mutationFn: async () =>
-      apiRequest("DELETE", "/api/admin/settings/backfill-retention", undefined),
+      apiRequest("DELETE", "/api/admin/settings/backfill-retention"),
     onSuccess: () => {
       toast({ title: "Saklama ayarları sıfırlandı" });
       queryClient.invalidateQueries({
@@ -373,7 +375,7 @@ export default function SeoMaintenancePage() {
   const startScheduled = useMutation({
     mutationFn: async (countryCode: string) =>
       apiRequest("POST", "/api/admin/maintenance/scheduled-backfill/run", {
-        countryCode: countryCode || undefined,
+        body: { countryCode: countryCode || undefined },
       }),
     onSuccess: (_data, countryCode) => {
       toast({

@@ -130,10 +130,10 @@ export default function Footer() {
         }
         
         return () => observer.disconnect();
-      } else {
-        // Fallback for browsers without IntersectionObserver
-        setBgLoaded(true);
       }
+      // Fallback for browsers without IntersectionObserver
+      setBgLoaded(true);
+      return undefined;
     }, 100); // Small delay to ensure hero content loads first
     
     return () => clearTimeout(timer);

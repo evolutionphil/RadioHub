@@ -294,7 +294,7 @@ export default function TrendingStations() {
                         trendingScore: station.trendingScore,
                         weeklyFavorites: station.weeklyFavorites
                       }}
-                      onPlay={(stationId) => {
+                      onPlay={() => {
                         const stationToPlay = {
                           _id: station.stationId,
                           name: station.station.name,
@@ -307,7 +307,7 @@ export default function TrendingStations() {
                         };
                         playStation(stationToPlay);
                       }}
-                      onFavorite={(stationId, isFavorite) => {
+                      onFavorite={(_stationId: string, _isFavorite: boolean) => {
                         if (!isAuthenticated) {
                           // Redirect to login page
                           setLocation('/auth/login');
@@ -382,7 +382,7 @@ export default function TrendingStations() {
                         totalRatings: station.totalRatings,
                         trendingScore: station.trendingScore
                       }}
-                      onPlay={(stationId) => {
+                      onPlay={() => {
                         const stationToPlay = {
                           _id: station.stationId,
                           name: station.station.name,
@@ -395,7 +395,7 @@ export default function TrendingStations() {
                         };
                         playStation(stationToPlay);
                       }}
-                      onFavorite={(stationId, isFavorite) => {
+                      onFavorite={(_stationId: string, _isFavorite: boolean) => {
                         if (!isAuthenticated) {
                           // Redirect to login page
                           setLocation('/auth/login');

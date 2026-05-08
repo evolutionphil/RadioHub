@@ -479,7 +479,7 @@ export default function PublicHeader() {
                         className="group flex items-center p-4 hover:bg-[#2F2F2F] cursor-pointer rounded-lg transition-all duration-200 border border-transparent hover:border-[#FF4199]/20"
                         onClick={() => {
                           // Use localized URL that preserves country code
-                          const stationUrl = getStationUrl(station, { currentPath: location });
+                          const stationUrl = getStationUrl(station);
                           window.location.href = stationUrl;
                           setIsSearchOpen(false);
                           setSearchQuery("");

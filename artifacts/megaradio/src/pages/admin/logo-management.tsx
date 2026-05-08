@@ -48,6 +48,8 @@ interface OptimizedStation {
   logoAssets?: {
     folder: string;
     webp96?: string;
+    webp256?: string;
+    webp48?: string;
     status: 'completed' | 'pending' | 'processing' | 'failed';
   };
 }

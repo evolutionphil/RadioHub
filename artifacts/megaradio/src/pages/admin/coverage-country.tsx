@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { useMemo, useState } from 'react';
 import { Link, useRoute } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
@@ -68,18 +69,20 @@ function splitBySource<K extends 'logoCoveragePct' | 'tagCoveragePct' | 'total' 
 // label because the split series (`*Cron` / `*Backfill`) renders two
 // lines per metric — only one will have a non-null value at any given
 // date, so we hide the null one.
+type RechartsPayloadEntry = {
+  name?: string | number;
+  value?: number | string | Array<number | string> | null;
+  color?: string;
+  dataKey?: string | number;
+};
+
 function SourceAwareTooltip(props: {
   active?: boolean;
   label?: string;
-  payload?: Array<{
-    name?: string;
-    value?: number | string | null;
-    color?: string;
-    dataKey?: string;
-  }>;
+  payload?: ReadonlyArray<RechartsPayloadEntry>;
   sourceByDate: Record<string, 'cron' | 'backfill'>;
   valueFormatter: (v: number | string) => string;
-}): JSX.Element | null {
+}): React.JSX.Element | null {
   const { active, label, payload, sourceByDate, valueFormatter } = props;
   if (!active || !payload || payload.length === 0 || !label) return null;
   const source = sourceByDate[label] ?? 'cron';
@@ -89,12 +92,16 @@ function SourceAwareTooltip(props: {
   const seenNames = new Set<string>();
   const rows = payload
     .filter(
-      (p) => p.value !== null && p.value !== undefined && p.value !== '',
+      (p) =>
+        p.value !== null &&
+        p.value !== undefined &&
+        p.value !== '' &&
+        !Array.isArray(p.value),
     )
     .map((p) => {
       // Strip the trailing " (backfilled)" suffix so the same metric
       // shows one row regardless of which series carried the value.
-      const name = (p.name ?? '').replace(/\s*\(backfilled\)\s*$/, '');
+      const name = String(p.name ?? '').replace(/\s*\(backfilled\)\s*$/, '');
       return { ...p, name };
     })
     .filter((p) => {
@@ -568,9 +575,11 @@ export default function AdminCoverageCountry() {
                     width={48}
                   />
                   <Tooltip
-                    content={(props) => (
+                    content={({ active, label, payload }) => (
                       <SourceAwareTooltip
-                        {...props}
+                        active={active}
+                        label={typeof label === 'string' ? label : label != null ? String(label) : undefined}
+                        payload={payload as ReadonlyArray<RechartsPayloadEntry> | undefined}
                         sourceByDate={sourceByDate}
                         valueFormatter={(v) => `${Number(v).toFixed(1)}%`}
                       />
@@ -672,9 +681,11 @@ export default function AdminCoverageCountry() {
                     tickFormatter={(v) => Number(v).toLocaleString()}
                   />
                   <Tooltip
-                    content={(props) => (
+                    content={({ active, label, payload }) => (
                       <SourceAwareTooltip
-                        {...props}
+                        active={active}
+                        label={typeof label === 'string' ? label : label != null ? String(label) : undefined}
+                        payload={payload as ReadonlyArray<RechartsPayloadEntry> | undefined}
                         sourceByDate={sourceByDate}
                         valueFormatter={(v) => Number(v).toLocaleString()}
                       />

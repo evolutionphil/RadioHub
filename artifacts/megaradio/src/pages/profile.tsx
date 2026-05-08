@@ -449,7 +449,7 @@ function ProfileContent() {
                         key={station._id || i} 
                         station={station}
                         showVotes={true}
-                        onPlay={(playedStation) => playStation(playedStation)}
+                        onPlay={(playedStation) => { void playStation(playedStation); }}
                         onToggleFavorite={(stationId, isFavorite) => {
                           if (!isFavorite) {
                             // Remove from favorites

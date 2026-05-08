@@ -311,12 +311,12 @@ export default function AdminDuplicates() {
             
             // Get the actual icon URL (prefer favicon, fallback to localImagePath)
             const sourceFaviconUrl = isValidUrl(faviconSource?.favicon) 
-              ? faviconSource.favicon 
+              ? faviconSource?.favicon ?? ''
               : isValidUrl(faviconSource?.localImagePath) 
-                ? faviconSource.localImagePath 
+                ? faviconSource?.localImagePath ?? ''
                 : '';
             
-            if (sourceFaviconUrl) {
+            if (sourceFaviconUrl && faviconSource) {
               try {
                 const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
                   method: 'PUT',
@@ -421,12 +421,12 @@ export default function AdminDuplicates() {
         
         // Get the actual icon URL (prefer favicon, fallback to localImagePath)
         const sourceFaviconUrl = isValidUrl(faviconSource?.favicon) 
-          ? faviconSource.favicon 
+          ? faviconSource?.favicon ?? ''
           : isValidUrl(faviconSource?.localImagePath) 
-            ? faviconSource.localImagePath 
+            ? faviconSource?.localImagePath ?? ''
             : '';
         
-        if (sourceFaviconUrl) {
+        if (sourceFaviconUrl && faviconSource) {
           try {
             const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
               method: 'PUT',

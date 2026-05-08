@@ -26,7 +26,8 @@ export function AudioPlayer({ station, onClose, onNext, onPrevious }: AudioPlaye
   const audioRef = useRef<HTMLAudioElement>(null);
 
   useEffect(() => {
-    if (station && audioRef.current) {
+    if (!station || !audioRef.current) return;
+    {
       // Audio load started
       audioRef.current.volume = volume[0];
       // Don't set loading true immediately - let the play button be clickable

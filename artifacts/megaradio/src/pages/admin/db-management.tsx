@@ -105,7 +105,7 @@ export default function DbManagement() {
   const cleanupMutation = useMutation({
     mutationFn: async (collections?: string[]) => {
       const res = await apiRequest("POST", "/api/admin/db-cleanup", {
-        collections: collections || undefined,
+        body: { collections: collections || undefined },
       });
       return res.json();
     },
@@ -117,7 +117,7 @@ export default function DbManagement() {
 
   const dropMutation = useMutation({
     mutationFn: async (collection: string) => {
-      const res = await apiRequest("POST", "/api/admin/db-drop-collection", { collection });
+      const res = await apiRequest("POST", "/api/admin/db-drop-collection", { body: { collection } });
       return res.json();
     },
     onSuccess: (data) => {
@@ -199,7 +199,7 @@ export default function DbManagement() {
             <CardHeader className="flex flex-row items-center justify-between">
               <CardTitle className="text-lg text-gray-900">Collections</CardTitle>
               <Button
-                onClick={() => cleanupMutation.mutate()}
+                onClick={() => cleanupMutation.mutate(undefined)}
                 disabled={cleanupMutation.isPending}
                 variant="destructive"
                 size="sm"

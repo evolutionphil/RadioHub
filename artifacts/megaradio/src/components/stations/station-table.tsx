@@ -329,8 +329,8 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
       );
     }
     
-    // If lastCheckOk is true or 1, station is online
-    if (station.lastCheckOk === true || station.lastCheckOk === 1) {
+    // If lastCheckOk is true, station is online
+    if (station.lastCheckOk === true) {
       return (
         <Badge variant="secondary" className="bg-green-100 text-green-800" title={tooltipText}>
           <Circle className="w-2 h-2 text-green-400 fill-current mr-1" />
@@ -339,8 +339,8 @@ Last Local Check: ${formatTime(lastLocalCheckTime)} (${timeSinceLocalCheck ? tim
       );
     }
     
-    // If lastCheckOk is false or 0, station is offline
-    if (station.lastCheckOk === false || station.lastCheckOk === 0) {
+    // If lastCheckOk is explicitly false, station is offline
+    if (station.lastCheckOk === false) {
       return (
         <Badge variant="secondary" className="bg-red-100 text-red-800" title={tooltipText}>
           <Circle className="w-2 h-2 text-red-400 fill-current mr-1" />

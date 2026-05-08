@@ -689,7 +689,7 @@ export default function AdminCoverage() {
   // pulled the plug (otherwise the bars vanish 6s later and the cancel
   // feels like a black hole). We also fire a toast summary on the
   // transition. `completed` and `failed` keep their old auto-clear.
-  useEffect(() => {
+  useEffect((): void | (() => void) => {
     for (const job of Object.values(activeJobs)) {
       if (job.status === 'running') continue;
       if (completedJobsRef.current.has(job.jobId)) continue;

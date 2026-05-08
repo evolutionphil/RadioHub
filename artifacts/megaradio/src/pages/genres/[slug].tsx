@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import type { StationWithCountry } from "@workspace/db-shared/schema";
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
@@ -76,7 +77,10 @@ export default function GenreDetail({
   });
 
   // Fetch stations for this genre from 7-day cache (filter by tags)
-  const { data: stationsData, isLoading } = useQuery({
+  const { data: stationsData, isLoading } = useQuery<{
+    stations: StationWithCountry[];
+    pagination: { total: number; page: number; limit: number };
+  }>({
     queryKey: [`/api/genres/${slug}/stations`, page, searchQuery, sortBy, countryForFiltering],
     queryFn: async () => {
       // Use precomputed cache for base stations (7-day TTL)
@@ -135,7 +139,7 @@ export default function GenreDetail({
   const handlePlay = async (station: any, playlistName: string = "genre") => {
     try {
       // Playing station from genre page
-      await playStation(station, stations, playlistName);
+      await playStation(station, stations);
     } catch (error) {
       // Failed to play station
     }

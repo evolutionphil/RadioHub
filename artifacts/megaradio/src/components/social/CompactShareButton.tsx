@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 const SiFacebook = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiFacebook {...props} /> })));
 const SiX = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiX {...props} /> })));
 const SiWhatsapp = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiWhatsapp {...props} /> })));
-const SiLinkedin = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiLinkedin {...props} /> })));
+const SiLinkedin = lazy(() => import('react-icons/fa').then(m => ({ default: (props: any) => <m.FaLinkedin {...props} /> })));
 const SiPinterest = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiPinterest {...props} /> })));
 const SiTelegram = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiTelegram {...props} /> })));
 const SiReddit = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiReddit {...props} /> })));
