@@ -17,6 +17,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 // Remove PostgreSQL import - we're using MongoDB now
 // import { type StationWithCountry } from '@workspace/db-shared/schema';
 import { useDebounce } from "@/hooks/use-debounce";
@@ -270,6 +272,43 @@ export default function Stations() {
         title: "Merge Failed",
         description: error.message || "Failed to merge stations.",
         variant: "destructive",
+      });
+    },
+  });
+
+  // Manual blacklist add form (Task #260)
+  const [blacklistForm, setBlacklistForm] = useState({
+    name: '',
+    url: '',
+    stationUuid: '',
+    reason: '',
+  });
+  const addBlacklistMutation = useMutation({
+    mutationFn: async (payload: { name: string; url: string; stationUuid?: string; reason?: string }) => {
+      const response = await fetch('/api/admin/blacklisted-stations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || 'Failed to add station to blacklist');
+      }
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/blacklisted-stations'] });
+      toast({
+        title: 'Station Blacklisted',
+        description: 'The station has been added to the blacklist.',
+      });
+      setBlacklistForm({ name: '', url: '', stationUuid: '', reason: '' });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Blacklist Failed',
+        description: error?.message || 'Failed to add station to blacklist.',
+        variant: 'destructive',
       });
     },
   });
@@ -1513,6 +1552,89 @@ export default function Stations() {
           ) : showBlacklisted ? (
             // Blacklisted Stations Interface
             <div className="p-6">
+              <Card className="mb-6 border border-amber-200 bg-amber-50/30">
+                <CardHeader>
+                  <CardTitle className="text-base">Blacklist a station</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <form
+                    className="grid grid-cols-1 md:grid-cols-2 gap-3"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const name = blacklistForm.name.trim();
+                      const url = blacklistForm.url.trim();
+                      if (!name || !url) {
+                        toast({
+                          title: 'Missing fields',
+                          description: 'Name and URL are required to blacklist a station.',
+                          variant: 'destructive',
+                        });
+                        return;
+                      }
+                      addBlacklistMutation.mutate({
+                        name,
+                        url,
+                        stationUuid: blacklistForm.stationUuid.trim() || undefined,
+                        reason: blacklistForm.reason.trim() || undefined,
+                      });
+                    }}
+                    data-testid="form-add-blacklist"
+                  >
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="bl-name">Name *</Label>
+                      <Input
+                        id="bl-name"
+                        value={blacklistForm.name}
+                        onChange={(e) => setBlacklistForm((s) => ({ ...s, name: e.target.value }))}
+                        placeholder="Station name"
+                        required
+                        data-testid="input-blacklist-name"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="bl-url">Stream URL *</Label>
+                      <Input
+                        id="bl-url"
+                        value={blacklistForm.url}
+                        onChange={(e) => setBlacklistForm((s) => ({ ...s, url: e.target.value }))}
+                        placeholder="https://example.com/stream"
+                        required
+                        data-testid="input-blacklist-url"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="bl-uuid">Radio-Browser UUID (optional)</Label>
+                      <Input
+                        id="bl-uuid"
+                        value={blacklistForm.stationUuid}
+                        onChange={(e) => setBlacklistForm((s) => ({ ...s, stationUuid: e.target.value }))}
+                        placeholder="e.g. 9617a958-0601-11e8-ae97-52543be04c81"
+                        data-testid="input-blacklist-uuid"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <Label htmlFor="bl-reason">Reason (optional)</Label>
+                      <Input
+                        id="bl-reason"
+                        value={blacklistForm.reason}
+                        onChange={(e) => setBlacklistForm((s) => ({ ...s, reason: e.target.value }))}
+                        placeholder="Why is this station being blocked?"
+                        data-testid="input-blacklist-reason"
+                      />
+                    </div>
+                    <div className="md:col-span-2 flex justify-end">
+                      <Button
+                        type="submit"
+                        disabled={addBlacklistMutation.isPending}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        data-testid="button-add-blacklist"
+                      >
+                        {addBlacklistMutation.isPending ? 'Adding…' : 'Add to blacklist'}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
               {stationsData?.stations?.length > 0 ? (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between mb-4">

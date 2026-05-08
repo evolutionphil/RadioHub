@@ -1135,6 +1135,72 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   });
 
   // BLACKLISTED STATIONS ENDPOINTS (Admin Only)
+  // Pre-emptively add a station URL/UUID to the blacklist without first
+  // having to import then delete it. Reuses the same audit-email pipeline
+  // as the deletion-side blacklist additions so admins still get a CSV
+  // record of every manual block. (Task #260)
+  app.post("/api/admin/blacklisted-stations", requireAdmin, async (req, res) => {
+    try {
+      const body = (req.body ?? {}) as {
+        stationUuid?: unknown;
+        url?: unknown;
+        name?: unknown;
+        reason?: unknown;
+      };
+      const url = typeof body.url === 'string' ? body.url.trim() : '';
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      const stationUuid = typeof body.stationUuid === 'string' ? body.stationUuid.trim() : '';
+      const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+      if (!url) return void res.status(400).json({ error: 'url is required' });
+      if (!name) return void res.status(400).json({ error: 'name is required' });
+
+      const dupFilter: any = stationUuid
+        ? { $or: [{ url }, { stationUuid }] }
+        : { url };
+      const existing = await BlacklistedStation.findOne(dupFilter).lean();
+      if (existing) {
+        return void res.status(409).json({
+          error: 'Station is already blacklisted',
+          blacklistedStation: existing,
+        });
+      }
+
+      const actorEmail = (req.user as { email?: string } | undefined)?.email ?? undefined;
+      const created = await BlacklistedStation.create({
+        stationUuid: stationUuid || undefined,
+        url,
+        name,
+        reason: reason || 'Manual blacklist',
+        deletedBy: actorEmail || 'admin',
+      });
+
+      void import('../services/admin-audit-email')
+        .then(({ emailBlacklistChangesCsv }) =>
+          emailBlacklistChangesCsv({
+            action: 'add',
+            source: 'manual blacklist',
+            rows: [
+              {
+                name,
+                url,
+                stationUuid: stationUuid || undefined,
+                reason: reason || 'Manual blacklist',
+              },
+            ],
+            actorEmail,
+          }),
+        )
+        .catch((err) => {
+          logger.error({ err }, 'Failed to send blacklist audit email');
+        });
+
+      res.status(201).json({ success: true, blacklistedStation: created });
+    } catch (error: any) {
+      logger.error(`Error in POST /api/admin/blacklisted-stations: ${error?.message || error}`);
+      res.status(500).json({ error: 'Failed to add station to blacklist' });
+    }
+  });
+
   app.get("/api/admin/blacklisted-stations", requireAdmin, async (req, res) => {
     try {
       const { page = 1, limit = 50, search = '' } = req.query;
