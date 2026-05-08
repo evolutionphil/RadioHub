@@ -63,6 +63,7 @@ interface WhitelistResponse {
   lastRefreshAt: string | null;
   stationCountsStatus?: StationCountsStatus;
   lastPush: PushStatus | null;
+  pushHistory?: PushStatus[];
 }
 
 function formatRelativeTime(iso: string): string {
@@ -541,6 +542,108 @@ export default function AdminGenreWhitelist() {
                     Wait for the current push to finish before retrying.
                   </span>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* === PUSH HISTORY === */}
+      {/* Task #255: persisted timeline of recent completed pushes
+          (newest first). Survives api-server restarts so admins can
+          spot a flapping IndexNow endpoint or a slug that keeps
+          failing across multiple attempts. */}
+      {(() => {
+        const history = data.pushHistory ?? [];
+        if (history.length === 0) {
+          return (
+            <Card data-testid="card-push-history">
+              <CardHeader>
+                <CardTitle className="text-base">Recent push history</CardTitle>
+                <CardDescription>
+                  No completed pushes have been recorded yet. Past pushes will appear here once
+                  they finish, and persist across api-server restarts.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          );
+        }
+        return (
+          <Card data-testid="card-push-history">
+            <CardHeader>
+              <CardTitle className="text-base">Recent push history ({history.length})</CardTitle>
+              <CardDescription>
+                Last {history.length} completed push{history.length === 1 ? '' : 'es'} — newest
+                first. Survives api-server restarts (90-day retention).
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="border rounded divide-y max-h-[480px] overflow-y-auto">
+                {history.map((p, idx) => {
+                  const failed =
+                    p.sitemapRebuild.status === 'failed' ||
+                    p.indexnowSitemap.status === 'failed' ||
+                    p.indexnowGenreUrls.status === 'failed';
+                  return (
+                    <div
+                      key={`${p.triggeredAt}-${idx}`}
+                      className="p-3 space-y-2"
+                      data-testid={`row-push-history-${idx}`}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-xs text-gray-600">
+                          <strong>{formatRelativeTime(p.triggeredAt)}</strong>
+                          {p.triggeredBy ? <> by <code>{p.triggeredBy}</code></> : null}
+                          {' '}via <code>{p.trigger}</code>
+                          {p.affectedSlugs.length > 0 && (
+                            <>
+                              {' '}for {p.affectedSlugs.length} slug
+                              {p.affectedSlugs.length === 1 ? '' : 's'}
+                            </>
+                          )}
+                          <span className="text-gray-400">
+                            {' '}· {new Date(p.triggeredAt).toLocaleString()}
+                          </span>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={
+                            failed
+                              ? 'text-xs border-red-300 text-red-700 bg-red-50'
+                              : 'text-xs border-green-300 text-green-700 bg-green-50'
+                          }
+                          data-testid={`badge-push-history-summary-${idx}`}
+                        >
+                          {failed ? 'failed' : 'succeeded'}
+                        </Badge>
+                      </div>
+                      {p.affectedSlugs.length > 0 && (
+                        <div className="text-xs text-gray-500 break-all">
+                          <code>{p.affectedSlugs.join(', ')}</code>
+                        </div>
+                      )}
+                      <div className="flex flex-wrap gap-2">
+                        <StepBadge label="sitemap-rebuild" step={p.sitemapRebuild} />
+                        <StepBadge label="indexnow-sitemap" step={p.indexnowSitemap} />
+                        <StepBadge label="indexnow-genre-urls" step={p.indexnowGenreUrls} />
+                      </div>
+                      {[p.sitemapRebuild, p.indexnowSitemap, p.indexnowGenreUrls]
+                        .filter((s) => s.status === 'failed' && s.error)
+                        .map((s, i) => (
+                          <Alert
+                            key={i}
+                            variant="destructive"
+                            data-testid={`alert-push-history-error-${idx}-${i}`}
+                          >
+                            <AlertCircle className="w-4 h-4" />
+                            <AlertDescription className="text-xs break-all">
+                              {s.error}
+                            </AlertDescription>
+                          </Alert>
+                        ))}
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>

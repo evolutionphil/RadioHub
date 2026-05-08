@@ -34,7 +34,10 @@ import {
   updatePushStep,
   completePushStatus,
   getLastPushStatus,
+  getRecentPushHistory,
 } from '../seo/genre-whitelist-push-status';
+
+const PUSH_HISTORY_LIMIT = 20;
 
 const PRIMARY_HOST = 'themegaradio.com';
 
@@ -75,7 +78,12 @@ function triggerSearchEnginePush(
   affectedSlugs: string[],
   meta: { triggeredBy: string | null; trigger: string },
 ): void {
-  startPushStatus({
+  // Each push gets its own isolated `pushId`. All step updates +
+  // completion are scoped to that id so overlapping fire-and-forget
+  // pushes (e.g. an admin spam-clicking add/remove) can never overwrite
+  // each other's step state or persist a cross-pollinated history row
+  // (task #255).
+  const pushId = startPushStatus({
     triggeredBy: meta.triggeredBy,
     trigger: meta.trigger,
     affectedSlugs,
@@ -83,18 +91,18 @@ function triggerSearchEnginePush(
   void (async () => {
     try {
       await buildAllSitemapManifests({ force: true });
-      updatePushStep('sitemapRebuild', { status: 'success' });
+      updatePushStep(pushId, 'sitemapRebuild', { status: 'success' });
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       logger.error('genre-whitelist: sitemap rebuild failed:', msg);
-      updatePushStep('sitemapRebuild', { status: 'failed', error: msg });
+      updatePushStep(pushId, 'sitemapRebuild', { status: 'failed', error: msg });
     }
     try {
       const result = await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
       if (result.success) {
-        updatePushStep('indexnowSitemap', { status: 'success', urlCount: 1 });
+        updatePushStep(pushId, 'indexnowSitemap', { status: 'success', urlCount: 1 });
       } else {
-        updatePushStep('indexnowSitemap', {
+        updatePushStep(pushId, 'indexnowSitemap', {
           status: 'failed',
           error: result.error ?? `IndexNow returned status ${result.statusCode ?? 'unknown'}`,
         });
@@ -102,11 +110,11 @@ function triggerSearchEnginePush(
     } catch (err: any) {
       const msg = err?.message ?? String(err);
       logger.error('genre-whitelist: IndexNow sitemap ping failed:', msg);
-      updatePushStep('indexnowSitemap', { status: 'failed', error: msg });
+      updatePushStep(pushId, 'indexnowSitemap', { status: 'failed', error: msg });
     }
     if (affectedSlugs.length === 0) {
-      updatePushStep('indexnowGenreUrls', { status: 'skipped' });
-      completePushStatus();
+      updatePushStep(pushId, 'indexnowGenreUrls', { status: 'skipped' });
+      completePushStatus(pushId);
       return;
     }
 
@@ -127,16 +135,16 @@ function triggerSearchEnginePush(
       if (urls.length > 0) {
         const result = await IndexNowService.submitToIndexNow(urls, 'manual');
         if (result.success) {
-          updatePushStep('indexnowGenreUrls', { status: 'success', urlCount: urls.length });
+          updatePushStep(pushId, 'indexnowGenreUrls', { status: 'success', urlCount: urls.length });
         } else {
-          updatePushStep('indexnowGenreUrls', {
+          updatePushStep(pushId, 'indexnowGenreUrls', {
             status: 'failed',
             error: result.error ?? `IndexNow returned status ${result.statusCode ?? 'unknown'}`,
             urlCount: urls.length,
           });
         }
       } else {
-        updatePushStep('indexnowGenreUrls', { status: 'skipped' });
+        updatePushStep(pushId, 'indexnowGenreUrls', { status: 'skipped' });
       }
     } catch (err: any) {
       const msg = err?.message ?? String(err);
@@ -145,13 +153,13 @@ function triggerSearchEnginePush(
       try {
         const fallback = await IndexNowService.submitGenreUrls(affectedSlugs, undefined, 'manual');
         if (fallback.success) {
-          updatePushStep('indexnowGenreUrls', {
+          updatePushStep(pushId, 'indexnowGenreUrls', {
             status: 'success',
             urlCount: affectedSlugs.length,
             error: `Localized expansion failed (${msg}); fell back to English-only ping.`,
           });
         } else {
-          updatePushStep('indexnowGenreUrls', {
+          updatePushStep(pushId, 'indexnowGenreUrls', {
             status: 'failed',
             error: `Localized expansion failed (${msg}); fallback also failed: ${fallback.error ?? 'unknown'}`,
           });
@@ -159,13 +167,13 @@ function triggerSearchEnginePush(
       } catch (fallbackErr: any) {
         const fbMsg = fallbackErr?.message ?? String(fallbackErr);
         logger.error('genre-whitelist: IndexNow fallback ping failed:', fbMsg);
-        updatePushStep('indexnowGenreUrls', {
+        updatePushStep(pushId, 'indexnowGenreUrls', {
           status: 'failed',
           error: `${msg} (fallback: ${fbMsg})`,
         });
       }
     }
-    completePushStatus();
+    completePushStatus(pushId);
   })();
 }
 
@@ -254,9 +262,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // before we hand it back to the dashboard.
         await refreshGenreWhitelistFromDb();
 
-        const overrides = await GenreWhitelistOverride.find({})
-          .sort({ kind: 1, slug: 1 })
-          .lean();
+        const [overrides, pushHistory] = await Promise.all([
+          GenreWhitelistOverride.find({}).sort({ kind: 1, slug: 1 }).lean(),
+          getRecentPushHistory(PUSH_HISTORY_LIMIT),
+        ]);
 
         const merged = getMergedWhitelist();
         const aliases = getMergedAliases();
@@ -319,6 +328,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           // (e.g. after a bulk import or country backfill).
           stationCountsStatus: getGenreStationCountsStatus(),
           lastPush: getLastPushStatus(),
+          // Task #255: persisted history of recent completed pushes
+          // (newest first). Survives api-server restarts so admins can
+          // spot a flapping IndexNow endpoint or a slug that keeps
+          // failing across multiple attempts.
+          pushHistory,
         });
       } catch (error: any) {
         logger.error('Error reading genre whitelist:', error);

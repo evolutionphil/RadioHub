@@ -3360,6 +3360,73 @@ export const GenreWhitelistOverride = mongoose.model<IGenreWhitelistOverride>(
 );
 
 // =====================================================================
+// GenreWhitelistPushLog — persisted history of "push the genre whitelist
+// to search engines" outcomes (task #255). The same step-level fields
+// the in-memory `genre-whitelist-push-status` singleton tracks for the
+// "Last push" admin card, but written to Mongo on completion so they
+// survive an api-server restart and so admins can spot a flapping
+// IndexNow endpoint or a slug that keeps failing across multiple
+// attempts.
+//
+// We log on completion only (in-progress pushes still come from the
+// in-memory singleton). 90-day TTL keeps the collection self-pruning;
+// the admin UI renders only the most recent ~20 rows.
+// =====================================================================
+export type GenreWhitelistPushStepStatus = 'pending' | 'success' | 'failed' | 'skipped';
+
+export interface IGenreWhitelistPushLogStep {
+  status: GenreWhitelistPushStepStatus;
+  error?: string | null;
+  urlCount?: number | null;
+}
+
+export interface IGenreWhitelistPushLog extends Document {
+  triggeredAt: Date;
+  completedAt: Date;
+  triggeredBy: string | null;
+  trigger: string;
+  affectedSlugs: string[];
+  sitemapRebuild: IGenreWhitelistPushLogStep;
+  indexnowSitemap: IGenreWhitelistPushLogStep;
+  indexnowGenreUrls: IGenreWhitelistPushLogStep;
+  createdAt: Date;
+}
+
+const GenreWhitelistPushLogStepSchema = new Schema<IGenreWhitelistPushLogStep>(
+  {
+    status: {
+      type: String,
+      required: true,
+      enum: ['pending', 'success', 'failed', 'skipped'],
+    },
+    error: { type: String, default: null },
+    urlCount: { type: Number, default: null },
+  },
+  { _id: false },
+);
+
+const GenreWhitelistPushLogSchema = new Schema<IGenreWhitelistPushLog>({
+  triggeredAt: { type: Date, required: true },
+  completedAt: { type: Date, required: true },
+  triggeredBy: { type: String, default: null },
+  trigger: { type: String, required: true },
+  affectedSlugs: { type: [String], default: [] },
+  sitemapRebuild: { type: GenreWhitelistPushLogStepSchema, required: true },
+  indexnowSitemap: { type: GenreWhitelistPushLogStepSchema, required: true },
+  indexnowGenreUrls: { type: GenreWhitelistPushLogStepSchema, required: true },
+  // 90-day TTL — long enough to spot recurring failures across weeks,
+  // bounded so the collection self-prunes without manual intervention.
+  createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 90 },
+});
+
+GenreWhitelistPushLogSchema.index({ triggeredAt: -1 });
+
+export const GenreWhitelistPushLog = mongoose.model<IGenreWhitelistPushLog>(
+  'GenreWhitelistPushLog',
+  GenreWhitelistPushLogSchema,
+);
+
+// =====================================================================
 // AppleWebhookEvent — idempotency store for App Store Server Notifications V2
 //
 // Apple may retry the same notification many times (network failures, our 5xx,
