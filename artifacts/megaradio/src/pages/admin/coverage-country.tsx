@@ -62,6 +62,79 @@ function splitBySource<K extends 'logoCoveragePct' | 'tagCoveragePct' | 'total' 
   });
 }
 
+// Custom Recharts tooltip that, in addition to the value formatter,
+// labels the hovered day as "nightly snapshot" or "reconstructed" using
+// a date → source lookup. We deduplicate payload entries by display
+// label because the split series (`*Cron` / `*Backfill`) renders two
+// lines per metric — only one will have a non-null value at any given
+// date, so we hide the null one.
+function SourceAwareTooltip(props: {
+  active?: boolean;
+  label?: string;
+  payload?: Array<{
+    name?: string;
+    value?: number | string | null;
+    color?: string;
+    dataKey?: string;
+  }>;
+  sourceByDate: Record<string, 'cron' | 'backfill'>;
+  valueFormatter: (v: number | string) => string;
+}): JSX.Element | null {
+  const { active, label, payload, sourceByDate, valueFormatter } = props;
+  if (!active || !payload || payload.length === 0 || !label) return null;
+  const source = sourceByDate[label] ?? 'cron';
+  const sourceLabel =
+    source === 'backfill' ? 'reconstructed' : 'nightly snapshot';
+  const sourceColor = source === 'backfill' ? '#b45309' : '#15803d';
+  const seenNames = new Set<string>();
+  const rows = payload
+    .filter(
+      (p) => p.value !== null && p.value !== undefined && p.value !== '',
+    )
+    .map((p) => {
+      // Strip the trailing " (backfilled)" suffix so the same metric
+      // shows one row regardless of which series carried the value.
+      const name = (p.name ?? '').replace(/\s*\(backfilled\)\s*$/, '');
+      return { ...p, name };
+    })
+    .filter((p) => {
+      if (seenNames.has(p.name)) return false;
+      seenNames.add(p.name);
+      return true;
+    });
+  return (
+    <div
+      className="rounded-md border bg-background px-3 py-2 text-xs shadow-md"
+      data-testid="chart-tooltip"
+      data-source={source}
+    >
+      <div className="font-mono text-foreground">{label}</div>
+      <div
+        className="mt-0.5 mb-1.5 text-[11px] font-medium"
+        style={{ color: sourceColor }}
+        data-testid="chart-tooltip-source"
+      >
+        {sourceLabel}
+      </div>
+      <div className="space-y-0.5">
+        {rows.map((r) => (
+          <div key={r.name} className="flex items-center gap-2">
+            <span
+              className="inline-block w-2 h-2 rounded-sm"
+              style={{ backgroundColor: r.color }}
+              aria-hidden
+            />
+            <span className="text-muted-foreground">{r.name}:</span>
+            <span className="tabular-nums text-foreground">
+              {valueFormatter(r.value as number | string)}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 interface TrendsResponse {
   days: number;
   since: string;
@@ -192,6 +265,29 @@ export default function AdminCoverageCountry() {
     () => series.some((p) => p.source === 'backfill'),
     [series],
   );
+  // Group consecutive backfilled days into contiguous ranges so the
+  // caption can name them as "2026-04-08 → 2026-04-22" (a single day
+  // collapses to just "2026-04-08").
+  const backfillRanges = useMemo<Array<{ start: string; end: string }>>(() => {
+    const ranges: Array<{ start: string; end: string }> = [];
+    let cur: { start: string; end: string } | null = null;
+    for (const p of series) {
+      if (p.source === 'backfill') {
+        if (!cur) cur = { start: p.date, end: p.date };
+        else cur.end = p.date;
+      } else if (cur) {
+        ranges.push(cur);
+        cur = null;
+      }
+    }
+    if (cur) ranges.push(cur);
+    return ranges;
+  }, [series]);
+  const sourceByDate = useMemo(() => {
+    const m: Record<string, 'cron' | 'backfill'> = {};
+    for (const p of series) m[p.date] = p.source ?? 'cron';
+    return m;
+  }, [series]);
   const percentSeries = useMemo(
     () => splitBySource(series, ['logoCoveragePct', 'tagCoveragePct']),
     [series],
@@ -413,6 +509,19 @@ export default function AdminCoverageCountry() {
               className="mt-2 text-xs text-muted-foreground"
               data-testid="backfill-caveat-percent"
             >
+              <div data-testid="backfill-range-caption" className="mb-1">
+                <span className="font-medium text-foreground">
+                  Reconstructed:
+                </span>{' '}
+                {backfillRanges.map((r, i) => (
+                  <span key={`${r.start}-${r.end}`}>
+                    {i > 0 ? ', ' : ''}
+                    <span className="font-mono">
+                      {r.start === r.end ? r.start : `${r.start} → ${r.end}`}
+                    </span>
+                  </span>
+                ))}
+              </div>
               <span className="font-medium">Dashed segments</span> are
               reconstructed from existing station data by the one-shot
               historical backfill — they are best-effort, not real nightly
@@ -459,10 +568,13 @@ export default function AdminCoverageCountry() {
                     width={48}
                   />
                   <Tooltip
-                    formatter={(value: number, name: string) => [
-                      `${Number(value).toFixed(1)}%`,
-                      name,
-                    ]}
+                    content={(props) => (
+                      <SourceAwareTooltip
+                        {...props}
+                        sourceByDate={sourceByDate}
+                        valueFormatter={(v) => `${Number(v).toFixed(1)}%`}
+                      />
+                    )}
                   />
                   <Legend />
                   <Line
@@ -560,10 +672,13 @@ export default function AdminCoverageCountry() {
                     tickFormatter={(v) => Number(v).toLocaleString()}
                   />
                   <Tooltip
-                    formatter={(value: number, name: string) => [
-                      Number(value).toLocaleString(),
-                      name,
-                    ]}
+                    content={(props) => (
+                      <SourceAwareTooltip
+                        {...props}
+                        sourceByDate={sourceByDate}
+                        valueFormatter={(v) => Number(v).toLocaleString()}
+                      />
+                    )}
                   />
                   <Legend />
                   {/* Solid = real cron snapshots, dashed = backfilled days. */}
