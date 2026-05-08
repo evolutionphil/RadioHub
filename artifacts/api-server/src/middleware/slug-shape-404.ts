@@ -71,12 +71,23 @@ export interface SlugShape404Options {
    */
   stationSingularAlts: string[];
   /**
-   * Translated alternates of plural `stations` (typically by id, e.g.
-   * `/stations/<id>` listings). Shape-validated only — no existence
-   * check, since IDs aren't slugs.
+   * Translated alternates of plural `stations`. The SPA accepts both
+   * `/stations/<id>` (24-char hex MongoDB ObjectId, resolved via
+   * `findById`) and `/stations/<slug>` (resolved via `findOne({slug})`).
+   * Existence-checked when the segment is slug-shaped; ObjectId-shaped
+   * segments bypass the existence gate and fall through to the SPA so
+   * legitimate by-id station URLs keep working.
    */
   stationsPluralAlts: string[];
 }
+
+/**
+ * 24-char hex MongoDB ObjectId. Used to bypass the slug-existence gate
+ * for `/stations/<id>` URLs — IDs aren't tracked in the slug set, so
+ * gating on `hasStationSlug(<id>)` would false-404 every legitimate
+ * by-id station URL. The SSR / SPA layers resolve these via `findById`.
+ */
+const OBJECT_ID_RE = /^[0-9a-f]{24}$/i;
 
 function buildExactMatchRe(alts: string[]): RegExp {
   const escaped = alts
@@ -189,9 +200,23 @@ export function createSlugShape404Middleware(opts: SlugShape404Options) {
       // aliases). The existence set includes slugAliases so legitimate
       // alias URLs still pass the gate; the SSR layer will 301 those
       // to the canonical slug.
+      //
+      // Special case for the plural family: the SPA also serves
+      // station-detail by 24-char hex MongoDB ObjectId (e.g.
+      // `/stations/<id>`, see App.tsx routes). IDs aren't in the slug
+      // set, so we must skip the existence gate for ObjectId-shaped
+      // segments under the plural family — otherwise every legitimate
+      // by-id URL would false-404. Singular `/station/<id>` isn't a
+      // documented route, so we leave it gated to keep junk like
+      // `/station/<random-32-hex>` 404'ing.
       if (slug2 !== undefined) {
         if (!SAFE_REGION_SLUG_RE.test(slug2)) {
           invalid = true;
+        } else if (
+          stationPluralRe.test(family) &&
+          OBJECT_ID_RE.test(slug2)
+        ) {
+          // Valid by-id station URL — fall through to the SPA.
         } else if (
           isSlugExistenceReady() &&
           !hasStationSlug(slug2)
