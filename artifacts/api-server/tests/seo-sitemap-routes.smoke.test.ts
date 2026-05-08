@@ -106,9 +106,16 @@ function buildFakeManifest(
   type: 'main' | 'genres' | 'stations',
   language: string,
 ): FakeManifest {
+  // Real sitemap-manifest-builder numbers chunks 1-based (see
+  // buildStationChunks / buildGenreChunks). Mirror that here so the
+  // sitemap-index advertises the same URL the per-chunk handler will
+  // actually answer with 200 — the route's chunk-param regex
+  // `[1-9]\d{0,3}` rejects `0` with 410 Gone.
   const chunks: FakeManifestChunk[] = type === 'stations'
-    ? [{ chunk: 0, urlCount: 50, maxUpdatedAt: NOW, stationIds: ['s1', 's2'] }]
-    : [{ chunk: 0, urlCount: 1, maxUpdatedAt: NOW }];
+    ? [{ chunk: 1, urlCount: 50, maxUpdatedAt: NOW, stationIds: ['s1', 's2'] }]
+    : type === 'genres'
+      ? [{ chunk: 1, urlCount: 3, maxUpdatedAt: NOW, stationIds: ['g1', 'g2', 'g3'] }]
+      : [{ chunk: 1, urlCount: 1, maxUpdatedAt: NOW }];
   return {
     type,
     language,
@@ -122,19 +129,47 @@ function buildFakeManifest(
   };
 }
 
+// Mutable overrides so individual tests can control manifest-builder behaviour
+// (e.g. simulate a missing chunk to assert the 410-vs-503 contract) without
+// re-mocking the module — `mock.module` snapshots `namedExports` at install
+// time, so we close over these holders instead.
+const builderOverrides: {
+  getActiveManifest:
+    | null
+    | ((type: 'main' | 'genres' | 'stations', language: string) => Promise<FakeManifest | null>);
+  getActiveStationChunk:
+    | null
+    | ((language: string, chunk: number) => Promise<{
+        stationIds: string[];
+        maxUpdatedAt: Date;
+        qualifiedLanguagesHash: string;
+        version: string;
+      } | null>);
+} = { getActiveManifest: null, getActiveStationChunk: null };
+
 mock.module(new URL('../src/seo/sitemap-manifest-builder.ts', import.meta.url).href, {
   namedExports: {
     buildAllSitemapManifests: async () => ({}),
     getActiveManifest: async (
       type: 'main' | 'genres' | 'stations',
       language: string,
-    ) => buildFakeManifest(type, language),
-    getActiveStationChunk: async () => ({
-      stationIds: ['s1', 's2'],
-      maxUpdatedAt: NOW,
-      qualifiedLanguagesHash: TEST_HASH,
-      version: 'v1-test',
-    }),
+    ) => {
+      if (builderOverrides.getActiveManifest) {
+        return builderOverrides.getActiveManifest(type, language);
+      }
+      return buildFakeManifest(type, language);
+    },
+    getActiveStationChunk: async (language: string, chunk: number) => {
+      if (builderOverrides.getActiveStationChunk) {
+        return builderOverrides.getActiveStationChunk(language, chunk);
+      }
+      return {
+        stationIds: ['s1', 's2'],
+        maxUpdatedAt: NOW,
+        qualifiedLanguagesHash: TEST_HASH,
+        version: 'v1-test',
+      };
+    },
     startManifestRefreshLoop: () => {},
     encodeTopCountryEntry: (regionSlug: string, countrySlug: string) =>
       `__topcountry__:${regionSlug}/${countrySlug}`,
@@ -181,10 +216,76 @@ const EMPTY_AGGREGATE = {
   then: <T>(resolve: (v: unknown[]) => T) => Promise.resolve([]).then(resolve),
 };
 
+// Two fake stations:
+//   s1 — verified themegaradio.com host → MUST emit <image:image>
+//   s2 — unverified random host          → MUST NOT emit <image:image>
+// Both pass the junk-station gate (lastCheckOk + recent lastCheckOkTime,
+// non-empty url/name) and yield 'en' in getEligibleLanguages because of the
+// universal-language fallback, so they appear in /sitemap-stations-en-1.xml.
+interface FakeStationDoc {
+  _id: string;
+  slug: string;
+  name: string;
+  url: string;
+  countryCode: string;
+  bitrate: number;
+  lastCheckOk: boolean;
+  lastCheckOkTime: Date;
+  updatedAt: Date;
+  logoAssets?: { webp256?: string; webp96?: string };
+  favicon?: string;
+  noIndex?: boolean;
+}
+
+const FAKE_STATION_DOCS: FakeStationDoc[] = [
+  {
+    _id: 's1',
+    slug: 'station-one',
+    name: 'Station One',
+    url: 'http://example.com/stream1',
+    countryCode: 'US',
+    bitrate: 128,
+    lastCheckOk: true,
+    lastCheckOkTime: NOW,
+    updatedAt: NOW,
+    logoAssets: { webp256: 'https://cdn.themegaradio.com/s1.webp' },
+  },
+  {
+    _id: 's2',
+    slug: 'station-two',
+    name: 'Station Two',
+    url: 'http://example.com/stream2',
+    countryCode: 'GB',
+    bitrate: 128,
+    lastCheckOk: true,
+    lastCheckOkTime: NOW,
+    updatedAt: NOW,
+    favicon: 'https://random-host.example.com/favicon.ico',
+  },
+];
+
 const FAKE_STATION_MODEL = {
-  find: () => fakeQuery([]),
+  find: () => fakeQuery(FAKE_STATION_DOCS),
   aggregate: () => EMPTY_AGGREGATE,
   countDocuments: async () => 0,
+};
+
+// Genres sitemap reads docs via `Genre.collection.find(...).toArray()` to
+// bypass mongoose ObjectId casting. Three docs:
+//   g1 'pop'         — safe slug, must appear
+//   g2 'rock'        — safe slug, must appear
+//   g3 'bad slug!'   — unsafe slug, must be filtered out by SAFE_SLUG_RE
+const FAKE_GENRE_DOCS = [
+  { _id: 'g1', slug: 'pop', updatedAt: NOW },
+  { _id: 'g2', slug: 'rock', updatedAt: NOW },
+  { _id: 'g3', slug: 'bad slug!', updatedAt: NOW },
+];
+
+const FAKE_GENRE_MODEL = {
+  find: () => fakeQuery([]),
+  collection: {
+    find: () => ({ toArray: async () => FAKE_GENRE_DOCS }),
+  },
 };
 
 // Generic empty-collection stub for every other Mongoose model the
@@ -227,6 +328,7 @@ for (const name of ALL_MONGO_MODEL_NAMES) {
 // Routes / handlers under test depend on these specific behaviours.
 mongoMockExports.SitemapManifest = FAKE_SITEMAP_MANIFEST_MODEL;
 mongoMockExports.Station = FAKE_STATION_MODEL;
+mongoMockExports.Genre = FAKE_GENRE_MODEL;
 // Constants & types re-exported as runtime values must also be present.
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
 
@@ -407,10 +509,10 @@ test('/sitemap-index.xml returns application/xml 200 with one entry per qualifie
   for (const lang of QUALIFIED_LANGS) {
     const hasMain = [...locs].some((l) => l.endsWith(`/sitemap-main-${lang}.xml`));
     const hasGenres = [...locs].some((l) => l.endsWith(`/sitemap-genres-${lang}.xml`));
-    const hasStations = [...locs].some((l) => l.endsWith(`/sitemap-stations-${lang}-0.xml`));
+    const hasStations = [...locs].some((l) => l.endsWith(`/sitemap-stations-${lang}-1.xml`));
     assert.ok(hasMain, `index must contain /sitemap-main-${lang}.xml`);
     assert.ok(hasGenres, `index must contain /sitemap-genres-${lang}.xml`);
-    assert.ok(hasStations, `index must contain /sitemap-stations-${lang}-0.xml`);
+    assert.ok(hasStations, `index must contain /sitemap-stations-${lang}-1.xml`);
   }
 });
 
@@ -515,6 +617,215 @@ test('SPA catch-all does NOT shadow any of the sitemap/robots routes', async () 
     callsBefore,
     'none of the sitemap/robots routes may invoke the SPA catch-all',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Task #259: offline regression checks for /sitemap-genres-:lang.xml and
+// /sitemap-stations-:lang-:chunk.xml. The index test above only proves the
+// child URLs are *advertised*; without parsing the bodies, regressions in
+// the genre/station handlers (missing slugs, broken hreflang, junk-station
+// leak, malformed image:loc, 410-vs-503 contract on a missing chunk) would
+// still slip through.
+// ---------------------------------------------------------------------------
+
+test('/sitemap-genres-en.xml returns parser-valid XML with expected genre <loc> entries', async () => {
+  const callsBefore = spaCalls;
+  const res = await fetch(`${baseUrl}/sitemap-genres-en.xml`);
+  assert.equal(
+    spaCalls,
+    callsBefore,
+    '/sitemap-genres-:lang.xml param route must NOT fall through to the SPA catch-all',
+  );
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /^application\/xml/);
+  const body = await res.text();
+  const parsed = assertValidXml(body, '/sitemap-genres-en.xml') as {
+    urlset?: {
+      '@_xmlns'?: string;
+      '@_xmlns:xhtml'?: string;
+      url?: Array<{
+        loc?: string;
+        'xhtml:link'?: Array<{ '@_hreflang'?: string }>;
+      }>;
+    };
+  };
+  assert.ok(parsed.urlset, 'root must be <urlset>');
+  assert.equal(
+    parsed.urlset['@_xmlns'],
+    'http://www.sitemaps.org/schemas/sitemap/0.9',
+    'urlset must declare the sitemaps.org 0.9 namespace',
+  );
+  const urls = parsed.urlset.url ?? [];
+  // Two safe genres ('pop', 'rock') must appear; the third ('bad slug!')
+  // must be filtered by SAFE_SLUG_RE before emission.
+  assert.equal(urls.length, 2, 'unsafe genre slug must be filtered out');
+  const locs = urls.map((u) => u.loc ?? '');
+  assert.ok(locs.some((l) => l.endsWith('/en/genres/pop')), 'must include pop genre');
+  assert.ok(locs.some((l) => l.endsWith('/en/genres/rock')), 'must include rock genre');
+  assert.ok(
+    !locs.some((l) => l.includes('bad slug')),
+    'unsafe slug must never reach the rendered XML',
+  );
+  // Cross-check regex count to catch parser-quirk regressions.
+  assert.equal(countLocs(body), urls.length, '<loc> count must equal parsed <url> count');
+});
+
+test('/sitemap-genres-en.xml emits an alternate for every qualified language', async () => {
+  const res = await fetch(`${baseUrl}/sitemap-genres-en.xml`);
+  const body = await res.text();
+  const parsed = assertValidXml(body, '/sitemap-genres-en.xml hreflang') as {
+    urlset?: {
+      url?: Array<{
+        loc?: string;
+        'xhtml:link'?: Array<{ '@_hreflang'?: string }>;
+      }>;
+    };
+  };
+  const urls = parsed.urlset?.url ?? [];
+  assert.ok(urls.length > 0, 'expected at least one <url> entry');
+  for (const url of urls) {
+    const langs = new Set(
+      (url['xhtml:link'] ?? [])
+        .map((l) => l['@_hreflang'])
+        .filter((v): v is string => typeof v === 'string'),
+    );
+    for (const lang of QUALIFIED_LANGS) {
+      assert.ok(
+        langs.has(lang),
+        `<url loc="${url.loc}"> missing hreflang="${lang}" alternate`,
+      );
+    }
+    assert.ok(
+      langs.has('x-default'),
+      `<url loc="${url.loc}"> missing hreflang="x-default" alternate`,
+    );
+  }
+});
+
+test('/sitemap-stations-en-1.xml returns parser-valid XML with stations in manifest order', async () => {
+  const callsBefore = spaCalls;
+  const res = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+  assert.equal(
+    spaCalls,
+    callsBefore,
+    '/sitemap-stations-:lang-:chunk.xml param route must NOT fall through to the SPA catch-all',
+  );
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type') || '', /^application\/xml/);
+  const body = await res.text();
+  const parsed = assertValidXml(body, '/sitemap-stations-en-1.xml') as {
+    urlset?: {
+      '@_xmlns'?: string;
+      '@_xmlns:image'?: string;
+      url?: Array<{
+        loc?: string;
+        'image:image'?: { 'image:loc'?: string };
+      }>;
+    };
+  };
+  assert.ok(parsed.urlset, 'root must be <urlset>');
+  assert.equal(
+    parsed.urlset['@_xmlns'],
+    'http://www.sitemaps.org/schemas/sitemap/0.9',
+    'urlset must declare the sitemaps.org 0.9 namespace',
+  );
+  assert.equal(
+    parsed.urlset['@_xmlns:image'],
+    'http://www.google.com/schemas/sitemap-image/1.1',
+    'urlset must declare the image-sitemap namespace',
+  );
+  const urls = parsed.urlset.url ?? [];
+  assert.equal(urls.length, 2, 'expected both fake stations to be emitted');
+  const locs = urls.map((u) => u.loc ?? '');
+  // Manifest order is ['s1', 's2'] — Mongo $in does not preserve order, so
+  // the route re-orders by manifest. station-one must precede station-two.
+  assert.ok(
+    locs[0].endsWith('/en/station/station-one'),
+    `expected station-one first, got ${locs[0]}`,
+  );
+  assert.ok(
+    locs[1].endsWith('/en/station/station-two'),
+    `expected station-two second, got ${locs[1]}`,
+  );
+
+  // Verified-host station MUST emit <image:image>, unverified host MUST NOT.
+  const s1 = urls[0];
+  assert.ok(
+    s1['image:image']?.['image:loc']?.includes('cdn.themegaradio.com'),
+    'verified-host station must emit <image:loc>',
+  );
+  const s2 = urls[1];
+  assert.equal(
+    s2['image:image'],
+    undefined,
+    'station with unverified favicon host must NOT emit <image:image>',
+  );
+});
+
+test('/sitemap-stations-en-1.xml drops noIndex / junk stations defensively at serve time', async () => {
+  // Flip s1 to noIndex and s2 to a junk codec suffix slug. The route must
+  // re-run getIndexableLanguagesForStation at serve time and exclude both,
+  // even though the manifest still references them.
+  const original: FakeStationDoc[] = FAKE_STATION_DOCS.map((s) => ({ ...s }));
+  FAKE_STATION_DOCS[0].noIndex = true;
+  FAKE_STATION_DOCS[1].slug = 'station-two-mp3';
+  try {
+    const res = await fetch(`${baseUrl}/sitemap-stations-en-1.xml?cachebust=junk`);
+    // Bypass the cache hit from the previous test by invalidating the store.
+    fakeCacheStore.clear();
+    const res2 = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+    assert.equal(res2.status, 200);
+    const body = await res2.text();
+    assertValidXml(body, '/sitemap-stations-en-1.xml junk-leak');
+    assert.ok(
+      !body.includes('station-one') && !body.includes('station-two'),
+      'noIndex + codec-suffix stations must be filtered at serve time',
+    );
+    void res;
+  } finally {
+    // Restore + clear cache so subsequent tests see clean state.
+    FAKE_STATION_DOCS.splice(0, FAKE_STATION_DOCS.length, ...original);
+    fakeCacheStore.clear();
+  }
+});
+
+test('/sitemap-stations-en-99.xml returns 410 when the chunk is missing but the manifest exists', async () => {
+  // Simulate "this chunk is permanently retired": getActiveStationChunk
+  // returns null, but getActiveManifest('stations', 'en') still resolves
+  // to a real manifest. The route must serve a 410 Gone, not 503.
+  builderOverrides.getActiveStationChunk = async () => null;
+  fakeCacheStore.clear();
+  try {
+    const res = await fetch(`${baseUrl}/sitemap-stations-en-99.xml`);
+    assert.equal(res.status, 410, 'missing chunk + present manifest must be 410 Gone');
+  } finally {
+    builderOverrides.getActiveStationChunk = null;
+    fakeCacheStore.clear();
+  }
+});
+
+test('/sitemap-stations-en-99.xml returns 503 when no manifest exists yet (cold-boot)', async () => {
+  // Simulate cold boot: neither the chunk nor any manifest is available.
+  // The route must return 503 Service Unavailable + Retry-After so search
+  // engines come back later instead of treating the URL as permanently gone.
+  builderOverrides.getActiveStationChunk = async () => null;
+  builderOverrides.getActiveManifest = async (type) =>
+    type === 'stations' ? null : buildFakeManifest(type, 'en');
+  fakeCacheStore.clear();
+  try {
+    const res = await fetch(`${baseUrl}/sitemap-stations-en-99.xml`);
+    assert.equal(res.status, 503, 'missing chunk + missing manifest must be 503');
+    assert.ok(res.headers.get('retry-after'), '503 must include a Retry-After header');
+    assert.equal(
+      res.headers.get('cache-control'),
+      'no-store',
+      '503 must be uncacheable so CDN does not pin a cold-boot error',
+    );
+  } finally {
+    builderOverrides.getActiveStationChunk = null;
+    builderOverrides.getActiveManifest = null;
+    fakeCacheStore.clear();
+  }
 });
 
 test('A clearly-unmatched path DOES fall through to the SPA catch-all (negative control)', async () => {
