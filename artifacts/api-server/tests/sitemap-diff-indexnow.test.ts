@@ -7,9 +7,13 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import mongoose from 'mongoose';
 import {
   diffUrlSets,
   computeMainSitemapUrls,
+  computeGenresSitemapUrls,
+  isSafeGenreSlug,
+  mapGenreIdsToSlugs,
 } from '../src/services/sitemap-diff-indexnow';
 
 test('diffUrlSets returns sorted additions only', () => {
@@ -75,4 +79,93 @@ test('computeMainSitemapUrls + diffUrlSets surfaces newly-added top-country pair
   });
   const additions = diffUrlSets(previousUrls, currentUrls);
   assert.deepEqual(additions, ['https://example.com/en/regions/europe/spain']);
+});
+
+test('isSafeGenreSlug accepts kebab lowercase, rejects unsafe values', () => {
+  assert.equal(isSafeGenreSlug('pop'), true);
+  assert.equal(isSafeGenreSlug('drum-and-bass'), true);
+  assert.equal(isSafeGenreSlug('genre-pop-2'), true);
+  assert.equal(isSafeGenreSlug(''), false);
+  assert.equal(isSafeGenreSlug(undefined), false);
+  assert.equal(isSafeGenreSlug(null), false);
+  assert.equal(isSafeGenreSlug('Pop'), false);
+  assert.equal(isSafeGenreSlug('bassline"'), false);
+  assert.equal(isSafeGenreSlug('-leading'), false);
+  assert.equal(isSafeGenreSlug('trailing-'), false);
+  assert.equal(isSafeGenreSlug('with space'), false);
+});
+
+test('computeGenresSitemapUrls drops unsafe slugs and dedupes', () => {
+  const translations = new Map<string, string>();
+  const urls = computeGenresSitemapUrls({
+    language: 'en',
+    genreSlugs: ['pop', 'rock', 'pop', 'bassline"', 'Jazz', 'drum-and-bass'],
+    translations,
+    baseUrl: 'https://example.com',
+  });
+  assert.deepEqual(urls, [
+    'https://example.com/en/genres/drum-and-bass',
+    'https://example.com/en/genres/pop',
+    'https://example.com/en/genres/rock',
+  ]);
+});
+
+test('computeGenresSitemapUrls + diffUrlSets surfaces newly-whitelisted genre', () => {
+  const translations = new Map<string, string>();
+  const previousUrls = computeGenresSitemapUrls({
+    language: 'en',
+    genreSlugs: ['pop', 'rock'],
+    translations,
+    baseUrl: 'https://example.com',
+  });
+  const currentUrls = computeGenresSitemapUrls({
+    language: 'en',
+    genreSlugs: ['pop', 'rock', 'jazz'],
+    translations,
+    baseUrl: 'https://example.com',
+  });
+  const additions = diffUrlSets(previousUrls, currentUrls);
+  assert.deepEqual(additions, ['https://example.com/en/genres/jazz']);
+});
+
+test('mapGenreIdsToSlugs resolves ObjectId and legacy string ids in order, dropping unknowns', () => {
+  // Architect-flagged regression guard (task #253): the manifest stores genre
+  // ids as a mix of ObjectIds (new docs) and legacy string slugs (seed data).
+  // String(ObjectId) === ObjectId.toHexString(), which is what the lookup map
+  // uses as a key — verify both flavors resolve, the original ordering is
+  // preserved, and ids with no slug are silently dropped.
+  const objId1 = new mongoose.Types.ObjectId();
+  const objId2 = new mongoose.Types.ObjectId();
+  const objIdMissing = new mongoose.Types.ObjectId();
+  const slugsById = new Map<string, string>([
+    [objId1.toHexString(), 'pop'],
+    [objId2.toHexString(), 'rock'],
+    ['genre-jazz', 'jazz'],
+  ]);
+  const out = mapGenreIdsToSlugs(
+    [objId1, 'genre-jazz', objIdMissing, objId2, 'genre-unknown'],
+    slugsById,
+  );
+  assert.deepEqual(out, ['pop', 'jazz', 'rock']);
+});
+
+test('mapGenreIdsToSlugs piped through computeGenresSitemapUrls yields the live route URL set', () => {
+  // End-to-end-ish check that the manifest → slug → URL pipeline produces
+  // exactly what the live /sitemap-genres-{lang}.xml route would emit.
+  const objId = new mongoose.Types.ObjectId();
+  const slugsById = new Map<string, string>([
+    [objId.toHexString(), 'pop'],
+    ['genre-jazz', 'jazz'],
+  ]);
+  const slugs = mapGenreIdsToSlugs([objId, 'genre-jazz'], slugsById);
+  const urls = computeGenresSitemapUrls({
+    language: 'en',
+    genreSlugs: slugs,
+    translations: new Map(),
+    baseUrl: 'https://example.com',
+  });
+  assert.deepEqual(urls, [
+    'https://example.com/en/genres/jazz',
+    'https://example.com/en/genres/pop',
+  ]);
 });

@@ -904,7 +904,7 @@ export interface IIndexNowLog extends Document {
 }
 
 export interface ISitemapUrlSnapshot extends Document {
-  type: 'main';
+  type: 'main' | 'genres';
   language: string;
   urls: string[];
   urlCount: number;
@@ -2560,7 +2560,7 @@ export const MediaGroup = mongoose.model<IMediaGroup>('MediaGroup', MediaGroupSc
 export const IndexNowLog = mongoose.model<IIndexNowLog>('IndexNowLog', IndexNowLogSchema);
 
 const SitemapUrlSnapshotSchema = new Schema<ISitemapUrlSnapshot>({
-  type: { type: String, enum: ['main'], required: true },
+  type: { type: String, enum: ['main', 'genres'], required: true },
   language: { type: String, required: true },
   urls: { type: [String], default: [] },
   urlCount: { type: Number, required: true },
