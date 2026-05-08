@@ -167,8 +167,17 @@ export default function AdminCountryLanguageMappings() {
     if (typeof window === 'undefined') return false;
     return window.sessionStorage.getItem('admin-mappings:skipResetAllConfirm') === '1';
   });
+  const [skipUndoConfirm, setSkipUndoConfirm] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.sessionStorage.getItem('admin-mappings:skipUndoConfirm') === '1';
+  });
   const [rememberDiscardChoice, setRememberDiscardChoice] = useState(false);
   const [rememberResetAllChoice, setRememberResetAllChoice] = useState(false);
+  const [rememberUndoChoice, setRememberUndoChoice] = useState(false);
+  // Single-row undo skips the dialog so the common case stays one click.
+  // Bulk-save / reset-all entries can touch many rows, so anything above
+  // this threshold prompts for confirmation first.
+  const UNDO_CONFIRM_THRESHOLD = 1;
 
   // Log of recently cleared/reset mapping snapshots so admins who miss the
   // ~10s Undo toast can still recover. Capped to the last 5 entries and
@@ -420,6 +429,8 @@ export default function AdminCountryLanguageMappings() {
   const [downloadingAuditId, setDownloadingAuditId] = useState<string | null>(null);
   const [isDownloadingAuditAll, setIsDownloadingAuditAll] = useState(false);
   const [undoingAuditId, setUndoingAuditId] = useState<string | null>(null);
+  const [confirmUndoEntry, setConfirmUndoEntry] =
+    useState<ClearedOverridesAuditEntry | null>(null);
 
   // Revert an individual audit entry by replaying its `changes` in reverse:
   // for each row, restore the `previousLanguageCode` (via the bulk endpoint)
@@ -479,6 +490,20 @@ export default function AdminCountryLanguageMappings() {
     } finally {
       setUndoingAuditId(null);
     }
+  };
+
+  // Click handler for the per-row "Undo this change" button. Opens a
+  // confirmation dialog when the entry restores more than one mapping
+  // (or skips it when the admin opted out for the session). Single-row
+  // edits stay one click.
+  const handleUndoAuditEntryClick = (entry: ClearedOverridesAuditEntry) => {
+    const changeCount = (entry.changes ?? []).length;
+    if (changeCount <= UNDO_CONFIRM_THRESHOLD || skipUndoConfirm) {
+      void handleUndoAuditEntry(entry);
+      return;
+    }
+    setRememberUndoChoice(false);
+    setConfirmUndoEntry(entry);
   };
 
   const handleDownloadAllAuditCsv = async () => {
@@ -1750,7 +1775,7 @@ export default function AdminCountryLanguageMappings() {
               )}
               Reset all mappings
             </Button>
-            {(skipDiscardConfirm || skipResetAllConfirm) && (
+            {(skipDiscardConfirm || skipResetAllConfirm || skipUndoConfirm) && (
               <div
                 data-testid="indicator-skip-confirm"
                 className="flex items-center gap-1 text-xs text-muted-foreground"
@@ -1794,6 +1819,25 @@ export default function AdminCountryLanguageMappings() {
                     }}
                   >
                     Re-enable Reset all
+                  </Button>
+                )}
+                {skipUndoConfirm && (
+                  <Button
+                    data-testid="button-reenable-undo-confirm"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs underline-offset-2 hover:underline"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        window.sessionStorage.removeItem('admin-mappings:skipUndoConfirm');
+                      }
+                      setSkipUndoConfirm(false);
+                      toast({
+                        title: 'Undo confirmation turned back on',
+                      });
+                    }}
+                  >
+                    Re-enable Undo
                   </Button>
                 )}
               </div>
@@ -2134,7 +2178,7 @@ export default function AdminCountryLanguageMappings() {
                               size="sm"
                               variant="outline"
                               className="h-7 text-xs"
-                              onClick={() => void handleUndoAuditEntry(entry)}
+                              onClick={() => handleUndoAuditEntryClick(entry)}
                               disabled={
                                 undoingAuditId !== null ||
                                 bulkSaveMutation.isPending ||
@@ -2921,6 +2965,72 @@ export default function AdminCountryLanguageMappings() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Reset all mappings
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={confirmUndoEntry !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmUndoEntry(null);
+        }}
+      >
+        <AlertDialogContent
+          className="bg-white border border-gray-200 shadow-lg text-gray-900"
+          data-testid="dialog-confirm-undo-audit"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Undo this change?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {confirmUndoEntry
+                ? (() => {
+                    const count = (confirmUndoEntry.changes ?? []).length;
+                    const label =
+                      AUDIT_ACTION_LABELS[confirmUndoEntry.action] ??
+                      confirmUndoEntry.action;
+                    return `This will restore ${count} ${count === 1 ? 'mapping' : 'mappings'} to the values they had before the "${label}" action. The revert is itself recorded in the audit log.`;
+                  })()
+                : ''}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="flex items-center gap-2 pt-1">
+            <Checkbox
+              id="undo-audit-skip-confirm"
+              data-testid="checkbox-undo-audit-skip-confirm"
+              checked={rememberUndoChoice}
+              onCheckedChange={(c) => setRememberUndoChoice(c === true)}
+            />
+            <Label
+              htmlFor="undo-audit-skip-confirm"
+              className="text-sm font-normal text-gray-700"
+            >
+              Don't ask again this session
+            </Label>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-undo-audit">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-undo-audit"
+              onClick={() => {
+                if (rememberUndoChoice) {
+                  setSkipUndoConfirm(true);
+                  if (typeof window !== 'undefined') {
+                    window.sessionStorage.setItem(
+                      'admin-mappings:skipUndoConfirm',
+                      '1',
+                    );
+                  }
+                }
+                const entry = confirmUndoEntry;
+                setConfirmUndoEntry(null);
+                if (entry) void handleUndoAuditEntry(entry);
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Undo change
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
