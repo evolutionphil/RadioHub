@@ -1,10 +1,22 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
+
+type LogoStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "missing";
+
+interface LogoStatusResponse {
+  statuses: Record<string, LogoStatus>;
+}
 
 interface RunSampleStation {
   _id: string;
@@ -67,12 +79,58 @@ function stationHref(s: RunSampleStation): string {
   return `/station/${s.slug || s._id}`;
 }
 
+const LOGO_STATUS_LABEL: Record<LogoStatus, string> = {
+  completed: "İndirildi",
+  failed: "Başarısız",
+  pending: "Beklemede",
+  processing: "İşleniyor",
+  missing: "Bulunamadı",
+};
+
+function LogoStatusBadge({
+  status,
+  testId,
+}: {
+  status: LogoStatus | undefined;
+  testId: string;
+}) {
+  if (!status) {
+    return (
+      <span
+        className="inline-flex items-center rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[10px] font-medium text-slate-400"
+        data-testid={testId}
+        data-status="loading"
+      >
+        …
+      </span>
+    );
+  }
+  const styles: Record<LogoStatus, string> = {
+    completed: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    failed: "border-rose-300 bg-rose-50 text-rose-700 ring-1 ring-rose-200",
+    pending: "border-slate-200 bg-slate-50 text-slate-600",
+    processing: "border-sky-200 bg-sky-50 text-sky-700",
+    missing: "border-amber-200 bg-amber-50 text-amber-700",
+  };
+  return (
+    <span
+      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-medium ${styles[status]}`}
+      data-testid={testId}
+      data-status={status}
+    >
+      {LOGO_STATUS_LABEL[status]}
+    </span>
+  );
+}
+
 function SampleStationsToggle({
   stations,
   testIdPrefix,
+  statuses,
 }: {
   stations?: RunSampleStation[];
   testIdPrefix: string;
+  statuses?: Record<string, LogoStatus>;
 }) {
   const [open, setOpen] = useState(false);
   if (!stations || stations.length === 0) {
@@ -97,22 +155,43 @@ function SampleStationsToggle({
           className="ml-4 space-y-1 border-l border-slate-200 pl-3"
           data-testid={`list-${testIdPrefix}`}
         >
-          {stations.map((s) => (
-            <li key={s._id} className="text-xs">
-              <Link
-                href={stationHref(s)}
-                className="text-sky-600 hover:underline break-all"
-                data-testid={`link-${testIdPrefix}-${s._id}`}
+          {stations.map((s) => {
+            const status = statuses?.[s._id];
+            const isFailed = status === "failed";
+            return (
+              <li
+                key={s._id}
+                className={`text-xs flex items-center gap-1.5 flex-wrap ${
+                  isFailed ? "rounded bg-rose-50/60 px-1 py-0.5" : ""
+                }`}
+                data-testid={`row-${testIdPrefix}-${s._id}`}
+                data-status={status || "loading"}
               >
-                {s.name || s.slug || s._id}
-              </Link>
-              {s.name && (s.slug || s._id) && (
-                <span className="ml-1 font-mono text-[10px] text-slate-400">
-                  {s.slug || s._id}
-                </span>
-              )}
-            </li>
-          ))}
+                {statuses && (
+                  <LogoStatusBadge
+                    status={status}
+                    testId={`badge-${testIdPrefix}-${s._id}`}
+                  />
+                )}
+                <Link
+                  href={stationHref(s)}
+                  className={`hover:underline break-all ${
+                    isFailed
+                      ? "text-rose-700 font-medium"
+                      : "text-sky-600"
+                  }`}
+                  data-testid={`link-${testIdPrefix}-${s._id}`}
+                >
+                  {s.name || s.slug || s._id}
+                </Link>
+                {s.name && (s.slug || s._id) && (
+                  <span className="font-mono text-[10px] text-slate-400">
+                    {s.slug || s._id}
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
@@ -139,6 +218,42 @@ export default function AdminSeoMaintenanceRunPage() {
   });
 
   const run = runQuery.data?.run;
+
+  // Collect every sample station ID across logo countries so we can
+  // resolve their current logoAssets.status in a single batch round
+  // trip. Sorted + de-duped so the resulting query key is stable across
+  // re-renders (otherwise React Query would refetch on every render).
+  const logoSampleIds = useMemo(() => {
+    if (!run) return [] as string[];
+    const set = new Set<string>();
+    for (const c of run.logos) {
+      for (const s of c.sampleStations || []) {
+        if (s?._id) set.add(s._id);
+      }
+    }
+    return Array.from(set).sort();
+  }, [run]);
+
+  const logoStatusQuery = useQuery<LogoStatusResponse>({
+    queryKey: [
+      "/api/admin/maintenance/stations/logo-status",
+      logoSampleIds,
+    ],
+    enabled: logoSampleIds.length > 0,
+    staleTime: 15_000,
+    refetchOnWindowFocus: false,
+    queryFn: async () => {
+      const res = await apiRequest(
+        "POST",
+        "/api/admin/maintenance/stations/logo-status",
+        { body: { ids: logoSampleIds } },
+      );
+      return (await res.json()) as LogoStatusResponse;
+    },
+  });
+
+  const logoStatuses = logoStatusQuery.data?.statuses;
+
   const totals = run
     ? {
         logosEnqueued: run.logos.reduce((a, c) => a + (c.enqueued || 0), 0),
@@ -342,6 +457,7 @@ export default function AdminSeoMaintenanceRunPage() {
                             <SampleStationsToggle
                               stations={c.sampleStations}
                               testIdPrefix={`logos-${c.countryCode}`}
+                              statuses={logoStatuses}
                             />
                           </td>
                         </tr>

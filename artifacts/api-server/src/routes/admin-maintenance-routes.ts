@@ -515,6 +515,69 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     },
   );
 
+  // Task #313: batch-resolve the live `logoAssets.status` for the
+  // sample stations surfaced on the run detail page. Without this,
+  // admins would have to click each sample link to figure out which
+  // enqueued stations actually ended up with a downloaded logo vs
+  // failed again. Accepts up to ~200 ObjectIds in the body to keep the
+  // single round-trip bounded; unknown / malformed ids are reported as
+  // `missing` so the UI can show a neutral badge instead of dropping
+  // them silently.
+  app.post(
+    "/api/admin/maintenance/stations/logo-status",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const rawIds = Array.isArray(req.body?.ids) ? req.body.ids : [];
+        const ids: string[] = Array.from(
+          new Set(
+            rawIds
+              .filter((v: unknown): v is string => typeof v === "string")
+              .slice(0, 200),
+          ),
+        );
+        const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+        const statuses: Record<
+          string,
+          "pending" | "processing" | "completed" | "failed" | "missing"
+        > = {};
+        for (const id of ids) {
+          statuses[id] = "missing";
+        }
+        if (validIds.length > 0) {
+          const stations = await Station.find(
+            { _id: { $in: validIds } },
+            { _id: 1, "logoAssets.status": 1 },
+          ).lean();
+          for (const s of stations) {
+            const id = String(s._id);
+            const st = s.logoAssets?.status;
+            if (
+              st === "completed" ||
+              st === "failed" ||
+              st === "pending" ||
+              st === "processing"
+            ) {
+              statuses[id] = st;
+            } else {
+              // Station exists but has never been processed (no
+              // logoAssets sub-doc yet) — surface as pending so the
+              // sample row still shows a queue marker.
+              statuses[id] = "pending";
+            }
+          }
+        }
+        res.json({ statuses });
+      } catch (err: any) {
+        logger.error(
+          "[stations logo-status] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
   // Live status of the scheduled backfill plus the most recent
   // BackfillRun row so the dashboard can render "running…" vs the last
   // completed summary without the client having to know about Mongo
