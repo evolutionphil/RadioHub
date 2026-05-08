@@ -22,6 +22,7 @@ import {
   getActiveStationChunk,
   extractTopCountriesFromChunk,
 } from "../seo/sitemap-manifest-builder";
+import { IndexNowService } from "../services/indexnow";
 
 // Centralized XML escape helper (Architect B P0)
 // Escapes the 5 XML predefined entities for safe inclusion in <loc>, <image:loc>,
@@ -453,6 +454,18 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   app.post("/api/admin/sitemap/rebuild", requireAdmin, async (_req, res) => {
     try {
       const result = await buildAllSitemapManifests({ force: true });
+      // Task #201: ping IndexNow with the sitemap index so Google/Bing pick
+      // up the freshly-rebuilt sitemap immediately (matches the
+      // genre-whitelist admin routes' triggerSearchEnginePush pattern).
+      // Fire-and-forget — admins shouldn't wait on an outbound HTTP call,
+      // and failures must not fail the rebuild response.
+      void (async () => {
+        try {
+          await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
+        } catch (err: any) {
+          logger.error('admin/sitemap/rebuild: IndexNow sitemap ping failed:', err?.message ?? err);
+        }
+      })();
       res.json({ ok: true, ...result });
     } catch (err: any) {
       logger.error('admin/sitemap/rebuild failed:', err?.message ?? err);
