@@ -14,6 +14,12 @@ import { getImageUrl } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
 import { HighlightMatch } from "@/components/HighlightMatch";
 import { getCountryCodeFromApiName, getLanguageForCountry } from "@shared/seo-config";
+import {
+  canonicalizeCountry,
+  countrySlug,
+  getRegionSlugForCountry,
+} from "@shared/country-regions";
+import { Music, Globe } from "lucide-react";
 
 interface RadioHeaderProps {
   showSearch?: boolean;
@@ -39,7 +45,8 @@ export default function RadioHeader({
   const [isMobileProfileMenuOpen, setIsMobileProfileMenuOpen] = useState(false);
   
   const { t, setLanguage } = useTranslation();
-  const { getLocalizedUrl, cleanPath, navigateTranslated } = useSeoRouting();
+  const { getLocalizedUrl, cleanPath, navigateTranslated, currentLanguage } = useSeoRouting();
+  const langPrefix = currentLanguage === "en" ? "" : `/${currentLanguage}`;
   const [location, setLocation] = useLocation();
   
   // Use getLanguageForCountry helper from @shared/seo-config (single source of truth)
@@ -237,6 +244,61 @@ export default function RadioHeader({
   
 
 
+  // Genre search results for the header dropdown (mirrors /search)
+  const { data: genresSearchData, isFetching: isGenresFetching } = useQuery<{
+    genres?: Array<{ slug: string; name: string; stationCount?: number }>;
+    data?: Array<{ slug: string; name: string; stationCount?: number }>;
+  }>({
+    queryKey: ['/api/genres', { search: debouncedSearchQuery, limit: 5 }],
+    enabled: debouncedSearchQuery.trim().length >= 2,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        search: debouncedSearchQuery.trim(),
+        limit: '5',
+        page: '1',
+      });
+      const res = await fetch(`/api/genres?${params}`);
+      if (!res.ok) throw new Error('Genre search failed');
+      return res.json();
+    },
+    staleTime: 60 * 1000,
+  });
+
+  // Rich country list (small, cached) — filtered client-side just like /search
+  const { data: richCountries = [], isFetching: isCountriesFetching } = useQuery<Array<{ name: string; stationCount?: number }>>({
+    queryKey: ['/api/countries', 'rich'],
+    queryFn: async () => {
+      const res = await fetch(`/api/countries?format=rich`);
+      if (!res.ok) throw new Error('Country list failed');
+      return res.json();
+    },
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const matchingGenres = useMemo(
+    () => (genresSearchData?.genres || genresSearchData?.data || []).slice(0, 5),
+    [genresSearchData]
+  );
+
+  const matchingCountries = useMemo(() => {
+    const term = debouncedSearchQuery.trim().toLowerCase();
+    if (term.length < 2 || !richCountries.length) return [];
+    const seen = new Set<string>();
+    const hits: Array<{ name: string; canonical: string; regionSlug: string; stationCount?: number }> = [];
+    for (const c of richCountries) {
+      if (!c?.name) continue;
+      if (!c.name.toLowerCase().includes(term)) continue;
+      const canonical = canonicalizeCountry(c.name);
+      if (seen.has(canonical)) continue;
+      const regionSlug = getRegionSlugForCountry(canonical);
+      if (!regionSlug) continue;
+      seen.add(canonical);
+      hits.push({ name: c.name, canonical, regionSlug, stationCount: c.stationCount });
+      if (hits.length >= 5) break;
+    }
+    return hits;
+  }, [debouncedSearchQuery, richCountries]);
+
   // Search functionality
   useEffect(() => {
     const performSearch = async () => {
@@ -288,7 +350,8 @@ export default function RadioHeader({
     }
   }, [isMobileMenuOpen]);
 
-  const searchLoading = (searchQuery.trim().length >= 2 && debouncedSearchQuery !== searchQuery) || isSearching;
+  const searchLoading = (searchQuery.trim().length >= 2 && debouncedSearchQuery !== searchQuery) || isSearching || isGenresFetching || isCountriesFetching;
+  const hasAnyResults = filteredStations.length > 0 || matchingGenres.length > 0 || matchingCountries.length > 0;
 
   return (
     <>
@@ -749,7 +812,7 @@ export default function RadioHeader({
           <div className="w-full max-w-2xl mx-4">
             <div data-search-element className="bg-[#1D1D1D] border border-[#2F2F2F] rounded-2xl p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold text-white">{t('general_search_stations', 'Search Stations')}</h3>
+                <h3 className="text-xl font-bold text-white">{t('general_search_title', 'Search')}</h3>
                 <button
                   onClick={() => {
                     setIsSearchOpen(false);
@@ -766,7 +829,7 @@ export default function RadioHeader({
               <div className="relative">
                 <input
                   type="text"
-                  placeholder={t('general_search_radios', 'Search for radio stations...')}
+                  placeholder={t('search_placeholder', 'Search stations, genres, countries…')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
@@ -789,8 +852,85 @@ export default function RadioHeader({
                       <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-transparent"></div>
                       <span className="ml-2 text-gray-300">{t('general_searching', 'Searching...')}</span>
                     </div>
-                  ) : filteredStations && filteredStations.length > 0 ? (
-                    <div className="space-y-2">
+                  ) : hasAnyResults ? (
+                    <div className="space-y-4">
+                      {matchingGenres.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 px-1 text-xs uppercase tracking-wider text-gray-400">
+                            <Music size={14} className="text-[#FF4199]" />
+                            <span>{t('search_section_genres', 'Genres')}</span>
+                          </div>
+                          {matchingGenres.map((g) => (
+                            <Link
+                              key={`genre-${g.slug}`}
+                              href={`${langPrefix}/genres/${encodeURIComponent(g.slug)}`}
+                              onClick={() => {
+                                setIsSearchOpen(false);
+                                setSearchQuery("");
+                              }}
+                              className="flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors"
+                              data-testid={`header-search-genre-${g.slug}`}
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center mr-3 flex-shrink-0">
+                                <Music size={16} className="text-[#FF4199]" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-white font-medium truncate capitalize">
+                                  <HighlightMatch text={g.name} query={debouncedSearchQuery} />
+                                </div>
+                                {typeof g.stationCount === 'number' && (
+                                  <div className="text-gray-400 text-sm">
+                                    {g.stationCount.toLocaleString()} {t('stations', 'stations')}
+                                  </div>
+                                )}
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+
+                      {matchingCountries.length > 0 && (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 px-1 text-xs uppercase tracking-wider text-gray-400">
+                            <Globe size={14} className="text-[#FF4199]" />
+                            <span>{t('search_section_countries', 'Countries')}</span>
+                          </div>
+                          {matchingCountries.map((c) => (
+                            <Link
+                              key={`country-${c.canonical}`}
+                              href={`${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`}
+                              onClick={() => {
+                                setIsSearchOpen(false);
+                                setSearchQuery("");
+                              }}
+                              className="flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors"
+                              data-testid={`header-search-country-${countrySlug(c.canonical)}`}
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center mr-3 flex-shrink-0">
+                                <Globe size={16} className="text-[#FF4199]" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="text-white font-medium truncate">
+                                  <HighlightMatch text={c.name} query={debouncedSearchQuery} />
+                                </div>
+                                {typeof c.stationCount === 'number' && (
+                                  <div className="text-gray-400 text-sm">
+                                    {c.stationCount.toLocaleString()} {t('stations', 'stations')}
+                                  </div>
+                                )}
+                              </div>
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+
+                      {filteredStations.length > 0 && (
+                        <div className="space-y-1">
+                          {(matchingGenres.length > 0 || matchingCountries.length > 0) && (
+                            <div className="flex items-center gap-2 px-1 text-xs uppercase tracking-wider text-gray-400">
+                              <span>{t('search_section_stations', 'Stations')}</span>
+                            </div>
+                          )}
                       {filteredStations.slice(0, 10).map((station: any, index: number) => (
                         <div
                           key={station._id || index}
@@ -834,10 +974,12 @@ export default function RadioHeader({
                           )}
                         </div>
                       ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-gray-400">
-                      {t('general_no_stations_found', 'No stations found')}
+                      {t('search_no_results', 'No stations, genres or countries match your search.')}
                     </div>
                   )}
                 </div>
