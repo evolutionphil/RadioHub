@@ -313,6 +313,12 @@ export default function AdminCoverage() {
   const [search, setSearch] = useState('');
   const [minStations, setMinStations] = useState(10);
   const [enqueuing, setEnqueuing] = useState<string | null>(null);
+  // Window (in days) used by the "Download all (CSV)" export. Defaults to
+  // 30 to match the on-page sparkline window so the button keeps behaving
+  // the same out of the box; admins can flip to 7/90 for weekly/quarterly
+  // reports without editing the URL or opening a per-country page.
+  const [downloadDays, setDownloadDays] = useState<7 | 30 | 90>(30);
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
   // Per-country active job. Only one job is tracked per country at a time
   // — re-clicking a button while a job runs replaces the handle with the
   // new one (the previous job continues in the background and will TTL
@@ -761,47 +767,92 @@ export default function AdminCoverage() {
     return sorted;
   }, [data, sortKey, search, minStations]);
 
-  const handleDownloadAllCsv = () => {
-    const trends = trendsData?.trends ?? {};
-    const codes = Object.keys(trends).sort();
-    if (codes.length === 0) return;
-    const header = [
-      'countryCode',
-      'date',
-      'logoCoveragePct',
-      'tagCoveragePct',
-      'total',
-      'withLogo',
-      'withTags',
-    ];
-    const rows: string[][] = [];
-    for (const code of codes) {
-      const points = trends[code] ?? [];
-      for (const p of points) {
-        rows.push([
-          code,
-          p.date,
-          p.logoCoveragePct.toFixed(2),
-          p.tagCoveragePct.toFixed(2),
-          String(p.total),
-          String(p.withLogo),
-          String(p.withTags),
-        ]);
+  const handleDownloadAllCsv = async () => {
+    // For the default 30-day window we can reuse the trends already
+    // cached for the on-page sparklines; for 7/90 we fetch fresh so the
+    // CSV honours the admin's chosen window without re-shaping the
+    // sparkline query (which the rest of the page depends on).
+    setDownloadingCsv(true);
+    try {
+      let trends: Record<string, TrendPoint[]>;
+      if (downloadDays === 30 && trendsData?.trends) {
+        trends = trendsData.trends;
+      } else {
+        const res = await apiRequest(
+          'GET',
+          `/api/admin/coverage/trends?days=${downloadDays}`,
+        );
+        if (!res.ok) {
+          toast({
+            title: 'Could not load coverage trends',
+            description: `Server returned ${res.status}. Please try again.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+        const payload = (await res.json()) as TrendsResponse;
+        trends = payload.trends ?? {};
       }
+      const codes = Object.keys(trends).sort();
+      if (codes.length === 0) {
+        toast({
+          title: 'No coverage data to download',
+          description: `No trend snapshots were returned for the last ${downloadDays} days.`,
+        });
+        return;
+      }
+      const header = [
+        'countryCode',
+        'date',
+        'logoCoveragePct',
+        'tagCoveragePct',
+        'total',
+        'withLogo',
+        'withTags',
+      ];
+      const rows: string[][] = [];
+      for (const code of codes) {
+        const points = trends[code] ?? [];
+        for (const p of points) {
+          rows.push([
+            code,
+            p.date,
+            p.logoCoveragePct.toFixed(2),
+            p.tagCoveragePct.toFixed(2),
+            String(p.total),
+            String(p.withLogo),
+            String(p.withTags),
+          ]);
+        }
+      }
+      if (rows.length === 0) {
+        toast({
+          title: 'No coverage data to download',
+          description: `No trend snapshots were returned for the last ${downloadDays} days.`,
+        });
+        return;
+      }
+      const csv =
+        [header, ...rows].map((r) => r.join(',')).join('\n') + '\n';
+      const today = new Date().toISOString().slice(0, 10);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `coverage-all-${downloadDays}d-${today}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({
+        title: 'Failed to download coverage CSV',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingCsv(false);
     }
-    if (rows.length === 0) return;
-    const csv =
-      [header, ...rows].map((r) => r.join(',')).join('\n') + '\n';
-    const today = new Date().toISOString().slice(0, 10);
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `coverage-all-${today}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
   };
 
   const trendsCountryCount = Object.keys(trendsData?.trends ?? {}).length;
@@ -847,20 +898,51 @@ export default function AdminCoverage() {
           </Button>
         </Link>
         <ReconstructHistoryButton />
+        <Select
+          value={String(downloadDays)}
+          onValueChange={(v) =>
+            setDownloadDays(Number(v) as 7 | 30 | 90)
+          }
+        >
+          <SelectTrigger
+            className="h-9 w-[120px]"
+            data-testid="select-download-range"
+            aria-label="CSV download date range"
+            title="Date range used by the Download all (CSV) export"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="7">Last 7 days</SelectItem>
+            <SelectItem value="30">Last 30 days</SelectItem>
+            <SelectItem value="90">Last 90 days</SelectItem>
+          </SelectContent>
+        </Select>
         <Button
           variant="outline"
           size="sm"
           onClick={handleDownloadAllCsv}
-          disabled={trendsCountryCount === 0}
+          disabled={
+            downloadingCsv ||
+            (downloadDays === 30 && trendsCountryCount === 0)
+          }
           title={
-            trendsCountryCount === 0
+            downloadDays === 30 && trendsCountryCount === 0
               ? 'Trend snapshots are still loading…'
-              : `Download ${trendsCountryCount} countries × 30 days as a single CSV`
+              : `Download ${
+                  downloadDays === 30 && trendsCountryCount > 0
+                    ? `${trendsCountryCount} countries × `
+                    : ''
+                }${downloadDays} days as a single CSV`
           }
           data-testid="button-download-all-csv"
         >
-          <Download className="w-4 h-4 mr-2" />
-          Download all (CSV)
+          {downloadingCsv ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Download className="w-4 h-4 mr-2" />
+          )}
+          Download all ({downloadDays}d CSV)
         </Button>
         <Button
           variant="outline"
