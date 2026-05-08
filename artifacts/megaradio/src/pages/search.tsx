@@ -57,6 +57,8 @@ interface CountryHit {
 
 type Translator = (key: string, fallback?: string) => string;
 
+const PAGE_STEP = 10;
+
 export default function SearchPage() {
   const { t } = useTranslation();
   const { currentLanguage } = useSeoRouting();
@@ -218,7 +220,9 @@ export default function SearchPage() {
         e.key !== "ArrowDown" &&
         e.key !== "ArrowUp" &&
         e.key !== "Home" &&
-        e.key !== "End"
+        e.key !== "End" &&
+        e.key !== "PageDown" &&
+        e.key !== "PageUp"
       )
         return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
@@ -252,7 +256,15 @@ export default function SearchPage() {
         if (e.key === "Home") {
           return 0;
         }
-        return flatItems.length - 1;
+        if (e.key === "End") {
+          return flatItems.length - 1;
+        }
+        if (e.key === "PageDown") {
+          const next = (i < 0 ? 0 : i) + PAGE_STEP;
+          return Math.min(next, flatItems.length - 1);
+        }
+        const prev = (i < 0 ? 0 : i) - PAGE_STEP;
+        return Math.max(prev, 0);
       });
     };
     window.addEventListener("keydown", onKey);
@@ -352,6 +364,20 @@ export default function SearchPage() {
       e.preventDefault();
       suppressHoverRef.current = true;
       setActiveIndex(flatItems.length - 1);
+      return;
+    }
+    if (e.key === "PageDown") {
+      if (flatItems.length === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) =>
+        Math.min((i < 0 ? 0 : i) + PAGE_STEP, flatItems.length - 1)
+      );
+      return;
+    }
+    if (e.key === "PageUp") {
+      if (flatItems.length === 0) return;
+      e.preventDefault();
+      setActiveIndex((i) => Math.max((i < 0 ? 0 : i) - PAGE_STEP, 0));
       return;
     }
     if (e.key === "Enter") {
