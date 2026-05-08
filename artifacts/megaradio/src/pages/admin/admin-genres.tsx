@@ -266,6 +266,51 @@ export default function AdminGenres() {
     },
   });
 
+  // Merge demoted genre into recorded collision winner (Task #166)
+  const mergeIntoWinnerMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/admin/genres/${id}/merge-into-winner`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to merge stations into winner');
+      }
+      return response.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/genres'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/genres/discoverable'] });
+      toast({
+        title: 'Stations Merged',
+        description: `${data.stationsRetagged} station(s) re-tagged onto "${data.winnerGenreName}". Demoted row deleted.`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Merge Failed',
+        description: error.message || 'Failed to merge stations into winner.',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleMergeIntoWinner = (genre: Genre) => {
+    const winnerLabel =
+      genre.cleanupDemotion?.collisionWinnerName ||
+      genre.cleanupDemotion?.collisionWinnerSlug ||
+      'the winner';
+    if (
+      !confirm(
+        `Re-tag every station currently attached to "${genre.name}" onto "${winnerLabel}", then delete the demoted row? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    mergeIntoWinnerMutation.mutate(genre._id);
+  };
+
   // Delete genre mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -638,6 +683,26 @@ export default function AdminGenres() {
                             Either delete this row, or rename + re-enable to a unique slug.
                             Stations were not auto-merged.
                           </div>
+                          {genre.cleanupDemotion.collisionWinnerId && (
+                            <div className="pt-1">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="border-amber-400 text-amber-900 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900"
+                                onClick={() => handleMergeIntoWinner(genre)}
+                                disabled={
+                                  mergeIntoWinnerMutation.isPending &&
+                                  mergeIntoWinnerMutation.variables === genre._id
+                                }
+                                data-testid={`button-merge-into-winner-${genre._id}`}
+                              >
+                                {mergeIntoWinnerMutation.isPending &&
+                                mergeIntoWinnerMutation.variables === genre._id
+                                  ? 'Merging…'
+                                  : 'Merge stations into winner'}
+                              </Button>
+                            </div>
+                          )}
                         </>
                       ) : (
                         <>

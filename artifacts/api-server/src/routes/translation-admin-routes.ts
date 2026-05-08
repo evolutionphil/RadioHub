@@ -1,5 +1,7 @@
 import type { Express } from "express";
+import type { Types } from "mongoose";
 import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating, SyncLog, BlacklistedStation, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from "../shared/mongo-schemas";
+import type { IGenre, IGenreCleanupDemotion, IStation } from "../shared/mongo-schemas";
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
@@ -903,6 +905,173 @@ ${keysText}`;
     } catch (error) {
       console.error('Error fetching admin genres:', error);
       res.status(500).json({ error: 'Failed to fetch admin genres' });
+    }
+  });
+
+  // ADMIN MERGE-INTO-WINNER API (Task #166) - Re-tag the stations attached to
+  // a demoted genre onto its recorded `cleanupDemotion.collisionWinnerId`,
+  // then delete the demoted row. Closes the loop on the slug-cleanup
+  // migration which intentionally avoids auto-merging stations.
+  app.post("/api/admin/genres/:id/merge-into-winner", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      // Genre._id is mixed (ObjectId for new docs, plain strings for legacy
+      // seed data — see mongo-schemas.ts), so type the lean shape with the
+      // shared interface plus the union _id.
+      type GenreLean = Pick<IGenre, 'name' | 'slug' | 'cleanupDemotion'> & {
+        _id: Types.ObjectId | string;
+      };
+      type StationLean = Pick<IStation, 'slug' | 'genre' | 'tags'> & {
+        _id: Types.ObjectId;
+      };
+
+      const demoted = await Genre.findById(id)
+        .select('_id name slug cleanupDemotion')
+        .lean<GenreLean | null>();
+      if (!demoted) {
+        return res.status(404).json({ error: 'Demoted genre not found' });
+      }
+      const demotion: IGenreCleanupDemotion | undefined = demoted.cleanupDemotion;
+      if (!demotion || demotion.reason !== 'collision' || !demotion.collisionWinnerId) {
+        return res.status(400).json({
+          error: 'Genre is not a collision-demoted row with a recorded winner',
+        });
+      }
+
+      const winner = await Genre.findById(demotion.collisionWinnerId)
+        .select('_id name slug')
+        .lean<GenreLean | null>();
+      if (!winner) {
+        return res.status(409).json({
+          error: 'Recorded collision winner no longer exists; cannot merge',
+        });
+      }
+
+      const demotedName = String(demoted.name || '').trim();
+      const winnerName = String(winner.name || '').trim();
+      if (!demotedName || !winnerName) {
+        return res.status(409).json({
+          error: 'Demoted or winner genre is missing a usable name; cannot merge',
+        });
+      }
+
+      // Find stations attached to the demoted genre via either the free-form
+      // `tags` (comma-separated) field or the singular `genre` field. Mirrors
+      // the matching logic used by GET /api/genres/:slug/stations so what the
+      // admin sees on the public listing is exactly what gets rewritten.
+      const escapeForRegex = (s: string): string =>
+        s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedDemoted = escapeForRegex(demotedName);
+      const matchingStations = await Station.find({
+        $or: [
+          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedDemoted}\\s*(,|$)`, 'i') } },
+          { genre: { $regex: new RegExp(`^\\s*${escapedDemoted}\\s*$`, 'i') } },
+        ],
+      })
+        .select('_id slug genre tags')
+        .lean<StationLean[]>();
+
+      const demotedLower = demotedName.toLowerCase();
+      let stationsRetagged = 0;
+
+      for (const st of matchingStations) {
+        const update: Partial<Pick<IStation, 'genre' | 'tags'>> = {};
+
+        if (typeof st.genre === 'string' && st.genre.trim().toLowerCase() === demotedLower) {
+          if (st.genre !== winnerName) {
+            update.genre = winnerName;
+          }
+        }
+
+        if (typeof st.tags === 'string' && st.tags.length > 0) {
+          const parts = st.tags
+            .split(',')
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0);
+          let tagsChanged = false;
+          const rewritten: string[] = [];
+          const seen = new Set<string>();
+          for (const part of parts) {
+            const lower = part.toLowerCase();
+            const replaced = lower === demotedLower ? winnerName : part;
+            if (replaced !== part) tagsChanged = true;
+            const replacedLower = replaced.toLowerCase();
+            if (!seen.has(replacedLower)) {
+              seen.add(replacedLower);
+              rewritten.push(replaced);
+            } else {
+              // Deduplicated — that's still a change worth persisting.
+              tagsChanged = true;
+            }
+          }
+          if (tagsChanged) {
+            update.tags = rewritten.join(',');
+          }
+        }
+
+        if (Object.keys(update).length === 0) continue;
+
+        await Station.updateOne({ _id: st._id }, { $set: update });
+        stationsRetagged++;
+        if (st.slug) {
+          performanceCache.invalidateStationCache(st.slug);
+        }
+      }
+
+      // Refresh winner's stationCount so the admin list reflects the merge.
+      try {
+        const escapedWinner = escapeForRegex(winnerName);
+        const newWinnerCount = await Station.countDocuments({
+          $or: [
+            { tags: { $regex: new RegExp(`(^|,)\\s*${escapedWinner}\\s*(,|$)`, 'i') } },
+            { genre: { $regex: new RegExp(`^\\s*${escapedWinner}\\s*$`, 'i') } },
+          ],
+        });
+        await Genre.updateOne(
+          { _id: winner._id },
+          { $set: { stationCount: newWinnerCount, updatedAt: new Date() } },
+        );
+      } catch (countErr) {
+        logger.error('Failed to refresh winner stationCount after merge:', countErr);
+      }
+
+      // Delete the demoted row last so a partial failure above leaves the
+      // admin a chance to retry rather than losing the demotion forensics.
+      await Genre.deleteOne({ _id: demoted._id });
+
+      // Same downstream re-warm the cleanup script uses (Task #133): drop the
+      // precomputed-genres caches and force-rebuild the sitemap manifests so
+      // the public surfaces stop linking to the demoted slug immediately.
+      try {
+        const { PrecomputedGenresService } = await import('../services/precomputed-genres');
+        await PrecomputedGenresService.refreshAll();
+      } catch (err) {
+        logger.error('Failed to refresh precomputed-genres caches after merge:', err);
+      }
+      try {
+        const { buildAllSitemapManifests } = await import('../seo/sitemap-manifest-builder');
+        await buildAllSitemapManifests({ force: true });
+      } catch (err) {
+        logger.error('Failed to rebuild sitemap manifests after merge:', err);
+      }
+
+      logger.log(
+        `🔀 Merged demoted genre "${demotedName}" → "${winnerName}": ${stationsRetagged}/${matchingStations.length} stations re-tagged, demoted row deleted.`,
+      );
+
+      return res.json({
+        success: true,
+        demotedGenreId: String(demoted._id),
+        demotedGenreName: demotedName,
+        winnerGenreId: String(winner._id),
+        winnerGenreName: winnerName,
+        stationsMatched: matchingStations.length,
+        stationsRetagged,
+      });
+    } catch (error) {
+      console.error('Error merging demoted genre into winner:', error);
+      res.status(500).json({ error: 'Failed to merge demoted genre into winner' });
     }
   });
 
