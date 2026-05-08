@@ -520,9 +520,14 @@ export default function AdminCoverageCountry() {
                 {backfillRanges.map((r, i) => (
                   <span key={`${r.start}-${r.end}`}>
                     {i > 0 ? ', ' : ''}
-                    <span className="font-mono">
+                    <Link
+                      href={`/admin/coverage?backfillRange=${r.start}..${r.end}#card-coverage-backfill-boot-status`}
+                      className="font-mono underline decoration-dotted underline-offset-2 hover:text-foreground"
+                      title="Jump to the backfill run that wrote these days"
+                      data-testid={`link-backfill-range-${r.start}-${r.end}`}
+                    >
                       {r.start === r.end ? r.start : `${r.start} → ${r.end}`}
-                    </span>
+                    </Link>
                   </span>
                 ))}
               </div>

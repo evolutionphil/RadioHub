@@ -2306,6 +2306,35 @@ function ReconstructHistoryButton() {
 // The boot service writes a singleton status doc on every boot decision
 // (skipped/started/done/failed) and we just render whatever we find.
 function CoverageBackfillBootStatusCard() {
+  // Task #310: country pages link to this card via
+  // `?backfillRange=START..END#card-coverage-backfill-boot-status` so an
+  // admin who clicks a "Reconstructed: 2026-04-08 → 2026-04-22" caption
+  // lands here. We parse the param on mount and then, once the status
+  // doc has loaded, check whether the focused range actually overlaps
+  // the run's seed window (computed from `startedAt` + `daysSeeded`).
+  // The card is only highlighted when it matches — otherwise we render
+  // a "no matching run" notice so admins aren't fooled into thinking an
+  // unrelated run produced those days. The param is stripped after we
+  // have a verdict so a refresh doesn't re-trigger the highlight.
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [focusedRange, setFocusedRange] = useState<{
+    start: string;
+    end: string;
+  } | null>(null);
+  const [highlight, setHighlight] = useState(false);
+  const [matchVerdict, setMatchVerdict] = useState<
+    'pending' | 'matched' | 'unmatched'
+  >('pending');
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const raw = params.get('backfillRange');
+    if (!raw) return;
+    const m = raw.match(/^(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})$/);
+    if (!m) return;
+    setFocusedRange({ start: m[1], end: m[2] });
+  }, []);
+
   const { data, isLoading } = useQuery<CoverageBackfillBootStatusResponse>({
     queryKey: ['/api/admin/coverage/backfill-status'],
     // While a seeder is still running we want the card to flip to "done"
@@ -2331,6 +2360,58 @@ function CoverageBackfillBootStatusCard() {
   }, [outcome]);
 
   const status = data?.status ?? null;
+
+  // Compute the date window the recorded run actually wrote: the seeder
+  // backfills `daysSeeded` (or the requested `seedDays`) days ending the
+  // day before the run's startedAt timestamp. Returns null when we don't
+  // have enough info to draw the window (e.g. skipped runs).
+  const runWindow = useMemo<{ start: string; end: string } | null>(() => {
+    if (!status?.startedAt) return null;
+    const days = status.daysSeeded ?? status.seedDays;
+    if (!days || days <= 0) return null;
+    const startedMs = Date.parse(status.startedAt);
+    if (!Number.isFinite(startedMs)) return null;
+    const endMs = startedMs - 24 * 60 * 60 * 1000;
+    const startMs = endMs - (days - 1) * 24 * 60 * 60 * 1000;
+    const toIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+    return { start: toIso(startMs), end: toIso(endMs) };
+  }, [status]);
+
+  // Once both the focused range and the run window are known, decide
+  // whether the run actually covers the requested days (overlap test),
+  // then apply the highlight + scroll once and clean up the URL.
+  useEffect(() => {
+    if (!focusedRange) return;
+    if (matchVerdict !== 'pending') return;
+    if (isLoading) return;
+    // Strict containment: the run must have written every day in the
+    // clicked range, otherwise we'd claim a match for a partially-
+    // overlapping older run that didn't actually produce all of those
+    // days.
+    const contains =
+      !!runWindow &&
+      focusedRange.start >= runWindow.start &&
+      focusedRange.end <= runWindow.end;
+    setMatchVerdict(contains ? 'matched' : 'unmatched');
+    const scroll = window.setTimeout(() => {
+      cardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+    let fade: number | null = null;
+    if (contains) {
+      setHighlight(true);
+      fade = window.setTimeout(() => setHighlight(false), 4000);
+    }
+    const params = new URLSearchParams(window.location.search);
+    params.delete('backfillRange');
+    const next = `${window.location.pathname}${
+      params.toString() ? `?${params.toString()}` : ''
+    }${window.location.hash}`;
+    window.history.replaceState(null, '', next);
+    return () => {
+      window.clearTimeout(scroll);
+      if (fade != null) window.clearTimeout(fade);
+    };
+  }, [focusedRange, runWindow, isLoading, matchVerdict]);
 
   const meta = (() => {
     switch (status?.outcome) {
@@ -2397,9 +2478,71 @@ function CoverageBackfillBootStatusCard() {
   }
 
   return (
-    <Card data-testid="card-coverage-backfill-boot-status">
+    <Card
+      ref={cardRef}
+      id="card-coverage-backfill-boot-status"
+      data-testid="card-coverage-backfill-boot-status"
+      data-focused-range={
+        focusedRange ? `${focusedRange.start}..${focusedRange.end}` : undefined
+      }
+      data-focused-range-match={
+        focusedRange ? matchVerdict : undefined
+      }
+      className={
+        highlight
+          ? 'ring-2 ring-amber-400 ring-offset-2 transition-shadow scroll-mt-4'
+          : 'transition-shadow scroll-mt-4'
+      }
+    >
       <CardHeader>
         <CardTitle>Sparkline data — first-deploy backfill</CardTitle>
+        {focusedRange && matchVerdict === 'matched' ? (
+          <div
+            className="mt-1 text-xs text-amber-700"
+            data-testid="text-backfill-boot-focused-range"
+          >
+            This run wrote the{' '}
+            <span className="font-mono">
+              {focusedRange.start === focusedRange.end
+                ? focusedRange.start
+                : `${focusedRange.start} → ${focusedRange.end}`}
+            </span>{' '}
+            range you clicked
+            {runWindow ? (
+              <>
+                {' '}(seed window{' '}
+                <span className="font-mono">
+                  {runWindow.start} → {runWindow.end}
+                </span>
+                )
+              </>
+            ) : null}
+            .
+          </div>
+        ) : null}
+        {focusedRange && matchVerdict === 'unmatched' ? (
+          <div
+            className="mt-1 text-xs text-muted-foreground"
+            data-testid="text-backfill-boot-focused-range-unmatched"
+          >
+            No recorded backfill run covers{' '}
+            <span className="font-mono">
+              {focusedRange.start === focusedRange.end
+                ? focusedRange.start
+                : `${focusedRange.start} → ${focusedRange.end}`}
+            </span>
+            {runWindow ? (
+              <>
+                {' '}— the latest run's seed window was{' '}
+                <span className="font-mono">
+                  {runWindow.start} → {runWindow.end}
+                </span>
+              </>
+            ) : null}
+            . Those days may have come from an older run that isn't in the
+            single-row history yet.
+          </div>
+        ) : null}
         <CardDescription>
           Whether the historical coverage seeder ran on the most recent
           boot, and what it did. Updated automatically by the API on
