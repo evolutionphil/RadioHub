@@ -27,7 +27,17 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { ArrowLeft, ChevronDown, Loader2, X } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { ArrowLeft, ChevronDown, Loader2, Star, X } from 'lucide-react';
+import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
+import { useToast } from '@/hooks/use-toast';
 
 interface TrendPoint {
   date: string;
@@ -87,6 +97,78 @@ function colorForIndex(i: number): string {
   return SERIES_COLORS[i % SERIES_COLORS.length];
 }
 
+// Per-admin saved comparison presets. Persisted via the generic
+// AdminPreference store so they survive a refresh and follow the
+// signed-in admin across devices.
+interface ComparisonPreset {
+  id: string;
+  name: string;
+  countries: string[];
+}
+
+interface ComparisonPresetsPrefs {
+  presets: ComparisonPreset[];
+}
+
+const PRESETS_PREFS_KEY = 'coverage-compare:presets:v1';
+const DEFAULT_PRESETS_PREFS: ComparisonPresetsPrefs = { presets: [] };
+const MAX_PRESETS = 24;
+const MAX_PRESET_NAME_LEN = 60;
+
+function sanitizePresetsPrefs(raw: unknown): ComparisonPresetsPrefs {
+  if (!raw || typeof raw !== 'object') return DEFAULT_PRESETS_PREFS;
+  const list = (raw as { presets?: unknown }).presets;
+  if (!Array.isArray(list)) return DEFAULT_PRESETS_PREFS;
+  const seenIds = new Set<string>();
+  const cleaned: ComparisonPreset[] = [];
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue;
+    const obj = item as Record<string, unknown>;
+    const id = typeof obj.id === 'string' ? obj.id : '';
+    const name = typeof obj.name === 'string' ? obj.name.trim() : '';
+    const rawCountries = obj.countries;
+    if (!id || !name || !Array.isArray(rawCountries)) continue;
+    if (seenIds.has(id)) continue;
+    const countries = Array.from(
+      new Set(
+        rawCountries
+          .filter((c): c is string => typeof c === 'string')
+          .map((c) => c.trim().toUpperCase())
+          .filter((c) => /^[A-Z]{2}$/.test(c)),
+      ),
+    ).slice(0, MAX_SELECTED);
+    if (countries.length === 0) continue;
+    seenIds.add(id);
+    cleaned.push({
+      id,
+      name: name.slice(0, MAX_PRESET_NAME_LEN),
+      countries,
+    });
+    if (cleaned.length >= MAX_PRESETS) break;
+  }
+  return { presets: cleaned };
+}
+
+function newPresetId(): string {
+  if (
+    typeof crypto !== 'undefined' &&
+    typeof (crypto as Crypto).randomUUID === 'function'
+  ) {
+    return (crypto as Crypto).randomUUID();
+  }
+  return `p_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function arraysEqualUnordered(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const sa = [...a].sort();
+  const sb = [...b].sort();
+  for (let i = 0; i < sa.length; i++) {
+    if (sa[i] !== sb[i]) return false;
+  }
+  return true;
+}
+
 function readSelectedFromUrl(): string[] {
   if (typeof window === 'undefined') return [];
   const params = new URLSearchParams(window.location.search);
@@ -136,6 +218,24 @@ export default function AdminCoverageCompare() {
   const [days, setDays] = useState<RangeDays>(() => readRangeFromUrl());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveDialogName, setSaveDialogName] = useState('');
+  const { toast } = useToast();
+
+  const { prefs: presetPrefs, setPrefs: setPresetPrefs } =
+    useAdminViewPrefs<ComparisonPresetsPrefs>(
+      PRESETS_PREFS_KEY,
+      DEFAULT_PRESETS_PREFS,
+      sanitizePresetsPrefs,
+    );
+  const presets = presetPrefs.presets;
+
+  const activePresetId = useMemo(() => {
+    const match = presets.find((p) =>
+      arraysEqualUnordered(p.countries, selected),
+    );
+    return match?.id ?? null;
+  }, [presets, selected]);
 
   const { data: coverageData } = useQuery<CoverageResponse>({
     queryKey: ['/api/admin/coverage/by-country'],
@@ -253,6 +353,78 @@ export default function AdminCoverageCompare() {
 
   const clearAll = () => updateSelected([]);
 
+  const applyPreset = (preset: ComparisonPreset) => {
+    updateSelected(preset.countries);
+  };
+
+  const deletePreset = (id: string) => {
+    setPresetPrefs((p) => ({
+      ...p,
+      presets: p.presets.filter((x) => x.id !== id),
+    }));
+    toast({
+      title: 'Preset deleted',
+      description: 'Removed from your saved comparisons.',
+    });
+  };
+
+  const openSaveDialog = () => {
+    setSaveDialogName('');
+    setSaveDialogOpen(true);
+  };
+
+  const handleSavePreset = () => {
+    const name = saveDialogName.trim().slice(0, MAX_PRESET_NAME_LEN);
+    if (!name) {
+      toast({
+        title: 'Name required',
+        description: 'Give the comparison a short name first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (selected.length === 0) {
+      toast({
+        title: 'Pick countries first',
+        description: 'Select at least one country before saving a preset.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    const countries = [...selected];
+    setPresetPrefs((p) => {
+      const existingIdx = p.presets.findIndex(
+        (x) => x.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (existingIdx >= 0) {
+        // Overwrite countries on a name collision so admins can update an
+        // existing preset by re-saving with the same name.
+        const next = [...p.presets];
+        next[existingIdx] = { ...next[existingIdx], name, countries };
+        return { ...p, presets: next };
+      }
+      if (p.presets.length >= MAX_PRESETS) {
+        return p;
+      }
+      return {
+        ...p,
+        presets: [...p.presets, { id: newPresetId(), name, countries }],
+      };
+    });
+    setSaveDialogOpen(false);
+    toast({
+      title: 'Preset saved',
+      description: `"${name}" — ${countries.length} ${
+        countries.length === 1 ? 'country' : 'countries'
+      }.`,
+    });
+  };
+
+  const canSavePreset =
+    selected.length > 0 &&
+    activePresetId === null &&
+    presets.length < MAX_PRESETS;
+
   const nameFor = (code: string): string => {
     const c = countries.find((x) => x.countryCode === code);
     return c ? c.countryName : code;
@@ -306,6 +478,60 @@ export default function AdminCoverageCompare() {
           })}
         </div>
       </div>
+
+      {presets.length > 0 && (
+        <Card data-testid="card-saved-presets">
+          <CardHeader>
+            <CardTitle className="text-base">Saved comparisons</CardTitle>
+            <CardDescription>
+              Quick-pick the country sets you've saved. Click a preset to load
+              it; the X removes it.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2" data-testid="list-presets">
+              {presets.map((preset) => {
+                const isActive = preset.id === activePresetId;
+                return (
+                  <div
+                    key={preset.id}
+                    className={`flex items-center gap-1 rounded-full border pl-1 pr-1 py-0.5 text-xs ${
+                      isActive
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border bg-background hover:bg-muted'
+                    }`}
+                    data-testid={`chip-preset-${preset.id}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      className="flex items-center gap-2 px-2 py-1 rounded-full"
+                      data-testid={`button-apply-preset-${preset.id}`}
+                      title={`Load ${preset.countries.join(', ')}`}
+                    >
+                      <span className="font-medium truncate max-w-[180px]">
+                        {preset.name}
+                      </span>
+                      <span className="text-[10px] text-muted-foreground tabular-nums">
+                        {preset.countries.length}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deletePreset(preset.id)}
+                      className="p-1 rounded-full hover:bg-muted"
+                      aria-label={`Delete preset ${preset.name}`}
+                      data-testid={`button-delete-preset-${preset.id}`}
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -390,6 +616,25 @@ export default function AdminCoverageCompare() {
                 Clear all
               </Button>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={openSaveDialog}
+              disabled={!canSavePreset}
+              title={
+                selected.length === 0
+                  ? 'Pick at least one country first'
+                  : activePresetId
+                    ? 'This selection is already saved as a preset'
+                    : presets.length >= MAX_PRESETS
+                      ? `You already have ${MAX_PRESETS} presets — delete one first`
+                      : 'Save the current country selection as a named preset'
+              }
+              data-testid="button-save-preset"
+            >
+              <Star className="w-4 h-4 mr-1" />
+              {activePresetId ? 'Saved as preset' : 'Save as preset'}
+            </Button>
           </div>
           {selected.length > 0 && (
             <div className="flex flex-wrap gap-2" data-testid="list-selected">
@@ -627,6 +872,59 @@ export default function AdminCoverageCompare() {
           )}
         </CardContent>
       </Card>
+
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent data-testid="dialog-save-preset">
+          <DialogHeader>
+            <DialogTitle>Save this comparison</DialogTitle>
+            <DialogDescription>
+              Give the current selection a short name (e.g. "Western Europe").
+              It will appear as a quick-pick chip at the top of this page on
+              every device you sign in to.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Input
+              autoFocus
+              value={saveDialogName}
+              onChange={(e) =>
+                setSaveDialogName(e.target.value.slice(0, MAX_PRESET_NAME_LEN))
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSavePreset();
+                }
+              }}
+              placeholder="Preset name"
+              data-testid="input-preset-name"
+            />
+            <p className="text-xs text-muted-foreground">
+              {selected.length === 0
+                ? 'Pick at least one country first.'
+                : `${selected.length} ${
+                    selected.length === 1 ? 'country' : 'countries'
+                  }: ${selected.join(', ')}`}
+            </p>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setSaveDialogOpen(false)}
+              data-testid="button-cancel-save-preset"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSavePreset}
+              disabled={selected.length === 0 || !saveDialogName.trim()}
+              data-testid="button-confirm-save-preset"
+            >
+              Save preset
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
