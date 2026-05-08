@@ -7,11 +7,20 @@ import {
   type IBackfillRun,
 } from '@workspace/db-shared/mongo-schemas';
 import {
-  BACKFILL_RETENTION_DAYS,
-  BACKFILL_RETENTION_MAX_ROWS,
+  BACKFILL_RETENTION_DAYS_MAX,
+  BACKFILL_RETENTION_DAYS_MIN,
+  BACKFILL_RETENTION_MAX_ROWS_MAX,
+  BACKFILL_RETENTION_MAX_ROWS_MIN,
+  BACKFILL_RETENTION_SETTINGS_KEY,
+  getDefaultBackfillRetention,
+  getEnvBackfillRetention,
+  invalidateBackfillRetentionCache,
+  loadStoredBackfillRetentionSettings,
+  resolveBackfillRetentionSettings,
 } from "../services/scheduled-backfill";
 import { radioBrowserService } from "../services/radio-browser";
 import { scheduledBackfill } from "../services/scheduled-backfill";
+import { AdminSetting } from "@workspace/db-shared/mongo-schemas";
 import { scheduledGenreSlugCleanup } from "../services/scheduled-genre-slug-cleanup";
 import { getGenreSlugCleanupAlertThreshold } from "../services/genre-slug-cleanup-notifier";
 import { logger } from "../utils/logger";
@@ -430,7 +439,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         // Paged rows + collection-wide totals so the dashboard can show
         // "showing X of Y · oldest from <date>" and admins know how
         // deep the retained history actually goes (Task #180).
-        const [runs, total, oldest] = await Promise.all([
+        const [runs, total, oldest, retention] = await Promise.all([
           BackfillRun.find(filter)
             .sort({ startedAt: -1 })
             .limit(limit)
@@ -440,6 +449,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
             .sort({ startedAt: 1 })
             .select({ startedAt: 1 })
             .lean<{ startedAt: Date } | null>(),
+          resolveBackfillRetentionSettings(),
         ]);
         res.json({
           runs,
@@ -447,10 +457,11 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           oldestStartedAt: oldest?.startedAt ?? null,
           // Echo the effective retention thresholds so the dashboard can
           // render an accurate "kept for X days / Y rows" hint even when
-          // ops has overridden the defaults via env vars.
+          // ops has overridden the defaults via env vars or admins have
+          // tuned the values from the UI (Task #233).
           retention: {
-            days: BACKFILL_RETENTION_DAYS,
-            maxRows: BACKFILL_RETENTION_MAX_ROWS,
+            days: retention.days,
+            maxRows: retention.maxRows,
           },
         });
       } catch (err: any) {
@@ -560,6 +571,189 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           err?.message || err,
         );
         res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
+  // Task #233: admin-tunable BackfillRun retention. Lets admins adjust
+  // the days-to-keep / max-rows thresholds the prune sweep enforces
+  // without needing ops to flip BACKFILL_RETENTION_* env vars and
+  // redeploy. Stored under the `backfill-retention` AdminSetting key;
+  // env vars remain a fallback when no override has been set, and
+  // built-in defaults (90d / 200 rows) win when neither is configured.
+  app.get(
+    "/api/admin/settings/backfill-retention",
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const stored = await loadStoredBackfillRetentionSettings({ bypassCache: true });
+        const env = getEnvBackfillRetention();
+        const defaults = getDefaultBackfillRetention();
+        const resolved = await resolveBackfillRetentionSettings();
+        const doc = await AdminSetting.findOne({
+          key: BACKFILL_RETENTION_SETTINGS_KEY,
+        }).lean();
+        res.json({
+          stored,
+          env: {
+            days: env.days.source === "env" ? env.days.value : null,
+            maxRows: env.maxRows.source === "env" ? env.maxRows.value : null,
+          },
+          defaults,
+          effective: {
+            days: resolved.days,
+            maxRows: resolved.maxRows,
+            source: resolved.source,
+          },
+          bounds: {
+            daysMin: BACKFILL_RETENTION_DAYS_MIN,
+            daysMax: BACKFILL_RETENTION_DAYS_MAX,
+            maxRowsMin: BACKFILL_RETENTION_MAX_ROWS_MIN,
+            maxRowsMax: BACKFILL_RETENTION_MAX_ROWS_MAX,
+          },
+          updatedAt: doc?.updatedAt ?? null,
+          updatedBy: doc?.updatedBy ?? null,
+        });
+      } catch (err: any) {
+        logger.error("[backfill-retention] read error:", err?.message || err);
+        res.status(500).json({ error: "Failed to read settings" });
+      }
+    },
+  );
+
+  app.put(
+    "/api/admin/settings/backfill-retention",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const body = (req.body ?? {}) as { days?: unknown; maxRows?: unknown };
+        const next: { days: number | null; maxRows: number | null } = {
+          days: null,
+          maxRows: null,
+        };
+
+        if (body.days !== undefined && body.days !== null && body.days !== "") {
+          const n = Number(body.days);
+          if (
+            !Number.isFinite(n) ||
+            n < BACKFILL_RETENTION_DAYS_MIN ||
+            n > BACKFILL_RETENTION_DAYS_MAX
+          ) {
+            return void res.status(400).json({
+              error: `days must be an integer between ${BACKFILL_RETENTION_DAYS_MIN} and ${BACKFILL_RETENTION_DAYS_MAX}`,
+            });
+          }
+          next.days = Math.floor(n);
+        }
+
+        if (
+          body.maxRows !== undefined &&
+          body.maxRows !== null &&
+          body.maxRows !== ""
+        ) {
+          const n = Number(body.maxRows);
+          if (
+            !Number.isFinite(n) ||
+            n < BACKFILL_RETENTION_MAX_ROWS_MIN ||
+            n > BACKFILL_RETENTION_MAX_ROWS_MAX
+          ) {
+            return void res.status(400).json({
+              error: `maxRows must be an integer between ${BACKFILL_RETENTION_MAX_ROWS_MIN} and ${BACKFILL_RETENTION_MAX_ROWS_MAX}`,
+            });
+          }
+          next.maxRows = Math.floor(n);
+        }
+
+        const adminAuth = (req.session as any)?.adminAuth;
+        const updatedBy =
+          typeof adminAuth?.username === "string" && adminAuth.username.length > 0
+            ? adminAuth.username
+            : null;
+        const now = new Date();
+        await AdminSetting.findOneAndUpdate(
+          { key: BACKFILL_RETENTION_SETTINGS_KEY },
+          {
+            $set: { value: next, updatedAt: now, updatedBy },
+            $setOnInsert: {
+              createdAt: now,
+              key: BACKFILL_RETENTION_SETTINGS_KEY,
+            },
+          },
+          { upsert: true, new: true },
+        );
+        invalidateBackfillRetentionCache();
+
+        const stored = await loadStoredBackfillRetentionSettings({ bypassCache: true });
+        const env = getEnvBackfillRetention();
+        const defaults = getDefaultBackfillRetention();
+        const resolved = await resolveBackfillRetentionSettings();
+        const doc = await AdminSetting.findOne({
+          key: BACKFILL_RETENTION_SETTINGS_KEY,
+        }).lean();
+        res.json({
+          stored,
+          env: {
+            days: env.days.source === "env" ? env.days.value : null,
+            maxRows: env.maxRows.source === "env" ? env.maxRows.value : null,
+          },
+          defaults,
+          effective: {
+            days: resolved.days,
+            maxRows: resolved.maxRows,
+            source: resolved.source,
+          },
+          bounds: {
+            daysMin: BACKFILL_RETENTION_DAYS_MIN,
+            daysMax: BACKFILL_RETENTION_DAYS_MAX,
+            maxRowsMin: BACKFILL_RETENTION_MAX_ROWS_MIN,
+            maxRowsMax: BACKFILL_RETENTION_MAX_ROWS_MAX,
+          },
+          updatedAt: doc?.updatedAt ?? now,
+          updatedBy: doc?.updatedBy ?? updatedBy,
+        });
+      } catch (err: any) {
+        logger.error("[backfill-retention] write error:", err?.message || err);
+        res.status(500).json({ error: "Failed to write settings" });
+      }
+    },
+  );
+
+  app.delete(
+    "/api/admin/settings/backfill-retention",
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        await AdminSetting.deleteOne({ key: BACKFILL_RETENTION_SETTINGS_KEY });
+        invalidateBackfillRetentionCache();
+
+        const stored = await loadStoredBackfillRetentionSettings({ bypassCache: true });
+        const env = getEnvBackfillRetention();
+        const defaults = getDefaultBackfillRetention();
+        const resolved = await resolveBackfillRetentionSettings();
+        res.json({
+          stored,
+          env: {
+            days: env.days.source === "env" ? env.days.value : null,
+            maxRows: env.maxRows.source === "env" ? env.maxRows.value : null,
+          },
+          defaults,
+          effective: {
+            days: resolved.days,
+            maxRows: resolved.maxRows,
+            source: resolved.source,
+          },
+          bounds: {
+            daysMin: BACKFILL_RETENTION_DAYS_MIN,
+            daysMax: BACKFILL_RETENTION_DAYS_MAX,
+            maxRowsMin: BACKFILL_RETENTION_MAX_ROWS_MIN,
+            maxRowsMax: BACKFILL_RETENTION_MAX_ROWS_MAX,
+          },
+          updatedAt: null,
+          updatedBy: null,
+        });
+      } catch (err: any) {
+        logger.error("[backfill-retention] clear error:", err?.message || err);
+        res.status(500).json({ error: "Failed to clear settings" });
       }
     },
   );

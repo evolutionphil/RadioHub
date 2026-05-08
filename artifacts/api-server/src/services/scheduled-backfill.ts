@@ -1,5 +1,10 @@
 import cron from 'node-cron';
-import { Station, BackfillRun, type IBackfillRun } from '@workspace/db-shared/mongo-schemas';
+import {
+  Station,
+  BackfillRun,
+  AdminSetting,
+  type IBackfillRun,
+} from '@workspace/db-shared/mongo-schemas';
 import { SyncService } from './sync';
 import { logger } from '../utils/logger';
 import { notifyBackfillResult } from './backfill-notifier';
@@ -46,21 +51,145 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // admin-triggered manual run — which would balloon the dashboard query
 // over time. We keep the most recent rows up to either bound and drop
 // the rest after every sweep finishes:
-//   - rows older than `BACKFILL_RETENTION_DAYS` (default 90 days), AND
-//   - anything beyond the newest `BACKFILL_RETENTION_MAX_ROWS` rows
-//     (default 200) regardless of age.
+//   - rows older than the resolved days threshold (default 90 days), AND
+//   - anything beyond the newest N rows (default 200) regardless of age.
 // "Older than 90d" is the soft floor — operationally we only need ~3
 // months of history to spot a regression — and the 200-row cap is the
 // hard ceiling so a burst of manual triggers can't blow the budget.
-// Both are env-overridable so ops can tune without a redeploy.
-export const BACKFILL_RETENTION_DAYS: number = Math.max(
-  1,
-  Number.parseInt(process.env.BACKFILL_RETENTION_DAYS ?? '', 10) || 90,
-);
-export const BACKFILL_RETENTION_MAX_ROWS: number = Math.max(
-  10,
-  Number.parseInt(process.env.BACKFILL_RETENTION_MAX_ROWS ?? '', 10) || 200,
-);
+//
+// Resolution order (Task #233): admin-tunable AdminSetting doc → env
+// var → built-in default. The DB layer is added so admins can adjust
+// retention from the SEO maintenance UI without asking ops to set
+// BACKFILL_RETENTION_* and redeploy. Env vars remain a fallback for
+// existing deployments.
+export const BACKFILL_RETENTION_DAYS_DEFAULT = 90;
+export const BACKFILL_RETENTION_MAX_ROWS_DEFAULT = 200;
+export const BACKFILL_RETENTION_DAYS_MIN = 1;
+export const BACKFILL_RETENTION_DAYS_MAX = 3650;
+export const BACKFILL_RETENTION_MAX_ROWS_MIN = 10;
+export const BACKFILL_RETENTION_MAX_ROWS_MAX = 100_000;
+export const BACKFILL_RETENTION_SETTINGS_KEY = 'backfill-retention';
+const RETENTION_CACHE_TTL_MS = 30_000;
+
+export interface BackfillRetentionSettings {
+  days: number | null;
+  maxRows: number | null;
+}
+
+export interface ResolvedBackfillRetention {
+  days: number;
+  maxRows: number;
+  source: {
+    days: 'db' | 'env' | 'default';
+    maxRows: 'db' | 'env' | 'default';
+  };
+}
+
+function envBackfillRetentionDays(): { value: number; source: 'env' | 'default' } {
+  const raw = Number.parseInt(process.env.BACKFILL_RETENTION_DAYS ?? '', 10);
+  if (Number.isFinite(raw) && raw >= BACKFILL_RETENTION_DAYS_MIN) {
+    return { value: Math.min(raw, BACKFILL_RETENTION_DAYS_MAX), source: 'env' };
+  }
+  return { value: BACKFILL_RETENTION_DAYS_DEFAULT, source: 'default' };
+}
+
+function envBackfillRetentionMaxRows(): { value: number; source: 'env' | 'default' } {
+  const raw = Number.parseInt(process.env.BACKFILL_RETENTION_MAX_ROWS ?? '', 10);
+  if (Number.isFinite(raw) && raw >= BACKFILL_RETENTION_MAX_ROWS_MIN) {
+    return { value: Math.min(raw, BACKFILL_RETENTION_MAX_ROWS_MAX), source: 'env' };
+  }
+  return { value: BACKFILL_RETENTION_MAX_ROWS_DEFAULT, source: 'default' };
+}
+
+// Back-compat exports — preserve the original env-resolved constants so
+// existing imports keep working. New callers should prefer
+// `resolveBackfillRetentionSettings()` which honours the DB override.
+export const BACKFILL_RETENTION_DAYS: number = envBackfillRetentionDays().value;
+export const BACKFILL_RETENTION_MAX_ROWS: number = envBackfillRetentionMaxRows().value;
+
+function sanitizeStoredRetention(value: unknown): BackfillRetentionSettings {
+  const out: BackfillRetentionSettings = { days: null, maxRows: null };
+  if (!value || typeof value !== 'object') return out;
+  const v = value as Record<string, unknown>;
+  if (
+    typeof v.days === 'number' &&
+    Number.isFinite(v.days) &&
+    v.days >= BACKFILL_RETENTION_DAYS_MIN
+  ) {
+    out.days = Math.min(Math.floor(v.days), BACKFILL_RETENTION_DAYS_MAX);
+  }
+  if (
+    typeof v.maxRows === 'number' &&
+    Number.isFinite(v.maxRows) &&
+    v.maxRows >= BACKFILL_RETENTION_MAX_ROWS_MIN
+  ) {
+    out.maxRows = Math.min(Math.floor(v.maxRows), BACKFILL_RETENTION_MAX_ROWS_MAX);
+  }
+  return out;
+}
+
+let retentionCache: { at: number; value: BackfillRetentionSettings } | null = null;
+
+export function invalidateBackfillRetentionCache(): void {
+  retentionCache = null;
+}
+
+export async function loadStoredBackfillRetentionSettings(
+  opts: { bypassCache?: boolean } = {},
+): Promise<BackfillRetentionSettings> {
+  if (
+    !opts.bypassCache &&
+    retentionCache &&
+    Date.now() - retentionCache.at < RETENTION_CACHE_TTL_MS
+  ) {
+    return retentionCache.value;
+  }
+  try {
+    const doc = await AdminSetting.findOne({ key: BACKFILL_RETENTION_SETTINGS_KEY }).lean();
+    const value = sanitizeStoredRetention(doc?.value);
+    retentionCache = { at: Date.now(), value };
+    return value;
+  } catch (err) {
+    logger.warn(
+      '⚠️  Failed to load backfill-retention settings from DB, using env/defaults:',
+      err,
+    );
+    const value: BackfillRetentionSettings = { days: null, maxRows: null };
+    retentionCache = { at: Date.now(), value };
+    return value;
+  }
+}
+
+export async function resolveBackfillRetentionSettings(): Promise<ResolvedBackfillRetention> {
+  const stored = await loadStoredBackfillRetentionSettings();
+  const envD = envBackfillRetentionDays();
+  const envM = envBackfillRetentionMaxRows();
+  return {
+    days: stored.days ?? envD.value,
+    maxRows: stored.maxRows ?? envM.value,
+    source: {
+      days: stored.days != null ? 'db' : envD.source,
+      maxRows: stored.maxRows != null ? 'db' : envM.source,
+    },
+  };
+}
+
+export function getDefaultBackfillRetention(): { days: number; maxRows: number } {
+  return {
+    days: BACKFILL_RETENTION_DAYS_DEFAULT,
+    maxRows: BACKFILL_RETENTION_MAX_ROWS_DEFAULT,
+  };
+}
+
+export function getEnvBackfillRetention(): {
+  days: { value: number; source: 'env' | 'default' };
+  maxRows: { value: number; source: 'env' | 'default' };
+} {
+  return {
+    days: envBackfillRetentionDays(),
+    maxRows: envBackfillRetentionMaxRows(),
+  };
+}
 
 /**
  * Drop BackfillRun rows that fall outside the retention window. Best-
@@ -78,13 +207,16 @@ export const BACKFILL_RETENTION_MAX_ROWS: number = Math.max(
 export async function pruneOldBackfillRuns(): Promise<{ removed: number }> {
   let removed = 0;
   try {
-    const cutoff = new Date(Date.now() - BACKFILL_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    // Resolve at sweep time so admin-tunable overrides (Task #233) take
+    // effect on the next prune without a redeploy.
+    const { days, maxRows } = await resolveBackfillRetentionSettings();
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
     const byAge = await BackfillRun.deleteMany({ startedAt: { $lt: cutoff } });
     removed += byAge.deletedCount ?? 0;
 
     const pivotDoc = await BackfillRun.find()
       .sort({ startedAt: -1 })
-      .skip(BACKFILL_RETENTION_MAX_ROWS - 1)
+      .skip(maxRows - 1)
       .limit(1)
       .select({ startedAt: 1 })
       .lean<{ startedAt: Date } | null>();
@@ -95,7 +227,7 @@ export async function pruneOldBackfillRuns(): Promise<{ removed: number }> {
       removed += byCount.deletedCount ?? 0;
     }
     if (removed > 0) {
-      logger.log(`🧹 Pruned ${removed} old BackfillRun row(s) (retention: ${BACKFILL_RETENTION_DAYS}d / ${BACKFILL_RETENTION_MAX_ROWS} rows)`);
+      logger.log(`🧹 Pruned ${removed} old BackfillRun row(s) (retention: ${days}d / ${maxRows} rows)`);
     }
   } catch (err) {
     logger.warn('⚠️  pruneOldBackfillRuns failed (non-fatal):', err);

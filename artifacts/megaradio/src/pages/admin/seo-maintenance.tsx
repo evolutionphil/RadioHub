@@ -86,6 +86,32 @@ interface ScheduledBackfillRunsResponse {
   };
 }
 
+// Task #233: admin-tunable retention thresholds. Resolution order is
+// DB override → env var → built-in default; the API echoes all three
+// so the form can show what's currently effective and where it came
+// from.
+interface BackfillRetentionResponse {
+  stored: { days: number | null; maxRows: number | null };
+  env: { days: number | null; maxRows: number | null };
+  defaults: { days: number; maxRows: number };
+  effective: {
+    days: number;
+    maxRows: number;
+    source: {
+      days: "db" | "env" | "default";
+      maxRows: "db" | "env" | "default";
+    };
+  };
+  bounds: {
+    daysMin: number;
+    daysMax: number;
+    maxRowsMin: number;
+    maxRowsMax: number;
+  };
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
 type RunsTriggerFilter = "" | "cron:weekly" | "admin:manual";
 
 function formatDuration(ms?: number) {
@@ -262,6 +288,83 @@ export default function SeoMaintenancePage() {
     deepLinkLookupEnabled && deepLinkRunQuery.data?.run
       ? deepLinkRunQuery.data.run
       : null;
+
+  // Task #233: retention thresholds form state. Inputs stay as strings so
+  // an empty box clears the override (falls back to env/default). The
+  // query result is the source of truth — `useEffect` below seeds the
+  // inputs from `stored` whenever the response changes.
+  const [retentionDays, setRetentionDays] = useState<string>("");
+  const [retentionMaxRows, setRetentionMaxRows] = useState<string>("");
+  const retentionQuery = useQuery<BackfillRetentionResponse>({
+    queryKey: ["/api/admin/settings/backfill-retention"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/settings/backfill-retention", {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+  useEffect(() => {
+    const data = retentionQuery.data;
+    if (!data) return;
+    setRetentionDays(
+      data.stored.days != null ? String(data.stored.days) : "",
+    );
+    setRetentionMaxRows(
+      data.stored.maxRows != null ? String(data.stored.maxRows) : "",
+    );
+  }, [retentionQuery.data]);
+  const saveRetention = useMutation({
+    mutationFn: async () => {
+      const body: { days?: number | null; maxRows?: number | null } = {
+        days: retentionDays.trim() === "" ? null : Number(retentionDays),
+        maxRows:
+          retentionMaxRows.trim() === "" ? null : Number(retentionMaxRows),
+      };
+      return apiRequest(
+        "PUT",
+        "/api/admin/settings/backfill-retention",
+        body,
+      );
+    },
+    onSuccess: () => {
+      toast({ title: "Saklama ayarları güncellendi" });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/settings/backfill-retention"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/maintenance/scheduled-backfill/runs"],
+      });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Kaydedilemedi",
+        description: e?.message || "",
+        variant: "destructive",
+      });
+    },
+  });
+  const resetRetention = useMutation({
+    mutationFn: async () =>
+      apiRequest("DELETE", "/api/admin/settings/backfill-retention", undefined),
+    onSuccess: () => {
+      toast({ title: "Saklama ayarları sıfırlandı" });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/settings/backfill-retention"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/maintenance/scheduled-backfill/runs"],
+      });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Sıfırlanamadı",
+        description: e?.message || "",
+        variant: "destructive",
+      });
+    },
+  });
 
   const startScheduled = useMutation({
     mutationFn: async (countryCode: string) =>
@@ -536,6 +639,112 @@ export default function SeoMaintenancePage() {
           )}
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Task #233: admin-tunable retention thresholds. Empty input
+              clears the DB override and falls back to the env/default
+              shown next to the field. */}
+          {retentionQuery.data && (
+            <div
+              className="border border-slate-200 rounded p-3 bg-slate-50 space-y-2"
+              data-testid="card-backfill-retention-settings"
+            >
+              <div className="text-xs uppercase tracking-wide text-slate-500">
+                Saklama eşikleri
+              </div>
+              <p className="text-xs text-slate-600">
+                Backfill geçmişi her sweep'in sonunda buradaki eşiklere göre
+                temizlenir. Boş bırakırsanız ortam değişkeni veya yerleşik
+                varsayılan ({retentionQuery.data.defaults.days}g /{" "}
+                {retentionQuery.data.defaults.maxRows} satır) geçerli olur.
+              </p>
+              <div className="flex flex-wrap items-end gap-3">
+                <div>
+                  <label className="text-xs text-slate-600 mb-1 block">
+                    Gün ({retentionQuery.data.bounds.daysMin}–
+                    {retentionQuery.data.bounds.daysMax})
+                  </label>
+                  <Input
+                    type="number"
+                    min={retentionQuery.data.bounds.daysMin}
+                    max={retentionQuery.data.bounds.daysMax}
+                    value={retentionDays}
+                    onChange={(e) => setRetentionDays(e.target.value)}
+                    placeholder={String(retentionQuery.data.effective.days)}
+                    className="w-28"
+                    data-testid="input-backfill-retention-days"
+                  />
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    Etkin: {retentionQuery.data.effective.days}g (
+                    {retentionQuery.data.effective.source.days})
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-slate-600 mb-1 block">
+                    Maks. satır ({retentionQuery.data.bounds.maxRowsMin}–
+                    {retentionQuery.data.bounds.maxRowsMax})
+                  </label>
+                  <Input
+                    type="number"
+                    min={retentionQuery.data.bounds.maxRowsMin}
+                    max={retentionQuery.data.bounds.maxRowsMax}
+                    value={retentionMaxRows}
+                    onChange={(e) => setRetentionMaxRows(e.target.value)}
+                    placeholder={String(retentionQuery.data.effective.maxRows)}
+                    className="w-32"
+                    data-testid="input-backfill-retention-max-rows"
+                  />
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    Etkin: {retentionQuery.data.effective.maxRows} satır (
+                    {retentionQuery.data.effective.source.maxRows})
+                  </div>
+                </div>
+                <Button
+                  onClick={() => saveRetention.mutate()}
+                  disabled={saveRetention.isPending}
+                  data-testid="button-save-backfill-retention"
+                >
+                  {saveRetention.isPending ? "Kaydediliyor..." : "Kaydet"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => resetRetention.mutate()}
+                  disabled={
+                    resetRetention.isPending ||
+                    (retentionQuery.data.stored.days == null &&
+                      retentionQuery.data.stored.maxRows == null)
+                  }
+                  data-testid="button-reset-backfill-retention"
+                >
+                  {resetRetention.isPending ? "Sıfırlanıyor..." : "Sıfırla"}
+                </Button>
+              </div>
+              {retentionQuery.data.updatedAt && (
+                <div
+                  className="text-[11px] text-slate-500"
+                  data-testid="text-backfill-retention-meta"
+                >
+                  Son güncelleme:{" "}
+                  {new Date(retentionQuery.data.updatedAt).toLocaleString()}
+                  {retentionQuery.data.updatedBy
+                    ? ` · ${retentionQuery.data.updatedBy}`
+                    : ""}
+                </div>
+              )}
+              {(retentionQuery.data.env.days != null ||
+                retentionQuery.data.env.maxRows != null) && (
+                <div className="text-[11px] text-slate-500">
+                  Ortam değişkeni:{" "}
+                  {retentionQuery.data.env.days != null
+                    ? `${retentionQuery.data.env.days}g`
+                    : "—"}{" "}
+                  /{" "}
+                  {retentionQuery.data.env.maxRows != null
+                    ? `${retentionQuery.data.env.maxRows} satır`
+                    : "—"}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex items-center gap-3 flex-wrap">
             <div>
               <label className="text-xs text-slate-600 mb-1 block">
