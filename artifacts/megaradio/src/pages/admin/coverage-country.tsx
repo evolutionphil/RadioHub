@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Download, Loader2 } from 'lucide-react';
 
 interface TrendPoint {
   date: string;
@@ -128,6 +128,38 @@ export default function AdminCoverageCountry() {
   const tagDelta =
     oldest && latest ? latest.tagCoveragePct - oldest.tagCoveragePct : 0;
 
+  const handleDownloadCsv = () => {
+    if (series.length === 0) return;
+    const header = [
+      'date',
+      'logoCoveragePct',
+      'tagCoveragePct',
+      'total',
+      'withLogo',
+      'withTags',
+    ];
+    const rows = series.map((p) => [
+      p.date,
+      p.logoCoveragePct.toFixed(2),
+      p.tagCoveragePct.toFixed(2),
+      String(p.total),
+      String(p.withLogo),
+      String(p.withTags),
+    ]);
+    const csv =
+      [header, ...rows].map((r) => r.join(',')).join('\n') + '\n';
+    const today = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `coverage-${code}-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   if (!code) {
     return (
       <div className="container mx-auto p-6">
@@ -167,6 +199,16 @@ export default function AdminCoverageCountry() {
             inspect a sudden drop or share a screenshot with the team.
           </p>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownloadCsv}
+          disabled={series.length === 0}
+          data-testid="button-download-csv"
+        >
+          <Download className="w-4 h-4 mr-1" />
+          Download CSV
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
