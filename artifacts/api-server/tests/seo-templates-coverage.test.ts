@@ -33,6 +33,7 @@ import {
   LEGAL_SEO_TEMPLATES,
   type LegalSeoTemplate,
 } from '@workspace/seo-shared/legal-seo-templates';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 
 const SEARCH_DESCRIPTION_MAX_CHARS = 145;
 
@@ -192,6 +193,63 @@ describe('Per-language SEO template coverage', () => {
       assert.ok(!hasGaps, formatGapMessage(spec, gaps));
     });
   }
+
+  // URL_TRANSLATIONS is the per-language slug registry that powers the
+  // localised URLs of the static info/legal pages (e.g. /de/datenschutz,
+  // /tr/kullanim-kosullari). When a language is missing one of these slugs
+  // the router silently falls through to the English path, which Google
+  // then indexes as the English URL on a localised hreflang cluster — the
+  // exact silent-fallback regression class the per-language SEO template
+  // guards above exist to prevent. English itself is the source language
+  // (identity mapping) and is intentionally absent from URL_TRANSLATIONS.
+  const STATIC_PAGE_URL_SLUGS = [
+    'about',
+    'contact',
+    'applications',
+    'privacy-policy',
+    'terms-and-conditions',
+  ] as const;
+
+  it(`covers every non-English SEO_LANGUAGES code in URL_TRANSLATIONS with all ${STATIC_PAGE_URL_SLUGS.length} static-page slugs`, () => {
+    const missingLanguages: string[] = [];
+    const incompleteEntries: Record<string, string[]> = {};
+
+    for (const { code } of SEO_LANGUAGES) {
+      if (code === 'en') continue;
+      const entry = URL_TRANSLATIONS[code];
+      if (!entry) {
+        missingLanguages.push(code);
+        continue;
+      }
+      const missingSlugs = STATIC_PAGE_URL_SLUGS.filter((slug) => {
+        const value = entry[slug];
+        return typeof value !== 'string' || value.trim() === '';
+      });
+      if (missingSlugs.length > 0) {
+        incompleteEntries[code] = [...missingSlugs];
+      }
+    }
+
+    const lines: string[] = [];
+    if (missingLanguages.length > 0) {
+      lines.push(
+        `URL_TRANSLATIONS is missing entries for languages defined in SEO_LANGUAGES.`,
+        `  Missing language codes (${missingLanguages.length}): ${missingLanguages.join(', ')}`,
+      );
+    }
+    for (const [code, slugs] of Object.entries(incompleteEntries)) {
+      lines.push(
+        `  Incomplete entry for "${code}" — missing static-page slugs: ${slugs.join(', ')}`,
+      );
+    }
+    if (lines.length > 0) {
+      lines.push(
+        `  Each non-English SEO_LANGUAGES entry must define a localised slug for every static page (${STATIC_PAGE_URL_SLUGS.join(', ')}). Without them the router falls back to the English path on a localised hreflang cluster — the same silent fallback the per-language SEO template guards above prevent.`,
+      );
+    }
+
+    assert.ok(lines.length === 0, lines.join('\n'));
+  });
 
   it(`keeps every SEARCH_SEO_TEMPLATES description within ${SEARCH_DESCRIPTION_MAX_CHARS} chars (meta cap)`, () => {
     const tooLong: Array<{ code: string; length: number }> = [];
