@@ -3139,16 +3139,27 @@ export const AppleWebhookEvent = mongoose.model<IAppleWebhookEvent>(
 );
 
 // =====================================================================
-// ClearedOverridesAuditLog — durable audit trail for the admin
-// "Clear country-language overrides" action. Each invocation persists a
-// snapshot of which overrides were removed, who triggered it, and when,
-// so admins who don't get the audit email can review history later and
-// regenerate the original CSV.
+// ClearedOverridesAuditLog — durable audit trail for admin actions on
+// country-language mappings. Originally only logged the "Clear overrides"
+// bulk action; now also logs per-row create/update/delete and bulk save
+// so admins always have a paper trail of every change.
+//
+// `action` distinguishes the trigger; `changes` captures per-row diffs
+// (previous → new) for edit/delete/bulk-save; `snapshot` retains the
+// historical clear-overrides/reset-all rows so existing CSV downloads
+// continue to work unchanged.
 //
 // Bounded growth: a 180-day TTL keeps the collection self-pruning, and
 // route-level pruning enforces a per-collection MAX_ENTRIES cap so the
 // admin panel and backing query stay fast even under heavy usage.
 // =====================================================================
+export type CountryLanguageMappingAuditAction =
+  | 'clear-overrides'
+  | 'reset-all'
+  | 'edit'
+  | 'delete'
+  | 'bulk-save';
+
 export interface IClearedOverridesAuditLogEntry {
   countryCode: string;
   countryName: string;
@@ -3156,10 +3167,19 @@ export interface IClearedOverridesAuditLogEntry {
   defaultLanguageCode: string;
 }
 
+export interface ICountryLanguageMappingAuditChange {
+  countryCode: string;
+  countryName: string;
+  previousLanguageCode: string | null;
+  newLanguageCode: string | null;
+}
+
 export interface IClearedOverridesAuditLog extends Document {
+  action: CountryLanguageMappingAuditAction;
   actorEmail: string | null;
   deletedCount: number;
   snapshot: IClearedOverridesAuditLogEntry[];
+  changes: ICountryLanguageMappingAuditChange[];
   createdAt: Date;
 }
 
@@ -3173,10 +3193,30 @@ const ClearedOverridesAuditLogEntrySchema = new Schema<IClearedOverridesAuditLog
   { _id: false },
 );
 
+const CountryLanguageMappingAuditChangeSchema = new Schema<ICountryLanguageMappingAuditChange>(
+  {
+    countryCode: { type: String, required: true },
+    countryName: { type: String, required: true },
+    previousLanguageCode: { type: String, default: null },
+    newLanguageCode: { type: String, default: null },
+  },
+  { _id: false },
+);
+
 const ClearedOverridesAuditLogSchema = new Schema<IClearedOverridesAuditLog>({
+  // Default preserves back-compat for documents written before this field
+  // existed — they were all clear-overrides invocations.
+  action: {
+    type: String,
+    enum: ['clear-overrides', 'reset-all', 'edit', 'delete', 'bulk-save'],
+    required: true,
+    default: 'clear-overrides',
+    index: true,
+  },
   actorEmail: { type: String, default: null },
   deletedCount: { type: Number, required: true, default: 0 },
   snapshot: { type: [ClearedOverridesAuditLogEntrySchema], default: [] },
+  changes: { type: [CountryLanguageMappingAuditChangeSchema], default: [] },
   // 180-day TTL — long enough to cover quarterly audits but bounded so
   // the collection self-prunes without manual intervention.
   createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 180 },

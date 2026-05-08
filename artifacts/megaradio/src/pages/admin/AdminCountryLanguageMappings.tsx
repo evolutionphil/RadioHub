@@ -300,13 +300,28 @@ export default function AdminCountryLanguageMappings() {
     }
   };
 
-  // Server-side audit trail of cleared-overrides actions. Persisted in
-  // Mongo (in addition to the opt-in audit email) so admins who don't get
-  // the email can review history and re-download the original CSV later.
+  // Server-side audit trail of every admin action on country-language
+  // mappings (clear-overrides, reset-all, edit, delete, bulk-save).
+  // Persisted in Mongo (in addition to the opt-in audit email) so admins
+  // can reconstruct who changed which mapping after the fact.
+  type AuditActionType =
+    | 'clear-overrides'
+    | 'reset-all'
+    | 'edit'
+    | 'delete'
+    | 'bulk-save';
+  interface AuditChange {
+    countryCode: string;
+    countryName: string;
+    previousLanguageCode: string | null;
+    newLanguageCode: string | null;
+  }
   interface ClearedOverridesAuditEntry {
     id: string;
+    action: AuditActionType;
     actorEmail: string | null;
     deletedCount: number;
+    changes: AuditChange[];
     createdAt: string;
   }
   interface ClearedOverridesAuditPage {
@@ -346,6 +361,10 @@ export default function AdminCountryLanguageMappings() {
     setAuditPageOffset(0);
   };
 
+  type AuditFilter = 'all' | AuditActionType;
+  const [auditFilter, setAuditFilter] = useState<AuditFilter>('all');
+  const [expandedAuditId, setExpandedAuditId] = useState<string | null>(null);
+
   const auditLogQueryParams = useMemo(() => {
     const params: Record<string, string | number> = {
       limit: AUDIT_LOG_PAGE_SIZE,
@@ -357,6 +376,12 @@ export default function AdminCountryLanguageMappings() {
     if (country) params.country = country;
     if (auditFilterFrom) params.from = auditFilterFrom;
     if (auditFilterTo) params.to = auditFilterTo;
+
+    // Favor main's pagination/filters but keep the incoming action filter support.
+    if (auditFilter !== 'all') {
+      params.action = auditFilter;
+    }
+
     return params;
   }, [
     auditFilterActor,
@@ -364,8 +389,8 @@ export default function AdminCountryLanguageMappings() {
     auditFilterFrom,
     auditFilterTo,
     auditPageOffset,
+    auditFilter,
   ]);
-
   const {
     data: clearedOverridesAuditLogPage,
     isLoading: isLoadingAuditLog,
@@ -393,6 +418,25 @@ export default function AdminCountryLanguageMappings() {
     setAuditPageOffset(0);
   };
   const [downloadingAuditId, setDownloadingAuditId] = useState<string | null>(null);
+
+  const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
+    'clear-overrides': 'Cleared overrides',
+    'reset-all': 'Reset all mappings',
+    edit: 'Edited mapping',
+    delete: 'Deleted mapping',
+    'bulk-save': 'Bulk saved',
+  };
+  const AUDIT_FILTER_OPTIONS: Array<{ value: AuditFilter; label: string }> = [
+    { value: 'all', label: 'All actions' },
+    { value: 'edit', label: 'Edits' },
+    { value: 'delete', label: 'Deletes' },
+    { value: 'bulk-save', label: 'Bulk saves' },
+    { value: 'clear-overrides', label: 'Cleared overrides' },
+    { value: 'reset-all', label: 'Reset all' },
+  ];
+  // Only the snapshot-bearing actions populate the per-entry CSV endpoint.
+  const auditActionHasCsv = (action: AuditActionType): boolean =>
+    action === 'clear-overrides' || action === 'reset-all';
 
   const handleDownloadAuditCsv = async (entry: ClearedOverridesAuditEntry) => {
     if (downloadingAuditId) return;
@@ -499,6 +543,11 @@ export default function AdminCountryLanguageMappings() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      // The server now writes a `bulk-save` audit entry — refresh the
+      // history panel so admins see it without a manual reload.
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/country-language-mappings/cleared-overrides-log'],
+      });
       setPendingChanges(new Map());
       toast({
         title: 'Success',
@@ -538,6 +587,10 @@ export default function AdminCountryLanguageMappings() {
         (old) => (old ? old.filter(m => m.countryCode !== countryCode) : old),
       );
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      // Single-row deletes are now audited — refresh the panel.
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/country-language-mappings/cleared-overrides-log'],
+      });
       toast({
         title: 'Mapping cleared',
         description: 'The country mapping was removed and will fall back to the default language.',
@@ -745,6 +798,10 @@ export default function AdminCountryLanguageMappings() {
         [],
       );
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      // Reset-all now writes a `reset-all` audit entry — refresh the panel.
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/country-language-mappings/cleared-overrides-log'],
+      });
       const count = data?.deletedCount ?? 0;
 
       const snapshot = context?.snapshot ?? [];
@@ -1674,18 +1731,20 @@ export default function AdminCountryLanguageMappings() {
             </Tooltip>
           </div>
 
-          {/* Cleared overrides history: durable server-side audit trail of
-               every Clear overrides action. Survives reloads, sessions, and
-               admin device changes — separate from the local "Recent bulk
-               actions" panel below which only powers the Undo flow. */}
+          {/* Admin activity history: durable server-side audit trail of
+               every change to country-language mappings (clear-overrides,
+               reset-all, edits, deletes, bulk saves). Survives reloads,
+               sessions, and admin device changes — separate from the local
+               "Recent bulk actions" panel below which only powers the
+               Undo flow. */}
           <div
             data-testid="panel-cleared-overrides-audit-log"
             className="mb-4 rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/40"
           >
-            <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-2 dark:border-gray-700">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 px-4 py-2 dark:border-gray-700">
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                 <History className="h-4 w-4" />
-                <span>Cleared overrides history</span>
+                <span>Mapping change history</span>
                 <span
                   className="text-xs text-muted-foreground"
                   data-testid="text-cleared-overrides-audit-count"
@@ -1695,19 +1754,47 @@ export default function AdminCountryLanguageMappings() {
                   {auditLogTotal === 1 ? '' : auditFiltersActive ? 'es' : ''})
                 </span>
               </div>
-              <Button
-                data-testid="button-refresh-cleared-overrides-audit"
-                variant="ghost"
-                size="sm"
-                className="h-7 text-xs"
-                onClick={() => void refetchAuditLog()}
-                disabled={isLoadingAuditLog}
-              >
-                <RefreshCw
-                  className={`mr-2 h-3 w-3 ${isLoadingAuditLog ? 'animate-spin' : ''}`}
-                />
-                Refresh
-              </Button>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={auditFilter}
+                  onValueChange={(value) => {
+                    setAuditFilter(value as AuditFilter);
+                    setExpandedAuditId(null);
+                  }}
+                >
+                  <SelectTrigger
+                    data-testid="select-audit-filter"
+                    className="h-7 w-[160px] text-xs"
+                    aria-label="Filter audit log by action type"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIT_FILTER_OPTIONS.map((opt) => (
+                      <SelectItem
+                        key={opt.value}
+                        value={opt.value}
+                        data-testid={`option-audit-filter-${opt.value}`}
+                      >
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  data-testid="button-refresh-cleared-overrides-audit"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => void refetchAuditLog()}
+                  disabled={isLoadingAuditLog}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-3 w-3 ${isLoadingAuditLog ? 'animate-spin' : ''}`}
+                  />
+                  Refresh
+                </Button>
+              </div>
             </div>
             {/* Filters: actor email, country (matched against snapshot
                 country code/name), and a date range. All optional;
@@ -1813,9 +1900,9 @@ export default function AdminCountryLanguageMappings() {
                 className="px-4 py-3 text-sm text-muted-foreground"
                 data-testid="text-cleared-overrides-audit-empty"
               >
-                {auditFiltersActive
-                  ? 'No clears match the current filters.'
-                  : 'No clears recorded yet.'}
+                {auditFiltersActive || auditFilter !== 'all'
+                  ? 'No mapping changes match the current filters.'
+                  : 'No mapping changes recorded yet.'}
               </div>
             ) : (
               <ul className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1823,48 +1910,151 @@ export default function AdminCountryLanguageMappings() {
                   const when = new Date(entry.createdAt);
                   const whenValid = !isNaN(when.getTime());
                   const isDownloading = downloadingAuditId === entry.id;
+                  const action = entry.action ?? 'clear-overrides';
+                  const label = AUDIT_ACTION_LABELS[action] ?? action;
+                  const isDestructive =
+                    action === 'clear-overrides' ||
+                    action === 'reset-all' ||
+                    action === 'delete';
+                  const ActionIcon =
+                    action === 'reset-all' ? Trash : isDestructive ? Trash2 : Save;
+                  const iconColor = isDestructive
+                    ? action === 'reset-all'
+                      ? 'text-destructive'
+                      : 'text-amber-500'
+                    : 'text-blue-500';
+                  const hasChanges = (entry.changes?.length ?? 0) > 0;
+                  const isExpanded = expandedAuditId === entry.id;
+                  const hasCsv = auditActionHasCsv(action);
                   return (
                     <li
                       key={entry.id}
                       data-testid={`row-cleared-overrides-audit-${entry.id}`}
-                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm"
+                      data-action={action}
+                      className="px-4 py-2 text-sm"
                     >
-                      <div className="flex flex-wrap items-center gap-2 text-gray-700 dark:text-gray-200">
-                        <Trash2 className="h-4 w-4 text-amber-500" />
-                        <span>
-                          Cleared {entry.deletedCount}{' '}
-                          {entry.deletedCount === 1 ? 'override' : 'overrides'}
-                        </span>
-                        {whenValid && (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2 text-gray-700 dark:text-gray-200">
+                          <ActionIcon className={`h-4 w-4 ${iconColor}`} />
+                          <span className="font-medium">{label}</span>
+                          <span className="text-xs text-muted-foreground">
+                            ({entry.deletedCount}{' '}
+                            {entry.deletedCount === 1 ? 'row' : 'rows'})
+                          </span>
+                          {whenValid && (
+                            <span
+                              className="text-xs text-muted-foreground"
+                              title={when.toLocaleString()}
+                              data-testid={`text-cleared-overrides-audit-time-${entry.id}`}
+                            >
+                              · {formatDistanceToNow(when, { addSuffix: true })}
+                            </span>
+                          )}
                           <span
                             className="text-xs text-muted-foreground"
-                            title={when.toLocaleString()}
-                            data-testid={`text-cleared-overrides-audit-time-${entry.id}`}
+                            data-testid={`text-cleared-overrides-audit-actor-${entry.id}`}
                           >
-                            · {formatDistanceToNow(when, { addSuffix: true })}
+                            · by {entry.actorEmail || '(unknown admin)'}
                           </span>
-                        )}
-                        <span
-                          className="text-xs text-muted-foreground"
-                          data-testid={`text-cleared-overrides-audit-actor-${entry.id}`}
-                        >
-                          · by {entry.actorEmail || '(unknown admin)'}
-                        </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {hasChanges && (
+                            <Button
+                              data-testid={`button-toggle-audit-diff-${entry.id}`}
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs"
+                              onClick={() =>
+                                setExpandedAuditId((prev) =>
+                                  prev === entry.id ? null : entry.id,
+                                )
+                              }
+                              aria-expanded={isExpanded}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="mr-1 h-3 w-3" />
+                              ) : (
+                                <ChevronDown className="mr-1 h-3 w-3" />
+                              )}
+                              {isExpanded ? 'Hide diff' : 'View diff'}
+                            </Button>
+                          )}
+                          {hasCsv && (
+                            <Button
+                              data-testid={`button-download-cleared-overrides-audit-${entry.id}`}
+                              size="sm"
+                              variant="outline"
+                              onClick={() => void handleDownloadAuditCsv(entry)}
+                              disabled={isDownloading || entry.deletedCount === 0}
+                            >
+                              {isDownloading ? (
+                                <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                              ) : (
+                                <Download className="mr-2 h-3 w-3" />
+                              )}
+                              Download CSV
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <Button
-                        data-testid={`button-download-cleared-overrides-audit-${entry.id}`}
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleDownloadAuditCsv(entry)}
-                        disabled={isDownloading || entry.deletedCount === 0}
-                      >
-                        {isDownloading ? (
-                          <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
-                        ) : (
-                          <Download className="mr-2 h-3 w-3" />
-                        )}
-                        Download CSV
-                      </Button>
+                      {isExpanded && hasChanges && (
+                        <div
+                          data-testid={`audit-diff-${entry.id}`}
+                          className="mt-2 max-h-64 overflow-y-auto rounded-md border border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/60"
+                        >
+                          <table className="w-full text-xs">
+                            <thead className="sticky top-0 bg-gray-100 text-left uppercase tracking-wide text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                              <tr>
+                                <th className="px-3 py-1.5 font-medium">Country</th>
+                                <th className="px-3 py-1.5 font-medium">Previous</th>
+                                <th className="px-3 py-1.5 font-medium">New</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {entry.changes.map((change) => {
+                                const prevName = change.previousLanguageCode
+                                  ? languageNameMap.get(change.previousLanguageCode)
+                                  : null;
+                                const newName = change.newLanguageCode
+                                  ? languageNameMap.get(change.newLanguageCode)
+                                  : null;
+                                const formatLang = (
+                                  code: string | null,
+                                  name: string | null | undefined,
+                                ) => {
+                                  if (!code) return <span className="italic text-muted-foreground">none</span>;
+                                  return name ? `${name} (${code})` : code;
+                                };
+                                return (
+                                  <tr
+                                    key={change.countryCode}
+                                    className="border-t border-gray-200 dark:border-gray-700"
+                                    data-testid={`audit-diff-row-${entry.id}-${change.countryCode}`}
+                                  >
+                                    <td className="px-3 py-1.5">
+                                      <span className="font-medium">
+                                        {change.countryName}
+                                      </span>{' '}
+                                      <span className="text-muted-foreground">
+                                        ({change.countryCode})
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">
+                                      {formatLang(
+                                        change.previousLanguageCode,
+                                        prevName,
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">
+                                      {formatLang(change.newLanguageCode, newName)}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
                     </li>
                   );
                 })}

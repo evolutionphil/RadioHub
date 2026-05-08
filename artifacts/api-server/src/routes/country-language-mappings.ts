@@ -1,10 +1,11 @@
 import { Express } from 'express';
+import type { CountryLanguageMappingAuditAction, ICountryLanguageMappingAuditChange, IClearedOverridesAuditLogEntry } from '../shared/mongo-schemas';
 
 // Bound the audit collection's working set. The 180-day TTL on the schema
 // caps total growth, but the panel only needs a recent slice — so we both
 // limit list responses and prune older entries beyond this cap on write.
-const CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES = 100;
-const CLEAR_OVERRIDES_AUDIT_LIST_LIMIT = 25;
+const CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES = 500;
+const CLEAR_OVERRIDES_AUDIT_LIST_LIMIT = 50;
 const CLEAR_OVERRIDES_AUDIT_MAX_PAGE_LIMIT = 100;
 
 // Mongo treats unescaped regex metacharacters as operators. Strip them so
@@ -12,6 +13,60 @@ const CLEAR_OVERRIDES_AUDIT_MAX_PAGE_LIMIT = 100;
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+
+const VALID_AUDIT_ACTIONS: ReadonlyArray<CountryLanguageMappingAuditAction> = [
+  'clear-overrides',
+  'reset-all',
+  'edit',
+  'delete',
+  'bulk-save',
+];
+
+/**
+ * Persist a single audit entry for any country-language-mapping admin
+ * action and prune older rows beyond the soft cap. Fire-and-forget: errors
+ * are logged but never thrown so the originating request stays unaffected.
+ */
+async function writeMappingAuditEntry(opts: {
+  action: CountryLanguageMappingAuditAction;
+  actorEmail?: string;
+  deletedCount: number;
+  changes?: ICountryLanguageMappingAuditChange[];
+  snapshot?: IClearedOverridesAuditLogEntry[];
+}): Promise<void> {
+  try {
+    const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+    await ClearedOverridesAuditLog.create({
+      action: opts.action,
+      actorEmail: opts.actorEmail ?? null,
+      deletedCount: opts.deletedCount,
+      changes: opts.changes ?? [],
+      snapshot: opts.snapshot ?? [],
+    });
+
+    const total = await ClearedOverridesAuditLog.estimatedDocumentCount();
+    if (total > CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES) {
+      const excess = total - CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES;
+      const oldest = await ClearedOverridesAuditLog
+        .find({}, { _id: 1 })
+        .sort({ createdAt: 1 })
+        .limit(excess)
+        .lean();
+      if (oldest.length > 0) {
+        await ClearedOverridesAuditLog.deleteMany({
+          _id: { $in: oldest.map((d) => d._id) },
+        });
+      }
+    }
+  } catch (err) {
+    console.error('Failed to persist country-language-mapping audit entry:', err);
+  }
+}
+
+function getActorEmail(req: { user?: unknown }): string | undefined {
+  return (req.user as { email?: string } | undefined)?.email ?? undefined;
+}
+
 
 /**
  * Country-Language Mapping Routes
@@ -87,6 +142,13 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
         return res.status(400).json({ error: 'countryCode, countryName, and languageCode are required' });
       }
 
+      // Capture the previous languageCode (if any) so the audit entry can
+      // record a true before/after diff rather than just the new value.
+      const previous = await CountryLanguageMapping
+        .findOne({ countryCode }, { languageCode: 1 })
+        .lean<{ languageCode?: string } | null>();
+      const previousLanguageCode = previous?.languageCode ?? null;
+
       const mapping = await CountryLanguageMapping.findOneAndUpdate(
         { countryCode },
         {
@@ -103,6 +165,24 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       // Clear performance cache to force reload
       const { performanceCache } = await import('../performance-cache');
       performanceCache.clearCountryLanguageMappings();
+
+      // Only audit when the value actually changed — avoid spamming the log
+      // with no-op writes (e.g. saving the same row twice).
+      if (previousLanguageCode !== languageCode) {
+        void writeMappingAuditEntry({
+          action: 'edit',
+          actorEmail: getActorEmail(req),
+          deletedCount: 1,
+          changes: [
+            {
+              countryCode,
+              countryName,
+              previousLanguageCode,
+              newLanguageCode: languageCode,
+            },
+          ],
+        });
+      }
 
       console.log(`✅ Updated country-language mapping: ${countryName} (${countryCode}) → ${languageCode}`);
       res.json(mapping);
@@ -122,10 +202,32 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
         return res.status(400).json({ error: 'mappings array is required' });
       }
 
+      // Snapshot prior languageCodes for every country we're about to touch
+      // so the audit entry records true before/after diffs in one write.
+      const candidateCodes = mappings
+        .map((m: any) => m?.countryCode)
+        .filter((c: unknown): c is string => typeof c === 'string' && !!c);
+      const prior = await CountryLanguageMapping
+        .find({ countryCode: { $in: candidateCodes } }, { countryCode: 1, languageCode: 1 })
+        .lean<Array<{ countryCode: string; languageCode: string }>>();
+      const priorMap = new Map(prior.map(p => [p.countryCode, p.languageCode]));
+
+      const auditChanges: ICountryLanguageMappingAuditChange[] = [];
+
       const results = await Promise.all(
         mappings.map(async (mapping) => {
           if (!mapping.countryCode || !mapping.countryName || !mapping.languageCode) {
             return null;
+          }
+
+          const previousLanguageCode = priorMap.get(mapping.countryCode) ?? null;
+          if (previousLanguageCode !== mapping.languageCode) {
+            auditChanges.push({
+              countryCode: mapping.countryCode,
+              countryName: mapping.countryName,
+              previousLanguageCode,
+              newLanguageCode: mapping.languageCode,
+            });
           }
 
           return CountryLanguageMapping.findOneAndUpdate(
@@ -148,6 +250,15 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       // Clear performance cache to force reload
       const { performanceCache } = await import('../performance-cache');
       performanceCache.clearCountryLanguageMappings();
+
+      if (auditChanges.length > 0) {
+        void writeMappingAuditEntry({
+          action: 'bulk-save',
+          actorEmail: getActorEmail(req),
+          deletedCount: auditChanges.length,
+          changes: auditChanges,
+        });
+      }
 
       console.log(`✅ Bulk updated ${validResults.length} country-language mappings`);
       res.json({ 
@@ -186,48 +297,19 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
           defaultLanguageCode: defaults[m.countryCode]!,
         }));
 
-      const actorEmail =
-        (req.user as { email?: string } | undefined)?.email ?? undefined;
+      const actorEmail = getActorEmail(req);
       const languageNames: Record<string, string> = {};
       for (const lang of SEO_LANGUAGES) {
         languageNames[lang.code] = lang.name;
       }
 
-      // Persist an audit entry for every Clear overrides invocation —
-      // including no-ops — so admins always have a record of who pressed
-      // the button and when, even if nothing was deleted.
-      const persistAuditEntry = async (deletedCount: number) => {
-        try {
-          const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
-          await ClearedOverridesAuditLog.create({
-            actorEmail: actorEmail ?? null,
-            deletedCount,
-            snapshot: overrideSnapshot,
-          });
-
-          // Enforce a soft cap on total entries so the panel and backing
-          // queries stay snappy. The TTL on the schema covers the long tail.
-          const total = await ClearedOverridesAuditLog.estimatedDocumentCount();
-          if (total > CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES) {
-            const excess = total - CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES;
-            const oldest = await ClearedOverridesAuditLog
-              .find({}, { _id: 1 })
-              .sort({ createdAt: 1 })
-              .limit(excess)
-              .lean();
-            if (oldest.length > 0) {
-              await ClearedOverridesAuditLog.deleteMany({
-                _id: { $in: oldest.map((d) => d._id) },
-              });
-            }
-          }
-        } catch (err) {
-          console.error('Failed to persist cleared-overrides audit entry:', err);
-        }
-      };
-
       if (overrideSnapshot.length === 0) {
-        await persistAuditEntry(0);
+        await writeMappingAuditEntry({
+          action: 'clear-overrides',
+          actorEmail,
+          deletedCount: 0,
+          snapshot: [],
+        });
         return res.json({ success: true, deletedCount: 0 });
       }
 
@@ -240,7 +322,18 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
 
       console.log(`✅ Deleted ${result.deletedCount} overridden country-language mappings`);
 
-      await persistAuditEntry(result.deletedCount);
+      await writeMappingAuditEntry({
+        action: 'clear-overrides',
+        actorEmail,
+        deletedCount: result.deletedCount,
+        snapshot: overrideSnapshot,
+        changes: overrideSnapshot.map((s) => ({
+          countryCode: s.countryCode,
+          countryName: s.countryName,
+          previousLanguageCode: s.currentLanguageCode,
+          newLanguageCode: null,
+        })),
+      });
 
       // Fire-and-forget audit email of the cleared overrides CSV. Opt-in via
       // ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
@@ -263,7 +356,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     }
   });
 
-  // List cleared-overrides audit entries for the in-app history panel.
+  // List recent admin-action audit entries for the in-app history panel.
   // Supports pagination and filtering so admins can find a specific clear
   // by actor email, date range, or affected country (matching the snapshot
   // by country code or country name) without scrolling. The on-write prune
@@ -288,6 +381,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       );
       const offset = parseIntParam(req.query.offset, 0);
 
+      const actionParam = typeof req.query.action === 'string' ? req.query.action : undefined;
       const actorEmail =
         typeof req.query.actorEmail === 'string'
           ? req.query.actorEmail.trim()
@@ -299,15 +393,25 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
 
       const filter: Record<string, unknown> = {};
 
+      if (actionParam && actionParam !== 'all') {
+        if (!VALID_AUDIT_ACTIONS.includes(actionParam as CountryLanguageMappingAuditAction)) {
+          return res.status(400).json({ error: 'Invalid action filter' });
+        }
+        filter.action = actionParam;
+      }
+
       if (actorEmail) {
         filter.actorEmail = { $regex: escapeRegex(actorEmail), $options: 'i' };
       }
 
       if (country) {
         const re = { $regex: escapeRegex(country), $options: 'i' };
+        // Search in both snapshot (for clears/resets) and inline changes (for per-row edits)
         filter.$or = [
           { 'snapshot.countryCode': re },
           { 'snapshot.countryName': re },
+          { 'changes.countryCode': re },
+          { 'changes.countryName': re },
         ];
       }
 
@@ -330,6 +434,10 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
         filter.createdAt = createdAt;
       }
 
+      // Exclude the bulky `snapshot` array from the list response — it can
+      // be hundreds of entries per row for reset-all. The per-entry CSV
+      // endpoint loads it on demand. `changes` stays inline so the panel
+      // can render diffs without an extra round-trip per row.
       const [entries, total] = await Promise.all([
         ClearedOverridesAuditLog
           .find(filter, { snapshot: 0 })
@@ -338,8 +446,10 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
           .limit(limit)
           .lean<Array<{
             _id: unknown;
+            action?: CountryLanguageMappingAuditAction;
             actorEmail: string | null;
             deletedCount: number;
+            changes?: ICountryLanguageMappingAuditChange[];
             createdAt: Date;
           }>>(),
         ClearedOverridesAuditLog.countDocuments(filter),
@@ -348,8 +458,12 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       res.json({
         entries: entries.map((e) => ({
           id: String(e._id),
+          // Default to 'clear-overrides' for any pre-existing rows written
+          // before the action field was introduced.
+          action: e.action ?? 'clear-overrides',
           actorEmail: e.actorEmail,
           deletedCount: e.deletedCount,
+          changes: e.changes ?? [],
           createdAt: e.createdAt,
         })),
         total,
@@ -358,8 +472,8 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       });
       return;
     } catch (error) {
-      console.error('Error listing cleared-overrides audit log:', error);
-      res.status(500).json({ error: 'Failed to list cleared-overrides audit log' });
+      console.error('Error listing country-language-mapping audit log:', error);
+      res.status(500).json({ error: 'Failed to list audit log' });
       return;
     }
   });
@@ -482,7 +596,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   app.delete('/api/admin/country-language-mappings', requireAdmin, async (req, res) => {
     try {
       const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
-      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+      const { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
 
       // Snapshot every mapping before deletion so the audit email captures
       // exactly what was wiped, mirroring the "Cleared overrides" flow.
@@ -504,6 +618,30 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
 
       console.log(`✅ Deleted all ${result.deletedCount} country-language mappings`);
 
+      const actorEmail = getActorEmail(req);
+      const defaults = COUNTRY_TO_LANGUAGE as Record<string, string>;
+
+      // Always log reset-all so admins see who hit the button even when the
+      // collection was already empty.
+      const auditSnapshot: IClearedOverridesAuditLogEntry[] = snapshot.map((m) => ({
+        countryCode: m.countryCode,
+        countryName: m.countryName || m.countryCode,
+        currentLanguageCode: m.languageCode,
+        defaultLanguageCode: defaults[m.countryCode] ?? '',
+      }));
+      await writeMappingAuditEntry({
+        action: 'reset-all',
+        actorEmail,
+        deletedCount: result.deletedCount,
+        snapshot: auditSnapshot,
+        changes: snapshot.map((m) => ({
+          countryCode: m.countryCode,
+          countryName: m.countryName || m.countryCode,
+          previousLanguageCode: m.languageCode,
+          newLanguageCode: null,
+        })),
+      });
+
       // Fire-and-forget audit email of the wiped mappings. Opt-in via
       // ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
       if (snapshot.length > 0) {
@@ -511,8 +649,6 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
         for (const lang of SEO_LANGUAGES) {
           languageNames[lang.code] = lang.name;
         }
-        const actorEmail =
-          (req.user as { email?: string } | undefined)?.email ?? undefined;
         const rows = snapshot.map((m) => ({
           countryCode: m.countryCode,
           countryName: m.countryName || m.countryCode,
@@ -542,11 +678,33 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
       const { countryCode } = req.params;
 
-      await CountryLanguageMapping.deleteOne({ countryCode });
+      // Capture the document being deleted so the audit log records what
+      // was actually removed (not just the country code).
+      const previous = await CountryLanguageMapping
+        .findOne({ countryCode }, { countryCode: 1, countryName: 1, languageCode: 1 })
+        .lean<{ countryCode: string; countryName?: string; languageCode: string } | null>();
+
+      const result = await CountryLanguageMapping.deleteOne({ countryCode });
 
       // Clear performance cache to force reload
       const { performanceCache } = await import('../performance-cache');
       performanceCache.clearCountryLanguageMappings();
+
+      if (previous && result.deletedCount && result.deletedCount > 0) {
+        void writeMappingAuditEntry({
+          action: 'delete',
+          actorEmail: getActorEmail(req),
+          deletedCount: 1,
+          changes: [
+            {
+              countryCode: previous.countryCode,
+              countryName: previous.countryName || previous.countryCode,
+              previousLanguageCode: previous.languageCode,
+              newLanguageCode: null,
+            },
+          ],
+        });
+      }
 
       console.log(`✅ Deleted country-language mapping for country code: ${countryCode}`);
       res.json({ success: true });
