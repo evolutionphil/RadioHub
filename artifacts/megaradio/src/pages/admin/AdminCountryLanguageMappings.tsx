@@ -1239,6 +1239,24 @@ export default function AdminCountryLanguageMappings() {
       .sort((a, b) => a.countryName.localeCompare(b.countryName));
   }, [existingMappings, defaultsMap]);
 
+  // Detailed list of every persisted mapping shown in the "Reset all mappings"
+  // confirmation dialog so admins can audit exactly what will be deleted and
+  // what each country will fall back to. Sorted alphabetically by country name.
+  const persistedAllMappings = useMemo(() => {
+    if (!existingMappings) return [];
+    const countryNameMap = new Map<string, string>();
+    countries?.forEach((c) => countryNameMap.set(c.code, c.name));
+    return existingMappings
+      .map((m) => ({
+        countryCode: m.countryCode,
+        countryName:
+          countryNameMap.get(m.countryCode) || m.countryName || m.countryCode,
+        currentLanguageCode: m.languageCode,
+        defaultLanguageCode: defaultsMap.get(m.countryCode) || '',
+      }))
+      .sort((a, b) => a.countryName.localeCompare(b.countryName));
+  }, [existingMappings, countries, defaultsMap]);
+
   return (
     <div className="container mx-auto py-8 px-4">
       <Card>
@@ -1941,6 +1959,68 @@ export default function AdminCountryLanguageMappings() {
               )}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {persistedAllMappings.length > 0 && (
+            <>
+              <div
+                className="text-sm text-gray-700"
+                data-testid="text-reset-all-preview-summary"
+              >
+                {persistedAllMappings.length}{' '}
+                {persistedAllMappings.length === 1 ? 'mapping' : 'mappings'} will be
+                deleted:
+              </div>
+              <div
+                className="max-h-64 overflow-y-auto rounded-md border border-gray-200 bg-gray-50"
+                data-testid="list-reset-all-preview"
+              >
+                <table className="w-full text-sm">
+                  <thead className="sticky top-0 bg-gray-100 text-left text-xs uppercase tracking-wide text-gray-600">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">Country</th>
+                      <th className="px-3 py-2 font-medium">Current</th>
+                      <th className="px-3 py-2 font-medium">Falls back to</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {persistedAllMappings.map((m) => {
+                      const currentName = languageNameMap.get(m.currentLanguageCode);
+                      const defaultName = m.defaultLanguageCode
+                        ? languageNameMap.get(m.defaultLanguageCode)
+                        : undefined;
+                      return (
+                        <tr
+                          key={m.countryCode}
+                          className="border-t border-gray-200"
+                          data-testid={`row-reset-all-preview-${m.countryCode}`}
+                        >
+                          <td className="px-3 py-2">
+                            <span className="font-medium text-gray-900">
+                              {m.countryName}
+                            </span>{' '}
+                            <span className="text-xs text-gray-500">
+                              ({m.countryCode})
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-gray-700">
+                            {currentName
+                              ? `${currentName} (${m.currentLanguageCode})`
+                              : m.currentLanguageCode}
+                          </td>
+                          <td className="px-3 py-2 text-gray-700">
+                            {m.defaultLanguageCode
+                              ? defaultName
+                                ? `${defaultName} (${m.defaultLanguageCode})`
+                                : m.defaultLanguageCode
+                              : <span className="text-gray-500 italic">No default</span>}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
           <div className="flex items-center gap-2 pt-1">
             <Checkbox
               id="reset-all-skip-confirm"
