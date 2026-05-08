@@ -1,5 +1,9 @@
 import type { Express, Request, Response } from "express";
 import { Station, BackfillRun } from "../shared/mongo-schemas";
+import {
+  BACKFILL_RETENTION_DAYS,
+  BACKFILL_RETENTION_MAX_ROWS,
+} from "../services/scheduled-backfill";
 import { radioBrowserService } from "../services/radio-browser";
 import { scheduledBackfill } from "../services/scheduled-backfill";
 import { logger } from "../utils/logger";
@@ -338,11 +342,32 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         const trigger = (req.query.trigger as string | undefined)?.trim();
         const filter: any = {};
         if (trigger) filter.trigger = trigger;
-        const runs = await BackfillRun.find(filter)
-          .sort({ startedAt: -1 })
-          .limit(limit)
-          .lean();
-        res.json({ runs });
+        // Paged rows + collection-wide totals so the dashboard can show
+        // "showing X of Y · oldest from <date>" and admins know how
+        // deep the retained history actually goes (Task #180).
+        const [runs, total, oldest] = await Promise.all([
+          BackfillRun.find(filter)
+            .sort({ startedAt: -1 })
+            .limit(limit)
+            .lean(),
+          BackfillRun.countDocuments(filter),
+          BackfillRun.findOne(filter)
+            .sort({ startedAt: 1 })
+            .select({ startedAt: 1 })
+            .lean<{ startedAt: Date } | null>(),
+        ]);
+        res.json({
+          runs,
+          total,
+          oldestStartedAt: oldest?.startedAt ?? null,
+          // Echo the effective retention thresholds so the dashboard can
+          // render an accurate "kept for X days / Y rows" hint even when
+          // ops has overridden the defaults via env vars.
+          retention: {
+            days: BACKFILL_RETENTION_DAYS,
+            maxRows: BACKFILL_RETENTION_MAX_ROWS,
+          },
+        });
       } catch (err: any) {
         logger.error(
           "[scheduled-backfill runs] error:",

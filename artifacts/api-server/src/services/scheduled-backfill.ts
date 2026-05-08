@@ -41,6 +41,68 @@ export const BACKFILL_RETRY_BASE_MS: number = Math.max(
 );
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+// Retention policy for the BackfillRun collection (Task #180). Without
+// this the collection grows unbounded — one row per weekly cron + every
+// admin-triggered manual run — which would balloon the dashboard query
+// over time. We keep the most recent rows up to either bound and drop
+// the rest after every sweep finishes:
+//   - rows older than `BACKFILL_RETENTION_DAYS` (default 90 days), AND
+//   - anything beyond the newest `BACKFILL_RETENTION_MAX_ROWS` rows
+//     (default 200) regardless of age.
+// "Older than 90d" is the soft floor — operationally we only need ~3
+// months of history to spot a regression — and the 200-row cap is the
+// hard ceiling so a burst of manual triggers can't blow the budget.
+// Both are env-overridable so ops can tune without a redeploy.
+export const BACKFILL_RETENTION_DAYS: number = Math.max(
+  1,
+  Number.parseInt(process.env.BACKFILL_RETENTION_DAYS ?? '', 10) || 90,
+);
+export const BACKFILL_RETENTION_MAX_ROWS: number = Math.max(
+  10,
+  Number.parseInt(process.env.BACKFILL_RETENTION_MAX_ROWS ?? '', 10) || 200,
+);
+
+/**
+ * Drop BackfillRun rows that fall outside the retention window. Best-
+ * effort: any error is logged and swallowed so a transient Mongo blip
+ * never poisons the sweep that just finished.
+ *
+ * Two passes:
+ *   1. Delete rows older than `BACKFILL_RETENTION_DAYS`.
+ *   2. Find the `startedAt` of the Nth-newest row (where N =
+ *      `BACKFILL_RETENTION_MAX_ROWS`) and delete anything strictly
+ *      older than that. This caps total row count even if the time
+ *      bound alone would let more through (e.g. heavy manual usage in
+ *      a short window).
+ */
+export async function pruneOldBackfillRuns(): Promise<{ removed: number }> {
+  let removed = 0;
+  try {
+    const cutoff = new Date(Date.now() - BACKFILL_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const byAge = await BackfillRun.deleteMany({ startedAt: { $lt: cutoff } });
+    removed += byAge.deletedCount ?? 0;
+
+    const pivotDoc = await BackfillRun.find()
+      .sort({ startedAt: -1 })
+      .skip(BACKFILL_RETENTION_MAX_ROWS - 1)
+      .limit(1)
+      .select({ startedAt: 1 })
+      .lean<{ startedAt: Date } | null>();
+    if (pivotDoc?.startedAt) {
+      const byCount = await BackfillRun.deleteMany({
+        startedAt: { $lt: pivotDoc.startedAt },
+      });
+      removed += byCount.deletedCount ?? 0;
+    }
+    if (removed > 0) {
+      logger.log(`🧹 Pruned ${removed} old BackfillRun row(s) (retention: ${BACKFILL_RETENTION_DAYS}d / ${BACKFILL_RETENTION_MAX_ROWS} rows)`);
+    }
+  } catch (err) {
+    logger.warn('⚠️  pruneOldBackfillRuns failed (non-fatal):', err);
+  }
+  return { removed };
+}
+
 export function buildLogoBackfillFilter(
   countryCode?: string,
 ): Record<string, unknown> {
@@ -356,6 +418,9 @@ class ScheduledBackfillService {
       }
     } finally {
       this.isRunning = false;
+      // Apply retention after every sweep so the BackfillRun collection
+      // never grows unbounded. Best-effort — see `pruneOldBackfillRuns`.
+      await pruneOldBackfillRuns();
     }
   }
 

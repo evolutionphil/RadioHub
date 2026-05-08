@@ -73,6 +73,15 @@ interface ScheduledBackfillStatusResponse {
 }
 interface ScheduledBackfillRunsResponse {
   runs: ScheduledBackfillRun[];
+  // Collection-wide totals so admins can see how far back the retained
+  // history actually goes (Task #180 — retention is enforced by
+  // `pruneOldBackfillRuns` in the API after every sweep).
+  total?: number;
+  oldestStartedAt?: string | null;
+  retention?: {
+    days: number;
+    maxRows: number;
+  };
 }
 
 type RunsTriggerFilter = "" | "cron:weekly" | "admin:manual";
@@ -486,6 +495,27 @@ export default function SeoMaintenancePage() {
           {runsQuery.data && runsQuery.data.runs.length === 0 && (
             <div className="text-sm text-slate-500">
               Bu filtreyle henüz bir çalışma kaydı yok.
+            </div>
+          )}
+          {runsQuery.data && runsQuery.data.runs.length > 0 && (
+            <div
+              className="text-xs text-slate-500"
+              data-testid="text-backfill-runs-retention"
+            >
+              {(() => {
+                const shown = runsQuery.data.runs.length;
+                const total = runsQuery.data.total ?? shown;
+                const oldest = runsQuery.data.oldestStartedAt
+                  ? new Date(runsQuery.data.oldestStartedAt).toLocaleDateString()
+                  : null;
+                const retention = runsQuery.data.retention;
+                const base = `Gösterilen: ${shown} / toplam ${total} çalışma`;
+                const tail = oldest ? ` · en eski ${oldest}` : "";
+                const policy = retention
+                  ? ` · ${retention.days} gün veya ${retention.maxRows} satır saklanır`
+                  : "";
+                return `${base}${tail}${policy}`;
+              })()}
             </div>
           )}
           {runsQuery.data && runsQuery.data.runs.length > 0 && (
