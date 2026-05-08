@@ -815,6 +815,19 @@ app.use('/api/stream', streamServiceProxy);
 
   app.use(htmlLangMiddleware);
 
+  // Task #158: lightweight slug-shape 404 for non-bot visitors. Bots
+  // already get a proper 404 from the SSR catch-all above; this fills
+  // the gap for browser users who hit junk URLs like
+  // `/regions/regio's/germany` or `/genres/<unknown>` and otherwise see
+  // a blank loading screen with HTTP 200 (the SPA shell).
+  const { createSlugShape404Middleware } = await import('./middleware/slug-shape-404');
+  app.use(createSlugShape404Middleware({
+    regionsAlts: seoRegionAlts,
+    genresAlts: seoGenreAlts,
+    stationSingularAlts: seoStationSingularAlts,
+    stationsPluralAlts: seoStationPluralAlts,
+  }));
+
   serveStatic(app);
 
   let isShuttingDown = false;
@@ -957,6 +970,18 @@ app.use('/api/stream', streamServiceProxy);
 
       const { loadDatabaseUrlTranslations } = await import('./shared/url-translations');
       await loadDatabaseUrlTranslations();
+
+      // Task #158: load slug-existence sets used by the slug-shape-404
+      // middleware so non-bot visitors get a real 404 for unknown
+      // genre/station slugs (not just shape-invalid ones). Done after
+      // Mongo is connected; periodic refresh keeps the set fresh.
+      try {
+        const { loadSlugExistence, startSlugExistenceRefresh } = await import('./seo/slug-existence');
+        await loadSlugExistence();
+        startSlugExistenceRefresh();
+      } catch (err) {
+        console.error('❌ FRONTEND-WEB: Slug-existence init failed:', err);
+      }
 
       // Sitemap subsystem (manifest-driven, refactored 2026-04-30):
       //   1. initializeQualifiedLanguages() — fail-closed warm-up + LKG seed.
