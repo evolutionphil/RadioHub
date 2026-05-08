@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -35,7 +35,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ArrowLeft, ChevronDown, Loader2, Star, X } from 'lucide-react';
+import {
+  ArrowLeft,
+  ChevronDown,
+  GripVertical,
+  Loader2,
+  Star,
+  X,
+} from 'lucide-react';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -225,6 +232,111 @@ export default function AdminCoverageCompare() {
       sanitizePresetsPrefs,
     );
   const presets = presetPrefs.presets;
+
+  // Drag-and-drop / keyboard reordering of saved-comparison chips.
+  // We use pointer events (which unify mouse + touch) plus Alt+Arrow
+  // keyboard shortcuts on each chip's grip handle so admins can reorder
+  // their presets on any input device. Order is persisted to the same
+  // AdminPreference store under `coverage-compare:presets:v1`.
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const presetListRef = useRef<HTMLDivElement | null>(null);
+  // Tracks the last drop-target id we reordered against during a single
+  // drag gesture. Used to suppress repeated swaps while the pointer is
+  // still hovering the same target — without this, pointermove fires
+  // continuously and re-splices the array on every event, which can
+  // cause visible jitter when the dragged chip changes width after
+  // moving and the pointer ends up over a new neighbour.
+  const lastOverIdRef = useRef<string | null>(null);
+
+  const reorderPresets = (sourceId: string, targetId: string) => {
+    if (sourceId === targetId) return;
+    setPresetPrefs((p) => {
+      const from = p.presets.findIndex((x) => x.id === sourceId);
+      const to = p.presets.findIndex((x) => x.id === targetId);
+      if (from < 0 || to < 0 || from === to) return p;
+      const arr = [...p.presets];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(to, 0, moved);
+      return { ...p, presets: arr };
+    });
+  };
+
+  const movePreset = (id: string, dir: -1 | 1) => {
+    setPresetPrefs((p) => {
+      const idx = p.presets.findIndex((x) => x.id === id);
+      if (idx < 0) return p;
+      const next = idx + dir;
+      if (next < 0 || next >= p.presets.length) return p;
+      const arr = [...p.presets];
+      [arr[idx], arr[next]] = [arr[next], arr[idx]];
+      return { ...p, presets: arr };
+    });
+  };
+
+  const findPresetIdAtPoint = (x: number, y: number): string | null => {
+    const root = presetListRef.current;
+    if (!root) return null;
+    const els = document.elementsFromPoint(x, y);
+    for (const el of els) {
+      if (!(el instanceof HTMLElement)) continue;
+      if (!root.contains(el)) continue;
+      const chip = el.closest<HTMLElement>('[data-preset-id]');
+      if (chip?.dataset.presetId) return chip.dataset.presetId;
+    }
+    return null;
+  };
+
+  const handleGripPointerDown = (
+    e: React.PointerEvent<HTMLButtonElement>,
+    id: string,
+  ) => {
+    if (e.button !== undefined && e.button !== 0) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    lastOverIdRef.current = id;
+    setDraggingId(id);
+  };
+
+  const handleGripPointerMove = (
+    e: React.PointerEvent<HTMLButtonElement>,
+    id: string,
+  ) => {
+    if (draggingId !== id) return;
+    const overId = findPresetIdAtPoint(e.clientX, e.clientY);
+    if (!overId || overId === id) return;
+    // Only swap when the pointer actually crosses into a different
+    // chip than the one we last reordered against. This prevents
+    // continuous re-splicing while hovering the same neighbour.
+    if (overId === lastOverIdRef.current) return;
+    lastOverIdRef.current = overId;
+    reorderPresets(id, overId);
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLButtonElement>) => {
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+      // Pointer may already be released; safe to ignore.
+    }
+    lastOverIdRef.current = null;
+    setDraggingId(null);
+  };
+
+  const handleGripKeyDown = (
+    e: React.KeyboardEvent<HTMLButtonElement>,
+    id: string,
+  ) => {
+    // Alt+ArrowLeft/Right (or Up/Down) reorders without conflicting with
+    // standard tab navigation or screen-reader arrow-key handling.
+    if (!e.altKey) return;
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      movePreset(id, -1);
+    } else if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      movePreset(id, 1);
+    }
+  };
 
   const activePresetId = useMemo(() => {
     const match = presets.find((p) =>
@@ -482,23 +594,49 @@ export default function AdminCoverageCompare() {
             <CardTitle className="text-base">Saved comparisons</CardTitle>
             <CardDescription>
               Quick-pick the country sets you've saved. Click a preset to load
-              it; the X removes it.
+              it; the X removes it. Drag the grip handle to reorder, or focus a
+              handle and press Alt + arrow keys.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap gap-2" data-testid="list-presets">
+            <div
+              ref={presetListRef}
+              className="flex flex-wrap gap-2"
+              data-testid="list-presets"
+            >
               {presets.map((preset) => {
                 const isActive = preset.id === activePresetId;
+                const isDragging = preset.id === draggingId;
                 return (
                   <div
                     key={preset.id}
-                    className={`flex items-center gap-1 rounded-full border pl-1 pr-1 py-0.5 text-xs ${
+                    data-preset-id={preset.id}
+                    className={`flex items-center gap-1 rounded-full border pl-0.5 pr-1 py-0.5 text-xs transition-opacity ${
                       isActive
                         ? 'border-primary bg-primary/10'
                         : 'border-border bg-background hover:bg-muted'
-                    }`}
+                    } ${isDragging ? 'opacity-60 ring-2 ring-primary/40' : ''}`}
                     data-testid={`chip-preset-${preset.id}`}
                   >
+                    <button
+                      type="button"
+                      onPointerDown={(e) =>
+                        handleGripPointerDown(e, preset.id)
+                      }
+                      onPointerMove={(e) =>
+                        handleGripPointerMove(e, preset.id)
+                      }
+                      onPointerUp={endDrag}
+                      onPointerCancel={endDrag}
+                      onKeyDown={(e) => handleGripKeyDown(e, preset.id)}
+                      className="p-1 rounded-full text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing touch-none"
+                      style={{ touchAction: 'none' }}
+                      aria-label={`Reorder preset ${preset.name}. Drag to move, or hold Alt and press the arrow keys.`}
+                      title="Drag to reorder, or Alt+Arrow keys"
+                      data-testid={`button-drag-preset-${preset.id}`}
+                    >
+                      <GripVertical className="w-3 h-3" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => applyPreset(preset)}
