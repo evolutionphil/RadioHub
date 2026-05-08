@@ -21,7 +21,10 @@ import {
 import { radioBrowserService } from "../services/radio-browser";
 import { scheduledBackfill } from "../services/scheduled-backfill";
 import { AdminSetting } from "@workspace/db-shared/mongo-schemas";
-import { scheduledGenreSlugCleanup } from "../services/scheduled-genre-slug-cleanup";
+import {
+  getGenreSlugCleanupRetention,
+  scheduledGenreSlugCleanup,
+} from "../services/scheduled-genre-slug-cleanup";
 import { getGenreSlugCleanupAlertThreshold } from "../services/genre-slug-cleanup-notifier";
 import { logger } from "../utils/logger";
 
@@ -606,12 +609,20 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
             .select({ startedAt: 1 })
             .lean<{ startedAt: Date } | null>(),
         ]);
+        // Echo the effective retention thresholds (Task #265) so the
+        // dashboard can render an accurate "kept for X days / Y rows"
+        // hint, matching the scheduled-backfill/runs endpoint.
+        const retention = getGenreSlugCleanupRetention();
         res.json({
           runs,
           total,
           oldestStartedAt: oldest?.startedAt ?? null,
           alertThreshold: getGenreSlugCleanupAlertThreshold(),
           status: scheduledGenreSlugCleanup.getStatus(),
+          retention: {
+            days: retention.days,
+            maxRows: retention.maxRows,
+          },
         });
       } catch (err: any) {
         logger.error(

@@ -7,6 +7,110 @@ import {
 } from '../scripts/cleanup-malformed-genre-slugs';
 import { notifyGenreSlugCleanupResult } from './genre-slug-cleanup-notifier';
 
+// Retention policy for the GenreSlugCleanupRun collection (Task #265).
+// Mirrors the BackfillRun retention pattern in `scheduled-backfill.ts`:
+// without it the audit collection grows unbounded — one row per weekly
+// cron, plus every admin-triggered manual run — which would slow the
+// new history endpoint over time. After every sweep finishes we drop:
+//   - rows older than the resolved days threshold (default 90 days), AND
+//   - anything beyond the newest N rows (default 200) regardless of age.
+// Bounds and defaults intentionally match the BackfillRun policy so
+// admins reason about a single retention story across both audits.
+export const GENRE_SLUG_CLEANUP_RETENTION_DAYS_DEFAULT = 90;
+export const GENRE_SLUG_CLEANUP_RETENTION_MAX_ROWS_DEFAULT = 200;
+export const GENRE_SLUG_CLEANUP_RETENTION_DAYS_MIN = 1;
+export const GENRE_SLUG_CLEANUP_RETENTION_DAYS_MAX = 3650;
+export const GENRE_SLUG_CLEANUP_RETENTION_MAX_ROWS_MIN = 10;
+export const GENRE_SLUG_CLEANUP_RETENTION_MAX_ROWS_MAX = 100_000;
+
+function envGenreSlugCleanupRetentionDays(): number {
+  const raw = Number.parseInt(
+    process.env.GENRE_SLUG_CLEANUP_RETENTION_DAYS ?? '',
+    10,
+  );
+  if (Number.isFinite(raw) && raw >= GENRE_SLUG_CLEANUP_RETENTION_DAYS_MIN) {
+    return Math.min(raw, GENRE_SLUG_CLEANUP_RETENTION_DAYS_MAX);
+  }
+  return GENRE_SLUG_CLEANUP_RETENTION_DAYS_DEFAULT;
+}
+
+function envGenreSlugCleanupRetentionMaxRows(): number {
+  const raw = Number.parseInt(
+    process.env.GENRE_SLUG_CLEANUP_RETENTION_MAX_ROWS ?? '',
+    10,
+  );
+  if (
+    Number.isFinite(raw) &&
+    raw >= GENRE_SLUG_CLEANUP_RETENTION_MAX_ROWS_MIN
+  ) {
+    return Math.min(raw, GENRE_SLUG_CLEANUP_RETENTION_MAX_ROWS_MAX);
+  }
+  return GENRE_SLUG_CLEANUP_RETENTION_MAX_ROWS_DEFAULT;
+}
+
+/**
+ * Resolve the effective retention thresholds. Resolved on each call so
+ * env-var changes take effect on the next prune without a redeploy
+ * (matches the spirit of `resolveBackfillRetentionSettings`, minus the
+ * admin-tunable DB layer which is out of scope for Task #265).
+ */
+export function getGenreSlugCleanupRetention(): {
+  days: number;
+  maxRows: number;
+} {
+  return {
+    days: envGenreSlugCleanupRetentionDays(),
+    maxRows: envGenreSlugCleanupRetentionMaxRows(),
+  };
+}
+
+/**
+ * Drop GenreSlugCleanupRun rows that fall outside the retention window.
+ * Best-effort: any error is logged and swallowed so a transient Mongo
+ * blip never poisons the sweep that just finished.
+ *
+ * Two passes (mirrors `pruneOldBackfillRuns`):
+ *   1. Delete rows older than the resolved days threshold.
+ *   2. Find the `startedAt` of the Nth-newest row and delete anything
+ *      strictly older — caps total row count even if the time bound
+ *      alone would let more through (e.g. a burst of manual runs in a
+ *      short window).
+ */
+export async function pruneOldGenreSlugCleanupRuns(): Promise<{
+  removed: number;
+}> {
+  let removed = 0;
+  try {
+    const { days, maxRows } = getGenreSlugCleanupRetention();
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const byAge = await GenreSlugCleanupRun.deleteMany({
+      startedAt: { $lt: cutoff },
+    });
+    removed += byAge.deletedCount ?? 0;
+
+    const pivotDoc = await GenreSlugCleanupRun.find()
+      .sort({ startedAt: -1 })
+      .skip(maxRows - 1)
+      .limit(1)
+      .select({ startedAt: 1 })
+      .lean<{ startedAt: Date } | null>();
+    if (pivotDoc?.startedAt) {
+      const byCount = await GenreSlugCleanupRun.deleteMany({
+        startedAt: { $lt: pivotDoc.startedAt },
+      });
+      removed += byCount.deletedCount ?? 0;
+    }
+    if (removed > 0) {
+      logger.log(
+        `🧹 Pruned ${removed} old GenreSlugCleanupRun row(s) (retention: ${days}d / ${maxRows} rows)`,
+      );
+    }
+  } catch (err) {
+    logger.warn('⚠️  pruneOldGenreSlugCleanupRuns failed (non-fatal):', err);
+  }
+  return { removed };
+}
+
 /**
  * Weekly cron that re-runs the genre-slug cleanup pass added one-shot in
  * Task #110 (`scripts/cleanup-malformed-genre-slugs.ts`). The schema
@@ -205,6 +309,10 @@ class ScheduledGenreSlugCleanup {
       return run;
     } finally {
       this.isRunning = false;
+      // Apply retention after every sweep so the GenreSlugCleanupRun
+      // collection never grows unbounded. Best-effort — see
+      // `pruneOldGenreSlugCleanupRuns`.
+      await pruneOldGenreSlugCleanupRuns();
     }
   }
 }
