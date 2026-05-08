@@ -419,6 +419,67 @@ export default function AdminCountryLanguageMappings() {
   };
   const [downloadingAuditId, setDownloadingAuditId] = useState<string | null>(null);
   const [isDownloadingAuditAll, setIsDownloadingAuditAll] = useState(false);
+  const [undoingAuditId, setUndoingAuditId] = useState<string | null>(null);
+
+  // Revert an individual audit entry by replaying its `changes` in reverse:
+  // for each row, restore the `previousLanguageCode` (via the bulk endpoint)
+  // or DELETE the mapping when there was no prior value. The bulk-save and
+  // delete endpoints both write their own audit entries, so the revert is
+  // captured in the history panel automatically.
+  const handleUndoAuditEntry = async (entry: ClearedOverridesAuditEntry) => {
+    if (undoingAuditId) return;
+    const changes = entry.changes ?? [];
+    if (changes.length === 0) return;
+    setUndoingAuditId(entry.id);
+    try {
+      const toUpsert = changes
+        .filter((c) => c.previousLanguageCode)
+        .map((c) => ({
+          countryCode: c.countryCode,
+          countryName: c.countryName,
+          languageCode: c.previousLanguageCode as string,
+        }));
+      const toDelete = changes
+        .filter((c) => !c.previousLanguageCode && c.newLanguageCode)
+        .map((c) => c.countryCode);
+
+      if (toUpsert.length === 0 && toDelete.length === 0) {
+        toast({
+          title: 'Nothing to undo',
+          description: 'This change has no recoverable previous state.',
+        });
+        return;
+      }
+
+      if (toUpsert.length > 0) {
+        await bulkSaveMutation.mutateAsync(toUpsert);
+      }
+      for (const code of toDelete) {
+        await deleteMappingMutation.mutateAsync(code);
+      }
+
+      // Both mutations invalidate the mappings + audit log queries already,
+      // but refetch explicitly so the history panel re-renders before the
+      // next paint and the new revert entries appear immediately.
+      await refetchAuditLog();
+
+      const reverted = toUpsert.length + toDelete.length;
+      toast({
+        title: 'Change reverted',
+        description: `Restored ${reverted} ${reverted === 1 ? 'mapping' : 'mappings'} to their previous values.`,
+      });
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to undo this change';
+      toast({
+        title: 'Failed to undo change',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setUndoingAuditId(null);
+    }
+  };
 
   const handleDownloadAllAuditCsv = async () => {
     if (isDownloadingAuditAll) return;
@@ -2065,6 +2126,28 @@ export default function AdminCountryLanguageMappings() {
                                 <Download className="mr-2 h-3 w-3" />
                               )}
                               Download CSV
+                            </Button>
+                          )}
+                          {hasChanges && (
+                            <Button
+                              data-testid={`button-undo-audit-${entry.id}`}
+                              size="sm"
+                              variant="outline"
+                              className="h-7 text-xs"
+                              onClick={() => void handleUndoAuditEntry(entry)}
+                              disabled={
+                                undoingAuditId !== null ||
+                                bulkSaveMutation.isPending ||
+                                deleteMappingMutation.isPending
+                              }
+                              title="Restore the previous values for this change"
+                            >
+                              {undoingAuditId === entry.id ? (
+                                <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                              ) : (
+                                <Undo2 className="mr-2 h-3 w-3" />
+                              )}
+                              Undo this change
                             </Button>
                           )}
                         </div>
