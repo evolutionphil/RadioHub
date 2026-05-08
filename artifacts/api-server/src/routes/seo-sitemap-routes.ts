@@ -10,7 +10,6 @@ import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
 import { sendSitemapGone } from "../seo/send-sitemap-gone";
-import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from "../shared/country-regions";
 import {
   getCachedQualifiedLanguages,
   getQualifiedLanguagesState,
@@ -20,6 +19,7 @@ import {
   buildAllSitemapManifests,
   getActiveManifest,
   getActiveStationChunk,
+  extractTopCountriesFromChunk,
 } from "../seo/sitemap-manifest-builder";
 
 // Centralized XML escape helper (Architect B P0)
@@ -127,46 +127,14 @@ function send304IfNotModifiedSince(req: any, res: any, date: Date | null | undef
   return false;
 }
 
-// Top-countries cache for sitemap-main-{lang}.xml. Lists are very stable
-// (countries don't churn) so we cache for 1h to avoid hammering Mongo on
-// every sitemap request. Each entry: { regionSlug, countrySlug } usable with
-// buildLocalizedUrl('/regions/<region>/<country>', ...).
-const TOP_COUNTRIES_CACHE_TTL_MS = 60 * 60 * 1000;
-let topCountriesCache: { at: number; entries: Array<{ regionSlug: string; countrySlug: string }> } | null = null;
-async function getTopCountriesForSitemap(limit = 30): Promise<Array<{ regionSlug: string; countrySlug: string }>> {
-  if (topCountriesCache && Date.now() - topCountriesCache.at < TOP_COUNTRIES_CACHE_TTL_MS) {
-    return topCountriesCache.entries;
-  }
-  try {
-    const rows: Array<{ _id: string; count: number }> = await Station.aggregate([
-      { $match: { country: { $exists: true, $ne: '' }, $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }] } },
-      { $group: { _id: '$country', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: limit * 2 }, // overfetch — some countries may not map to a region
-    ]).allowDiskUse(true);
-    const entries: Array<{ regionSlug: string; countrySlug: string }> = [];
-    const seen = new Set<string>();
-    for (const r of rows) {
-      const canonical = canonicalizeCountry(String(r._id || ''));
-      if (!canonical) continue;
-      const region = getRegionSlugForCountry(canonical);
-      if (!region) continue;
-      const slug = countrySlug(canonical);
-      if (!slug) continue;
-      const key = `${region}/${slug}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      entries.push({ regionSlug: region, countrySlug: slug });
-      if (entries.length >= limit) break;
-    }
-    topCountriesCache = { at: Date.now(), entries };
-    return entries;
-  } catch (err) {
-    logger.error('❌ getTopCountriesForSitemap failed:', err);
-    // Best-effort: keep serving sitemap with static entries only.
-    return topCountriesCache?.entries ?? [];
-  }
-}
+// Top-countries for sitemap-main-{lang}.xml are computed during the
+// SitemapManifest build (see sitemap-manifest-builder.buildMainChunks) and
+// baked into the active 'main' manifest's chunks[0].stationIds. The route
+// reads them back via extractTopCountriesFromChunk() so:
+//   - cache invalidation is deterministic (manifest content-version changes
+//     when the country leaderboard shifts → ETag flips automatically),
+//   - <lastmod>/Last-Modified bump on station updates within those countries,
+//   - admins can force-refresh via POST /api/admin/sitemap/rebuild.
 
 /** Stable ETag = sha256(prefix|hash|version|lastmod). 16-char hex. */
 function makeManifestEtag(parts: (string | number | undefined | null)[]): string {
@@ -476,6 +444,21 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
     }
   });
 
+  // Task #154: admin manual cache-bust / rebuild trigger.
+  // Forces a full SitemapManifest rebuild (stations + genres + main). Use after
+  // bulk station imports/deletions when you need the published sitemap to
+  // refresh before the next 6-hour scheduled refresh — including the top-30
+  // country list embedded in /sitemap-main-{lang}.xml.
+  app.post("/api/admin/sitemap/rebuild", requireAdmin, async (_req, res) => {
+    try {
+      const result = await buildAllSitemapManifests({ force: true });
+      res.json({ ok: true, ...result });
+    } catch (err: any) {
+      logger.error('admin/sitemap/rebuild failed:', err?.message ?? err);
+      res.status(500).json({ ok: false, error: err?.message ?? 'rebuild failed' });
+    }
+  });
+
   if (options?.apiOnly) {
     return;
   }
@@ -641,20 +624,20 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         return res.status(503).send('Manifest building — retry shortly');
       }
 
-      // Task #128: top countries are appended dynamically — fold their
-      // signature into the ETag + cache key so additions/removals invalidate
-      // CDN/304s correctly even though they aren't tracked by the manifest.
-      const topCountries = await getTopCountriesForSitemap(30);
-      const topCountriesSig = crypto.createHash('sha256')
-        .update(topCountries.map(c => `${c.regionSlug}/${c.countrySlug}`).join('|'))
-        .digest('hex').slice(0, 12);
+      // Task #154: top countries are part of the manifest now — reading them
+      // from chunks[0].stationIds keeps the country list, the manifest
+      // content-version hash, and the ETag in lockstep. No separate cache
+      // sig is needed because the manifest version already covers it.
+      const topCountries = manifest.chunks.length > 0
+        ? extractTopCountriesFromChunk(manifest.chunks[0].stationIds)
+        : [];
 
       const lastmod = formatLastmod(manifest.maxUpdatedAt);
-      const etag = makeManifestEtag(['main', lang, state.hash, manifest.version, lastmod, topCountriesSig]);
+      const etag = makeManifestEtag(['main', lang, state.hash, manifest.version, lastmod]);
       if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
-      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}:${topCountriesSig}`;
+      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}`;
       const cached = await CacheManager.get<string>(cacheKey);
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');

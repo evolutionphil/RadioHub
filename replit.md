@@ -38,6 +38,17 @@ A shared reverse proxy routes by path:
 - `/api/*` → api-server (port 8080)
 - `/` → megaradio Vite dev server (port 22507)
 
+## Sitemap operations
+
+- The top-30 country list embedded in `/sitemap-main-{lang}.xml` is computed
+  during the `SitemapManifest` build (see `seo/sitemap-manifest-builder.ts`)
+  and baked into the active `main` manifest's `chunks[0].stationIds` as
+  `tc:<region>/<country>` markers. ETag/Last-Modified for those sitemaps
+  flip automatically when the country leaderboard or recent station updates
+  inside those countries change.
+- After a bulk import/cleanup, force an immediate refresh with:
+  `POST /api/admin/sitemap/rebuild` (admin-only).
+
 ## Important Migration Notes
 
 - `artifacts/api-server/src/shared/` — shared Mongoose schemas (duplicated from legacy `shared/`)

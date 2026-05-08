@@ -31,6 +31,7 @@ import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from '
 import { getIndexableLanguagesForStation } from './junk-station-rules';
 import { isWhitelistedGenreSlug, MIN_STATIONS_FOR_GENRE_INDEX } from './genre-whitelist';
 import { RESERVED_GENRE_SLUGS } from './reserved-genre-slugs';
+import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from '../shared/country-regions';
 
 // Re-export so other modules importing from the manifest builder still
 // get a single source of truth (task #148).
@@ -416,25 +417,110 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
   };
 }
 
-/** Build the "main" manifest — fixed list of static main pages per language.
- * Has zero dynamic IDs; chunk count is always 1. */
-function buildMainChunks(): { chunk: ISitemapManifestChunk; totalUrls: number } {
-  // Static main pages — must mirror sitemap-main-:lang.xml route.
-  // Task #128: includes /faq, /contact, /privacy-policy, /terms-and-conditions,
-  // /applications so Google has a discovery path to those pages. The route
-  // additionally appends top-country region URLs at request time.
-  // NOTE: totalUrls counts STATIC pages only. The route also appends ~30
-  // top-country URLs per language at request time which are NOT included in
-  // this count — the manifest's urlCount will under-report actual emitted
-  // URLs. Top-country invalidation is handled via the topCountriesSig folded
-  // into the route's ETag + cache key (see seo-sitemap-routes.ts).
-  const PAGES = ['', '/stations', '/genres', '/about', '/regions',
-    '/regions/europe', '/regions/asia', '/regions/africa',
-    '/regions/north-america', '/regions/south-america', '/regions/oceania',
-    '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications'];
+// Static main pages — must mirror sitemap-main-:lang.xml route.
+// Task #128: includes /faq, /contact, /privacy-policy, /terms-and-conditions,
+// /applications so Google has a discovery path to those pages.
+const MAIN_STATIC_PAGES = ['', '/stations', '/genres', '/about', '/regions',
+  '/regions/europe', '/regions/asia', '/regions/africa',
+  '/regions/north-america', '/regions/south-america', '/regions/oceania',
+  '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications'];
+
+const TOP_COUNTRIES_LIMIT = 30;
+
+/** Marker prefix used in chunk.stationIds to distinguish top-country region/country
+ * pairs from station ObjectIds. The schema field is Mixed[] so strings are accepted.
+ * Routes parse these out to render `/regions/<region>/<country>` URLs. */
+const TOP_COUNTRY_PREFIX = 'tc:';
+
+export function encodeTopCountryEntry(regionSlug: string, countrySlug: string): string {
+  return `${TOP_COUNTRY_PREFIX}${regionSlug}/${countrySlug}`;
+}
+
+/** Parse top-country entries out of a main-manifest chunk's stationIds.
+ * Filters strings prefixed with `tc:` and returns ordered { regionSlug, countrySlug }. */
+export function extractTopCountriesFromChunk(
+  stationIds: Array<mongoose.Types.ObjectId | string>,
+): Array<{ regionSlug: string; countrySlug: string }> {
+  const out: Array<{ regionSlug: string; countrySlug: string }> = [];
+  for (const id of stationIds) {
+    if (typeof id !== 'string') continue;
+    if (!id.startsWith(TOP_COUNTRY_PREFIX)) continue;
+    const rest = id.slice(TOP_COUNTRY_PREFIX.length);
+    const slash = rest.indexOf('/');
+    if (slash <= 0) continue;
+    const regionSlug = rest.slice(0, slash);
+    const cSlug = rest.slice(slash + 1);
+    if (!regionSlug || !cSlug) continue;
+    out.push({ regionSlug, countrySlug: cSlug });
+  }
+  return out;
+}
+
+/** Aggregate top countries (by indexable station count) into ordered region/country
+ * pairs and compute the freshest station updatedAt across those countries.
+ * Used by the main-manifest builder so:
+ *   - The country set is part of the manifest's content version → ETag flips when
+ *     it changes (deterministic invalidation).
+ *   - maxUpdatedAt feeds <lastmod>/Last-Modified, so listings reflect the latest
+ *     station change inside any of the top countries (not just an arbitrary clock).
+ */
+async function computeTopCountriesForMain(limit: number): Promise<{
+  entries: Array<{ regionSlug: string; countrySlug: string }>;
+  maxUpdatedAt?: Date;
+  rawCountryNames: string[];
+}> {
+  try {
+    const rows: Array<{ _id: string; count: number; maxUpdatedAt?: Date }> = await Station.aggregate([
+      { $match: { country: { $exists: true, $ne: '' }, $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }] } },
+      { $group: { _id: '$country', count: { $sum: 1 }, maxUpdatedAt: { $max: '$updatedAt' } } },
+      { $sort: { count: -1 } },
+      { $limit: limit * 2 },
+    ]).allowDiskUse(true);
+
+    const entries: Array<{ regionSlug: string; countrySlug: string }> = [];
+    const rawCountryNames: string[] = [];
+    const seen = new Set<string>();
+    let max: Date | undefined;
+    for (const r of rows) {
+      const canonical = canonicalizeCountry(String(r._id || ''));
+      if (!canonical) continue;
+      const region = getRegionSlugForCountry(canonical);
+      if (!region) continue;
+      const slug = countrySlug(canonical);
+      if (!slug) continue;
+      const key = `${region}/${slug}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({ regionSlug: region, countrySlug: slug });
+      rawCountryNames.push(String(r._id));
+      if (r.maxUpdatedAt instanceof Date && (!max || r.maxUpdatedAt > max)) {
+        max = r.maxUpdatedAt;
+      }
+      if (entries.length >= limit) break;
+    }
+    return { entries, maxUpdatedAt: max, rawCountryNames };
+  } catch (err) {
+    logger.error('❌ computeTopCountriesForMain failed:', err);
+    return { entries: [], rawCountryNames: [] };
+  }
+}
+
+/** Build the "main" manifest — static main pages + top-N region/country pages.
+ * Top-country entries are baked into chunks[0].stationIds (as `tc:<region>/<country>`
+ * marker strings) so the manifest's content-version hash flips deterministically
+ * when station data shifts the country leaderboard. */
+async function buildMainChunks(): Promise<{ chunk: ISitemapManifestChunk; totalUrls: number }> {
+  const top = await computeTopCountriesForMain(TOP_COUNTRIES_LIMIT);
+  const topIds: string[] = top.entries.map((e) => encodeTopCountryEntry(e.regionSlug, e.countrySlug));
+  const totalUrls = MAIN_STATIC_PAGES.length + topIds.length;
   return {
-    chunk: { chunk: 1, stationIds: [], urlCount: PAGES.length, maxUpdatedAt: undefined },
-    totalUrls: PAGES.length,
+    chunk: {
+      chunk: 1,
+      stationIds: topIds, // static pages are hardcoded in the route; only dynamic entries here
+      urlCount: totalUrls,
+      maxUpdatedAt: top.maxUpdatedAt,
+    },
+    totalUrls,
   };
 }
 
@@ -488,8 +574,9 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
     // GENRES — one shared snapshot reused per language (URL is per-lang but ids identical).
     const genreData = await buildGenreChunks();
 
-    // MAIN — static.
-    const mainData = buildMainChunks();
+    // MAIN — static pages + top-N region/country pages (one snapshot reused per
+    // language; URL is per-lang but the country set is identical).
+    const mainData = await buildMainChunks();
 
     // Write building docs and activate per (type, lang).
     const perLangCounts: Record<string, number> = {};
