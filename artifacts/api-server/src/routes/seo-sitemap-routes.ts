@@ -524,20 +524,36 @@ ${baseUrl}/en/terms-and-conditions
   // Robots.txt generator
   app.get("/robots.txt", async (req, res) => {
     const baseUrl = getBaseUrl(req);
-    // robots.txt rule order (Architect B P1):
-    // 1. Specific Allow rules for /api/* (so Google WRS can fetch SSR data endpoints)
-    // 2. Disallow /api/ catch-all (blocks the rest of /api from being crawled as content)
-    // 3. Disallow admin / private routes
-    // 4. Allow / catch-all LAST (defensive default for any unmatched path)
+    // robots.txt rule order (revised 2026-05-08):
+    // Strategy: open /api/ broadly so Google's WRS can fetch ANY SSR data
+    // endpoint (current OR future) without us having to maintain a whitelist.
+    // We only Disallow the few /api/ subtrees that are genuinely sensitive
+    // (admin, auth flows, user-scoped data, billing, audio stream proxy,
+    // test/sync helpers). Google's "longest match wins" rule means these
+    // narrower Disallows correctly override the broad Allow: /api/.
     const robots = `User-agent: *
-Allow: /api/station/
-Allow: /api/stations/
-Allow: /api/genres
-Allow: /api/translations
-Allow: /api/location
-Allow: /api/advertisements
-Allow: /api/og-image
-Disallow: /api/
+Allow: /api/
+Disallow: /api/admin/
+Disallow: /api/auth/
+Disallow: /api/user/
+Disallow: /api/users/
+Disallow: /api/sync/
+Disallow: /api/test/
+Disallow: /api/payments/
+Disallow: /api/iap/
+Disallow: /api/push/
+Disallow: /api/stream/
+Disallow: /api/stream-analysis
+Disallow: /api/stream-https-analysis
+Disallow: /api/tv/
+Disallow: /api/analytics
+Disallow: /api/messages/
+Disallow: /api/cast/
+Disallow: /api/ml/
+Disallow: /api/image/
+Disallow: /api/internal/
+Disallow: /api/cache/
+Disallow: /api/logs/
 Disallow: /*/admin/
 Disallow: /*/admin
 Disallow: /*/settings
@@ -553,14 +569,26 @@ Allow: /
 
 User-agent: Baiduspider
 Crawl-delay: 10
-Allow: /api/station/
-Allow: /api/stations/
-Allow: /api/genres
-Allow: /api/translations
-Allow: /api/location
-Allow: /api/advertisements
-Allow: /api/og-image
-Disallow: /api/
+Allow: /api/
+Disallow: /api/admin/
+Disallow: /api/auth/
+Disallow: /api/user/
+Disallow: /api/users/
+Disallow: /api/sync/
+Disallow: /api/test/
+Disallow: /api/payments/
+Disallow: /api/iap/
+Disallow: /api/push/
+Disallow: /api/stream/
+Disallow: /api/tv/
+Disallow: /api/analytics
+Disallow: /api/messages/
+Disallow: /api/cast/
+Disallow: /api/ml/
+Disallow: /api/image/
+Disallow: /api/internal/
+Disallow: /api/cache/
+Disallow: /api/logs/
 Disallow: /*/admin/
 Disallow: /*/admin
 Disallow: /*/settings
@@ -572,14 +600,26 @@ Allow: /
 
 User-agent: Sogou
 Crawl-delay: 30
-Allow: /api/station/
-Allow: /api/stations/
-Allow: /api/genres
-Allow: /api/translations
-Allow: /api/location
-Allow: /api/advertisements
-Allow: /api/og-image
-Disallow: /api/
+Allow: /api/
+Disallow: /api/admin/
+Disallow: /api/auth/
+Disallow: /api/user/
+Disallow: /api/users/
+Disallow: /api/sync/
+Disallow: /api/test/
+Disallow: /api/payments/
+Disallow: /api/iap/
+Disallow: /api/push/
+Disallow: /api/stream/
+Disallow: /api/tv/
+Disallow: /api/analytics
+Disallow: /api/messages/
+Disallow: /api/cast/
+Disallow: /api/ml/
+Disallow: /api/image/
+Disallow: /api/internal/
+Disallow: /api/cache/
+Disallow: /api/logs/
 Disallow: /*/admin/
 Disallow: /*/admin
 Disallow: /*/settings
