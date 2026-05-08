@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -352,6 +352,181 @@ export default function RadioHeader({
 
   const searchLoading = (searchQuery.trim().length >= 2 && debouncedSearchQuery !== searchQuery) || isSearching || isGenresFetching || isCountriesFetching;
   const hasAnyResults = filteredStations.length > 0 || matchingGenres.length > 0 || matchingCountries.length > 0;
+
+  // Keyboard navigation for the header search dropdown — mirrors /search.
+  // Items are flattened in display order: genres → countries → stations.
+  const PAGE_STEP = 10;
+  const STATION_LIMIT = 10;
+  const visibleStations = useMemo(
+    () => filteredStations.slice(0, STATION_LIMIT),
+    [filteredStations]
+  );
+  const flatSearchItems = useMemo(() => {
+    type Item =
+      | { kind: 'genre'; id: string; href: string }
+      | { kind: 'country'; id: string; href: string }
+      | { kind: 'station'; id: string; station: any };
+    const items: Item[] = [];
+    for (const g of matchingGenres) {
+      items.push({
+        kind: 'genre',
+        id: `genre-${g.slug}`,
+        href: `${langPrefix}/genres/${encodeURIComponent(g.slug)}`,
+      });
+    }
+    for (const c of matchingCountries) {
+      items.push({
+        kind: 'country',
+        id: `country-${c.canonical}`,
+        href: `${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`,
+      });
+    }
+    visibleStations.forEach((station: any, idx: number) => {
+      const slug = station.slug || station._id || idx;
+      items.push({
+        kind: 'station',
+        id: `station-${slug}-${idx}`,
+        station,
+      });
+    });
+    return items;
+  }, [matchingGenres, matchingCountries, visibleStations, langPrefix]);
+
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const searchItemRefs = useRef<Map<string, HTMLElement | null>>(new Map());
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
+  const suppressSearchHoverRef = useRef(false);
+
+  useEffect(() => {
+    const onMove = () => { suppressSearchHoverRef.current = false; };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
+  // Reset highlight whenever the query or the result set changes
+  useEffect(() => {
+    setActiveSearchIndex(-1);
+  }, [debouncedSearchQuery]);
+
+  useEffect(() => {
+    if (activeSearchIndex >= flatSearchItems.length) setActiveSearchIndex(-1);
+  }, [flatSearchItems.length, activeSearchIndex]);
+
+  // Reset when the dropdown closes
+  useEffect(() => {
+    if (!isSearchOpen) setActiveSearchIndex(-1);
+  }, [isSearchOpen]);
+
+  // Scroll the highlighted item into view
+  useEffect(() => {
+    if (activeSearchIndex < 0) return;
+    const item = flatSearchItems[activeSearchIndex];
+    if (!item) return;
+    const el = searchItemRefs.current.get(item.id);
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [activeSearchIndex, flatSearchItems]);
+
+  const setSearchItemRef = useCallback(
+    (id: string) => (el: HTMLElement | null) => {
+      if (el) searchItemRefs.current.set(id, el);
+      else searchItemRefs.current.delete(id);
+    },
+    []
+  );
+
+  const setActiveSearchById = useCallback(
+    (id: string) => {
+      if (suppressSearchHoverRef.current) return;
+      const idx = flatSearchItems.findIndex((it) => it.id === id);
+      if (idx >= 0) setActiveSearchIndex(idx);
+    },
+    [flatSearchItems]
+  );
+
+  const activateSearchItem = useCallback(
+    (item: typeof flatSearchItems[number]) => {
+      if (item.kind === 'station') {
+        playStation(item.station);
+        setIsSearchOpen(false);
+        setSearchQuery('');
+        setLocation(getStationUrl(item.station));
+      } else {
+        setIsSearchOpen(false);
+        setSearchQuery('');
+        setLocation(item.href);
+      }
+    },
+    [playStation, setLocation]
+  );
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (searchQuery !== '') {
+        setSearchQuery('');
+        setActiveSearchIndex(-1);
+      } else {
+        setIsSearchOpen(false);
+      }
+      return;
+    }
+    // Don't navigate or activate when the dropdown isn't showing results.
+    // Without this, a short window exists where the user can press Enter on
+    // stale results after backspacing the query below the 2-char threshold.
+    if (searchQuery.trim().length < 2 || flatSearchItems.length === 0) {
+      if (e.key === 'Enter') e.preventDefault();
+      return;
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      suppressSearchHoverRef.current = true;
+      setActiveSearchIndex((i) => (i < 0 ? 0 : (i + 1) % flatSearchItems.length));
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      suppressSearchHoverRef.current = true;
+      setActiveSearchIndex((i) => (i <= 0 ? flatSearchItems.length - 1 : i - 1));
+      return;
+    }
+    if (e.key === 'Home') {
+      e.preventDefault();
+      suppressSearchHoverRef.current = true;
+      setActiveSearchIndex(0);
+      return;
+    }
+    if (e.key === 'End') {
+      e.preventDefault();
+      suppressSearchHoverRef.current = true;
+      setActiveSearchIndex(flatSearchItems.length - 1);
+      return;
+    }
+    if (e.key === 'PageDown') {
+      e.preventDefault();
+      suppressSearchHoverRef.current = true;
+      setActiveSearchIndex((i) => Math.min((i < 0 ? 0 : i) + PAGE_STEP, flatSearchItems.length - 1));
+      return;
+    }
+    if (e.key === 'PageUp') {
+      e.preventDefault();
+      suppressSearchHoverRef.current = true;
+      setActiveSearchIndex((i) => Math.max((i < 0 ? 0 : i) - PAGE_STEP, 0));
+      return;
+    }
+    if (e.key === 'Enter') {
+      const target = flatSearchItems[activeSearchIndex] ?? flatSearchItems[0];
+      if (target) {
+        e.preventDefault();
+        activateSearchItem(target);
+      }
+    }
+  };
+
+  const activeSearchId =
+    activeSearchIndex >= 0 ? flatSearchItems[activeSearchIndex]?.id ?? null : null;
+  const searchFocusRingClass = 'ring-2 ring-[#FF4199] ring-offset-2 ring-offset-[#1D1D1D]';
 
   return (
     <>
@@ -828,12 +1003,19 @@ export default function RadioHeader({
               
               <div className="relative">
                 <input
+                  ref={searchInputRef}
                   type="text"
                   placeholder={t('search_placeholder', 'Search stations, genres, countries…')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   onClick={(e) => e.stopPropagation()}
                   onFocus={(e) => e.stopPropagation()}
+                  onKeyDown={handleSearchKeyDown}
+                  role="combobox"
+                  aria-expanded={searchQuery.length >= 2 && hasAnyResults}
+                  aria-controls="header-search-results"
+                  aria-activedescendant={activeSearchId ?? undefined}
+                  aria-autocomplete="list"
                   className="w-full h-12 bg-[#0E0E0E] border border-[#2F2F2F] rounded-xl pl-4 pr-12 text-white placeholder-gray-400 focus:border-[#FF4199] focus:outline-none"
                   autoFocus
                 />
@@ -846,7 +1028,11 @@ export default function RadioHeader({
 
               {/* Search Results */}
               {searchQuery && searchQuery.length >= 2 && (
-                <div className="mt-4 max-h-96 overflow-y-auto">
+                <div
+                  className="mt-4 max-h-96 overflow-y-auto"
+                  id="header-search-results"
+                  role="listbox"
+                >
                   {searchLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-transparent"></div>
@@ -860,15 +1046,23 @@ export default function RadioHeader({
                             <Music size={14} className="text-[#FF4199]" />
                             <span>{t('search_section_genres', 'Genres')}</span>
                           </div>
-                          {matchingGenres.map((g) => (
+                          {matchingGenres.map((g) => {
+                            const id = `genre-${g.slug}`;
+                            const isActive = activeSearchId === id;
+                            return (
                             <Link
-                              key={`genre-${g.slug}`}
+                              key={id}
                               href={`${langPrefix}/genres/${encodeURIComponent(g.slug)}`}
+                              ref={setSearchItemRef(id)}
+                              id={id}
+                              role="option"
+                              aria-selected={isActive}
+                              onMouseEnter={() => setActiveSearchById(id)}
                               onClick={() => {
                                 setIsSearchOpen(false);
                                 setSearchQuery("");
                               }}
-                              className="flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors"
+                              className={`flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors ${isActive ? searchFocusRingClass : ''}`}
                               data-testid={`header-search-genre-${g.slug}`}
                             >
                               <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center mr-3 flex-shrink-0">
@@ -885,7 +1079,8 @@ export default function RadioHeader({
                                 )}
                               </div>
                             </Link>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
@@ -895,15 +1090,23 @@ export default function RadioHeader({
                             <Globe size={14} className="text-[#FF4199]" />
                             <span>{t('search_section_countries', 'Countries')}</span>
                           </div>
-                          {matchingCountries.map((c) => (
+                          {matchingCountries.map((c) => {
+                            const id = `country-${c.canonical}`;
+                            const isActive = activeSearchId === id;
+                            return (
                             <Link
-                              key={`country-${c.canonical}`}
+                              key={id}
                               href={`${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`}
+                              ref={setSearchItemRef(id)}
+                              id={id}
+                              role="option"
+                              aria-selected={isActive}
+                              onMouseEnter={() => setActiveSearchById(id)}
                               onClick={() => {
                                 setIsSearchOpen(false);
                                 setSearchQuery("");
                               }}
-                              className="flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors"
+                              className={`flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors ${isActive ? searchFocusRingClass : ''}`}
                               data-testid={`header-search-country-${countrySlug(c.canonical)}`}
                             >
                               <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center mr-3 flex-shrink-0">
@@ -920,7 +1123,8 @@ export default function RadioHeader({
                                 )}
                               </div>
                             </Link>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
@@ -931,10 +1135,19 @@ export default function RadioHeader({
                               <span>{t('search_section_stations', 'Stations')}</span>
                             </div>
                           )}
-                      {filteredStations.slice(0, 10).map((station: any, index: number) => (
+                      {visibleStations.map((station: any, index: number) => {
+                        const slug = station.slug || station._id || index;
+                        const id = `station-${slug}-${index}`;
+                        const isActive = activeSearchId === id;
+                        return (
                         <div
                           key={station._id || index}
-                          className="flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors"
+                          ref={setSearchItemRef(id)}
+                          id={id}
+                          role="option"
+                          aria-selected={isActive}
+                          onMouseEnter={() => setActiveSearchById(id)}
+                          className={`flex items-center p-3 hover:bg-[#2F2F2F] rounded-lg cursor-pointer transition-colors ${isActive ? searchFocusRingClass : ''}`}
                           onClick={() => {
                             playStation(station);
                             setIsSearchOpen(false);
@@ -973,7 +1186,8 @@ export default function RadioHeader({
                             </div>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                         </div>
                       )}
                     </div>
