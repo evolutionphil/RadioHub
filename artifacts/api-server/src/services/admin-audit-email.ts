@@ -61,6 +61,47 @@ export function buildResetMappingsCsv(
   return rowsToCsv(header, body);
 }
 
+export interface RemovedStreamSample {
+  name: string;
+  url: string;
+  country?: string;
+  countryCode?: string;
+}
+
+export interface RemovedStreamsCategoryCount {
+  /** Human-readable label, e.g. "M3U", "PLS", "ASX", "Total" */
+  label: string;
+  count: number;
+}
+
+export function buildRemovedStreamsCsv(
+  categories: RemovedStreamsCategoryCount[],
+  samples: RemovedStreamSample[],
+): string {
+  const summaryHeader = ['Section', 'Category', 'Removed Count'];
+  const summaryBody: string[][] = categories.map((c) => [
+    'summary',
+    c.label,
+    String(c.count),
+  ]);
+
+  const sampleHeader = ['Section', 'Name', 'URL', 'Country', 'Country Code'];
+  const sampleBody: string[][] = samples.map((s) => [
+    'sample',
+    s.name ?? '',
+    s.url ?? '',
+    s.country ?? '',
+    s.countryCode ?? '',
+  ]);
+
+  const summaryCsv = rowsToCsv(summaryHeader, summaryBody);
+  if (sampleBody.length === 0) {
+    return summaryCsv;
+  }
+  const sampleCsv = rowsToCsv(sampleHeader, sampleBody);
+  return `${summaryCsv}\r\n\r\n${sampleCsv}`;
+}
+
 export function buildFlushStationsCsv(counts: FlushStationsCounts): string {
   const header = ['Collection', 'Deleted Count'];
   const body: string[][] = [
@@ -256,3 +297,38 @@ export async function emailFlushStationsCsv(params: {
     actorEmail,
   });
 }
+
+/**
+ * Email a summary CSV after the "Remove playlist files" or "Remove HLS streams"
+ * admin actions wipe large batches of station rows. Includes a per-category
+ * breakdown plus a sampled list of removed stations (capped to keep the email
+ * size sane).
+ */
+export async function emailRemovedStreamsCsv(params: {
+  /** Short slug used in the CSV filename, e.g. "playlist-streams-removed" */
+  filenamePrefix: string;
+  /** Subject line summary, e.g. "Removed 1234 playlist streams" */
+  subjectSummary: string;
+  /** Title shown in the email body */
+  title: string;
+  /** First descriptive line, e.g. "1234 playlist streams were removed." */
+  summary: string;
+  categories: RemovedStreamsCategoryCount[];
+  samples: RemovedStreamSample[];
+  totalRemoved: number;
+  actorEmail?: string;
+}): Promise<void> {
+  const { filenamePrefix, subjectSummary, title, summary, categories, samples, totalRemoved, actorEmail } = params;
+  if (totalRemoved === 0) return;
+
+  await sendAdminAuditEmail({
+    filenamePrefix,
+    subjectSummary,
+    title,
+    summary,
+    csv: buildRemovedStreamsCsv(categories, samples),
+    recordCount: totalRemoved,
+    actorEmail,
+  });
+}
+

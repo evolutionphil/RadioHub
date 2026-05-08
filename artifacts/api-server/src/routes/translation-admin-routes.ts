@@ -3199,19 +3199,29 @@ ${keysText}`;
   app.post("/api/admin/remove-playlist-streams", requireAdmin, async (req, res) => {
     try {
       logger.log('🗑️ Starting removal of playlist files (M3U, PLS, ASX)...');
-      
-      // Count playlist streams to be removed
-      const playlistCount = await Station.countDocuments({
-        url: { $regex: /\.(m3u|pls|asx)(\?|$)/i }
-      });
-      
+
+      const playlistFilter = { url: { $regex: /\.(m3u|pls|asx)(\?|$)/i } };
+
+      // Per-extension counts so the audit email can break down what was wiped.
+      const [playlistCount, m3uCount, plsCount, asxCount] = await Promise.all([
+        Station.countDocuments(playlistFilter),
+        Station.countDocuments({ url: { $regex: /\.m3u(\?|$)/i } }),
+        Station.countDocuments({ url: { $regex: /\.pls(\?|$)/i } }),
+        Station.countDocuments({ url: { $regex: /\.asx(\?|$)/i } }),
+      ]);
+
       logger.log(`Found ${playlistCount} playlist files to remove`);
-      
+
+      // Capture a sample of the rows about to be deleted so the audit email
+      // can list specific stations (capped to keep the attachment small).
+      const sampleDocs = await Station.find(playlistFilter)
+        .select({ name: 1, url: 1, country: 1, countrycode: 1 })
+        .limit(500)
+        .lean();
+
       // Remove all playlist file streams
-      const removalResult = await Station.deleteMany({
-        url: { $regex: /\.(m3u|pls|asx)(\?|$)/i }
-      });
-      
+      const removalResult = await Station.deleteMany(playlistFilter);
+
       logger.log(`✅ Removed ${removalResult.deletedCount} playlist streams`);
       
       // Get updated counts
@@ -3237,7 +3247,49 @@ ${keysText}`;
         },
         message: `Successfully removed ${removalResult.deletedCount} playlist streams. ${remainingTotal} direct-playable stations remain.`
       };
-      
+
+      // Fire-and-forget audit email summarising the wiped playlist streams.
+      // Opt-in via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+      const removedCount = removalResult.deletedCount ?? 0;
+      const playlistActor =
+        (req.user as { email?: string } | undefined)?.email ?? undefined;
+      type StreamSampleDoc = {
+        name?: string;
+        url?: string;
+        country?: string;
+        countrycode?: string;
+      };
+      const playlistSamples = (sampleDocs as StreamSampleDoc[]).map((d) => ({
+        name: d.name ?? '',
+        url: d.url ?? '',
+        country: d.country ?? '',
+        countryCode: d.countrycode ?? '',
+      }));
+      void import('../services/admin-audit-email')
+        .then(({ emailRemovedStreamsCsv }) =>
+          emailRemovedStreamsCsv({
+            filenamePrefix: 'playlist-streams-removed',
+            subjectSummary: `Removed ${removedCount} playlist stream${removedCount === 1 ? '' : 's'} (M3U/PLS/ASX)`,
+            title: 'Playlist streams removed',
+            summary:
+              `${removedCount} playlist stream${removedCount === 1 ? '' : 's'} (M3U/PLS/ASX) ` +
+              `${removedCount === 1 ? 'was' : 'were'} removed. ${remainingTotal} stations remain.`,
+            categories: [
+              { label: 'M3U', count: m3uCount },
+              { label: 'PLS', count: plsCount },
+              { label: 'ASX', count: asxCount },
+              { label: 'Total removed', count: removedCount },
+              { label: 'Remaining stations', count: remainingTotal },
+            ],
+            samples: playlistSamples,
+            totalRemoved: removedCount,
+            actorEmail: playlistActor,
+          }),
+        )
+        .catch((err) => {
+          console.error('Failed to load admin-audit-email service:', err);
+        });
+
       res.json(results);
     } catch (error) {
       console.error('Playlist removal error:', error);
@@ -3249,23 +3301,26 @@ ${keysText}`;
   app.post("/api/admin/remove-hls-streams", requireAdmin, async (req, res) => {
     try {
       logger.log('🗑️ Starting removal of HLS/M3U8 streams...');
-      
-      // Count streams to be removed
-      const m3u8Count = await Station.countDocuments({
-        url: { $regex: /\.m3u8/i }
-      });
-      
-      const hlsRelatedCount = await Station.countDocuments({
-        url: { $regex: /hls|m3u8/i }
-      });
-      
+
+      const hlsFilter = { url: { $regex: /hls|m3u8/i } };
+
+      // Count streams to be removed (broken down for the audit email).
+      const [m3u8Count, hlsRelatedCount] = await Promise.all([
+        Station.countDocuments({ url: { $regex: /\.m3u8/i } }),
+        Station.countDocuments(hlsFilter),
+      ]);
+
       logger.log(`Found ${m3u8Count} .m3u8 streams and ${hlsRelatedCount} HLS-related streams to remove`);
-      
+
+      // Capture sample of stations to be deleted for the audit attachment.
+      const hlsSampleDocs = await Station.find(hlsFilter)
+        .select({ name: 1, url: 1, country: 1, countrycode: 1 })
+        .limit(500)
+        .lean();
+
       // Remove all streams with HLS/M3U8 in URL
-      const removalResult = await Station.deleteMany({
-        url: { $regex: /hls|m3u8/i }
-      });
-      
+      const removalResult = await Station.deleteMany(hlsFilter);
+
       logger.log(`✅ Removed ${removalResult.deletedCount} HLS/M3U8 streams`);
       
       // Get updated counts
@@ -3287,7 +3342,49 @@ ${keysText}`;
         },
         message: `Successfully removed ${removalResult.deletedCount} HLS/M3U8 streams. ${remainingTotal} direct-playable stations remain.`
       };
-      
+
+      // Fire-and-forget audit email summarising the wiped HLS streams. Opt-in
+      // via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+      const hlsRemovedCount = removalResult.deletedCount ?? 0;
+      const hlsActor =
+        (req.user as { email?: string } | undefined)?.email ?? undefined;
+      type HlsSampleDoc = {
+        name?: string;
+        url?: string;
+        country?: string;
+        countrycode?: string;
+      };
+      const hlsSamples = (hlsSampleDocs as HlsSampleDoc[]).map((d) => ({
+        name: d.name ?? '',
+        url: d.url ?? '',
+        country: d.country ?? '',
+        countryCode: d.countrycode ?? '',
+      }));
+      const hlsOnlyCount = Math.max(hlsRelatedCount - m3u8Count, 0);
+      void import('../services/admin-audit-email')
+        .then(({ emailRemovedStreamsCsv }) =>
+          emailRemovedStreamsCsv({
+            filenamePrefix: 'hls-streams-removed',
+            subjectSummary: `Removed ${hlsRemovedCount} HLS/M3U8 stream${hlsRemovedCount === 1 ? '' : 's'}`,
+            title: 'HLS/M3U8 streams removed',
+            summary:
+              `${hlsRemovedCount} HLS/M3U8 stream${hlsRemovedCount === 1 ? '' : 's'} ` +
+              `${hlsRemovedCount === 1 ? 'was' : 'were'} removed. ${remainingTotal} stations remain.`,
+            categories: [
+              { label: '.m3u8', count: m3u8Count },
+              { label: 'Other HLS-related', count: hlsOnlyCount },
+              { label: 'Total removed', count: hlsRemovedCount },
+              { label: 'Remaining stations', count: remainingTotal },
+            ],
+            samples: hlsSamples,
+            totalRemoved: hlsRemovedCount,
+            actorEmail: hlsActor,
+          }),
+        )
+        .catch((err) => {
+          console.error('Failed to load admin-audit-email service:', err);
+        });
+
       res.json(results);
     } catch (error) {
       console.error('HLS removal error:', error);
