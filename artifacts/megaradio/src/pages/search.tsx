@@ -443,6 +443,30 @@ export default function SearchPage() {
           )}
         </div>
 
+        {enabled && totalHits > 0 && (
+          <div
+            className="text-xs text-gray-500 mb-6 -mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1"
+            data-testid="search-paging-hint"
+          >
+            <span>
+              {t("search_paging_hint_prefix", "Tip: press")}
+            </span>
+            <kbd className="px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-gray-300 font-mono text-[11px]">
+              {t("search_key_pageup", "PageUp")}
+            </kbd>
+            <span>{t("search_paging_hint_or", "or")}</span>
+            <kbd className="px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-gray-300 font-mono text-[11px]">
+              {t("search_key_pagedown", "PageDown")}
+            </kbd>
+            <span>
+              {t(
+                "search_paging_hint_suffix",
+                "to jump a page through the results."
+              )}
+            </span>
+          </div>
+        )}
+
         {!enabled && (
           <div className="text-gray-400 text-center py-12">
             {t(
