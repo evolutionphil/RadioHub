@@ -543,6 +543,46 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
   // can be implemented the same way. Also echoes the live status and
   // the configured alert threshold so the UI can highlight rows that
   // would have alerted.
+  // Task #263: let admins re-run the weekly genre-slug cleanup on demand
+  // (e.g. to verify a just-shipped fix without waiting for the next Sun
+  // 05:00 cron tick). Honours the same single-instance lock as the cron,
+  // so a double-click while one is already running returns 409 with the
+  // live status instead of starting a second concurrent sweep. Returns
+  // immediately — the actual work runs in the background and the
+  // dashboard polls /runs to watch the audit row turn green.
+  app.post(
+    "/api/admin/maintenance/genre-slug-cleanup/run",
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        if (scheduledGenreSlugCleanup.getStatus().isRunning) {
+          return void res.status(409).json({
+            error: "already_running",
+            status: scheduledGenreSlugCleanup.getStatus(),
+          });
+        }
+        // Fire-and-forget: `runOnce` resolves only when the full sweep
+        // finishes (potentially many seconds), but the dashboard already
+        // polls /runs while `status.isRunning` is true. Returning early
+        // keeps the HTTP request snappy and the singleton lock prevents
+        // a follow-up POST from kicking off a second concurrent run.
+        scheduledGenreSlugCleanup.runOnce('admin:manual').catch((err) => {
+          logger.error('[genre-slug-cleanup manual] crashed:', err);
+        });
+        res.json({
+          ok: true,
+          status: scheduledGenreSlugCleanup.getStatus(),
+        });
+      } catch (err: any) {
+        logger.error(
+          "[genre-slug-cleanup manual] failed to start:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
   app.get(
     "/api/admin/maintenance/genre-slug-cleanup/runs",
     requireAdmin,

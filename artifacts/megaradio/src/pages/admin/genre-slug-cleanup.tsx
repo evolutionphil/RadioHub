@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -41,7 +41,7 @@ interface GenreSlugCleanupRunsResponse {
   };
 }
 
-type RunsTriggerFilter = "" | "cron:weekly" | "manual";
+type RunsTriggerFilter = "" | "cron:weekly" | "manual" | "admin:manual";
 
 function formatDuration(ms?: number) {
   if (typeof ms !== "number" || !isFinite(ms) || ms < 0) return "—";
@@ -62,6 +62,7 @@ function wouldHaveAlerted(run: GenreSlugCleanupRun, threshold: number): boolean 
 
 export default function AdminGenreSlugCleanupPage() {
   const [trigger, setTrigger] = useState<RunsTriggerFilter>("");
+  const [runError, setRunError] = useState<string | null>(null);
 
   const runsQuery = useQuery<GenreSlugCleanupRunsResponse>({
     queryKey: ["/api/admin/maintenance/genre-slug-cleanup/runs", trigger],
@@ -79,9 +80,43 @@ export default function AdminGenreSlugCleanupPage() {
       q.state.data?.status?.isRunning ? 5000 : false,
   });
 
+  // Task #263: kick off the same sweep the Sun 05:00 cron runs. The
+  // server returns 409 if a run is already in progress (single-instance
+  // lock); on success we refetch so the new "RUNNING NOW" row + status
+  // badge appear immediately, and the existing isRunning-driven poll
+  // takes over until the audit row turns green.
+  const runNowMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(
+        "/api/admin/maintenance/genre-slug-cleanup/run",
+        { method: "POST", credentials: "include" },
+      );
+      if (!res.ok) {
+        if (res.status === 409) {
+          throw new Error("A cleanup run is already in progress.");
+        }
+        throw new Error(`Could not start cleanup (HTTP ${res.status}).`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setRunError(null);
+      runsQuery.refetch();
+    },
+    onError: (err: unknown) => {
+      setRunError(err instanceof Error ? err.message : String(err));
+      // A 409 means another run is already in flight (likely the cron
+      // tick we missed locally). Refetch so the badge flips to RUNNING
+      // and the isRunning-driven poll starts watching for completion.
+      runsQuery.refetch();
+    },
+  });
+
   const data = runsQuery.data;
   const threshold = data?.alertThreshold ?? 5;
   const status = data?.status;
+  const isRunning = !!status?.isRunning;
+  const runDisabled = isRunning || runNowMutation.isPending;
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -104,10 +139,10 @@ export default function AdminGenreSlugCleanupPage() {
         <CardContent>
           <div className="flex flex-wrap items-center gap-3 text-sm">
             <Badge
-              variant={status?.isRunning ? "default" : "secondary"}
+              variant={isRunning ? "default" : "secondary"}
               data-testid="badge-cleanup-running"
             >
-              {status?.isRunning ? "RUNNING NOW" : "IDLE"}
+              {isRunning ? "RUNNING NOW" : "IDLE"}
             </Badge>
             <span className="text-slate-500">
               Last run:{" "}
@@ -115,7 +150,26 @@ export default function AdminGenreSlugCleanupPage() {
                 ? new Date(status.lastRunAt).toLocaleString()
                 : "—"}
             </span>
+            <Button
+              onClick={() => runNowMutation.mutate()}
+              disabled={runDisabled}
+              data-testid="button-cleanup-run-now"
+            >
+              {isRunning
+                ? "Running…"
+                : runNowMutation.isPending
+                ? "Starting…"
+                : "Run now"}
+            </Button>
           </div>
+          {runError && (
+            <div
+              className="mt-2 text-sm text-rose-600"
+              data-testid="text-cleanup-run-error"
+            >
+              {runError}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -139,6 +193,7 @@ export default function AdminGenreSlugCleanupPage() {
               >
                 <option value="">All</option>
                 <option value="cron:weekly">cron:weekly</option>
+                <option value="admin:manual">admin:manual</option>
                 <option value="manual">manual</option>
               </select>
             </div>
