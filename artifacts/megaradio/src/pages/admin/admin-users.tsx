@@ -4,6 +4,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAdminViewPrefs } from "@/hooks/useAdminViewPrefs";
 import { ResetViewButton } from "@/components/admin/ResetViewButton";
 import {
@@ -56,20 +63,103 @@ interface UserProfile {
 // localStorage automatically.
 const VIEW_PREFS_KEY = "admin-users:view-prefs:v1";
 
+// "all" = no filter applied. Other values map 1:1 to the persisted plan
+// strings on IUser.subscription.plan, with "any_premium" as a convenience
+// bucket covering all three premium tiers.
+type PlanFilter =
+  | "all"
+  | "none"
+  | "remove_ads"
+  | "any_premium"
+  | "premium_monthly"
+  | "premium_yearly"
+  | "premium_lifetime";
+
+const PLAN_FILTER_VALUES: readonly PlanFilter[] = [
+  "all",
+  "none",
+  "remove_ads",
+  "any_premium",
+  "premium_monthly",
+  "premium_yearly",
+  "premium_lifetime",
+] as const;
+
+// "all" = no filter. "email" matches the historical default where
+// authProvider is unset (treated as email signups).
+type AuthMethodFilter = "all" | "email" | "google" | "facebook" | "apple";
+
+const AUTH_METHOD_FILTER_VALUES: readonly AuthMethodFilter[] = [
+  "all",
+  "email",
+  "google",
+  "facebook",
+  "apple",
+] as const;
+
 interface UsersViewPrefs {
   searchQuery: string;
+  planFilter: PlanFilter;
+  authMethodFilter: AuthMethodFilter;
 }
 
 const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
   searchQuery: "",
+  planFilter: "all",
+  authMethodFilter: "all",
 };
 
 function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
   if (!raw || typeof raw !== "object") return DEFAULT_VIEW_PREFS;
   const obj = raw as Record<string, unknown>;
+  const planRaw = obj.planFilter;
+  const authRaw = obj.authMethodFilter;
   return {
     searchQuery: typeof obj.searchQuery === "string" ? obj.searchQuery : "",
+    planFilter:
+      typeof planRaw === "string" &&
+      (PLAN_FILTER_VALUES as readonly string[]).includes(planRaw)
+        ? (planRaw as PlanFilter)
+        : "all",
+    authMethodFilter:
+      typeof authRaw === "string" &&
+      (AUTH_METHOD_FILTER_VALUES as readonly string[]).includes(authRaw)
+        ? (authRaw as AuthMethodFilter)
+        : "all",
   };
+}
+
+function matchesPlanFilter(
+  sub: UserSubscription | null | undefined,
+  filter: PlanFilter,
+): boolean {
+  if (filter === "all") return true;
+  const plan = sub?.plan ?? "none";
+  const isActive = sub?.isActive === true;
+  if (filter === "none") {
+    // Treat inactive/cancelled subs as "no plan" too — matches the table's
+    // own rendering, which only shows a badge when sub.isActive && plan!=='none'.
+    return !isActive || plan === "none";
+  }
+  if (!isActive) return false;
+  if (filter === "any_premium") {
+    return (
+      plan === "premium_monthly" ||
+      plan === "premium_yearly" ||
+      plan === "premium_lifetime"
+    );
+  }
+  return plan === filter;
+}
+
+function matchesAuthMethodFilter(
+  authProvider: string | undefined,
+  filter: AuthMethodFilter,
+): boolean {
+  if (filter === "all") return true;
+  // Legacy users (and email/password signups) often have no authProvider set.
+  const provider = (authProvider || "email").toLowerCase();
+  return provider === filter;
 }
 
 export default function AdminUsers() {
@@ -83,9 +173,18 @@ export default function AdminUsers() {
     sanitizeViewPrefs,
   );
   const searchQuery = prefs.searchQuery;
+  const planFilter = prefs.planFilter;
+  const authMethodFilter = prefs.authMethodFilter;
   const setSearchQuery = (value: string) =>
     setPrefs((p) => ({ ...p, searchQuery: value }));
-  const hasNonDefaultViewPrefs = searchQuery.trim() !== "";
+  const setPlanFilter = (value: PlanFilter) =>
+    setPrefs((p) => ({ ...p, planFilter: value }));
+  const setAuthMethodFilter = (value: AuthMethodFilter) =>
+    setPrefs((p) => ({ ...p, authMethodFilter: value }));
+  const hasActiveFilters =
+    planFilter !== "all" || authMethodFilter !== "all";
+  const hasNonDefaultViewPrefs =
+    searchQuery.trim() !== "" || hasActiveFilters;
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
   // Local form state for the "Admin Overrides" section in the edit modal.
@@ -109,11 +208,19 @@ export default function AdminUsers() {
   });
   const users = usersResponse?.users || [];
 
-  const filteredUsers = users.filter((user) =>
-    user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (user.firstName?.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (user.lastName?.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  const normalizedSearch = searchQuery.toLowerCase();
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch =
+      normalizedSearch === "" ||
+      user.email.toLowerCase().includes(normalizedSearch) ||
+      user.firstName?.toLowerCase().includes(normalizedSearch) ||
+      user.lastName?.toLowerCase().includes(normalizedSearch);
+    return (
+      matchesSearch &&
+      matchesPlanFilter(user.subscription, planFilter) &&
+      matchesAuthMethodFilter(user.authProvider, authMethodFilter)
+    );
+  });
 
   const updateUserMutation = useMutation({
     mutationFn: (data: { userId: string; updates: Partial<UserProfile> }) =>
@@ -248,7 +355,9 @@ export default function AdminUsers() {
       <Card>
         <CardHeader>
           <CardTitle>Search Users</CardTitle>
-          <CardDescription>Search by email, first name, or last name</CardDescription>
+          <CardDescription>
+            Search by email or name, and narrow down by subscription plan or sign-in method
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap items-center gap-2">
@@ -262,11 +371,53 @@ export default function AdminUsers() {
                 className="pl-10"
               />
             </div>
+            <Select
+              value={planFilter}
+              onValueChange={(value) => setPlanFilter(value as PlanFilter)}
+            >
+              <SelectTrigger
+                className="w-48"
+                data-testid="select-plan-filter"
+                aria-label="Filter by plan"
+              >
+                <SelectValue placeholder="Filter by plan" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All plans</SelectItem>
+                <SelectItem value="none">No plan</SelectItem>
+                <SelectItem value="remove_ads">Remove Ads</SelectItem>
+                <SelectItem value="any_premium">Any Premium</SelectItem>
+                <SelectItem value="premium_monthly">Premium · Monthly</SelectItem>
+                <SelectItem value="premium_yearly">Premium · Yearly</SelectItem>
+                <SelectItem value="premium_lifetime">Premium · Lifetime</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={authMethodFilter}
+              onValueChange={(value) =>
+                setAuthMethodFilter(value as AuthMethodFilter)
+              }
+            >
+              <SelectTrigger
+                className="w-48"
+                data-testid="select-auth-method-filter"
+                aria-label="Filter by auth method"
+              >
+                <SelectValue placeholder="Filter by auth method" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All sign-in methods</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="google">Google</SelectItem>
+                <SelectItem value="facebook">Facebook</SelectItem>
+                <SelectItem value="apple">Apple</SelectItem>
+              </SelectContent>
+            </Select>
             <ResetViewButton
               hasNonDefaultPrefs={hasNonDefaultViewPrefs}
               reset={resetViewPrefs}
-              toastDescription="Search restored to defaults on this device and your account."
-              title="Clear search on this device and your account"
+              toastDescription="Search and filters restored to defaults on this device and your account."
+              title="Clear search and filters on this device and your account"
             />
           </div>
         </CardContent>
@@ -288,7 +439,15 @@ export default function AdminUsers() {
               <p className="text-gray-500 text-sm">{(usersError as Error).message}</p>
             </div>
           ) : filteredUsers.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">No users found</div>
+            <div className="text-center py-8 text-gray-500" data-testid="text-empty-users">
+              {users.length === 0
+                ? "No users found"
+                : hasActiveFilters && searchQuery.trim() !== ""
+                  ? "No users match your search and filters. Try clearing a filter or adjusting your search."
+                  : hasActiveFilters
+                    ? "No users match the selected filters. Try a different plan or sign-in method."
+                    : "No users match your search."}
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <Table>
