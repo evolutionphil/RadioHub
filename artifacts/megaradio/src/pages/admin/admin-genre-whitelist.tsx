@@ -25,10 +25,21 @@ interface OverrideEntry {
 
 interface WhitelistResponse {
   slugs: string[];
+  slugStationCounts?: Record<string, number>;
+  minStationsThreshold?: number;
   aliases: AliasEntry[];
   seed: { slugCount: number; aliasCount: number };
   overrides: OverrideEntry[];
   lastRefreshAt: string | null;
+}
+
+type SlugStatus = 'live' | 'thin' | 'none';
+type SlugStatusFilter = 'all' | SlugStatus;
+
+function statusFor(count: number, threshold: number): SlugStatus {
+  if (count <= 0) return 'none';
+  if (count < threshold) return 'thin';
+  return 'live';
 }
 
 const SLUG_HINT = 'Lowercase letters/digits with single hyphens (e.g. "lo-fi-hip-hop").';
@@ -40,6 +51,7 @@ export default function AdminGenreWhitelist() {
   const [newAliasSource, setNewAliasSource] = useState("");
   const [newAliasCanonical, setNewAliasCanonical] = useState("");
   const [slugFilter, setSlugFilter] = useState("");
+  const [slugStatusFilter, setSlugStatusFilter] = useState<SlugStatusFilter>("all");
   const [aliasFilter, setAliasFilter] = useState("");
 
   const { data, isLoading, error } = useQuery<WhitelistResponse>({
@@ -120,11 +132,25 @@ export default function AdminGenreWhitelist() {
     return map;
   }, [data?.overrides]);
 
+  const stationCounts = data?.slugStationCounts ?? {};
+  const threshold = data?.minStationsThreshold ?? 6;
+
+  const slugStatusCounts = useMemo(() => {
+    const counts = { live: 0, thin: 0, none: 0 };
+    for (const s of data?.slugs ?? []) {
+      counts[statusFor(stationCounts[s] ?? 0, threshold)]++;
+    }
+    return counts;
+  }, [data?.slugs, stationCounts, threshold]);
+
   const filteredSlugs = useMemo(() => {
     const q = slugFilter.trim().toLowerCase();
-    if (!q) return data?.slugs ?? [];
-    return (data?.slugs ?? []).filter((s) => s.includes(q));
-  }, [data?.slugs, slugFilter]);
+    return (data?.slugs ?? []).filter((s) => {
+      if (q && !s.includes(q)) return false;
+      if (slugStatusFilter === 'all') return true;
+      return statusFor(stationCounts[s] ?? 0, threshold) === slugStatusFilter;
+    });
+  }, [data?.slugs, slugFilter, slugStatusFilter, stationCounts, threshold]);
 
   const filteredAliases = useMemo(() => {
     const q = aliasFilter.trim().toLowerCase();
@@ -205,16 +231,34 @@ export default function AdminGenreWhitelist() {
             </Button>
           </form>
 
-          <div className="relative">
-            <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
-            <Input
-              className="pl-8"
-              placeholder="Filter slugs…"
-              value={slugFilter}
-              onChange={(e) => setSlugFilter(e.target.value)}
-              data-testid="input-slug-filter"
-            />
+          <div className="flex gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+              <Input
+                className="pl-8"
+                placeholder="Filter slugs…"
+                value={slugFilter}
+                onChange={(e) => setSlugFilter(e.target.value)}
+                data-testid="input-slug-filter"
+              />
+            </div>
+            <select
+              className="border rounded px-2 text-sm bg-white"
+              value={slugStatusFilter}
+              onChange={(e) => setSlugStatusFilter(e.target.value as SlugStatusFilter)}
+              data-testid="select-slug-status-filter"
+            >
+              <option value="all">All ({data.slugs.length})</option>
+              <option value="live">Live ({slugStatusCounts.live})</option>
+              <option value="thin">Thin — noindex ({slugStatusCounts.thin})</option>
+              <option value="none">No matching stations ({slugStatusCounts.none})</option>
+            </select>
           </div>
+
+          <p className="text-xs text-gray-500">
+            A slug needs at least <strong>{threshold}</strong> stations to actually appear in
+            sitemaps and be served as indexable. Counts come from <code>Genre.stationCount</code>.
+          </p>
 
           <div className="border rounded max-h-96 overflow-y-auto divide-y">
             {filteredSlugs.length === 0 && (
@@ -222,13 +266,49 @@ export default function AdminGenreWhitelist() {
             )}
             {filteredSlugs.map((slug) => {
               const adminAdded = overrideBySlug.get(`slug-add:${slug}`);
+              const count = stationCounts[slug] ?? 0;
+              const status = statusFor(count, threshold);
               return (
                 <div
                   key={slug}
                   className="flex items-center justify-between px-3 py-2 hover:bg-gray-50"
+                  data-testid={`row-slug-${slug}`}
                 >
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <code className="text-sm">{slug}</code>
+                    <span
+                      className="text-xs text-gray-500 tabular-nums"
+                      data-testid={`text-slug-count-${slug}`}
+                    >
+                      {count} {count === 1 ? 'station' : 'stations'}
+                    </span>
+                    {status === 'live' && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-green-300 text-green-700 bg-green-50"
+                        data-testid={`badge-slug-status-${slug}`}
+                      >
+                        live
+                      </Badge>
+                    )}
+                    {status === 'thin' && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-amber-300 text-amber-700 bg-amber-50"
+                        data-testid={`badge-slug-status-${slug}`}
+                      >
+                        thin — noindex
+                      </Badge>
+                    )}
+                    {status === 'none' && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-red-300 text-red-700 bg-red-50"
+                        data-testid={`badge-slug-status-${slug}`}
+                      >
+                        no matching stations
+                      </Badge>
+                    )}
                     {adminAdded && (
                       <Badge variant="secondary" className="text-xs">
                         added by {adminAdded.createdBy}

@@ -1,6 +1,10 @@
 import type { Express, Request, Response } from 'express';
-import { GenreWhitelistOverride } from '../shared/mongo-schemas';
-import { GENRE_WHITELIST, GENRE_ALIASES } from '../seo/genre-whitelist';
+import { Genre, GenreWhitelistOverride } from '../shared/mongo-schemas';
+import {
+  GENRE_WHITELIST,
+  GENRE_ALIASES,
+  MIN_STATIONS_FOR_GENRE_INDEX,
+} from '../seo/genre-whitelist';
 import {
   getMergedWhitelist,
   getMergedAliases,
@@ -146,9 +150,29 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
 
         const merged = getMergedWhitelist();
         const aliases = getMergedAliases();
+        const sortedSlugs = Array.from(merged).sort();
+
+        // Per-slug station counts so the UI can flag whitelisted slugs that
+        // are too thin to actually appear in sitemaps / be served as
+        // indexable. Mirrors the gate in sitemap-manifest-builder.ts:
+        // Genre.stationCount >= MIN_STATIONS_FOR_GENRE_INDEX. Slugs with no
+        // matching Genre row at all show up as 0.
+        const stationCounts: Record<string, number> = {};
+        if (sortedSlugs.length > 0) {
+          const genres = await Genre.find({ slug: { $in: sortedSlugs } })
+            .select('slug stationCount')
+            .lean();
+          for (const g of genres as Array<{ slug?: string; stationCount?: number }>) {
+            if (typeof g.slug === 'string') {
+              stationCounts[g.slug] = g.stationCount ?? 0;
+            }
+          }
+        }
 
         return res.json({
-          slugs: Array.from(merged).sort(),
+          slugs: sortedSlugs,
+          slugStationCounts: stationCounts,
+          minStationsThreshold: MIN_STATIONS_FOR_GENRE_INDEX,
           aliases: Array.from(aliases.entries())
             .map(([source, canonical]) => ({ source, canonical }))
             .sort((a, b) => a.source.localeCompare(b.source)),
