@@ -113,6 +113,31 @@ interface BackfillRetentionResponse {
   updatedBy: string | null;
 }
 
+// Task #320: append-only audit log of who changed the retention
+// thresholds and when. The same `AdminSettingHistory` collection
+// powers the coverage-drop alert audit trail.
+interface BackfillRetentionHistoryEntry {
+  id: string;
+  action: "update" | "clear";
+  previousValue: { days: number | null; maxRows: number | null } | null;
+  newValue: { days: number | null; maxRows: number | null } | null;
+  changedBy: string | null;
+  changedAt: string;
+}
+interface BackfillRetentionHistoryResponse {
+  entries: BackfillRetentionHistoryEntry[];
+}
+
+function describeRetentionValue(
+  value: { days: number | null; maxRows: number | null } | null,
+): string {
+  if (!value) return "varsayılan";
+  const parts: string[] = [];
+  parts.push(value.days != null ? `${value.days}g` : "—g");
+  parts.push(value.maxRows != null ? `${value.maxRows} satır` : "— satır");
+  return parts.join(" · ");
+}
+
 type RunsTriggerFilter =
   | ""
   | "cron:weekly"
@@ -322,6 +347,21 @@ export default function SeoMaintenancePage() {
       return res.json();
     },
   });
+  // Task #320: pull the last N rows from the AdminSettingHistory audit
+  // log so the form can render "who changed what, when" inline. Capped
+  // server-side at 100; we ask for 10 by default which matches the
+  // dense rendering below.
+  const retentionHistoryQuery = useQuery<BackfillRetentionHistoryResponse>({
+    queryKey: ["/api/admin/settings/backfill-retention/history"],
+    queryFn: async () => {
+      const res = await fetch(
+        "/api/admin/settings/backfill-retention/history?limit=10",
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
   useEffect(() => {
     const data = retentionQuery.data;
     if (!data) return;
@@ -351,6 +391,9 @@ export default function SeoMaintenancePage() {
         queryKey: ["/api/admin/settings/backfill-retention"],
       });
       queryClient.invalidateQueries({
+        queryKey: ["/api/admin/settings/backfill-retention/history"],
+      });
+      queryClient.invalidateQueries({
         queryKey: ["/api/admin/maintenance/scheduled-backfill/runs"],
       });
     },
@@ -369,6 +412,9 @@ export default function SeoMaintenancePage() {
       toast({ title: "Saklama ayarları sıfırlandı" });
       queryClient.invalidateQueries({
         queryKey: ["/api/admin/settings/backfill-retention"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/settings/backfill-retention/history"],
       });
       queryClient.invalidateQueries({
         queryKey: ["/api/admin/maintenance/scheduled-backfill/runs"],
@@ -765,6 +811,59 @@ export default function SeoMaintenancePage() {
                     : "—"}
                 </div>
               )}
+              {/* Task #320: inline audit log of recent changes to the
+                  retention thresholds so admins can see who tightened or
+                  loosened pruning behavior without going to the DB. */}
+              <div
+                className="border-t border-slate-200 pt-2 mt-2"
+                data-testid="panel-backfill-retention-history"
+              >
+                <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+                  Son değişiklikler
+                </div>
+                {retentionHistoryQuery.isLoading ? (
+                  <div className="text-[11px] text-slate-500">
+                    Yükleniyor…
+                  </div>
+                ) : retentionHistoryQuery.isError ? (
+                  <div className="text-[11px] text-red-600">
+                    Geçmiş okunamadı.
+                  </div>
+                ) : !retentionHistoryQuery.data ||
+                  retentionHistoryQuery.data.entries.length === 0 ? (
+                  <div className="text-[11px] text-slate-500">
+                    Henüz değişiklik kaydı yok. Kaydet veya Sıfırla
+                    yaptığınızda denetim günlüğü başlar.
+                  </div>
+                ) : (
+                  <ul className="space-y-1">
+                    {retentionHistoryQuery.data.entries.map((entry) => {
+                      const when = new Date(entry.changedAt);
+                      const who = entry.changedBy ?? "bilinmeyen yönetici";
+                      const actionLabel =
+                        entry.action === "clear" ? "Sıfırlandı" : "Güncellendi";
+                      return (
+                        <li
+                          key={entry.id}
+                          className="text-[11px] text-slate-600 leading-snug"
+                          data-testid={`row-backfill-retention-history-${entry.id}`}
+                        >
+                          <div>
+                            <strong>{actionLabel}</strong> · {who} ·{" "}
+                            <span title={when.toISOString()}>
+                              {when.toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="text-slate-500">
+                            {describeRetentionValue(entry.previousValue)} →{" "}
+                            {describeRetentionValue(entry.newValue)}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
             </div>
           )}
 
