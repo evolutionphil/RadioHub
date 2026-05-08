@@ -23,6 +23,12 @@ import {
   getGenreStationCountsStatus,
   recomputeGenreStationCounts,
 } from '../services/genre-station-counts';
+import {
+  startPushStatus,
+  updatePushStep,
+  completePushStatus,
+  getLastPushStatus,
+} from '../seo/genre-whitelist-push-status';
 
 const PRIMARY_HOST = 'themegaradio.com';
 
@@ -59,19 +65,44 @@ async function loadForwardTranslationMap(): Promise<Map<string, string>> {
 // We deliberately do NOT await this — admins shouldn't wait on an
 // outbound HTTP call to api.indexnow.org or a full manifest scan
 // before their UI returns. Errors are logged and swallowed.
-function triggerSearchEnginePush(affectedSlugs: string[]): void {
+function triggerSearchEnginePush(
+  affectedSlugs: string[],
+  meta: { triggeredBy: string | null; trigger: string },
+): void {
+  startPushStatus({
+    triggeredBy: meta.triggeredBy,
+    trigger: meta.trigger,
+    affectedSlugs,
+  });
   void (async () => {
     try {
       await buildAllSitemapManifests({ force: true });
+      updatePushStep('sitemapRebuild', { status: 'success' });
     } catch (err: any) {
-      logger.error('genre-whitelist: sitemap rebuild failed:', err?.message ?? err);
+      const msg = err?.message ?? String(err);
+      logger.error('genre-whitelist: sitemap rebuild failed:', msg);
+      updatePushStep('sitemapRebuild', { status: 'failed', error: msg });
     }
     try {
-      await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
+      const result = await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
+      if (result.success) {
+        updatePushStep('indexnowSitemap', { status: 'success', urlCount: 1 });
+      } else {
+        updatePushStep('indexnowSitemap', {
+          status: 'failed',
+          error: result.error ?? `IndexNow returned status ${result.statusCode ?? 'unknown'}`,
+        });
+      }
     } catch (err: any) {
-      logger.error('genre-whitelist: IndexNow sitemap ping failed:', err?.message ?? err);
+      const msg = err?.message ?? String(err);
+      logger.error('genre-whitelist: IndexNow sitemap ping failed:', msg);
+      updatePushStep('indexnowSitemap', { status: 'failed', error: msg });
     }
-    if (affectedSlugs.length === 0) return;
+    if (affectedSlugs.length === 0) {
+      updatePushStep('indexnowGenreUrls', { status: 'skipped' });
+      completePushStatus();
+      return;
+    }
 
     // Expand per qualified language using the same translation map the
     // sitemap uses, so we ping the canonical localized URL (not a
@@ -88,17 +119,47 @@ function triggerSearchEnginePush(affectedSlugs: string[]): void {
         }
       }
       if (urls.length > 0) {
-        await IndexNowService.submitToIndexNow(urls, 'manual');
+        const result = await IndexNowService.submitToIndexNow(urls, 'manual');
+        if (result.success) {
+          updatePushStep('indexnowGenreUrls', { status: 'success', urlCount: urls.length });
+        } else {
+          updatePushStep('indexnowGenreUrls', {
+            status: 'failed',
+            error: result.error ?? `IndexNow returned status ${result.statusCode ?? 'unknown'}`,
+            urlCount: urls.length,
+          });
+        }
+      } else {
+        updatePushStep('indexnowGenreUrls', { status: 'skipped' });
       }
     } catch (err: any) {
-      logger.error('genre-whitelist: IndexNow genre URL ping failed:', err?.message ?? err);
+      const msg = err?.message ?? String(err);
+      logger.error('genre-whitelist: IndexNow genre URL ping failed:', msg);
       // Best-effort fallback: ping the English canonical only.
       try {
-        await IndexNowService.submitGenreUrls(affectedSlugs, undefined, 'manual');
+        const fallback = await IndexNowService.submitGenreUrls(affectedSlugs, undefined, 'manual');
+        if (fallback.success) {
+          updatePushStep('indexnowGenreUrls', {
+            status: 'success',
+            urlCount: affectedSlugs.length,
+            error: `Localized expansion failed (${msg}); fell back to English-only ping.`,
+          });
+        } else {
+          updatePushStep('indexnowGenreUrls', {
+            status: 'failed',
+            error: `Localized expansion failed (${msg}); fallback also failed: ${fallback.error ?? 'unknown'}`,
+          });
+        }
       } catch (fallbackErr: any) {
-        logger.error('genre-whitelist: IndexNow fallback ping failed:', fallbackErr?.message ?? fallbackErr);
+        const fbMsg = fallbackErr?.message ?? String(fallbackErr);
+        logger.error('genre-whitelist: IndexNow fallback ping failed:', fbMsg);
+        updatePushStep('indexnowGenreUrls', {
+          status: 'failed',
+          error: `${msg} (fallback: ${fbMsg})`,
+        });
       }
     }
+    completePushStatus();
   })();
 }
 
@@ -213,6 +274,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           // so admins can tell whether the per-slug counts above are fresh
           // (e.g. after a bulk import or country backfill).
           stationCountsStatus: getGenreStationCountsStatus(),
+          lastPush: getLastPushStatus(),
         });
       } catch (error: any) {
         logger.error('Error reading genre whitelist:', error);
@@ -356,7 +418,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         }
 
         await refreshGenreWhitelistFromDb();
-        triggerSearchEnginePush([slug]);
+        triggerSearchEnginePush([slug], { triggeredBy: createdBy, trigger: 'add-slug' });
         return res.json({ ok: true, slug, stationCount, warning, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre whitelist slug:', error);
@@ -408,7 +470,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         }
 
         await refreshGenreWhitelistFromDb();
-        triggerSearchEnginePush([slug]);
+        triggerSearchEnginePush([slug], { triggeredBy: createdBy, trigger: 'remove-slug' });
         return res.json({ ok: true, slug, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error removing genre whitelist slug:', error);
@@ -551,7 +613,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // Push both the alias source (now 301s to canonical) and the
         // canonical (which may have just appeared) so search engines
         // pick up the new redirect target without waiting 6h.
-        triggerSearchEnginePush([source, canonical]);
+        triggerSearchEnginePush([source, canonical], { triggeredBy: createdBy, trigger: 'add-alias' });
         return res.json({ ok: true, source, canonical, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre alias:', error);
@@ -596,11 +658,38 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         }
 
         await refreshGenreWhitelistFromDb();
-        triggerSearchEnginePush([source]);
+        triggerSearchEnginePush([source], { triggeredBy: createdBy, trigger: 'remove-alias' });
         return res.json({ ok: true, source, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error removing genre alias:', error);
         return res.status(500).json({ error: 'Failed to remove alias' });
+      }
+    },
+  );
+
+  // POST /repush — re-run the sitemap rebuild + IndexNow ping using the
+  // affected slugs from the most recent push (or none, in which case it
+  // pings the sitemap index only). Lets admins retry a failed push
+  // without making a dummy whitelist edit (task #186).
+  app.post(
+    '/api/admin/genre-whitelist/repush',
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const createdBy = getAdminUsername(req);
+        if (!createdBy) {
+          return res.status(401).json({ error: 'Admin identity unavailable' });
+        }
+        const previous = getLastPushStatus();
+        const affectedSlugs = previous?.affectedSlugs ?? [];
+        triggerSearchEnginePush(affectedSlugs, {
+          triggeredBy: createdBy,
+          trigger: 'manual-repush',
+        });
+        return res.json({ ok: true, rebuildQueued: true, affectedSlugs });
+      } catch (error: any) {
+        logger.error('Error queuing manual re-push:', error);
+        return res.status(500).json({ error: 'Failed to queue re-push' });
       }
     },
   );

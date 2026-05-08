@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trash2, Plus, Search, AlertCircle, Wrench, RefreshCw } from "lucide-react";
+import { Trash2, Plus, Search, AlertCircle, Wrench, CheckCircle2, XCircle, Loader2, MinusCircle, RefreshCw } from "lucide-react";
 
 interface AliasEntry {
   source: string;
@@ -32,6 +32,25 @@ interface StationCountsStatus {
   lastTrigger: string | null;
 }
 
+type PushStepStatus = 'pending' | 'success' | 'failed' | 'skipped';
+
+interface PushStep {
+  status: PushStepStatus;
+  error?: string;
+  urlCount?: number;
+}
+
+interface PushStatus {
+  triggeredAt: string;
+  completedAt: string | null;
+  triggeredBy: string | null;
+  trigger: string;
+  affectedSlugs: string[];
+  sitemapRebuild: PushStep;
+  indexnowSitemap: PushStep;
+  indexnowGenreUrls: PushStep;
+}
+
 interface WhitelistResponse {
   slugs: string[];
   slugStationCounts?: Record<string, number>;
@@ -43,6 +62,46 @@ interface WhitelistResponse {
   overrides: OverrideEntry[];
   lastRefreshAt: string | null;
   stationCountsStatus?: StationCountsStatus;
+  lastPush: PushStatus | null;
+}
+
+function formatRelativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const sec = Math.max(0, Math.round(diffMs / 1000));
+  if (sec < 60) return `${sec}s ago`;
+  const min = Math.round(sec / 60);
+  if (min < 60) return `${min} min ago`;
+  const hr = Math.round(min / 60);
+  if (hr < 24) return `${hr}h ago`;
+  return `${Math.round(hr / 24)}d ago`;
+}
+
+function StepBadge({ label, step }: { label: string; step: PushStep }) {
+  const cls =
+    step.status === 'success'
+      ? 'border-green-300 text-green-700 bg-green-50'
+      : step.status === 'failed'
+        ? 'border-red-300 text-red-700 bg-red-50'
+        : step.status === 'skipped'
+          ? 'border-gray-300 text-gray-600 bg-gray-50'
+          : 'border-blue-300 text-blue-700 bg-blue-50';
+  const Icon =
+    step.status === 'success'
+      ? CheckCircle2
+      : step.status === 'failed'
+        ? XCircle
+        : step.status === 'skipped'
+          ? MinusCircle
+          : Loader2;
+  return (
+    <Badge variant="outline" className={`text-xs ${cls}`} data-testid={`badge-push-${label}`}>
+      <Icon className={`w-3 h-3 mr-1 ${step.status === 'pending' ? 'animate-spin' : ''}`} />
+      {label}: {step.status}
+      {step.urlCount != null && step.status !== 'pending' && step.status !== 'skipped'
+        ? ` (${step.urlCount} URL${step.urlCount === 1 ? '' : 's'})`
+        : ''}
+    </Badge>
+  );
 }
 
 // Task #184: 'missing' = no Genre row at all (likely a typo / never seeded).
@@ -74,10 +133,14 @@ export default function AdminGenreWhitelist() {
     // Task #185: while a recompute is in flight (e.g. kicked off by a bulk
     // import or country backfill in another tab), poll every few seconds so
     // the "counts updated at" badge and the per-slug numbers refresh as soon
-    // as the background job finishes.
+    // as the background job finishes. Task #186: also poll while a search
+    // engine push is in flight so step statuses update live.
     refetchInterval: (query) => {
       const d = query.state.data as WhitelistResponse | undefined;
-      return d?.stationCountsStatus?.inFlight ? 4000 : false;
+      const pushInFlight = d?.lastPush && !d.lastPush.completedAt;
+      if (pushInFlight) return 2000;
+      if (d?.stationCountsStatus?.inFlight) return 4000;
+      return false;
     },
   });
 
@@ -203,6 +266,26 @@ export default function AdminGenreWhitelist() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to remove alias", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const repush = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/admin/genre-whitelist/repush');
+      return res.json() as Promise<{ ok: boolean; affectedSlugs: string[] }>;
+    },
+    onSuccess: (resp) => {
+      toast({
+        title: "Re-push queued",
+        description:
+          resp.affectedSlugs.length > 0
+            ? `Retrying sitemap rebuild + IndexNow ping for ${resp.affectedSlugs.length} slug(s).`
+            : "Retrying sitemap rebuild + IndexNow ping (sitemap-index only).",
+      });
+      invalidate();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to queue re-push", description: err.message, variant: "destructive" });
     },
   });
 
@@ -341,6 +424,128 @@ export default function AdminGenreWhitelist() {
           </p>
         </div>
       </div>
+
+      {/* === LAST PUSH STATUS === */}
+      {(() => {
+        const lp = data.lastPush;
+        if (!lp) {
+          return (
+            <Card data-testid="card-push-status">
+              <CardHeader>
+                <CardTitle className="text-base">Last search-engine push</CardTitle>
+                <CardDescription>
+                  No push has been triggered since the server started. The sitemap will still
+                  rebuild on its normal 6h cycle.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => repush.mutate()}
+                  disabled={repush.isPending}
+                  data-testid="button-repush"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1 ${repush.isPending ? 'animate-spin' : ''}`} />
+                  Push now
+                </Button>
+              </CardContent>
+            </Card>
+          );
+        }
+        const inFlight = !lp.completedAt;
+        const anyFailed =
+          lp.sitemapRebuild.status === 'failed' ||
+          lp.indexnowSitemap.status === 'failed' ||
+          lp.indexnowGenreUrls.status === 'failed';
+        const summary = inFlight
+          ? 'In progress…'
+          : anyFailed
+            ? 'Last push had failures'
+            : 'Last push succeeded';
+        return (
+          <Card
+            className={
+              anyFailed && !inFlight
+                ? 'border-red-300'
+                : inFlight
+                  ? 'border-blue-300'
+                  : 'border-green-300'
+            }
+            data-testid="card-push-status"
+          >
+            <CardHeader>
+              <CardTitle className="text-base flex items-center gap-2">
+                Last search-engine push
+                <Badge
+                  variant="outline"
+                  className={
+                    anyFailed && !inFlight
+                      ? 'text-xs border-red-300 text-red-700 bg-red-50'
+                      : inFlight
+                        ? 'text-xs border-blue-300 text-blue-700 bg-blue-50'
+                        : 'text-xs border-green-300 text-green-700 bg-green-50'
+                  }
+                  data-testid="badge-push-summary"
+                >
+                  {summary}
+                </Badge>
+              </CardTitle>
+              <CardDescription>
+                Triggered <strong>{formatRelativeTime(lp.triggeredAt)}</strong>
+                {lp.triggeredBy ? <> by <code>{lp.triggeredBy}</code></> : null}
+                {' '}via <code>{lp.trigger}</code>
+                {lp.affectedSlugs.length > 0 && (
+                  <>
+                    {' '}for {lp.affectedSlugs.length} slug
+                    {lp.affectedSlugs.length === 1 ? '' : 's'}:{' '}
+                    <code className="text-xs">{lp.affectedSlugs.join(', ')}</code>
+                  </>
+                )}
+                {lp.completedAt && (
+                  <> · Finished {formatRelativeTime(lp.completedAt)}</>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <StepBadge label="sitemap-rebuild" step={lp.sitemapRebuild} />
+                <StepBadge label="indexnow-sitemap" step={lp.indexnowSitemap} />
+                <StepBadge label="indexnow-genre-urls" step={lp.indexnowGenreUrls} />
+              </div>
+              {[lp.sitemapRebuild, lp.indexnowSitemap, lp.indexnowGenreUrls]
+                .filter((s) => s.error)
+                .map((s, i) => (
+                  <Alert
+                    key={i}
+                    variant={s.status === 'failed' ? 'destructive' : 'default'}
+                    data-testid={`alert-push-error-${i}`}
+                  >
+                    <AlertCircle className="w-4 h-4" />
+                    <AlertDescription className="text-xs break-all">{s.error}</AlertDescription>
+                  </Alert>
+                ))}
+              <div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => repush.mutate()}
+                  disabled={repush.isPending || inFlight}
+                  data-testid="button-repush"
+                >
+                  <RefreshCw className={`w-4 h-4 mr-1 ${repush.isPending ? 'animate-spin' : ''}`} />
+                  Re-push now
+                </Button>
+                {inFlight && (
+                  <span className="ml-2 text-xs text-gray-500">
+                    Wait for the current push to finish before retrying.
+                  </span>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* === SLUGS === */}
       <Card>
