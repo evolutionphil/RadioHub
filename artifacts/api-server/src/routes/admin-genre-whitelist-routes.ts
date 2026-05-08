@@ -3,6 +3,7 @@ import {
   Genre,
   GenreWhitelistOverride,
   SAFE_GENRE_SLUG_RE,
+  Station,
   normalizeGenreSlug,
 } from '@workspace/db-shared/mongo-schemas';
 import {
@@ -579,7 +580,36 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         if (!created) {
           return void res.status(409).json({ error: `Genre row for "${slug}" already exists` });
         }
-        return void res.json({ ok: true, slug, name });
+        // Task #241: backfill stationCount immediately so admins can tell
+        // right away whether the slug actually matches anything in the
+        // catalog, rather than waiting for the next genre-count maintenance
+        // pass. Mirrors the regex pattern used by the merge-winner refresh
+        // in translation-admin-routes.ts: match the humanized name as a
+        // standalone tag (comma-delimited) or as the legacy `genre` field,
+        // case-insensitively. If the count call fails we keep the row at 0
+        // — the background recompute will correct it on its next pass.
+        let stationCount = 0;
+        try {
+          const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          stationCount = await Station.countDocuments({
+            $or: [
+              { tags: { $regex: new RegExp(`(^|,)\\s*${escapedName}\\s*(,|$)`, 'i') } },
+              { genre: { $regex: new RegExp(`^\\s*${escapedName}\\s*$`, 'i') } },
+            ],
+          });
+          if (stationCount > 0) {
+            await Genre.updateOne(
+              { slug },
+              { $set: { stationCount, updatedAt: new Date() } },
+            );
+          }
+        } catch (countErr: any) {
+          logger.error(
+            `Failed to backfill stationCount for new Genre row "${slug}":`,
+            countErr?.message ?? countErr,
+          );
+        }
+        return void res.json({ ok: true, slug, name, stationCount });
       } catch (error: any) {
         logger.error('Error creating genre row for whitelist slug:', error);
         return void res.status(500).json({ error: 'Failed to create genre row' });
