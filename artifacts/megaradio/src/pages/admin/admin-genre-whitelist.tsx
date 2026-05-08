@@ -594,10 +594,52 @@ export default function AdminGenreWhitelist() {
             </Button>
           </form>
           {suggestionsData && suggestionsData.suggestions.length > 0 && (
-            <p className="text-xs text-gray-500" data-testid="text-slug-suggestions-hint">
-              Suggestions: top {suggestionsData.suggestions.length} station tags not yet on the
-              whitelist (start typing to filter).
-            </p>
+            <div className="space-y-2" data-testid="list-slug-suggestions">
+              <p className="text-xs text-gray-500" data-testid="text-slug-suggestions-hint">
+                Suggestions: top {suggestionsData.suggestions.length} station tags not yet on the
+                whitelist. Click <strong>Add</strong> to whitelist one immediately, or start typing
+                above to filter.
+              </p>
+              <div className="border rounded divide-y">
+                {suggestionsData.suggestions.map((s) => {
+                  const isReserved = reservedSet.has(s.slug);
+                  return (
+                    <div
+                      key={s.slug}
+                      className="flex items-center justify-between px-3 py-2 hover:bg-gray-50"
+                      data-testid={`row-slug-suggestion-${s.slug}`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <code className="text-sm">{s.slug}</code>
+                        <span
+                          className="text-xs text-gray-500 tabular-nums"
+                          data-testid={`text-slug-suggestion-count-${s.slug}`}
+                        >
+                          {s.stationCount} {s.stationCount === 1 ? 'station' : 'stations'}
+                        </span>
+                        {isReserved && (
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-red-300 text-red-700 bg-red-50"
+                          >
+                            reserved
+                          </Badge>
+                        )}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={addSlug.isPending || isReserved}
+                        onClick={() => addSlug.mutate(s.slug)}
+                        data-testid={`button-add-slug-suggestion-${s.slug}`}
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Add
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           )}
           {newSlug.trim() && reservedSet.has(newSlug.trim().toLowerCase()) && (
             <Alert variant="destructive">
