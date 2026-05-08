@@ -27,6 +27,7 @@ import crypto from 'crypto';
 import mongoose from 'mongoose';
 import { Station, Genre, SitemapManifest, ISitemapManifestChunk } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { IndexNowService } from '../services/indexnow';
 import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from './qualified-languages';
 import { getIndexableLanguagesForStation } from './junk-station-rules';
 import { isWhitelistedGenreSlug, MIN_STATIONS_FOR_GENRE_INDEX } from './genre-whitelist';
@@ -557,10 +558,17 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
   qualifiedLanguagesHash: string;
   qualifiedLanguages: string[];
   perLangCounts?: Record<string, number>;
+  /** Number of (type, lang) manifests that were swapped to a fresh active
+   * version this run. Zero means every per-(type, lang) writeBuildingManifest
+   * was a content-version no-op (existing active doc matched the new
+   * version). Callers (e.g. the scheduled refresh loop) use this to decide
+   * whether to ping IndexNow — we only want to notify search engines when
+   * the URL set actually changed, not every 6h on identical content. */
+  activatedCount?: number;
 }> {
   if (buildLock) {
     logger.warn('⏭️ manifest-builder: build already in progress, skipping');
-    return { built: false, qualifiedLanguagesHash: '', qualifiedLanguages: [] };
+    return { built: false, qualifiedLanguagesHash: '', qualifiedLanguages: [], activatedCount: 0 };
   }
   buildLock = true;
 
@@ -581,7 +589,7 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
 
     if (!opts.force && (await isManifestUpToDate(hash, languages, REBUILD_FRESH_WINDOW_MS))) {
       logger.log(`⏭️ manifest-builder: active manifests fresh (hash=${hash}, langs=${languages.length}) — skipping`);
-      return { built: false, qualifiedLanguagesHash: hash, qualifiedLanguages: languages };
+      return { built: false, qualifiedLanguagesHash: hash, qualifiedLanguages: languages, activatedCount: 0 };
     }
 
     logger.log(`🏗️ manifest-builder: building manifests for ${languages.length} langs (hash=${hash})`);
@@ -599,6 +607,7 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
 
     // Write building docs and activate per (type, lang).
     const perLangCounts: Record<string, number> = {};
+    let activatedCount = 0;
     for (const lang of languages) {
       const stationChunks = perLang.get(lang) ?? [];
       const stationTotal = stationTotals.get(lang) ?? 0;
@@ -615,6 +624,7 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
       // building doc.
       if (stationsBuilding?.status !== 'active') {
         await activateManifest(stationsBuilding._id as mongoose.Types.ObjectId, 'stations', lang);
+        activatedCount++;
       }
 
       // Genres (one chunk per lang, same ids; URLs differ via buildLocalizedUrl)
@@ -626,6 +636,7 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
       });
       if (genresBuilding?.status !== 'active') {
         await activateManifest(genresBuilding._id as mongoose.Types.ObjectId, 'genres', lang);
+        activatedCount++;
       }
 
       // Main
@@ -636,12 +647,13 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
       });
       if (mainBuilding?.status !== 'active') {
         await activateManifest(mainBuilding._id as mongoose.Types.ObjectId, 'main', lang);
+        activatedCount++;
       }
     }
 
     const elapsed = Date.now() - t0;
-    logger.log(`✅ manifest-builder: built+activated all manifests in ${elapsed}ms`);
-    return { built: true, qualifiedLanguagesHash: hash, qualifiedLanguages: languages, perLangCounts };
+    logger.log(`✅ manifest-builder: built+activated all manifests in ${elapsed}ms (activated=${activatedCount})`);
+    return { built: true, qualifiedLanguagesHash: hash, qualifiedLanguages: languages, perLangCounts, activatedCount };
 
   } catch (err) {
     logger.error('❌ manifest-builder: build failed', err);
@@ -717,7 +729,26 @@ let refreshTimer: NodeJS.Timeout | null = null;
 export function startManifestRefreshLoop(intervalMs: number = 6 * 60 * 60 * 1000): void {
   if (refreshTimer) return;
   refreshTimer = setInterval(() => {
-    buildAllSitemapManifests().catch((err) => {
+    buildAllSitemapManifests().then((result) => {
+      // Task #272: ping IndexNow after the scheduled rebuild too — but only
+      // when at least one (type, lang) manifest got swapped to a new active
+      // version. Skipping the ping on no-op rebuilds avoids spamming
+      // IndexNow every 6h with an unchanged sitemap (which would burn the
+      // daily submission quota and look like spam to Bing).
+      // Mirrors the manual /api/admin/sitemap/rebuild path's IndexNow ping
+      // (added in task #201). Fire-and-forget; failures are logged but
+      // never fail the cron.
+      if (result.built && (result.activatedCount ?? 0) > 0) {
+        void (async () => {
+          try {
+            await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
+            logger.log(`📣 manifest-builder: IndexNow sitemap ping fired after scheduled rebuild (activated=${result.activatedCount})`);
+          } catch (err: any) {
+            logger.error('manifest-builder: IndexNow sitemap ping failed after scheduled rebuild:', err?.message ?? err);
+          }
+        })();
+      }
+    }).catch((err) => {
       logger.error('❌ manifest-builder: scheduled rebuild failed', err);
     });
   }, intervalMs);
