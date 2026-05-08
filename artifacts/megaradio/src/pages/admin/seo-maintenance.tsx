@@ -230,6 +230,11 @@ export default function SeoMaintenancePage() {
       ? new URLSearchParams(window.location.search).get("runId")
       : null;
   const [runsTrigger, setRunsTrigger] = useState<RunsTriggerFilter>("");
+  // Task #312: per-country quick filter for the runs table. Stored as a
+  // 2-char upper-case ISO code; empty string means "all countries". Sent
+  // to the runs endpoint as `?country=` and combines with the trigger
+  // filter so e.g. admin:manual:tags + TR shows only the TR tags sweeps.
+  const [runsCountry, setRunsCountry] = useState<string>("");
   const [expandedRunId, setExpandedRunId] = useState<string | null>(
     initialDeepLinkRunId,
   );
@@ -239,10 +244,15 @@ export default function SeoMaintenancePage() {
     queryKey: [
       "/api/admin/maintenance/scheduled-backfill/runs",
       runsTrigger,
+      runsCountry.length === 2 ? runsCountry : "",
     ],
     queryFn: async () => {
       const qs = new URLSearchParams({ limit: "10" });
       if (runsTrigger) qs.set("trigger", runsTrigger);
+      // Only send `country` once the admin has typed both letters —
+      // the API requires exactly 2 chars, so sending a single letter
+      // would produce transient 400s + "history fetch failed" noise.
+      if (runsCountry.length === 2) qs.set("country", runsCountry);
       const res = await fetch(
         `/api/admin/maintenance/scheduled-backfill/runs?${qs.toString()}`,
         { credentials: "include" },
@@ -777,6 +787,31 @@ export default function SeoMaintenancePage() {
                 <option value="admin:manual:tags">admin:manual:tags</option>
               </select>
             </div>
+            <div>
+              <label className="text-xs text-slate-600 mb-1 block">
+                Ülke (ISO)
+              </label>
+              <Input
+                value={runsCountry}
+                onChange={(e) =>
+                  setRunsCountry(
+                    e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2),
+                  )
+                }
+                placeholder="TR"
+                className="w-24"
+                data-testid="input-runs-country"
+              />
+            </div>
+            {runsCountry && (
+              <Button
+                variant="ghost"
+                onClick={() => setRunsCountry("")}
+                data-testid="button-clear-runs-country"
+              >
+                Ülkeyi temizle
+              </Button>
+            )}
             <Button
               variant="outline"
               onClick={() => runsQuery.refetch()}

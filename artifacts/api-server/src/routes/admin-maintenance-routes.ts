@@ -448,6 +448,39 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           filter.trigger = { $regex: `^${escaped}(:|$)` };
         }
+        // Optional `?country=TR` quick filter (Task #312). Matches any run
+        // whose trigger ends in `:<COUNTRY>` (covers admin:manual:<CC>,
+        // admin:manual:tags:<CC>, admin:manual:logos:<CC>, …) OR whose
+        // persisted `overrideCountry` equals <COUNTRY>. Combines with the
+        // trigger filter via $and so e.g. trigger=admin:manual:tags +
+        // country=TR shows just the TR tags sweeps.
+        const rawCountry = (req.query.country as string | undefined)?.trim();
+        if (rawCountry) {
+          if (!/^[A-Za-z]{2}$/.test(rawCountry)) {
+            return void res.status(400).json({
+              error: "invalid_country_code",
+              message:
+                "country must be a 2-letter ISO code (e.g. 'TR') or omitted.",
+            });
+          }
+          const cc = rawCountry.toUpperCase();
+          // Match a run if ANY of these is true so weekly sweeps that
+          // touched <CC> via their per-phase country arrays show up
+          // alongside per-country manual sweeps:
+          //   1. trigger ends in `:<CC>` (admin:manual:<CC>,
+          //      admin:manual:tags:<CC>, admin:manual:logos:<CC>, …)
+          //   2. overrideCountry === <CC> (single-country admin sweep)
+          //   3. logos[].countryCode === <CC> (cron:weekly logo phase
+          //      processed this country)
+          //   4. tags[].countryCode  === <CC> (cron:weekly tag phase
+          //      processed this country)
+          filter.$or = [
+            { trigger: { $regex: `:${cc}$` } },
+            { overrideCountry: cc },
+            { "logos.countryCode": cc },
+            { "tags.countryCode": cc },
+          ];
+        }
         // Paged rows + collection-wide totals so the dashboard can show
         // "showing X of Y · oldest from <date>" and admins know how
         // deep the retained history actually goes (Task #180).
