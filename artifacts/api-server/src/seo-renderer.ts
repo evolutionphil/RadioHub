@@ -7,6 +7,7 @@ import { trackOperation } from './utils/operation-tracker';
 import { isJunkStation } from './seo/junk-station-rules';
 import { buildGenreSeo } from './shared/genre-seo-templates';
 import { buildCountrySeo, buildRegionSeo } from './shared/region-seo-templates';
+import { getLocalizedCountryName } from './shared/country-name-translations';
 import {
   getCanonicalGenreSlug,
   MIN_STATIONS_FOR_GENRE_INDEX,
@@ -1304,7 +1305,9 @@ export class SeoRenderer {
                     'Stream {STATION} 24/7 from anywhere with internet access. Discover {GENRES} radio stations from {COUNTRY} and 60,000 more stations on Mega Radio — free, no signup required.'
                   );
                   const stationName = stationData.name || 'Radio Station';
-                  const country = stationData.country || 'around the world';
+                  const country = stationData.country
+                    ? getLocalizedCountryName(stationData.country, language)
+                    : 'around the world';
                   const tagList = (stationData.tags || '')
                     .split(/[,;]/)
                     .map((t: string) => t.trim())
@@ -1323,7 +1326,7 @@ export class SeoRenderer {
                 <section class="station-details">
                   <h2>${this.escapeHtml(getLocalizedText('station_information', 'Station Information'))}</h2>
                   ${stationData.country ? `
-                  <p><strong>${this.escapeHtml(getLocalizedText('country', 'Country'))}:</strong> ${this.escapeHtml(stationData.country)}</p>
+                  <p><strong>${this.escapeHtml(getLocalizedText('country', 'Country'))}:</strong> ${this.escapeHtml(getLocalizedCountryName(stationData.country, language))}</p>
                   ` : ''}
                   ${stationData.tags ? `
                   <p><strong>${this.escapeHtml(getLocalizedText('genres', 'Genres'))}:</strong> ${stationData.tags.split(',').slice(0, 6).map((tag: string) => this.escapeHtml(tag.trim())).join(', ')}</p>
