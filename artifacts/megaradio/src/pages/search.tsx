@@ -285,6 +285,17 @@ export default function SearchPage() {
         inputRef.current?.focus();
         return;
       }
+      // When the input is focused and the query is empty, first Escape clears
+      // the active result highlight so users can get back to a clean state
+      // without closing the page.
+      if (
+        activeIndex >= 0 &&
+        typeof document !== "undefined" &&
+        document.activeElement === inputRef.current
+      ) {
+        setActiveIndex(-1);
+        return;
+      }
       if (
         typeof window !== "undefined" &&
         window.history.length > 1
@@ -296,7 +307,7 @@ export default function SearchPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [query, navigate, langPrefix]);
+  }, [query, navigate, langPrefix, activeIndex]);
 
   // Reset focus when the result set changes
   useEffect(() => {
