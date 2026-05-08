@@ -1,4 +1,4 @@
-import { User } from '@workspace/db-shared/mongo-schemas';
+import { Genre, normalizeGenreSlug, SAFE_GENRE_SLUG_RE, Station, User } from '@workspace/db-shared/mongo-schemas';
 
 // Check if social auth is configured
 export function getSocialAuthStatus() {
@@ -22,6 +22,89 @@ export async function generateUniqueUsername(baseUsername: string): Promise<stri
     counter++;
     username = `${baseUsername}${counter}`;
   }
+}
+
+/**
+ * Shared slug generator used by the social-auth flow (Task #278).
+ *
+ * CONTRACT — DO NOT WEAKEN WITHOUT UPDATING TASK #161 / #206 TESTS:
+ *   - When `entityType === 'genre'`, the helper MUST funnel `name`
+ *     through `normalizeGenreSlug` so the result either satisfies
+ *     `SAFE_GENRE_SLUG_RE` or the helper refuses to write (throws).
+ *     The schema-level validator on `Genre.slug` would reject a bad
+ *     value at save time too, but throwing here keeps the failure
+ *     local to the call site that produced the junk and avoids the
+ *     "where did this slug come from?" forensic trail when malformed
+ *     genres later show up in the sitemap.
+ *   - Each entity type queries its OWN collection for uniqueness —
+ *     before Task #278 this helper queried `User.findOne` regardless
+ *     of `entityType`, which silently broke any non-user caller.
+ *
+ * Today only the social-signup user path uses `'user'`; the `'genre'`
+ * branch exists defensively because the signature has always exposed
+ * it and a future refactor that creates favorite-genre rows from
+ * social-profile metadata is the most likely place malformed slugs
+ * would re-emerge unnoticed (Task #278 motivation).
+ */
+export async function generateUniqueSlug(
+  name: string,
+  entityType: 'station' | 'genre' | 'user',
+  excludeId?: string,
+): Promise<string> {
+  let baseSlug: string;
+
+  if (entityType === 'genre') {
+    baseSlug = normalizeGenreSlug(name);
+    if (!baseSlug) {
+      // Refuse to write. The caller produced something that the shared
+      // normalizer collapsed to ''. Persisting a junk slug here would
+      // bypass the SAFE_GENRE_SLUG_RE contract enforced everywhere else.
+      throw new Error(
+        `generateUniqueSlug: refusing to write empty Genre.slug for input ${JSON.stringify(name)}`,
+      );
+    }
+  } else {
+    baseSlug = name
+      .toLowerCase()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .trim()
+      .replace(/^-+|-+$/g, '');
+  }
+
+  const Model: { findOne: (filter: Record<string, unknown>) => Promise<unknown> } =
+    entityType === 'genre' ? (Genre as never) : entityType === 'station' ? (Station as never) : (User as never);
+
+  let uniqueSlug = baseSlug;
+  let counter = 1;
+
+  while (true) {
+    const filter: Record<string, unknown> = { slug: uniqueSlug };
+    if (excludeId) {
+      filter._id = { $ne: excludeId };
+    }
+
+    const existing = await Model.findOne(filter);
+    if (!existing) {
+      break;
+    }
+
+    uniqueSlug = `${baseSlug}-${counter}`;
+    counter++;
+  }
+
+  if (entityType === 'genre' && !SAFE_GENRE_SLUG_RE.test(uniqueSlug)) {
+    // Belt-and-suspenders: counters are digits and `baseSlug` was just
+    // normalized, so this should be unreachable — but if a future tweak
+    // ever changes the suffix format, fail loudly instead of silently
+    // writing a malformed slug.
+    throw new Error(
+      `generateUniqueSlug: produced unsafe Genre.slug "${uniqueSlug}" for input ${JSON.stringify(name)}`,
+    );
+  }
+
+  return uniqueSlug;
 }
 
 // Create user from social profile
@@ -61,53 +144,18 @@ export async function createUserFromSocialProfile(profile: any, provider: 'googl
   if (provider === 'apple') userData.appleId = profile.id;
 
   // Generate unique slug for the new social user
-  const generateUserSlug = async (user: any, excludeId?: string): Promise<string> => {
-    // Import these functions here since they're server-side
-    const generateUniqueSlug = async (name: string, entityType: 'station' | 'genre' | 'user', excludeId?: string): Promise<string> => {
-      const baseSlug = name
-        .toLowerCase()
-        .replace(/[^\w\s-]/g, '') 
-        .replace(/\s+/g, '-') 
-        .replace(/-+/g, '-') 
-        .trim()
-        .replace(/^-+|-+$/g, '');
+  let slugSource = '';
+  if (userData.username) {
+    slugSource = userData.username;
+  } else if (userData.fullName) {
+    slugSource = userData.fullName;
+  } else if (userData.email) {
+    slugSource = userData.email.split('@')[0];
+  } else {
+    slugSource = `user-${Date.now()}`;
+  }
 
-      let uniqueSlug = baseSlug;
-      let counter = 1;
-
-      while (true) {
-        const filter: any = { slug: uniqueSlug };
-        if (excludeId) {
-          filter._id = { $ne: excludeId };
-        }
-        
-        const existingUser = await User.findOne(filter);
-        if (!existingUser) {
-          break;
-        }
-        
-        uniqueSlug = `${baseSlug}-${counter}`;
-        counter++;
-      }
-
-      return uniqueSlug;
-    };
-
-    let slugSource = '';
-    if (user.username) {
-      slugSource = user.username;
-    } else if (user.fullName) {
-      slugSource = user.fullName;
-    } else if (user.email) {
-      slugSource = user.email.split('@')[0];
-    } else {
-      slugSource = `user-${Date.now()}`;
-    }
-
-    return await generateUniqueSlug(slugSource, 'user', excludeId);
-  };
-
-  userData.slug = await generateUserSlug(userData);
+  userData.slug = await generateUniqueSlug(slugSource, 'user');
   console.log(`🔤 Generated slug for social user: "${userData.slug}" (${userData.email})`);
 
   const user = new User(userData);
