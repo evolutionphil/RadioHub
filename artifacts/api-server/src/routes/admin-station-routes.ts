@@ -116,10 +116,74 @@ type CoverageBackfillJob = {
     emptyUpstream: number;
     failed: number;
     done: boolean;
+    // Counters carried over from a recently-cancelled run for this same
+    // country (Task #252). Present only on a resumed run so the UI / API
+    // consumer can tell that `processed`/`hydrated` already include work
+    // done by the cancelled predecessor instead of being a fresh 0/total.
+    resumedFrom?: {
+      processed: number;
+      hydrated: number;
+      emptyUpstream: number;
+      failed: number;
+      total: number;
+    };
   };
 };
 const coverageBackfillJobs = new Map<string, CoverageBackfillJob>();
 const COVERAGE_BACKFILL_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
+
+// Task #252: when a coverage tags subjob is cancelled we stash its final
+// counters (and the country it ran against) so a follow-up enqueue for the
+// same country — typically fired by the Undo toast — can resume display
+// from where the cancelled run left off instead of restarting at 0/total.
+// The actual already-hydrated stations are skipped naturally by
+// `hydrateMissingTagsInBackground`'s candidate filter (rows with non-empty
+// `tags` or a recent `tagsCheckedAt` are excluded), so the hint is purely
+// about carrying the visible progress / final totals across the gap.
+type CoverageTagsResumeHint = {
+  cancelledAt: number;
+  total: number;
+  processed: number;
+  hydrated: number;
+  emptyUpstream: number;
+  failed: number;
+};
+const COVERAGE_TAGS_RESUME_TTL_MS = 5 * 60 * 1000;
+const coverageTagsResumeHints = new Map<string, CoverageTagsResumeHint>();
+
+function stashCoverageTagsResumeHint(
+  countryCode: string,
+  tags: {
+    total: number;
+    processed: number;
+    hydrated: number;
+    emptyUpstream: number;
+    failed: number;
+  },
+) {
+  // Nothing to resume from if the cancelled run hadn't actually moved
+  // the needle yet.
+  if ((tags.processed ?? 0) <= 0 && (tags.hydrated ?? 0) <= 0) return;
+  coverageTagsResumeHints.set(countryCode.toUpperCase(), {
+    cancelledAt: Date.now(),
+    total: tags.total ?? 0,
+    processed: tags.processed ?? 0,
+    hydrated: tags.hydrated ?? 0,
+    emptyUpstream: tags.emptyUpstream ?? 0,
+    failed: tags.failed ?? 0,
+  });
+}
+
+function consumeCoverageTagsResumeHint(
+  countryCode: string,
+): CoverageTagsResumeHint | null {
+  const key = countryCode.toUpperCase();
+  const hint = coverageTagsResumeHints.get(key);
+  if (!hint) return null;
+  coverageTagsResumeHints.delete(key);
+  if (Date.now() - hint.cancelledAt > COVERAGE_TAGS_RESUME_TTL_MS) return null;
+  return hint;
+}
 function cleanupCoverageBackfillJobs() {
   const now = Date.now();
   for (const [jobId, job] of coverageBackfillJobs) {
@@ -2451,15 +2515,38 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // used by `backfill-tr-tags.ts`. The job runs in the background; we
         // return immediately so the admin UI stays responsive.
         let tagsStarted = false;
+        // Task #252: if a tags subjob for this same country was cancelled
+        // within the last few minutes, carry its final counters forward so
+        // the resumed run shows continuous progress (and its final totals
+        // include the work the cancelled predecessor already did) instead
+        // of restarting the displayed bar at 0/total. The actual
+        // already-hydrated stations are skipped naturally by the candidate
+        // filter inside `hydrateMissingTagsInBackground`.
+        let resumeHint: CoverageTagsResumeHint | null = null;
         if (wantTags) {
           tagsStarted = true;
+          resumeHint = consumeCoverageTagsResumeHint(rawCode);
+          const baseProcessed = resumeHint?.processed ?? 0;
+          const baseHydrated = resumeHint?.hydrated ?? 0;
+          const baseEmptyUpstream = resumeHint?.emptyUpstream ?? 0;
+          const baseFailed = resumeHint?.failed ?? 0;
+          const baseTotal = resumeHint?.total ?? 0;
           job.tags = {
-            total: 0,
-            processed: 0,
-            hydrated: 0,
-            emptyUpstream: 0,
-            failed: 0,
+            total: baseTotal,
+            processed: baseProcessed,
+            hydrated: baseHydrated,
+            emptyUpstream: baseEmptyUpstream,
+            failed: baseFailed,
             done: false,
+            resumedFrom: resumeHint
+              ? {
+                  processed: baseProcessed,
+                  hydrated: baseHydrated,
+                  emptyUpstream: baseEmptyUpstream,
+                  failed: baseFailed,
+                  total: baseTotal,
+                }
+              : undefined,
           };
           void syncService
             .hydrateMissingTagsInBackground({
@@ -2473,26 +2560,49 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               onProgress: (p) => {
                 const current = coverageBackfillJobs.get(jobId);
                 if (!current?.tags) return;
-                current.tags.total = p.total;
-                current.tags.processed = p.processed;
-                current.tags.hydrated = p.hydrated;
-                current.tags.emptyUpstream = p.emptyUpstream;
-                current.tags.failed = p.failed;
+                // The new run's `p.total` is just the remaining-candidate
+                // count (the candidate filter excludes stations the
+                // cancelled run already hydrated / cooled down). Stations
+                // counted in `baseProcessed` are NOT in `p.total`, so the
+                // continuous denominator is the larger of the original
+                // baseline total and the live carried-forward processed
+                // count + the remaining work — never the sum of both
+                // totals (that would double-count the denominator).
+                current.tags.total = Math.max(
+                  baseTotal,
+                  baseProcessed + p.total,
+                );
+                current.tags.processed = baseProcessed + p.processed;
+                current.tags.hydrated = baseHydrated + p.hydrated;
+                current.tags.emptyUpstream = baseEmptyUpstream + p.emptyUpstream;
+                current.tags.failed = baseFailed + p.failed;
                 coverageBackfillJobs.set(jobId, current);
               },
             })
             .then((result) => {
               const current = coverageBackfillJobs.get(jobId);
               if (!current?.tags) return;
+              // Same continuity rule as onProgress above — never inflate
+              // the displayed denominator by adding the baseline total
+              // to the new run's total. The new run only saw the
+              // remaining (non-hydrated, non-cooled-down) candidates.
               current.tags.total = Math.max(
                 current.tags.total,
-                result.processed,
+                baseTotal,
+                baseProcessed + result.processed,
               );
-              current.tags.processed = result.processed;
-              current.tags.hydrated = result.hydrated;
-              current.tags.emptyUpstream = result.emptyUpstream;
-              current.tags.failed = result.failed;
+              current.tags.processed = baseProcessed + result.processed;
+              current.tags.hydrated = baseHydrated + result.hydrated;
+              current.tags.emptyUpstream =
+                baseEmptyUpstream + result.emptyUpstream;
+              current.tags.failed = baseFailed + result.failed;
               current.tags.done = true;
+              // Task #252: if this run itself got cancelled, stash a fresh
+              // resume hint so a follow-up Undo can keep chaining instead
+              // of losing the carried-forward progress on every cancel.
+              if (result.cancelled || current.cancelRequested) {
+                stashCoverageTagsResumeHint(current.countryCode, current.tags);
+              }
               maybeFinishCoverageJob(current);
               coverageBackfillJobs.set(jobId, current);
             })
@@ -2525,7 +2635,20 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           logos: wantLogos
             ? { matched: logoMatched, enqueued: logoEnqueued }
             : null,
-          tags: wantTags ? { started: tagsStarted } : null,
+          tags: wantTags
+            ? {
+                started: tagsStarted,
+                resumedFrom: resumeHint
+                  ? {
+                      processed: resumeHint.processed,
+                      hydrated: resumeHint.hydrated,
+                      emptyUpstream: resumeHint.emptyUpstream,
+                      failed: resumeHint.failed,
+                      total: resumeHint.total,
+                    }
+                  : null,
+              }
+            : null,
         });
       } catch (error: any) {
         logger.error('coverage enqueue failed', error);
@@ -2638,6 +2761,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           .json({ success: false, error: 'Job is not cancellable' });
       }
       job.cancelRequested = true;
+      // Task #252: stash the current tags counters now so an Undo that
+      // arrives before the loop's `.then` has a chance to run still has
+      // resume data to pick up. The `.then` will overwrite this hint with
+      // the post-final-batch numbers if it gets there first; either way
+      // the next enqueue for this country picks up the freshest values.
+      if (job.tags && (job.tags.processed > 0 || job.tags.hydrated > 0)) {
+        stashCoverageTagsResumeHint(job.countryCode, job.tags);
+      }
       // Logo processing happens in the out-of-process scheduled sweeper —
       // we can't pull stations back off its queue, so the most we can do
       // is stop tracking remaining work and let the job transition.

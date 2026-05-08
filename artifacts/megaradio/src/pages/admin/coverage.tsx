@@ -280,6 +280,17 @@ interface CoverageJobStatus {
     emptyUpstream: number;
     failed: number;
     done: boolean;
+    // Counters carried over from a recently-cancelled run for the same
+    // country (Task #252). Present only when the server seeded this job
+    // from a previous cancelled run's progress so an Undo doesn't restart
+    // the displayed bar at 0/total.
+    resumedFrom?: {
+      processed: number;
+      hydrated: number;
+      emptyUpstream: number;
+      failed: number;
+      total: number;
+    };
   };
 }
 
@@ -396,7 +407,16 @@ export default function AdminCoverage() {
         countryCode: string;
         scope: 'logos' | 'tags' | 'both';
         logos: { matched: number; enqueued: number } | null;
-        tags: { started: boolean } | null;
+        tags: {
+          started: boolean;
+          resumedFrom: {
+            processed: number;
+            hydrated: number;
+            emptyUpstream: number;
+            failed: number;
+            total: number;
+          } | null;
+        } | null;
       };
     },
     onSuccess: (result) => {
@@ -409,7 +429,15 @@ export default function AdminCoverage() {
         );
       }
       if (result.tags?.started) {
-        bits.push('tag re-fetch started in background');
+        if (result.tags.resumedFrom) {
+          // Task #252: tell the admin we picked up where the cancelled
+          // run left off instead of restarting the whole country.
+          bits.push(
+            `tag re-fetch resumed from ${result.tags.resumedFrom.processed.toLocaleString()}/${result.tags.resumedFrom.total.toLocaleString()} processed`,
+          );
+        } else {
+          bits.push('tag re-fetch started in background');
+        }
       }
       toast({
         title: `Backfill kicked off for ${result.countryCode}`,
@@ -439,12 +467,18 @@ export default function AdminCoverage() {
               : undefined,
             tags: result.tags?.started
               ? {
-                  total: 0,
-                  processed: 0,
-                  hydrated: 0,
-                  emptyUpstream: 0,
-                  failed: 0,
+                  // Task #252: if the server carried counters over from a
+                  // recently-cancelled run, seed the local job from those
+                  // so the row immediately shows continuous progress
+                  // (e.g. "234/1000 ✅180") instead of flashing 0/0 until
+                  // the next 2s status poll lands.
+                  total: result.tags.resumedFrom?.total ?? 0,
+                  processed: result.tags.resumedFrom?.processed ?? 0,
+                  hydrated: result.tags.resumedFrom?.hydrated ?? 0,
+                  emptyUpstream: result.tags.resumedFrom?.emptyUpstream ?? 0,
+                  failed: result.tags.resumedFrom?.failed ?? 0,
                   done: false,
+                  resumedFrom: result.tags.resumedFrom ?? undefined,
                 }
               : undefined,
           },
