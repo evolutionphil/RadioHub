@@ -37,6 +37,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface CountryCoverage {
@@ -400,7 +401,11 @@ export default function AdminCoverage() {
     () => new Set(),
   );
   const cancelMutation = useMutation({
-    mutationFn: async (vars: { countryCode: string; jobId: string }) => {
+    mutationFn: async (vars: {
+      countryCode: string;
+      jobId: string;
+      scope: 'logos' | 'tags' | 'both';
+    }) => {
       const res = await apiRequest(
         'POST',
         `/api/admin/coverage/enqueue-job-cancel/${encodeURIComponent(
@@ -426,6 +431,30 @@ export default function AdminCoverage() {
           ...prev,
           [vars.countryCode]: { ...cur, cancelRequested: true },
         };
+      });
+    },
+    onSuccess: (vars) => {
+      // Show a short-lived "Undo" toast so an accidental cancel can
+      // re-fire the same backfill scope without losing more progress
+      // than the in-flight batch. Doing nothing leaves the cancelled
+      // state as it is — the toast just times out.
+      const { countryCode, scope } = vars;
+      const t = toast({
+        title: `Backfill cancelled for ${countryCode}`,
+        description: 'Cancelled by accident? Undo within 10 seconds.',
+        duration: 10_000,
+        action: (
+          <ToastAction
+            altText="Undo cancel and re-run the backfill"
+            data-testid={`button-undo-cancel-${countryCode}`}
+            onClick={() => {
+              enqueueMutation.mutate({ countryCode, scope });
+              t.dismiss();
+            }}
+          >
+            Undo
+          </ToastAction>
+        ),
       });
     },
     onError: (err: any, vars) => {
@@ -1052,6 +1081,7 @@ export default function AdminCoverage() {
                                 cancelMutation.mutate({
                                   countryCode: job.countryCode,
                                   jobId: job.jobId,
+                                  scope: job.scope,
                                 })
                               }
                             />
