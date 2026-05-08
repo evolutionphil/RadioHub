@@ -92,6 +92,7 @@ export default function AdminDashboard() {
       logos: Array<{ countryCode: string; candidates: number; enqueued: number }>;
       tags: Array<{ countryCode: string; processed: number; hydrated: number; emptyUpstream: number; failed: number }>;
       errorMessage?: string;
+      attempts?: Array<{ attempt: number; error: string; failedAt: string }>;
     } | null;
   }>({
     queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
@@ -556,26 +557,39 @@ export default function AdminDashboard() {
             const failedTagCountries = run.tags.filter((t) => t.failed > 0);
             const isFailed = run.status === "failed";
             const isRunning = run.status === "running";
+            const attempts = run.attempts ?? [];
+            const retryCount = attempts.length;
+            const recovered = !isFailed && !isRunning && retryCount > 0;
             const containerClass = isFailed
               ? "border-rose-200 bg-rose-50"
               : isRunning
               ? "border-blue-200 bg-blue-50"
+              : recovered
+              ? "border-amber-200 bg-amber-50"
               : "border-emerald-200 bg-emerald-50";
             const StatusIcon = isFailed
               ? AlertCircle
               : isRunning
               ? Activity
+              : recovered
+              ? AlertCircle
               : CheckCircle;
             const statusIconClass = isFailed
               ? "text-rose-600"
               : isRunning
               ? "text-blue-600"
+              : recovered
+              ? "text-amber-700"
               : "text-emerald-600";
             const statusText = isFailed
-              ? "Failed"
+              ? retryCount > 0
+                ? `Failed after ${retryCount + 1} attempts`
+                : "Failed"
               : isRunning
               ? "Running…"
-              : `OK, finished ${fmtAgo(diffMs)}`;
+              : recovered
+              ? `Recovered after ${retryCount} failed attempt${retryCount === 1 ? "" : "s"}, finished ${fmtAgo(diffMs)}`
+              : `Clean, finished ${fmtAgo(diffMs)}`;
             const totalLogosEnqueued = run.logos.reduce((s, c) => s + c.enqueued, 0);
             const totalTagsHydrated = run.tags.reduce((s, c) => s + c.hydrated, 0);
             return (
@@ -606,6 +620,39 @@ export default function AdminDashboard() {
                   >
                     Error: {run.errorMessage}
                   </div>
+                )}
+                {attempts.length > 0 && (
+                  <details
+                    className="text-xs"
+                    data-testid="details-backfill-attempts"
+                  >
+                    <summary
+                      className={`cursor-pointer ${
+                        recovered ? "text-amber-700" : "text-rose-700"
+                      }`}
+                    >
+                      {retryCount} failed attempt{retryCount === 1 ? "" : "s"} before final outcome
+                    </summary>
+                    <ul className="mt-1 space-y-1 pl-4">
+                      {attempts.map((a) => (
+                        <li
+                          key={`attempt-${a.attempt}-${a.failedAt}`}
+                          className="bg-white border border-slate-200 rounded px-2 py-1"
+                          data-testid={`backfill-attempt-${a.attempt}`}
+                        >
+                          <span className="font-mono text-slate-600">
+                            #{a.attempt}
+                          </span>{" "}
+                          <span className="text-slate-500">
+                            {new Date(a.failedAt).toLocaleString()}
+                          </span>
+                          <div className="text-rose-700 break-words">
+                            {a.error || "(no error message)"}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
                 )}
                 {isFailed && (
                   <div>

@@ -61,6 +61,7 @@ interface ScheduledBackfillRun {
   logos: ScheduledBackfillRunCountryLogos[];
   tags: ScheduledBackfillRunCountryTags[];
   errorMessage?: string;
+  attempts?: Array<{ attempt: number; error: string; failedAt: string }>;
 }
 interface ScheduledBackfillStatusResponse {
   status: {
@@ -497,6 +498,7 @@ export default function SeoMaintenancePage() {
                     <th className="py-2 pr-3">Tetikleyici</th>
                     <th className="py-2 pr-3">Süre</th>
                     <th className="py-2 pr-3">Durum</th>
+                    <th className="py-2 pr-3">Denemeler</th>
                     <th className="py-2 pr-3">Logos (enq/cand)</th>
                     <th className="py-2 pr-3">Tags (hyd/proc)</th>
                     <th className="py-2 pr-3">Fail</th>
@@ -508,6 +510,9 @@ export default function SeoMaintenancePage() {
                     const isExpanded = expandedRunId === run._id;
                     const isDeepLinked =
                       initialDeepLinkRunId === run._id;
+                    const retryCount = (run.attempts ?? []).length;
+                    const recovered =
+                      run.status === "completed" && retryCount > 0;
                     return (
                       <Fragment key={run._id}>
                         <tr
@@ -546,9 +551,32 @@ export default function SeoMaintenancePage() {
                                   ? "destructive"
                                   : "secondary"
                               }
+                              data-testid={`badge-run-status-${run._id}`}
                             >
                               {run.status.toUpperCase()}
+                              {recovered && " · RECOVERED"}
                             </Badge>
+                          </td>
+                          <td className="py-2 pr-3">
+                            {retryCount === 0 ? (
+                              <span className="text-slate-400">—</span>
+                            ) : (
+                              <span
+                                className={
+                                  recovered
+                                    ? "text-amber-700 font-semibold"
+                                    : "text-rose-600 font-semibold"
+                                }
+                                title={
+                                  recovered
+                                    ? `Recovered after ${retryCount} failed attempt${retryCount === 1 ? "" : "s"}`
+                                    : `Failed after ${retryCount + 1} attempts`
+                                }
+                                data-testid={`text-run-retries-${run._id}`}
+                              >
+                                {retryCount}× retry
+                              </span>
+                            )}
                           </td>
                           <td className="py-2 pr-3">
                             <span className="text-emerald-600 font-semibold">
@@ -578,10 +606,44 @@ export default function SeoMaintenancePage() {
                         </tr>
                         {isExpanded && (
                           <tr className="bg-slate-50">
-                            <td colSpan={8} className="px-3 py-3">
+                            <td colSpan={9} className="px-3 py-3">
                               {run.errorMessage && (
                                 <div className="text-xs text-rose-600 mb-2">
                                   Hata: {run.errorMessage}
+                                </div>
+                              )}
+                              {retryCount > 0 && (
+                                <div
+                                  className="mb-3"
+                                  data-testid={`attempts-list-${run._id}`}
+                                >
+                                  <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                                    Başarısız denemeler ({retryCount})
+                                    {recovered && (
+                                      <span className="ml-2 text-amber-700 normal-case">
+                                        · sonra başarıyla tamamlandı
+                                      </span>
+                                    )}
+                                  </div>
+                                  <ul className="space-y-1">
+                                    {(run.attempts ?? []).map((a) => (
+                                      <li
+                                        key={`${run._id}-att-${a.attempt}`}
+                                        className="text-xs bg-white border border-slate-200 rounded px-2 py-1"
+                                        data-testid={`attempt-${run._id}-${a.attempt}`}
+                                      >
+                                        <span className="font-mono text-slate-600">
+                                          #{a.attempt}
+                                        </span>{" "}
+                                        <span className="text-slate-500">
+                                          {new Date(a.failedAt).toLocaleString()}
+                                        </span>
+                                        <div className="text-rose-700 break-words">
+                                          {a.error || "(no error message)"}
+                                        </div>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
                               )}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
