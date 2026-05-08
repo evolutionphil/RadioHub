@@ -371,6 +371,49 @@ export default function AdminUsers() {
     return sorted;
   }, [users, searchQuery, planFilter, authMethodFilter, sort]);
 
+  // Counts per filter option computed from the currently loaded users so
+  // each dropdown doubles as a lightweight breakdown. We deliberately use
+  // `users` (the full loaded set) rather than `filteredUsers` so the
+  // numbers don't collapse to zero as soon as one filter is applied —
+  // admins want to see "where could I jump to next?".
+  const planCounts = useMemo(() => {
+    const counts: Record<PlanFilter, number> = {
+      all: users.length,
+      none: 0,
+      remove_ads: 0,
+      any_premium: 0,
+      premium_monthly: 0,
+      premium_yearly: 0,
+      premium_lifetime: 0,
+    };
+    for (const user of users) {
+      for (const value of PLAN_FILTER_VALUES) {
+        if (value === "all") continue;
+        if (matchesPlanFilter(user.subscription, value)) counts[value]++;
+      }
+    }
+    return counts;
+  }, [users]);
+
+  const authMethodCounts = useMemo(() => {
+    const counts: Record<AuthMethodFilter, number> = {
+      all: users.length,
+      email: 0,
+      google: 0,
+      facebook: 0,
+      apple: 0,
+    };
+    for (const user of users) {
+      for (const value of AUTH_METHOD_FILTER_VALUES) {
+        if (value === "all") continue;
+        if (matchesAuthMethodFilter(user.authProvider, value)) counts[value]++;
+      }
+    }
+    return counts;
+  }, [users]);
+
+  const formatCount = (n: number) => n.toLocaleString();
+
   const renderSortIcon = (column: SortColumn) => {
     if (!sort || sort.column !== column) {
       return (
@@ -645,13 +688,13 @@ export default function AdminUsers() {
                 <SelectValue placeholder="Filter by plan" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All plans</SelectItem>
-                <SelectItem value="none">No plan</SelectItem>
-                <SelectItem value="remove_ads">Remove Ads</SelectItem>
-                <SelectItem value="any_premium">Any Premium</SelectItem>
-                <SelectItem value="premium_monthly">Premium · Monthly</SelectItem>
-                <SelectItem value="premium_yearly">Premium · Yearly</SelectItem>
-                <SelectItem value="premium_lifetime">Premium · Lifetime</SelectItem>
+                <SelectItem value="all">All plans ({formatCount(planCounts.all)})</SelectItem>
+                <SelectItem value="none">No plan ({formatCount(planCounts.none)})</SelectItem>
+                <SelectItem value="remove_ads">Remove Ads ({formatCount(planCounts.remove_ads)})</SelectItem>
+                <SelectItem value="any_premium">Any Premium ({formatCount(planCounts.any_premium)})</SelectItem>
+                <SelectItem value="premium_monthly">Premium · Monthly ({formatCount(planCounts.premium_monthly)})</SelectItem>
+                <SelectItem value="premium_yearly">Premium · Yearly ({formatCount(planCounts.premium_yearly)})</SelectItem>
+                <SelectItem value="premium_lifetime">Premium · Lifetime ({formatCount(planCounts.premium_lifetime)})</SelectItem>
               </SelectContent>
             </Select>
             <Select
@@ -668,11 +711,11 @@ export default function AdminUsers() {
                 <SelectValue placeholder="Filter by auth method" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All sign-in methods</SelectItem>
-                <SelectItem value="email">Email</SelectItem>
-                <SelectItem value="google">Google</SelectItem>
-                <SelectItem value="facebook">Facebook</SelectItem>
-                <SelectItem value="apple">Apple</SelectItem>
+                <SelectItem value="all">All sign-in methods ({formatCount(authMethodCounts.all)})</SelectItem>
+                <SelectItem value="email">Email ({formatCount(authMethodCounts.email)})</SelectItem>
+                <SelectItem value="google">Google ({formatCount(authMethodCounts.google)})</SelectItem>
+                <SelectItem value="facebook">Facebook ({formatCount(authMethodCounts.facebook)})</SelectItem>
+                <SelectItem value="apple">Apple ({formatCount(authMethodCounts.apple)})</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -704,6 +747,23 @@ export default function AdminUsers() {
           <CardDescription>Manage user profiles, data, and permissions</CardDescription>
         </CardHeader>
         <CardContent>
+          {!isLoadingUsers && !usersError && users.length > 0 && (
+            <p
+              className="text-sm text-gray-600 mb-4"
+              data-testid="text-users-filter-summary"
+            >
+              {hasActiveFilters || searchQuery.trim() !== "" ? (
+                <>
+                  Showing <span className="font-medium text-gray-900">{formatCount(filteredUsers.length)}</span>{" "}
+                  of <span className="font-medium text-gray-900">{formatCount(users.length)}</span> users matching the current filters.
+                </>
+              ) : (
+                <>
+                  Showing all <span className="font-medium text-gray-900">{formatCount(users.length)}</span> users.
+                </>
+              )}
+            </p>
+          )}
           {isLoadingUsers ? (
             <div className="flex justify-center py-8">
               <Loader2 className="animate-spin" size={32} />
