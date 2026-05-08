@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trash2, Plus, Search, AlertCircle, Wrench } from "lucide-react";
+import { Trash2, Plus, Search, AlertCircle, Wrench, RefreshCw } from "lucide-react";
 
 interface AliasEntry {
   source: string;
@@ -23,6 +23,15 @@ interface OverrideEntry {
   notes: string;
 }
 
+interface StationCountsStatus {
+  lastRecomputedAt: string | null;
+  lastDurationMs: number | null;
+  lastUpdatedSlugs: number;
+  lastTotalGenres: number;
+  inFlight: boolean;
+  lastTrigger: string | null;
+}
+
 interface WhitelistResponse {
   slugs: string[];
   slugStationCounts?: Record<string, number>;
@@ -33,6 +42,7 @@ interface WhitelistResponse {
   seed: { slugCount: number; aliasCount: number };
   overrides: OverrideEntry[];
   lastRefreshAt: string | null;
+  stationCountsStatus?: StationCountsStatus;
 }
 
 // Task #184: 'missing' = no Genre row at all (likely a typo / never seeded).
@@ -61,6 +71,14 @@ export default function AdminGenreWhitelist() {
 
   const { data, isLoading, error } = useQuery<WhitelistResponse>({
     queryKey: ['/api/admin/genre-whitelist'],
+    // Task #185: while a recompute is in flight (e.g. kicked off by a bulk
+    // import or country backfill in another tab), poll every few seconds so
+    // the "counts updated at" badge and the per-slug numbers refresh as soon
+    // as the background job finishes.
+    refetchInterval: (query) => {
+      const d = query.state.data as WhitelistResponse | undefined;
+      return d?.stationCountsStatus?.inFlight ? 4000 : false;
+    },
   });
 
   // Real Genre tags by stationCount that aren't whitelisted/aliased yet —
@@ -152,6 +170,25 @@ export default function AdminGenreWhitelist() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to add alias", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const recomputeCounts = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/admin/genre-whitelist/recompute-counts');
+      return res.json() as Promise<{ ok: boolean; status: StationCountsStatus }>;
+    },
+    onSuccess: (resp) => {
+      const updated = resp?.status?.lastUpdatedSlugs ?? 0;
+      const total = resp?.status?.lastTotalGenres ?? 0;
+      toast({
+        title: 'Station counts refreshed',
+        description: `${updated} of ${total} genre rows updated.`,
+      });
+      invalidate();
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Failed to refresh counts', description: err.message, variant: 'destructive' });
     },
   });
 
@@ -258,6 +295,50 @@ export default function AdminGenreWhitelist() {
               Refreshed: {new Date(data.lastRefreshAt).toLocaleTimeString()}
             </Badge>
           )}
+          {/* Task #185: surface when Genre.stationCount was last recomputed
+              so admins know whether the per-slug numbers below are fresh
+              (esp. after a bulk import / country backfill / tag re-check). */}
+          {data.stationCountsStatus?.lastRecomputedAt ? (
+            <Badge
+              variant="outline"
+              data-testid="badge-counts-updated"
+            >
+              Counts updated:{' '}
+              {new Date(data.stationCountsStatus.lastRecomputedAt).toLocaleTimeString()}
+            </Badge>
+          ) : (
+            <Badge variant="outline" data-testid="badge-counts-updated">
+              Counts: never recomputed
+            </Badge>
+          )}
+          {data.stationCountsStatus?.inFlight && (
+            <Badge variant="secondary" data-testid="badge-counts-recomputing">
+              Recomputing counts…
+            </Badge>
+          )}
+        </div>
+        <div className="mt-3">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => recomputeCounts.mutate()}
+            disabled={recomputeCounts.isPending || data.stationCountsStatus?.inFlight}
+            data-testid="button-recompute-counts"
+          >
+            <RefreshCw
+              className={`w-4 h-4 mr-1 ${
+                recomputeCounts.isPending || data.stationCountsStatus?.inFlight
+                  ? 'animate-spin'
+                  : ''
+              }`}
+            />
+            Refresh station counts now
+          </Button>
+          <p className="text-xs text-gray-500 mt-1">
+            Re-aggregates <code>Genre.stationCount</code> from the live Station
+            collection. Bulk imports, country backfills, and tag re-checks
+            already trigger this automatically when they finish.
+          </p>
         </div>
       </div>
 

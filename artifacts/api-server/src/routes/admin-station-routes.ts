@@ -14,6 +14,7 @@ import CacheManager from "../cache";
 import { getQuotaStatus } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
 import { stripPlaceholders } from "./shared-utils";
+import { triggerGenreStationCountsRecompute } from "../services/genre-station-counts";
 
 const faviconUpload = multer({
   storage: multer.memoryStorage(),
@@ -124,7 +125,14 @@ function cleanupCoverageBackfillJobs() {
 function maybeFinishCoverageJob(job: CoverageBackfillJob) {
   const logosDone = !job.logos || job.logos.done;
   const tagsDone = !job.tags || job.tags.done;
-  if (logosDone && tagsDone && job.status === 'running') {
+  const wasRunning = job.status === 'running';
+  if (logosDone && tagsDone && wasRunning) {
+    // Task #185: a country backfill that touched tags can shift which
+    // genres have stations under them — refresh Genre.stationCount so
+    // the admin Genre Whitelist page doesn't show stale "thin" badges.
+    if (job.tags) {
+      triggerGenreStationCountsRecompute(`coverage-backfill:${job.countryCode ?? 'unknown'}`);
+    }
     job.status = job.cancelRequested
       ? 'cancelled'
       : job.error
@@ -766,6 +774,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         } catch (indexError) {}
       }
       
+      // Task #185: a bulk import flips most genres' station counts at once.
+      // Refresh Genre.stationCount in the background so the admin Genre
+      // Whitelist page reflects the new totals on its next poll instead of
+      // showing pre-import "thin" / "no matching stations" badges.
+      triggerGenreStationCountsRecompute('bulk-import-stations');
+
       const finalCount = await Station.countDocuments();
       const hlsCount = await Station.countDocuments({ hls: true });
       const mp3Count = await Station.countDocuments({ format: 'MP3' });
@@ -872,6 +886,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       await CacheManager.clearByPattern('popular_stations');
       await CacheManager.clearByPattern('stations');
       await CacheManager.clearByPattern('community_favorites');
+
+      // Task #185: bulk deletes can drop a slug below the indexable
+      // threshold or to zero — refresh Genre.stationCount so the admin
+      // page doesn't keep showing the pre-delete "live" badge.
+      if (deletedCount > 0) {
+        triggerGenreStationCountsRecompute('bulk-delete-stations');
+      }
 
       res.json({
         success: true,
@@ -1452,6 +1473,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         const finish = (err?: unknown) => {
           const current = recheckTagsJobs.get(jobId);
           if (!current) return;
+          // Task #185: a tag re-check can move stations into/out of slugs.
+          // Refresh Genre.stationCount so the admin Genre Whitelist page
+          // doesn't keep showing pre-recheck totals.
+          if ((current.hydrated ?? 0) > 0 || (current.processed ?? 0) > 0) {
+            triggerGenreStationCountsRecompute(`recheck-tags-bulk:${jobId}`);
+          }
           // If cancellation was requested but the loop had already finished
           // every station before observing the flag, prefer the truthful
           // 'completed' status so admins don't see a misleading "cancelled"

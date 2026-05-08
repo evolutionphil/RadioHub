@@ -19,6 +19,10 @@ import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
 import { buildLocalizedUrl } from '../seo/url-helpers';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { performanceCache } from '../performance-cache';
+import {
+  getGenreStationCountsStatus,
+  recomputeGenreStationCounts,
+} from '../services/genre-station-counts';
 
 const PRIMARY_HOST = 'themegaradio.com';
 
@@ -205,6 +209,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
             notes: o.notes ?? '',
           })),
           lastRefreshAt: getLastRefreshAt(),
+          // Task #185: surface when Genre.stationCount was last recomputed
+          // so admins can tell whether the per-slug counts above are fresh
+          // (e.g. after a bulk import or country backfill).
+          stationCountsStatus: getGenreStationCountsStatus(),
         });
       } catch (error: any) {
         logger.error('Error reading genre whitelist:', error);
@@ -260,6 +268,25 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       } catch (error: any) {
         logger.error('Error loading genre whitelist suggestions:', error);
         return res.status(500).json({ error: 'Failed to load suggestions' });
+      }
+    },
+  );
+
+  // POST /recompute-counts — task #185: manually re-aggregate
+  // `Genre.stationCount` from the live Station collection. Useful when an
+  // admin notices the counts look stale (e.g. between a bulk import and the
+  // background recompute it kicks off, or for ad-hoc audits). Coalesces
+  // with any in-flight recompute so spamming the button is safe.
+  app.post(
+    '/api/admin/genre-whitelist/recompute-counts',
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        await recomputeGenreStationCounts('admin-manual');
+        return res.json({ ok: true, status: getGenreStationCountsStatus() });
+      } catch (error: any) {
+        logger.error('Error recomputing Genre.stationCount:', error);
+        return res.status(500).json({ error: 'Failed to recompute counts' });
       }
     },
   );
