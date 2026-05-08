@@ -192,6 +192,12 @@ mock.module(new URL('../src/seo/url-helpers.ts', import.meta.url).href, {
   },
 });
 
+mock.module(new URL('../src/services/genre-whitelist-push-notifier.ts', import.meta.url).href, {
+  namedExports: {
+    notifyWhitelistPushResult: async () => {},
+  },
+});
+
 mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
   namedExports: {
     performanceCache: {
@@ -501,6 +507,128 @@ test('DELETE /aliases/:source just drops the alias-add row for an admin-added al
     0,
     'no alias-remove override should be persisted for an admin-added alias',
   );
+});
+
+// ---------------------------------------------------------------------------
+// Task #275: slug shape rejection — admin-typed slugs that don't already match
+// the safe charset must return 422 with the normalized "Did you mean ..."
+// suggestion instead of being silently coerced into GenreWhitelistOverride.
+// ---------------------------------------------------------------------------
+
+const DIRTY_SLUG_CASES: Array<{ input: string; suggestion: string }> = [
+  { input: 'Hip Hop', suggestion: 'hip-hop' },
+  { input: '--rock--', suggestion: 'rock' },
+  { input: 'Jazz!', suggestion: 'jazz' },
+];
+
+for (const { input, suggestion } of DIRTY_SLUG_CASES) {
+  test(`POST /slugs rejects "${input}" with 422 + suggestion and writes nothing`, async () => {
+    resetState();
+    const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/slugs`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ slug: input }),
+    });
+    assert.equal(res.status, 422, `dirty slug "${input}" must return 422`);
+    const body = (await res.json()) as { error?: string };
+    assert.match(body.error ?? '', new RegExp(`"${input.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}"`));
+    assert.match(body.error ?? '', new RegExp(`"${suggestion}"`));
+    assert.match(body.error ?? '', /did you mean/i);
+    assert.equal(
+      overrideRows.length,
+      0,
+      `dirty slug "${input}" must NOT have produced any override row`,
+    );
+  });
+
+  test(`DELETE /slugs/:slug rejects "${input}" with 422 and writes nothing`, async () => {
+    resetState();
+    const res = await fetch(
+      `${baseUrl}/api/admin/genre-whitelist/slugs/${encodeURIComponent(input)}`,
+      { method: 'DELETE' },
+    );
+    assert.equal(res.status, 422);
+    const body = (await res.json()) as { error?: string };
+    assert.match(body.error ?? '', new RegExp(`"${suggestion}"`));
+    assert.equal(overrideRows.length, 0);
+  });
+
+  test(`POST /aliases rejects "${input}" as source with 422 and writes nothing`, async () => {
+    resetState();
+    const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/aliases`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: input, canonical: 'rock' }),
+    });
+    assert.equal(res.status, 422);
+    const body = (await res.json()) as { error?: string };
+    assert.match(body.error ?? '', /source/i);
+    assert.match(body.error ?? '', new RegExp(`"${suggestion}"`));
+    assert.equal(overrideRows.length, 0);
+  });
+
+  test(`POST /aliases rejects "${input}" as canonical with 422 and writes nothing`, async () => {
+    resetState();
+    const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/aliases`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ source: 'rock-music', canonical: input }),
+    });
+    assert.equal(res.status, 422);
+    const body = (await res.json()) as { error?: string };
+    assert.match(body.error ?? '', /canonical/i);
+    assert.match(body.error ?? '', new RegExp(`"${suggestion}"`));
+    assert.equal(overrideRows.length, 0);
+  });
+
+  test(`DELETE /aliases/:source rejects "${input}" with 422 and writes nothing`, async () => {
+    resetState();
+    const res = await fetch(
+      `${baseUrl}/api/admin/genre-whitelist/aliases/${encodeURIComponent(input)}`,
+      { method: 'DELETE' },
+    );
+    assert.equal(res.status, 422);
+    const body = (await res.json()) as { error?: string };
+    assert.match(body.error ?? '', /source/i);
+    assert.match(body.error ?? '', new RegExp(`"${suggestion}"`));
+    assert.equal(overrideRows.length, 0);
+  });
+
+  test(`POST /slugs/:slug/genre-row rejects "${input}" with 422 and writes nothing`, async () => {
+    resetState();
+    const res = await fetch(
+      `${baseUrl}/api/admin/genre-whitelist/slugs/${encodeURIComponent(input)}/genre-row`,
+      { method: 'POST' },
+    );
+    assert.equal(res.status, 422);
+    const body = (await res.json()) as { error?: string };
+    assert.match(body.error ?? '', new RegExp(`"${suggestion}"`));
+    assert.match(body.error ?? '', /did you mean/i);
+    assert.equal(
+      overrideRows.length,
+      0,
+      `genre-row dirty slug "${input}" must NOT have produced any override row`,
+    );
+  });
+}
+
+test('POST /slugs accepts a clean slug "hip-hop" end-to-end and persists an override', async () => {
+  resetState();
+  genreStationCount = 5;
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/slugs`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ slug: 'hip-hop' }),
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { ok?: boolean; slug?: string };
+  assert.equal(body.ok, true);
+  assert.equal(body.slug, 'hip-hop');
+  // 'hip-hop' is not in the seeded whitelist (rock+jazz), so an explicit
+  // slug-add override must have been persisted with the admin's identity.
+  const adds = overrideRows.filter((r) => r.kind === 'slug-add' && r.slug === 'hip-hop');
+  assert.equal(adds.length, 1, 'a single slug-add override must be persisted');
+  assert.equal(adds[0].createdBy, 'test-admin');
 });
 
 test('POST /aliases rejects a canonical that is not on the merged whitelist', async () => {
