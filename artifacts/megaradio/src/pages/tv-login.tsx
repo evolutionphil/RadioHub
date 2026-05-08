@@ -17,6 +17,8 @@ export default function TvLogin() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const isLoggedIn = isAuthenticated && !!user;
 
+  console.log('[TV-LOGIN] 🖥️ render — authLoading:', authLoading, 'isAuthenticated:', isAuthenticated, 'user:', user?.email || '(null)', 'isLoggedIn:', isLoggedIn);
+
   const handleActivate = async () => {
     if (code.length !== 6 || isActivating) return;
     setIsActivating(true);
@@ -65,7 +67,11 @@ export default function TvLogin() {
   const handleGoogleLogin = () => {
     const langPrefix = currentLanguage && currentLanguage !== 'en' ? `/${currentLanguage}` : '/en';
     const returnUrl = `${langPrefix}/tv`;
-    window.location.href = `/api/auth/google?returnTo=${encodeURIComponent(returnUrl)}`;
+    const targetUrl = `/api/auth/google?returnTo=${encodeURIComponent(returnUrl)}`;
+    console.log('[TV-LOGIN] 🟢 Google login button clicked');
+    console.log('[TV-LOGIN] 🍪 cookie BEFORE redirect:', document.cookie || '(empty)');
+    console.log('[TV-LOGIN] ➡️ Redirecting to:', targetUrl);
+    window.location.href = targetUrl;
   };
 
   if (authLoading) {

@@ -1561,7 +1561,35 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
           return res.status(500).json({ success: false, error: 'Session save failed' });
         }
         logger.log('✅ Token-session created for:', user.email);
-        res.json({ success: true, authenticated: true });
+        // Return the user object so the frontend can populate its auth state
+        // immediately, without depending on the session cookie persisting in
+        // the browser (some cookie policies / privacy modes drop SameSite=None).
+        const u: any = user;
+        res.json({
+          success: true,
+          authenticated: true,
+          user: {
+            _id: u._id,
+            id: u._id,
+            fullName: u.fullName,
+            username: u.username,
+            email: u.email,
+            emailVerified: u.emailVerified,
+            role: u.role,
+            status: u.status,
+            avatar: u.avatar,
+            location: u.location,
+            isPublicProfile: u.isPublicProfile,
+            preferences: u.preferences,
+            followersCount: u.followersCount ?? 0,
+            followingCount: u.followingCount ?? 0,
+            favoriteStationsCount: u.favoriteStationsCount ?? 0,
+            totalListeningTime: u.totalListeningTime ?? 0,
+            lastLoginAt: u.lastLoginAt,
+            createdAt: u.createdAt,
+            following: [],
+          },
+        });
       });
     } catch (error) {
       logger.error('Token-session error:', error);
