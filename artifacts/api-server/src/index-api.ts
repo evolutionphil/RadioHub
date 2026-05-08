@@ -753,6 +753,14 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled backfill:', error.message);
         }
+
+        try {
+          const { scheduledCoverageSnapshot } = await import('./services/scheduled-coverage-snapshot');
+          scheduledCoverageSnapshot.initialize();
+          logger.log('✅ BACKGROUND: Scheduled coverage snapshot initialized (nightly 04:30)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled coverage snapshot:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {

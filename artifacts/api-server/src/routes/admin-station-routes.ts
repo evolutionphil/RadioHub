@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob } from "../shared/mongo-schemas";
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot } from "../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -1798,6 +1798,91 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         logger.error('coverage by-country failed', error);
         return res.status(500).json({
           error: error?.message || 'Failed to compute country coverage',
+        });
+      }
+    },
+  );
+
+  // COVERAGE TRENDS — return per-country daily coverage snapshots from the
+  // last N days (default 30) so the admin coverage page can render a small
+  // sparkline and a 30-day delta beside today's numbers. Snapshots are
+  // populated nightly by `services/scheduled-coverage-snapshot.ts`.
+  app.get(
+    '/api/admin/coverage/trends',
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const rawDays = Number(req.query.days);
+        const days = Number.isFinite(rawDays)
+          ? Math.min(Math.max(Math.floor(rawDays), 1), 180)
+          : 30;
+        const since = new Date();
+        since.setUTCHours(0, 0, 0, 0);
+        since.setUTCDate(since.getUTCDate() - (days - 1));
+
+        type SnapshotRow = {
+          countryCode: string;
+          snapshotDate: Date;
+          logoCoveragePct: number;
+          tagCoveragePct: number;
+          total: number;
+          withLogo: number;
+          withTags: number;
+        };
+        type TrendPoint = Omit<SnapshotRow, 'countryCode' | 'snapshotDate'> & {
+          date: string;
+        };
+
+        const rows = await CoverageSnapshot.find(
+          { snapshotDate: { $gte: since } },
+          {
+            countryCode: 1,
+            snapshotDate: 1,
+            logoCoveragePct: 1,
+            tagCoveragePct: 1,
+            total: 1,
+            withLogo: 1,
+            withTags: 1,
+            _id: 0,
+          },
+        )
+          .sort({ countryCode: 1, snapshotDate: 1 })
+          .lean<SnapshotRow[]>();
+
+        const byCountry = new Map<string, TrendPoint[]>();
+        for (const r of rows) {
+          const code = String(r.countryCode || '').toUpperCase();
+          if (!code) continue;
+          const date =
+            r.snapshotDate instanceof Date
+              ? r.snapshotDate.toISOString().slice(0, 10)
+              : String(r.snapshotDate).slice(0, 10);
+          const list = byCountry.get(code) || [];
+          list.push({
+            date,
+            logoCoveragePct: Number(r.logoCoveragePct) || 0,
+            tagCoveragePct: Number(r.tagCoveragePct) || 0,
+            total: Number(r.total) || 0,
+            withLogo: Number(r.withLogo) || 0,
+            withTags: Number(r.withTags) || 0,
+          });
+          byCountry.set(code, list);
+        }
+
+        const trends: Record<string, TrendPoint[]> = {};
+        for (const [code, list] of byCountry) {
+          trends[code] = list;
+        }
+
+        return res.json({
+          days,
+          since: since.toISOString(),
+          trends,
+        });
+      } catch (error: any) {
+        logger.error('coverage trends failed', error);
+        return res.status(500).json({
+          error: error?.message || 'Failed to fetch coverage trends',
         });
       }
     },

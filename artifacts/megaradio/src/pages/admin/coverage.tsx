@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import {
   Card,
   CardContent,
@@ -44,6 +45,77 @@ interface CountryCoverage {
 
 interface CoverageResponse {
   countries: CountryCoverage[];
+}
+
+interface TrendPoint {
+  date: string;
+  logoCoveragePct: number;
+  tagCoveragePct: number;
+  total: number;
+  withLogo: number;
+  withTags: number;
+}
+
+interface TrendsResponse {
+  days: number;
+  since: string;
+  trends: Record<string, TrendPoint[]>;
+}
+
+function deltaClass(delta: number): string {
+  if (delta > 0.05) return 'text-green-600';
+  if (delta < -0.05) return 'text-red-600';
+  return 'text-muted-foreground';
+}
+
+function formatDelta(delta: number): string {
+  const rounded = Math.round(delta * 10) / 10;
+  if (rounded === 0) return '±0.0';
+  const sign = rounded > 0 ? '+' : '';
+  return `${sign}${rounded.toFixed(1)}`;
+}
+
+function Sparkline({
+  points,
+  dataKey,
+  color,
+  testId,
+}: {
+  points: TrendPoint[];
+  dataKey: 'logoCoveragePct' | 'tagCoveragePct';
+  color: string;
+  testId: string;
+}) {
+  if (!points || points.length < 2) {
+    return (
+      <span
+        className="text-[10px] text-muted-foreground"
+        data-testid={`${testId}-empty`}
+      >
+        —
+      </span>
+    );
+  }
+  return (
+    <div className="w-[90px] h-[24px]" data-testid={testId}>
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart
+          data={points}
+          margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
+        >
+          <YAxis hide domain={[0, 100]} />
+          <Line
+            type="monotone"
+            dataKey={dataKey}
+            stroke={color}
+            strokeWidth={1.5}
+            dot={false}
+            isAnimationActive={false}
+          />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
 }
 
 type SortKey =
@@ -117,6 +189,14 @@ export default function AdminCoverage() {
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
+
+  const { data: trendsData } = useQuery<TrendsResponse>({
+    queryKey: ['/api/admin/coverage/trends?days=30'],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const trendsByCountry = trendsData?.trends ?? {};
 
   const enqueueMutation = useMutation({
     mutationFn: async (vars: {
@@ -458,8 +538,10 @@ export default function AdminCoverage() {
                     <TableHead>Country</TableHead>
                     <TableHead className="text-right">Stations</TableHead>
                     <TableHead className="text-right">Logo coverage</TableHead>
+                    <TableHead className="text-right">Logo 30d</TableHead>
                     <TableHead className="text-right">Missing logos</TableHead>
                     <TableHead className="text-right">Tag coverage</TableHead>
+                    <TableHead className="text-right">Tag 30d</TableHead>
                     <TableHead className="text-right">Missing tags</TableHead>
                     <TableHead className="text-right">Re-enqueue</TableHead>
                   </TableRow>
@@ -470,6 +552,37 @@ export default function AdminCoverage() {
                     const tagsKey = `${row.countryCode}:tags`;
                     const bothKey = `${row.countryCode}:both`;
                     const job = activeJobs[row.countryCode];
+                    const trend = trendsByCountry[row.countryCode] ?? [];
+                    const oldest = trend[0];
+                    const logoDelta = oldest
+                      ? row.logoCoveragePct - oldest.logoCoveragePct
+                      : 0;
+                    const tagDelta = oldest
+                      ? row.tagCoveragePct - oldest.tagCoveragePct
+                      : 0;
+                    // Append today's live coverage to the sparkline so the
+                    // rightmost point matches the badge in the same row — but
+                    // only if the most recent snapshot isn't already from today
+                    // (otherwise the cron-written point and the live point
+                    // would visually duplicate at the right edge).
+                    const todayUtc = new Date().toISOString().slice(0, 10);
+                    const latest = trend[trend.length - 1];
+                    const trendWithToday: TrendPoint[] =
+                      trend.length === 0
+                        ? []
+                        : latest && latest.date === todayUtc
+                          ? trend
+                          : [
+                              ...trend,
+                              {
+                                date: todayUtc,
+                                logoCoveragePct: row.logoCoveragePct,
+                                tagCoveragePct: row.tagCoveragePct,
+                                total: row.total,
+                                withLogo: row.withLogo,
+                                withTags: row.withTags,
+                              },
+                            ];
                     return (
                       <Fragment key={row.countryCode}>
                       <TableRow
@@ -496,6 +609,27 @@ export default function AdminCoverage() {
                             {row.logoCoveragePct.toFixed(1)}%
                           </Badge>
                         </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Sparkline
+                              points={trendWithToday}
+                              dataKey="logoCoveragePct"
+                              color="#16a34a"
+                              testId={`sparkline-logo-${row.countryCode}`}
+                            />
+                            <span
+                              className={`text-xs tabular-nums ${deltaClass(logoDelta)}`}
+                              data-testid={`delta-logo-${row.countryCode}`}
+                              title={
+                                oldest
+                                  ? `vs ${oldest.date} (${oldest.logoCoveragePct.toFixed(1)}%)`
+                                  : 'no history yet'
+                              }
+                            >
+                              {oldest ? `${formatDelta(logoDelta)}pp` : '—'}
+                            </span>
+                          </div>
+                        </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {row.missingLogo.toLocaleString()}
                         </TableCell>
@@ -506,6 +640,27 @@ export default function AdminCoverage() {
                           >
                             {row.tagCoveragePct.toFixed(1)}%
                           </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Sparkline
+                              points={trendWithToday}
+                              dataKey="tagCoveragePct"
+                              color="#2563eb"
+                              testId={`sparkline-tags-${row.countryCode}`}
+                            />
+                            <span
+                              className={`text-xs tabular-nums ${deltaClass(tagDelta)}`}
+                              data-testid={`delta-tags-${row.countryCode}`}
+                              title={
+                                oldest
+                                  ? `vs ${oldest.date} (${oldest.tagCoveragePct.toFixed(1)}%)`
+                                  : 'no history yet'
+                              }
+                            >
+                              {oldest ? `${formatDelta(tagDelta)}pp` : '—'}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {row.missingTags.toLocaleString()}

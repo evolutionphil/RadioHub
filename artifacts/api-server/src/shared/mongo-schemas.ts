@@ -651,6 +651,21 @@ export interface IBackfillRun extends Document {
   errorMessage?: string;
 }
 
+// Daily per-country coverage snapshot — populated by
+// `services/scheduled-coverage-snapshot.ts` so the admin coverage page can
+// show a 30-day trend/sparkline beside today's numbers instead of just the
+// current point-in-time value.
+export interface ICoverageSnapshot extends Document {
+  countryCode: string;     // upper-case ISO code, e.g. "DE"
+  snapshotDate: Date;      // midnight UTC of the snapshot day (one row per country/day)
+  total: number;
+  withLogo: number;
+  withTags: number;
+  logoCoveragePct: number; // rounded to 0.1
+  tagCoveragePct: number;  // rounded to 0.1
+  createdAt: Date;
+}
+
 // Blacklisted Station Interface - prevents re-syncing deleted stations
 export interface IBlacklistedStation extends Document {
   stationUuid?: string; // Original Radio Browser UUID
@@ -992,6 +1007,21 @@ const BackfillRunSchema = new Schema<IBackfillRun>({
   errorMessage: String,
 });
 BackfillRunSchema.index({ startedAt: -1 });
+
+const CoverageSnapshotSchema = new Schema<ICoverageSnapshot>({
+  countryCode: { type: String, required: true, uppercase: true, trim: true },
+  snapshotDate: { type: Date, required: true },
+  total: { type: Number, default: 0 },
+  withLogo: { type: Number, default: 0 },
+  withTags: { type: Number, default: 0 },
+  logoCoveragePct: { type: Number, default: 0 },
+  tagCoveragePct: { type: Number, default: 0 },
+  createdAt: { type: Date, default: Date.now },
+});
+// One snapshot per country per day (idempotent re-runs of the cron just
+// upsert today's row).
+CoverageSnapshotSchema.index({ countryCode: 1, snapshotDate: 1 }, { unique: true });
+CoverageSnapshotSchema.index({ snapshotDate: -1 });
 
 const SyncLogSchema = new Schema<ISyncLog>({
   syncType: { type: String, enum: ['full', 'incremental'], required: true },
@@ -1679,6 +1709,7 @@ export const Genre = mongoose.model<IGenre>('Genre', GenreSchema);
 export const Codec = mongoose.model<ICodec>('Codec', CodecSchema);
 export const SyncLog = mongoose.model<ISyncLog>('SyncLog', SyncLogSchema);
 export const BackfillRun = mongoose.model<IBackfillRun>('BackfillRun', BackfillRunSchema);
+export const CoverageSnapshot = mongoose.model<ICoverageSnapshot>('CoverageSnapshot', CoverageSnapshotSchema);
 UserSchema.index({ slug: 1 }, { sparse: true }); // Used in profile lookups
 UserSchema.index({ isPublicProfile: 1 }); // Used in community listings
 
