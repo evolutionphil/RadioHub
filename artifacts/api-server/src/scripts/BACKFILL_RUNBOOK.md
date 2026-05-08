@@ -1,5 +1,37 @@
 # Logo + Tag Backfill Runbook
 
+## IndexNow re-submission (Task #152)
+
+After Task #128 expanded `/sitemap-main-{lang}.xml` to include the
+previously-orphaned static pages (FAQ, Contact, Privacy, Terms,
+Applications) and the top ~30 country region pages, run the one-shot
+re-submission to nudge Bing/Yandex (and via downstream propagation,
+Google's IndexNow-aware indexers) to re-crawl those URLs:
+
+```
+DRY_RUN=1 pnpm --filter @workspace/api-server run indexnow:task-152   # preview
+pnpm --filter @workspace/api-server run indexnow:task-152              # send
+```
+
+The script pings `/sitemap-index.xml`, then submits the canonical
+`/{lang}/{path}` URL for every static main page and every top-country
+region page across every active sitemap language. Submissions are
+chunked per IndexNow's 10k-URL-per-request cap and logged to the
+`indexnowlogs` collection (queryable via `/api/admin/indexnow/logs`).
+
+**Google Search Console is a separate, manual step.** GSC does NOT
+consume IndexNow. To resubmit `/sitemap-index.xml` for `themegaradio.com`:
+
+1. Open Search Console → property `themegaradio.com` → Sitemaps.
+2. If `sitemap-index.xml` is already listed, click it, then "Resubmit".
+   Otherwise paste `sitemap-index.xml` and click Submit.
+3. Wait 24–72h, then check the Pages report and confirm the new URLs
+   (FAQ/Contact/Privacy/Terms/Applications + the top country region
+   pages) move out of "Discovered – currently not indexed" into
+   "Crawled" / "Indexed".
+
+
+
 ## Automatic weekly cron (default — Task #68)
 
 A weekly job (`services/scheduled-backfill.ts`) runs every **Sunday 04:00

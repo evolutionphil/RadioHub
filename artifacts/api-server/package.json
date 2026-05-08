@@ -18,6 +18,7 @@
     "backfill:coverage-snapshots": "tsx src/scripts/backfill-coverage-snapshots.ts",
     "cleanup:genre-slugs": "tsx src/scripts/cleanup-malformed-genre-slugs.ts",
     "cleanup:junk-genres": "tsx src/scripts/cleanup-junk-genres.ts",
+    "indexnow:task-152": "tsx src/scripts/indexnow-resubmit-task-152.ts",
     "test:seo": "tsx --test test/seo-soft-404.test.ts"
   },
   "dependencies": {
