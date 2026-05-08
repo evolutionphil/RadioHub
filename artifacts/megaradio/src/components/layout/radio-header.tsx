@@ -75,6 +75,29 @@ export default function RadioHeader({
   const countryButtonDesktopRef = useRef<HTMLButtonElement>(null);
   const countryButtonMobileRef = useRef<HTMLButtonElement>(null);
   const countryDropdownRef = useRef<HTMLDivElement>(null);
+  // Tracks the trigger button that opened the country dropdown so keyboard
+  // users get focus restored to it on close (Escape / selection).
+  const lastCountryTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  const toggleCountryDropdown = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
+      lastCountryTriggerRef.current = e.currentTarget;
+      setIsCountryDropdownOpen((prev) => !prev);
+    },
+    []
+  );
+
+  const closeCountryDropdownAndRestoreFocus = useCallback(() => {
+    setIsCountryDropdownOpen(false);
+    setCountrySearchQuery("");
+    // Defer focus restore until after the portal unmounts so the browser does
+    // not move focus elsewhere first.
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        lastCountryTriggerRef.current?.focus();
+      });
+    }
+  }, []);
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationButtonDesktopRef = useRef<HTMLButtonElement>(null);
   const mobileProfileButtonRef = useRef<HTMLDivElement>(null);
@@ -535,8 +558,7 @@ export default function RadioHeader({
         id: 'global',
         activate: () => {
           onCountryChange?.("all", true);
-          setIsCountryDropdownOpen(false);
-          setCountrySearchQuery("");
+          closeCountryDropdownAndRestoreFocus();
         },
       },
     ];
@@ -551,13 +573,12 @@ export default function RadioHeader({
           }
           localStorage.setItem('selectedCountry', country.name);
           localStorage.setItem('countryPreference', 'manual');
-          setIsCountryDropdownOpen(false);
-          setCountrySearchQuery("");
+          closeCountryDropdownAndRestoreFocus();
         },
       });
     }
     return items;
-  }, [filteredCountries, isAuthenticated, onCountryChange]);
+  }, [filteredCountries, isAuthenticated, onCountryChange, closeCountryDropdownAndRestoreFocus]);
 
   const [activeCountryIndex, setActiveCountryIndex] = useState(-1);
   const countryItemRefs = useRef<Map<string, HTMLElement | null>>(new Map());
@@ -615,8 +636,15 @@ export default function RadioHeader({
         setCountrySearchQuery('');
         setActiveCountryIndex(-1);
       } else {
-        setIsCountryDropdownOpen(false);
+        closeCountryDropdownAndRestoreFocus();
       }
+      return;
+    }
+    // Trap Tab/Shift+Tab inside the dropdown so focus does not leak back to
+    // the page while the picker is open. The search input is the only
+    // focusable element inside the dropdown, so we just keep focus on it.
+    if (e.key === 'Tab') {
+      e.preventDefault();
       return;
     }
     if (countryItems.length === 0) {
@@ -771,10 +799,12 @@ export default function RadioHeader({
                   {/* 3. Country Selector - Layout: 34x34, border-radius: 4px, bg: #2F2F2F, border: 1px #2F2F2F */}
                   <button 
                     ref={countryButtonMobileRef}
-                    onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
+                    onClick={toggleCountryDropdown}
                     className="flex items-center justify-center flex-shrink-0"
                     style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', borderRadius: '4px', backgroundColor: '#2F2F2F', border: '1px solid #2F2F2F', padding: '0px' }}
                     aria-label={t('general_select_country', 'Select country')}
+                    aria-haspopup="listbox"
+                    aria-expanded={isCountryDropdownOpen}
                     data-country-button
                   >
                     {(selectedCountry === "all" || selectedCountry === "Global") ? (
@@ -831,10 +861,12 @@ export default function RadioHeader({
                   {/* Country Selector - Layout: 34x34, border-radius: 4px, bg: #2F2F2F, border: 1px #2F2F2F */}
                   <button 
                     ref={countryButtonMobileRef}
-                    onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
+                    onClick={toggleCountryDropdown}
                     className="xl:hidden flex items-center justify-center flex-shrink-0"
                     style={{ width: '34px', height: '34px', minWidth: '34px', minHeight: '34px', borderRadius: '4px', backgroundColor: '#2F2F2F', border: '1px solid #2F2F2F', padding: '0px' }}
                     aria-label={t('general_select_country', 'Select country')}
+                    aria-haspopup="listbox"
+                    aria-expanded={isCountryDropdownOpen}
                     data-country-button
                   >
                     {(selectedCountry === "all" || selectedCountry === "Global") ? (
@@ -892,10 +924,12 @@ export default function RadioHeader({
                   <div className="hidden xl:block relative dropdown-container" ref={countryDropdownRef}>
                     <button 
                       ref={countryButtonDesktopRef}
-                      onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
+                      onClick={toggleCountryDropdown}
                       className="country-selector flex items-center text-white bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors overflow-hidden whitespace-nowrap"
                       style={{ width: '147px', height: '38px', borderRadius: '5px' }}
                       aria-label={t('general_select_country', 'Select country')}
+                      aria-haspopup="listbox"
+                      aria-expanded={isCountryDropdownOpen}
                       title={(selectedCountry === "all" || selectedCountry === "Global") ? 'Global' : selectedCountry}
                     >
                       {/* Flag - Figma: 24x24px, left 9px - Uses selectedCountryCode directly (no API wait) */}
@@ -973,10 +1007,12 @@ export default function RadioHeader({
                   <div className="hidden xl:block relative dropdown-container" ref={countryDropdownRef}>
                     <button 
                       ref={countryButtonRef}
-                      onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
+                      onClick={toggleCountryDropdown}
                       className="country-selector flex items-center text-white bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors overflow-hidden"
                       style={{ width: '147px', height: '38px', borderRadius: '5px' }}
                       aria-label={t('general_select_country', 'Select country')}
+                      aria-haspopup="listbox"
+                      aria-expanded={isCountryDropdownOpen}
                       title={(selectedCountry === "all" || selectedCountry === "Global") ? 'Global' : selectedCountry}
                     >
                       {/* Flag - Figma: 24x24px, left 9px - Uses selectedCountryCode directly (no API wait) */}
@@ -1427,8 +1463,7 @@ export default function RadioHeader({
                 className={`relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A] ${activeCountryId === 'global' ? countryFocusRingClass : ''}`}
                 onClick={() => {
                   onCountryChange?.("all", true);
-                  setIsCountryDropdownOpen(false); 
-                  setCountrySearchQuery("");
+                  closeCountryDropdownAndRestoreFocus();
                 }}
               >
                 <span className="pr-4">
@@ -1455,8 +1490,7 @@ export default function RadioHeader({
                     setSelectedCountryObj({ name: country.name, code: country.code });
                     localStorage.setItem('selectedCountry', country.name);
                     localStorage.setItem('countryPreference', 'manual'); // Persist manual selection
-                    setIsCountryDropdownOpen(false); 
-                    setCountrySearchQuery("");
+                    closeCountryDropdownAndRestoreFocus();
                     // NOTE: No URL navigation - country is just a content filter, not a URL change
                     // User's language preference (URL slug) stays unchanged
                   }}
@@ -1553,8 +1587,7 @@ export default function RadioHeader({
                 className={`relative flex cursor-pointer select-none items-center p-2 rounded-lg hover:bg-[#2A2A2A] ${activeCountryId === 'global' ? countryFocusRingClass : ''}`}
                 onClick={() => {
                   onCountryChange?.("all", true);
-                  setIsCountryDropdownOpen(false); 
-                  setCountrySearchQuery("");
+                  closeCountryDropdownAndRestoreFocus();
                 }}
               >
                 <span className="pr-3 flex items-center justify-center w-10 flex-shrink-0">
@@ -1580,8 +1613,7 @@ export default function RadioHeader({
                     onCountryChange?.(country.name, true);
                     localStorage.setItem('selectedCountry', country.name);
                     localStorage.setItem('countryPreference', 'manual');
-                    setIsCountryDropdownOpen(false);
-                    setCountrySearchQuery("");
+                    closeCountryDropdownAndRestoreFocus();
                     // NOTE: No URL navigation - country is just a content filter, not a URL change
                     // User's language preference (URL slug) stays unchanged
                   }}
