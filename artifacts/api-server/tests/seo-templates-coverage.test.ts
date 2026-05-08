@@ -29,6 +29,8 @@ import {
   type SearchSeoTemplate,
 } from '@workspace/seo-shared/search-seo-templates';
 
+const SEARCH_DESCRIPTION_MAX_CHARS = 145;
+
 const REGION_TEMPLATE_FIELDS: Array<keyof RegionSeoTemplate> = [
   'countryTitle',
   'countryDescription',
@@ -161,4 +163,25 @@ describe('Per-language SEO template coverage', () => {
       assert.ok(!hasGaps, formatGapMessage(spec, gaps));
     });
   }
+
+  it(`keeps every SEARCH_SEO_TEMPLATES description within ${SEARCH_DESCRIPTION_MAX_CHARS} chars (meta cap)`, () => {
+    const tooLong: Array<{ code: string; length: number }> = [];
+
+    for (const { code } of SEO_LANGUAGES) {
+      const entry = SEARCH_SEO_TEMPLATES[code];
+      if (!entry || typeof entry.description !== 'string') continue;
+      if (entry.description.length > SEARCH_DESCRIPTION_MAX_CHARS) {
+        tooLong.push({ code, length: entry.description.length });
+      }
+    }
+
+    assert.ok(
+      tooLong.length === 0,
+      `SEARCH_SEO_TEMPLATES has descriptions exceeding the ${SEARCH_DESCRIPTION_MAX_CHARS}-char meta cap:\n` +
+        tooLong
+          .map(({ code, length }) => `  "${code}": ${length} chars`)
+          .join('\n') +
+        `\nTrim each entry's \`description\` to ${SEARCH_DESCRIPTION_MAX_CHARS} chars or fewer so Google doesn't truncate it.`,
+    );
+  });
 });
