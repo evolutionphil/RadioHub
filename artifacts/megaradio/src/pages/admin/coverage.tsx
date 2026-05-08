@@ -542,6 +542,12 @@ export default function AdminCoverage() {
   // When a job finishes, refresh the coverage table once so the
   // percentages catch up, then drop the row indicator after a short
   // celebratory pause so admins can see the final counts.
+  //
+  // Exception: `cancelled` jobs stay pinned until the admin hits
+  // "Dismiss" so they can read what actually got hydrated before they
+  // pulled the plug (otherwise the bars vanish 6s later and the cancel
+  // feels like a black hole). We also fire a toast summary on the
+  // transition. `completed` and `failed` keep their old auto-clear.
   useEffect(() => {
     for (const job of Object.values(activeJobs)) {
       if (job.status === 'running') continue;
@@ -550,6 +556,24 @@ export default function AdminCoverage() {
       void queryClient.invalidateQueries({
         queryKey: ['/api/admin/coverage/by-country'],
       });
+      if (job.status === 'cancelled') {
+        const bits: string[] = [];
+        if (job.logos) {
+          bits.push(
+            `${job.logos.completed.toLocaleString()}/${job.logos.enqueued.toLocaleString()} logos completed`,
+          );
+        }
+        if (job.tags) {
+          bits.push(
+            `${job.tags.processed.toLocaleString()}/${job.tags.total.toLocaleString()} stations processed · ✅${job.tags.hydrated.toLocaleString()} hydrated · ∅${job.tags.emptyUpstream.toLocaleString()} empty · ❌${job.tags.failed.toLocaleString()} failed`,
+          );
+        }
+        toast({
+          title: `Cancelled backfill for ${job.countryCode}`,
+          description: bits.join(' · ') || 'No work completed before cancel.',
+        });
+        continue;
+      }
       const code = job.countryCode;
       const handle = window.setTimeout(() => {
         setActiveJobs((prev) => {
@@ -561,6 +585,15 @@ export default function AdminCoverage() {
       return () => window.clearTimeout(handle);
     }
   }, [activeJobs]);
+
+  const dismissJob = (countryCode: string, jobId: string) => {
+    setActiveJobs((prev) => {
+      if (prev[countryCode]?.jobId !== jobId) return prev;
+      const next = { ...prev };
+      delete next[countryCode];
+      return next;
+    });
+  };
 
   const visible = useMemo(() => {
     const rows = data?.countries ?? [];
@@ -1084,6 +1117,9 @@ export default function AdminCoverage() {
                                   scope: job.scope,
                                 })
                               }
+                              onDismiss={() =>
+                                dismissJob(job.countryCode, job.jobId)
+                              }
                             />
                           </TableCell>
                         </TableRow>
@@ -1105,13 +1141,16 @@ function CoverageJobProgressRow({
   job,
   onCancel,
   cancelPending,
+  onDismiss,
 }: {
   job: CoverageJobStatus;
   onCancel: () => void;
   cancelPending: boolean;
+  onDismiss: () => void;
 }) {
   const isRunning = job.status === 'running';
   const cancelRequested = !!job.cancelRequested;
+  const isCancelled = job.status === 'cancelled';
   const statusLabel =
     job.status === 'completed'
       ? 'Backfill complete'
@@ -1185,7 +1224,41 @@ function CoverageJobProgressRow({
             {cancelRequested ? 'Cancelling…' : 'Cancel'}
           </Button>
         ) : null}
+        {isCancelled ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs ml-auto"
+            onClick={onDismiss}
+            data-testid={`button-dismiss-coverage-${job.countryCode}`}
+          >
+            Dismiss
+          </Button>
+        ) : null}
       </div>
+      {isCancelled ? (
+        <div
+          className="text-xs text-amber-700"
+          data-testid={`coverage-job-cancelled-summary-${job.countryCode}`}
+        >
+          {(() => {
+            const bits: string[] = [];
+            if (job.tags) {
+              bits.push(
+                `Cancelled after ${job.tags.processed.toLocaleString()}/${job.tags.total.toLocaleString()} processed · ✅${job.tags.hydrated.toLocaleString()} hydrated · ∅${job.tags.emptyUpstream.toLocaleString()} empty · ❌${job.tags.failed.toLocaleString()} failed`,
+              );
+            }
+            if (job.logos) {
+              bits.push(
+                `${job.logos.completed.toLocaleString()}/${job.logos.enqueued.toLocaleString()} logos completed`,
+              );
+            }
+            return bits.length > 0
+              ? bits.join(' · ')
+              : 'Cancelled before any work was completed.';
+          })()}
+        </div>
+      ) : null}
       <div className="flex flex-wrap gap-4">
         {job.logos
           ? renderBar(
