@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import mongoose from "mongoose";
-import { Station, BackfillRun } from "../shared/mongo-schemas";
+import { Station, BackfillRun, type IBackfillRun } from "../shared/mongo-schemas";
 import {
   BACKFILL_RETENTION_DAYS,
   BACKFILL_RETENTION_MAX_ROWS,
@@ -21,6 +21,7 @@ import { logger } from "../utils/logger";
 
 interface BackfillState {
   jobId: string;
+  runId: string | null;
   startedAt: Date;
   finishedAt: Date | null;
   countryCode: string | null;
@@ -42,8 +43,36 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
   if (activeTagsJob && activeTagsJob.isRunning) {
     return activeTagsJob;
   }
+  // Persist a BackfillRun-style audit row so the tags-only sweep shows up
+  // in the same history table as the weekly logo+tag sweep. We use
+  // `topN: 0` to flag that this isn't a top-N pick — it's either a
+  // global tags-only fill (no overrideCountry) or a single-country one.
+  const trigger = countryCode
+    ? `admin:manual:tags:${countryCode}`
+    : "admin:manual:tags";
+  let run: IBackfillRun | null = null;
+  try {
+    run = await BackfillRun.create({
+      trigger,
+      status: "running",
+      topN: 0,
+      overrideCountry: countryCode || undefined,
+      startedAt: new Date(),
+      logos: [],
+      tags: [],
+    });
+  } catch (err: any) {
+    // Non-fatal — we still run the in-memory job so admins aren't blocked
+    // if the audit row fails to persist (e.g. transient Mongo blip). The
+    // existing in-memory state surfaces progress in the meantime.
+    logger.error(
+      "[tags-backfill] failed to persist BackfillRun audit row:",
+      err?.message || err,
+    );
+  }
   const job: BackfillState = {
     jobId: makeJobId(),
+    runId: run ? String(run._id) : null,
     startedAt: new Date(),
     finishedAt: null,
     countryCode,
@@ -139,12 +168,41 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
       logger.error("[tags-backfill] crashed:", err?.message || err);
       job.lastError = err?.message || String(err);
     } finally {
-      job.finishedAt = new Date();
+      const finishedAt = new Date();
+      job.finishedAt = finishedAt;
       job.isRunning = false;
       logger.log(
         `[tags-backfill] done: scanned=${job.scanned} updated=${job.updated} ` +
           `failed=${job.failed} skipped=${job.skipped}`,
       );
+      // Mirror the in-memory totals into the persisted audit row so
+      // admins can see the same numbers in the BackfillRun history table
+      // long after the in-memory `activeTagsJob` has been overwritten by
+      // a subsequent run. Per-country breakdown uses the single
+      // overrideCountry (or "*" for global) since this sweep doesn't
+      // group by country itself.
+      if (run) {
+        try {
+          run.status = job.lastError ? "failed" : "completed";
+          run.finishedAt = finishedAt;
+          run.durationMs = finishedAt.getTime() - job.startedAt.getTime();
+          if (job.lastError) run.errorMessage = job.lastError;
+          run.tags.splice(0, run.tags.length);
+          run.tags.push({
+            countryCode: countryCode || "*",
+            processed: job.scanned,
+            hydrated: job.updated,
+            emptyUpstream: job.skipped,
+            failed: job.failed,
+          });
+          await run.save();
+        } catch (saveErr: any) {
+          logger.error(
+            "[tags-backfill] failed to persist final BackfillRun row:",
+            saveErr?.message || saveErr,
+          );
+        }
+      }
     }
   })();
 
@@ -243,7 +301,26 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const country = (req.body?.country as string | undefined) || null;
+        // Match the validation surface the weekly /scheduled-backfill/run
+        // endpoint already enforces: empty/missing → global sweep, otherwise
+        // a 2-letter ISO code that gets uppercased before hitting the
+        // filter / audit row. Anything else is rejected so we don't end up
+        // persisting garbage in the BackfillRun history.
+        const raw = (req.body?.country as string | undefined) ?? null;
+        let country: string | null = null;
+        if (raw !== null && raw !== "") {
+          const normalized = String(raw).trim().toUpperCase();
+          if (normalized !== "") {
+            if (!/^[A-Z]{2}$/.test(normalized)) {
+              return res.status(400).json({
+                error: "invalid_country_code",
+                message:
+                  "country must be a 2-letter ISO code (e.g. 'TR') or omitted.",
+              });
+            }
+            country = normalized;
+          }
+        }
         const limit = Math.max(1, Math.min(5000, Number(req.body?.limit) || 500));
         if (activeTagsJob && activeTagsJob.isRunning) {
           return res.status(409).json({ error: "already_running", job: activeTagsJob });

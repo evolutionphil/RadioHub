@@ -145,17 +145,38 @@ export default function SeoMaintenancePage() {
 
   const startTags = useMutation({
     mutationFn: async () => {
+      const trimmed = tagsCountry.trim();
       return apiRequest("POST", "/api/admin/maintenance/tags-backfill", {
-        country: tagsCountry || null,
+        country: trimmed || undefined,
         limit: tagsLimit,
       });
     },
     onSuccess: () => {
-      toast({ title: "Tags backfill başlatıldı" });
+      const trimmed = tagsCountry.trim();
+      toast({
+        title: trimmed
+          ? `Tags backfill başlatıldı (${trimmed})`
+          : "Tags backfill başlatıldı",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/maintenance/tags-backfill/status"] });
+      // Refresh history table so the new BackfillRun audit row shows up.
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/maintenance/scheduled-backfill/runs"],
+      });
     },
     onError: (e: any) => {
-      toast({ title: "Başlatılamadı", description: e?.message || "", variant: "destructive" });
+      const msg = e?.message || "";
+      if (msg.includes("invalid_country_code") || msg.includes("400")) {
+        toast({
+          title: "Geçersiz ülke kodu",
+          description: "İki harfli ISO kodu girin (örn. TR) veya boş bırakın.",
+          variant: "destructive",
+        });
+      } else if (msg.includes("already_running") || msg.includes("409")) {
+        toast({ title: "Zaten çalışıyor", description: "Bir tags backfill hâlihazırda devam ediyor." });
+      } else {
+        toast({ title: "Başlatılamadı", description: msg, variant: "destructive" });
+      }
     },
   });
 
@@ -791,10 +812,20 @@ export default function SeoMaintenancePage() {
           <p className="text-sm text-slate-600">
             <code>tags</code> alanı boş olan radyolar için Radio-Browser API'den <code>tags</code> ve <code>languageCodes</code> alanlarını yeniden çeker. Outro şablonundaki <code>{"{GENRES}"}</code> interpolation'ı için kritik.
           </p>
-          <div className="flex items-end gap-3">
+          <div className="flex items-end gap-3 flex-wrap">
             <div>
-              <label className="text-xs text-slate-600 mb-1 block">Ülke (boş = global)</label>
-              <Input value={tagsCountry} onChange={(e) => setTagsCountry(e.target.value.toUpperCase().slice(0, 2))} className="w-24" />
+              <label className="text-xs text-slate-600 mb-1 block">
+                Ülke kodu (boş = global)
+              </label>
+              <Input
+                value={tagsCountry}
+                onChange={(e) =>
+                  setTagsCountry(e.target.value.toUpperCase().slice(0, 2))
+                }
+                placeholder="örn. TR"
+                className="w-24"
+                data-testid="input-tags-backfill-country"
+              />
             </div>
             <div>
               <label className="text-xs text-slate-600 mb-1 block">Limit (max 5000)</label>
@@ -808,10 +839,18 @@ export default function SeoMaintenancePage() {
             <Button
               onClick={() => startTags.mutate()}
               disabled={startTags.isPending || job?.isRunning}
+              data-testid="button-run-tags-backfill"
             >
               {job?.isRunning ? "Çalışıyor..." : startTags.isPending ? "Başlatılıyor..." : "Tags backfill başlat"}
             </Button>
           </div>
+          <p className="text-xs text-slate-500">
+            Ülke kodu girilirse sadece o pazardaki radyolar taranır (Search
+            Console'da uyarı gelen uzun-kuyruk ülkeler için). Her çalışma
+            "Geçmiş haftalık backfill çalışmaları" tablosunda
+            <code className="mx-1">admin:manual:tags</code>
+            tetikleyicisiyle audit kaydı bırakır.
+          </p>
           {job && (
             <div className="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-1 mt-3">
               <div className="flex items-center gap-2">
