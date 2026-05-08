@@ -101,6 +101,118 @@ export default function RadioHeader({
   const notificationButtonRef = useRef<HTMLButtonElement>(null);
   const notificationButtonDesktopRef = useRef<HTMLButtonElement>(null);
   const mobileProfileButtonRef = useRef<HTMLDivElement>(null);
+  // Tracks the trigger button that opened the notification or mobile profile
+  // dropdown so keyboard users get focus restored to it on close.
+  const lastNotificationTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const mobileProfileTriggerButtonRef = useRef<HTMLButtonElement | null>(null);
+  // Refs to the rendered dropdown roots, used for the on-open focus move and
+  // the Tab/Shift+Tab focus trap inside each open popover.
+  const notificationDropdownRef = useRef<HTMLDivElement | null>(null);
+  const mobileProfileDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  const toggleNotificationDropdown = useCallback(
+    (e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) => {
+      lastNotificationTriggerRef.current = e.currentTarget;
+      setIsNotificationDropdownOpen((prev) => !prev);
+    },
+    []
+  );
+
+  const closeNotificationDropdownAndRestoreFocus = useCallback(() => {
+    setIsNotificationDropdownOpen(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        lastNotificationTriggerRef.current?.focus();
+      });
+    }
+  }, []);
+
+  const toggleMobileProfileMenu = useCallback(() => {
+    setIsMobileProfileMenuOpen((prev) => !prev);
+  }, []);
+
+  const closeMobileProfileMenuAndRestoreFocus = useCallback(() => {
+    setIsMobileProfileMenuOpen(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        mobileProfileTriggerButtonRef.current?.focus();
+      });
+    }
+  }, []);
+
+  // Focus the first focusable element in a dropdown root once it mounts. If
+  // there is nothing focusable, fall back to focusing the root container so
+  // Escape and the Tab trap still work.
+  const focusFirstInside = useCallback((root: HTMLElement | null) => {
+    if (!root) return;
+    const focusable = root.querySelector<HTMLElement>(
+      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable) {
+      focusable.focus();
+    } else {
+      root.focus();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isNotificationDropdownOpen) return;
+    const id = window.requestAnimationFrame(() => {
+      focusFirstInside(notificationDropdownRef.current);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [isNotificationDropdownOpen, focusFirstInside]);
+
+  useEffect(() => {
+    if (!isMobileProfileMenuOpen) return;
+    const id = window.requestAnimationFrame(() => {
+      focusFirstInside(mobileProfileDropdownRef.current);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [isMobileProfileMenuOpen, focusFirstInside]);
+
+  // Build a keyboard handler that traps Tab/Shift+Tab inside the open
+  // dropdown and closes it (with focus restore) on Escape.
+  const buildDropdownKeyHandler = useCallback(
+    (rootRef: React.RefObject<HTMLDivElement | null>, close: () => void) =>
+      (e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'Escape') {
+          if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+          e.preventDefault();
+          e.stopPropagation();
+          close();
+          return;
+        }
+        if (e.key !== 'Tab') return;
+        const root = rootRef.current;
+        if (!root) return;
+        const focusables = Array.from(
+          root.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => !el.hasAttribute('disabled'));
+        if (focusables.length === 0) {
+          e.preventDefault();
+          root.focus();
+          return;
+        }
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement as HTMLElement | null;
+        if (e.shiftKey) {
+          if (active === first || !root.contains(active)) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (active === last || !root.contains(active)) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      },
+    []
+  );
 
   const { playStation } = useGlobalPlayer();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
@@ -784,10 +896,12 @@ export default function RadioHeader({
                   {/* 2. Notification Icon - Layout: 24x24, Icon: 24x24, Dot: 8x8 */}
                   <button
                     ref={notificationButtonRef}
-                    onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
+                    onClick={toggleNotificationDropdown}
                     className="relative flex items-center justify-center flex-shrink-0"
                     style={{ width: '24px', height: '24px' }}
                     aria-label="Notifications"
+                    aria-haspopup="dialog"
+                    aria-expanded={isNotificationDropdownOpen}
                     data-testid="button-notifications-mobile"
                   >
                     <img src={notificationIcon} alt="Notifications" style={{ width: '24px', height: '24px' }} />
@@ -826,10 +940,13 @@ export default function RadioHeader({
                   {/* 3. User Avatar with Dropdown Menu - Layout: 45x45, border-radius: 50px */}
                   <div className="relative flex-shrink-0" ref={mobileProfileButtonRef}>
                     <button 
-                      onClick={() => setIsMobileProfileMenuOpen(!isMobileProfileMenuOpen)}
+                      ref={mobileProfileTriggerButtonRef}
+                      onClick={toggleMobileProfileMenu}
                       className="flex items-center justify-center overflow-hidden bg-[#FF4199]"
                       style={{ width: '45px', height: '45px', borderRadius: '50px' }}
                       aria-label="Profile menu"
+                      aria-haspopup="menu"
+                      aria-expanded={isMobileProfileMenuOpen}
                       data-testid="button-mobile-profile"
                     >
                       {user?.avatar && !avatarError ? (
@@ -908,10 +1025,12 @@ export default function RadioHeader({
                   {/* 1. Notification Icon - desktop only (xl+) */}
                   <button
                     ref={notificationButtonDesktopRef}
-                    onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
+                    onClick={toggleNotificationDropdown}
                     className="hidden xl:flex relative items-center justify-center"
                     style={{ width: '24px', height: '24px' }}
                     aria-label="Notifications"
+                    aria-haspopup="dialog"
+                    aria-expanded={isNotificationDropdownOpen}
                     data-testid="button-notifications-desktop"
                   >
                     <img src={notificationIcon} alt="Notifications" style={{ width: '24px', height: '24px' }} />
@@ -1662,6 +1781,7 @@ export default function RadioHeader({
         
         return createPortal(
         <div 
+          ref={notificationDropdownRef}
           data-notification-dropdown
           className="fixed bg-black shadow-2xl z-50"
           style={{
@@ -1673,6 +1793,13 @@ export default function RadioHeader({
             borderRadius: '4px',
             border: '1px solid #4D4D4D'
           }}
+          role="dialog"
+          aria-label={t('notifications_title', 'Notifications')}
+          tabIndex={-1}
+          onKeyDown={buildDropdownKeyHandler(
+            notificationDropdownRef,
+            closeNotificationDropdownAndRestoreFocus
+          )}
           data-testid="notification-dropdown"
         >
           {/* Header - Figma: Ubuntu Medium 14px, no icon */}
@@ -1713,7 +1840,15 @@ export default function RadioHeader({
                 <div 
                   key={notification._id || index}
                   onClick={handleNotifClick}
-                  className="flex items-center gap-3 hover:bg-[#1A1A1A] transition-colors cursor-pointer relative"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      handleNotifClick();
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  className="flex items-center gap-3 hover:bg-[#1A1A1A] focus:bg-[#1A1A1A] focus:outline-none focus:ring-2 focus:ring-[#FF4199] focus:ring-inset transition-colors cursor-pointer relative"
                   style={{ padding: '8px 19px', minHeight: '48px', background: isUnread ? 'rgba(255,65,153,0.05)' : undefined }}
                   data-testid={`notification-item-${index}`}
                 >
@@ -1814,12 +1949,20 @@ export default function RadioHeader({
       {/* Mobile Profile Dropdown Portal */}
       {isMobileProfileMenuOpen && mobileProfileButtonRef.current && createPortal(
         <div 
-          className="fixed w-56 bg-[#1D1D1D] rounded-lg shadow-xl py-2 border border-[#2D2D2D]"
+          ref={mobileProfileDropdownRef}
+          className="fixed w-56 bg-[#1D1D1D] rounded-lg shadow-xl py-2 border border-[#2D2D2D] focus:outline-none"
           style={{
             top: window.scrollY + mobileProfileButtonRef.current.getBoundingClientRect().bottom + 8,
             right: window.innerWidth - mobileProfileButtonRef.current.getBoundingClientRect().right,
             zIndex: 9999
           }}
+          role="menu"
+          aria-label={t('nav_profile_menu', 'Profile menu')}
+          tabIndex={-1}
+          onKeyDown={buildDropdownKeyHandler(
+            mobileProfileDropdownRef,
+            closeMobileProfileMenuAndRestoreFocus
+          )}
           data-testid="mobile-profile-dropdown"
         >
           <Link 
