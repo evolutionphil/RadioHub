@@ -421,9 +421,11 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
 
   // Paginated list of historical BackfillRun rows so the dashboard can
   // render a "last N runs" table beside the latest-run summary card.
-  // Optional `?trigger=cron:weekly` (or `admin:manual`) narrows by source;
-  // `?limit=` defaults to 10 and is capped at 50 to keep the payload
-  // small. Rows are returned newest-first by `startedAt`.
+  // Optional `?trigger=` narrows by source. The value is treated as a
+  // prefix so that e.g. `admin:manual:tags` also matches the per-country
+  // `admin:manual:tags:TR` rows persisted by the tags-only sweep
+  // (Task #240). `?limit=` defaults to 10 and is capped at 50 to keep
+  // the payload small. Rows are returned newest-first by `startedAt`.
   app.get(
     "/api/admin/maintenance/scheduled-backfill/runs",
     requireAdmin,
@@ -435,7 +437,13 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         );
         const trigger = (req.query.trigger as string | undefined)?.trim();
         const filter: any = {};
-        if (trigger) filter.trigger = trigger;
+        if (trigger) {
+          // Prefix match: exact value OR value followed by ":".
+          // Anchored regex with escaped specials so the filter survives
+          // future trigger taxonomies without further code changes.
+          const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          filter.trigger = { $regex: `^${escaped}(:|$)` };
+        }
         // Paged rows + collection-wide totals so the dashboard can show
         // "showing X of Y · oldest from <date>" and admins know how
         // deep the retained history actually goes (Task #180).

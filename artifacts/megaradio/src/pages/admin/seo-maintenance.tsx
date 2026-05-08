@@ -112,7 +112,11 @@ interface BackfillRetentionResponse {
   updatedBy: string | null;
 }
 
-type RunsTriggerFilter = "" | "cron:weekly" | "admin:manual";
+type RunsTriggerFilter =
+  | ""
+  | "cron:weekly"
+  | "admin:manual"
+  | "admin:manual:tags";
 
 function formatDuration(ms?: number) {
   if (typeof ms !== "number" || !isFinite(ms) || ms < 0) return "—";
@@ -761,6 +765,7 @@ export default function SeoMaintenancePage() {
                 <option value="">Tümü</option>
                 <option value="cron:weekly">cron:weekly</option>
                 <option value="admin:manual">admin:manual</option>
+                <option value="admin:manual:tags">admin:manual:tags</option>
               </select>
             </div>
             <Button
