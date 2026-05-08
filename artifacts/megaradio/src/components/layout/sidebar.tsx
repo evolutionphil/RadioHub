@@ -92,6 +92,7 @@ const navigation: NavigationItem[] = [
       { name: 'IndexNow Monitoring', href: '/admin/indexnow' },
       { name: 'URL Translations', href: '/admin/url-translations' },
       { name: 'Country-Language Map', href: '/admin/country-language-mappings' },
+      { name: 'Genre Whitelist', href: '/admin/genre-whitelist' },
     ]
   },
 ];

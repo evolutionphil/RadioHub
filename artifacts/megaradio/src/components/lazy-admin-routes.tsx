@@ -8,6 +8,7 @@ export const AdminDuplicates = lazy(() => import("@/pages/admin/duplicates"));
 export const AdminCities = lazy(() => import("@/pages/admin/cities"));
 export const AdminPerformance = lazy(() => import("@/pages/admin/performance"));
 export const AdminGenresPage = lazy(() => import("@/pages/admin/admin-genres"));
+export const AdminGenreWhitelist = lazy(() => import("@/pages/admin/admin-genre-whitelist"));
 export const Codecs = lazy(() => import("@/pages/codecs"));
 export const SyncStatus = lazy(() => import("@/pages/sync"));
 export const RadioBrowser = lazy(() => import("@/pages/radio-browser"));

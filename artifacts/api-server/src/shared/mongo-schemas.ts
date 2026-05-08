@@ -2948,6 +2948,57 @@ export const AdminPreference = mongoose.model<IAdminPreference>(
 );
 
 // =====================================================================
+// GenreWhitelistOverride — admin-managed deltas on top of the static
+// genre whitelist seed (`seo/genre-whitelist.ts`). Lets the team add or
+// remove canonical genre slugs and source→canonical aliases without
+// shipping code. The runtime store merges these with the static seed
+// (see seo/genre-whitelist-store.ts) and the SSR + sitemap layers read
+// the merged set, so removing a slug here gives the same behavior as
+// removing it from the static file: dropped from sitemap on next
+// rebuild, served noindex by SSR immediately.
+// =====================================================================
+export type GenreWhitelistOverrideKind =
+  | 'slug-add'
+  | 'slug-remove'
+  | 'alias-add'
+  | 'alias-remove';
+
+export interface IGenreWhitelistOverride extends Document {
+  kind: GenreWhitelistOverrideKind;
+  // For 'slug-add' / 'slug-remove': the canonical genre slug.
+  // For 'alias-add' / 'alias-remove': the alias source slug.
+  slug: string;
+  // For 'alias-add' only: the canonical slug the alias resolves to.
+  canonical?: string | null;
+  createdBy: string;
+  createdAt: Date;
+  notes?: string;
+}
+
+const GenreWhitelistOverrideSchema = new Schema<IGenreWhitelistOverride>({
+  kind: {
+    type: String,
+    required: true,
+    enum: ['slug-add', 'slug-remove', 'alias-add', 'alias-remove'],
+  },
+  slug: { type: String, required: true, lowercase: true, trim: true },
+  canonical: { type: String, default: null, lowercase: true, trim: true },
+  createdBy: { type: String, required: true },
+  createdAt: { type: Date, default: Date.now },
+  notes: { type: String, default: '' },
+});
+
+// One row per (kind, slug). For aliases this means at most one
+// alias-add OR alias-remove per source slug — adding a new alias for an
+// already-aliased source replaces the previous one (upsert).
+GenreWhitelistOverrideSchema.index({ kind: 1, slug: 1 }, { unique: true });
+
+export const GenreWhitelistOverride = mongoose.model<IGenreWhitelistOverride>(
+  'GenreWhitelistOverride',
+  GenreWhitelistOverrideSchema,
+);
+
+// =====================================================================
 // AppleWebhookEvent — idempotency store for App Store Server Notifications V2
 //
 // Apple may retry the same notification many times (network failures, our 5xx,
