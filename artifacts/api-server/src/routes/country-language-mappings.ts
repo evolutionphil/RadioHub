@@ -1,5 +1,11 @@
 import { Express } from 'express';
 
+// Bound the audit collection's working set. The 180-day TTL on the schema
+// caps total growth, but the panel only needs a recent slice — so we both
+// limit list responses and prune older entries beyond this cap on write.
+const CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES = 100;
+const CLEAR_OVERRIDES_AUDIT_LIST_LIMIT = 25;
+
 /**
  * Country-Language Mapping Routes
  * 
@@ -173,7 +179,48 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
           defaultLanguageCode: defaults[m.countryCode]!,
         }));
 
+      const actorEmail =
+        (req.user as { email?: string } | undefined)?.email ?? undefined;
+      const languageNames: Record<string, string> = {};
+      for (const lang of SEO_LANGUAGES) {
+        languageNames[lang.code] = lang.name;
+      }
+
+      // Persist an audit entry for every Clear overrides invocation —
+      // including no-ops — so admins always have a record of who pressed
+      // the button and when, even if nothing was deleted.
+      const persistAuditEntry = async (deletedCount: number) => {
+        try {
+          const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+          await ClearedOverridesAuditLog.create({
+            actorEmail: actorEmail ?? null,
+            deletedCount,
+            snapshot: overrideSnapshot,
+          });
+
+          // Enforce a soft cap on total entries so the panel and backing
+          // queries stay snappy. The TTL on the schema covers the long tail.
+          const total = await ClearedOverridesAuditLog.estimatedDocumentCount();
+          if (total > CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES) {
+            const excess = total - CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES;
+            const oldest = await ClearedOverridesAuditLog
+              .find({}, { _id: 1 })
+              .sort({ createdAt: 1 })
+              .limit(excess)
+              .lean();
+            if (oldest.length > 0) {
+              await ClearedOverridesAuditLog.deleteMany({
+                _id: { $in: oldest.map((d) => d._id) },
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Failed to persist cleared-overrides audit entry:', err);
+        }
+      };
+
       if (overrideSnapshot.length === 0) {
+        await persistAuditEntry(0);
         return res.json({ success: true, deletedCount: 0 });
       }
 
@@ -186,14 +233,10 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
 
       console.log(`✅ Deleted ${result.deletedCount} overridden country-language mappings`);
 
+      await persistAuditEntry(result.deletedCount);
+
       // Fire-and-forget audit email of the cleared overrides CSV. Opt-in via
       // ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
-      const languageNames: Record<string, string> = {};
-      for (const lang of SEO_LANGUAGES) {
-        languageNames[lang.code] = lang.name;
-      }
-      const actorEmail =
-        (req.user as { email?: string } | undefined)?.email ?? undefined;
       void import('../services/admin-audit-email')
         .then(({ emailClearedOverridesCsv }) =>
           emailClearedOverridesCsv({
@@ -210,6 +253,92 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     } catch (error) {
       console.error('Error deleting overridden country-language mappings:', error);
       res.status(500).json({ error: 'Failed to delete overridden country-language mappings' });
+    }
+  });
+
+  // List recent cleared-overrides audit entries for the in-app history
+  // panel. Bounded to CLEAR_OVERRIDES_AUDIT_LIST_LIMIT to keep the page
+  // snappy; the on-write prune keeps total count bounded too.
+  app.get('/api/admin/country-language-mappings/cleared-overrides-log', requireAdmin, async (_req, res) => {
+    try {
+      const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+      const entries = await ClearedOverridesAuditLog
+        .find({}, { snapshot: 0 })
+        .sort({ createdAt: -1 })
+        .limit(CLEAR_OVERRIDES_AUDIT_LIST_LIMIT)
+        .lean<Array<{
+          _id: unknown;
+          actorEmail: string | null;
+          deletedCount: number;
+          createdAt: Date;
+        }>>();
+      res.json(
+        entries.map((e) => ({
+          id: String(e._id),
+          actorEmail: e.actorEmail,
+          deletedCount: e.deletedCount,
+          createdAt: e.createdAt,
+        })),
+      );
+      return;
+    } catch (error) {
+      console.error('Error listing cleared-overrides audit log:', error);
+      res.status(500).json({ error: 'Failed to list cleared-overrides audit log' });
+      return;
+    }
+  });
+
+  // Stream the CSV for a specific cleared-overrides audit entry so admins
+  // can download the original snapshot from the dashboard, mirroring the
+  // emailed attachment exactly.
+  app.get('/api/admin/country-language-mappings/cleared-overrides-log/:id/csv', requireAdmin, async (req, res) => {
+    try {
+      const mongoose = (await import('mongoose')).default;
+      const { id } = req.params;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ error: 'Invalid audit entry id' });
+      }
+
+      const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+      const { SEO_LANGUAGES } = await import('../shared/seo-config');
+      const entry = await ClearedOverridesAuditLog.findById(id).lean<{
+        _id: unknown;
+        snapshot: Array<{
+          countryCode: string;
+          countryName: string;
+          currentLanguageCode: string;
+          defaultLanguageCode: string;
+        }>;
+        createdAt: Date;
+      }>();
+
+      if (!entry) {
+        return res.status(404).json({ error: 'Audit entry not found' });
+      }
+
+      const languageNames: Record<string, string> = {};
+      for (const lang of SEO_LANGUAGES) {
+        languageNames[lang.code] = lang.name;
+      }
+
+      const { buildClearedOverridesCsv } = await import('../services/admin-audit-email');
+      const csv = buildClearedOverridesCsv(entry.snapshot, languageNames);
+
+      const when = new Date(entry.createdAt);
+      const yyyy = when.getFullYear();
+      const mm = String(when.getMonth() + 1).padStart(2, '0');
+      const dd = String(when.getDate()).padStart(2, '0');
+      const filename = `country-overrides-${yyyy}-${mm}-${dd}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      // Prefix with a UTF-8 BOM so Excel opens the file with the right encoding.
+      res.send('\ufeff' + csv);
+      return;
+    } catch (error) {
+      console.error('Error downloading cleared-overrides audit CSV:', error);
+      res.status(500).json({ error: 'Failed to download cleared-overrides audit CSV' });
+      return;
     }
   });
 

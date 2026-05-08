@@ -3077,3 +3077,54 @@ export const AppleWebhookEvent = mongoose.model<IAppleWebhookEvent>(
   'AppleWebhookEvent',
   AppleWebhookEventSchema,
 );
+
+// =====================================================================
+// ClearedOverridesAuditLog — durable audit trail for the admin
+// "Clear country-language overrides" action. Each invocation persists a
+// snapshot of which overrides were removed, who triggered it, and when,
+// so admins who don't get the audit email can review history later and
+// regenerate the original CSV.
+//
+// Bounded growth: a 180-day TTL keeps the collection self-pruning, and
+// route-level pruning enforces a per-collection MAX_ENTRIES cap so the
+// admin panel and backing query stay fast even under heavy usage.
+// =====================================================================
+export interface IClearedOverridesAuditLogEntry {
+  countryCode: string;
+  countryName: string;
+  currentLanguageCode: string;
+  defaultLanguageCode: string;
+}
+
+export interface IClearedOverridesAuditLog extends Document {
+  actorEmail: string | null;
+  deletedCount: number;
+  snapshot: IClearedOverridesAuditLogEntry[];
+  createdAt: Date;
+}
+
+const ClearedOverridesAuditLogEntrySchema = new Schema<IClearedOverridesAuditLogEntry>(
+  {
+    countryCode: { type: String, required: true },
+    countryName: { type: String, required: true },
+    currentLanguageCode: { type: String, required: true },
+    defaultLanguageCode: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const ClearedOverridesAuditLogSchema = new Schema<IClearedOverridesAuditLog>({
+  actorEmail: { type: String, default: null },
+  deletedCount: { type: Number, required: true, default: 0 },
+  snapshot: { type: [ClearedOverridesAuditLogEntrySchema], default: [] },
+  // 180-day TTL — long enough to cover quarterly audits but bounded so
+  // the collection self-prunes without manual intervention.
+  createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 180 },
+});
+
+ClearedOverridesAuditLogSchema.index({ createdAt: -1 });
+
+export const ClearedOverridesAuditLog = mongoose.model<IClearedOverridesAuditLog>(
+  'ClearedOverridesAuditLog',
+  ClearedOverridesAuditLogSchema,
+);

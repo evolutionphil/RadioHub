@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { queryClient, apiRequest } from '@/lib/queryClient';
+import { queryClient, apiRequest, resolveApiUrl } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
@@ -300,6 +300,63 @@ export default function AdminCountryLanguageMappings() {
     }
   };
 
+  // Server-side audit trail of cleared-overrides actions. Persisted in
+  // Mongo (in addition to the opt-in audit email) so admins who don't get
+  // the email can review history and re-download the original CSV later.
+  interface ClearedOverridesAuditEntry {
+    id: string;
+    actorEmail: string | null;
+    deletedCount: number;
+    createdAt: string;
+  }
+  const {
+    data: clearedOverridesAuditLog,
+    isLoading: isLoadingAuditLog,
+    isError: isAuditLogError,
+    refetch: refetchAuditLog,
+  } = useQuery<ClearedOverridesAuditEntry[]>({
+    queryKey: ['/api/admin/country-language-mappings/cleared-overrides-log'],
+  });
+  const [downloadingAuditId, setDownloadingAuditId] = useState<string | null>(null);
+
+  const handleDownloadAuditCsv = async (entry: ClearedOverridesAuditEntry) => {
+    if (downloadingAuditId) return;
+    setDownloadingAuditId(entry.id);
+    try {
+      const url = resolveApiUrl(
+        `/api/admin/country-language-mappings/cleared-overrides-log/${entry.id}/csv`,
+      );
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error(`${res.status}: ${(await res.text()) || res.statusText}`);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const when = new Date(entry.createdAt);
+      const yyyy = when.getFullYear();
+      const mm = String(when.getMonth() + 1).padStart(2, '0');
+      const dd = String(when.getDate()).padStart(2, '0');
+      const filename = `country-overrides-${yyyy}-${mm}-${dd}.csv`;
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to download audit CSV';
+      toast({
+        title: 'Failed to download CSV',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingAuditId(null);
+    }
+  };
+
   // Fetch available countries
   const { data: countries, isLoading: isLoadingCountries } = useQuery<Country[]>({
     queryKey: ['/api/admin/available-countries'],
@@ -514,6 +571,11 @@ export default function AdminCountryLanguageMappings() {
         },
       );
       queryClient.invalidateQueries({ queryKey: ['/api/admin/country-language-mappings'] });
+      // The server persists an audit entry on every Clear overrides — refresh
+      // the in-page history panel so the new row shows up immediately.
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/country-language-mappings/cleared-overrides-log'],
+      });
 
       const snapshot = context?.snapshot ?? [];
       const canUndo = deleted > 0 && snapshot.length > 0;
@@ -1535,6 +1597,112 @@ export default function AdminCountryLanguageMappings() {
                 {saveShortcutHint}
               </TooltipContent>
             </Tooltip>
+          </div>
+
+          {/* Cleared overrides history: durable server-side audit trail of
+               every Clear overrides action. Survives reloads, sessions, and
+               admin device changes — separate from the local "Recent bulk
+               actions" panel below which only powers the Undo flow. */}
+          <div
+            data-testid="panel-cleared-overrides-audit-log"
+            className="mb-4 rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900/40"
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-2 dark:border-gray-700">
+              <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                <History className="h-4 w-4" />
+                <span>Cleared overrides history</span>
+                <span className="text-xs text-muted-foreground">
+                  (server log, last {clearedOverridesAuditLog?.length ?? 0})
+                </span>
+              </div>
+              <Button
+                data-testid="button-refresh-cleared-overrides-audit"
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => void refetchAuditLog()}
+                disabled={isLoadingAuditLog}
+              >
+                <RefreshCw
+                  className={`mr-2 h-3 w-3 ${isLoadingAuditLog ? 'animate-spin' : ''}`}
+                />
+                Refresh
+              </Button>
+            </div>
+            {isLoadingAuditLog ? (
+              <div
+                className="px-4 py-3 text-sm text-muted-foreground"
+                data-testid="text-cleared-overrides-audit-loading"
+              >
+                Loading history...
+              </div>
+            ) : isAuditLogError ? (
+              <div
+                className="px-4 py-3 text-sm text-destructive"
+                data-testid="text-cleared-overrides-audit-error"
+              >
+                Failed to load history.
+              </div>
+            ) : !clearedOverridesAuditLog || clearedOverridesAuditLog.length === 0 ? (
+              <div
+                className="px-4 py-3 text-sm text-muted-foreground"
+                data-testid="text-cleared-overrides-audit-empty"
+              >
+                No clears recorded yet.
+              </div>
+            ) : (
+              <ul className="divide-y divide-gray-200 dark:divide-gray-700">
+                {clearedOverridesAuditLog.map((entry) => {
+                  const when = new Date(entry.createdAt);
+                  const whenValid = !isNaN(when.getTime());
+                  const isDownloading = downloadingAuditId === entry.id;
+                  return (
+                    <li
+                      key={entry.id}
+                      data-testid={`row-cleared-overrides-audit-${entry.id}`}
+                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 text-sm"
+                    >
+                      <div className="flex flex-wrap items-center gap-2 text-gray-700 dark:text-gray-200">
+                        <Trash2 className="h-4 w-4 text-amber-500" />
+                        <span>
+                          Cleared {entry.deletedCount}{' '}
+                          {entry.deletedCount === 1 ? 'override' : 'overrides'}
+                        </span>
+                        {whenValid && (
+                          <span
+                            className="text-xs text-muted-foreground"
+                            title={when.toLocaleString()}
+                            data-testid={`text-cleared-overrides-audit-time-${entry.id}`}
+                          >
+                            · {formatDistanceToNow(when, { addSuffix: true })}
+                          </span>
+                        )}
+                        <span
+                          className="text-xs text-muted-foreground"
+                          data-testid={`text-cleared-overrides-audit-actor-${entry.id}`}
+                        >
+                          · by {entry.actorEmail || '(unknown admin)'}
+                        </span>
+                      </div>
+                      <Button
+                        data-testid={`button-download-cleared-overrides-audit-${entry.id}`}
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleDownloadAuditCsv(entry)}
+                        disabled={isDownloading || entry.deletedCount === 0}
+                      >
+                        {isDownloading ? (
+                          <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Download className="mr-2 h-3 w-3" />
+                        )}
+                        Download CSV
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
           </div>
 
           {/* Recent bulk actions: snapshots of recently cleared overrides
