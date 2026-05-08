@@ -735,9 +735,20 @@ export class SyncService {
    * genuinely-empty stations forever.
    */
   async hydrateMissingTagsInBackground(
-    options: { limit?: number; countryCode?: string; isCancelled?: () => boolean } = {},
+    options: {
+      limit?: number;
+      countryCode?: string;
+      isCancelled?: () => boolean;
+      onProgress?: (progress: {
+        processed: number;
+        hydrated: number;
+        emptyUpstream: number;
+        failed: number;
+        total: number;
+      }) => void;
+    } = {},
   ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number; cancelled?: boolean }> {
-    const { isCancelled } = options;
+    const { isCancelled, onProgress } = options;
     const limit = options.limit ?? 1000;
     const cooldownMs = 30 * 24 * 60 * 60 * 1000; // 30 days
     const cooldownCutoff = new Date(Date.now() - cooldownMs);
@@ -783,8 +794,16 @@ export class SyncService {
 
       if (stations.length === 0) {
         logger.log('🏷️ No stations need tags hydration');
+        if (onProgress) {
+          try {
+            onProgress({ processed, hydrated, emptyUpstream, failed, total: 0 });
+          } catch {
+            /* ignore progress callback errors */
+          }
+        }
         return { processed, hydrated, emptyUpstream, failed };
       }
+      const total = stations.length;
 
       logger.log(
         `🏷️ Found ${stations.length} stations needing tags hydration${
@@ -842,11 +861,18 @@ export class SyncService {
         }
 
         if ((i + batchSize) % 100 === 0 || i + batchSize >= stations.length) {
-          const total = stations.length;
           const done = Math.min(i + batchSize, total);
           logger.log(
             `🏷️ Tags hydration progress: ${done}/${total} (✅${hydrated} ∅${emptyUpstream} ❌${failed})`,
           );
+        }
+
+        if (onProgress) {
+          try {
+            onProgress({ processed, hydrated, emptyUpstream, failed, total });
+          } catch {
+            /* ignore progress callback errors */
+          }
         }
 
         // Be polite to the upstream API.

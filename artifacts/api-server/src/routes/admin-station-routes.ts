@@ -1426,13 +1426,15 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               countryCode: resolvedIso,
               limit: Math.max(matched, 1000),
               isCancelled,
+              onProgress,
             })
             .then((result) => {
-              // Country sweep doesn't stream per-batch progress, so fold
-              // the final tallies back into the job tracker before
-              // finish() decides between completed / cancelled. Without
-              // this the `fullyProcessed` safeguard in finish() can't
-              // tell a fully-done sweep apart from a late-cancelled one.
+              // Fold the final tallies back into the job tracker before
+              // finish() decides between completed / cancelled. The
+              // per-batch onProgress stream already keeps the UI live,
+              // but this guarantees the final numbers (and the
+              // `fullyProcessed` safeguard in finish()) line up even if
+              // the last progress tick was missed.
               const current = recheckTagsJobs.get(jobId);
               if (current) {
                 current.processed = result.processed;
