@@ -39,10 +39,10 @@ export const requireAuth: MiddlewareFn = async (req, res, next) => {
       }
     }
 
-    return res.status(401).json({ error: 'Authentication required' });
+    return void res.status(401).json({ error: 'Authentication required' });
   } catch (err) {
     logger.error('requireAuth fatal error:', err);
-    return res.status(500).json({ error: 'Authentication error' });
+    return void res.status(500).json({ error: 'Authentication error' });
   }
 };
 
@@ -52,14 +52,14 @@ export const requireAdmin: MiddlewareFn = async (req, res, next) => {
 
     if (!session || !session.adminAuth) {
       logger.log(`🔒 requireAdmin DENIED: ${req.method} ${req.path} - SessionID: ${req.sessionID}, hasSession: ${!!session}, hasAdminAuth: ${!!session?.adminAuth}`);
-      return res.status(401).json({
+      return void res.status(401).json({
         error: 'Admin authentication required',
         message: 'You must be logged in as an admin to access this resource.'
       });
     }
 
     if (session.adminAuth.role !== 'admin') {
-      return res.status(403).json({
+      return void res.status(403).json({
         error: 'Admin access required',
         message: 'You do not have permission to access this resource. Admin privileges required.'
       });
@@ -67,7 +67,7 @@ export const requireAdmin: MiddlewareFn = async (req, res, next) => {
     (req.session as any).adminUser = session.adminAuth;
     next();
   } catch {
-    return res.status(500).json({ error: 'Authentication error' });
+    return void res.status(500).json({ error: 'Authentication error' });
   }
 };
 

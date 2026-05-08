@@ -18,13 +18,13 @@ router.get('/profile/:slug', async (req, res) => {
     const cacheKey = `user-engagement-profile:${slug}:${currentUserId || 'anon'}`;
     const cached = await CacheManager.get(cacheKey);
     if (cached) {
-      return res.json(cached);
+      return void res.json(cached);
     }
 
     const profile = await userEngagementService.getUserProfileBySlug(slug, currentUserId);
     
     if (!profile) {
-      return res.status(404).json({ error: 'Profile not found' });
+      return void res.status(404).json({ error: 'Profile not found' });
     }
 
     await CacheManager.set(cacheKey, profile, { ttl: 120 });
@@ -44,7 +44,7 @@ router.get('/profile/:slug/favorites', async (req, res) => {
     const cacheKey = `user-engagement-favs:${slug}:p${page}:l${limit}`;
     const cached = await CacheManager.get(cacheKey);
     if (cached) {
-      return res.json(cached);
+      return void res.json(cached);
     }
     
     const favorites = await userEngagementService.getUserFavoritesBySlug(
@@ -54,7 +54,7 @@ router.get('/profile/:slug/favorites', async (req, res) => {
     );
     
     if (!favorites) {
-      return res.status(404).json({ error: 'Profile not found or favorites private' });
+      return void res.status(404).json({ error: 'Profile not found or favorites private' });
     }
 
     await CacheManager.set(cacheKey, favorites, { ttl: 120 });
@@ -76,10 +76,10 @@ router.get('/profile/:slug/full', async (req, res) => {
 
     const cacheKey = `user-engagement-full:${slug}:${currentUserId || 'anon'}:fl${favLimit}:rl${recentLimit}`;
     const cached = await CacheManager.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) return void res.json(cached);
 
     const profile = await userEngagementService.getUserProfileBySlug(slug, currentUserId);
-    if (!profile) return res.status(404).json({ error: 'Profile not found' });
+    if (!profile) return void res.status(404).json({ error: 'Profile not found' });
 
     let favorites: any[] = [];
     let recentlyPlayed: any[] = [];
@@ -114,7 +114,7 @@ router.get('/profile/:slug/recently-played', async (req, res) => {
 
     const cacheKey = `user-engagement-recent:${slug}:l${limit}`;
     const cached = await CacheManager.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) return void res.json(cached);
 
     // Fetch from User document recentlyPlayedStations field
     const { User } = await import('../shared/mongo-schemas');
@@ -137,7 +137,7 @@ router.get('/trending', async (req, res) => {
     const { country, limit = '100' } = req.query;
     const cacheKey = `user-engagement-trending:${country || 'all'}:${limit}`;
     const cached = await CacheManager.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) return void res.json(cached);
 
     const trending = await userEngagementService.getTrendingStations(
       country as string,
@@ -158,7 +158,7 @@ router.get('/community/favorites', async (req, res) => {
     const { country, genre, limit = '100' } = req.query;
     const cacheKey = `user-engagement-community:${country || 'all'}:${genre || 'all'}:${limit}`;
     const cached = await CacheManager.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) return void res.json(cached);
     
     const favorites = await userEngagementService.getCommunityFavorites(
       country as string,
@@ -181,11 +181,11 @@ router.post('/stations/:stationId/rate', async (req, res) => {
     const { rating, review, userId } = req.body;
     
     if (!userId) {
-      return res.status(401).json({ error: 'User authentication required' });
+      return void res.status(401).json({ error: 'User authentication required' });
     }
     
     if (!rating || rating < 1 || rating > 5) {
-      return res.status(400).json({ error: 'Rating must be between 1 and 5' });
+      return void res.status(400).json({ error: 'Rating must be between 1 and 5' });
     }
     
     const result = await userEngagementService.rateStation(userId, stationId, rating, review || '');
@@ -222,11 +222,11 @@ router.post('/stations/:stationId/favorite', async (req, res) => {
     const { userId, action } = req.body;
     
     if (!userId) {
-      return res.status(401).json({ error: 'User authentication required' });
+      return void res.status(401).json({ error: 'User authentication required' });
     }
     
     if (action !== 'add' && action !== 'remove') {
-      return res.status(400).json({ error: 'Action must be "add" or "remove"' });
+      return void res.status(400).json({ error: 'Action must be "add" or "remove"' });
     }
     
     const result = action === 'add' 
@@ -271,17 +271,17 @@ async function resolveTargetUserId(param: string): Promise<string | null> {
 router.post('/follow/:userId', async (req, res) => {
   try {
     const currentUserId = await resolveCurrentUserId(req);
-    if (!currentUserId) return res.status(401).json({ error: 'Authentication required' });
+    if (!currentUserId) return void res.status(401).json({ error: 'Authentication required' });
 
     const targetUserId = await resolveTargetUserId(req.params.userId);
-    if (!targetUserId) return res.status(404).json({ error: 'User not found' });
-    if (currentUserId === targetUserId) return res.status(400).json({ error: 'Cannot follow yourself' });
+    if (!targetUserId) return void res.status(404).json({ error: 'User not found' });
+    if (currentUserId === targetUserId) return void res.status(400).json({ error: 'Cannot follow yourself' });
 
     // Check already following
     const existing = await UserFollow.findOne({ userId: currentUserId, followingUserId: targetUserId });
-    if (existing) return res.json({ success: true, message: 'Already following' });
+    if (existing) return void res.json({ success: true, message: 'Already following' });
 
-    if (isQuotaExceeded()) return res.status(503).json({ error: 'Database temporarily unavailable' });
+    if (isQuotaExceeded()) return void res.status(503).json({ error: 'Database temporarily unavailable' });
 
     await safeWrite('follow:create', () =>
       UserFollow.create({ userId: currentUserId, followingUserId: targetUserId })
@@ -316,10 +316,10 @@ router.post('/follow/:userId', async (req, res) => {
 router.post('/unfollow/:userId', async (req, res) => {
   try {
     const currentUserId = await resolveCurrentUserId(req);
-    if (!currentUserId) return res.status(401).json({ error: 'Authentication required' });
+    if (!currentUserId) return void res.status(401).json({ error: 'Authentication required' });
 
     const targetUserId = await resolveTargetUserId(req.params.userId);
-    if (!targetUserId) return res.status(404).json({ error: 'User not found' });
+    if (!targetUserId) return void res.status(404).json({ error: 'User not found' });
 
     await UserFollow.findOneAndDelete({ userId: currentUserId, followingUserId: targetUserId });
     res.json({ success: true, message: 'User unfollowed successfully' });
@@ -334,7 +334,7 @@ router.get('/profiles/popular', async (req, res) => {
     const { limit = '20' } = req.query;
     const cacheKey = `user-engagement-popular-profiles:${limit}`;
     const cached = await CacheManager.get(cacheKey);
-    if (cached) return res.json(cached);
+    if (cached) return void res.json(cached);
 
     const profiles = await userEngagementService.getPopularProfiles(parseInt(limit as string));
     const result = {

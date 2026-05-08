@@ -30,13 +30,13 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
 
       // Validate required fields
       if (!key || !defaultValue) {
-        return res.status(400).json({ error: 'Key and default value are required' });
+        return void res.status(400).json({ error: 'Key and default value are required' });
       }
 
       // Check if key already exists
       const existingKey = await TranslationKey.findOne({ key });
       if (existingKey) {
-        return res.status(400).json({ error: 'Translation key already exists' });
+        return void res.status(400).json({ error: 'Translation key already exists' });
       }
 
       // Create new translation key
@@ -94,7 +94,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       );
 
       if (!updatedKey) {
-        return res.status(404).json({ error: 'Translation key not found' });
+        return void res.status(404).json({ error: 'Translation key not found' });
       }
 
       logger.log(`✅ Updated translation key: ${key}`);
@@ -127,7 +127,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       const deletedKey = await TranslationKey.findByIdAndDelete(id);
 
       if (!deletedKey) {
-        return res.status(404).json({ error: 'Translation key not found' });
+        return void res.status(404).json({ error: 'Translation key not found' });
       }
 
       // Also delete all translations for this key
@@ -336,8 +336,8 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       try {
         await CacheManager.clearByPattern('translations');
         logger.log('🔄 Cleared English translations cache');
-      } catch (cacheError) {
-        logger.log('⚠️ Cache clearing failed (non-critical):', cacheError.message);
+      } catch (cacheError: any) {
+        logger.log('⚠️ Cache clearing failed (non-critical):', cacheError?.message);
       }
       
       logger.log('🎉 Successfully added all missing English auth translations!');
@@ -457,7 +457,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       const { translations } = req.body;
       
       if (!translations || !Array.isArray(translations)) {
-        return res.status(400).json({ error: 'Invalid translations data' });
+        return void res.status(400).json({ error: 'Invalid translations data' });
       }
       
       const results = [];

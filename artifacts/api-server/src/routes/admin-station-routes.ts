@@ -263,7 +263,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       
       const cachedResult = await CacheManager.get(cacheKey);
       if (cachedResult) {
-        return res.json(cachedResult);
+        return void res.json(cachedResult);
       }
       
       const filter: any = {};
@@ -419,7 +419,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const cacheKey = 'admin:stations:tags-status-summary';
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const emptyTagsPredicate = {
@@ -461,7 +461,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   // PRECOMPUTED ADMIN API - Status and triggers
   app.get('/api/admin/precomputed/status', requireAdmin, async (req, res) => {
     try {
-      const status = await PrecomputedStationsService.getStatus();
+      const status = PrecomputedStationsService.getCacheStats();
       res.json(status);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch precomputed status' });
@@ -471,13 +471,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   app.post('/api/admin/precomputed/refresh', requireAdmin, async (req, res) => {
     try {
       const { countryCode } = req.body;
-      if (!countryCode) return res.status(400).json({ error: 'countryCode is required' });
+      if (!countryCode) return void res.status(400).json({ error: 'countryCode is required' });
       
       res.json({ success: true, message: `Refresh started for ${countryCode}` });
       
       setImmediate(async () => {
         try {
-          await PrecomputedStationsService.refreshCountry(countryCode);
+          await PrecomputedStationsService.computeCountryStations(countryCode);
         } catch (err) {
           logger.error(`Error refreshing precomputed for ${countryCode}:`, err);
         }
@@ -560,9 +560,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       faviconUpload.single('favicon')(req, res, (err: any) => {
         if (err) {
           if (err.code === 'LIMIT_FILE_SIZE') {
-            return res.status(413).json({ error: 'File too large. Max 5MB.' });
+            return void res.status(413).json({ error: 'File too large. Max 5MB.' });
           }
-          return res.status(400).json({ error: err.message || 'Invalid upload' });
+          return void res.status(400).json({ error: err.message || 'Invalid upload' });
         }
         next();
       });
@@ -571,14 +571,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       try {
         const { id } = req.params;
         if (!mongoose.Types.ObjectId.isValid(id)) {
-          return res.status(400).json({ error: 'Invalid station id' });
+          return void res.status(400).json({ error: 'Invalid station id' });
         }
         if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
-          return res.status(400).json({ error: 'No favicon file uploaded (field name: favicon)' });
+          return void res.status(400).json({ error: 'No favicon file uploaded (field name: favicon)' });
         }
 
         const station = await Station.findById(id).select('_id slug name').lean();
-        if (!station) return res.status(404).json({ error: 'Station not found' });
+        if (!station) return void res.status(404).json({ error: 'Station not found' });
 
         const slug = (station as any).slug || (station as any).name?.toLowerCase().replace(/\s+/g, '-') || String(station._id);
 
@@ -590,7 +590,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         );
 
         if (!result.success) {
-          return res.status(422).json({ error: result.error || 'Logo processing failed' });
+          return void res.status(422).json({ error: result.error || 'Logo processing failed' });
         }
 
         const updated = await Station.findById(id).select('_id slug favicon logoAssets').lean();
@@ -616,7 +616,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           logger.warn(`⚠️ Favicon upload for station ${id} (${slug}) used local-disk fallback (S3 not configured)`);
         }
 
-        return res.json({
+        return void res.json({
           success: true,
           favicon: newFaviconUrl,
           logoAssets: (updated as any)?.logoAssets || null,
@@ -626,7 +626,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         });
       } catch (error: any) {
         logger.error(`Favicon upload failed: ${error.message}`);
-        return res.status(500).json({ error: error.message || 'Upload failed' });
+        return void res.status(500).json({ error: error.message || 'Upload failed' });
       }
     }
   );
@@ -637,16 +637,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     try {
       const { stationId } = req.params;
       if (!mongoose.Types.ObjectId.isValid(stationId)) {
-        return res.status(400).json({ error: 'Invalid station id' });
+        return void res.status(400).json({ error: 'Invalid station id' });
       }
 
       const update = pickAllowedStationFields(req.body || {});
       if (Object.keys(update).length === 0) {
-        return res.status(400).json({ error: 'No editable fields provided' });
+        return void res.status(400).json({ error: 'No editable fields provided' });
       }
 
       const before = await Station.findById(stationId).select('_id slug favicon logoAssets').lean();
-      if (!before) return res.status(404).json({ error: 'Station not found' });
+      if (!before) return void res.status(404).json({ error: 'Station not found' });
 
       const updated = await Station.findByIdAndUpdate(
         stationId,
@@ -693,10 +693,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         performanceCache.invalidateStationCache((updated as any).slug);
       }
 
-      return res.json({ success: true, station: updated });
+      return void res.json({ success: true, station: updated });
     } catch (error: any) {
       logger.error(`Station update failed: ${error.message}`);
-      return res.status(500).json({ error: error.message || 'Update failed' });
+      return void res.status(500).json({ error: error.message || 'Update failed' });
     }
   });
 
@@ -705,16 +705,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     try {
       const { stationIds } = req.body;
       if (!Array.isArray(stationIds) || stationIds.length === 0) {
-        return res.status(400).json({ error: 'stationIds array is required' });
+        return void res.status(400).json({ error: 'stationIds array is required' });
       }
       if (stationIds.length > 50) {
-        return res.status(400).json({ error: 'Maximum 50 stations per batch request' });
+        return void res.status(400).json({ error: 'Maximum 50 stations per batch request' });
       }
 
       const sortedIds = [...stationIds].sort();
       const cacheKey = `stations:batch:${sortedIds.join(',')}`;
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const stations = await Station.find({ _id: { $in: stationIds } }).lean();
       const stationMap = stations.reduce((acc: any, station: any) => {
@@ -735,7 +735,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       logger.log('🔄 Starting bulk station import...');
       const { stations, append = false, skipIndexes = false } = req.body;
       if (!stations || !Array.isArray(stations)) {
-        return res.status(400).json({ error: 'Invalid stations array' });
+        return void res.status(400).json({ error: 'Invalid stations array' });
       }
       
       if (req.body.clearOnly) {
@@ -743,7 +743,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           await Station.collection.drop();
           logger.log('✅ Database cleared');
         } catch (dropError) {}
-        return res.json({ success: true, message: 'Database cleared' });
+        return void res.json({ success: true, message: 'Database cleared' });
       }
       
       if (!append) {
@@ -803,7 +803,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     try {
       const { stationId } = req.params;
       const station = await Station.findById(stationId);
-      if (!station) return res.status(404).json({ error: 'Station not found' });
+      if (!station) return void res.status(404).json({ error: 'Station not found' });
       
       let blacklisted = false;
       try {
@@ -864,13 +864,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     try {
       const { stationIds } = req.body;
       if (!Array.isArray(stationIds) || stationIds.length === 0) {
-        return res.status(400).json({ success: false, error: 'stationIds must be a non-empty array' });
+        return void res.status(400).json({ success: false, error: 'stationIds must be a non-empty array' });
       }
 
       const mongoose = await import('mongoose');
       const invalidIds = stationIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
       if (invalidIds.length > 0) {
-        return res.status(400).json({ success: false, error: `Invalid station IDs: ${invalidIds.join(', ')}` });
+        return void res.status(400).json({ success: false, error: `Invalid station IDs: ${invalidIds.join(', ')}` });
       }
 
       let deletedCount = 0;
@@ -1029,7 +1029,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }
 
       if (deletedCount === 0) {
-        return res.json({ success: true, deletedCount: 0, blacklistedCount: 0, message: 'No stations with URL names found' });
+        return void res.json({ success: true, deletedCount: 0, blacklistedCount: 0, message: 'No stations with URL names found' });
       }
       
       await CacheManager.clearByPattern('popular_stations');
@@ -1071,9 +1071,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const skip = (Number(page) - 1) * Number(limit);
       const searchFilter = search ? {
         $or: [
-          { name: { $regex: search, $options: 'i' } },
-          { url: { $regex: search, $options: 'i' } },
-          { reason: { $regex: search, $options: 'i' } }
+          { name: { $regex: String(search), $options: 'i' } },
+          { url: { $regex: String(search), $options: 'i' } },
+          { reason: { $regex: String(search), $options: 'i' } }
         ]
       } : {};
       
@@ -1126,19 +1126,19 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     try {
       const { blacklistId } = req.params;
       const blacklistedStation = await BlacklistedStation.findById(blacklistId);
-      if (!blacklistedStation) return res.status(404).json({ error: 'Blacklisted station not found' });
+      if (!blacklistedStation) return void res.status(404).json({ error: 'Blacklisted station not found' });
       
       // Station schema uses lowercase `stationuuid` — matching BlacklistedStation's `stationUuid` field
       const existingStation = await Station.findOne({
         $or: [ { stationuuid: blacklistedStation.stationUuid }, { url: blacklistedStation.url } ]
       });
-      if (existingStation) return res.status(400).json({ error: 'Station already exists in database' });
+      if (existingStation) return void res.status(400).json({ error: 'Station already exists in database' });
       
       try {
         if (blacklistedStation.stationUuid) {
           const radioBrowserResponse = await fetch(`https://de1.api.radio-browser.info/json/stations/byuuid/${blacklistedStation.stationUuid}`);
           if (radioBrowserResponse.ok) {
-            const radioBrowserData = await radioBrowserResponse.json();
+            const radioBrowserData = (await radioBrowserResponse.json()) as any[];
             if (radioBrowserData && radioBrowserData.length > 0) {
               const stationData = radioBrowserData[0];
               const restoredStation = new Station({
@@ -1179,7 +1179,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
                 stationUuid: blacklistedStation.stationUuid,
                 reason: blacklistedStation.reason,
               });
-              return res.json({ success: true, message: 'Station restored successfully with fresh data', station: restoredStation });
+              return void res.json({ success: true, message: 'Station restored successfully with fresh data', station: restoredStation });
             }
           }
         }
@@ -1211,14 +1211,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     try {
       const db = mongoose.connection.db;
       if (!db) {
-        return res.status(500).json({ error: 'Database not connected' });
+        return void res.status(500).json({ error: 'Database not connected' });
       }
       const stats = await db.stats();
       const collections = await db.listCollections().toArray();
       const collectionStats: any[] = [];
       for (const col of collections) {
         try {
-          const cStats = await db.collection(col.name).stats();
+          const cStats: any = await db.command({ collStats: col.name });
           collectionStats.push({
             name: col.name,
             count: cStats.count,
@@ -1311,19 +1311,19 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   app.post("/api/admin/db-drop-collection", requireAdmin, async (req, res) => {
     try {
       const { collection } = req.body;
-      if (!collection) return res.status(400).json({ error: 'Collection name required' });
+      if (!collection) return void res.status(400).json({ error: 'Collection name required' });
 
       const droppable = ['applogs', 'analyticsevents', 'stationdebuglogs', 'bulkdescriptionjobs'];
       if (!droppable.includes(collection.toLowerCase())) {
-        return res.status(400).json({ error: `Collection "${collection}" cannot be dropped. Allowed: ${droppable.join(', ')}` });
+        return void res.status(400).json({ error: `Collection "${collection}" cannot be dropped. Allowed: ${droppable.join(', ')}` });
       }
 
       const db = mongoose.connection.db;
-      if (!db) return res.status(500).json({ error: 'Database not connected' });
+      if (!db) return void res.status(500).json({ error: 'Database not connected' });
 
       const collections = await db.listCollections({ name: collection }).toArray();
       if (collections.length === 0) {
-        return res.json({ success: true, message: `Collection "${collection}" does not exist` });
+        return void res.json({ success: true, message: `Collection "${collection}" does not exist` });
       }
 
       await db.dropCollection(collection);
@@ -1345,12 +1345,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         const { stationId } = req.params;
         const result = await syncService.recheckStationTags(stationId);
         if (!result.success) {
-          return res.status(400).json(result);
+          return void res.status(400).json(result);
         }
-        return res.json(result);
+        return void res.json(result);
       } catch (error: any) {
         logger.error('recheck-tags single failed', error);
-        return res
+        return void res
           .status(500)
           .json({ success: false, error: error?.message || 'Failed to re-check tags' });
       }
@@ -1412,7 +1412,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           rawTagsStatus === 'empty-cooldown' || rawTagsStatus === 'never-checked';
 
         if (ids.length === 0 && !rawCountry && !isFilterMode) {
-          return res.status(400).json({
+          return void res.status(400).json({
             success: false,
             error: 'Provide stationIds, countryCode, or tagsStatus',
           });
@@ -1721,7 +1721,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           finish();
         }
 
-        return res.json({
+        return void res.json({
           success: true,
           jobId,
           cleared,
@@ -1733,7 +1733,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         });
       } catch (error: any) {
         logger.error('recheck-tags bulk failed', error);
-        return res
+        return void res
           .status(500)
           .json({ success: false, error: error?.message || 'Failed to bulk re-check tags' });
       }
@@ -1751,15 +1751,15 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const { jobId } = req.params as { jobId: string };
       const job = recheckTagsJobs.get(jobId);
       if (!job) {
-        return res
+        return void res
           .status(404)
           .json({ success: false, error: 'Job not found' });
       }
       if (job.status !== 'running') {
-        return res.json({ success: true, job, alreadyFinished: true });
+        return void res.json({ success: true, job, alreadyFinished: true });
       }
       if (!job.cancellable) {
-        return res
+        return void res
           .status(409)
           .json({ success: false, error: 'Job is not cancellable' });
       }
@@ -1767,7 +1767,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       recheckTagsJobs.set(jobId, job);
       notifyRecheckTagsJobSubscribers(jobId);
       logger.log(`🛑 Bulk tag re-check job ${jobId} cancellation requested`);
-      return res.json({ success: true, job });
+      return void res.json({ success: true, job });
     },
   );
 
@@ -1808,13 +1808,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const job = recheckTagsJobs.get(jobId);
       if (!job) {
         send('not-found', { jobId });
-        return res.end();
+        return void res.end();
       }
 
       send('snapshot', job);
       if (job.status !== 'running') {
         send('done', job);
-        return res.end();
+        return void res.end();
       }
 
       let closed = false;
@@ -1945,10 +1945,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           })
           .sort((a, b) => b.total - a.total);
 
-        return res.json({ countries: decorated });
+        return void res.json({ countries: decorated });
       } catch (error: any) {
         logger.error('coverage by-country failed', error);
-        return res.status(500).json({
+        return void res.status(500).json({
           error: error?.message || 'Failed to compute country coverage',
         });
       }
@@ -2064,14 +2064,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           trends[code] = list;
         }
 
-        return res.json({
+        return void res.json({
           days,
           since: since.toISOString(),
           trends,
         });
       } catch (error: any) {
         logger.error('coverage trends failed', error);
-        return res.status(500).json({
+        return void res.status(500).json({
           error: error?.message || 'Failed to fetch coverage trends',
         });
       }
@@ -2105,7 +2105,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           .lean();
 
         if (!latest) {
-          return res.json({ alert: null });
+          return void res.json({ alert: null });
         }
 
         const data = (latest.data ?? {}) as {
@@ -2123,7 +2123,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         };
 
         const drops = Array.isArray(data.drops) ? data.drops : [];
-        return res.json({
+        return void res.json({
           alert: {
             createdAt:
               latest.createdAt instanceof Date
@@ -2145,7 +2145,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         });
       } catch (error: any) {
         logger.error('coverage drop-alerts failed', error);
-        return res.status(500).json({
+        return void res.status(500).json({
           error: error?.message || 'Failed to fetch coverage drop alerts',
         });
       }
@@ -2164,7 +2164,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       try {
         const rawCode = String(req.params.countryCode || '').trim().toUpperCase();
         if (!rawCode) {
-          return res
+          return void res
             .status(400)
             .json({ success: false, error: 'countryCode is required' });
         }
@@ -2174,7 +2174,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         const wantLogos = scopeInput === 'logos' || scopeInput === 'both';
         const wantTags = scopeInput === 'tags' || scopeInput === 'both';
         if (!wantLogos && !wantTags) {
-          return res.status(400).json({
+          return void res.status(400).json({
             success: false,
             error: "scope must be one of 'logos', 'tags', 'both'",
           });
@@ -2338,7 +2338,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         maybeFinishCoverageJob(job);
         coverageBackfillJobs.set(jobId, job);
 
-        return res.json({
+        return void res.json({
           success: true,
           jobId,
           countryCode: rawCode,
@@ -2350,7 +2350,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         });
       } catch (error: any) {
         logger.error('coverage enqueue failed', error);
-        return res.status(500).json({
+        return void res.status(500).json({
           success: false,
           error: error?.message || 'Failed to enqueue country backfill',
         });
@@ -2372,7 +2372,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       cleanupCoverageBackfillJobs();
       const job = coverageBackfillJobs.get(jobId);
       if (!job) {
-        return res
+        return void res
           .status(404)
           .json({ success: false, error: 'Job not found' });
       }
@@ -2414,7 +2414,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       // Don't ship the full enqueuedIds array on every poll — it can be
       // a few thousand strings per country.
       const { logos, ...rest } = job;
-      return res.json({
+      return void res.json({
         success: true,
         job: {
           ...rest,
@@ -2446,15 +2446,15 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const { jobId } = req.params as { jobId: string };
       const job = coverageBackfillJobs.get(jobId);
       if (!job) {
-        return res
+        return void res
           .status(404)
           .json({ success: false, error: 'Job not found' });
       }
       if (job.status !== 'running') {
-        return res.json({ success: true, alreadyFinished: true });
+        return void res.json({ success: true, alreadyFinished: true });
       }
       if (!job.cancellable) {
-        return res
+        return void res
           .status(409)
           .json({ success: false, error: 'Job is not cancellable' });
       }
@@ -2474,7 +2474,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       logger.log(
         `🛑 Coverage backfill ${jobId} (${job.countryCode}) cancellation requested`,
       );
-      return res.json({ success: true });
+      return void res.json({ success: true });
     },
   );
 }

@@ -14,7 +14,7 @@ export function registerSilentPushRoutes(app: Express, deps: any) {
       const { action, country, userId } = req.body;
 
       if (!action || !VALID_ACTIONS.includes(action)) {
-        return res.status(400).json({
+        return void res.status(400).json({
           error: `Invalid action. Must be one of: ${VALID_ACTIONS.join(', ')}`,
         });
       }
@@ -95,7 +95,7 @@ export function registerSilentPushRoutes(app: Express, deps: any) {
     const providedKey = req.headers['x-internal-key'] as string;
 
     if (!internalKey || providedKey !== internalKey) {
-      return res.status(403).json({ error: 'Forbidden' });
+      return void res.status(403).json({ error: 'Forbidden' });
     }
 
     try {

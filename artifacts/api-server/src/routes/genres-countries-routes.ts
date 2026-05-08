@@ -26,7 +26,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       } = req.body;
 
       if (!sessionId || !stationId || listenDuration === undefined || !interactionType) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        return void res.status(400).json({ error: 'Missing required fields' });
       }
 
       await RecommendationEngine.recordUserInteraction({
@@ -52,7 +52,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const profile = await UserProfile.findOne({ sessionId }).lean();
       
       if (!profile) {
-        return res.json({
+        return void res.json({
           profileStrength: 0,
           preferredGenres: [],
           preferredCountries: [],
@@ -82,7 +82,8 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
   app.get("/api/ml/recommendations/:sessionId", async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const { limit = 20 } = req.query;
+      const { limit: rawLimit = 20 } = req.query;
+      const limit = typeof rawLimit === 'string' ? (parseInt(rawLimit) || 20) : (typeof rawLimit === 'number' ? rawLimit : 20);
 
       const recentStations = await UserListeningHistory.find({ sessionId })
         .sort({ listenedAt: -1 })
@@ -92,7 +93,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       if (recentStations.length === 0) {
         const popularStations = await Station.find({})
           .sort({ votes: -1 })
-          .limit(parseInt(limit as string) || 6)
+          .limit(limit || 6)
           .lean();
         
         const starterRecommendations = popularStations.map(station => ({
@@ -105,14 +106,14 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
           }
         }));
         
-        return res.json(starterRecommendations);
+        return void res.json(starterRecommendations);
       }
 
       const mostRecentStation = recentStations[0];
       const recommendations = await RecommendationEngine.getPersonalizedSimilarStations({
         sourceStationId: mostRecentStation.stationId,
         sessionId,
-        limit: parseInt(limit as string),
+        limit: limit,
         minConfidence: 0.1
       });
 
@@ -133,7 +134,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
           };
         });
 
-        return res.json(enhancedStations);
+        return void res.json(enhancedStations);
       }
 
       res.json([]);
@@ -156,7 +157,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         const countries = getAllCountryInfoFromDb(
           countryCounts.map((c: any) => ({ name: c._id, count: c.count }))
         );
-        return res.json(countries);
+        return void res.json(countries);
       }
 
       const countries = await Station.distinct('country').lean();
@@ -203,13 +204,13 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         searchQuery = (req.query.search as string) || (req.query.searchQuery as string) || null;
       }
       
-      const cacheKey = CacheKeys.genres(parseInt(page as string), parseInt(limit as string), { searchQuery, countrycode, sortColumn, sortBy });
+      const cacheKey = CacheKeys.genres(page, limit, { searchQuery, countrycode, sortColumn, sortBy });
       const disableCache = countrycode === 'Austria';
       const cachedResult = !disableCache ? await CacheManager.get(cacheKey) : null;
       
       if (cachedResult && !disableCache) {
         if (isTV && (cachedResult as any).genres) {
-          return res.json({
+          return void res.json({
             genres: (cachedResult as any).genres.map(tvSlimGenre),
             data: (cachedResult as any).genres.map(tvSlimGenre),
             total: (cachedResult as any).total,
@@ -218,7 +219,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
             totalPages: (cachedResult as any).totalPages
           });
         }
-        return res.json(cachedResult);
+        return void res.json(cachedResult);
       }
 
       const realGenres = await Genre.find({ isDiscoverable: true }).lean();
@@ -344,8 +345,8 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       });
       
       const totalCount = allGenres.length;
-      const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-      const paginatedGenres = allGenres.slice(skip, skip + parseInt(limit as string));
+      const skip = (page - 1) * limit;
+      const paginatedGenres = allGenres.slice(skip, skip + limit);
       
       const response = {
         success: true,
@@ -353,23 +354,23 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         data: paginatedGenres,
         total: totalCount,
         count: totalCount,
-        page: parseInt(page as string),
-        currentPage: parseInt(page as string),
-        limit: parseInt(limit as string),
-        perPage: parseInt(limit as string),
-        totalPages: Math.ceil(totalCount / parseInt(limit as string))
+        page: page,
+        currentPage: page,
+        limit: limit,
+        perPage: limit,
+        totalPages: Math.ceil(totalCount / limit)
       };
       
       await CacheManager.set(cacheKey, response, { ttl: 3600 });
       
       if (isTV) {
-        return res.json({
+        return void res.json({
           genres: paginatedGenres.map(tvSlimGenre),
           data: paginatedGenres.map(tvSlimGenre),
           total: totalCount,
-          page: parseInt(page as string),
-          limit: parseInt(limit as string),
-          totalPages: Math.ceil(totalCount / parseInt(limit as string))
+          page: page,
+          limit: limit,
+          totalPages: Math.ceil(totalCount / limit)
         });
       }
       
@@ -428,7 +429,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const limit = Math.min(parseInt(req.query.limit as string) || 13, 50);
       const cacheKey = `genres:discoverable:${country || 'all'}:${limit}`;
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       let filter: any = { isDiscoverable: true };
       if (country) {
@@ -458,14 +459,14 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const cacheKey = `genre-slug:${slug}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const genre = await Genre.findOne({ slug }).select('name slug stationCount description icon').lean();
       if (genre) {
         const result = { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount, description: (genre as any).description, icon: (genre as any).icon };
         await CacheManager.set(cacheKey, result, { ttl: 3600 });
-        return res.json(result);
+        return void res.json(result);
       }
 
       const normalizedName = slug.replace(/-/g, ' ');
@@ -480,10 +481,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       if (stationCount > 0) {
         const result = { name: normalizedName.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), slug, stationCount };
         await CacheManager.set(cacheKey, result, { ttl: 3600 });
-        return res.json(result);
+        return void res.json(result);
       }
 
-      return res.status(404).json({ error: 'Genre not found' });
+      return void res.status(404).json({ error: 'Genre not found' });
     } catch (error) {
       console.error('Error fetching genre by slug:', error);
       res.status(500).json({ error: 'Failed to fetch genre' });
@@ -523,7 +524,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       if (typeof slug === 'string' && slug.length > 0) {
         if (!SAFE_GENRE_SLUG_RE.test(slug)) {
-          return res.status(400).json({
+          return void res.status(400).json({
             error: `Invalid slug "${slug}". Must match ${SAFE_GENRE_SLUG_RE}`,
           });
         }
@@ -542,7 +543,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         runValidators: true,
       });
       if (!updated) {
-        return res.status(404).json({ error: 'Genre not found' });
+        return void res.status(404).json({ error: 'Genre not found' });
       }
 
       try {
@@ -554,7 +555,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       res.json(updated);
     } catch (error: any) {
       if (error?.name === 'ValidationError') {
-        return res.status(400).json({ error: error.message });
+        return void res.status(400).json({ error: error.message });
       }
       logger.error({ err: error }, 'Failed to update genre');
       res.status(500).json({ error: 'Failed to update genre' });
@@ -567,7 +568,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const { id } = req.params;
       const deleted = await Genre.findByIdAndDelete(id);
       if (!deleted) {
-        return res.status(404).json({ error: 'Genre not found' });
+        return void res.status(404).json({ error: 'Genre not found' });
       }
 
       try {
@@ -597,12 +598,12 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const cacheKey = `genre-stations:${slug}:${country || 'all'}:${page}:${limit}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const genre = await Genre.findOne({ slug }).lean();
       if (!genre) {
-        return res.status(404).json({ error: 'Genre not found' });
+        return void res.status(404).json({ error: 'Genre not found' });
       }
 
       const filter: any = {

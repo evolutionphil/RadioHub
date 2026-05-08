@@ -100,17 +100,17 @@ router.post('/request', async (req: Request, res: Response) => {
     const { name, email, appName, appUrl, usageReason } = req.body;
 
     if (!name || !email) {
-      return res.status(400).json({ error: 'Name and email are required' });
+      return void res.status(400).json({ error: 'Name and email are required' });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
+      return void res.status(400).json({ error: 'Invalid email format' });
     }
 
     const existingCount = await ApiKey.countDocuments({ email, status: 'active', plan: { $ne: 'demo' } });
     if (existingCount >= 3) {
-      return res.status(429).json({ error: 'Maximum 3 active API keys per email. Please revoke an existing key first.' });
+      return void res.status(429).json({ error: 'Maximum 3 active API keys per email. Please revoke an existing key first.' });
     }
 
     const rawKey = generateApiKey();
@@ -165,24 +165,24 @@ router.get('/validate', async (req: Request, res: Response) => {
       (req.query.key as string);
 
     if (!key) {
-      return res.status(400).json({ valid: false, error: 'No API key provided. Use X-API-Key header, Authorization: Bearer <key>, or ?key= query param.' });
+      return void res.status(400).json({ valid: false, error: 'No API key provided. Use X-API-Key header, Authorization: Bearer <key>, or ?key= query param.' });
     }
 
     const keyHash = hashKey(key);
     const apiKeyDoc = await ApiKey.findOne({ keyHash });
 
     if (!apiKeyDoc) {
-      return res.status(401).json({ valid: false, error: 'Invalid API key' });
+      return void res.status(401).json({ valid: false, error: 'Invalid API key' });
     }
 
     if (apiKeyDoc.status !== 'active') {
-      return res.status(403).json({ valid: false, error: `API key is ${apiKeyDoc.status}` });
+      return void res.status(403).json({ valid: false, error: `API key is ${apiKeyDoc.status}` });
     }
 
     if (apiKeyDoc.expiresAt && new Date(apiKeyDoc.expiresAt) < new Date()) {
       apiKeyDoc.status = 'expired';
       await apiKeyDoc.save();
-      return res.status(403).json({ valid: false, error: 'API key has expired' });
+      return void res.status(403).json({ valid: false, error: 'API key has expired' });
     }
 
     res.setHeader('X-RateLimit-Limit', apiKeyDoc.rateLimitPerMin.toString());
@@ -222,7 +222,7 @@ router.get('/demo', async (req: Request, res: Response) => {
 
     if (existing && new Date(existing.expiresAt) > new Date()) {
       const hoursLeft = Math.ceil((new Date(existing.expiresAt).getTime() - Date.now()) / 3600000);
-      return res.status(429).json({
+      return void res.status(429).json({
         error: 'Demo key already issued for this IP',
         message: `You already received a demo key. Try again in ${hoursLeft} hour(s), or request a free API key for unlimited access.`,
         expiresAt: existing.expiresAt,
@@ -310,14 +310,14 @@ router.get('/usage', async (req: Request, res: Response) => {
       (req.query.key as string);
 
     if (!key) {
-      return res.status(400).json({ error: 'No API key provided' });
+      return void res.status(400).json({ error: 'No API key provided' });
     }
 
     const keyHash = hashKey(key);
     const apiKeyDoc = await ApiKey.findOne({ keyHash });
 
     if (!apiKeyDoc) {
-      return res.status(401).json({ error: 'Invalid API key' });
+      return void res.status(401).json({ error: 'Invalid API key' });
     }
 
     const today = getTodayStr();
@@ -364,7 +364,7 @@ router.get('/my-keys', async (req: Request, res: Response) => {
   try {
     const auth = authenticateApiUser(req);
     if (!auth) {
-      return res.status(401).json({ error: 'Authentication required. Use X-API-User-Token header.' });
+      return void res.status(401).json({ error: 'Authentication required. Use X-API-User-Token header.' });
     }
 
     const keys = await ApiKey.find({ email: auth.email, plan: { $ne: 'demo' } })
@@ -399,21 +399,21 @@ router.post('/revoke', async (req: Request, res: Response) => {
   try {
     const auth = authenticateApiUser(req);
     if (!auth) {
-      return res.status(401).json({ error: 'Authentication required. Use X-API-User-Token header.' });
+      return void res.status(401).json({ error: 'Authentication required. Use X-API-User-Token header.' });
     }
 
     const { keyId } = req.body;
     if (!keyId) {
-      return res.status(400).json({ error: 'keyId is required in request body' });
+      return void res.status(400).json({ error: 'keyId is required in request body' });
     }
 
     const apiKeyDoc = await ApiKey.findById(keyId);
     if (!apiKeyDoc || apiKeyDoc.email !== auth.email) {
-      return res.status(404).json({ error: 'API key not found' });
+      return void res.status(404).json({ error: 'API key not found' });
     }
 
     if (apiKeyDoc.plan === 'demo') {
-      return res.status(403).json({ error: 'Cannot revoke demo keys' });
+      return void res.status(403).json({ error: 'Cannot revoke demo keys' });
     }
 
     apiKeyDoc.status = 'revoked';
@@ -432,21 +432,21 @@ router.post('/user/register', async (req: Request, res: Response) => {
     const { email, password, name, company, website } = req.body;
 
     if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Email, password, and name are required' });
+      return void res.status(400).json({ error: 'Email, password, and name are required' });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
+      return void res.status(400).json({ error: 'Invalid email format' });
     }
 
     if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+      return void res.status(400).json({ error: 'Password must be at least 6 characters' });
     }
 
     const existing = await ApiUser.findOne({ email: email.toLowerCase() });
     if (existing) {
-      return res.status(409).json({ error: 'An account with this email already exists' });
+      return void res.status(409).json({ error: 'An account with this email already exists' });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -518,21 +518,21 @@ router.post('/user/login', async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required' });
+      return void res.status(400).json({ error: 'Email and password are required' });
     }
 
     const user = await ApiUser.findOne({ email: email.toLowerCase() });
     if (!user) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return void res.status(401).json({ error: 'Invalid email or password' });
     }
 
     if (user.status !== 'active') {
-      return res.status(403).json({ error: 'Account is suspended' });
+      return void res.status(403).json({ error: 'Account is suspended' });
     }
 
     const valid = await bcrypt.compare(password, user.passwordHash);
     if (!valid) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return void res.status(401).json({ error: 'Invalid email or password' });
     }
 
     user.lastLoginAt = new Date();
@@ -564,12 +564,12 @@ router.get('/user/me', async (req: Request, res: Response) => {
   try {
     const auth = authenticateApiUser(req);
     if (!auth) {
-      return res.status(401).json({ error: 'Not authenticated' });
+      return void res.status(401).json({ error: 'Not authenticated' });
     }
 
     const user = await ApiUser.findById(auth.userId);
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return void res.status(404).json({ error: 'User not found' });
     }
 
     const keys = await ApiKey.find({ email: user.email, plan: { $ne: 'demo' } })
@@ -613,18 +613,18 @@ router.post('/user/create-key', async (req: Request, res: Response) => {
   try {
     const auth = authenticateApiUser(req);
     if (!auth) {
-      return res.status(401).json({ error: 'Not authenticated' });
+      return void res.status(401).json({ error: 'Not authenticated' });
     }
 
     const { appName, appUrl, usageReason } = req.body;
 
     const existingCount = await ApiKey.countDocuments({ email: auth.email, status: 'active', plan: { $ne: 'demo' } });
     if (existingCount >= 3) {
-      return res.status(429).json({ error: 'Maximum 3 active API keys. Please revoke an existing key first.' });
+      return void res.status(429).json({ error: 'Maximum 3 active API keys. Please revoke an existing key first.' });
     }
 
     const user = await ApiUser.findById(auth.userId);
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) return void res.status(404).json({ error: 'User not found' });
 
     const rawKey = generateApiKey();
     const keyHash = hashKey(rawKey);
@@ -678,19 +678,19 @@ router.post('/user/revoke-key', async (req: Request, res: Response) => {
   try {
     const auth = authenticateApiUser(req);
     if (!auth) {
-      return res.status(401).json({ error: 'Not authenticated' });
+      return void res.status(401).json({ error: 'Not authenticated' });
     }
 
     const { keyId } = req.body;
-    if (!keyId) return res.status(400).json({ error: 'Key ID is required' });
+    if (!keyId) return void res.status(400).json({ error: 'Key ID is required' });
 
     const apiKeyDoc = await ApiKey.findById(keyId);
     if (!apiKeyDoc || apiKeyDoc.email !== auth.email) {
-      return res.status(404).json({ error: 'API key not found' });
+      return void res.status(404).json({ error: 'API key not found' });
     }
 
     if (apiKeyDoc.plan === 'demo') {
-      return res.status(403).json({ error: 'Cannot revoke demo keys' });
+      return void res.status(403).json({ error: 'Cannot revoke demo keys' });
     }
 
     apiKeyDoc.status = 'revoked';
@@ -735,12 +735,12 @@ export async function apiKeyMiddleware(req: Request, res: Response, next: NextFu
       return next();
     }
 
-    const isInternal = apiKeyDoc.plan === 'internal';
+    const isInternal = (apiKeyDoc.plan as string) === 'internal';
 
     if (!isInternal) {
       const rateCheck = checkRateLimit(keyHash, apiKeyDoc.rateLimitPerMin);
       if (!rateCheck.allowed) {
-        return res.status(429).json({
+        return void res.status(429).json({
           error: 'Rate limit exceeded',
           retryAfter: rateCheck.resetIn,
           limit: apiKeyDoc.rateLimitPerMin,
@@ -757,10 +757,10 @@ export async function apiKeyMiddleware(req: Request, res: Response, next: NextFu
       const currentMonth = needMonthReset ? 0 : apiKeyDoc.usage.monthCount;
 
       if (currentDay >= apiKeyDoc.dailyQuota) {
-        return res.status(429).json({ error: 'Daily quota exceeded', dailyQuota: apiKeyDoc.dailyQuota });
+        return void res.status(429).json({ error: 'Daily quota exceeded', dailyQuota: apiKeyDoc.dailyQuota });
       }
       if (currentMonth >= apiKeyDoc.monthlyQuota) {
-        return res.status(429).json({ error: 'Monthly quota exceeded', monthlyQuota: apiKeyDoc.monthlyQuota });
+        return void res.status(429).json({ error: 'Monthly quota exceeded', monthlyQuota: apiKeyDoc.monthlyQuota });
       }
 
       const updateOps: any = {

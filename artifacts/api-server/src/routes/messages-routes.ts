@@ -81,7 +81,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   // Returns a one-time ticket for WebSocket auth (expires in 60s)
   app.get("/api/messages/ws-ticket", requireAuth, (req, res) => {
     const userId = getSessionUserId(req);
-    if (!userId) return res.status(401).json({ error: "Not authenticated" });
+    if (!userId) return void res.status(401).json({ error: "Not authenticated" });
     const ticket = issueWsTicket(userId);
     res.json({ ticket });
   });
@@ -91,7 +91,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   app.get("/api/messages/contacts", requireAuth, async (req, res) => {
     try {
       const userId = getSessionUserId(req);
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!userId) return void res.status(401).json({ error: "Not authenticated" });
 
       // People I follow
       const following = await UserFollow.find({ userId }).select("followingUserId").lean();
@@ -124,7 +124,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   app.get("/api/messages/conversations", requireAuth, async (req, res) => {
     try {
       const rawId = getSessionUserId(req);
-      if (!rawId) return res.status(401).json({ error: "Not authenticated" });
+      if (!rawId) return void res.status(401).json({ error: "Not authenticated" });
       const userId = new mongoose.Types.ObjectId(rawId);
 
       const conversations = await DirectMessage.aggregate([
@@ -188,7 +188,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   app.get("/api/messages/unread-count", requireAuth, async (req, res) => {
     try {
       const rawId = getSessionUserId(req);
-      if (!rawId) return res.status(401).json({ error: "Not authenticated" });
+      if (!rawId) return void res.status(401).json({ error: "Not authenticated" });
       const userId = new mongoose.Types.ObjectId(rawId);
       const count = await DirectMessage.countDocuments({ toUserId: userId, read: false });
       res.json({ count });
@@ -201,14 +201,14 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   app.get("/api/messages/conversation/:partnerId", requireAuth, async (req, res) => {
     try {
       const rawId = getSessionUserId(req);
-      if (!rawId) return res.status(401).json({ error: "Not authenticated" });
+      if (!rawId) return void res.status(401).json({ error: "Not authenticated" });
       const userId = new mongoose.Types.ObjectId(rawId);
 
       let partnerId: mongoose.Types.ObjectId;
       try {
         partnerId = new mongoose.Types.ObjectId(req.params.partnerId);
       } catch {
-        return res.status(400).json({ error: "Invalid partner ID" });
+        return void res.status(400).json({ error: "Invalid partner ID" });
       }
 
       const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
@@ -284,7 +284,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
 
   app.post("/api/messages/upload-image", requireAuth, chatUpload.single('image'), (req: any, res) => {
     try {
-      if (!req.file) return res.status(400).json({ error: 'No image uploaded' });
+      if (!req.file) return void res.status(400).json({ error: 'No image uploaded' });
       const imageUrl = `/uploads/chat/${req.file.filename}`;
       res.json({ imageUrl });
     } catch (error) {
@@ -297,38 +297,38 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   app.post("/api/messages/send", requireAuth, async (req, res) => {
     try {
       const fromUserId = getSessionUserId(req);
-      if (!fromUserId) return res.status(401).json({ error: "Not authenticated" });
+      if (!fromUserId) return void res.status(401).json({ error: "Not authenticated" });
 
       const { toUserId, content, messageType, imageUrl } = req.body;
 
       if (!toUserId || !content?.trim()) {
-        return res.status(400).json({ error: "toUserId and content are required" });
+        return void res.status(400).json({ error: "toUserId and content are required" });
       }
       if (content.trim().length > 2000) {
-        return res.status(400).json({ error: "Message too long (max 2000 chars)" });
+        return void res.status(400).json({ error: "Message too long (max 2000 chars)" });
       }
 
       let targetId: mongoose.Types.ObjectId;
       try {
         targetId = new mongoose.Types.ObjectId(toUserId);
       } catch {
-        return res.status(400).json({ error: "Invalid toUserId" });
+        return void res.status(400).json({ error: "Invalid toUserId" });
       }
 
       if (targetId.toString() === fromUserId) {
-        return res.status(400).json({ error: "Cannot message yourself" });
+        return void res.status(400).json({ error: "Cannot message yourself" });
       }
 
       const allowed = await canChat(fromUserId, targetId.toString());
       if (!allowed) {
-        return res.status(403).json({
+        return void res.status(403).json({
           error: "You can only message people you follow or who follow you",
         });
       }
 
       const targetUser = await User.findById(targetId).select("_id username fullName avatar profileImageUrl").lean();
       if (!targetUser) {
-        return res.status(404).json({ error: "User not found" });
+        return void res.status(404).json({ error: "User not found" });
       }
 
       const fromObjId = new mongoose.Types.ObjectId(fromUserId);
@@ -401,10 +401,10 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   app.get("/api/messages/search-users", requireAuth, async (req, res) => {
     try {
       const q = (req.query.q as string)?.trim();
-      if (!q || q.length < 2) return res.json({ users: [] });
+      if (!q || q.length < 2) return void res.json({ users: [] });
 
       const userId = getSessionUserId(req);
-      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      if (!userId) return void res.status(401).json({ error: "Not authenticated" });
       const userObjId = new mongoose.Types.ObjectId(userId);
 
       const [following, followers] = await Promise.all([

@@ -23,7 +23,7 @@ interface RecommendationResult {
 
 interface PersonalizedSimilarStationsOptions {
   sourceStationId: string;
-  sessionId: string;
+  sessionId?: string;
   limit?: number;
   minConfidence?: number;
 }
@@ -78,13 +78,13 @@ export class RecommendationEngine {
     let settled = false;
     try {
       const computePromise = (async () => {
-        const userProfile = await this.getUserProfile(sessionId);
+        const userProfile = await this.getUserProfile(sessionId ?? '');
         const sourceStation = await Station.findById(sourceStationId).lean();
         
         if (!sourceStation) return [];
 
         const strategies = await Promise.all([
-          this.getCollaborativeRecommendations(sourceStationId, sessionId, userProfile),
+          this.getCollaborativeRecommendations(sourceStationId, sessionId ?? '', userProfile),
           this.getContentBasedRecommendations(sourceStationId, userProfile),
           this.getPopularityBasedRecommendations(sourceStation, userProfile)
         ]);
@@ -563,7 +563,7 @@ export class RecommendationEngine {
     const sourceStation = await Station.findById(sourceStationId).select('country').lean();
     if (!sourceStation) return [];
 
-    const country = sourceStation.country;
+    const country = sourceStation.country ?? '';
     const pool = performanceCache.getSimilarPool(country) || performanceCache.getGlobalPopularPool();
 
     if (pool && pool.length > 0) {

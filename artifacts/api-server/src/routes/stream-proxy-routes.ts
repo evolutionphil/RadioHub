@@ -227,7 +227,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           throw new Error('URL must start with http:// or https://');
         }
       } catch (error: any) {
-        return res.status(400).json({ error: 'Invalid image URL encoding' });
+        return void res.status(400).json({ error: 'Invalid image URL encoding' });
       }
 
       // SSRF guard: image proxy can be invoked with arbitrary URL, so verify
@@ -239,7 +239,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           blockedPorts: STREAM_BLOCKED_PORTS,
         });
         if (!guarded.ok) {
-          return res.status(400).json({ error: 'URL not allowed' });
+          return void res.status(400).json({ error: 'URL not allowed' });
         }
       }
 
@@ -253,7 +253,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
       const acceptHeader = req.headers.accept || '';
 
       if (req.method === 'OPTIONS') {
-        return res.status(200).end();
+        return void res.status(200).end();
       }
 
       const controller = new AbortController();
@@ -274,27 +274,27 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           }
         });
       } catch (fetchError: any) {
-        return res.status(404).json({ error: 'Image not accessible' });
+        return void res.status(404).json({ error: 'Image not accessible' });
       } finally {
         clearTimeout(timeoutId);
       }
 
       if (!response.ok) {
-        try { response.body?.destroy?.(); } catch {}
-        return res.status(404).json({ error: 'Image not found or inaccessible' });
+        try { (response.body as any)?.destroy?.(); } catch {}
+        return void res.status(404).json({ error: 'Image not found or inaccessible' });
       }
 
       const contentType = response.headers.get('content-type') || '';
       if (contentType.includes('text/html') || contentType.includes('text/xml') || 
           contentType.includes('application/json') || contentType.includes('application/xml')) {
-        try { response.body?.destroy?.(); } catch {}
-        return res.status(404).json({ error: 'Not an image' });
+        try { (response.body as any)?.destroy?.(); } catch {}
+        return void res.status(404).json({ error: 'Not an image' });
       }
 
       const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
       if (contentLength > MAX_IMAGE_DOWNLOAD_BYTES) {
-        try { response.body?.destroy?.(); } catch {}
-        return res.status(413).json({ error: 'Image too large' });
+        try { (response.body as any)?.destroy?.(); } catch {}
+        return void res.status(413).json({ error: 'Image too large' });
       }
 
       let imageBuffer: Buffer | null = null;
@@ -310,11 +310,11 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         }
         imageBuffer = Buffer.concat(chunks);
       } catch (bufferError: any) {
-        return res.status(413).json({ error: 'Image too large or download failed' });
+        return void res.status(413).json({ error: 'Image too large or download failed' });
       }
 
       if (!imageBuffer || imageBuffer.length < 8) {
-        return res.status(404).json({ error: 'Empty or invalid image' });
+        return void res.status(404).json({ error: 'Empty or invalid image' });
       }
 
       const header = imageBuffer.slice(0, 16).toString('hex');
@@ -332,7 +332,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
 
       if (!isLikelyImage && (headerStr.startsWith('<!DOC') || headerStr.startsWith('<html') || headerStr.startsWith('<HTML'))) {
         imageBuffer = null;
-        return res.status(404).json({ error: 'HTML page returned instead of image' });
+        return void res.status(404).json({ error: 'HTML page returned instead of image' });
       }
 
       await acquireSharpSlot();
@@ -352,7 +352,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           : await pipeline.webp({ quality: 80, effort: 3 }).toBuffer();
       } catch (sharpError: any) {
         imageBuffer = null;
-        return res.status(404).json({ error: 'Image format not supported' });
+        return void res.status(404).json({ error: 'Image format not supported' });
       }
 
       imageBuffer = null;
@@ -380,7 +380,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     try {
       const { url } = req.query;
       if (!url || typeof url !== 'string' || url.length > 2048) {
-        return res.status(400).json({ error: 'Missing url parameter' });
+        return void res.status(400).json({ error: 'Missing url parameter' });
       }
       // SSRF guard. Stream URLs use a wide port range so we permit any port
       // except well-known internal-service ports.
@@ -390,7 +390,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           blockedPorts: STREAM_BLOCKED_PORTS,
         });
         if (!guarded.ok) {
-          return res.status(400).json({ error: 'URL not allowed' });
+          return void res.status(400).json({ error: 'URL not allowed' });
         }
       }
 
@@ -511,12 +511,12 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
   // RADIOLISE-STYLE SIMPLE PROXY: Direct streaming without complex multiplexing
   app.get("/api/stream/*path", async (req, res) => {
     if (activeStreamCount >= MAX_CONCURRENT_STREAMS) {
-      return res.status(503).json({ error: 'Server at stream capacity, try again later' });
+      return void res.status(503).json({ error: 'Server at stream capacity, try again later' });
     }
 
     const clientIp = getClientIp(req);
     if (!incrementIpStream(clientIp)) {
-      return res.status(429).json({ error: 'Too many concurrent streams from this IP' });
+      return void res.status(429).json({ error: 'Too many concurrent streams from this IP' });
     }
 
     activeStreamCount++;
@@ -560,7 +560,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           });
           if (!guarded.ok) {
             releaseSlot();
-            return res.status(400).json({ error: 'Stream URL not allowed' });
+            return void res.status(400).json({ error: 'Stream URL not allowed' });
           }
           originalUrl = decoded;
         } else {
@@ -580,12 +580,12 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           });
           if (!guardedFallback.ok) {
             releaseSlot();
-            return res.status(400).json({ error: 'Stream URL not allowed' });
+            return void res.status(400).json({ error: 'Stream URL not allowed' });
           }
           originalUrl = fallback;
         } catch (fallbackError) {
           releaseSlot();
-          return res.status(400).json({ error: 'Invalid stream URL format' });
+          return void res.status(400).json({ error: 'Invalid stream URL format' });
         }
       }
       
@@ -815,7 +815,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
           // causes some origins (e.g. stream.zeno.fm) to reject us with HTTP
           // 401 because they gate streaming behind "real player" checks.
           // VLC is accepted by virtually every Shoutcast/Icecast/CDN host.
-          lastRes = await fetch(currentUrl, {
+          lastRes = await (fetch as any)(currentUrl, {
             signal: controller.signal,
             redirect: 'manual',
             headers: {
@@ -825,8 +825,8 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
               ...(req.headers.range && { 'Range': req.headers.range as string })
             }
           });
-          if (lastRes.status >= 300 && lastRes.status < 400) {
-            const loc = lastRes.headers.get('location');
+          if (lastRes!.status >= 300 && lastRes!.status < 400) {
+            const loc = lastRes!.headers.get('location');
             if (!loc) break;
             if (hop === MAX_REDIRECTS) {
               throw new Error('Stream redirect: too many hops');
@@ -836,7 +836,7 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
             } catch {
               throw new Error('Stream redirect: malformed Location');
             }
-            try { await (lastRes.body as any)?.cancel?.(); } catch {}
+            try { await (lastRes!.body as any)?.cancel?.(); } catch {}
             continue;
           }
           break;

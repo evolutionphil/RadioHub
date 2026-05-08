@@ -441,7 +441,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         .lean() as any;
 
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
 
       // Get enhanced statistics
@@ -493,7 +493,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const isAdmin = !!(req.session as any)?.adminAuth;
 
       if (!isAdmin && sessionUserId !== userId) {
-        return res.status(403).json({ error: 'Forbidden' });
+        return void res.status(403).json({ error: 'Forbidden' });
       }
 
       const body = req.body || {};
@@ -513,7 +513,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       }
 
       if (Object.keys(updates).length === 0) {
-        return res.status(400).json({ error: 'No updatable fields provided' });
+        return void res.status(400).json({ error: 'No updatable fields provided' });
       }
 
       const updatedUser = await User.findByIdAndUpdate(
@@ -523,7 +523,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       ).lean();
 
       if (!updatedUser) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
 
       res.json(updatedUser);
@@ -553,12 +553,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const cacheKey = CacheKeys.userSocial(email);
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const user = await User.findOne({ email });
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
       
       const [followersCount, followingCount, followers, following] = await Promise.all([
@@ -654,7 +654,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     const { getSocialAuthStatus } = deps;
     const status = getSocialAuthStatus();
     if (!status.google) {
-      return res.status(501).json({ 
+      return void res.status(501).json({ 
         error: 'Google authentication not configured', 
         message: 'Social login with Google requires API keys to be configured.' 
       });
@@ -729,7 +729,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     const { getSocialAuthStatus } = deps;
     const status = getSocialAuthStatus();
     if (!status.facebook) {
-      return res.status(501).json({ 
+      return void res.status(501).json({ 
         error: 'Facebook authentication not configured', 
         message: 'Social login with Facebook requires API keys to be configured.' 
       });
@@ -745,7 +745,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     const { getSocialAuthStatus } = deps;
     const status = getSocialAuthStatus();
     if (!status.apple) {
-      return res.status(501).json({ 
+      return void res.status(501).json({ 
         error: 'Apple authentication not configured', 
         message: 'Social login with Apple requires API keys to be configured.' 
       });
@@ -806,10 +806,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     }, async (err: any, user: any, info: any) => {
       if (err) {
         logger.error('Google OAuth callback error:', err);
-        return res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_failed`);
+        return void res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_failed`);
       }
       if (!user) {
-        return res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_cancelled`);
+        return void res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_cancelled`);
       }
       
       try {
@@ -859,7 +859,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         // Use buildRedirectWithToken so existing query strings or fragments
         // in returnTo are preserved (e.g. `/en/tv?ref=abc#section`).
         if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
-          return res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
+          return void res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
         }
         res.redirect(buildRedirectWithToken(frontendBase, `${langPrefix}/`, token));
       } catch (tokenErr) {
@@ -867,7 +867,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         
         req.login(user, (loginErr: any) => {
           if (loginErr) {
-            return res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
+            return void res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
           }
           (req.session as any).user = {
             userId: user._id.toString(),
@@ -901,14 +901,14 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       
       if (!code && !id_token) {
         logger.error('🍎 Apple callback: No code or id_token received');
-        return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+        return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
       }
       
       const savedState = (req.session as any)?.appleOAuthState;
       delete (req.session as any).appleOAuthState;
       if (!state || !savedState || state !== savedState) {
         logger.error('🍎 Apple OAuth state mismatch or missing', { state: !!state, savedState: !!savedState });
-        return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+        return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
       }
       
       const jose = await import('jose');
@@ -925,7 +925,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
           applePayload = payload;
         } catch (verifyErr) {
           logger.error('🍎 Apple id_token verification failed:', verifyErr);
-          return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+          return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
         }
       } else if (code) {
         try {
@@ -948,7 +948,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
           if (!tokenResponse.ok) {
             const errorText = await tokenResponse.text();
             logger.error('🍎 Apple token exchange failed:', errorText);
-            return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+            return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
           }
           
           const tokenData = await tokenResponse.json() as any;
@@ -960,12 +960,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
           applePayload = payload;
         } catch (tokenErr) {
           logger.error('🍎 Apple token exchange error:', tokenErr);
-          return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+          return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
         }
       }
       
       if (!applePayload || !applePayload.sub) {
-        return res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
+        return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
       }
       
       const appleId = applePayload.sub;
@@ -1046,7 +1046,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         // unsanitized value from a legacy cookie). Use buildRedirectWithToken
         // so existing query strings or fragments are preserved correctly.
         if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
-          return res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
+          return void res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
         }
         res.redirect(buildRedirectWithToken(frontendBase, `${langPrefix}/`, token));
       } catch (tokenErr) {
@@ -1065,7 +1065,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { idToken, email, name, googleId, platform = 'mobile' } = req.body;
 
       if (!idToken) {
-        return res.status(400).json({ success: false, error: 'idToken is required' });
+        return void res.status(400).json({ success: false, error: 'idToken is required' });
       }
 
       const { OAuth2Client } = await import('google-auth-library');
@@ -1087,11 +1087,11 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         payload = ticket.getPayload();
       } catch (verifyErr) {
         logger.error('Google idToken verification failed:', verifyErr);
-        return res.status(401).json({ success: false, error: 'Invalid or expired Google token' });
+        return void res.status(401).json({ success: false, error: 'Invalid or expired Google token' });
       }
 
       if (!payload || !payload.sub) {
-        return res.status(401).json({ success: false, error: 'Invalid token payload' });
+        return void res.status(401).json({ success: false, error: 'Invalid token payload' });
       }
 
       const verifiedGoogleId = payload.sub;
@@ -1100,14 +1100,14 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const avatar = payload.picture;
 
       if (!verifiedEmail) {
-        return res.status(400).json({ success: false, error: 'Google account does not have a verified email' });
+        return void res.status(400).json({ success: false, error: 'Google account does not have a verified email' });
       }
 
       let user = await User.findOne({ googleId: verifiedGoogleId });
 
       if (user) {
         if (user.status !== 'active') {
-          return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+          return void res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
         }
         user.lastLoginAt = new Date();
         if (avatar && !user.avatar) {
@@ -1119,7 +1119,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
         if (user) {
           if (user.status !== 'active') {
-            return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+            return void res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
           }
           user.googleId = verifiedGoogleId;
           user.lastLoginAt = new Date();
@@ -1188,7 +1188,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { identityToken, authorizationCode, fullName, email, user: appleUserId, platform = 'mobile' } = req.body;
 
       if (!identityToken) {
-        return res.status(400).json({ success: false, error: 'identityToken is required' });
+        return void res.status(400).json({ success: false, error: 'identityToken is required' });
       }
 
       const jose = await import('jose');
@@ -1203,11 +1203,11 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         applePayload = payload;
       } catch (verifyErr) {
         logger.error('Apple identityToken verification failed:', verifyErr);
-        return res.status(401).json({ success: false, error: 'Invalid or expired Apple token' });
+        return void res.status(401).json({ success: false, error: 'Invalid or expired Apple token' });
       }
 
       if (!applePayload || !applePayload.sub) {
-        return res.status(401).json({ success: false, error: 'Invalid token payload' });
+        return void res.status(401).json({ success: false, error: 'Invalid token payload' });
       }
 
       const verifiedAppleId = applePayload.sub;
@@ -1220,7 +1220,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       if (user) {
         if (user.status !== 'active') {
-          return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+          return void res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
         }
         user.lastLoginAt = new Date();
         if (displayName && !user.fullName) {
@@ -1232,7 +1232,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
         if (user) {
           if (user.status !== 'active') {
-            return res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
+            return void res.status(403).json({ success: false, error: 'Account is suspended or inactive' });
           }
           (user as any).appleId = verifiedAppleId;
           user.lastLoginAt = new Date();
@@ -1297,22 +1297,22 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { email, password, deviceType = 'mobile', deviceName } = req.body;
 
       if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required' });
+        return void res.status(400).json({ error: 'Email and password are required' });
       }
 
       const user = await User.findOne({ email });
       if (!user) {
-        return res.status(401).json({ error: 'Invalid email or password' });
+        return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
       const bcrypt = await import('bcrypt');
       const isValid = await bcrypt.default.compare(password, user.passwordHash);
       if (!isValid) {
-        return res.status(401).json({ error: 'Invalid email or password' });
+        return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
       if (user.status !== 'active') {
-        return res.status(403).json({ error: 'Account is suspended or inactive' });
+        return void res.status(403).json({ error: 'Account is suspended or inactive' });
       }
 
       // Update last login
@@ -1346,26 +1346,26 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { fullName, username, email, password } = req.body;
 
       if (!fullName || !username || !email || !password) {
-        return res.status(400).json({ error: 'All fields are required' });
+        return void res.status(400).json({ error: 'All fields are required' });
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Invalid email format' });
+        return void res.status(400).json({ error: 'Invalid email format' });
       }
       if (password.length < 8) {
-        return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+        return void res.status(400).json({ error: 'Password must be at least 8 characters long' });
       }
       if (username.length < 3 || username.length > 30) {
-        return res.status(400).json({ error: 'Username must be 3-30 characters long' });
+        return void res.status(400).json({ error: 'Username must be 3-30 characters long' });
       }
       if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
-        return res.status(400).json({ error: 'Username may only contain letters, numbers, underscores, dots, and hyphens' });
+        return void res.status(400).json({ error: 'Username may only contain letters, numbers, underscores, dots, and hyphens' });
       }
 
       // Check if user exists
       const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase().trim() }, { username }] });
       if (existingUser) {
-        return res.status(400).json({ error: 'User with this email or username already exists' });
+        return void res.status(400).json({ error: 'User with this email or username already exists' });
       }
 
       // Hash password
@@ -1433,35 +1433,35 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { email, password, rememberMe } = req.body;
 
       if (!email || !password) {
-        return res.status(400).json({ error: 'Email and password are required' });
+        return void res.status(400).json({ error: 'Email and password are required' });
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
-        return res.status(400).json({ error: 'Invalid email format' });
+        return void res.status(400).json({ error: 'Invalid email format' });
       }
 
       // Find user by email
       const user = await User.findOne({ email: email.toLowerCase().trim() });
       if (!user) {
-        return res.status(401).json({ error: 'Invalid email or password' });
+        return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
       // Check password
       const bcrypt = await import('bcrypt');
       const isValidPassword = await bcrypt.default.compare(password, user.passwordHash);
       if (!isValidPassword) {
-        return res.status(401).json({ error: 'Invalid email or password' });
+        return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
       // Check if account is active
       if (user.status !== 'active') {
-        return res.status(403).json({ error: 'Account is suspended or inactive' });
+        return void res.status(403).json({ error: 'Account is suspended or inactive' });
       }
 
       // Update last login
       user.lastLoginAt = new Date();
       if (!user.stats) user.stats = {} as any;
-      user.stats.lastActiveDate = new Date();
+      user.stats!.lastActiveDate = new Date();
       await user.save();
 
       const userData = {
@@ -1486,7 +1486,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       req.login(user, async (err) => {
         if (err) {
           console.error('Session login error:', err);
-          return res.status(500).json({ error: 'Failed to create session' });
+          return void res.status(500).json({ error: 'Failed to create session' });
         }
         
         // Custom session data
@@ -1534,7 +1534,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       // avoid DoS via huge keys.
       if (typeof token !== 'string' || token.length < 16 || token.length > 512) {
         logger.warn(`🔐 token-session REJECTED — bad token shape: ${tokenPrefix}`);
-        return res.status(400).json({ success: false, error: 'Token is required' });
+        return void res.status(400).json({ success: false, error: 'Token is required' });
       }
 
       // Identity log — compare with the host/db logged at write time in
@@ -1556,19 +1556,19 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
           try { totalTokens = await AuthToken.estimatedDocumentCount(); } catch {}
           logger.warn(`🔐 token-session 401 — token NOT FOUND in DB at all (prefix=${tokenPrefix}) host=${_conn.host} db=${_conn.name} totalAuthTokensInThisDb=${totalTokens}`);
         }
-        return res.status(401).json({ success: false, error: 'Invalid or expired token' });
+        return void res.status(401).json({ success: false, error: 'Invalid or expired token' });
       }
 
       if (authToken.expiresAt && new Date(authToken.expiresAt) < new Date()) {
         authToken.isRevoked = true;
         await authToken.save();
         logger.warn(`🔐 token-session 401 — token expired at ${authToken.expiresAt}`);
-        return res.status(401).json({ success: false, error: 'Token expired' });
+        return void res.status(401).json({ success: false, error: 'Token expired' });
       }
 
       const user = await User.findById(authToken.userId);
       if (!user) {
-        return res.status(404).json({ success: false, error: 'User not found' });
+        return void res.status(404).json({ success: false, error: 'User not found' });
       }
       
       (req.session as any).user = {
@@ -1580,7 +1580,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       req.session.save((err: any) => {
         if (err) {
           logger.error('Token-session save error:', err);
-          return res.status(500).json({ success: false, error: 'Session save failed' });
+          return void res.status(500).json({ success: false, error: 'Session save failed' });
         }
         logger.log('✅ Token-session created for:', user.email);
         // Return the user object so the frontend can populate its auth state
@@ -1623,7 +1623,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
   app.get("/api/auth/me", async (req, res) => {
     try {
       if (!req.session?.user?.userId && !(req as any).user) {
-        return res.json({ user: null, authenticated: false });
+        return void res.json({ user: null, authenticated: false });
       }
 
       const userId = req.session?.user?.userId || (req as any).user?._id;
@@ -1642,7 +1642,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         if (req.session) {
           req.session.user = undefined;
         }
-        return res.json({ user: null, authenticated: false });
+        return void res.json({ user: null, authenticated: false });
       }
 
       const following = followingList.map((f: any) => f.followingUserId.toString());
@@ -1689,7 +1689,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       if (req.session) {
         req.session.destroy((err) => {
           if (err) {
-            return res.status(500).json({ error: 'Failed to logout' });
+            return void res.status(500).json({ error: 'Failed to logout' });
           }
           res.clearCookie('connect.sid');
           res.json({ message: 'Logout successful', authenticated: false });
@@ -1710,7 +1710,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       
       const user = await User.findById(userId);
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
 
       if (fullName !== undefined) user.fullName = fullName;
@@ -1767,7 +1767,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       const user = await User.findOne({ email });
       if (!user) {
-        return res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
+        return void res.json({ message: 'If an account exists with this email, you will receive reset instructions.' });
       }
 
       const crypto = await import('crypto');
@@ -1819,7 +1819,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { token, newPassword } = req.body;
 
       if (!token || !newPassword || newPassword.length < 6) {
-        return res.status(400).json({ error: 'Invalid password' });
+        return void res.status(400).json({ error: 'Invalid password' });
       }
 
       const crypto = await import('crypto');
@@ -1831,7 +1831,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       });
 
       if (!user) {
-        return res.status(400).json({ error: 'Invalid or expired reset token' });
+        return void res.status(400).json({ error: 'Invalid or expired reset token' });
       }
 
       const bcrypt = await import('bcrypt');
@@ -1853,16 +1853,16 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const currentUserId = (req.session as any).userId;
 
       if (!mongoose.Types.ObjectId.isValid(followingUserId)) {
-        return res.status(400).json({ error: "Invalid user ID" });
+        return void res.status(400).json({ error: "Invalid user ID" });
       }
 
       if (followingUserId === currentUserId) {
-        return res.status(400).json({ error: "You cannot follow yourself" });
+        return void res.status(400).json({ error: "You cannot follow yourself" });
       }
 
       const userToFollow = await User.findById(followingUserId);
       if (!userToFollow) {
-        return res.status(404).json({ error: "User not found" });
+        return void res.status(404).json({ error: "User not found" });
       }
 
       const existingFollow = await UserFollow.findOne({
@@ -1871,7 +1871,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       });
 
       if (existingFollow) {
-        return res.status(400).json({ error: "Already following this user" });
+        return void res.status(400).json({ error: "Already following this user" });
       }
 
       await UserFollow.create({
@@ -1912,7 +1912,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const currentUserId = (req.session as any).userId;
 
       if (!mongoose.Types.ObjectId.isValid(followingUserId)) {
-        return res.status(400).json({ error: "Invalid user ID" });
+        return void res.status(400).json({ error: "Invalid user ID" });
       }
 
       const deleted = await UserFollow.findOneAndDelete({
@@ -1921,7 +1921,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       });
 
       if (!deleted) {
-        return res.status(400).json({ error: "Not following this user" });
+        return void res.status(400).json({ error: "Not following this user" });
       }
 
       await User.findByIdAndUpdate(currentUserId, { $inc: { followingCount: -1 } });
@@ -1958,7 +1958,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const currentUserId = (req.session as any).userId;
 
       if (!mongoose.Types.ObjectId.isValid(targetUserId)) {
-        return res.status(400).json({ error: "Invalid user ID" });
+        return void res.status(400).json({ error: "Invalid user ID" });
       }
 
       const follow = await UserFollow.findOne({
@@ -1982,7 +1982,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { CacheKeys, CacheManager } = deps;
       const cacheKey = CacheKeys.userFollowers(userId, page, limit);
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const [followers, total] = await Promise.all([
         UserFollow.find({ followingUserId: userId })
@@ -2019,7 +2019,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { CacheKeys, CacheManager } = deps;
       const cacheKey = CacheKeys.userFollowing(userId, page, limit);
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const [following, total] = await Promise.all([
         UserFollow.find({ userId: userId })
@@ -2069,21 +2069,21 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       upload(req, res, async (uploadErr: any) => {
         if (uploadErr) {
           if (uploadErr.code === 'LIMIT_FILE_SIZE') {
-            return res.status(413).json({ error: 'File too large. Maximum size: 5MB' });
+            return void res.status(413).json({ error: 'File too large. Maximum size: 5MB' });
           }
-          return res.status(400).json({ error: uploadErr.message || 'Upload failed' });
+          return void res.status(400).json({ error: uploadErr.message || 'Upload failed' });
         }
 
         if (!req.file) {
-          return res.status(400).json({ error: 'No avatar file provided' });
+          return void res.status(400).json({ error: 'No avatar file provided' });
         }
 
         const userId = (req.session as any)?.user?.userId || (req as any).user?._id?.toString();
-        if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+        if (!userId) return void res.status(401).json({ error: 'Not authenticated' });
 
         const metadata = await sharp(req.file.buffer).metadata();
         if (!metadata.width || !metadata.height || metadata.width < 100 || metadata.height < 100) {
-          return res.status(400).json({ error: 'Image too small. Minimum size: 100x100px' });
+          return void res.status(400).json({ error: 'Image too small. Minimum size: 100x100px' });
         }
 
         const webpBuffer = await sharp(req.file.buffer)
@@ -2096,7 +2096,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         const avatarUrl = await uploadToS3(s3Key, webpBuffer, 'image/webp');
 
         const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ error: 'User not found' });
+        if (!user) return void res.status(404).json({ error: 'User not found' });
 
         const oldAvatar = user.avatar;
         user.avatar = avatarUrl;
@@ -2123,10 +2123,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const { deleteFromS3 } = await import('../services/s3-storage');
 
       const userId = (req.session as any)?.user?.userId || (req as any).user?._id?.toString();
-      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+      if (!userId) return void res.status(401).json({ error: 'Not authenticated' });
 
       const user = await User.findById(userId);
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return void res.status(404).json({ error: 'User not found' });
 
       const oldAvatar = user.avatar;
 
@@ -2152,12 +2152,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     try {
       const userId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
       if (!userId) {
-        return res.status(401).json({ success: false, message: 'Authentication required' });
+        return void res.status(401).json({ success: false, message: 'Authentication required' });
       }
 
       const user = await User.findById(userId);
       if (!user) {
-        return res.status(404).json({ success: false, message: 'User not found' });
+        return void res.status(404).json({ success: false, message: 'User not found' });
       }
 
       const userIdStr = userId.toString();
@@ -2196,9 +2196,11 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       if (user.avatar) {
         try {
-          const { deleteFromS3 } = await import('../services/s3-service');
-          const avatarKey = user.avatar.replace(/^https?:\/\/[^/]+\//, '');
-          if (avatarKey) await deleteFromS3(avatarKey);
+          const s3Module: any = await import('../services/s3-service' as any).catch(() => null);
+          if (s3Module && typeof s3Module.deleteFromS3 === 'function') {
+            const avatarKey = user.avatar.replace(/^https?:\/\/[^/]+\//, '');
+            if (avatarKey) await s3Module.deleteFromS3(avatarKey);
+          }
         } catch {}
       }
 

@@ -64,7 +64,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
           filter.userId = new mongoose.Types.ObjectId(req.query.userId);
         } else {
           // Invalid id → return empty rather than crashing the cast.
-          return res.json({ items: [], total: 0, page, limit });
+          return void res.json({ items: [], total: 0, page, limit });
         }
       }
 
@@ -73,7 +73,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
           .select("_id")
           .lean();
         if (!emailUser) {
-          return res.json({ items: [], total: 0, page, limit });
+          return void res.json({ items: [], total: 0, page, limit });
         }
         filter.userId = (emailUser as any)._id;
       }
@@ -129,10 +129,10 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
         user: i.userId ? userMap[String(i.userId)] || null : null,
       }));
 
-      return res.json({ items: enriched, total, page, limit });
+      return void res.json({ items: enriched, total, page, limit });
     } catch (err: any) {
       logger.error("[admin/iap-events] list failed:", err?.message || err);
-      return res.status(500).json({ error: "Failed to load IAP events" });
+      return void res.status(500).json({ error: "Failed to load IAP events" });
     }
   });
 
@@ -155,10 +155,10 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
       for (const r of rows) byResult[r._id] = r.count;
 
       const total = rows.reduce((s: number, r: any) => s + r.count, 0);
-      return res.json({ days, since, total, byResult });
+      return void res.json({ days, since, total, byResult });
     } catch (err: any) {
       logger.error("[admin/iap-events] stats failed:", err?.message || err);
-      return res.status(500).json({ error: "Failed to load IAP stats" });
+      return void res.status(500).json({ error: "Failed to load IAP stats" });
     }
   });
 
@@ -176,7 +176,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
       try {
         const { id } = req.params;
         if (!mongoose.isValidObjectId(id)) {
-          return res.status(400).json({ error: "Invalid user id" });
+          return void res.status(400).json({ error: "Invalid user id" });
         }
         const user = await User.findByIdAndUpdate(
           id,
@@ -189,13 +189,13 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
           },
           { returnDocument: 'after', runValidators: true },
         ).select("subscription email fullName");
-        if (!user) return res.status(404).json({ error: "User not found" });
+        if (!user) return void res.status(404).json({ error: "User not found" });
 
         logger.log(`[admin] subscription cancelled for user=${id} by admin`);
-        return res.json({ success: true, subscription: (user as any).subscription });
+        return void res.json({ success: true, subscription: (user as any).subscription });
       } catch (err: any) {
         logger.error("[admin] subscription cancel failed:", err?.message || err);
-        return res.status(500).json({ error: "Failed to cancel subscription" });
+        return void res.status(500).json({ error: "Failed to cancel subscription" });
       }
     },
   );
@@ -216,11 +216,11 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
       try {
         const id = String(req.params.id || "");
         if (!mongoose.isValidObjectId(id)) {
-          return res.status(400).json({ error: "Invalid user id" });
+          return void res.status(400).json({ error: "Invalid user id" });
         }
 
         const before = await User.findById(id).select("subscription email").lean();
-        if (!before) return res.status(404).json({ error: "User not found" });
+        if (!before) return void res.status(404).json({ error: "User not found" });
         const prevSub: any = (before as any).subscription || {};
 
         const user = await User.findByIdAndUpdate(
@@ -246,7 +246,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
           },
           { returnDocument: "after", runValidators: true },
         ).select("subscription email fullName");
-        if (!user) return res.status(404).json({ error: "User not found" });
+        if (!user) return void res.status(404).json({ error: "User not found" });
 
         // Audit row so the revoke shows up alongside Apple/Google IAP events.
         try {
@@ -279,7 +279,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
         }
 
         logger.log(`[admin] subscription HARD-REVOKED user=${id} email=${(user as any).email} previousPlan=${prevSub.plan || "none"}`);
-        return res.json({
+        return void res.json({
           success: true,
           subscription: (user as any).subscription,
           previousSubscription: {
@@ -291,7 +291,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
         });
       } catch (err: any) {
         logger.error("[admin] subscription revoke failed:", err?.message || err);
-        return res.status(500).json({ error: "Failed to revoke subscription" });
+        return void res.status(500).json({ error: "Failed to revoke subscription" });
       }
     },
   );
@@ -310,7 +310,7 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
       try {
         const { id } = req.params;
         if (!mongoose.isValidObjectId(id)) {
-          return res.status(400).json({ error: "Invalid user id" });
+          return void res.status(400).json({ error: "Invalid user id" });
         }
         const user = await User.findByIdAndUpdate(
           id,
@@ -329,13 +329,13 @@ export function registerAdminIapRoutes(app: Express, deps: any) {
           },
           { returnDocument: 'after', runValidators: true },
         ).select("subscription email fullName");
-        if (!user) return res.status(404).json({ error: "User not found" });
+        if (!user) return void res.status(404).json({ error: "User not found" });
 
         logger.log(`[admin] lifetime granted to user=${id} by admin`);
-        return res.json({ success: true, subscription: (user as any).subscription });
+        return void res.json({ success: true, subscription: (user as any).subscription });
       } catch (err: any) {
         logger.error("[admin] grant-lifetime failed:", err?.message || err);
-        return res.status(500).json({ error: "Failed to grant lifetime" });
+        return void res.status(500).json({ error: "Failed to grant lifetime" });
       }
     },
   );

@@ -150,7 +150,7 @@ Disallow: /`);
 
 app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   if (req.path === '/healthz') {
-    return res.status(200).send('ok');
+    return void res.status(200).send('ok');
   }
 
   const mem = process.memoryUsage();
@@ -320,7 +320,7 @@ app.use((req, res, next) => {
     if (state !== 1) {
       const stateNames: Record<number, string> = { 0: 'disconnected', 2: 'connecting', 3: 'disconnecting' };
       console.error(`🚫 MongoDB circuit breaker: rejecting ${req.method} ${req.path} (state=${stateNames[state] || 'unknown'})`);
-      return res.status(503).json({ error: 'Service temporarily unavailable, please retry in a few seconds' });
+      return void res.status(503).json({ error: 'Service temporarily unavailable, please retry in a few seconds' });
     }
   } catch {}
   next();
@@ -338,7 +338,7 @@ app.use((req, res, next) => {
   const isHttpOnly = !req.secure && req.get('x-forwarded-proto') !== 'https';
   if (isHttpOnly) {
     const host = req.get('host') || req.hostname;
-    return res.redirect(301, `https://${host}${req.url}`);
+    return void res.redirect(301, `https://${host}${req.url}`);
   }
   next();
 });
@@ -716,7 +716,7 @@ app.use(session(sessionConfig));
             const placeholderRegex = /^\[(TRANSLATED\s+)?(META|FULL\s+DESCRIPTION|SEO\s+META)[^\]]*\]\s*/i;
             const cursor = Station.find({
               $or: [
-                { 'descriptions': { $regex: /^\[(TRANSLATED\s+)?(META|FULL|SEO)[^\]]*\]/i } }
+                { 'descriptions': { $regex: '^\\[(TRANSLATED\\s+)?(META|FULL|SEO)[^\\]]*\\]', $options: 'i' } }
               ]
             }).select('_id descriptions').lean().cursor({ batchSize: 2000 });
 

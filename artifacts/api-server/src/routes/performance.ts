@@ -10,7 +10,7 @@ router.get('/web-vitals', async (req: Request, res: Response) => {
     const apiKey = process.env.CLOUDFLARE_API_KEY;
     
     if (!accountId || !apiKey) {
-      return res.status(500).json({
+      return void res.status(500).json({
         success: false,
         message: 'Cloudflare credentials not configured'
       });
@@ -81,19 +81,19 @@ router.get('/web-vitals', async (req: Request, res: Response) => {
     if (!response.ok) {
       const errorText = await response.text();
       console.error('Cloudflare API error:', errorText);
-      return res.status(response.status).json({
+      return void res.status(response.status).json({
         success: false,
         message: 'Failed to fetch web vitals from Cloudflare',
         error: errorText
       });
     }
 
-    const data = await response.json();
+    const data: any = await response.json();
     
     // Check for GraphQL errors
     if (data.errors) {
       console.error('GraphQL errors:', data.errors);
-      return res.status(400).json({
+      return void res.status(400).json({
         success: false,
         message: 'GraphQL query errors',
         errors: data.errors
@@ -179,7 +179,7 @@ router.post('/optimize', async (req: Request, res: Response) => {
     const { type, action } = req.body;
 
     if (!type || !action) {
-      return res.status(400).json({ 
+      return void res.status(400).json({ 
         success: false, 
         message: 'Missing required fields: type and action' 
       });
@@ -200,10 +200,10 @@ router.post('/optimize', async (req: Request, res: Response) => {
 router.get('/jobs/:jobId', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
-    const job = performanceService.getOptimizationJob(jobId);
+    const job = performanceService.getOptimizationJob(jobId as string);
 
     if (!job) {
-      return res.status(404).json({ 
+      return void res.status(404).json({ 
         success: false, 
         message: 'Job not found' 
       });

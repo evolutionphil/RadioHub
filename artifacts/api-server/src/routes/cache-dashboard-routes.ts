@@ -33,10 +33,10 @@ export function registerCacheDashboardRoutes(app: Express, deps: any) {
     try {
       const { pattern } = req.params;
       if (!pattern) {
-        return res.status(400).json({ error: 'Pattern is required (use one of: ' + Array.from(ALLOWED_CLEAR_PATTERNS).join(', ') + ')' });
+        return void res.status(400).json({ error: 'Pattern is required (use one of: ' + Array.from(ALLOWED_CLEAR_PATTERNS).join(', ') + ')' });
       }
       if (!ALLOWED_CLEAR_PATTERNS.has(pattern)) {
-        return res.status(400).json({ error: `Invalid pattern. Allowed: ${Array.from(ALLOWED_CLEAR_PATTERNS).join(', ')}` });
+        return void res.status(400).json({ error: `Invalid pattern. Allowed: ${Array.from(ALLOWED_CLEAR_PATTERNS).join(', ')}` });
       }
       await CacheManager.clearByPattern(pattern);
       logger.log(`🧹 Admin cleared cache pattern "${pattern}" (actor=${(req as any).session?.user?.email || 'unknown'})`);
@@ -51,7 +51,7 @@ export function registerCacheDashboardRoutes(app: Express, deps: any) {
     try {
       const CACHE_KEY = 'dashboard:stats:v1';
       const cached = await CacheManager.get(CACHE_KEY);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const [
         totalStations,

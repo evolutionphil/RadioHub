@@ -83,7 +83,7 @@ export class ImageManager {
       });
 
       const contentType = headResponse.headers['content-type'];
-      const extension = this.getImageExtension(imageUrl, contentType);
+      const extension = this.getImageExtension(imageUrl, typeof contentType === 'string' ? contentType : undefined);
       
       // Generate unique filename
       const filename = await this.getUniqueFilename(stationName, extension);

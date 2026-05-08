@@ -14,11 +14,11 @@ export function registerAdminAuthRoutes(app: Express, deps: any) {
 
       if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
         logger.error('🚨 ADMIN_USERNAME / ADMIN_PASSWORD env vars are not set — admin login disabled');
-        return res.status(503).json({ error: 'Admin authentication is not configured' });
+        return void res.status(503).json({ error: 'Admin authentication is not configured' });
       }
 
       if (!username || !password) {
-        return res.status(400).json({ error: "Username and password required" });
+        return void res.status(400).json({ error: "Username and password required" });
       }
 
       // Constant-time comparison (avoid string !== timing side-channel)
@@ -30,7 +30,7 @@ export function registerAdminAuthRoutes(app: Express, deps: any) {
       const uOk = expectU.length === gotU.length && crypto.default.timingSafeEqual(expectU, gotU);
       const pOk = expectP.length === gotP.length && crypto.default.timingSafeEqual(expectP, gotP);
       if (!uOk || !pOk) {
-        return res.status(401).json({ error: "Invalid admin credentials" });
+        return void res.status(401).json({ error: "Invalid admin credentials" });
       }
 
       const adminAuthData = {
@@ -44,7 +44,7 @@ export function registerAdminAuthRoutes(app: Express, deps: any) {
       req.session.save((err) => {
         if (err) {
           logger.error('❌ Session save error:', err);
-          return res.status(500).json({ error: 'Session save failed' });
+          return void res.status(500).json({ error: 'Session save failed' });
         }
         logger.log('✅ Admin login successful - Session ID:', req.sessionID);
         logger.log('✅ Admin auth data stored:', adminAuthData);

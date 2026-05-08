@@ -54,7 +54,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   setupMulter().then(upload => {
     app.post("/api/admin/advertisements/upload", requireAdmin, upload.single('image'), (req, res) => {
-      if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+      if (!req.file) return void res.status(400).json({ error: 'No file uploaded' });
       const imageUrl = `/uploads/${req.file.filename}`;
       res.json({ imageUrl });
     });
@@ -91,7 +91,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
     try {
       const { title, imageUrl, altText, seoDescription, url, position, isActive } = req.body;
       if (!title || !imageUrl || !url) {
-        return res.status(400).json({ error: 'Title, Image URL, and Target URL are required' });
+        return void res.status(400).json({ error: 'Title, Image URL, and Target URL are required' });
       }
       const ad = new Advertisement({ title, imageUrl, altText, seoDescription, url, position: position || 0, isActive: isActive !== false });
       await ad.save();
@@ -104,7 +104,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.patch("/api/admin/advertisements/:id", requireAdmin, async (req, res) => {
     try {
       const ad = await Advertisement.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { returnDocument: 'after' });
-      if (!ad) return res.status(404).json({ error: 'Advertisement not found' });
+      if (!ad) return void res.status(404).json({ error: 'Advertisement not found' });
       res.json(ad);
     } catch (error) {
       res.status(500).json({ error: 'Failed to update advertisement' });
@@ -114,7 +114,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.delete("/api/admin/advertisements/:id", requireAdmin, async (req, res) => {
     try {
       const ad = await Advertisement.findByIdAndDelete(req.params.id);
-      if (!ad) return res.status(404).json({ error: 'Advertisement not found' });
+      if (!ad) return void res.status(404).json({ error: 'Advertisement not found' });
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete advertisement' });
@@ -142,7 +142,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.post("/api/admin/footer-social-media", requireAdmin, async (req, res) => {
     try {
       const { platform, url, isActive, position } = req.body;
-      if (!platform || !url) return res.status(400).json({ error: 'Platform and URL are required' });
+      if (!platform || !url) return void res.status(400).json({ error: 'Platform and URL are required' });
       const socialLink = new FooterSocialMedia({ platform, url, isActive: isActive !== false, position: position || 0 });
       await socialLink.save();
       res.status(201).json(socialLink);
@@ -154,7 +154,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.patch("/api/admin/footer-social-media/:id", requireAdmin, async (req, res) => {
     try {
       const socialLink = await FooterSocialMedia.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { returnDocument: 'after' });
-      if (!socialLink) return res.status(404).json({ error: 'Social media link not found' });
+      if (!socialLink) return void res.status(404).json({ error: 'Social media link not found' });
       res.json(socialLink);
     } catch (error) {
       res.status(500).json({ error: 'Failed to update footer social media' });
@@ -164,7 +164,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.delete("/api/admin/footer-social-media/:id", requireAdmin, async (req, res) => {
     try {
       const socialLink = await FooterSocialMedia.findByIdAndDelete(req.params.id);
-      if (!socialLink) return res.status(404).json({ error: 'Social media link not found' });
+      if (!socialLink) return void res.status(404).json({ error: 'Social media link not found' });
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete footer social media' });
@@ -249,7 +249,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       if (isActive !== undefined) updateData.isActive = isActive;
       updateData.updatedAt = new Date();
       const user = await User.findByIdAndUpdate(req.params.id, updateData, { returnDocument: 'after' }).select('_id email fullName profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive');
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return void res.status(404).json({ error: 'User not found' });
       const favoriteCount = await UserFavorite.countDocuments({ userId: user._id.toString() });
       res.json({
         _id: user._id,
@@ -275,7 +275,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
     try {
       const userId = req.params.id;
       const user = await User.findByIdAndDelete(userId);
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return void res.status(404).json({ error: 'User not found' });
 
       const deletedFavs = await UserFavorite.deleteMany({ userId });
       console.log(`Deleted user ${userId} and ${deletedFavs.deletedCount} associated favorites`);
@@ -335,23 +335,23 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   // verifyReceipt endpoint as iOS).
   app.post("/api/user/subscription", requireAuth, async (req, res) => {
     try {
-      const userId = req.session?.user?.userId || req.session?.userId;
-      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+      const userId = req.session?.user?.userId || (req.session as any)?.userId;
+      if (!userId) return void res.status(401).json({ error: 'Not authenticated' });
 
       const { platform: rawPlatform, productId, receipt, purchaseToken } = req.body || {};
 
       const platform = iapNormalizePlatform(rawPlatform);
       if (!platform) {
-        return res.status(400).json({
+        return void res.status(400).json({
           error: 'platform must be one of: ios, android, mac, macos, tvos',
         });
       }
       if (!productId || typeof productId !== 'string') {
-        return res.status(400).json({ error: 'productId is required' });
+        return void res.status(400).json({ error: 'productId is required' });
       }
       const plan = IAP_PRODUCT_TO_PLAN[productId];
       if (!plan || plan === 'none') {
-        return res.status(400).json({
+        return void res.status(400).json({
           error: `Unknown productId: ${productId}. Valid: ${Object.keys(IAP_PRODUCT_TO_PLAN).join(', ')}`,
         });
       }
@@ -363,7 +363,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
         ? (typeof purchaseToken === 'string' && purchaseToken) || (typeof receipt === 'string' && receipt)
         : (typeof receipt === 'string' && receipt) || (typeof purchaseToken === 'string' && purchaseToken);
       if (!credential || typeof credential !== 'string') {
-        return res.status(400).json({
+        return void res.status(400).json({
           error: isAndroid
             ? 'purchaseToken is required for android'
             : 'receipt (base64 receipt-data) is required for ios/mac/tvos',
@@ -376,7 +376,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
       if (!result.valid) {
         logger.log(`[IAP] /api/user/subscription rejected: ${result.code} — ${result.error}`);
-        return res.status(400).json({ error: result.error, code: String(result.code ?? 'invalid_receipt') });
+        return void res.status(400).json({ error: result.error, code: String(result.code ?? 'invalid_receipt') });
       }
 
       // Same global replay-guard as /api/iap/validate: a single transaction may
@@ -390,7 +390,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       const conflict = await User.findOne(replayQuery).select('_id').lean();
       if (conflict) {
         logger.log(`[IAP] Replay blocked at /api/user/subscription: txn=${result.originalTransactionId} requested by user=${userId}, owned by user=${(conflict as any)._id}`);
-        return res.status(409).json({
+        return void res.status(409).json({
           error: 'Receipt is already attached to another account',
           code: 'receipt_replay',
         });
@@ -427,7 +427,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
       const user = await User.findByIdAndUpdate(userId, op, { returnDocument: 'after', runValidators: true })
         .select('subscription');
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return void res.status(404).json({ error: 'User not found' });
 
       res.json({
         success: true,
@@ -445,22 +445,22 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   app.get("/api/user/subscription", requireAuth, async (req, res) => {
     try {
-      const userId = req.session?.user?.userId || req.session?.userId;
-      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+      const userId = req.session?.user?.userId || (req.session as any)?.userId;
+      if (!userId) return void res.status(401).json({ error: 'Not authenticated' });
 
       const user = await User.findById(userId).select('subscription').lean();
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return void res.status(404).json({ error: 'User not found' });
 
       const sub = (user as any).subscription;
       if (!sub || sub.plan === 'none') {
-        return res.json({ plan: 'none', expiryDate: null, isActive: false, features: [] });
+        return void res.json({ plan: 'none', expiryDate: null, isActive: false, features: [] });
       }
 
       if (sub.plan !== 'premium_lifetime' && sub.expiresAt && new Date(sub.expiresAt) < new Date() && sub.isActive) {
         await User.findByIdAndUpdate(userId, {
           $set: { 'subscription.isActive': false, 'subscription.plan': 'none' }
         });
-        return res.json({ plan: 'none', expiryDate: null, isActive: false, features: [], expired: true });
+        return void res.json({ plan: 'none', expiryDate: null, isActive: false, features: [], expired: true });
       }
 
       res.json({
@@ -484,11 +484,11 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   // but are reserved) can still be cancelled locally.
   app.post("/api/user/subscription/cancel", requireAuth, async (req, res) => {
     try {
-      const userId = req.session?.user?.userId || req.session?.userId;
-      if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+      const userId = req.session?.user?.userId || (req.session as any)?.userId;
+      if (!userId) return void res.status(401).json({ error: 'Not authenticated' });
 
       const existing = await User.findById(userId).select('subscription').lean();
-      if (!existing) return res.status(404).json({ error: 'User not found' });
+      if (!existing) return void res.status(404).json({ error: 'User not found' });
       const sub: any = (existing as any).subscription;
       const platform = sub?.platform;
       const isStoreBilled = platform === 'ios' || platform === 'macos' || platform === 'tvos' || platform === 'android';
@@ -498,7 +498,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
         const manageUrl = (platform === 'android')
           ? 'https://play.google.com/store/account/subscriptions'
           : 'https://apps.apple.com/account/subscriptions';
-        return res.status(409).json({
+        return void res.status(409).json({
           error: 'Subscriptions purchased through the App Store / Play Store must be cancelled there.',
           code: 'manage_in_store',
           actionRequired: 'open_store_subscriptions',
@@ -519,7 +519,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
         { returnDocument: 'after' }
       ).select('subscription');
 
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return void res.status(404).json({ error: 'User not found' });
 
       logger.log(`[IAP] /cancel local-cancel user=${userId} previousPlatform=${platform || 'none'}`);
       res.json({ success: true, plan: 'none', isActive: false, features: [] });
@@ -536,7 +536,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
       if (plan) {
         if (!VALID_PLANS.includes(plan)) {
-          return res.status(400).json({ error: `plan must be one of: ${VALID_PLANS.join(', ')}` });
+          return void res.status(400).json({ error: `plan must be one of: ${VALID_PLANS.join(', ')}` });
         }
         updateData['subscription.plan'] = plan;
         updateData['subscription.isActive'] = plan !== 'none';
@@ -548,7 +548,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
         } else {
           const parsed = new Date(expiresAt);
           if (isNaN(parsed.getTime())) {
-            return res.status(400).json({ error: 'expiresAt must be a valid date or null' });
+            return void res.status(400).json({ error: 'expiresAt must be a valid date or null' });
           }
           updateData['subscription.expiresAt'] = parsed;
         }
@@ -561,7 +561,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
         { returnDocument: 'after', runValidators: true }
       ).select('subscription fullName email');
 
-      if (!user) return res.status(404).json({ error: 'User not found' });
+      if (!user) return void res.status(404).json({ error: 'User not found' });
 
       const activePlan = user.subscription?.plan as PremiumPlan || 'none';
       res.json({
@@ -600,13 +600,13 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.post('/api/logs/remote', async (req, res) => {
     try {
       const apiKey = req.headers['x-api-key'] as string;
-      if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
+      if (!apiKey) return void res.status(401).json({ error: 'X-API-Key header required' });
       const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
 
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
-      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
+      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return void res.status(401).json({ error: 'Invalid or inactive API key' });
       const { logs, deviceId, platform } = req.body;
-      if (!logs || !Array.isArray(logs) || !deviceId || !platform) return res.status(400).json({ error: 'logs, deviceId, and platform are required' });
+      if (!logs || !Array.isArray(logs) || !deviceId || !platform) return void res.status(400).json({ error: 'logs, deviceId, and platform are required' });
       res.json({ success: true, received: Math.min(logs.length, 100), note: 'db_logging_disabled' });
     } catch (error) {
       res.status(500).json({ error: 'Failed to process logs' });
@@ -616,11 +616,11 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.get('/api/logs/remote', async (req, res) => {
     try {
       const apiKey = req.headers['x-api-key'] as string;
-      if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
+      if (!apiKey) return void res.status(401).json({ error: 'X-API-Key header required' });
       const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
       
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
-      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
+      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return void res.status(401).json({ error: 'Invalid or inactive API key' });
       const { limit = '50', platform, level, search, deviceId, from, to } = req.query;
       const maxLimit = Math.min(parseInt(limit as string) || 50, 500);
       const filter: any = {};
@@ -653,11 +653,11 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.get('/api/logs/remote/stats', async (req, res) => {
     try {
       const apiKey = req.headers['x-api-key'] as string;
-      if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
+      if (!apiKey) return void res.status(401).json({ error: 'X-API-Key header required' });
       const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
       
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
-      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
+      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return void res.status(401).json({ error: 'Invalid or inactive API key' });
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
       const aggResult = await AppLog.aggregate([
@@ -702,12 +702,12 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.delete('/api/logs/remote', async (req, res) => {
     try {
       const apiKey = req.headers['x-api-key'] as string;
-      if (!apiKey) return res.status(401).json({ error: 'X-API-Key header required' });
+      if (!apiKey) return void res.status(401).json({ error: 'X-API-Key header required' });
       const keyHash = crypto.createHash('sha256').update(apiKey).digest('hex');
       
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
-      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return res.status(401).json({ error: 'Invalid or inactive API key' });
-      if (!['internal', 'pro'].includes(apiKeyDoc.plan)) return res.status(403).json({ error: 'Pro or Internal plan required to delete logs' });
+      if (!apiKeyDoc || apiKeyDoc.status !== 'active') return void res.status(401).json({ error: 'Invalid or inactive API key' });
+      if (!['internal', 'pro'].includes(apiKeyDoc.plan)) return void res.status(403).json({ error: 'Pro or Internal plan required to delete logs' });
       const olderThanDays = Math.max(1, parseInt(String(req.query.olderThan || req.query.older_than_days || '30')));
       const cutoff = new Date(Date.now() - olderThanDays * 86400000);
       const result = await AppLog.deleteMany({ createdAt: { $lt: cutoff } });
@@ -760,7 +760,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.get("/api/admin/seo-metadata/:id", requireAdmin, async (req, res) => {
     try {
       const entry = await SeoMetadata.findById(req.params.id).lean();
-      if (!entry) return res.status(404).json({ error: 'SEO metadata entry not found' });
+      if (!entry) return void res.status(404).json({ error: 'SEO metadata entry not found' });
       res.json(entry);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch SEO metadata' });
@@ -770,7 +770,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.post("/api/admin/seo-metadata", requireAdmin, async (req, res) => {
     try {
       const { pageType, routeKey, language, title, description } = req.body;
-      if (!pageType || !routeKey || !language || !title || !description) return res.status(400).json({ error: 'Missing required fields' });
+      if (!pageType || !routeKey || !language || !title || !description) return void res.status(400).json({ error: 'Missing required fields' });
       const entry = new SeoMetadata({ ...req.body, createdAt: new Date(), updatedAt: new Date() });
       await entry.save();
       res.status(201).json(entry);
@@ -782,7 +782,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.patch("/api/admin/seo-metadata/:id", requireAdmin, async (req, res) => {
     try {
       const entry = await SeoMetadata.findByIdAndUpdate(req.params.id, { ...req.body, updatedAt: new Date() }, { returnDocument: 'after' });
-      if (!entry) return res.status(404).json({ error: 'SEO metadata entry not found' });
+      if (!entry) return void res.status(404).json({ error: 'SEO metadata entry not found' });
       res.json(entry);
     } catch (error) {
       res.status(500).json({ error: 'Failed to update SEO metadata' });
@@ -792,7 +792,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.delete("/api/admin/seo-metadata/:id", requireAdmin, async (req, res) => {
     try {
       const entry = await SeoMetadata.findByIdAndDelete(req.params.id);
-      if (!entry) return res.status(404).json({ error: 'SEO metadata entry not found' });
+      if (!entry) return void res.status(404).json({ error: 'SEO metadata entry not found' });
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: 'Failed to delete SEO metadata' });

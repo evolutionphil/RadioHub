@@ -319,7 +319,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           const normalized = String(raw).trim().toUpperCase();
           if (normalized !== "") {
             if (!/^[A-Z]{2}$/.test(normalized)) {
-              return res.status(400).json({
+              return void res.status(400).json({
                 error: "invalid_country_code",
                 message:
                   "country must be a 2-letter ISO code (e.g. 'TR') or omitted.",
@@ -330,7 +330,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         }
         const limit = Math.max(1, Math.min(5000, Number(req.body?.limit) || 500));
         if (activeTagsJob && activeTagsJob.isRunning) {
-          return res.status(409).json({ error: "already_running", job: activeTagsJob });
+          return void res.status(409).json({ error: "already_running", job: activeTagsJob });
         }
         const job = await runTagsBackfill(country, limit);
         res.json({ ok: true, job });
@@ -371,7 +371,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         if (raw !== null && raw !== "") {
           const normalized = String(raw).trim().toUpperCase();
           if (!/^[A-Z]{2}$/.test(normalized)) {
-            return res.status(400).json({
+            return void res.status(400).json({
               error: "invalid_country_code",
               message: "countryCode must be a 2-letter ISO code (e.g. 'TR') or omitted.",
             });
@@ -390,7 +390,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         // instance lock is already held.
         const run = await scheduledBackfill.start(trigger, { countryCode });
         if (!run) {
-          return res.status(409).json({
+          return void res.status(409).json({
             error: "already_running",
             status: scheduledBackfill.getStatus(),
           });
@@ -475,11 +475,11 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
       try {
         const { id } = req.params;
         if (!mongoose.isValidObjectId(id)) {
-          return res.status(400).json({ error: "invalid_id" });
+          return void res.status(400).json({ error: "invalid_id" });
         }
         const run = await BackfillRun.findById(id).lean();
         if (!run) {
-          return res.status(404).json({ error: "not_found" });
+          return void res.status(404).json({ error: "not_found" });
         }
         res.json({ run });
       } catch (err: any) {

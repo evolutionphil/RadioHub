@@ -635,7 +635,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('Content-Type', 'text/plain');
         res.setHeader('Retry-After', '120');
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(503).send('Manifest building — retry shortly');
+        return void res.status(503).send('Manifest building — retry shortly');
       }
 
       // Task #154: top countries are part of the manifest now — reading them
@@ -658,7 +658,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('ETag', etag);
         setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
         res.setHeader('Cache-Control', childCacheControl);
-        return res.send(cached);
+        return void res.send(cached);
       }
 
       const baseUrl = getBaseUrl(req);
@@ -774,7 +774,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('Content-Type', 'text/plain');
         res.setHeader('Retry-After', '120');
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(503).send('Manifest building — retry shortly');
+        return void res.status(503).send('Manifest building — retry shortly');
       }
 
       const lastmod = formatLastmod(chunkInfo.maxUpdatedAt);
@@ -789,7 +789,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('ETag', etag);
         setLastModifiedHeader(res, chunkInfo.maxUpdatedAt as any);
         res.setHeader('Cache-Control', childCacheControl);
-        return res.send(cached);
+        return void res.send(cached);
       }
 
       const baseUrl = getBaseUrl(req);
@@ -896,7 +896,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('Content-Type', 'text/plain');
         res.setHeader('Retry-After', '120');
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(503).send('Manifest building — retry shortly');
+        return void res.status(503).send('Manifest building — retry shortly');
       }
 
       const lastmod = formatLastmod(manifest.maxUpdatedAt);
@@ -911,7 +911,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('ETag', etag);
         setLastModifiedHeader(res, manifest.maxUpdatedAt as any);
         res.setHeader('Cache-Control', childCacheControl);
-        return res.send(cached);
+        return void res.send(cached);
       }
 
       const baseUrl = getBaseUrl(req);
@@ -1060,7 +1060,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         res.setHeader('Content-Type', 'text/plain');
         res.setHeader('Retry-After', '120');
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(503).send('Sitemap manifest building — retry shortly');
+        return void res.status(503).send('Sitemap manifest building — retry shortly');
       }
 
       // ARCHITECT P0 FIX (2026-04-30): atomic swap consistency. The qualified

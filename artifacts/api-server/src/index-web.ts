@@ -156,7 +156,7 @@ app.use((req, res, next) => {
       const rest = m[2] || '';
       const qIdx = req.originalUrl.indexOf('?');
       const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
-      return res.redirect(301, `/${target}${rest}${queryString}`);
+      return void res.redirect(301, `/${target}${rest}${queryString}`);
     }
   }
   next();
@@ -283,7 +283,7 @@ app.use((req, res, next) => {
     const target = (protocolChanged || hostChanged)
       ? `${targetProtocol}://${targetHost}${targetPath}${query}`
       : `${targetPath}${query}`;
-    return res.redirect(301, target);
+    return void res.redirect(301, target);
   }
 
   next();
@@ -353,7 +353,7 @@ app.use('/cast-receiver', (req, res, next) => {
     'Access-Control-Allow-Headers': 'Content-Type, Range',
     'Cache-Control': 'public, max-age=3600',
   });
-  if (req.method === 'OPTIONS') return res.sendStatus(200);
+  if (req.method === 'OPTIONS') return void res.sendStatus(200);
   next();
 }, express.static(path.resolve(process.cwd(), "client/public/cast-receiver"), { etag: true, lastModified: true }));
 
@@ -477,7 +477,7 @@ app.use('/api/stream', streamServiceProxy);
   server.on('upgrade', (req, socket, head) => {
     const pathname = new URL(req.url || '', `http://${req.headers.host}`).pathname;
     if (pathname.startsWith('/ws/')) {
-      wsProxy.upgrade!(req, socket, head);
+      wsProxy.upgrade!(req, socket as import('net').Socket, head);
     } else {
       // Unknown WS path — destroy socket to prevent leak (otherwise TCP stays open indefinitely).
       try { socket.destroy(); } catch {}

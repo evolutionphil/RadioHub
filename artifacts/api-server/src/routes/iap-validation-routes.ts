@@ -158,7 +158,7 @@ export function registerIapValidationRoutes(app: Express) {
           logger.error("[IAP] audit dispatch failed:", err?.message || err),
         );
       });
-      return res.status(statusCode).json(body);
+      return void res.status(statusCode).json(body);
     };
 
     try {

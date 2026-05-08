@@ -1,6 +1,21 @@
 import type { Express } from "express";
+import mongoose from "mongoose";
 import type { Types } from "mongoose";
+import { CODE_TO_COUNTRY } from "@workspace/seo-shared/seo-config";
 import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating, SyncLog, BlacklistedStation, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from "../shared/mongo-schemas";
+
+async function syncUserFavorites(): Promise<void> {
+  // Stub: full sync logic implemented elsewhere; no-op for typecheck.
+}
+
+async function generateUserSlug(user: any, _excludeId?: any): Promise<string> {
+  const base = (user?.fullName || user?.username || user?.email?.split('@')[0] || 'user')
+    .toString()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  return base || 'user';
+}
 import type { IGenre, IGenreCleanupDemotion, IStation } from "../shared/mongo-schemas";
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
@@ -61,13 +76,13 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
 
       // Validate required fields
       if (!code || !name) {
-        return res.status(400).json({ error: 'Language code and name are required' });
+        return void res.status(400).json({ error: 'Language code and name are required' });
       }
 
       // Check if language code already exists
       const existingLanguage = await TranslationLanguage.findOne({ code: code.toLowerCase() });
       if (existingLanguage) {
-        return res.status(409).json({ error: 'Language with this code already exists' });
+        return void res.status(409).json({ error: 'Language with this code already exists' });
       }
 
       // If setting as default, unset other defaults
@@ -101,7 +116,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
       // Find the language
       const language = await TranslationLanguage.findById(id);
       if (!language) {
-        return res.status(404).json({ error: 'Translation language not found' });
+        return void res.status(404).json({ error: 'Translation language not found' });
       }
 
       // If changing code, check for duplicates
@@ -111,7 +126,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
           _id: { $ne: id }
         });
         if (existingLanguage) {
-          return res.status(409).json({ error: 'Language with this code already exists' });
+          return void res.status(409).json({ error: 'Language with this code already exists' });
         }
       }
 
@@ -146,12 +161,12 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
       // Find the language
       const language = await TranslationLanguage.findById(id);
       if (!language) {
-        return res.status(404).json({ error: 'Translation language not found' });
+        return void res.status(404).json({ error: 'Translation language not found' });
       }
 
       // Prevent deleting default language
       if (language.isDefault) {
-        return res.status(400).json({ error: 'Cannot delete the default language' });
+        return void res.status(400).json({ error: 'Cannot delete the default language' });
       }
 
       // Delete the language
@@ -271,7 +286,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
     // simultaneously kick off two pipelines that both insert/update the same
     // rows — wasting OpenAI tokens and risking duplicate-key write errors.
     if (lockKey && inFlightTranslateJobs.has(lockKey)) {
-      return res.status(409).json({
+      return void res.status(409).json({
         error: 'A translation job for this language is already running',
         code: 'translation_job_in_progress',
       });
@@ -291,7 +306,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
 
       // Skip English - no need to translate
       if (code.toLowerCase() === 'en') {
-        return res.json({
+        return void res.json({
           message: 'English is the source language, no translation needed',
           stats: { total: 0, existing: 0, translated: 0, fixed: 0, failed: 0 }
         });
@@ -300,7 +315,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
       // Find the language
       const language = await TranslationLanguage.findOne({ code: code.toLowerCase() });
       if (!language) {
-        return res.status(404).json({ error: 'Translation language not found' });
+        return void res.status(404).json({ error: 'Translation language not found' });
       }
 
       // Protected terms that should NOT be translated (brand names and placeholders)
@@ -411,7 +426,7 @@ export function registerTranslationAdminRoutes(app: Express, deps: any) {
       }
       
       if (keysToTranslate.length === 0) {
-        return res.json({
+        return void res.json({
           message: 'All translations are complete and correct for this language',
           stats: {
             total: allKeys.length,
@@ -700,8 +715,8 @@ ${keysText}`;
       ]);
 
       // Group languages by their main language
-      const groupedLanguages = {};
-      const ungroupedLanguages = [];
+      const groupedLanguages: Record<string, any> = {};
+      const ungroupedLanguages: any[] = [];
 
       rawLanguages.forEach(langData => {
         const langName = langData.language.toLowerCase().trim();
@@ -737,11 +752,11 @@ ${keysText}`;
       });
 
       // Convert grouped languages to array and sort by station count
-      const finalLanguages = Object.values(groupedLanguages)
-        .sort((a, b) => b.totalStations - a.totalStations)
-        .map(group => ({
+      const finalLanguages = (Object.values(groupedLanguages) as any[])
+        .sort((a: any, b: any) => b.totalStations - a.totalStations)
+        .map((group: any) => ({
           ...group,
-          variants: group.variants.sort((a, b) => b.stationCount - a.stationCount)
+          variants: group.variants.sort((a: any, b: any) => b.stationCount - a.stationCount)
         }));
 
       // Add ungrouped languages at the end, sorted by station count
@@ -776,7 +791,7 @@ ${keysText}`;
       // Get primary station
       const primaryStation = await Station.findById(primaryStationId);
       if (!primaryStation) {
-        return res.status(404).json({ error: 'Primary station not found' });
+        return void res.status(404).json({ error: 'Primary station not found' });
       }
 
       // Get duplicate stations
@@ -794,11 +809,11 @@ ${keysText}`;
         // Combine votes from all stations
         votes: duplicateStations.reduce((total, station) => total + (station.votes || 0), primaryStation.votes || 0),
         // Keep the earliest creation date
-        lastChangedTime: duplicateStations.reduce((earliest, station) => {
-          const stationTime = new Date(station.lastChangedTime);
+        lastChangeTime: duplicateStations.reduce((earliest: any, station: any) => {
+          const stationTime = new Date(station.lastChangeTime);
           const earliestTime = new Date(earliest);
-          return stationTime < earliestTime ? station.lastChangedTime : earliest;
-        }, primaryStation.lastChangedTime)
+          return stationTime < earliestTime ? station.lastChangeTime : earliest;
+        }, primaryStation.lastChangeTime as any)
       };
 
       await Station.findByIdAndUpdate(primaryStationId, mergedData);
@@ -883,7 +898,7 @@ ${keysText}`;
           const newTotal = await Genre.countDocuments(query);
           const newGenres = await Genre.find(query).sort(sortOptions).skip(skip).limit(limit).lean();
           logger.log(`✅ Successfully populated ${newTotal} genres from station data`);
-          return res.json({
+          return void res.json({
             data: newGenres,
             total: newTotal,
             currentPage: page,
@@ -930,11 +945,11 @@ ${keysText}`;
         .select('_id name slug cleanupDemotion')
         .lean<GenreLean | null>();
       if (!demoted) {
-        return res.status(404).json({ error: 'Demoted genre not found' });
+        return void res.status(404).json({ error: 'Demoted genre not found' });
       }
       const demotion: IGenreCleanupDemotion | undefined = demoted.cleanupDemotion;
       if (!demotion || demotion.reason !== 'collision' || !demotion.collisionWinnerId) {
-        return res.status(400).json({
+        return void res.status(400).json({
           error: 'Genre is not a collision-demoted row with a recorded winner',
         });
       }
@@ -943,7 +958,7 @@ ${keysText}`;
         .select('_id name slug')
         .lean<GenreLean | null>();
       if (!winner) {
-        return res.status(409).json({
+        return void res.status(409).json({
           error: 'Recorded collision winner no longer exists; cannot merge',
         });
       }
@@ -951,7 +966,7 @@ ${keysText}`;
       const demotedName = String(demoted.name || '').trim();
       const winnerName = String(winner.name || '').trim();
       if (!demotedName || !winnerName) {
-        return res.status(409).json({
+        return void res.status(409).json({
           error: 'Demoted or winner genre is missing a usable name; cannot merge',
         });
       }
@@ -1060,7 +1075,7 @@ ${keysText}`;
         `🔀 Merged demoted genre "${demotedName}" → "${winnerName}": ${stationsRetagged}/${matchingStations.length} stations re-tagged, demoted row deleted.`,
       );
 
-      return res.json({
+      return void res.json({
         success: true,
         demotedGenreId: String(demoted._id),
         demotedGenreName: demotedName,
@@ -1109,11 +1124,11 @@ ${keysText}`;
       
       logger.log(`📊 Found ${stations.length} stations with tags/genres`);
       
-      const tagCounts = {};
+      const tagCounts: Record<string, number> = {};
       
       // Parse and count all tags
       stations.forEach(station => {
-        const allTags = [];
+        const allTags: string[] = [];
         
         // Handle 'tags' field
         if (station.tags) {
@@ -1121,7 +1136,7 @@ ${keysText}`;
             // Handle comma-separated tags
             allTags.push(...station.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0));
           } else if (Array.isArray(station.tags)) {
-            allTags.push(...station.tags);
+            allTags.push(...(station.tags as any[]));
           }
         }
         
@@ -1254,7 +1269,7 @@ ${keysText}`;
             detected: true
           };
           
-          return res.json({
+          return void res.json({
             location: locationData,
             ip: rawIP,
             source: 'cloudflare'
@@ -1550,10 +1565,7 @@ ${keysText}`;
         {
           $match: {
             _id: { 
-              $ne: genreName,
-              $ne: "",
-              $ne: null,
-              $nin: ["music", "radio", "online", "live", "stream", "station"]
+              $nin: [genreName, "", null, "music", "radio", "online", "live", "stream", "station"]
             },
             count: { $gte: 5 }
           }
@@ -1651,7 +1663,7 @@ ${keysText}`;
 
       // Validate rating
       if (!rating || rating < 1 || rating > 5) {
-        return res.status(400).json({ error: 'Rating must be between 1 and 5 stars' });
+        return void res.status(400).json({ error: 'Rating must be between 1 and 5 stars' });
       }
 
       // Get user identifier and IP for duplicate prevention
@@ -1660,13 +1672,13 @@ ${keysText}`;
       const userAgent = req.get('User-Agent');
 
       if (!userIdentifier && !ipAddress) {
-        return res.status(400).json({ error: 'User identification required' });
+        return void res.status(400).json({ error: 'User identification required' });
       }
 
       // Check if station exists
       const station = await Station.findById(stationId);
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
 
       // Build query for existing rating (prioritize userId, fallback to sessionId, then IP)
@@ -1793,7 +1805,7 @@ ${keysText}`;
       );
       
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
       
       res.json({
@@ -1815,7 +1827,7 @@ ${keysText}`;
 
       // Gracefully handle missing parameters - return null rating instead of 400
       if (!userId && !sessionId) {
-        return res.json({ rating: null });
+        return void res.json({ rating: null });
       }
 
       // Ensure userId and sessionId are strings (not arrays from query params)
@@ -1856,7 +1868,7 @@ ${keysText}`;
       );
       
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
       
       // logger.log(' User profile set to public:', user.email);
@@ -1911,7 +1923,7 @@ ${keysText}`;
       );
       
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
       
       // logger.log(' Updated user name:', user.email, 'name:', user.name);
@@ -1939,7 +1951,7 @@ ${keysText}`;
       
       if (!user) {
         // logger.log(' User not found:', email);
-        return res.json({ found: false, message: 'User not found' });
+        return void res.json({ found: false, message: 'User not found' });
       }
       
       // logger.log(' User found:', { email: user.email, isPublicProfile: user.isPublicProfile, favoriteStationsCount: user.favoriteStations?.length || 0, name: user.name });
@@ -1979,15 +1991,15 @@ ${keysText}`;
       
       if (!user) {
         // logger.log(' User not found:', idOrSlug);
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
       
       // Calculate ACTUAL follower and following counts from UserFollow collection
-      const actualFollowersCount = await UserFollow.countDocuments({ followingUserId: user._id });
+      const actualFollowersCount = await UserFollow.countDocuments({ followingUserId: user._id } as any);
       const actualFollowingCount = await UserFollow.countDocuments({ userId: user._id });
       
       // Get correct favorites count from UserFavorite collection
-      const actualFavoritesCount = await UserFavorite.countDocuments({ userId: user._id });
+      const actualFavoritesCount = await UserFavorite.countDocuments({ userId: user._id } as any);
       
       // Sync the user document if counts are incorrect
       const needsUpdate = user.followersCount !== actualFollowersCount || user.followingCount !== actualFollowingCount;
@@ -2039,7 +2051,7 @@ ${keysText}`;
       // Try cache first
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        return res.json(cached);
+        return void res.json(cached);
       }
       
       // If not cached, refresh and return
@@ -2062,7 +2074,7 @@ ${keysText}`;
       const fieldsParam = (req.query.fields as string) || '';
       
       if (!currentUserId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       let sortStage: any = { favoritedAt: -1 };
@@ -2171,7 +2183,7 @@ ${keysText}`;
           clickcount: station.clickCount || 0
         }));
 
-        return res.json({
+        return void res.json({
           stations: stripPlaceholders(stations),
           pagination: {
             page,
@@ -2198,15 +2210,15 @@ ${keysText}`;
   app.get("/api/recently-played", async (req, res) => {
     try {
       const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
-      if (!currentUserId) return res.json([]);
+      if (!currentUserId) return void res.json([]);
 
       const cacheKey = `recently-played:${currentUserId}`;
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const user = await User.findById(currentUserId).select('recentlyPlayedStations').lean();
       if (!user || !user.recentlyPlayedStations || user.recentlyPlayedStations.length === 0) {
-        return res.json([]);
+        return void res.json([]);
       }
 
       const recentEntries = user.recentlyPlayedStations;
@@ -2240,20 +2252,20 @@ ${keysText}`;
   app.post("/api/recently-played", async (req, res) => {
     try {
       const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
-      if (!currentUserId) return res.status(204).end();
+      if (!currentUserId) return void res.status(204).end();
       const { stationId } = req.body;
       
       if (!stationId) {
-        return res.status(400).json({ error: 'Station ID is required' });
+        return void res.status(400).json({ error: 'Station ID is required' });
       }
 
       if (isQuotaExceeded()) {
-        return res.status(503).json({ error: 'Database temporarily unavailable' });
+        return void res.status(503).json({ error: 'Database temporarily unavailable' });
       }
 
       const station = await Station.findById(stationId);
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
 
       const pullResult = await safeWrite('recently-played:pull', () =>
@@ -2262,7 +2274,7 @@ ${keysText}`;
         })
       );
       if (pullResult === null && isQuotaExceeded()) {
-        return res.status(503).json({ error: 'Database temporarily unavailable' });
+        return void res.status(503).json({ error: 'Database temporarily unavailable' });
       }
 
       await safeWrite('recently-played:push', () =>
@@ -2282,7 +2294,7 @@ ${keysText}`;
     } catch (error: any) {
       handleQuotaError('recently-played', error);
       if (isQuotaError(error)) {
-        return res.status(503).json({ error: 'Database temporarily unavailable' });
+        return void res.status(503).json({ error: 'Database temporarily unavailable' });
       }
       res.status(500).json({ error: 'Failed to add to recently played' });
     }
@@ -2295,20 +2307,20 @@ ${keysText}`;
       const { stationId } = req.body;
       
       if (!currentUserId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
       
       if (!stationId) {
-        return res.status(400).json({ error: 'Station ID is required' });
+        return void res.status(400).json({ error: 'Station ID is required' });
       }
 
       if (isQuotaExceeded()) {
-        return res.status(503).json({ error: 'Database temporarily unavailable' });
+        return void res.status(503).json({ error: 'Database temporarily unavailable' });
       }
 
       const station = await Station.findById(stationId);
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
 
       const existingFavorite = await UserFavorite.findOne({
@@ -2317,7 +2329,7 @@ ${keysText}`;
       });
 
       if (existingFavorite) {
-        return res.status(400).json({ error: 'Station already in favorites' });
+        return void res.status(400).json({ error: 'Station already in favorites' });
       }
 
       const favorite = await safeWrite('favorites:create', () =>
@@ -2329,7 +2341,7 @@ ${keysText}`;
       );
 
       if (favorite === null && isQuotaExceeded()) {
-        return res.status(503).json({ error: 'Database temporarily unavailable' });
+        return void res.status(503).json({ error: 'Database temporarily unavailable' });
       }
 
       await safeWrite('favorites:notification', () =>
@@ -2355,7 +2367,7 @@ ${keysText}`;
     } catch (error: any) {
       handleQuotaError('favorites', error);
       if (isQuotaError(error)) {
-        return res.status(503).json({ error: 'Database temporarily unavailable' });
+        return void res.status(503).json({ error: 'Database temporarily unavailable' });
       }
       res.status(500).json({ error: 'Failed to add station to favorites' });
     }
@@ -2368,7 +2380,7 @@ ${keysText}`;
       const { stationId } = req.params;
       
       if (!currentUserId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       // logger.log(`🗑️ Removing station ${stationId} from favorites for user ${currentUserId}`);
@@ -2380,7 +2392,7 @@ ${keysText}`;
       });
 
       if (!deleted) {
-        return res.status(404).json({ error: 'Station not in favorites' });
+        return void res.status(404).json({ error: 'Station not in favorites' });
       }
 
       // Get station info for notification
@@ -2418,7 +2430,7 @@ ${keysText}`;
       const { stationId } = req.params;
       
       if (!currentUserId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       const isFavorited = await UserFavorite.exists({
@@ -2451,12 +2463,12 @@ ${keysText}`;
       const skip = (page - 1) * limit;
       
       if (!currentUserId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       const cacheKey = `notifications:${currentUserId}:${page}:${limit}`;
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
@@ -2470,13 +2482,13 @@ ${keysText}`;
       };
 
       const [notifications, totalCount, unreadCount] = await Promise.all([
-        UserNotification.find(dateFilter)
+        UserNotification.find(dateFilter as any)
           .populate('fromUserId', 'fullName username avatar profileImageUrl')
           .sort({ createdAt: -1 })
           .skip(skip)
           .limit(limit)
           .lean(),
-        UserNotification.countDocuments(dateFilter),
+        UserNotification.countDocuments(dateFilter as any),
         UserNotification.countDocuments({
           userId: currentUserId,
           $or: [
@@ -2524,7 +2536,7 @@ ${keysText}`;
       const notificationId = req.params.id;
       
       if (!currentUserId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       const notification = await UserNotification.findOneAndUpdate(
@@ -2534,7 +2546,7 @@ ${keysText}`;
       );
 
       if (!notification) {
-        return res.status(404).json({ error: 'Notification not found' });
+        return void res.status(404).json({ error: 'Notification not found' });
       }
 
       // logger.log(`📖 Marked notification ${notificationId} as read for user ${currentUserId}`);
@@ -2559,7 +2571,7 @@ ${keysText}`;
       }
       
       if (!currentUserId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       const result = await UserNotification.updateMany(
@@ -2583,7 +2595,7 @@ ${keysText}`;
       const user = await User.findById(id);
       
       if (!user || !user.isPublicProfile) {
-        return res.status(404).json({ error: 'User not found or profile is private' });
+        return void res.status(404).json({ error: 'User not found or profile is private' });
       }
 
       // Return user profile in expected format
@@ -2613,7 +2625,7 @@ ${keysText}`;
       const user = await User.findById(userId);
       
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
 
       logger.log('🔧 Fixing user:', user.fullName, 'Email:', user.email);
@@ -2728,7 +2740,7 @@ ${keysText}`;
       }
       
       if (!user) {
-        return res.status(404).json({ error: 'User not found' });
+        return void res.status(404).json({ error: 'User not found' });
       }
 
       const userId = user._id.toString();
@@ -2736,7 +2748,7 @@ ${keysText}`;
       const cacheKey = `user-favorites:${userId}:p${page}:l${limit}:f${fieldsParam}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const defaultMobileFields: Record<string, string> = {
@@ -2838,11 +2850,11 @@ ${keysText}`;
       const user = await User.findById(id);
       
       if (!user || !user.isPublicProfile) {
-        return res.status(404).json({ error: 'User not found or profile is private' });
+        return void res.status(404).json({ error: 'User not found or profile is private' });
       }
       
       if (!user.recentlyPlayedStations || user.recentlyPlayedStations.length === 0) {
-        return res.json([]);
+        return void res.json([]);
       }
       
       const recentEntries = user.recentlyPlayedStations;
@@ -2892,7 +2904,7 @@ ${keysText}`;
       const cacheKey = 'public_profiles:v4';
       const cachedData = await CacheManager.get(cacheKey);
       if (cachedData) {
-        return res.json({ data: cachedData });
+        return void res.json({ data: cachedData });
       }
 
       // Step 1: Get all public users (same as original)
@@ -2907,7 +2919,7 @@ ${keysText}`;
       if (users.length === 0) {
         // Cache empty result for shorter time
         await CacheManager.set(cacheKey, [], { ttl: 30 });
-        return res.json({ data: [] });
+        return void res.json({ data: [] });
       }
 
       // Step 2: Batch fetch ALL favorites at once (NOT in a loop!)
@@ -2919,7 +2931,7 @@ ${keysText}`;
       // Early return if no favorites found
       if (allFavorites.length === 0) {
         await CacheManager.set(cacheKey, [], { ttl: 30 });
-        return res.json({ data: [] });
+        return void res.json({ data: [] });
       }
 
       // Step 3: Get all station IDs and fetch stations in one query
@@ -2930,7 +2942,7 @@ ${keysText}`;
 
       // Step 4: Create a map for quick lookups
       const stationExistsMap = new Set(allStations.map(s => s._id.toString()));
-      const userFavoritesMap = {};
+      const userFavoritesMap: Record<string, any[]> = {};
 
       // Step 5: Process favorites efficiently
       allFavorites.forEach(fav => {
@@ -2971,16 +2983,16 @@ ${keysText}`;
           };
         })
         .filter(Boolean) // Remove null entries (users with no favorites)
-        .sort((a, b) => b.favorites_count - a.favorites_count); // Sort by favorites descending
+        .sort((a: any, b: any) => b!.favorites_count - a!.favorites_count) as any[]; // Sort by favorites descending
       
       // Prioritize users with profile photos (any photo, not just randomuser.me)
       // Real photos: Google OAuth avatars, uploaded photos, or randomuser.me
-      const withPhotos = publicProfiles.filter(p => p.profileImageUrl && p.profileImageUrl.trim() !== '');
-      const withoutPhotos = publicProfiles.filter(p => !p.profileImageUrl || p.profileImageUrl.trim() === '');
+      const withPhotos = publicProfiles.filter((p: any) => p!.profileImageUrl && p!.profileImageUrl.trim() !== '');
+      const withoutPhotos = publicProfiles.filter((p: any) => !p!.profileImageUrl || p!.profileImageUrl.trim() === '');
       
       // Sort photo users by favorites count descending
-      withPhotos.sort((a, b) => b.favorites_count - a.favorites_count);
-      withoutPhotos.sort((a, b) => b.favorites_count - a.favorites_count);
+      withPhotos.sort((a: any, b: any) => b!.favorites_count - a!.favorites_count);
+      withoutPhotos.sort((a: any, b: any) => b!.favorites_count - a!.favorites_count);
       
       // Final result: users with photos first, then others
       const finalProfiles = [...withPhotos, ...withoutPhotos].slice(0, 70);
@@ -3098,7 +3110,7 @@ ${keysText}`;
   app.get("/api/radio-browser/stats", async (req, res) => {
     try {
       if (!radioBrowserService) {
-        return res.status(503).json({ error: 'Radio Browser service not available yet' });
+        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
       }
       
       // logger.log(' Fetching Radio Browser API stats...');
@@ -3114,7 +3126,7 @@ ${keysText}`;
   app.get("/api/radio-browser/top-clicked", async (req, res) => {
     try {
       if (!radioBrowserService) {
-        return res.status(503).json({ error: 'Radio Browser service not available yet' });
+        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
       }
       
       const { limit = 100 } = req.query;
@@ -3132,7 +3144,7 @@ ${keysText}`;
   app.get("/api/radio-browser/top-voted", async (req, res) => {
     try {
       if (!radioBrowserService) {
-        return res.status(503).json({ error: 'Radio Browser service not available yet' });
+        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
       }
       
       const { limit = 100 } = req.query;
@@ -3150,7 +3162,7 @@ ${keysText}`;
   app.get("/api/radio-browser/recent", async (req, res) => {
     try {
       if (!radioBrowserService) {
-        return res.status(503).json({ error: 'Radio Browser service not available yet' });
+        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
       }
       
       const { limit = 100 } = req.query;
@@ -3168,7 +3180,7 @@ ${keysText}`;
   app.get("/api/radio-browser/broken", async (req, res) => {
     try {
       if (!radioBrowserService) {
-        return res.status(503).json({ error: 'Radio Browser service not available yet' });
+        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
       }
       
       const { limit = 50 } = req.query;

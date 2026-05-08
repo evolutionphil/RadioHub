@@ -16,7 +16,7 @@ const requireAdmin = async (req: Request, res: Response, next: Function) => {
   const session = req.session as any;
   
   if (!session || !session.adminAuth) {
-    return res.status(401).json({ 
+    return void res.status(401).json({ 
       error: 'Admin authentication required',
       message: 'You must be logged in as an admin to access this resource.'
     });
@@ -25,7 +25,7 @@ const requireAdmin = async (req: Request, res: Response, next: Function) => {
   try {
     // Check if admin session is valid
     if (session.adminAuth.role !== 'admin') {
-      return res.status(403).json({ 
+      return void res.status(403).json({ 
         error: 'Admin access required',
         message: 'You do not have permission to access this resource. Admin privileges required.'
       });
@@ -35,7 +35,7 @@ const requireAdmin = async (req: Request, res: Response, next: Function) => {
     (req.session as any).adminUser = session.adminAuth;
     next();
   } catch (error) {
-    return res.status(500).json({ error: 'Authentication error' });
+    return void res.status(500).json({ error: 'Authentication error' });
   }
 };
 
@@ -93,13 +93,13 @@ router.post('/bulk', requireAdmin, async (req: Request, res: Response) => {
     const { translations } = req.body;
     
     if (!Array.isArray(translations)) {
-      return res.status(400).json({ message: 'Translations must be an array' });
+      return void res.status(400).json({ message: 'Translations must be an array' });
     }
     
     // Validate each translation
     for (const translation of translations) {
       if (!translation.languageCode || !translation.englishPath || !translation.translatedPath) {
-        return res.status(400).json({ 
+        return void res.status(400).json({ 
           message: 'Each translation must have languageCode, englishPath, and translatedPath' 
         });
       }
@@ -151,7 +151,7 @@ router.post('/bulk', requireAdmin, async (req: Request, res: Response) => {
 router.post('/auto-translate', requireAdmin, async (req: Request, res: Response) => {
   try {
     if (!openai) {
-      return res.status(500).json({ 
+      return void res.status(500).json({ 
         message: 'OpenAI API key not configured. Please set OPENAI_API_KEY environment variable.' 
       });
     }
@@ -159,17 +159,17 @@ router.post('/auto-translate', requireAdmin, async (req: Request, res: Response)
     const { languageCode, paths } = req.body;
     
     if (!languageCode) {
-      return res.status(400).json({ message: 'Language code is required' });
+      return void res.status(400).json({ message: 'Language code is required' });
     }
     
     if (!Array.isArray(paths) || paths.length === 0) {
-      return res.status(400).json({ message: 'Paths must be a non-empty array' });
+      return void res.status(400).json({ message: 'Paths must be a non-empty array' });
     }
     
     // Find the language name
     const language = SEO_LANGUAGES.find((lang: { code: string; name: string }) => lang.code === languageCode);
     if (!language) {
-      return res.status(400).json({ message: 'Invalid language code' });
+      return void res.status(400).json({ message: 'Invalid language code' });
     }
     
     // Prepare the translation request
@@ -235,7 +235,7 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
     const result = await UrlTranslation.findByIdAndDelete(id);
     
     if (!result) {
-      return res.status(404).json({ message: 'URL translation not found' });
+      return void res.status(404).json({ message: 'URL translation not found' });
     }
     
     console.log(`🗑️ Deleted URL translation: ${result.languageCode}/${result.englishPath}`);

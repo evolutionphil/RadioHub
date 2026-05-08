@@ -137,7 +137,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       // Check for existing running job
       for (const [id, job] of logoProcessingJobs.entries()) {
         if (job.status === 'running') {
-          return res.json({ 
+          return void res.json({ 
             success: false, 
             message: 'A logo processing job is already running',
             jobId: id
@@ -157,7 +157,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       });
       
       if (stationsNeedingProcessing === 0) {
-        return res.json({ 
+        return void res.json({ 
           success: true, 
           message: 'All logos are already processed',
           processed: 0
@@ -191,8 +191,8 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         $or: [
           { 'logoAssets.status': { $exists: false } },
           { logoAssets: { $exists: false } },
-          { 'logoAssets.status': 'pending' },
-          { 'logoAssets.status': 'processing' },
+          { 'logoAssets.status': 'pending' as const },
+          { 'logoAssets.status': 'processing' as const },
         ]
       };
       
@@ -312,7 +312,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     try {
       for (const [id, job] of logoProcessingJobs.entries()) {
         if (job.status === 'running') {
-          return res.json({ 
+          return void res.json({ 
             success: false, 
             message: 'A logo processing job is already running',
             jobId: id
@@ -326,7 +326,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       });
 
       if (totalWithFavicon === 0) {
-        return res.json({ success: true, message: 'No stations with favicons found', processed: 0 });
+        return void res.json({ success: true, message: 'No stations with favicons found', processed: 0 });
       }
 
       const RESET_BATCH = 5000;
@@ -375,8 +375,8 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         $or: [
           { 'logoAssets.status': { $exists: false } },
           { logoAssets: { $exists: false } },
-          { 'logoAssets.status': 'pending' },
-          { 'logoAssets.status': 'processing' },
+          { 'logoAssets.status': 'pending' as const },
+          { 'logoAssets.status': 'processing' as const },
         ]
       };
 
@@ -494,10 +494,10 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
   app.get("/api/admin/logos/active-job", requireAdmin, async (req, res) => {
     for (const [id, job] of logoProcessingJobs.entries()) {
       if (job.status === 'running') {
-        return res.json({ hasActiveJob: true, job });
+        return void res.json({ hasActiveJob: true, job });
       }
     }
-    return res.json({ hasActiveJob: false });
+    return void res.json({ hasActiveJob: false });
   });
 
   app.get("/api/admin/logos/job-status/:jobId", requireAdmin, async (req, res) => {
@@ -507,7 +507,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     if (!job) {
       const completedCount = await Station.countDocuments({ 'logoAssets.status': 'completed' });
       const failedCount = await Station.countDocuments({ 'logoAssets.status': 'failed' });
-      return res.json({
+      return void res.json({
         jobId,
         status: 'lost',
         message: 'Job lost after server restart. Check stats for current progress.',
@@ -528,7 +528,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     const job = logoProcessingJobs.get(jobId);
     
     if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
+      return void res.status(404).json({ error: 'Job not found' });
     }
     
     job.status = 'cancelled';

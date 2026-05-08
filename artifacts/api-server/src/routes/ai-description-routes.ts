@@ -59,7 +59,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       
       const station = await Station.findById(stationId).lean();
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
       
       logger.log(`🤖 [DEBUG] Generating AI description for station: ${station.name} (${station.countryCode})`);
@@ -124,7 +124,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       
       const station = await Station.findById(stationId).lean();
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
       
       logger.log(`🔄 Refreshing AI description for station: ${station.name} (clearing skip flag)`);
@@ -338,7 +338,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       logger.log(`🔍 Found ${totalStations} stations with missing English descriptions`);
       
       if (stationsToProcess === 0) {
-        return res.json({
+        return void res.json({
           success: false,
           message: 'No stations found with missing English full descriptions',
           count: 0
@@ -903,7 +903,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     const job = descriptionJobs.get(jobId);
     
     if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
+      return void res.status(404).json({ error: 'Job not found' });
     }
     
     res.json({
@@ -933,7 +933,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     const job = descriptionJobs.get(jobId);
     
     if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
+      return void res.status(404).json({ error: 'Job not found' });
     }
     
     job.status = 'paused';
@@ -948,7 +948,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     const job = descriptionJobs.get(jobId);
     
     if (!job) {
-      return res.status(404).json({ error: 'Job not found' });
+      return void res.status(404).json({ error: 'Job not found' });
     }
     
     job.status = 'cancelled';

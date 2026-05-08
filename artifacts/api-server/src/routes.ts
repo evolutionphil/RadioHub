@@ -59,6 +59,22 @@ import { startGenreWhitelistRefreshLoop } from './seo/genre-whitelist-store';
 import { registerSilentPushRoutes } from './routes/silent-push-routes';
 import { registerMessagesRoutes } from './routes/messages-routes';
 
+function stripPlaceholders<T>(obj: T): T {
+  if (!obj || typeof obj !== 'object') return obj;
+  const placeholderRegex = /^\[(TRANSLATED\s+)?(META|FULL\s+DESCRIPTION|SEO\s+META|FULL|SEO)[^\]]*\]\s*/i;
+  const result: any = Array.isArray(obj) ? [] : {};
+  for (const [key, val] of Object.entries(obj as any)) {
+    if (typeof val === 'string') {
+      result[key] = val.replace(placeholderRegex, '');
+    } else if (val && typeof val === 'object') {
+      result[key] = stripPlaceholders(val);
+    } else {
+      result[key] = val;
+    }
+  }
+  return result;
+}
+
 const deps = {
   requireAuth,
   requireAdmin,
@@ -67,7 +83,8 @@ const deps = {
   seedDemoApiKey,
   passport,
   getSocialAuthStatus,
-  invalidateSocialCacheForUser
+  invalidateSocialCacheForUser,
+  stripPlaceholders,
 };
 
 export interface RegisterRoutesOptions {
@@ -97,7 +114,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept, User-Agent, Authorization, Cache-Control');
     res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
     res.setHeader('Access-Control-Max-Age', '86400');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method === 'OPTIONS') return void res.status(200).end();
     next();
   });
 
@@ -148,7 +165,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     ];
     if (invalidPatterns.some(pattern => pattern.test(req.path))) {
       logger.log(`🚫 Blocked invalid path: ${req.path}`);
-      return res.status(404).type('text/plain').send('Not Found');
+      return void res.status(404).type('text/plain').send('Not Found');
     }
     next();
   });
@@ -462,7 +479,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       const { stationId, stationName, listenDuration, country, genre } = req.body;
       const userId = (req.session as any)?.user?.userId;
       if (!userId || !stationId || !listenDuration || typeof listenDuration !== 'number') {
-        return res.status(400).json({ error: 'Missing required fields' });
+        return void res.status(400).json({ error: 'Missing required fields' });
       }
       const listeningSession = new UserListeningHistory({
         sessionId: userId.toString(),
@@ -495,7 +512,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     try {
       const { urls } = req.body;
       if (!urls || !Array.isArray(urls) || urls.length === 0) {
-        return res.status(400).json({ error: 'URLs array is required' });
+        return void res.status(400).json({ error: 'URLs array is required' });
       }
       logger.log(`📡 IndexNow: Admin submitting ${urls.length} URLs`);
       const result = await IndexNowService.submitToIndexNow(urls);
@@ -513,7 +530,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.get("/api/translations/:lang/critical", async (req, res) => {
     const lang = req.params.lang;
     if (!lang || lang.length > 10) {
-      return res.status(400).json({ error: 'Invalid language code' });
+      return void res.status(400).json({ error: 'Invalid language code' });
     }
 
     try {
@@ -521,7 +538,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       const cached = await CacheManager.get<Record<string, string>>(cacheKey);
       if (cached) {
         res.setHeader('Cache-Control', 'public, max-age=300');
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const fullTranslations = await fetchTranslationsForLanguage(lang);
@@ -556,7 +573,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.get("/api/translations/:lang", async (req, res) => {
     const lang = req.params.lang;
     if (!lang || lang.length > 10) {
-      return res.status(400).json({ error: 'Invalid language code' });
+      return void res.status(400).json({ error: 'Invalid language code' });
     }
 
     try {
@@ -564,7 +581,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       const cached = await CacheManager.get<Record<string, string>>(cacheKey);
       if (cached) {
         res.setHeader('Cache-Control', 'public, max-age=300');
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const translations = await fetchTranslationsForLanguage(lang);

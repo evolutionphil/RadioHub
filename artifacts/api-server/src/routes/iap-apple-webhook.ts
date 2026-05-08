@@ -196,7 +196,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(400).json({ error: "Missing signedPayload" });
+        return void res.status(400).json({ error: "Missing signedPayload" });
       }
 
       let notification: NotificationPayload;
@@ -216,7 +216,7 @@ export function registerAppleWebhookRoutes(app: Express) {
         });
         // Apple retries on non-2xx, so respond 401 only for invalid signatures
         // (Apple won't retry forever on a permanent auth failure).
-        return res.status(401).json({ error: "Signature verification failed" });
+        return void res.status(401).json({ error: "Signature verification failed" });
       }
 
       const { notificationType, subtype, notificationUUID } = notification;
@@ -244,7 +244,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(401).json({ error: "Bundle mismatch" });
+        return void res.status(401).json({ error: "Bundle mismatch" });
       }
       if (!expectedBundles.length) {
         logger.warn(
@@ -263,7 +263,7 @@ export function registerAppleWebhookRoutes(app: Express) {
             notificationUUID,
             notificationType,
             subtype: subtype || "",
-            signedDate: notification.signedDate ? new Date(notification.signedDate) : null,
+            signedDate: notification.signedDate ? new Date(notification.signedDate) : undefined,
             bundleId: payloadBundle,
             environment: notification.data?.environment || "",
           });
@@ -271,7 +271,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           // E11000 duplicate key — already processed, just ack.
           if (err?.code === 11000) {
             logger.log(`[apple-webhook] duplicate notificationUUID=${notificationUUID} type=${notificationType} — short-circuit 200`);
-            return res.status(200).json({ ok: true, deduped: true });
+            return void res.status(200).json({ ok: true, deduped: true });
           }
           logger.error("[apple-webhook] AppleWebhookEvent insert failed:", err?.message || err);
           // Don't fail the webhook on dedupe-store write errors; we'd rather
@@ -292,7 +292,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(200).json({ ok: true, ignored: true });
+        return void res.status(200).json({ ok: true, ignored: true });
       }
 
       // TEST notifications carry no transaction data.
@@ -308,7 +308,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(200).json({ ok: true });
+        return void res.status(200).json({ ok: true });
       }
 
       // Decode nested JWS payloads with the same chain validation.
@@ -333,7 +333,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(401).json({ error: "Nested signature failed" });
+        return void res.status(401).json({ error: "Nested signature failed" });
       }
 
       const originalTransactionId =
@@ -352,7 +352,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(200).json({ ok: true, skipped: "no_originalTransactionId" });
+        return void res.status(200).json({ ok: true, skipped: "no_originalTransactionId" });
       }
 
       // Locate the user we previously attached this transaction to. If we
@@ -376,7 +376,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(200).json({ ok: true, skipped: "no_user_for_transaction" });
+        return void res.status(200).json({ ok: true, skipped: "no_user_for_transaction" });
       }
 
       const userId = (user as any)._id;
@@ -441,7 +441,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           userAgent,
           durationMs: Date.now() - startedAt,
         });
-        return res.status(200).json({ ok: true, skipped: "stale_event" });
+        return void res.status(200).json({ ok: true, skipped: "stale_event" });
       }
       if (incomingSignedDateMs > 0) {
         setOps["subscription.lastSignedDate"] = new Date(incomingSignedDateMs);
@@ -510,7 +510,7 @@ export function registerAppleWebhookRoutes(app: Express) {
           durationMs: Date.now() - startedAt,
         });
         // Return 500 so Apple retries — we want the state to converge.
-        return res.status(500).json({ error: "DB write failed" });
+        return void res.status(500).json({ error: "DB write failed" });
       }
 
       logger.log(
@@ -535,7 +535,7 @@ export function registerAppleWebhookRoutes(app: Express) {
         durationMs: Date.now() - startedAt,
       });
 
-      return res.status(200).json({ ok: true, features });
+      return void res.status(200).json({ ok: true, features });
     },
   );
 }

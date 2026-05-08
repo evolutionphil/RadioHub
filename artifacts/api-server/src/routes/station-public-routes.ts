@@ -45,7 +45,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       const cacheKey = `station:detail:${identifier}`;
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       let station: any;
 
@@ -58,7 +58,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       }
 
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
 
       if (!station.slug) {
@@ -109,7 +109,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       if (cachedResult) {
         logger.log(`[Cache HIT] /api/stations/popular country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
         res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-        return res.json(cachedResult);
+        return void res.json(cachedResult);
       }
 
       if (isTV && Number(limit) <= 10) {
@@ -141,7 +141,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         await CacheManager.set(cacheKey, unique, { ttl: 3600 });
         logger.log(`[Cache MISS] /api/stations/popular TV fast-path country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
         res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-        return res.json(unique);
+        return void res.json(unique);
       }
       
       const normalizeStationName = (name: string): string => {
@@ -264,7 +264,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         const slimStations = stations.map(tvSlimStation);
         await CacheManager.set(cacheKey, slimStations, { ttl: 3600 });
         res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-        return res.json(slimStations);
+        return void res.json(slimStations);
       }
 
       await CacheManager.set(cacheKey, stations, { ttl: 3600 });
@@ -289,14 +289,12 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // Cache key uses the clamped value so attackers can't pollute cache with arbitrary limits
       const cacheKey = `stations:with_geo:${safeLimit}`;
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const stations = await Station.find({
         $and: [
           { geoLat: { $exists: true, $ne: null } },
-          { geoLat: { $ne: '' } },
-          { geoLong: { $exists: true, $ne: null } },
-          { geoLong: { $ne: '' } }
+          { geoLong: { $exists: true, $ne: null } }
         ]
       })
       .select('name slug country geoLat geoLong votes clickCount tags homepage favicon hasExtendedInfo url logoAssets')
@@ -326,7 +324,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         const cachedResult = await CacheManager.get(cacheKey);
         if (cachedResult) {
           logger.log(`📦 Serving nearby stations from cache (${countryKey})`);
-          return res.json(cachedResult);
+          return void res.json(cachedResult);
         }
       }
       
@@ -465,7 +463,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         stations = countryStations.slice(0, Number(limit));
         
       } else {
-        return res.json([]);
+        return void res.json([]);
       }
 
       if (lat && lng && stations.length > 0) {
@@ -488,7 +486,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const cacheKey = 'station_stats';
       const cachedStats = await CacheManager.get(cacheKey);
       if (cachedStats) {
-        return res.json(cachedStats);
+        return void res.json(cachedStats);
       }
       
       const stats = await Station.aggregate([
@@ -565,13 +563,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       const cacheKey = `similar_stations:${id}:${limitNum}`;
       const cachedResult = await CacheManager.get(cacheKey);
-      if (cachedResult) return res.json(cachedResult);
+      if (cachedResult) return void res.json(cachedResult);
 
       const sourceStation = await Station.findById(id).select('country tags').lean();
-      if (!sourceStation) return res.status(404).json({ error: 'Station not found' });
+      if (!sourceStation) return void res.status(404).json({ error: 'Station not found' });
 
       const { performanceCache } = await import('../performance-cache');
-      const pool = performanceCache.getSimilarPool(sourceStation.country) || performanceCache.getGlobalPopularPool();
+      const pool = performanceCache.getSimilarPool(sourceStation.country ?? '') || performanceCache.getGlobalPopularPool();
 
       let resultStations: any[];
 
@@ -604,14 +602,14 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   app.get("/api/stations/country-random", async (req, res) => {
     try {
       const { country } = req.query;
-      if (!country) return res.status(400).json({ error: 'Country parameter is required' });
+      if (!country) return void res.status(400).json({ error: 'Country parameter is required' });
 
       const filter = normalizeCountryFilter(country as string);
       const [station] = await Station.aggregate([
         { $match: filter },
         { $sample: { size: 1 } }
       ]);
-      if (!station) return res.status(404).json({ error: 'No stations found for this country' });
+      if (!station) return void res.status(404).json({ error: 'No stations found for this country' });
       res.json(stripPlaceholders(station));
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch random station' });
@@ -647,7 +645,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
               .lean(),
             Station.countDocuments(mongoFilter)
           ]);
-          return res.json({
+          return void res.json({
             success: true, data: stations, stations, total, count: total, page: pageNum,
             totalPages: Math.ceil(total / limitNum), cached: false,
             pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) }
@@ -703,12 +701,12 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       ).select('name url urlResolved').lean() as any;
 
       if (!station) {
-        return res.status(404).json({ error: 'Station not found' });
+        return void res.status(404).json({ error: 'Station not found' });
       }
 
       const streamUrl = station.urlResolved || station.url;
       if (!streamUrl) {
-        return res.json({ title: station.name, artist: '', station: station.name });
+        return void res.json({ title: station.name, artist: '', station: station.name });
       }
 
       const { getStreamMetadataService } = await import('../services/stream-metadata');
@@ -726,7 +724,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         console.error('Error fetching now-playing:', error?.message || error);
       }
       res.json({
-        title: req.params.stationId ? '' : '',
+        title: '',
         artist: '',
         station: '',
         genre: ''
@@ -741,10 +739,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       const cacheKey = `stations:linked:${stationId}`;
       const cached = await CacheManager.get(cacheKey);
-      if (cached) return res.json(cached);
+      if (cached) return void res.json(cached);
 
       const station = await Station.findById(stationId).lean() as any;
-      if (!station) return res.status(404).json({ error: 'Station not found' });
+      if (!station) return void res.status(404).json({ error: 'Station not found' });
 
       const filter: any = { _id: { $ne: stationId } };
       if (station.country) filter.country = station.country;
@@ -795,7 +793,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       if (webCacheKey) {
         const cached = await CacheManager.get(webCacheKey);
-        if (cached) return res.json(cached);
+        if (cached) return void res.json(cached);
       }
 
       const filter: any = {};

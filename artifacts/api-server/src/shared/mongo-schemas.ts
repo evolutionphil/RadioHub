@@ -83,6 +83,7 @@ export interface IStation extends Document {
   showInGlobalPopular?: boolean; // Also show in global popular section (requires isFeatured=true)
   aiDescriptionSkipped?: boolean; // Station was checked for AI description but had no info from OpenAI - don't recheck to save tokens
   tagsCheckedAt?: Date; // Last time we re-queried Radio-Browser for this station's tags (whether upstream returned tags or was empty) - used to skip re-querying empty-upstream stations for a cooldown window
+  hasLogo?: boolean; // Pre-computed flag: true if station has a valid favicon/logo
   createdAt: Date;
   updatedAt: Date;
 }
@@ -263,6 +264,9 @@ export interface IUser extends Document {
   bio?: string;
   role: 'admin' | 'moderator' | 'user';
   status: 'active' | 'inactive' | 'suspended';
+  isActive?: boolean;
+  authProvider?: string;
+  profilePicture?: string;
   lastLoginAt?: Date;
   location?: string;
   avatar?: string;

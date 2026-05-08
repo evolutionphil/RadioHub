@@ -171,7 +171,8 @@ export function htmlLangMiddleware(req: Request, res: Response, next: NextFuncti
   
   res.send = function(body: any): Response {
     if (typeof body === 'string') {
-      return res.end(body);
+      res.end(body);
+      return res;
     }
     return originalSend.call(res, body);
   };

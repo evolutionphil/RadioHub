@@ -217,7 +217,7 @@ async function activateManifest(buildingId: mongoose.Types.ObjectId, type: strin
     try {
       await session.withTransaction(async () => {
         await SitemapManifest.updateMany(
-          { type, language, status: 'active' },
+          { type, language, status: 'active' } as any,
           {
             $set: {
               status: 'superseded',
@@ -254,7 +254,7 @@ async function activateManifest(buildingId: mongoose.Types.ObjectId, type: strin
 
   // Standalone Mongo fallback — sequential best-effort.
   await SitemapManifest.updateMany(
-    { type, language, status: 'active' },
+    { type, language, status: 'active' } as any,
     {
       $set: {
         status: 'superseded',

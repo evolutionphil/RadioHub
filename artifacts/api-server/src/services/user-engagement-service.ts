@@ -531,8 +531,8 @@ export class UserEngagementService {
           $match: {
             isPublicProfile: true,
             $or: [
-              { fullName: { $exists: true, $ne: null, $ne: '' } },
-              { username: { $exists: true, $ne: null, $ne: '' } }
+              { fullName: { $exists: true, $nin: [null, ''] } },
+              { username: { $exists: true, $nin: [null, ''] } }
             ]
           }
         },

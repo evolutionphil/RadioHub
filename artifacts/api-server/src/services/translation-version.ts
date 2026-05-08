@@ -113,7 +113,7 @@ export class TranslationVersionService {
         return { success: false, version: 0 };
       }
 
-      const data = await response.json();
+      const data: any = await response.json();
       logger.log(`✅ Version bumped via API to ${data.version}`);
       return { success: true, version: data.version };
     } catch (error) {

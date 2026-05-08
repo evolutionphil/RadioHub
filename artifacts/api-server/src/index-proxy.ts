@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Max-Age', '86400');
-    return res.status(204).end();
+    return void res.status(204).end();
   }
   next();
 });

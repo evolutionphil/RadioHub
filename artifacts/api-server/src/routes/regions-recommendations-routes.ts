@@ -141,7 +141,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const CacheManager = (await import('../cache')).default;
       const cached = await CacheManager.get<any>(cacheKey);
       if (cached) {
-        return res.json({
+        return void res.json({
           success: true,
           data: { cities: cached },
           cached: true
@@ -208,7 +208,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const { country } = req.query;
       
       if (!country || typeof country !== 'string') {
-        return res.status(400).json({
+        return void res.status(400).json({
           success: false,
           error: 'Country parameter is required'
         });
@@ -263,7 +263,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const region = (WORLD_REGIONS as any)[regionSlug];
       
       if (!region) {
-        return res.status(404).json({
+        return void res.status(404).json({
           success: false,
           error: 'Region not found'
         });
@@ -349,7 +349,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const region = (WORLD_REGIONS as any)[regionSlug];
       
       if (!region) {
-        return res.status(404).json({
+        return void res.status(404).json({
           success: false,
           error: 'Region not found'
         });
@@ -360,7 +360,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       );
       
       if (!countryName) {
-        return res.status(404).json({
+        return void res.status(404).json({
           success: false,
           error: 'Country not found'
         });
@@ -475,7 +475,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       
       const region = (WORLD_REGIONS as any)[regionSlug];
       if (!region) {
-        return res.status(404).json({
+        return void res.status(404).json({
           success: false,
           error: 'Region not found'
         });
@@ -486,7 +486,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       );
       
       if (!countryName) {
-        return res.status(404).json({
+        return void res.status(404).json({
           success: false,
           error: 'Country not found'
         });
@@ -535,7 +535,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
             city.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '') === citySlug
           );
           if (!cityName) {
-            return res.status(404).json({
+            return void res.status(404).json({
               success: false,
               error: 'City not found'
             });
@@ -610,7 +610,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const cacheKey = `recommendations:diverse:${country || 'all'}:${limit}`;
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       const topGenres = await Genre.find({ stationCount: { $gt: 5 } })
@@ -673,7 +673,12 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
     requestTimeout: 10000
   };
 
-  let healthCheckResults = {
+  let healthCheckResults: {
+    summary: Record<string, any>;
+    brokenStations: any[];
+    hlsStations: any[];
+    completedAt: any;
+  } = {
     summary: {},
     brokenStations: [],
     hlsStations: [],
@@ -683,7 +688,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
   app.post('/api/admin/start-health-check', requireAdmin, async (req, res) => {
     try {
       if (healthCheckProgress.running) {
-        return res.status(400).json({ error: 'Health check already running' });
+        return void res.status(400).json({ error: 'Health check already running' });
       }
 
       const totalStations = await Station.countDocuments();
@@ -726,7 +731,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
     });
   });
 
-  async function runHealthCheck(testLimit?: number) {
+  async function runHealthCheck(testLimit?: number): Promise<void> {
     const brokenStations: any[] = [];
     const hlsStations: any[] = [];
     let skip = 0;
@@ -770,8 +775,8 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         hls: healthCheckProgress.hls,
         timeout: healthCheckProgress.timeout
       },
-      brokenStations: brokenStations.slice(0, 100),
-      hlsStations: hlsStations.slice(0, 100),
+      brokenStations: (brokenStations as any[]).slice(0, 100),
+      hlsStations: (hlsStations as any[]).slice(0, 100),
       completedAt: healthCheckProgress.endTime as any
     };
 
@@ -902,6 +907,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         return 'broken';
       }
     }
+    return 'broken';
   }
 
   function validateStreamResponse(response: any, contentType: string, finalUrl: string, icyName: string | null) {

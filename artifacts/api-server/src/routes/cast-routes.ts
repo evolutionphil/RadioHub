@@ -131,7 +131,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
       }
 
       if (!userId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       const { mobileDeviceId } = req.body || {};
@@ -182,7 +182,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
         if (now > attempts.resetAt) {
           pairingAttempts.set(clientIp, { count: 1, resetAt: now + PAIRING_WINDOW_MS });
         } else if (attempts.count >= PAIRING_MAX_ATTEMPTS) {
-          return res.status(429).json({ error: 'Too many pairing attempts. Try again later.' });
+          return void res.status(429).json({ error: 'Too many pairing attempts. Try again later.' });
         } else {
           attempts.count++;
         }
@@ -194,13 +194,13 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
       const { pairingCode, deviceId, deviceName, platform } = req.body;
 
       if (!pairingCode || !deviceId) {
-        return res.status(400).json({ error: 'pairingCode and deviceId are required' });
+        return void res.status(400).json({ error: 'pairingCode and deviceId are required' });
       }
 
       const result = await castService.pairSession(pairingCode, deviceId);
 
       if (!result) {
-        return res.status(404).json({ error: 'Invalid pairing code or session expired' });
+        return void res.status(404).json({ error: 'Invalid pairing code or session expired' });
       }
 
       res.json({
@@ -228,23 +228,23 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
         if (tokenDoc) userId = tokenDoc.userId.toString();
       }
 
-      if (!userId) return res.status(401).json({ error: 'Authentication required' });
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
 
       const { sessionId, command, data } = req.body;
 
       if (!sessionId || !command) {
-        return res.status(400).json({ error: 'sessionId and command are required' });
+        return void res.status(400).json({ error: 'sessionId and command are required' });
       }
 
       const validCommands = ['play', 'pause', 'resume', 'stop', 'change_station', 'volume_up', 'volume_down', 'set_volume'];
       if (!validCommands.includes(command)) {
-        return res.status(400).json({ error: `Invalid command. Valid: ${validCommands.join(', ')}` });
+        return void res.status(400).json({ error: `Invalid command. Valid: ${validCommands.join(', ')}` });
       }
 
       const success = await castService.sendCommand(sessionId, command, data, 'mobile', userId);
 
       if (!success) {
-        return res.status(404).json({ error: 'Session not found, not active, or not authorized' });
+        return void res.status(404).json({ error: 'Session not found, not active, or not authorized' });
       }
 
       res.json({ success: true, command, sessionId });
@@ -267,13 +267,13 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
         if (tokenDoc) userId = tokenDoc.userId.toString();
       }
 
-      if (!userId) return res.status(401).json({ error: 'Authentication required' });
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
 
       const { sessionId } = req.params;
       const status = await castService.getSessionStatus(sessionId, userId);
 
       if (!status) {
-        return res.status(404).json({ error: 'Session not found' });
+        return void res.status(404).json({ error: 'Session not found' });
       }
 
       res.json({ success: true, ...status });
@@ -296,7 +296,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
         if (tokenDoc) userId = tokenDoc.userId.toString();
       }
 
-      if (!userId) return res.status(401).json({ error: 'Authentication required' });
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
 
       const sessions = await castService.getUserActiveSessions(userId);
       res.json({ success: true, sessions });

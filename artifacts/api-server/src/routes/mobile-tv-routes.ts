@@ -231,11 +231,11 @@ If you have any questions about this privacy policy or our data practices, pleas
       const { token, platform, deviceName, country, language, tokenType } = req.body;
 
       if (!token || !platform) {
-        return res.status(400).json({ success: false, message: "token and platform are required" });
+        return void res.status(400).json({ success: false, message: "token and platform are required" });
       }
 
       if (!['ios', 'android'].includes(platform)) {
-        return res.status(400).json({ success: false, message: "platform must be 'ios' or 'android'" });
+        return void res.status(400).json({ success: false, message: "platform must be 'ios' or 'android'" });
       }
 
       let resolvedUserId = null;
@@ -287,7 +287,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const { token } = req.body;
 
       if (!token) {
-        return res.status(400).json({ success: false, message: "token is required" });
+        return void res.status(400).json({ success: false, message: "token is required" });
       }
 
       let resolvedUserId = null;
@@ -311,7 +311,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       );
 
       if (!result) {
-        return res.status(404).json({ success: false, message: "Push token not found" });
+        return void res.status(404).json({ success: false, message: "Push token not found" });
       }
 
       res.json({ success: true, message: "Push token deactivated" });
@@ -328,7 +328,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
       if (!token) {
-        return res.json({ authenticated: false, user: null });
+        return void res.json({ authenticated: false, user: null });
       }
 
       const tokenDoc = await AuthToken.findOne({
@@ -338,7 +338,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       });
 
       if (!tokenDoc) {
-        return res.json({ authenticated: false, user: null });
+        return void res.json({ authenticated: false, user: null });
       }
 
       tokenDoc.lastUsedAt = new Date();
@@ -349,7 +349,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         .lean() as any;
 
       if (!user) {
-        return res.json({ authenticated: false, user: null });
+        return void res.json({ authenticated: false, user: null });
       }
 
       const actualFollowersCount = await UserFollow.countDocuments({ followingUserId: user._id });
@@ -401,7 +401,7 @@ If you have any questions about this privacy policy or our data practices, pleas
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) {
-        return res.status(401).json({ error: 'Authentication required' });
+        return void res.status(401).json({ error: 'Authentication required' });
       }
 
       const result = await AuthToken.updateMany(
@@ -443,11 +443,11 @@ If you have any questions about this privacy policy or our data practices, pleas
       const { deviceId, platform = 'other' } = req.body;
 
       if (!deviceId) {
-        return res.status(400).json({ error: 'deviceId is required' });
+        return void res.status(400).json({ error: 'deviceId is required' });
       }
 
       if (!['tizen', 'webos', 'other'].includes(platform)) {
-        return res.status(400).json({ error: 'platform must be tizen, webos, or other' });
+        return void res.status(400).json({ error: 'platform must be tizen, webos, or other' });
       }
 
       await TvLoginCode.updateMany(
@@ -465,7 +465,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       } while (attempts < 10);
 
       if (attempts >= 10) {
-        return res.status(503).json({ error: 'Unable to generate unique code. Try again.' });
+        return void res.status(503).json({ error: 'Unable to generate unique code. Try again.' });
       }
 
       const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -499,19 +499,19 @@ If you have any questions about this privacy policy or our data practices, pleas
       const { deviceId } = req.query;
 
       if (!deviceId) {
-        return res.status(400).json({ error: 'deviceId query parameter is required' });
+        return void res.status(400).json({ error: 'deviceId query parameter is required' });
       }
 
       const loginCode = await TvLoginCode.findOne({ code, deviceId });
 
       if (!loginCode) {
-        return res.status(404).json({ status: 'expired', message: 'Code expired, request a new one' });
+        return void res.status(404).json({ status: 'expired', message: 'Code expired, request a new one' });
       }
 
       if (loginCode.expiresAt < new Date()) {
         loginCode.status = 'expired';
         await loginCode.save();
-        return res.status(404).json({ status: 'expired', message: 'Code expired, request a new one' });
+        return void res.status(404).json({ status: 'expired', message: 'Code expired, request a new one' });
       }
 
       if (loginCode.status === 'activated' && loginCode.token && loginCode.userId) {
@@ -547,7 +547,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         if (now > attempts.resetAt) {
           tvCodeAttempts.set(clientIp, { count: 1, resetAt: now + TV_CODE_WINDOW_MS });
         } else if (attempts.count >= TV_CODE_MAX_ATTEMPTS) {
-          return res.status(429).json({ error: 'Too many activation attempts. Try again later.' });
+          return void res.status(429).json({ error: 'Too many activation attempts. Try again later.' });
         } else {
           attempts.count++;
         }
@@ -568,12 +568,12 @@ If you have any questions about this privacy policy or our data practices, pleas
       }
 
       if (!userId) {
-        return res.status(401).json({ error: 'Authentication required. Please login on mobile first.' });
+        return void res.status(401).json({ error: 'Authentication required. Please login on mobile first.' });
       }
 
       const { code } = req.body;
       if (!code) {
-        return res.status(400).json({ error: 'code is required' });
+        return void res.status(400).json({ error: 'code is required' });
       }
 
       const loginCode = await TvLoginCode.findOne({
@@ -583,7 +583,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       });
 
       if (!loginCode) {
-        return res.status(404).json({ success: false, message: 'Invalid code or code expired' });
+        return void res.status(404).json({ success: false, message: 'Invalid code or code expired' });
       }
 
       const deviceName = loginCode.platform === 'tizen' ? 'Samsung TV' : loginCode.platform === 'webos' ? 'LG TV' : 'TV';
@@ -632,12 +632,12 @@ If you have any questions about this privacy policy or our data practices, pleas
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
       if (!bearerToken) {
-        return res.status(401).json({ error: 'TV token required' });
+        return void res.status(401).json({ error: 'TV token required' });
       }
 
       const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false });
       if (!tokenDoc) {
-        return res.status(401).json({ error: 'Invalid or expired token' });
+        return void res.status(401).json({ error: 'Invalid or expired token' });
       }
 
       tokenDoc.isRevoked = true;
@@ -665,7 +665,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
       if (!bearerToken) {
-        return res.status(401).json({ valid: false, error: 'Token required' });
+        return void res.status(401).json({ valid: false, error: 'Token required' });
       }
 
       const tokenDoc = await AuthToken.findOne({
@@ -675,7 +675,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       });
 
       if (!tokenDoc) {
-        return res.status(401).json({ valid: false, error: 'Invalid or expired token' });
+        return void res.status(401).json({ valid: false, error: 'Invalid or expired token' });
       }
 
       tokenDoc.lastUsedAt = new Date();
@@ -743,7 +743,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
         res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-        return res.json(cached);
+        return void res.json(cached);
       }
 
       let stationFilter: any = { lastCheckOk: true };

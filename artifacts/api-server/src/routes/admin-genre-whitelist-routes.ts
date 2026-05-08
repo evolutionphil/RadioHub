@@ -289,7 +289,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           (s) => !slugsWithGenreRow.has(s),
         );
 
-        return res.json({
+        return void res.json({
           slugs: sortedSlugs,
           slugStationCounts: stationCounts,
           slugsWithoutGenreRow,
@@ -321,7 +321,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         });
       } catch (error: any) {
         logger.error('Error reading genre whitelist:', error);
-        return res.status(500).json({ error: 'Failed to read genre whitelist' });
+        return void res.status(500).json({ error: 'Failed to read genre whitelist' });
       }
     },
   );
@@ -369,10 +369,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           if (suggestions.length >= limit) break;
         }
 
-        return res.json({ suggestions, limit });
+        return void res.json({ suggestions, limit });
       } catch (error: any) {
         logger.error('Error loading genre whitelist suggestions:', error);
-        return res.status(500).json({ error: 'Failed to load suggestions' });
+        return void res.status(500).json({ error: 'Failed to load suggestions' });
       }
     },
   );
@@ -388,10 +388,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
     async (_req: Request, res: Response) => {
       try {
         await recomputeGenreStationCounts('admin-manual');
-        return res.json({ ok: true, status: getGenreStationCountsStatus() });
+        return void res.json({ ok: true, status: getGenreStationCountsStatus() });
       } catch (error: any) {
         logger.error('Error recomputing Genre.stationCount:', error);
-        return res.status(500).json({ error: 'Failed to recompute counts' });
+        return void res.status(500).json({ error: 'Failed to recompute counts' });
       }
     },
   );
@@ -408,21 +408,21 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       try {
         const slugResult = parseAdminSlug((req.body ?? {}).slug);
         if (!slugResult.ok) {
-          return res.status(slugResult.status).json({ error: slugResult.error });
+          return void res.status(slugResult.status).json({ error: slugResult.error });
         }
         const slug = slugResult.slug;
         // Task #148: reject reserved/system slugs (e.g. `stations`,
         // `about`) — those would never produce a useful /genres/:slug page
         // and could conflict with existing top-level routes.
         if (isReservedGenreSlug(slug)) {
-          return res.status(400).json({
+          return void res.status(400).json({
             error: `"${slug}" is a reserved system path and can't be used as a genre slug`,
           });
         }
         const notes = String((req.body ?? {}).notes ?? '').slice(0, MAX_NOTES_LEN);
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
         // Task #148: warn (don't block) if no Genre row matches this slug —
@@ -461,10 +461,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
 
         await refreshGenreWhitelistFromDb();
         triggerSearchEnginePush([slug], { triggeredBy: createdBy, trigger: 'add-slug' });
-        return res.json({ ok: true, slug, stationCount, warning, rebuildQueued: true });
+        return void res.json({ ok: true, slug, stationCount, warning, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre whitelist slug:', error);
-        return res.status(500).json({ error: 'Failed to add slug' });
+        return void res.status(500).json({ error: 'Failed to add slug' });
       }
     },
   );
@@ -479,12 +479,12 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       try {
         const slugResult = parseAdminSlug(req.params.slug);
         if (!slugResult.ok) {
-          return res.status(slugResult.status).json({ error: slugResult.error });
+          return void res.status(slugResult.status).json({ error: slugResult.error });
         }
         const slug = slugResult.slug;
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
         // Drop any admin add first.
@@ -514,10 +514,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
 
         await refreshGenreWhitelistFromDb();
         triggerSearchEnginePush([slug], { triggeredBy: createdBy, trigger: 'remove-slug' });
-        return res.json({ ok: true, slug, rebuildQueued: true });
+        return void res.json({ ok: true, slug, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error removing genre whitelist slug:', error);
-        return res.status(500).json({ error: 'Failed to remove slug' });
+        return void res.status(500).json({ error: 'Failed to remove slug' });
       }
     },
   );
@@ -535,14 +535,14 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       try {
         const slugResult = parseAdminSlug(req.params.slug);
         if (!slugResult.ok) {
-          return res.status(slugResult.status).json({ error: slugResult.error });
+          return void res.status(slugResult.status).json({ error: slugResult.error });
         }
         const slug = slugResult.slug;
         // Refresh the in-memory snapshot before checking whitelist
         // membership so we don't reject a slug another replica just added.
         await refreshGenreWhitelistFromDb();
         if (!getMergedWhitelist().has(slug)) {
-          return res.status(400).json({
+          return void res.status(400).json({
             error: `"${slug}" is not on the whitelist — add it first`,
           });
         }
@@ -577,12 +577,12 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         )) as unknown as UpsertRawResult;
         const created = result?.lastErrorObject?.upserted != null;
         if (!created) {
-          return res.status(409).json({ error: `Genre row for "${slug}" already exists` });
+          return void res.status(409).json({ error: `Genre row for "${slug}" already exists` });
         }
-        return res.json({ ok: true, slug, name });
+        return void res.json({ ok: true, slug, name });
       } catch (error: any) {
         logger.error('Error creating genre row for whitelist slug:', error);
-        return res.status(500).json({ error: 'Failed to create genre row' });
+        return void res.status(500).json({ error: 'Failed to create genre row' });
       }
     },
   );
@@ -597,26 +597,26 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       try {
         const sourceResult = parseAdminSlug((req.body ?? {}).source, 'source');
         if (!sourceResult.ok) {
-          return res.status(sourceResult.status).json({ error: sourceResult.error });
+          return void res.status(sourceResult.status).json({ error: sourceResult.error });
         }
         const canonicalResult = parseAdminSlug((req.body ?? {}).canonical, 'canonical');
         if (!canonicalResult.ok) {
-          return res.status(canonicalResult.status).json({ error: canonicalResult.error });
+          return void res.status(canonicalResult.status).json({ error: canonicalResult.error });
         }
         const source = sourceResult.slug;
         const canonical = canonicalResult.slug;
         if (source === canonical) {
-          return res.status(400).json({ error: 'Source cannot equal canonical' });
+          return void res.status(400).json({ error: 'Source cannot equal canonical' });
         }
         // Task #148: reserved system slugs can't appear on either side of
         // an alias for the same reasons they can't be added directly.
         if (isReservedGenreSlug(source)) {
-          return res.status(400).json({
+          return void res.status(400).json({
             error: `"${source}" is a reserved system path and can't be used as an alias source`,
           });
         }
         if (isReservedGenreSlug(canonical)) {
-          return res.status(400).json({
+          return void res.status(400).json({
             error: `"${canonical}" is a reserved system path and can't be used as a canonical slug`,
           });
         }
@@ -625,14 +625,14 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // the canonical target — an admin could have just added it.
         await refreshGenreWhitelistFromDb();
         if (!getMergedWhitelist().has(canonical)) {
-          return res.status(400).json({
+          return void res.status(400).json({
             error: `Canonical "${canonical}" is not on the whitelist — add it first`,
           });
         }
         // An alias can't shadow a whitelisted slug — that slug should
         // resolve to itself, not redirect.
         if (getMergedWhitelist().has(source)) {
-          return res.status(400).json({
+          return void res.status(400).json({
             error: `Source "${source}" is already a whitelisted slug — remove it first to alias it`,
           });
         }
@@ -640,7 +640,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         const notes = String((req.body ?? {}).notes ?? '').slice(0, MAX_NOTES_LEN);
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
         // Drop any prior 'alias-remove' for this source — adding overrides
@@ -661,10 +661,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // canonical (which may have just appeared) so search engines
         // pick up the new redirect target without waiting 6h.
         triggerSearchEnginePush([source, canonical], { triggeredBy: createdBy, trigger: 'add-alias' });
-        return res.json({ ok: true, source, canonical, rebuildQueued: true });
+        return void res.json({ ok: true, source, canonical, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre alias:', error);
-        return res.status(500).json({ error: 'Failed to add alias' });
+        return void res.status(500).json({ error: 'Failed to add alias' });
       }
     },
   );
@@ -679,12 +679,12 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       try {
         const sourceResult = parseAdminSlug(req.params.source, 'source');
         if (!sourceResult.ok) {
-          return res.status(sourceResult.status).json({ error: sourceResult.error });
+          return void res.status(sourceResult.status).json({ error: sourceResult.error });
         }
         const source = sourceResult.slug;
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
         await GenreWhitelistOverride.deleteOne({ kind: 'alias-add', slug: source });
@@ -707,10 +707,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
 
         await refreshGenreWhitelistFromDb();
         triggerSearchEnginePush([source], { triggeredBy: createdBy, trigger: 'remove-alias' });
-        return res.json({ ok: true, source, rebuildQueued: true });
+        return void res.json({ ok: true, source, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error removing genre alias:', error);
-        return res.status(500).json({ error: 'Failed to remove alias' });
+        return void res.status(500).json({ error: 'Failed to remove alias' });
       }
     },
   );
@@ -726,7 +726,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       try {
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
         const previous = getLastPushStatus();
         const affectedSlugs = previous?.affectedSlugs ?? [];
@@ -734,10 +734,10 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           triggeredBy: createdBy,
           trigger: 'manual-repush',
         });
-        return res.json({ ok: true, rebuildQueued: true, affectedSlugs });
+        return void res.json({ ok: true, rebuildQueued: true, affectedSlugs });
       } catch (error: any) {
         logger.error('Error queuing manual re-push:', error);
-        return res.status(500).json({ error: 'Failed to queue re-push' });
+        return void res.status(500).json({ error: 'Failed to queue re-push' });
       }
     },
   );

@@ -12,7 +12,7 @@ export function registerOgImageRoutes(app: Express, deps: any) {
         const defaultImage = await getDefaultOgImage();
         res.setHeader('Content-Type', 'image/jpeg');
         res.setHeader('Cache-Control', 'public, max-age=86400');
-        return res.send(defaultImage);
+        return void res.send(defaultImage);
       }
       
       res.setHeader('Content-Type', 'image/jpeg');

@@ -139,7 +139,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       const { countryCode, countryName, languageCode, isActive, notes } = req.body;
 
       if (!countryCode || !countryName || !languageCode) {
-        return res.status(400).json({ error: 'countryCode, countryName, and languageCode are required' });
+        return void res.status(400).json({ error: 'countryCode, countryName, and languageCode are required' });
       }
 
       // Capture the previous languageCode (if any) so the audit entry can
@@ -199,7 +199,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       const { mappings } = req.body;
 
       if (!Array.isArray(mappings)) {
-        return res.status(400).json({ error: 'mappings array is required' });
+        return void res.status(400).json({ error: 'mappings array is required' });
       }
 
       // Snapshot prior languageCodes for every country we're about to touch
@@ -310,7 +310,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
           deletedCount: 0,
           snapshot: [],
         });
-        return res.json({ success: true, deletedCount: 0 });
+        return void res.json({ success: true, deletedCount: 0 });
       }
 
       const overrideCountryCodes = overrideSnapshot.map(m => m.countryCode);
@@ -395,7 +395,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
 
       if (actionParam && actionParam !== 'all') {
         if (!VALID_AUDIT_ACTIONS.includes(actionParam as CountryLanguageMappingAuditAction)) {
-          return res.status(400).json({ error: 'Invalid action filter' });
+          return void res.status(400).json({ error: 'Invalid action filter' });
         }
         filter.action = actionParam;
       }
@@ -624,7 +624,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       const mongoose = (await import('mongoose')).default;
       const { id } = req.params;
       if (!mongoose.Types.ObjectId.isValid(id)) {
-        return res.status(400).json({ error: 'Invalid audit entry id' });
+        return void res.status(400).json({ error: 'Invalid audit entry id' });
       }
 
       const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
@@ -641,7 +641,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       }>();
 
       if (!entry) {
-        return res.status(404).json({ error: 'Audit entry not found' });
+        return void res.status(404).json({ error: 'Audit entry not found' });
       }
 
       const languageNames: Record<string, string> = {};
@@ -688,7 +688,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       };
 
       if (!Array.isArray(mappings)) {
-        return res.status(400).json({ error: 'mappings array is required' });
+        return void res.status(400).json({ error: 'mappings array is required' });
       }
 
       const valid = mappings.filter(
@@ -699,7 +699,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       );
 
       if (valid.length === 0) {
-        return res.json({ success: true, restoredCount: 0, mappings: [] });
+        return void res.json({ success: true, restoredCount: 0, mappings: [] });
       }
 
       const restored = await Promise.all(

@@ -70,10 +70,10 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
     async (_req: Request, res: Response) => {
       try {
         const payload = await buildResponse();
-        return res.json(payload);
+        return void res.json(payload);
       } catch (error: any) {
         logger.error('Error reading coverage drop settings:', error);
-        return res.status(500).json({ error: 'Failed to read settings' });
+        return void res.status(500).json({ error: 'Failed to read settings' });
       }
     },
   );
@@ -98,7 +98,7 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
         if (body.thresholdPp !== undefined && body.thresholdPp !== null && body.thresholdPp !== '') {
           const n = Number(body.thresholdPp);
           if (!Number.isFinite(n) || n < 0 || n > MAX_THRESHOLD_PP) {
-            return res.status(400).json({
+            return void res.status(400).json({
               error: `thresholdPp must be a number between 0 and ${MAX_THRESHOLD_PP}`,
             });
           }
@@ -108,7 +108,7 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
         if (body.minStations !== undefined && body.minStations !== null && body.minStations !== '') {
           const n = Number(body.minStations);
           if (!Number.isFinite(n) || n < 0 || n > MAX_MIN_STATIONS) {
-            return res.status(400).json({
+            return void res.status(400).json({
               error: `minStations must be an integer between 0 and ${MAX_MIN_STATIONS}`,
             });
           }
@@ -119,12 +119,12 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
           const raw = String(body.webhookUrl).trim();
           if (raw.length > 0) {
             if (raw.length > MAX_WEBHOOK_URL_LENGTH) {
-              return res
+              return void res
                 .status(400)
                 .json({ error: 'webhookUrl is too long' });
             }
             if (!isHttpUrl(raw)) {
-              return res
+              return void res
                 .status(400)
                 .json({ error: 'webhookUrl must be an http(s) URL' });
             }
@@ -149,10 +149,10 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
 
         invalidateCoverageDropSettingsCache();
         const payload = await buildResponse();
-        return res.json(payload);
+        return void res.json(payload);
       } catch (error: any) {
         logger.error('Error writing coverage drop settings:', error);
-        return res.status(500).json({ error: 'Failed to write settings' });
+        return void res.status(500).json({ error: 'Failed to write settings' });
       }
     },
   );
@@ -165,10 +165,10 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
         await AdminSetting.deleteOne({ key: COVERAGE_DROP_SETTINGS_KEY });
         invalidateCoverageDropSettingsCache();
         const payload = await buildResponse();
-        return res.json(payload);
+        return void res.json(payload);
       } catch (error: any) {
         logger.error('Error clearing coverage drop settings:', error);
-        return res.status(500).json({ error: 'Failed to clear settings' });
+        return void res.status(500).json({ error: 'Failed to clear settings' });
       }
     },
   );

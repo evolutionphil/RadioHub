@@ -29,25 +29,25 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
       try {
         const key = String(req.params.key ?? '');
         if (!KEY_REGEX.test(key)) {
-          return res.status(400).json({ error: 'Invalid preference key' });
+          return void res.status(400).json({ error: 'Invalid preference key' });
         }
         const adminUsername = getAdminUsername(req);
         if (!adminUsername) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
         const doc = await AdminPreference.findOne({ adminUsername, key }).lean();
         if (!doc) {
-          return res.json({ key, value: null, updatedAt: null });
+          return void res.json({ key, value: null, updatedAt: null });
         }
-        return res.json({
+        return void res.json({
           key,
           value: doc.value ?? null,
           updatedAt: doc.updatedAt ?? null,
         });
       } catch (error: any) {
         logger.error('Error reading admin preference:', error);
-        return res.status(500).json({ error: 'Failed to read preference' });
+        return void res.status(500).json({ error: 'Failed to read preference' });
       }
     },
   );
@@ -59,21 +59,21 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
       try {
         const key = String(req.params.key ?? '');
         if (!KEY_REGEX.test(key)) {
-          return res.status(400).json({ error: 'Invalid preference key' });
+          return void res.status(400).json({ error: 'Invalid preference key' });
         }
         const adminUsername = getAdminUsername(req);
         if (!adminUsername) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
         const result = await AdminPreference.deleteOne({ adminUsername, key });
-        return res.json({
+        return void res.json({
           key,
           deleted: result.deletedCount ?? 0,
         });
       } catch (error: any) {
         logger.error('Error deleting admin preference:', error);
-        return res.status(500).json({ error: 'Failed to delete preference' });
+        return void res.status(500).json({ error: 'Failed to delete preference' });
       }
     },
   );
@@ -85,16 +85,16 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
       try {
         const key = String(req.params.key ?? '');
         if (!KEY_REGEX.test(key)) {
-          return res.status(400).json({ error: 'Invalid preference key' });
+          return void res.status(400).json({ error: 'Invalid preference key' });
         }
         const adminUsername = getAdminUsername(req);
         if (!adminUsername) {
-          return res.status(401).json({ error: 'Admin identity unavailable' });
+          return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
         const body = (req.body ?? {}) as { value?: unknown };
         if (!('value' in body)) {
-          return res.status(400).json({ error: 'Body must include "value"' });
+          return void res.status(400).json({ error: 'Body must include "value"' });
         }
 
         const value = body.value ?? null;
@@ -105,14 +105,14 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
           { upsert: true, new: true },
         ).lean();
 
-        return res.json({
+        return void res.json({
           key,
           value: doc?.value ?? null,
           updatedAt: doc?.updatedAt ?? now,
         });
       } catch (error: any) {
         logger.error('Error writing admin preference:', error);
-        return res.status(500).json({ error: 'Failed to write preference' });
+        return void res.status(500).json({ error: 'Failed to write preference' });
       }
     },
   );
