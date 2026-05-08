@@ -814,7 +814,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       
       try {
         const token = await generateAuthToken(user._id.toString(), 'web');
-        logger.log('✅ Google OAuth token generated for:', user.email);
+        logger.log(`✅ Google OAuth token generated for: ${user.email} userId=${user._id} tokenPrefix=${token.slice(0, 16)}… len=${token.length}`);
         
         // Resolve redirect target: prefer session, fall back to HMAC-signed
         // `state` query param (set in /api/auth/google) so the redirect still
@@ -1525,25 +1525,37 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
   app.post("/api/auth/token-session", async (req, res) => {
     try {
       const { token } = req.body;
+      const tokenPrefix = typeof token === 'string' ? `${token.slice(0, 16)}…(${token.length})` : `<${typeof token}>`;
+      logger.log(`🔐 token-session POST received tokenPrefix=${tokenPrefix} origin=${req.headers.origin || '(none)'} ua=${(req.headers['user-agent'] || '').slice(0, 60)}`);
+
       // CRITICAL: type guard before Mongoose query. Without this, an attacker
       // can send `{"token":{"$ne":null}}` and match any non-revoked token,
       // turning this into an account takeover. We also bound the length to
       // avoid DoS via huge keys.
       if (typeof token !== 'string' || token.length < 16 || token.length > 512) {
+        logger.warn(`🔐 token-session REJECTED — bad token shape: ${tokenPrefix}`);
         return res.status(400).json({ success: false, error: 'Token is required' });
       }
 
       const authToken = await AuthToken.findOne({ token, isRevoked: false });
       if (!authToken) {
+        // Diagnose: token exists but revoked? token doesn't exist at all?
+        const anyMatch = await AuthToken.findOne({ token }).select('isRevoked expiresAt userId createdAt').lean();
+        if (anyMatch) {
+          logger.warn(`🔐 token-session 401 — token found but isRevoked=${(anyMatch as any).isRevoked} expiresAt=${(anyMatch as any).expiresAt} userId=${(anyMatch as any).userId}`);
+        } else {
+          logger.warn(`🔐 token-session 401 — token NOT FOUND in DB at all (prefix=${tokenPrefix})`);
+        }
         return res.status(401).json({ success: false, error: 'Invalid or expired token' });
       }
-      
+
       if (authToken.expiresAt && new Date(authToken.expiresAt) < new Date()) {
         authToken.isRevoked = true;
         await authToken.save();
+        logger.warn(`🔐 token-session 401 — token expired at ${authToken.expiresAt}`);
         return res.status(401).json({ success: false, error: 'Token expired' });
       }
-      
+
       const user = await User.findById(authToken.userId);
       if (!user) {
         return res.status(404).json({ success: false, error: 'User not found' });

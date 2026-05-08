@@ -1,0 +1,16 @@
+[TV-LOGIN] 🖥️ render — authLoading: true isAuthenticated: false user: (null) isLoggedIn: false
+index-abBkAK46.js:50 LCP: 856
+tv-login-DmSz_eUd.js:1 [TV-LOGIN] 🖥️ render — authLoading: true isAuthenticated: false user: (null) isLoggedIn: false
+tv-login-DmSz_eUd.js:1 [TV-LOGIN] 🖥️ render — authLoading: false isAuthenticated: false user: (null) isLoggedIn: false
+index-abBkAK46.js:50 LCP: 988
+tv-login-DmSz_eUd.js:1 [TV-LOGIN] 🖥️ render — authLoading: false isAuthenticated: false user: (null) isLoggedIn: false
+tv-login-DmSz_eUd.js:1 [TV-LOGIN] 🖥️ render — authLoading: false isAuthenticated: false user: (null) isLoggedIn: false
+tv-login-DmSz_eUd.js:1 [TV-LOGIN] 🖥️ render — authLoading: false isAuthenticated: false user: (null) isLoggedIn: false
+index-abBkAK46.js:50 LCP: 1088
+2tv-login-DmSz_eUd.js:1 [TV-LOGIN] 🖥️ render — authLoading: false isAuthenticated: false user: (null) isLoggedIn: false
+index-abBkAK46.js:50 LCP: 1204
+tv-login-DmSz_eUd.js:1 [TV-LOGIN] 🖥️ render — authLoading: false isAuthenticated: false user: (null) isLoggedIn: false
+index-abBkAK46.js:50 FID: 3
+tv?auth_token=mrt_7c7f963dd7ece135a8d16259d51490c155ee87e6777103c49737b162135cf82d:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.Understand this warning
+tv?auth_token=mrt_7c7f963dd7ece135a8d16259d51490c155ee87e6777103c49737b162135cf82d:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.Understand this warning
+tv?auth_token=mrt_7c7f963dd7ece135a8d16259d51490c155ee87e6777103c49737b162135cf82d:1 The resource https://themegaradio.com/images/hero-bg.webp was preloaded using link preload but not used within a few seconds from the window's load event. Please make sure it has an appropriate `as` value and it is preloaded intentionally.Understand this warning

@@ -48,8 +48,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const authToken = params.get('auth_token');
 
     console.log('[AUTH] 🚀 useAuth mount — current URL:', window.location.href);
-    console.log('[AUTH] 🔑 auth_token in URL:', authToken ? `${authToken.slice(0, 12)}…(${authToken.length} chars)` : 'NONE');
-    console.log('[AUTH] 🍪 document.cookie:', document.cookie || '(empty)');
+    console.log('[AUTH] 🔑 auth_token in URL:', authToken ? `${authToken.slice(0, 16)}…(${authToken.length} chars)` : 'NONE');
+    // NOTE: connect.sid is HttpOnly so it WILL NOT appear in document.cookie.
+    // Only non-HttpOnly cookies (analytics, language preference, etc.) show up.
+    console.log('[AUTH] 🍪 document.cookie (HttpOnly cookies are NOT shown here):', document.cookie || '(empty)');
 
     if (authToken) {
       params.delete('auth_token');
@@ -68,7 +70,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .then(async (res) => {
           const elapsed = Math.round(performance.now() - t0);
           console.log(`[AUTH] 📥 token-session response — status:${res.status} ok:${res.ok} elapsed:${elapsed}ms`);
-          console.log('[AUTH] 🍪 document.cookie AFTER token-session:', document.cookie || '(empty — COOKIE BLOCKED!)');
+          // connect.sid is HttpOnly so it never appears here even when set.
+          console.log('[AUTH] 🍪 non-HttpOnly cookies after POST:', document.cookie || '(empty)');
 
           if (!res.ok) {
             const errBody = await res.text().catch(() => '(unreadable body)');
