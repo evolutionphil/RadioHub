@@ -418,6 +418,58 @@ export default function AdminCountryLanguageMappings() {
     setAuditPageOffset(0);
   };
   const [downloadingAuditId, setDownloadingAuditId] = useState<string | null>(null);
+  const [isDownloadingAuditAll, setIsDownloadingAuditAll] = useState(false);
+
+  const handleDownloadAllAuditCsv = async () => {
+    if (isDownloadingAuditAll) return;
+    setIsDownloadingAuditAll(true);
+    try {
+      // Reuse the same query params as the list endpoint, minus the
+      // pagination ones, so the downloaded CSV honors the actor / country
+      // / date / action filters currently applied to the panel.
+      const params = new URLSearchParams();
+      const actor = auditFilterActor.trim();
+      if (actor) params.set('actorEmail', actor);
+      const country = auditFilterCountry.trim();
+      if (country) params.set('country', country);
+      if (auditFilterFrom) params.set('from', auditFilterFrom);
+      if (auditFilterTo) params.set('to', auditFilterTo);
+      if (auditFilter !== 'all') params.set('action', auditFilter);
+
+      const qs = params.toString();
+      const url = resolveApiUrl(
+        `/api/admin/country-language-mappings/cleared-overrides-log/all/csv${qs ? `?${qs}` : ''}`,
+      );
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) {
+        throw new Error(`${res.status}: ${(await res.text()) || res.statusText}`);
+      }
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const filename = `country-overrides-history-${yyyy}-${mm}-${dd}.csv`;
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : 'Unable to download combined audit CSV';
+      toast({
+        title: 'Failed to download CSV',
+        description: message,
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDownloadingAuditAll(false);
+    }
+  };
 
   const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
     'clear-overrides': 'Cleared overrides',
@@ -1781,6 +1833,26 @@ export default function AdminCountryLanguageMappings() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  data-testid="button-download-all-audit-csv"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() => void handleDownloadAllAuditCsv()}
+                  disabled={isDownloadingAuditAll || auditLogTotal === 0}
+                  title={
+                    auditFiltersActive || auditFilter !== 'all'
+                      ? 'Download a CSV of every audit entry matching the current filters'
+                      : 'Download a CSV of every audit entry'
+                  }
+                >
+                  {isDownloadingAuditAll ? (
+                    <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+                  ) : (
+                    <Download className="mr-2 h-3 w-3" />
+                  )}
+                  Download all{auditFiltersActive || auditFilter !== 'all' ? ' (filtered)' : ''}
+                </Button>
                 <Button
                   data-testid="button-refresh-cleared-overrides-audit"
                   variant="ghost"

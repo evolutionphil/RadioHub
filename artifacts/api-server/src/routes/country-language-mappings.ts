@@ -478,6 +478,144 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     }
   });
 
+  // Stream a single combined CSV containing every snapshot row across
+  // every audit entry that matches the same actor/country/date/action
+  // filters as the list endpoint. Lets admins hand off a quarterly audit
+  // report in one file instead of downloading per-entry CSVs.
+  //
+  // NOTE: this is registered before the parameterized `/:id/csv` route so
+  // the literal "all/csv" path doesn't get captured as `:id = "all"`.
+  app.get('/api/admin/country-language-mappings/cleared-overrides-log/all/csv', requireAdmin, async (req, res) => {
+    try {
+      const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+
+      const actionParam = typeof req.query.action === 'string' ? req.query.action : undefined;
+      const actorEmail =
+        typeof req.query.actorEmail === 'string'
+          ? req.query.actorEmail.trim()
+          : '';
+      const country =
+        typeof req.query.country === 'string' ? req.query.country.trim() : '';
+      const fromRaw = typeof req.query.from === 'string' ? req.query.from : '';
+      const toRaw = typeof req.query.to === 'string' ? req.query.to : '';
+
+      const filter: Record<string, unknown> = {};
+
+      if (actionParam && actionParam !== 'all') {
+        if (!VALID_AUDIT_ACTIONS.includes(actionParam as CountryLanguageMappingAuditAction)) {
+          return res.status(400).json({ error: 'Invalid action filter' });
+        }
+        filter.action = actionParam;
+      }
+
+      if (actorEmail) {
+        filter.actorEmail = { $regex: escapeRegex(actorEmail), $options: 'i' };
+      }
+
+      if (country) {
+        const re = { $regex: escapeRegex(country), $options: 'i' };
+        filter.$or = [
+          { 'snapshot.countryCode': re },
+          { 'snapshot.countryName': re },
+          { 'changes.countryCode': re },
+          { 'changes.countryName': re },
+        ];
+      }
+
+      const createdAt: Record<string, Date> = {};
+      const fromDate = fromRaw ? new Date(fromRaw) : null;
+      if (fromDate && !isNaN(fromDate.getTime())) {
+        createdAt.$gte = fromDate;
+      }
+      const toDate = toRaw ? new Date(toRaw) : null;
+      if (toDate && !isNaN(toDate.getTime())) {
+        if (/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
+          toDate.setUTCHours(23, 59, 59, 999);
+        }
+        createdAt.$lte = toDate;
+      }
+      if (Object.keys(createdAt).length > 0) {
+        filter.createdAt = createdAt;
+      }
+
+      const entries = await ClearedOverridesAuditLog
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .lean<Array<{
+          _id: unknown;
+          actorEmail: string | null;
+          deletedCount: number;
+          createdAt: Date;
+          snapshot?: Array<{
+            countryCode: string;
+            countryName: string;
+            currentLanguageCode: string;
+            defaultLanguageCode: string;
+          }>;
+        }>>();
+
+      const { buildClearedOverridesHistoryCsv } = await import('../services/admin-audit-email');
+
+      // One CSV row per snapshot entry across every matching audit row.
+      // Audit entries with an empty snapshot (e.g. a no-op clear, or
+      // edit/delete/bulk-save action types whose detail lives in
+      // `changes` instead of `snapshot`) emit a single placeholder row so
+      // the createdAt / actor / deletedCount metadata is still captured.
+      const rows: Array<{
+        createdAt: Date;
+        actorEmail: string | null;
+        deletedCount: number;
+        countryCode: string;
+        countryName: string;
+        currentLanguageCode: string;
+        defaultLanguageCode: string;
+      }> = [];
+      for (const e of entries) {
+        const snap = e.snapshot ?? [];
+        if (snap.length === 0) {
+          rows.push({
+            createdAt: e.createdAt,
+            actorEmail: e.actorEmail,
+            deletedCount: e.deletedCount,
+            countryCode: '',
+            countryName: '',
+            currentLanguageCode: '',
+            defaultLanguageCode: '',
+          });
+        } else {
+          for (const s of snap) {
+            rows.push({
+              createdAt: e.createdAt,
+              actorEmail: e.actorEmail,
+              deletedCount: e.deletedCount,
+              countryCode: s.countryCode,
+              countryName: s.countryName,
+              currentLanguageCode: s.currentLanguageCode,
+              defaultLanguageCode: s.defaultLanguageCode,
+            });
+          }
+        }
+      }
+
+      const csv = buildClearedOverridesHistoryCsv(rows);
+
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const filename = `country-overrides-history-${yyyy}-${mm}-${dd}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send('\ufeff' + csv);
+      return;
+    } catch (error) {
+      console.error('Error downloading combined cleared-overrides audit CSV:', error);
+      res.status(500).json({ error: 'Failed to download combined cleared-overrides audit CSV' });
+      return;
+    }
+  });
+
   // Stream the CSV for a specific cleared-overrides audit entry so admins
   // can download the original snapshot from the dashboard, mirroring the
   // emailed attachment exactly.

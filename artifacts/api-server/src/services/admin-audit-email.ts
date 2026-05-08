@@ -48,6 +48,46 @@ export function buildClearedOverridesCsv(
   return rowsToCsv(header, body);
 }
 
+export interface ClearedOverridesAuditCsvRow {
+  createdAt: Date;
+  actorEmail: string | null;
+  deletedCount: number;
+  countryCode: string;
+  countryName: string;
+  currentLanguageCode: string;
+  defaultLanguageCode: string;
+}
+
+/**
+ * Build a single combined CSV combining many cleared-overrides audit
+ * entries into one downloadable file. One CSV row per snapshot entry,
+ * plus a leading "createdAt / actor / deletedCount" trio repeating per
+ * row so the file is self-contained for spreadsheet pivoting.
+ */
+export function buildClearedOverridesHistoryCsv(
+  rows: ClearedOverridesAuditCsvRow[],
+): string {
+  const header = [
+    'Created At',
+    'Actor',
+    'Deleted Count',
+    'Country Code',
+    'Country Name',
+    'Current Language',
+    'Fallback Language',
+  ];
+  const body = rows.map((r) => [
+    r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
+    r.actorEmail ?? '',
+    String(r.deletedCount),
+    r.countryCode,
+    r.countryName,
+    r.currentLanguageCode,
+    r.defaultLanguageCode,
+  ]);
+  return rowsToCsv(header, body);
+}
+
 export function buildResetMappingsCsv(
   rows: ResetMappingRow[],
   languageNames: Record<string, string> = {},
