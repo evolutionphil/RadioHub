@@ -209,7 +209,7 @@ export default function StationDetails() {
     }
   }, [stationSlug, stationId, setLocation]);
 
-  const { data: station, isLoading: stationLoading, error, refetch: refetchStation } = useQuery({
+  const { data: station, isLoading: stationLoading, error, refetch: refetchStation } = useQuery<any>({
     queryKey: [`/api/station/${identifier}`],
     enabled: !!identifier,
   });
@@ -974,7 +974,7 @@ export default function StationDetails() {
                 {/* Desktop Ad Space - Lazy loaded */}
                 <div className="mt-4 text-center sm:mt-0 hidden md:block">
                   <div className="mt-6">
-                    {advertisements && advertisements.some(ad => ad.position === 'desktop_sidebar' && ad.isActive) ? (
+                    {advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none animate-pulse" />}>
                         <AdCarousel 
                           ads={advertisements} 
@@ -1137,7 +1137,7 @@ export default function StationDetails() {
                       </button>
                     )}
                     
-                    {station.tags && station.tags.split(',').slice(0, 3).map((tag, index) => (
+                    {(station as any).tags && (station as any).tags.split(',').slice(0, 3).map((tag: string, index: number) => (
                       <button 
                         key={index} 
                         className="rounded bg-[#4D4D4D] px-3 py-1 capitalize text-white font-sans whitespace-nowrap"
@@ -1306,7 +1306,7 @@ export default function StationDetails() {
 
             {/* Middle Section Ad - Between Similar Radios and More from Country */}
             <div className="py-6">
-              {advertisements && advertisements.some(ad => ad.position === 'middle_section' && ad.isActive) ? (
+              {advertisements && advertisements.some((ad: any) => ad.position === 'middle_section' && ad.isActive) ? (
                 <Suspense fallback={null}>
                   <AdCarousel 
                     ads={advertisements} 
@@ -1323,7 +1323,7 @@ export default function StationDetails() {
 
             {/* Ad Section - Mobile Bottom Ad */}
             <div className="md:hidden py-4">
-              {advertisements && advertisements.some(ad => ad.position === 'mobile_bottom' && ad.isActive) ? (
+              {advertisements && advertisements.some((ad: any) => ad.position === 'mobile_bottom' && ad.isActive) ? (
                 <Suspense fallback={null}>
                   <AdCarousel 
                     ads={advertisements} 
@@ -1339,11 +1339,11 @@ export default function StationDetails() {
             </div>
 
             {/* More from Country Section - Independent Loading with Skeleton */}
-            {(loadingCountry || (filteredCountryStations && filteredCountryStations.length > 0)) && station?.country && (
+            {(loadingCountry || (filteredCountryStations && filteredCountryStations.length > 0)) && (station as any)?.country && (
               <div>
                 <div className="py-6">
                   <h3 className="text-xl font-bold">
-                    {t('station_more_from_country', 'More from {country}', { country: station.country })}
+                    {t('station_more_from_country', 'More from {country}', { country: (station as any).country })}
                   </h3>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
@@ -1450,7 +1450,7 @@ export default function StationDetails() {
                         // Second click: go to /radios page with country filter
                         // CRITICAL: Separate path and query string - getLocalizedUrl only translates the path portion
                         const localizedPath = getLocalizedUrl('/radios');
-                        setLocation(`${localizedPath}?country=${encodeURIComponent(station.country)}`);
+                        setLocation(`${localizedPath}?country=${encodeURIComponent((station as any).country)}`);
                       }
                     }}
                     className="px-6 py-3 rounded-[25px] bg-white/20 hover:bg-white/30 transition-colors whitespace-nowrap"

@@ -164,7 +164,7 @@ export default function Settings() {
   // Update settings mutation
   const updateSettingsMutation = useMutation({
     mutationFn: async (newSettings: SystemSettings) => {
-      const response = await apiRequest('PUT', '/api/settings', newSettings);
+      const response = await apiRequest('PUT', '/api/settings', { body: newSettings });
       return response.json();
     },
     onSuccess: () => {
@@ -199,9 +199,11 @@ export default function Settings() {
   const testEmailMutation = useMutation({
     mutationFn: async () => {
       const response = await apiRequest('POST', '/api/settings/test-email', {
-        to: settings.contactEmail,
-        subject: "Test Email from Mega Radio Manager",
-        body: "This is a test email to verify SMTP configuration."
+        body: {
+          to: settings.contactEmail,
+          subject: "Test Email from Mega Radio Manager",
+          body: "This is a test email to verify SMTP configuration."
+        }
       });
       return response.json();
     },

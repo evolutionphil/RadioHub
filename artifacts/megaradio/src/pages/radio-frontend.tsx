@@ -888,7 +888,7 @@ export default function RadioFrontend({
               alt="" 
               className="absolute inset-0 w-full h-full object-cover pointer-events-none z-0" 
               aria-hidden="true"
-              fetchpriority="high"
+              fetchPriority="high"
               decoding="async"
               width="1920"
               height="600"

@@ -46,7 +46,6 @@ interface User {
   profileImageUrl?: string;
   avatar?: string;
   country?: string;
-  location?: string;
   language?: string;
   bio?: string;
   favoriteStations?: any[];
@@ -109,6 +108,8 @@ interface UserStats {
   topLanguages: Array<{ language: string; count: number }>;
   usersByRole: Array<{ role: string; count: number }>;
   usersByStatus: Array<{ status: string; count: number }>;
+  recentRegistrations?: number;
+  activePercentage?: number;
 }
 
 interface UserActivity {

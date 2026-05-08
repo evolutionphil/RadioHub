@@ -321,7 +321,7 @@ export default function NotFound() {
                         <div className="relative w-9 h-9 rounded-lg overflow-hidden shrink-0 bg-[#1E1E1E]">
                           {station.favicon ? (
                             <img
-                              src={getImageUrl(station.favicon, station.slug)}
+                              src={getImageUrl(station.favicon)}
                               alt={station.name}
                               className="w-full h-full object-cover"
                               onError={(e) => {

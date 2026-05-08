@@ -157,7 +157,7 @@ export default function UsersIndex() {
         {/* Users Grid - RESPONSIVE DESIGN (1 col mobile, 2 tablet, 3 desktop) */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 md:gap-6">
           {users
-            .filter((user: User) => user.isPublicProfile !== false) // Only show public profiles
+            .filter((user: User) => (user as any).isPublicProfile !== false) // Only show public profiles
             .map((user: User) => (
             <div key={user._id} className="flex items-center rounded-md bg-[#2F2F2F] px-4 py-6 md:py-6">
               {/* Avatar */}

@@ -252,9 +252,9 @@ export default function MessagesPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const emojiRef = useRef<HTMLDivElement>(null);
-  const typingTimer = useRef<ReturnType<typeof setTimeout>>();
-  const searchTimer = useRef<ReturnType<typeof setTimeout>>();
-  const hbInterval = useRef<ReturnType<typeof setInterval>>();
+  const typingTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const hbInterval = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
   const activeIdRef = useRef<string | null>(null);
 
   // Use a ref for the latest onWsEvent to avoid stale closures in the WS handler

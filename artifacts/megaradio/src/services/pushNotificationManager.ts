@@ -99,7 +99,7 @@ export class PushNotificationManager {
       // Subscribe to push notifications
       this.subscription = await this.registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: this.urlB64ToUint8Array(vapidPublicKey)
+        applicationServerKey: this.urlB64ToUint8Array(vapidPublicKey) as BufferSource,
       });
 
       const subscriptionData: PushSubscriptionData = {

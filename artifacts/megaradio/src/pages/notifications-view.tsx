@@ -335,7 +335,7 @@ export default function NotificationsView() {
                             img.style.display = 'none';
                             const parent = img.parentElement;
                             if (parent) {
-                              const letter = (notification.fromUserId.fullName || notification.fromUserId.username || 'U').charAt(0).toUpperCase();
+                              const letter = (notification.fromUserId!.fullName || notification.fromUserId!.username || 'U').charAt(0).toUpperCase();
                               parent.innerHTML = `<div class="h-10 w-10 rounded-full bg-[#2A2A2A] flex items-center justify-center text-white text-sm font-medium">${letter}</div>`;
                             }
                           }}

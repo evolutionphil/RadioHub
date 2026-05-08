@@ -301,7 +301,7 @@ export default function UsersPage() {
                       <div
                         key={notification._id}
                         className={`p-4 rounded-lg border-l-4 ${
-                          notification.isRead 
+                          (notification as any).isRead 
                             ? 'bg-[#1A1A1A] border-gray-600' 
                             : 'bg-[#1A2332] border-blue-500'
                         }`}
@@ -324,7 +324,7 @@ export default function UsersPage() {
                             </p>
                           </div>
                           
-                          {!notification.isRead && (
+                          {!(notification as any).isRead && (
                             <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
                           )}
                         </div>

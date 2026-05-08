@@ -248,14 +248,14 @@ export default function UserProfile() {
                 <UserAvatar 
                   avatar={userProfile.avatar}
                   name={displayName}
-                  size="xl"
+                  size="lg"
                   className="h-full w-full border-4 border-white/20"
                 />
                 <div className="absolute -bottom-1 -right-1 h-6 w-6 lg:h-8 lg:w-8 rounded-full bg-green-500 border-4 border-white"></div>
               </div>
               <div className="flex-1 min-w-0">
                 <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2">{displayName}</h1>
-                <p className="text-blue-100 text-lg mb-4">{userProfile.bio}</p>
+                <p className="text-blue-100 text-lg mb-4">{(userProfile as any).bio}</p>
                 <div className="flex items-center gap-6 text-blue-100">
                   <div className="flex items-center gap-2">
                     <Music className="w-5 h-5" />
@@ -315,7 +315,7 @@ export default function UserProfile() {
               </div>
               <div className="flex-1 min-w-0">
                 <h1 className="text-xl font-bold text-white mb-1">{displayName}</h1>
-                <p className="text-blue-100 text-sm">{userProfile.bio}</p>
+                <p className="text-blue-100 text-sm">{(userProfile as any).bio}</p>
               </div>
             </div>
             <div className="flex gap-2">
@@ -467,8 +467,6 @@ export default function UserProfile() {
                     <StationCard
                       key={station._id}
                       station={station}
-                      showFavorite={false}
-                      className="bg-[#1A1A1A] border-[#2F2F2F] hover:bg-[#252525] transition-colors"
                     />
                   ))}
                 </div>

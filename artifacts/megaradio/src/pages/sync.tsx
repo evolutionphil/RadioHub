@@ -32,7 +32,7 @@ export default function SyncStatus() {
 
   const { data: syncStatus, isLoading: statusLoading } = useQuery<SyncStatus>({
     queryKey: ['/api/sync/status'],
-    refetchInterval: (data) => data?.isRunning ? 10000 : 30000, // 10s if running, 30s otherwise
+    refetchInterval: (query) => (query.state.data as any)?.isRunning ? 10000 : 30000, // 10s if running, 30s otherwise
   });
 
   const { data: syncLogs, isLoading: logsLoading } = useQuery<SyncLog[]>({
