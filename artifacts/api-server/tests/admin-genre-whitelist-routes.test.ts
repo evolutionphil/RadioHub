@@ -132,10 +132,16 @@ mock.module('@workspace/db-shared/mongo-schemas', {
 // reserved-slug guard runs before the seed check, so the only thing the
 // tests really care about is that the merged whitelist contains the
 // canonical we use in alias tests.
+//
+// Both `seededSlugs` and `seededAliases` are mutable from inside tests so
+// that DELETE handlers can be exercised against either the seeded or the
+// admin-added branch by adjusting membership before the request.
+const seededSlugs = new Set<string>(['rock', 'jazz']);
+const seededAliases = new Map<string, string>();
 mock.module(new URL('../src/seo/genre-whitelist.ts', import.meta.url).href, {
   namedExports: {
-    GENRE_WHITELIST: new Set<string>(['rock', 'jazz']),
-    GENRE_ALIASES: new Map<string, string>(),
+    GENRE_WHITELIST: seededSlugs,
+    GENRE_ALIASES: seededAliases,
     MIN_STATIONS_FOR_GENRE_INDEX: 3,
   },
 });
@@ -231,6 +237,10 @@ function resetState() {
   overrideRows.length = 0;
   genreStationCount = 0;
   mergedWhitelist = new Set(['rock', 'jazz']);
+  seededSlugs.clear();
+  seededSlugs.add('rock');
+  seededSlugs.add('jazz');
+  seededAliases.clear();
 }
 
 // ---------------------------------------------------------------------------
@@ -342,4 +352,166 @@ test('POST /api/admin/genre-whitelist/aliases rejects a reserved canonical slug'
   assert.match(body.error ?? '', /reserved system path/i);
   assert.match(body.error ?? '', /canonical/i);
   assert.equal(overrideRows.length, 0);
+});
+
+// ---------------------------------------------------------------------------
+// Task #244: DELETE flows + add-then-remove branches
+// ---------------------------------------------------------------------------
+
+test('DELETE /slugs/:slug records a slug-remove override for a seeded slug', async () => {
+  resetState();
+  // 'rock' is in the seeded whitelist — deleting it should persist a
+  // 'slug-remove' override so refresh keeps it gone across restarts.
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/slugs/rock`, {
+    method: 'DELETE',
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { ok?: boolean; slug?: string };
+  assert.equal(body.ok, true);
+  assert.equal(body.slug, 'rock');
+
+  const removes = overrideRows.filter((r) => r.kind === 'slug-remove' && r.slug === 'rock');
+  assert.equal(removes.length, 1, 'a single slug-remove override must be persisted');
+  assert.equal(removes[0].createdBy, 'test-admin');
+  assert.equal(
+    overrideRows.filter((r) => r.kind === 'slug-add' && r.slug === 'rock').length,
+    0,
+    'no slug-add override should remain for a seeded-slug delete',
+  );
+});
+
+test('DELETE /slugs/:slug just drops the slug-add row for an admin-added slug', async () => {
+  resetState();
+  // Pre-seed an admin-added override for a non-seeded slug.
+  overrideRows.push({
+    kind: 'slug-add',
+    slug: 'shoegaze',
+    canonical: null,
+    createdBy: 'test-admin',
+    createdAt: new Date(),
+  });
+
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/slugs/shoegaze`, {
+    method: 'DELETE',
+  });
+  assert.equal(res.status, 200);
+
+  assert.equal(
+    overrideRows.filter((r) => r.kind === 'slug-add' && r.slug === 'shoegaze').length,
+    0,
+    'admin-added slug-add override must be removed',
+  );
+  assert.equal(
+    overrideRows.filter((r) => r.kind === 'slug-remove' && r.slug === 'shoegaze').length,
+    0,
+    'no slug-remove override should be persisted for an admin-added slug',
+  );
+});
+
+test('DELETE /slugs/:slug garbage-collects alias-add overrides whose canonical pointed at it', async () => {
+  resetState();
+  // 'rock' is seeded; pre-seed two alias-add rows pointing at it plus a
+  // third pointing at 'jazz' (which must be left alone).
+  overrideRows.push(
+    {
+      kind: 'alias-add',
+      slug: 'rocknroll',
+      canonical: 'rock',
+      createdBy: 'test-admin',
+      createdAt: new Date(),
+    },
+    {
+      kind: 'alias-add',
+      slug: 'rock-music',
+      canonical: 'rock',
+      createdBy: 'test-admin',
+      createdAt: new Date(),
+    },
+    {
+      kind: 'alias-add',
+      slug: 'smooth-jazz',
+      canonical: 'jazz',
+      createdBy: 'test-admin',
+      createdAt: new Date(),
+    },
+  );
+
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/slugs/rock`, {
+    method: 'DELETE',
+  });
+  assert.equal(res.status, 200);
+
+  const remainingAliases = overrideRows.filter((r) => r.kind === 'alias-add');
+  assert.equal(remainingAliases.length, 1, 'only the alias pointing at jazz must survive');
+  assert.equal(remainingAliases[0].slug, 'smooth-jazz');
+  assert.equal(remainingAliases[0].canonical, 'jazz');
+});
+
+test('DELETE /aliases/:source records an alias-remove override for a seeded alias', async () => {
+  resetState();
+  // Seed the static alias map so the route takes the "seeded" branch.
+  seededAliases.set('rocknroll', 'rock');
+
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/aliases/rocknroll`, {
+    method: 'DELETE',
+  });
+  assert.equal(res.status, 200);
+  const body = (await res.json()) as { ok?: boolean; source?: string };
+  assert.equal(body.ok, true);
+  assert.equal(body.source, 'rocknroll');
+
+  const removes = overrideRows.filter(
+    (r) => r.kind === 'alias-remove' && r.slug === 'rocknroll',
+  );
+  assert.equal(removes.length, 1, 'a single alias-remove override must be persisted');
+  assert.equal(removes[0].createdBy, 'test-admin');
+});
+
+test('DELETE /aliases/:source just drops the alias-add row for an admin-added alias', async () => {
+  resetState();
+  // No matching seeded alias — pre-seed an admin alias-add row.
+  overrideRows.push({
+    kind: 'alias-add',
+    slug: 'rock-music',
+    canonical: 'rock',
+    createdBy: 'test-admin',
+    createdAt: new Date(),
+  });
+
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/aliases/rock-music`, {
+    method: 'DELETE',
+  });
+  assert.equal(res.status, 200);
+
+  assert.equal(
+    overrideRows.filter((r) => r.kind === 'alias-add' && r.slug === 'rock-music').length,
+    0,
+    'admin-added alias-add override must be removed',
+  );
+  assert.equal(
+    overrideRows.filter((r) => r.kind === 'alias-remove' && r.slug === 'rock-music').length,
+    0,
+    'no alias-remove override should be persisted for an admin-added alias',
+  );
+});
+
+test('POST /aliases rejects a canonical that is not on the merged whitelist', async () => {
+  resetState();
+  // 'electronica' is not in mergedWhitelist (which only has rock+jazz)
+  // and is not reserved, so the route should fail the "canonical must be
+  // on the whitelist" guard with a 400.
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/aliases`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: 'edm', canonical: 'electronica' }),
+  });
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as { error?: string };
+  assert.match(body.error ?? '', /not on the whitelist/i);
+  assert.match(body.error ?? '', /electronica/);
+  assert.equal(
+    overrideRows.length,
+    0,
+    'rejected alias must NOT have produced any override row',
+  );
 });
