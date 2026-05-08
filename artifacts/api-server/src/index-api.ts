@@ -816,6 +816,14 @@ app.use(session(sessionConfig));
         }
 
         try {
+          const { scheduledGenreStationCounts } = await import('./services/scheduled-genre-station-counts');
+          scheduledGenreStationCounts.initialize();
+          logger.log('✅ BACKGROUND: Scheduled genre station-counts recompute initialized (daily 02:30 Europe/Berlin)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled genre station-counts:', error.message);
+        }
+
+        try {
           const { scheduledSitemapDiff } = await import('./services/scheduled-sitemap-diff');
           scheduledSitemapDiff.initialize();
           logger.log('✅ BACKGROUND: Scheduled sitemap-diff IndexNow initialized (nightly 04:45)');
