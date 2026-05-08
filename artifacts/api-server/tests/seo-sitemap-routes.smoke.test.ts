@@ -22,6 +22,29 @@ import assert from 'node:assert/strict';
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import type { AddressInfo, Server } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
+
+/**
+ * Task #194: assert XML well-formedness in addition to regex smoke
+ * checks. Without a real parser pass, malformed entities or unclosed
+ * tags would still match the regex assertions and slip through.
+ */
+function assertValidXml(body: string, label: string): unknown {
+  const validation = XMLValidator.validate(body, { allowBooleanAttributes: false });
+  assert.equal(
+    validation,
+    true,
+    `${label} must be well-formed XML; parser said: ${
+      typeof validation === 'object' ? JSON.stringify(validation) : String(validation)
+    }`,
+  );
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    attributeNamePrefix: '@_',
+    isArray: (name) => name === 'url' || name === 'sitemap' || name === 'xhtml:link',
+  });
+  return parser.parse(body);
+}
 
 // ---------------------------------------------------------------------------
 // Module mocks — must be installed BEFORE the routes module is imported so
@@ -347,8 +370,17 @@ test('/sitemap.xml returns the sitemap-index XML directly (Task #128 contract)',
   assert.equal(res.status, 200, '/sitemap.xml must serve the sitemap-index document directly');
   assert.match(res.headers.get('content-type') || '', /^application\/xml/);
   const body = await res.text();
-  assert.match(body, /<\?xml version="1\.0" encoding="UTF-8"\?>/);
-  assert.match(body, /<sitemapindex xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9">/);
+  // Task #194: parser-validated XML (catches unclosed tags / bad entities
+  // that regex-only assertions would miss).
+  const parsed = assertValidXml(body, '/sitemap.xml') as {
+    sitemapindex?: { '@_xmlns'?: string; sitemap?: Array<{ loc?: string }> };
+  };
+  assert.ok(parsed.sitemapindex, '/sitemap.xml root must be <sitemapindex>');
+  assert.equal(
+    parsed.sitemapindex['@_xmlns'],
+    'http://www.sitemaps.org/schemas/sitemap/0.9',
+    '/sitemap.xml must declare the sitemaps.org 0.9 namespace',
+  );
   assert.match(body, /\/sitemap-main-en\.xml/);
 });
 
@@ -359,17 +391,26 @@ test('/sitemap-index.xml returns application/xml 200 with one entry per qualifie
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') || '', /^application\/xml/);
   const body = await res.text();
-  // Each qualified language contributes a main + genres + stations entry,
-  // so 6 langs * 3 types = 18 child sitemaps in the index.
-  const childCount = (body.match(/<sitemap>/g) || []).length;
+  // Task #194: parse the response and assert structurally rather than
+  // by regex. Each qualified language must contribute exactly a main +
+  // genres + stations entry (6 langs × 3 types = 18 child sitemaps).
+  const parsed = assertValidXml(body, '/sitemap-index.xml') as {
+    sitemapindex?: { sitemap?: Array<{ loc?: string; lastmod?: string }> };
+  };
+  assert.ok(parsed.sitemapindex, 'root must be <sitemapindex>');
+  const entries = parsed.sitemapindex.sitemap ?? [];
   assert.ok(
-    childCount >= QUALIFIED_LANGS.length * 3,
-    `expected >=${QUALIFIED_LANGS.length * 3} child sitemap entries, found ${childCount}`,
+    entries.length >= QUALIFIED_LANGS.length * 3,
+    `expected >=${QUALIFIED_LANGS.length * 3} child sitemap entries, found ${entries.length}`,
   );
+  const locs = new Set(entries.map((e) => e.loc ?? ''));
   for (const lang of QUALIFIED_LANGS) {
-    assert.match(body, new RegExp(`/sitemap-main-${lang}\\.xml`));
-    assert.match(body, new RegExp(`/sitemap-genres-${lang}\\.xml`));
-    assert.match(body, new RegExp(`/sitemap-stations-${lang}-0\\.xml`));
+    const hasMain = [...locs].some((l) => l.endsWith(`/sitemap-main-${lang}.xml`));
+    const hasGenres = [...locs].some((l) => l.endsWith(`/sitemap-genres-${lang}.xml`));
+    const hasStations = [...locs].some((l) => l.endsWith(`/sitemap-stations-${lang}-0.xml`));
+    assert.ok(hasMain, `index must contain /sitemap-main-${lang}.xml`);
+    assert.ok(hasGenres, `index must contain /sitemap-genres-${lang}.xml`);
+    assert.ok(hasStations, `index must contain /sitemap-stations-${lang}-0.xml`);
   }
 });
 
@@ -384,30 +425,67 @@ test('/sitemap-main-en.xml returns application/xml 200 with >15 <loc> entries', 
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type') || '', /^application\/xml/);
   const body = await res.text();
-  assert.match(body, /<\?xml version="1\.0" encoding="UTF-8"\?>/);
-  assert.match(body, /<urlset xmlns="http:\/\/www\.sitemaps\.org\/schemas\/sitemap\/0\.9"/);
-  const locCount = countLocs(body);
-  assert.ok(
-    locCount > 15,
-    `expected >15 <loc> entries in /sitemap-main-en.xml, found ${locCount}`,
+  // Task #194: parser-validated XML structure.
+  const parsed = assertValidXml(body, '/sitemap-main-en.xml') as {
+    urlset?: {
+      '@_xmlns'?: string;
+      '@_xmlns:xhtml'?: string;
+      url?: Array<{ loc?: string; 'xhtml:link'?: Array<{ '@_hreflang'?: string }> }>;
+    };
+  };
+  assert.ok(parsed.urlset, 'root must be <urlset>');
+  assert.equal(
+    parsed.urlset['@_xmlns'],
+    'http://www.sitemaps.org/schemas/sitemap/0.9',
+    'urlset must declare the sitemaps.org 0.9 namespace',
   );
+  const urls = parsed.urlset.url ?? [];
+  assert.ok(
+    urls.length > 15,
+    `expected >15 <url> entries in /sitemap-main-en.xml, found ${urls.length}`,
+  );
+  // Cross-check the regex count to catch parser-quirk regressions.
+  assert.equal(countLocs(body), urls.length, '<loc> count must equal parsed <url> count');
   // Smoke: a few canonical pages must be present.
-  assert.match(body, /\/en\b/);
-  assert.match(body, /\/en\/stations/);
-  assert.match(body, /\/en\/genres/);
+  const locs = urls.map((u) => u.loc ?? '');
+  assert.ok(locs.some((l) => /\/en$/.test(l) || /\/en\/?$/.test(l)), 'must include /en home');
+  assert.ok(locs.some((l) => l.includes('/en/stations')), 'must include /en/stations');
+  assert.ok(locs.some((l) => l.includes('/en/genres')), 'must include /en/genres');
 });
 
 test('/sitemap-main-en.xml emits hreflang alternates for every qualified language', async () => {
   const res = await fetch(`${baseUrl}/sitemap-main-en.xml`);
   const body = await res.text();
-  for (const lang of QUALIFIED_LANGS) {
-    assert.match(
-      body,
-      new RegExp(`hreflang="${lang}"`),
-      `expected hreflang="${lang}" in /sitemap-main-en.xml`,
+  // Task #194: parse and assert that EVERY <url> emits an alternate
+  // for EVERY qualified language plus x-default — not just that the
+  // hreflang token appears somewhere in the doc.
+  const parsed = assertValidXml(body, '/sitemap-main-en.xml hreflang') as {
+    urlset?: {
+      url?: Array<{
+        loc?: string;
+        'xhtml:link'?: Array<{ '@_hreflang'?: string; '@_href'?: string }>;
+      }>;
+    };
+  };
+  const urls = parsed.urlset?.url ?? [];
+  assert.ok(urls.length > 0, 'expected at least one <url> entry');
+  for (const url of urls) {
+    const langs = new Set(
+      (url['xhtml:link'] ?? [])
+        .map((link) => link['@_hreflang'])
+        .filter((v): v is string => typeof v === 'string'),
+    );
+    for (const lang of QUALIFIED_LANGS) {
+      assert.ok(
+        langs.has(lang),
+        `<url loc="${url.loc}"> missing hreflang="${lang}" alternate`,
+      );
+    }
+    assert.ok(
+      langs.has('x-default'),
+      `<url loc="${url.loc}"> missing hreflang="x-default" alternate`,
     );
   }
-  assert.match(body, /hreflang="x-default"/);
 });
 
 test('SPA catch-all does NOT shadow any of the sitemap/robots routes', async () => {
