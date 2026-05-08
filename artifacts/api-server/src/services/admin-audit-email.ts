@@ -7,10 +7,30 @@ export interface ClearedOverrideRow {
   defaultLanguageCode: string;
 }
 
+export interface ResetMappingRow {
+  countryCode: string;
+  countryName: string;
+  languageCode: string;
+  isActive: boolean;
+  notes: string;
+}
+
+export interface FlushStationsCounts {
+  deletedStations: number;
+  deletedSyncLogs: number;
+  deletedBlacklisted: number;
+}
+
 function escapeCsv(value: string): string {
   const needsQuoting = /[",\n\r]/.test(value);
   const escaped = value.replace(/"/g, '""');
   return needsQuoting ? `"${escaped}"` : escaped;
+}
+
+function rowsToCsv(header: string[], body: string[][]): string {
+  return [header, ...body]
+    .map((cols) => cols.map((c) => escapeCsv(String(c))).join(','))
+    .join('\r\n');
 }
 
 export function buildClearedOverridesCsv(
@@ -25,9 +45,30 @@ export function buildClearedOverridesCsv(
     const fallback = defaultName ? `${defaultName} (${r.defaultLanguageCode})` : r.defaultLanguageCode;
     return [r.countryCode, r.countryName, current, fallback];
   });
-  return [header, ...body]
-    .map((cols) => cols.map((c) => escapeCsv(String(c))).join(','))
-    .join('\r\n');
+  return rowsToCsv(header, body);
+}
+
+export function buildResetMappingsCsv(
+  rows: ResetMappingRow[],
+  languageNames: Record<string, string> = {},
+): string {
+  const header = ['Country Code', 'Country Name', 'Language', 'Active', 'Notes'];
+  const body = rows.map((r) => {
+    const langName = languageNames[r.languageCode];
+    const lang = langName ? `${langName} (${r.languageCode})` : r.languageCode;
+    return [r.countryCode, r.countryName, lang, r.isActive ? 'yes' : 'no', r.notes ?? ''];
+  });
+  return rowsToCsv(header, body);
+}
+
+export function buildFlushStationsCsv(counts: FlushStationsCounts): string {
+  const header = ['Collection', 'Deleted Count'];
+  const body: string[][] = [
+    ['stations', String(counts.deletedStations)],
+    ['sync_logs', String(counts.deletedSyncLogs)],
+    ['blacklisted_stations', String(counts.deletedBlacklisted)],
+  ];
+  return rowsToCsv(header, body);
 }
 
 function getRecipients(): string[] {
@@ -38,9 +79,27 @@ function getRecipients(): string[] {
     .filter((s) => s.length > 0);
 }
 
+export interface AdminAuditEmailInput {
+  /** Short slug used in the CSV filename, e.g. "country-overrides" */
+  filenamePrefix: string;
+  /** Subject line summary, e.g. "Cleared 3 country-language overrides" */
+  subjectSummary: string;
+  /** Title shown in the email body, e.g. "Country-language overrides cleared" */
+  title: string;
+  /** First descriptive line, e.g. "3 overrides were cleared." */
+  summary: string;
+  /** CSV body (no BOM; BOM is added before encoding) */
+  csv: string;
+  /** Number of records the action affected (used only for logging) */
+  recordCount: number;
+  /** Optional: who triggered it */
+  actorEmail?: string;
+}
+
 /**
- * Email a CSV record of cleared country-language overrides to a configured
- * admin recipient list. Per-environment opt in/out is controlled by:
+ * Generic admin-audit email sender. Used by every destructive admin bulk
+ * action that wants to leave a paper trail. Per-environment opt in/out is
+ * controlled by:
  *   ADMIN_AUDIT_EMAIL_RECIPIENTS - comma-separated list (empty => disabled)
  *   ADMIN_AUDIT_EMAIL_FROM       - sender address (defaults to noreply@themegaradio.com)
  *   SENDGRID_API_KEY             - required for delivery
@@ -48,18 +107,14 @@ function getRecipients(): string[] {
  * Designed to be fire-and-forget: errors are logged but never thrown so the
  * request handler stays unaffected by mail-provider issues.
  */
-export async function emailClearedOverridesCsv(params: {
-  rows: ClearedOverrideRow[];
-  languageNames?: Record<string, string>;
-  actorEmail?: string;
-}): Promise<void> {
-  const { rows, languageNames = {}, actorEmail } = params;
-  if (rows.length === 0) return;
+export async function sendAdminAuditEmail(params: AdminAuditEmailInput): Promise<void> {
+  const { filenamePrefix, subjectSummary, title, summary, csv, recordCount, actorEmail } = params;
 
   const recipients = getRecipients();
   if (recipients.length === 0) {
     logger.info(
-      'ADMIN_AUDIT_EMAIL_RECIPIENTS not set - skipping cleared-overrides audit email',
+      { action: subjectSummary },
+      'ADMIN_AUDIT_EMAIL_RECIPIENTS not set - skipping admin audit email',
     );
     return;
   }
@@ -67,18 +122,18 @@ export async function emailClearedOverridesCsv(params: {
   const apiKey = process.env.SENDGRID_API_KEY;
   if (!apiKey) {
     logger.warn(
-      'SENDGRID_API_KEY not set - cannot send cleared-overrides audit email',
+      { action: subjectSummary },
+      'SENDGRID_API_KEY not set - cannot send admin audit email',
     );
     return;
   }
 
   try {
-    const csv = buildClearedOverridesCsv(rows, languageNames);
     const now = new Date();
     const yyyy = now.getFullYear();
     const mm = String(now.getMonth() + 1).padStart(2, '0');
     const dd = String(now.getDate()).padStart(2, '0');
-    const filename = `country-overrides-${yyyy}-${mm}-${dd}.csv`;
+    const filename = `${filenamePrefix}-${yyyy}-${mm}-${dd}.csv`;
     const csvWithBom = '\ufeff' + csv;
     const base64 = Buffer.from(csvWithBom, 'utf8').toString('base64');
 
@@ -87,26 +142,25 @@ export async function emailClearedOverridesCsv(params: {
 
     const from = process.env.ADMIN_AUDIT_EMAIL_FROM || 'noreply@themegaradio.com';
     const env = process.env.NODE_ENV || 'development';
-    const actorLine = actorEmail ? `Cleared by: ${actorEmail}` : 'Cleared by: (unknown admin)';
-    const summary = `${rows.length} ${rows.length === 1 ? 'override' : 'overrides'} were cleared.`;
+    const actorLine = actorEmail ? `Triggered by: ${actorEmail}` : 'Triggered by: (unknown admin)';
 
     await sgMail.send({
       to: recipients,
       from,
-      subject: `[MegaRadio][${env}] Cleared ${rows.length} country-language override${rows.length === 1 ? '' : 's'}`,
+      subject: `[MegaRadio][${env}] ${subjectSummary}`,
       text: [
         summary,
         actorLine,
         `Timestamp: ${now.toISOString()}`,
         '',
-        'See attached CSV for the full list of removed overrides.',
+        'See attached CSV for the full details.',
       ].join('\n'),
       html: `
         <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-          <h2>Country-language overrides cleared</h2>
+          <h2>${title}</h2>
           <p>${summary}</p>
           <p>${actorLine}<br/>Timestamp: ${now.toISOString()}<br/>Environment: ${env}</p>
-          <p>See the attached CSV for the full list of removed overrides.</p>
+          <p>See the attached CSV for the full details.</p>
         </div>
       `,
       attachments: [
@@ -120,13 +174,85 @@ export async function emailClearedOverridesCsv(params: {
     });
 
     logger.info(
-      { recipients: recipients.length, deletedCount: rows.length },
-      'Sent cleared-overrides audit email',
+      { recipients: recipients.length, recordCount, action: subjectSummary },
+      'Sent admin audit email',
     );
   } catch (err) {
     logger.error(
-      { err },
-      'Failed to send cleared-overrides audit email',
+      { err, action: subjectSummary },
+      'Failed to send admin audit email',
     );
   }
+}
+
+/**
+ * Email a CSV record of cleared country-language overrides. Backwards-compat
+ * wrapper around {@link sendAdminAuditEmail}.
+ */
+export async function emailClearedOverridesCsv(params: {
+  rows: ClearedOverrideRow[];
+  languageNames?: Record<string, string>;
+  actorEmail?: string;
+}): Promise<void> {
+  const { rows, languageNames = {}, actorEmail } = params;
+  if (rows.length === 0) return;
+
+  await sendAdminAuditEmail({
+    filenamePrefix: 'country-overrides',
+    subjectSummary: `Cleared ${rows.length} country-language override${rows.length === 1 ? '' : 's'}`,
+    title: 'Country-language overrides cleared',
+    summary: `${rows.length} ${rows.length === 1 ? 'override' : 'overrides'} were cleared.`,
+    csv: buildClearedOverridesCsv(rows, languageNames),
+    recordCount: rows.length,
+    actorEmail,
+  });
+}
+
+/**
+ * Email a CSV snapshot of every country-language mapping wiped by the
+ * "Reset all mappings" admin action.
+ */
+export async function emailResetAllMappingsCsv(params: {
+  rows: ResetMappingRow[];
+  languageNames?: Record<string, string>;
+  actorEmail?: string;
+}): Promise<void> {
+  const { rows, languageNames = {}, actorEmail } = params;
+  if (rows.length === 0) return;
+
+  await sendAdminAuditEmail({
+    filenamePrefix: 'country-language-mappings-reset',
+    subjectSummary: `Reset all country-language mappings (${rows.length} removed)`,
+    title: 'All country-language mappings reset',
+    summary: `${rows.length} ${rows.length === 1 ? 'mapping was' : 'mappings were'} removed. All countries will now fall back to defaults.`,
+    csv: buildResetMappingsCsv(rows, languageNames),
+    recordCount: rows.length,
+    actorEmail,
+  });
+}
+
+/**
+ * Email a summary CSV after the "Flush all station data" admin action wipes
+ * the stations, sync logs, and blacklisted-station collections.
+ */
+export async function emailFlushStationsCsv(params: {
+  counts: FlushStationsCounts;
+  actorEmail?: string;
+}): Promise<void> {
+  const { counts, actorEmail } = params;
+  const total =
+    counts.deletedStations + counts.deletedSyncLogs + counts.deletedBlacklisted;
+  if (total === 0) return;
+
+  await sendAdminAuditEmail({
+    filenamePrefix: 'station-data-flush',
+    subjectSummary: `Flushed all station data (${counts.deletedStations} stations)`,
+    title: 'Station data flushed',
+    summary:
+      `Wiped ${counts.deletedStations} stations, ${counts.deletedSyncLogs} sync logs, ` +
+      `and ${counts.deletedBlacklisted} blacklisted stations.`,
+    csv: buildFlushStationsCsv(counts),
+    recordCount: total,
+    actorEmail,
+  });
 }

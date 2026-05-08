@@ -274,9 +274,22 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   });
 
   // Delete all country-language mappings
-  app.delete('/api/admin/country-language-mappings', requireAdmin, async (_req, res) => {
+  app.delete('/api/admin/country-language-mappings', requireAdmin, async (req, res) => {
     try {
       const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { SEO_LANGUAGES } = await import('../shared/seo-config');
+
+      // Snapshot every mapping before deletion so the audit email captures
+      // exactly what was wiped, mirroring the "Cleared overrides" flow.
+      const snapshot = await CountryLanguageMapping
+        .find({}, { countryCode: 1, countryName: 1, languageCode: 1, isActive: 1, notes: 1 })
+        .lean<Array<{
+          countryCode: string;
+          countryName?: string;
+          languageCode: string;
+          isActive?: boolean;
+          notes?: string;
+        }>>();
 
       const result = await CountryLanguageMapping.deleteMany({});
 
@@ -285,6 +298,32 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       performanceCache.clearCountryLanguageMappings();
 
       console.log(`✅ Deleted all ${result.deletedCount} country-language mappings`);
+
+      // Fire-and-forget audit email of the wiped mappings. Opt-in via
+      // ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+      if (snapshot.length > 0) {
+        const languageNames: Record<string, string> = {};
+        for (const lang of SEO_LANGUAGES) {
+          languageNames[lang.code] = lang.name;
+        }
+        const actorEmail =
+          (req.user as { email?: string } | undefined)?.email ?? undefined;
+        const rows = snapshot.map((m) => ({
+          countryCode: m.countryCode,
+          countryName: m.countryName || m.countryCode,
+          languageCode: m.languageCode,
+          isActive: m.isActive !== false,
+          notes: m.notes || '',
+        }));
+        void import('../services/admin-audit-email')
+          .then(({ emailResetAllMappingsCsv }) =>
+            emailResetAllMappingsCsv({ rows, languageNames, actorEmail }),
+          )
+          .catch((err) => {
+            console.error('Failed to load admin-audit-email service:', err);
+          });
+      }
+
       res.json({ success: true, deletedCount: result.deletedCount });
     } catch (error) {
       console.error('Error deleting all country-language mappings:', error);

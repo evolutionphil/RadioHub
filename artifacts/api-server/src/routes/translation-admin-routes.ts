@@ -3160,7 +3160,26 @@ ${keysText}`;
       performanceCache.clearSeoHtml();
       performanceCache.clearPageData();
       logger.log('🎯 Station data flush complete! Database is now empty and ready for fresh sync.');
-      
+
+      // Fire-and-forget audit email summarising the wiped collections. Opt-in
+      // via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+      const actorEmail =
+        (req.user as { email?: string } | undefined)?.email ?? undefined;
+      void import('../services/admin-audit-email')
+        .then(({ emailFlushStationsCsv }) =>
+          emailFlushStationsCsv({
+            counts: {
+              deletedStations: stationResult.deletedCount ?? 0,
+              deletedSyncLogs: syncLogResult.deletedCount ?? 0,
+              deletedBlacklisted: blacklistResult.deletedCount ?? 0,
+            },
+            actorEmail,
+          }),
+        )
+        .catch((err) => {
+          console.error('Failed to load admin-audit-email service:', err);
+        });
+
       res.json({ 
         success: true, 
         message: 'All station data flushed successfully',
