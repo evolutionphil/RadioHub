@@ -1,6 +1,5 @@
 import { useTranslation } from "@/hooks/useTranslation";
 import { SeoHead } from "@/components/SeoHead";
-import { MEGA_RADIO_FAQ, ABOUT_FAQ } from "@shared/faq-schema";
 
 export function About() {
   const { t } = useTranslation();

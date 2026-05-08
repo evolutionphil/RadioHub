@@ -11,7 +11,7 @@ import {
   generateBreadcrumbSchema,
   type StructuredDataConfig 
 } from '@shared/structured-data';
-import { generateFAQSchema, MEGA_RADIO_FAQ, ABOUT_FAQ, FAQ_PAGE_ITEMS, type FAQTranslatedItem } from '@shared/faq-schema';
+import { generateFAQSchema, FAQ_PAGE_ITEMS, type FAQTranslatedItem } from '@shared/faq-schema';
 
 interface SeoHeadProps {
   stationData?: {
@@ -164,10 +164,14 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
       schemas.push(generateFAQSchema(faqItems, domain));
     }
 
-    // Add FAQ schema for about page
-    if (pageType === 'about') {
-      schemas.push(generateFAQSchema(ABOUT_FAQ.concat(MEGA_RADIO_FAQ), domain));
-    }
+    // Task #164: the /about page previously emitted FAQPage JSON-LD
+    // (ABOUT_FAQ + MEGA_RADIO_FAQ — 19 questions) but the about page body
+    // does not render any of those questions/answers as visible Q&A. Google
+    // flags that schema/visible-content mismatch as deceptive markup, the
+    // same issue we fixed on the homepage in Task #129. Since the visible
+    // about page content is intro paragraphs + feature cards (not Q&A),
+    // the FAQ schema is removed here rather than synthesised. The dedicated
+    // /faq page still emits FAQPage JSON-LD that matches its visible Q&A.
 
     // Update structured data in head
     updateStructuredData(schemas);
