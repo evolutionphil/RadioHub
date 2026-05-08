@@ -52,6 +52,17 @@ export interface UseAdminViewPrefsResult<T> {
   loaded: boolean;
 }
 
+function parseUpdatedAt(raw: unknown): number {
+  if (raw == null) return 0;
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw;
+  if (typeof raw === 'string') {
+    const ms = Date.parse(raw);
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (raw instanceof Date) return raw.getTime();
+  return 0;
+}
+
 function removeLocal(key: string): void {
   if (typeof window === 'undefined') return;
   try {
@@ -76,6 +87,9 @@ export function useAdminViewPrefs<T>(
   const latestRef = useRef<T>(prefs);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef<AbortController | null>(null);
+  // Most recent server-known updatedAt (epoch ms). Used to decide whether
+  // a focus-time refetch carries a newer value than what we already have.
+  const lastUpdatedAtRef = useRef<number>(0);
 
   // Keep latestRef aligned with state for the debounced flush.
   useEffect(() => {
@@ -90,6 +104,11 @@ export function useAdminViewPrefs<T>(
         const res = await apiRequest('GET', `/api/admin/preferences/${encodeURIComponent(key)}`);
         const body = (await res.json()) as { value: unknown };
         if (cancelled) return;
+
+        const serverUpdatedAt = parseUpdatedAt((body as { updatedAt?: unknown }).updatedAt);
+        if (serverUpdatedAt > lastUpdatedAtRef.current) {
+          lastUpdatedAtRef.current = serverUpdatedAt;
+        }
 
         if (body.value == null) {
           // Server is empty — migrate any local prefs up so this admin's
@@ -140,10 +159,95 @@ export function useAdminViewPrefs<T>(
     const value = latestRef.current;
     apiRequest('PUT', `/api/admin/preferences/${encodeURIComponent(key)}`, {
       body: { value },
-    }).catch(() => {
-      // Best-effort; localStorage already holds the latest copy so the
-      // user doesn't lose anything if the server write fails.
-    });
+    })
+      .then(async (res) => {
+        try {
+          const body = (await res.json()) as { updatedAt?: unknown };
+          const ts = parseUpdatedAt(body.updatedAt);
+          if (ts > lastUpdatedAtRef.current) lastUpdatedAtRef.current = ts;
+        } catch {
+          // ignore — non-JSON or already consumed
+        }
+      })
+      .catch(() => {
+        // Best-effort; localStorage already holds the latest copy so the
+        // user doesn't lose anything if the server write fails.
+      });
+  }, [key]);
+
+  // Cross-tab sync: when another tab in the same browser writes to
+  // localStorage under our key, mirror the change into this tab's state
+  // so admins don't see drifted filters between tabs. We deliberately do
+  // NOT mark userDirty or re-PUT — the originating tab already pushed
+  // to the server.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const storageKey = localStorageKey(key);
+    const onStorage = (event: StorageEvent) => {
+      if (event.storageArea !== window.localStorage) return;
+      if (event.key !== storageKey) return;
+      if (event.newValue == null) return;
+      try {
+        const parsed = JSON.parse(event.newValue);
+        const sanitized = sanitize(parsed);
+        const currentStr = JSON.stringify(latestRef.current);
+        const incomingStr = JSON.stringify(sanitized);
+        if (currentStr === incomingStr) return;
+        latestRef.current = sanitized;
+        setPrefsState(sanitized);
+      } catch {
+        // Ignore malformed payloads from other tabs.
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
+  // Focus refresh: when the user switches back to this tab, ask the server
+  // for the latest value and adopt it if it's newer than what we last knew
+  // about. This catches changes made in another browser/device while this
+  // tab was in the background. We skip if the user has unsaved local edits
+  // pending a flush so we don't clobber them.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const refresh = async () => {
+      if (document.visibilityState === 'hidden') return;
+      if (debounceRef.current) return;
+      try {
+        const res = await apiRequest(
+          'GET',
+          `/api/admin/preferences/${encodeURIComponent(key)}`,
+        );
+        const body = (await res.json()) as { value?: unknown; updatedAt?: unknown };
+        const serverUpdatedAt = parseUpdatedAt(body.updatedAt);
+        if (serverUpdatedAt <= lastUpdatedAtRef.current) return;
+        lastUpdatedAtRef.current = serverUpdatedAt;
+        if (body.value == null) return;
+        const sanitized = sanitize(body.value);
+        const currentStr = JSON.stringify(latestRef.current);
+        const incomingStr = JSON.stringify(sanitized);
+        if (currentStr === incomingStr) return;
+        latestRef.current = sanitized;
+        setPrefsState(sanitized);
+        writeLocal(key, sanitized);
+      } catch {
+        // Best-effort — leave existing state untouched.
+      }
+    };
+    const onFocus = () => {
+      void refresh();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const setPrefs = useCallback<UseAdminViewPrefsResult<T>['setPrefs']>(
