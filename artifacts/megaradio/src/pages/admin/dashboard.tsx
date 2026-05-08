@@ -513,6 +513,54 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
+      {/* Retry trend warning banner */}
+      {(() => {
+        const runs = backfillRunsData?.runs ?? [];
+        if (runs.length < 6) return null;
+        const sorted = [...runs].sort(
+          (a, b) =>
+            new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+        );
+        const last3 = sorted.slice(0, 3);
+        const prior3 = sorted.slice(3, 6);
+        const retryCount = (r: RetryTrendRun) => (r.attempts ?? []).length;
+        const last3Avg =
+          last3.reduce((s, r) => s + retryCount(r), 0) / last3.length;
+        const prior3Avg =
+          prior3.reduce((s, r) => s + retryCount(r), 0) / prior3.length;
+        const delta = last3Avg - prior3Avg;
+        const meaningful = last3Avg > prior3Avg && delta >= 1;
+        if (!meaningful) return null;
+        return (
+          <div
+            className="rounded-md border border-amber-300 bg-amber-50 p-3 flex items-start gap-3"
+            data-testid="banner-retry-trend-warning"
+          >
+            <AlertCircle className="w-5 h-5 text-amber-700 mt-0.5 shrink-0" />
+            <div className="flex-1 text-sm text-amber-900">
+              <div className="font-semibold">Retries are climbing</div>
+              <div
+                className="text-xs text-amber-800"
+                data-testid="text-retry-trend-warning-detail"
+              >
+                Last 3 runs averaged {last3Avg.toFixed(1)} retr
+                {last3Avg === 1 ? "y" : "ies"}/run vs {prior3Avg.toFixed(1)} the
+                prior 3.
+              </div>
+            </div>
+            <Link href="/admin/seo-maintenance">
+              <Button
+                variant="outline"
+                size="sm"
+                data-testid="button-retry-trend-warning-view"
+              >
+                View history
+              </Button>
+            </Link>
+          </div>
+        );
+      })()}
+
       {/* Last weekly backfill health card */}
       <Card data-testid="card-last-weekly-backfill">
         <CardHeader className="pb-2 flex flex-row items-center justify-between">
