@@ -1,10 +1,12 @@
 import { useTranslation } from "@/hooks/useTranslation";
+import { SeoHead } from "@/components/SeoHead";
 
 export function PrivacyPolicy() {
   const { t } = useTranslation();
 
   return (
     <div className="bg-[#0E0E0E]">
+      <SeoHead pageType="privacy" />
       {/* Page Header */}
       <div className="bg-[#0E0E0E] border-b border-[#1D1D1D]">
         <div className="container mx-auto px-4 py-8">

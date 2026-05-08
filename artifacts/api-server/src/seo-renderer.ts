@@ -42,6 +42,7 @@ import { isJunkStation } from './seo/junk-station-rules';
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-seo-templates';
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
+import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
 import {
   getCanonicalGenreSlug,
@@ -1006,17 +1007,17 @@ export class SeoRenderer {
       baseSeoTags.ogType = 'website';
     }
     
-    if (pageType === 'terms') {
-      baseSeoTags.title = 'Terms and Conditions - Mega Radio';
-      // Bing SEO: 150+ char description (was 139). Covers service usage, accounts,
-      // intellectual property and listener responsibilities for free streaming.
-      baseSeoTags.description = 'Read the Mega Radio Terms and Conditions covering service usage, account rules, intellectual property and listener responsibilities for free online radio streaming.';
-      baseSeoTags.ogType = 'website';
-    }
-    
-    if (pageType === 'privacy') {
-      baseSeoTags.title = 'Privacy Policy - Mega Radio';
-      baseSeoTags.description = 'Learn how Mega Radio protects your privacy and handles your personal data. Read our comprehensive privacy policy and data protection practices for free radio listeners.';
+    if (pageType === 'terms' || pageType === 'privacy') {
+      // Use multilingual SEO templates (lib/seo-shared/legal-seo-templates.ts).
+      // DB translation keys (terms_page_title/_description, privacy_page_title/_description)
+      // win when present in the requested language; otherwise we fall back to the
+      // natural per-language template so non-top-15 languages don't all serve the SAME
+      // English title and description across /xx/terms-and-conditions and
+      // /xx/privacy-policy (the same duplicate-content trap regions, genres and
+      // search had before they were localised).
+      const legalSeo = buildLegalSeo(pageType, language, translations);
+      baseSeoTags.title = legalSeo.title;
+      baseSeoTags.description = legalSeo.description;
       baseSeoTags.ogType = 'website';
     }
 
@@ -1179,10 +1180,10 @@ export class SeoRenderer {
         return 'Mega Radio Apps - Download for iOS, Android, Smart TV & Desktop';
       
       case 'terms':
-        return 'Terms and Conditions - Mega Radio';
-      
+        return buildLegalSeo('terms', language, translations).title;
+
       case 'privacy':
-        return 'Privacy Policy - Mega Radio';
+        return buildLegalSeo('privacy', language, translations).title;
 
       case 'search':
         return buildSearchSeo(language, translations).h1;

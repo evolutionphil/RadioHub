@@ -1,6 +1,7 @@
 /**
  * Regression guard: every language code in SEO_LANGUAGES must have a complete
- * entry in every per-language SEO template registry (region, genre, search, ...).
+ * entry in every per-language SEO template registry (region, genre, search,
+ * legal, ...).
  *
  * Background: REGION_SEO_TEMPLATES and GENRE_SEO_TEMPLATES silently fall back to
  * English when a language entry is missing. That's how 41 languages quietly
@@ -28,6 +29,10 @@ import {
   SEARCH_SEO_TEMPLATES,
   type SearchSeoTemplate,
 } from '@workspace/seo-shared/search-seo-templates';
+import {
+  LEGAL_SEO_TEMPLATES,
+  type LegalSeoTemplate,
+} from '@workspace/seo-shared/legal-seo-templates';
 
 const SEARCH_DESCRIPTION_MAX_CHARS = 145;
 
@@ -63,6 +68,15 @@ const SEARCH_TEMPLATE_FIELDS: Array<keyof SearchSeoTemplate> = [
   'bodyIntro',
 ];
 
+// LEGAL_SEO_TEMPLATES entries nest two pages (terms / privacy) each with
+// title + description, so coverage uses dotted paths instead of flat keys.
+const LEGAL_TEMPLATE_FIELDS = [
+  'terms.title',
+  'terms.description',
+  'privacy.title',
+  'privacy.description',
+] as const;
+
 type TemplateRegistry = Record<string, Record<string, unknown>>;
 type ExpectedFieldType = 'function' | 'string';
 
@@ -92,7 +106,22 @@ const REGISTRIES: ReadonlyArray<RegistrySpec> = [
     expectedFields: SEARCH_TEMPLATE_FIELDS as ReadonlyArray<string>,
     expectedFieldType: 'string',
   },
+  {
+    name: 'LEGAL_SEO_TEMPLATES',
+    registry: LEGAL_SEO_TEMPLATES as unknown as TemplateRegistry,
+    expectedFields: LEGAL_TEMPLATE_FIELDS as ReadonlyArray<string>,
+    expectedFieldType: 'string',
+  },
 ];
+
+function getByPath(obj: unknown, path: string): unknown {
+  return path
+    .split('.')
+    .reduce<unknown>(
+      (acc, p) => (acc == null ? acc : (acc as Record<string, unknown>)[p]),
+      obj,
+    );
+}
 
 function findCoverageGaps(
   registry: TemplateRegistry,
@@ -109,7 +138,7 @@ function findCoverageGaps(
       continue;
     }
     const missingFields = expectedFields.filter((field) => {
-      const value = entry[field];
+      const value = getByPath(entry, field);
       if (typeof value !== expectedFieldType) return true;
       if (expectedFieldType === 'string' && (value as string).trim() === '') {
         return true;
@@ -185,3 +214,7 @@ describe('Per-language SEO template coverage', () => {
     );
   });
 });
+
+// Touch the LegalSeoTemplate type so tsc --noEmit doesn't strip the import
+// and re-introduces a future regression where the type drifts from the registry.
+type _LegalSeoTemplateRef = LegalSeoTemplate;

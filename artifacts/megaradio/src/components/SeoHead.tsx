@@ -4,6 +4,7 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { generateSeoTags, getLanguageFromPath, generateLanguageUrls } from '@workspace/seo-shared/seo-config';
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
+import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { useQuery } from '@tanstack/react-query';
 import { 
   generateOrganizationSchema, 
@@ -27,7 +28,7 @@ interface SeoHeadProps {
     bitrate?: number;
     votes?: number;
   } | null;
-  pageType?: 'home' | 'station' | 'genres' | 'stations' | 'users' | 'about' | 'search' | 'faq';
+  pageType?: 'home' | 'station' | 'genres' | 'stations' | 'users' | 'about' | 'search' | 'faq' | 'terms' | 'privacy';
   /**
    * Genre detail name (e.g. "Pop", "Rock"). When provided alongside `pageType="genres"`,
    * the SeoHead overrides the generic genres-listing meta tags with a fully localized
@@ -104,6 +105,23 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
       seoTags.ogDescription = searchSeo.description;
       seoTags.twitterTitle = searchSeo.title;
       seoTags.twitterDescription = searchSeo.description;
+    }
+
+    // Legal pages override: keeps client hydration aligned with server SSR for
+    // /xx/terms-and-conditions and /xx/privacy-policy. generateSeoTags emits
+    // generic English/static legal meta, so React would otherwise overwrite
+    // the SSR-localized title/description with hard-coded English copy on
+    // mount — the same trap regions/genres/search had before they were
+    // localised. buildLegalSeo emits the per-language template when DB keys
+    // are missing in the requested language.
+    if (pageType === 'terms' || pageType === 'privacy') {
+      const legalSeo = buildLegalSeo(pageType, language, translationMap);
+      seoTags.title = legalSeo.title;
+      seoTags.description = legalSeo.description;
+      seoTags.ogTitle = legalSeo.title;
+      seoTags.ogDescription = legalSeo.description;
+      seoTags.twitterTitle = legalSeo.title;
+      seoTags.twitterDescription = legalSeo.description;
     }
 
     // Update title
