@@ -15,7 +15,10 @@ import { getQuotaStatus } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
 import { stripPlaceholders } from "./shared-utils";
 import { triggerGenreStationCountsRecompute } from "../services/genre-station-counts";
-import { runCoverageBackfill } from "../services/coverage-snapshot-backfill";
+import {
+  runCoverageBackfill,
+  type RunCoverageBackfillProgress,
+} from "../services/coverage-snapshot-backfill";
 
 // AdminSetting key used to record the most recent coverage drop alert
 // acknowledgement (Task #238). The stored value is keyed by snapshotDate
@@ -131,6 +134,44 @@ type CoverageBackfillJob = {
 };
 const coverageBackfillJobs = new Map<string, CoverageBackfillJob>();
 const COVERAGE_BACKFILL_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
+
+// Task #318: in-process tracker for the "Reconstruct sparkline history"
+// runs. The seeder used to execute synchronously inside the HTTP request
+// which timed out the UI on multi-month windows; it now runs in the
+// background and the UI polls this map for per-day progress.
+type CoverageReconstructionJob = {
+  jobId: string;
+  days: number;
+  dryRun: boolean;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  startedAt: number;
+  finishedAt?: number;
+  // Latest streamed progress (kept up to date inside the seeder's
+  // onProgress callback).
+  daysProcessed: number;
+  daysTotal: number;
+  daysSeeded: number;
+  inserted: number;
+  preserved: number;
+  wouldWrite: number;
+  currentDay: string | null;
+  skippedReason?: 'no-stations';
+  cancelRequested?: boolean;
+  error?: string;
+};
+const coverageReconstructionJobs = new Map<string, CoverageReconstructionJob>();
+const COVERAGE_RECONSTRUCTION_JOB_TTL_MS = 60 * 60 * 1000;
+function cleanupCoverageReconstructionJobs() {
+  const now = Date.now();
+  for (const [id, job] of coverageReconstructionJobs) {
+    if (
+      job.finishedAt &&
+      now - job.finishedAt > COVERAGE_RECONSTRUCTION_JOB_TTL_MS
+    ) {
+      coverageReconstructionJobs.delete(id);
+    }
+  }
+}
 
 // Task #252: when a coverage tags subjob is cancelled we stash its final
 // counters (and the country it ran against) so a follow-up enqueue for the
@@ -2979,8 +3020,83 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           });
         }
         const dryRun = req.body?.dryRun === true;
-        const result = await runCoverageBackfill({ days: daysNum, dryRun });
-        return void res.json({ success: true, days: daysNum, dryRun, ...result });
+
+        // Task #318: kick the seeder off in the background and return a
+        // jobId immediately so the request doesn't sit open for the
+        // (potentially long) duration of a 365-day reconstruction. Per-day
+        // progress is reported via the seeder's onProgress callback into a
+        // shared in-process map; the UI polls
+        // /reconstruct-history-status/:jobId for updates.
+        cleanupCoverageReconstructionJobs();
+        const jobId = new mongoose.Types.ObjectId().toString();
+        const job: CoverageReconstructionJob = {
+          jobId,
+          days: daysNum,
+          dryRun,
+          status: 'running',
+          startedAt: Date.now(),
+          daysProcessed: 0,
+          daysTotal: daysNum,
+          daysSeeded: 0,
+          inserted: 0,
+          preserved: 0,
+          wouldWrite: 0,
+          currentDay: null,
+          cancelRequested: false,
+        };
+        coverageReconstructionJobs.set(jobId, job);
+
+        const onProgress = (p: RunCoverageBackfillProgress) => {
+          const current = coverageReconstructionJobs.get(jobId);
+          if (!current) return;
+          current.daysProcessed = p.daysProcessed;
+          current.daysTotal = p.daysTotal;
+          current.daysSeeded = p.daysSeeded;
+          current.inserted = p.inserted;
+          current.preserved = p.preserved;
+          current.wouldWrite = p.wouldWrite;
+          current.currentDay = p.day || current.currentDay;
+          coverageReconstructionJobs.set(jobId, current);
+        };
+
+        void runCoverageBackfill({
+          days: daysNum,
+          dryRun,
+          onProgress,
+          isCancelled: () =>
+            coverageReconstructionJobs.get(jobId)?.cancelRequested === true,
+        })
+          .then((result) => {
+            const current = coverageReconstructionJobs.get(jobId);
+            if (!current) return;
+            current.daysSeeded = result.daysSeeded;
+            current.inserted = result.inserted;
+            current.preserved = result.preserved;
+            current.wouldWrite = result.wouldWrite;
+            current.skippedReason = result.skippedReason;
+            current.daysProcessed = current.daysTotal;
+            current.status = result.cancelled
+              ? 'cancelled'
+              : 'completed';
+            current.finishedAt = Date.now();
+            coverageReconstructionJobs.set(jobId, current);
+          })
+          .catch((err) => {
+            logger.error('coverage reconstruct-history job failed', err);
+            const current = coverageReconstructionJobs.get(jobId);
+            if (!current) return;
+            current.status = 'failed';
+            current.error = err instanceof Error ? err.message : String(err);
+            current.finishedAt = Date.now();
+            coverageReconstructionJobs.set(jobId, current);
+          });
+
+        return void res.json({
+          success: true,
+          jobId,
+          days: daysNum,
+          dryRun,
+        });
       } catch (error: any) {
         logger.error('coverage reconstruct-history failed', error);
         return void res.status(500).json({
@@ -2988,6 +3104,52 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           error: error?.message || 'Failed to reconstruct sparkline history',
         });
       }
+    },
+  );
+
+  // Poll status for a reconstruction job (Task #318). Returns the latest
+  // streamed per-day progress so the UI can render a progress bar similar
+  // to the per-country backfills.
+  app.get(
+    '/api/admin/coverage/reconstruct-history-status/:jobId',
+    requireAdmin,
+    async (req, res) => {
+      const { jobId } = req.params as { jobId: string };
+      cleanupCoverageReconstructionJobs();
+      const job = coverageReconstructionJobs.get(jobId);
+      if (!job) {
+        return void res
+          .status(404)
+          .json({ success: false, error: 'Job not found' });
+      }
+      return void res.json({ success: true, job });
+    },
+  );
+
+  // Cancel a running reconstruction job (Task #318). The seeder polls
+  // `cancelRequested` between days and exits cleanly; partial progress is
+  // preserved (idempotent $setOnInsert means re-running just resumes from
+  // the days that weren't reached).
+  app.post(
+    '/api/admin/coverage/reconstruct-history-cancel/:jobId',
+    requireAdmin,
+    async (req, res) => {
+      const { jobId } = req.params as { jobId: string };
+      const job = coverageReconstructionJobs.get(jobId);
+      if (!job) {
+        return void res
+          .status(404)
+          .json({ success: false, error: 'Job not found' });
+      }
+      if (job.status !== 'running') {
+        return void res.json({ success: true, alreadyFinished: true });
+      }
+      job.cancelRequested = true;
+      coverageReconstructionJobs.set(jobId, job);
+      logger.log(
+        `🛑 Coverage reconstruction ${jobId} cancellation requested`,
+      );
+      return void res.json({ success: true });
     },
   );
 }

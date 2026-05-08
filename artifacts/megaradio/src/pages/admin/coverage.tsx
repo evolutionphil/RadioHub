@@ -2341,76 +2341,140 @@ function CoverageDropAlertSettingsCard() {
   );
 }
 
-interface ReconstructHistoryResponse {
+interface ReconstructHistoryStartResponse {
   success: boolean;
+  jobId: string;
   days: number;
   dryRun: boolean;
+}
+
+interface ReconstructHistoryJob {
+  jobId: string;
+  days: number;
+  dryRun: boolean;
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
+  startedAt: number;
+  finishedAt?: number;
+  daysProcessed: number;
+  daysTotal: number;
   daysSeeded: number;
   inserted: number;
   preserved: number;
   wouldWrite: number;
+  currentDay: string | null;
   skippedReason?: 'no-stations';
+  cancelRequested?: boolean;
+  error?: string;
 }
 
-// Admin-only "Reconstruct sparkline history" button (Task #237). Runs
-// the same one-shot historical seeder as
-// `scripts/backfill-coverage-snapshots.ts`, but from the UI so admins
-// can re-seed history after a bulk import without shell access. Days
-// window defaults to 30 (the sparkline's range) and can be tuned in
-// the prompt. Idempotent — real cron-written rows are preserved.
+interface ReconstructHistoryStatusResponse {
+  success: boolean;
+  job: ReconstructHistoryJob;
+}
+
+// Admin-only "Reconstruct sparkline history" button (Task #237 / #318).
+// Kicks off the same one-shot historical seeder as
+// `scripts/backfill-coverage-snapshots.ts`, but the request now returns
+// a jobId immediately and the UI polls for per-day progress so admins
+// can run multi-month windows (e.g. 365 days) without timing out. Days
+// window defaults to 30 (the sparkline's range). Idempotent — real
+// cron-written rows are preserved.
 function ReconstructHistoryButton() {
   const { toast } = useToast();
-  const mutation = useMutation({
-    mutationFn: async (vars: { days: number; dryRun: boolean }) => {
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [starting, setStarting] = useState<false | 'run' | 'dryRun'>(false);
+  const completedJobIdRef = useRef<string | null>(null);
+
+  const { data: statusData } = useQuery<ReconstructHistoryStatusResponse>({
+    queryKey: ['/api/admin/coverage/reconstruct-history-status', jobId],
+    queryFn: async () => {
       const res = await apiRequest(
-        'POST',
-        '/api/admin/coverage/reconstruct-history',
-        { body: { days: vars.days, dryRun: vars.dryRun } },
+        'GET',
+        `/api/admin/coverage/reconstruct-history-status/${jobId}`,
       );
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(text || `Request failed (${res.status})`);
       }
-      const json = (await res.json()) as ReconstructHistoryResponse;
-      return { ...json, dryRun: vars.dryRun };
+      return (await res.json()) as ReconstructHistoryStatusResponse;
     },
-    onSuccess: (result) => {
-      if (result.skippedReason === 'no-stations') {
-        toast({
-          title: 'Nothing to reconstruct',
-          description: 'Stations collection is empty.',
-        });
-      } else if (result.dryRun) {
-        toast({
-          title: `Preview: would seed ${result.daysSeeded} day${
-            result.daysSeeded === 1 ? '' : 's'
-          } of history`,
-          description: `${result.wouldWrite.toLocaleString()} row${
-            result.wouldWrite === 1 ? '' : 's'
-          } would be written · ${result.preserved.toLocaleString()} already present (preserved). No rows written.`,
-        });
-      } else {
-        toast({
-          title: `Reconstructed ${result.daysSeeded} day${
-            result.daysSeeded === 1 ? '' : 's'
-          } of history`,
-          description: `${result.inserted.toLocaleString()} inserted · ${result.preserved.toLocaleString()} preserved (already present).`,
-        });
-      }
-      if (!result.dryRun) {
-        void queryClient.invalidateQueries({
-          queryKey: ['/api/admin/coverage/trends?days=30'],
-        });
-      }
+    enabled: !!jobId,
+    // Poll every second while the seeder is running; stop polling as
+    // soon as the job reaches a terminal state.
+    refetchInterval: (query) => {
+      const job = query.state.data?.job;
+      if (!job) return 1000;
+      return job.status === 'running' ? 1000 : false;
     },
-    onError: (err: any) => {
+    refetchOnWindowFocus: false,
+  });
+
+  const job = statusData?.job ?? null;
+  const isRunning = !!job && job.status === 'running';
+  const isPending = !!starting || isRunning;
+  // Which mode the in-flight job is using — used to decide which button
+  // shows the spinner and to format the completion toast (dry-run vs.
+  // real seed).
+  const activeMode: 'run' | 'dryRun' | null = starting
+    ? starting
+    : job
+      ? job.dryRun
+        ? 'dryRun'
+        : 'run'
+      : null;
+
+  // When the job finishes, surface a toast once and (for non-dry-run
+  // outcomes) refresh the trend chart so the newly-seeded days actually
+  // show up.
+  useEffect(() => {
+    if (!job) return;
+    if (job.status === 'running') return;
+    if (completedJobIdRef.current === job.jobId) return;
+    completedJobIdRef.current = job.jobId;
+    if (job.status === 'failed') {
       toast({
         title: 'Failed to reconstruct sparkline history',
-        description: err?.message || String(err),
+        description: job.error || 'Reconstruction job failed.',
         variant: 'destructive',
       });
-    },
-  });
+    } else if (job.status === 'cancelled') {
+      toast({
+        title: 'Reconstruction cancelled',
+        description: `${job.daysSeeded.toLocaleString()} day${
+          job.daysSeeded === 1 ? '' : 's'
+        } seeded before cancel · ${job.inserted.toLocaleString()} inserted.`,
+      });
+    } else if (job.skippedReason === 'no-stations') {
+      toast({
+        title: 'Nothing to reconstruct',
+        description: 'Stations collection is empty.',
+      });
+    } else if (job.dryRun) {
+      toast({
+        title: `Preview: would seed ${job.daysSeeded} day${
+          job.daysSeeded === 1 ? '' : 's'
+        } of history`,
+        description: `${job.wouldWrite.toLocaleString()} row${
+          job.wouldWrite === 1 ? '' : 's'
+        } would be written · ${job.preserved.toLocaleString()} already present (preserved). No rows written.`,
+      });
+    } else {
+      toast({
+        title: `Reconstructed ${job.daysSeeded} day${
+          job.daysSeeded === 1 ? '' : 's'
+        } of history`,
+        description: `${job.inserted.toLocaleString()} inserted · ${job.preserved.toLocaleString()} preserved (already present).`,
+      });
+    }
+    // Dry runs don't write any rows, so the trend chart can't have
+    // changed — don't invalidate (which would re-fetch a multi-country
+    // payload for nothing).
+    if (!job.dryRun && job.status !== 'failed') {
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/trends?days=30'],
+      });
+    }
+  }, [job, toast]);
 
   const promptDays = (): number | null => {
     const raw = window.prompt(
@@ -2430,50 +2494,122 @@ function ReconstructHistoryButton() {
     return days;
   };
 
-  const handleRun = () => {
+  const startJob = async (dryRun: boolean) => {
     const days = promptDays();
     if (days === null) return;
-    mutation.mutate({ days, dryRun: false });
+    setStarting(dryRun ? 'dryRun' : 'run');
+    try {
+      const res = await apiRequest(
+        'POST',
+        '/api/admin/coverage/reconstruct-history',
+        { body: { days, dryRun } },
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Request failed (${res.status})`);
+      }
+      const json = (await res.json()) as ReconstructHistoryStartResponse;
+      completedJobIdRef.current = null;
+      setJobId(json.jobId);
+    } catch (err: any) {
+      toast({
+        title: dryRun
+          ? 'Failed to start dry-run preview'
+          : 'Failed to start reconstruction',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setStarting(false);
+    }
   };
 
-  const handleDryRun = () => {
-    const days = promptDays();
-    if (days === null) return;
-    mutation.mutate({ days, dryRun: true });
+  const handleRun = () => void startJob(false);
+  const handleDryRun = () => void startJob(true);
+
+  const handleCancel = async () => {
+    if (!jobId) return;
+    try {
+      await apiRequest(
+        'POST',
+        `/api/admin/coverage/reconstruct-history-cancel/${jobId}`,
+      );
+    } catch (err: any) {
+      toast({
+        title: 'Failed to cancel reconstruction',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    }
   };
+
+  const progressPct =
+    job && job.daysTotal > 0
+      ? Math.min(100, Math.round((job.daysProcessed / job.daysTotal) * 100))
+      : 0;
 
   return (
-    <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleDryRun}
-        disabled={mutation.isPending}
-        data-testid="button-reconstruct-history-dry-run"
-        title="Preview how many rows would be seeded without writing anything to the database."
-      >
-        {mutation.isPending && mutation.variables?.dryRun ? (
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-        ) : (
-          <RefreshCw className="w-4 h-4 mr-2" />
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDryRun}
+          disabled={isPending}
+          data-testid="button-reconstruct-history-dry-run"
+          title="Preview how many rows would be seeded without writing anything to the database."
+        >
+          {activeMode === 'dryRun' ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4 mr-2" />
+          )}
+          Preview (dry run)
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRun}
+          disabled={isPending}
+          data-testid="button-reconstruct-history"
+          title="Re-run the one-shot historical sparkline reconstruction. Idempotent — real nightly snapshots are preserved."
+        >
+          {activeMode === 'run' ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <RefreshCw className="w-4 h-4 mr-2" />
+          )}
+          Reconstruct sparkline history
+        </Button>
+        {isRunning && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleCancel}
+            disabled={!!job?.cancelRequested}
+            data-testid="button-reconstruct-history-cancel"
+          >
+            {job?.cancelRequested ? 'Cancelling…' : 'Cancel'}
+          </Button>
         )}
-        Preview (dry run)
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={handleRun}
-        disabled={mutation.isPending}
-        data-testid="button-reconstruct-history"
-        title="Re-run the one-shot historical sparkline reconstruction. Idempotent — real nightly snapshots are preserved."
-      >
-        {mutation.isPending && !mutation.variables?.dryRun ? (
-          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-        ) : (
-          <RefreshCw className="w-4 h-4 mr-2" />
-        )}
-        Reconstruct sparkline history
-      </Button>
+      </div>
+      {isRunning && job && (
+        <div
+          className="w-64 flex flex-col gap-1"
+          data-testid="reconstruct-history-progress"
+        >
+          <Progress value={progressPct} className="h-2" />
+          <div className="text-xs text-muted-foreground tabular-nums">
+            {job.dryRun ? 'Preview · ' : ''}Day{' '}
+            {job.daysProcessed.toLocaleString()} of{' '}
+            {job.daysTotal.toLocaleString()}
+            {job.currentDay ? ` · ${job.currentDay}` : ''}
+            {job.dryRun
+              ? ` · ${job.wouldWrite.toLocaleString()} would write`
+              : ` · ${job.inserted.toLocaleString()} inserted · ${job.preserved.toLocaleString()} preserved`}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
