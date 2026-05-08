@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Station, Genre, User, BulkDescriptionJob } from "../shared/mongo-schemas";
+import { Station, Genre, User, BulkDescriptionJob, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from "../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { slugGenerationJobs, stripPlaceholders } from "./shared-utils";
 import { slugifyStationName, evaluateJunkStation } from "../seo/junk-station-rules";
@@ -308,16 +308,33 @@ export function registerSlugRoutes(app: Express, deps: any) {
                 
                 totalProcessed++;
                 
-                // Generate unique slug using optimized in-memory checker
-                const newSlug = generateOptimizedUniqueSlug(genre.name);
-                
+                // Generate unique slug using optimized in-memory checker.
+                // Task #161: route every Genre.slug write through the shared
+                // `normalizeGenreSlug` helper so this admin path can never
+                // reintroduce the XML-unsafe values the weekly cleanup cron
+                // exists to scrub. The transliterating slugifier already
+                // produces ASCII output, but we still normalize defensively
+                // and skip docs whose name normalizes to empty (instead of
+                // writing a literal '' which would later trip
+                // `cleanup-malformed-genre-slugs`).
+                const candidate = generateOptimizedUniqueSlug(genre.name);
+                const newSlug = normalizeGenreSlug(candidate);
+                if (!newSlug || !SAFE_GENRE_SLUG_RE.test(newSlug)) {
+                  // Note: totalProcessed was already incremented above for
+                  // this genre — do NOT double-count when skipping.
+                  logger.log(
+                    `⏭️  Skipping genre ${genre._id} ("${genre.name}") — normalized slug is empty/unsafe`,
+                  );
+                  continue;
+                }
+
                 genreBulkOps.push({
                   updateOne: {
                     filter: { _id: genre._id },
                     update: { $set: { slug: newSlug } }
                   }
                 });
-                
+
                 genreUpdated++;
                 totalUpdated++;
                 
@@ -336,10 +353,22 @@ export function registerSlugRoutes(app: Express, deps: any) {
             }
             
             // Execute bulk operations for genres.
-            // Task #110: GenreSchema.slug now has a regex validator. Mongoose
-            // bulkWrite runs validators by default (unless skipValidation:true),
-            // so leaving the default in place blocks any malformed slug from
-            // sneaking through this admin path.
+            // Task #110 added the GenreSchema.slug regex validator, but
+            // Task #161 corrected a wrong comment that previously claimed
+            // Mongoose runs validators on bulkWrite by default. In reality
+            // Mongoose only runs schema validation on `insertOne` /
+            // `replaceOne` operations inside bulkWrite — never on the
+            // `updateOne` operations we use here (see model.js comment:
+            // "Mongoose currently runs validation on `insertOne` and
+            // `replaceOne` operations by default"). That is exactly how
+            // malformed slugs were sneaking past this admin path and
+            // showing up in the weekly cleanup cron's `normalized` count.
+            //
+            // The actual defense is the pre-normalization above: every
+            // candidate slug goes through `normalizeGenreSlug` and is
+            // skipped unless it matches SAFE_GENRE_SLUG_RE, so by the
+            // time we reach this bulkWrite the only slugs in `genreBulkOps`
+            // are already safe.
             if (genreBulkOps.length > 0) {
               await Genre.bulkWrite(genreBulkOps, { ordered: false });
               logger.log(`✅ Genre batch complete: ${genreBulkOps.length} genre slugs updated`);

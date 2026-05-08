@@ -991,6 +991,26 @@ const MediaGroupSchema = new Schema<IMediaGroup>({
 // `scripts/cleanup-malformed-genre-slugs.ts`.
 export const SAFE_GENRE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/**
+ * Single normalize helper used by *every* code path that writes
+ * `Genre.slug` (Task #161). Lowercases, replaces any run of non
+ * `[a-z0-9]` characters with a single dash, and trims edge dashes.
+ *
+ * Returns `''` if the input is empty or normalizes to nothing — callers
+ * MUST treat that as "do not write a slug" (skip the doc / set
+ * isDiscoverable=false). The output is guaranteed to either be `''` or
+ * to satisfy `SAFE_GENRE_SLUG_RE`, so funneling all writes through this
+ * helper means the weekly `cleanup-malformed-genre-slugs` cron has
+ * nothing left to fix and idles at `normalized=0`.
+ */
+export function normalizeGenreSlug(input: string | null | undefined): string {
+  if (!input) return '';
+  return String(input)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
 const GenreSchema = new Schema<IGenre>({
   name: { type: String, required: true },
   slug: {

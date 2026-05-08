@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating, SyncLog, BlacklistedStation } from "../shared/mongo-schemas";
+import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating, SyncLog, BlacklistedStation, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from "../shared/mongo-schemas";
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
@@ -974,13 +974,17 @@ ${keysText}`;
       // Create genres for tags with at least 1 station
       // Task #110: skip empty/malformed slugs (would otherwise leak the
       // XML-unsafe legacy values that #102 + #110 just cleaned up).
-      const SAFE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+      // Task #161: route this through the shared `normalizeGenreSlug`
+      // helper so every Genre.slug write site uses the same definition
+      // of "safe" — duplicating the regex inline meant a future tweak to
+      // SAFE_GENRE_SLUG_RE could silently drift away from this admin
+      // path and reintroduce malformed slugs.
       let genresCreated = 0;
       let genresSkipped = 0;
       for (const [tag, count] of Object.entries(tagCounts)) {
         if (count >= 1) {
-          const slug = tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-          if (!slug || !SAFE_SLUG_RE.test(slug)) {
+          const slug = normalizeGenreSlug(tag);
+          if (!slug || !SAFE_GENRE_SLUG_RE.test(slug)) {
             genresSkipped++;
             continue;
           }

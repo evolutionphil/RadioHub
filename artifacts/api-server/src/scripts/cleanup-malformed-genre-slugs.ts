@@ -44,16 +44,15 @@
 
 import mongoose from 'mongoose';
 import type { Collection, ObjectId } from 'mongodb';
-import { Genre, SAFE_GENRE_SLUG_RE } from '../shared/mongo-schemas';
+import { Genre, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '../shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
-function normalizeSlug(input: string | null | undefined): string {
-  if (!input) return '';
-  return String(input)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
+// Task #161: the normalize helper now lives next to SAFE_GENRE_SLUG_RE in
+// `shared/mongo-schemas.ts` so every Genre.slug writer (this script, the
+// admin slug-regeneration job, the populate-from-tags admin route) shares
+// one definition. Keep a thin local alias so the rest of the file reads
+// the same as before.
+const normalizeSlug = normalizeGenreSlug;
 
 export interface GenreSlugCleanupStats {
   scanned: number;
