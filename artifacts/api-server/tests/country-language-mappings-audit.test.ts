@@ -157,12 +157,48 @@ function singleQuery<T>(produce: () => T | null): FakeSingleQuery<T> {
   };
 }
 
+interface RegexSpec {
+  $regex?: string;
+  $options?: string;
+}
+
+function matchesRegexSpec(value: unknown, spec: RegexSpec): boolean {
+  if (typeof value !== 'string') return false;
+  if (typeof spec.$regex !== 'string') return false;
+  const re = new RegExp(spec.$regex, spec.$options ?? '');
+  return re.test(value);
+}
+
 function matchesAuditFilter(doc: AuditDoc, filter: Record<string, unknown>): boolean {
   for (const [k, v] of Object.entries(filter)) {
-    if (k === 'action' && doc.action !== v) return false;
-    // Other filters (actorEmail regex, $or, createdAt range) are not
-    // exercised by these tests; the action filter is the contract we
-    // care about for Task #213.
+    if (k === 'action') {
+      if (doc.action !== v) return false;
+      continue;
+    }
+    if (k === 'actorEmail') {
+      if (!matchesRegexSpec(doc.actorEmail, v as RegexSpec)) return false;
+      continue;
+    }
+    if (k === '$or') {
+      const clauses = v as Array<Record<string, RegexSpec>>;
+      const anyMatch = clauses.some((clause) => {
+        const [path, spec] = Object.entries(clause)[0] ?? [];
+        if (!path || !spec) return false;
+        const [field, sub] = path.split('.');
+        const arr = (doc as unknown as Record<string, Array<Record<string, unknown>> | undefined>)[field];
+        if (!Array.isArray(arr)) return false;
+        return arr.some((row) => matchesRegexSpec(row[sub], spec));
+      });
+      if (!anyMatch) return false;
+      continue;
+    }
+    if (k === 'createdAt') {
+      const spec = v as { $gte?: Date; $lte?: Date };
+      const t = doc.createdAt.getTime();
+      if (spec.$gte && t < spec.$gte.getTime()) return false;
+      if (spec.$lte && t > spec.$lte.getTime()) return false;
+      continue;
+    }
   }
   return true;
 }
@@ -691,4 +727,196 @@ test('GET ?action= returns only matching rows; ?action=all returns everything', 
     `${baseUrl}/api/admin/country-language-mappings/cleared-overrides-log?action=not-a-real-action`,
   );
   assert.equal(badRes.status, 400, 'unknown action filter must 400');
+});
+
+test('GET ?actorEmail= matches case-insensitively and treats input literally (no regex injection)', async () => {
+  audits.push(
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: 'Admin@Example.com',
+      deletedCount: 1,
+      changes: [],
+      snapshot: [],
+      createdAt: nextNow(),
+    },
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: 'someone-else@example.com',
+      deletedCount: 1,
+      changes: [],
+      snapshot: [],
+      createdAt: nextNow(),
+    },
+    // If the dot in the query were treated as a regex wildcard, this row
+    // would falsely match "admin.example.com".
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: 'adminXexample.com',
+      deletedCount: 1,
+      changes: [],
+      snapshot: [],
+      createdAt: nextNow(),
+    },
+  );
+
+  // Case-insensitive: lowercase query matches mixed-case actor.
+  const ciRes = await fetch(
+    `${baseUrl}/api/admin/country-language-mappings/cleared-overrides-log?actorEmail=admin@example.com`,
+  );
+  assert.equal(ciRes.status, 200);
+  const ciBody = (await ciRes.json()) as {
+    entries: Array<{ actorEmail: string }>;
+    total: number;
+  };
+  assert.equal(ciBody.total, 1);
+  assert.equal(ciBody.entries[0].actorEmail, 'Admin@Example.com');
+
+  // Regex metacharacters in the input must be matched literally.
+  const literalRes = await fetch(
+    `${baseUrl}/api/admin/country-language-mappings/cleared-overrides-log?actorEmail=${encodeURIComponent(
+      'admin.example.com',
+    )}`,
+  );
+  assert.equal(literalRes.status, 200);
+  const literalBody = (await literalRes.json()) as { total: number };
+  assert.equal(literalBody.total, 0, 'dot must not be a regex wildcard');
+});
+
+test('GET ?country= matches both snapshot rows (clears) and changes rows (edits)', async () => {
+  audits.push(
+    // clear-overrides — country lives in snapshot
+    {
+      _id: String(nextId++),
+      action: 'clear-overrides',
+      actorEmail: ACTOR_EMAIL,
+      deletedCount: 1,
+      changes: [],
+      snapshot: [
+        {
+          countryCode: 'FR',
+          countryName: 'France',
+          currentLanguageCode: 'de',
+          defaultLanguageCode: 'fr',
+        },
+      ],
+      createdAt: nextNow(),
+    },
+    // edit — country lives in changes
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: ACTOR_EMAIL,
+      deletedCount: 1,
+      changes: [
+        {
+          countryCode: 'FR',
+          countryName: 'France',
+          previousLanguageCode: 'fr',
+          newLanguageCode: 'es',
+        },
+      ],
+      snapshot: [],
+      createdAt: nextNow(),
+    },
+    // unrelated edit — must not match.
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: ACTOR_EMAIL,
+      deletedCount: 1,
+      changes: [
+        {
+          countryCode: 'US',
+          countryName: 'United States',
+          previousLanguageCode: null,
+          newLanguageCode: 'es',
+        },
+      ],
+      snapshot: [],
+      createdAt: nextNow(),
+    },
+  );
+
+  // By country code — picks up both the snapshot and the changes row.
+  const byCodeRes = await fetch(
+    `${baseUrl}/api/admin/country-language-mappings/cleared-overrides-log?country=FR`,
+  );
+  assert.equal(byCodeRes.status, 200);
+  const byCodeBody = (await byCodeRes.json()) as {
+    entries: Array<{ action: string }>;
+    total: number;
+  };
+  assert.equal(byCodeBody.total, 2);
+  const actions = byCodeBody.entries.map((e) => e.action).sort();
+  assert.deepEqual(actions, ['clear-overrides', 'edit']);
+
+  // Country name match works the same way (also case-insensitive).
+  const byNameRes = await fetch(
+    `${baseUrl}/api/admin/country-language-mappings/cleared-overrides-log?country=${encodeURIComponent(
+      'france',
+    )}`,
+  );
+  assert.equal(byNameRes.status, 200);
+  const byNameBody = (await byNameRes.json()) as { total: number };
+  assert.equal(byNameBody.total, 2);
+});
+
+test('GET ?from= / ?to= treat YYYY-MM-DD upper bound as inclusive end-of-day', async () => {
+  // One entry just before the window, one late on the same day as the
+  // upper bound, one early the next day (must be excluded for a
+  // single-day from/to=2026-05-01 query).
+  audits.push(
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: ACTOR_EMAIL,
+      deletedCount: 1,
+      changes: [],
+      snapshot: [],
+      createdAt: new Date('2026-04-30T12:00:00.000Z'),
+    },
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: ACTOR_EMAIL,
+      deletedCount: 1,
+      changes: [],
+      snapshot: [],
+      createdAt: new Date('2026-05-01T22:30:00.000Z'),
+    },
+    {
+      _id: String(nextId++),
+      action: 'edit',
+      actorEmail: ACTOR_EMAIL,
+      deletedCount: 1,
+      changes: [],
+      snapshot: [],
+      createdAt: new Date('2026-05-02T00:30:00.000Z'),
+    },
+  );
+
+  // Same-day window — without end-of-day inclusivity, the 22:30 entry
+  // would be silently dropped.
+  const sameDayRes = await fetch(
+    `${baseUrl}/api/admin/country-language-mappings/cleared-overrides-log?from=2026-05-01&to=2026-05-01`,
+  );
+  assert.equal(sameDayRes.status, 200);
+  const sameDayBody = (await sameDayRes.json()) as { total: number };
+  assert.equal(
+    sameDayBody.total,
+    1,
+    'YYYY-MM-DD upper bound must be inclusive of the entire day',
+  );
+
+  // Two-day window picks up both May-1 22:30 and May-2 00:30; the April
+  // entry stays excluded by the lower bound.
+  const rangeRes = await fetch(
+    `${baseUrl}/api/admin/country-language-mappings/cleared-overrides-log?from=2026-05-01&to=2026-05-02`,
+  );
+  assert.equal(rangeRes.status, 200);
+  const rangeBody = (await rangeRes.json()) as { total: number };
+  assert.equal(rangeBody.total, 2);
 });
