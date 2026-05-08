@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { RetryTrendSparkline } from "@/components/admin/RetryTrendSparkline";
+import { RetryCauseBreakdown } from "@/components/admin/RetryCauseBreakdown";
 
 interface HealthStats {
   country: string | null;
@@ -641,6 +642,12 @@ export default function SeoMaintenancePage() {
                 height={48}
                 testId="seo-maintenance-retry-trend"
               />
+              <div className="mt-2">
+                <RetryCauseBreakdown
+                  runs={runsQuery.data.runs}
+                  testId="seo-maintenance-retry-causes"
+                />
+              </div>
             </div>
           )}
         </CardHeader>
