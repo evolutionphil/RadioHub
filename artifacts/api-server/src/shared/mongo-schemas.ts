@@ -664,6 +664,10 @@ export interface IBackfillRun extends Document {
   trigger: string; // 'cron:weekly' | 'manual:logos:<CC>' | 'manual:tags:<CC>'
   status: 'running' | 'completed' | 'failed';
   topN: number;
+  // When set, the sweep targeted just this country (admin override) instead
+  // of the cron's top-N aggregation. Persisted so history rows are
+  // unambiguous when admins backfill a long-tail market on demand.
+  overrideCountry?: string;
   startedAt: Date;
   finishedAt?: Date;
   durationMs?: number;
@@ -1044,6 +1048,7 @@ const BackfillRunSchema = new Schema<IBackfillRun>({
   trigger: { type: String, required: true, index: true },
   status: { type: String, enum: ['running', 'completed', 'failed'], required: true, index: true },
   topN: { type: Number, default: 5 },
+  overrideCountry: { type: String, uppercase: true, trim: true },
   startedAt: { type: Date, required: true },
   finishedAt: Date,
   durationMs: Number,

@@ -198,8 +198,11 @@ class ScheduledBackfillService {
    * persists the BackfillRun row immediately and runs the work in the
    * background so the HTTP response doesn't block on a multi-minute job.
    */
-  async runOnce(trigger: string = 'manual'): Promise<IBackfillRun | null> {
-    const run = await this.start(trigger);
+  async runOnce(
+    trigger: string = 'manual',
+    options: { countryCode?: string } = {},
+  ): Promise<IBackfillRun | null> {
+    const run = await this.start(trigger, options);
     if (!run) return null;
     // Wait for the in-flight sweep to drain so callers (like the cron)
     // can log a single completion line. `start()` already kicked off the
@@ -217,7 +220,10 @@ class ScheduledBackfillService {
    * single-instance lock as `runOnce` — returns null if a sweep is
    * already in progress.
    */
-  async start(trigger: string = 'manual'): Promise<IBackfillRun | null> {
+  async start(
+    trigger: string = 'manual',
+    options: { countryCode?: string } = {},
+  ): Promise<IBackfillRun | null> {
     if (this.isRunning) {
       logger.log(`⏭️  Scheduled backfill: skip (${trigger}) — previous run still in progress`);
       return null;
@@ -225,32 +231,68 @@ class ScheduledBackfillService {
     this.isRunning = true;
     const startedAt = new Date();
 
+    const overrideCountry = options.countryCode
+      ? options.countryCode.trim().toUpperCase()
+      : undefined;
+    // Single-country override still records `topN` for schema parity, but
+    // the sweep itself only touches one market — see `executeSweep`.
+    const effectiveTopN = overrideCountry ? 1 : this.TOP_N;
+
     const run = await BackfillRun.create({
       trigger,
       status: 'running',
-      topN: this.TOP_N,
+      topN: effectiveTopN,
+      overrideCountry,
       startedAt,
       logos: [],
       tags: [],
     });
     this.lastRunId = String(run._id);
 
-    logger.log(`🗓️  Scheduled backfill START (${trigger}, top-${this.TOP_N})`);
+    logger.log(
+      overrideCountry
+        ? `🗓️  Scheduled backfill START (${trigger}, country=${overrideCountry})`
+        : `🗓️  Scheduled backfill START (${trigger}, top-${this.TOP_N})`,
+    );
 
     // Fire-and-forget the actual sweep so callers get the row back
     // immediately. The lock is released inside the worker's finally.
-    this.executeSweep(run, startedAt).catch((err) => {
+    this.executeSweep(run, startedAt, overrideCountry).catch((err) => {
       logger.error('❌ Scheduled backfill worker crashed:', err);
     });
     return run;
   }
 
-  private async executeSweep(run: IBackfillRun, startedAt: Date): Promise<void> {
+  /**
+   * Convenience wrapper for triggering a single-country sweep.
+   * Reuses `enqueueLogosForCountry` + `SyncService.hydrateMissingTagsInBackground`
+   * via the same `start()` path the cron uses, so behaviour stays consistent.
+   */
+  async runForCountry(
+    countryCode: string,
+    trigger: string = 'manual',
+  ): Promise<IBackfillRun | null> {
+    return this.start(trigger, { countryCode });
+  }
+
+  private async executeSweep(
+    run: IBackfillRun,
+    startedAt: Date,
+    overrideCountry?: string,
+  ): Promise<void> {
     try {
-      const [topLogos, topTags] = await Promise.all([
-        topCountriesByFilter(buildLogoBackfillFilter(), this.TOP_N),
-        topCountriesByFilter(buildTagsBackfillFilter(), this.TOP_N),
-      ]);
+      // When admins target a specific country we skip the top-N
+      // aggregation entirely and just run logos + tags for that one
+      // market. Otherwise pick the worst offenders as usual.
+      const [topLogos, topTags] = overrideCountry
+        ? [
+            [{ countryCode: overrideCountry, count: 0 }],
+            [{ countryCode: overrideCountry, count: 0 }],
+          ]
+        : await Promise.all([
+            topCountriesByFilter(buildLogoBackfillFilter(), this.TOP_N),
+            topCountriesByFilter(buildTagsBackfillFilter(), this.TOP_N),
+          ]);
 
       logger.log(
         `🗓️  Top logo offenders: ${topLogos.map((c) => `${c.countryCode}(${c.count})`).join(', ') || 'none'}`,

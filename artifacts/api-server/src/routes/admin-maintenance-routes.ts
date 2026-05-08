@@ -270,14 +270,36 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
   app.post(
     "/api/admin/maintenance/scheduled-backfill/run",
     requireAdmin,
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
       try {
+        // Optional { countryCode } body lets admins target a long-tail
+        // market that isn't currently in the cron's top-5. Empty/missing
+        // body keeps the legacy behaviour. Reject anything that isn't a
+        // 2-letter ISO code so we don't end up persisting garbage in the
+        // BackfillRun history rows.
+        const raw = (req.body?.countryCode as string | undefined) ?? null;
+        let countryCode: string | undefined;
+        if (raw !== null && raw !== "") {
+          const normalized = String(raw).trim().toUpperCase();
+          if (!/^[A-Z]{2}$/.test(normalized)) {
+            return res.status(400).json({
+              error: "invalid_country_code",
+              message: "countryCode must be a 2-letter ISO code (e.g. 'TR') or omitted.",
+            });
+          }
+          countryCode = normalized;
+        }
+
+        const trigger = countryCode
+          ? `admin:manual:${countryCode}`
+          : "admin:manual";
+
         // `start()` persists the BackfillRun row immediately, kicks the
         // sweep off in the background, and returns the row so we can
         // hand it back without holding the HTTP connection open for the
         // (potentially multi-minute) job. Returns null if the single-
         // instance lock is already held.
-        const run = await scheduledBackfill.start("admin:manual");
+        const run = await scheduledBackfill.start(trigger, { countryCode });
         if (!run) {
           return res.status(409).json({
             error: "already_running",
