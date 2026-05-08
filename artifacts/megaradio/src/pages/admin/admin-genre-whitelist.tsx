@@ -63,8 +63,19 @@ export default function AdminGenreWhitelist() {
     queryKey: ['/api/admin/genre-whitelist'],
   });
 
-  const invalidate = () =>
+  // Real Genre tags by stationCount that aren't whitelisted/aliased yet —
+  // powers the "add slug" autocomplete so admins pick existing station
+  // tags instead of guessing the normalized slug form.
+  const { data: suggestionsData } = useQuery<{
+    suggestions: Array<{ slug: string; stationCount: number }>;
+  }>({
+    queryKey: ['/api/admin/genre-whitelist/suggestions'],
+  });
+
+  const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/admin/genre-whitelist'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/admin/genre-whitelist/suggestions'] });
+  };
 
   const addSlug = useMutation({
     mutationFn: async (slug: string) => {
@@ -278,12 +289,30 @@ export default function AdminGenreWhitelist() {
               placeholder="new-genre-slug"
               value={newSlug}
               onChange={(e) => setNewSlug(e.target.value)}
+              list="new-slug-suggestions"
               data-testid="input-new-slug"
             />
+            {/* Real Genre tags by stationCount, filtered server-side to
+                exclude already-whitelisted/aliased/reserved slugs. */}
+            <datalist id="new-slug-suggestions">
+              {(suggestionsData?.suggestions ?? []).map((s) => (
+                <option
+                  key={s.slug}
+                  value={s.slug}
+                  label={`${s.stationCount} ${s.stationCount === 1 ? 'station' : 'stations'}`}
+                />
+              ))}
+            </datalist>
             <Button type="submit" disabled={addSlug.isPending} data-testid="button-add-slug">
               <Plus className="w-4 h-4 mr-1" /> Add
             </Button>
           </form>
+          {suggestionsData && suggestionsData.suggestions.length > 0 && (
+            <p className="text-xs text-gray-500" data-testid="text-slug-suggestions-hint">
+              Suggestions: top {suggestionsData.suggestions.length} station tags not yet on the
+              whitelist (start typing to filter).
+            </p>
+          )}
           {newSlug.trim() && reservedSet.has(newSlug.trim().toLowerCase()) && (
             <Alert variant="destructive">
               <AlertCircle className="w-4 h-4" />

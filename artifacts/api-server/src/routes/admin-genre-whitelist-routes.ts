@@ -213,6 +213,57 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
     },
   );
 
+  // GET /suggestions — top Genre slugs by stationCount that are not yet
+  // on the merged whitelist (and not aliased and not reserved). Powers
+  // the autocomplete on the "add slug" input so admins pick real tags
+  // stations actually use instead of guessing the normalized form.
+  app.get(
+    '/api/admin/genre-whitelist/suggestions',
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const rawLimit = Number((req.query as any)?.limit);
+        const limit = Number.isFinite(rawLimit)
+          ? Math.min(Math.max(Math.floor(rawLimit), 1), 200)
+          : 50;
+
+        await refreshGenreWhitelistFromDb();
+        const merged = getMergedWhitelist();
+        const aliases = getMergedAliases();
+
+        // Pull a generous superset (limit * 4, capped) so we still have
+        // enough candidates after filtering out already-whitelisted /
+        // aliased / reserved slugs.
+        const fetchCap = Math.min(limit * 4, 500);
+        const genres = await Genre.find({
+          slug: { $exists: true, $ne: null },
+          stationCount: { $gt: 0 },
+        })
+          .select('slug stationCount')
+          .sort({ stationCount: -1 })
+          .limit(fetchCap)
+          .lean<Array<{ slug?: string; stationCount?: number }>>();
+
+        const suggestions: Array<{ slug: string; stationCount: number }> = [];
+        for (const g of genres) {
+          if (typeof g.slug !== 'string' || !g.slug) continue;
+          const slug = g.slug;
+          if (merged.has(slug)) continue;
+          if (aliases.has(slug)) continue;
+          if (isReservedGenreSlug(slug)) continue;
+          if (!SLUG_REGEX.test(slug)) continue;
+          suggestions.push({ slug, stationCount: g.stationCount ?? 0 });
+          if (suggestions.length >= limit) break;
+        }
+
+        return res.json({ suggestions, limit });
+      } catch (error: any) {
+        logger.error('Error loading genre whitelist suggestions:', error);
+        return res.status(500).json({ error: 'Failed to load suggestions' });
+      }
+    },
+  );
+
   // POST /slugs — add a slug to the whitelist. If the slug is in the
   // static seed this is a no-op at the merged-snapshot level, but we
   // still record the override for audit. If a 'slug-remove' override
