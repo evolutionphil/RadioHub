@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, X, History, Undo2 } from 'lucide-react';
@@ -668,6 +669,17 @@ export default function AdminCountryLanguageMappings() {
 
   const hasPendingChanges = pendingChanges.size > 0;
   const isSaving = bulkSaveMutation.isPending || deleteMappingMutation.isPending;
+
+  // Detect macOS so the Save Changes tooltip shows ⌘S there and Ctrl+S
+  // everywhere else. Guard against SSR / non-browser envs.
+  const isMacPlatform = useMemo(() => {
+    if (typeof navigator === 'undefined') return false;
+    const platform = navigator.platform || '';
+    const ua = navigator.userAgent || '';
+    return /Mac|iPhone|iPad|iPod/i.test(platform) || /Mac OS X/i.test(ua);
+  }, []);
+  const saveShortcutLabel = isMacPlatform ? '⌘S' : 'Ctrl+S';
+  const saveShortcutHint = `Save changes (${saveShortcutLabel})`;
 
   // Ctrl+S / Cmd+S triggers the same save flow as the Save Changes button.
   // We only intercept (and suppress the browser's Save Page dialog) when
@@ -1449,24 +1461,39 @@ export default function AdminCountryLanguageMappings() {
                 Discard pending changes
               </Button>
             )}
-            <Button
-              data-testid="button-save-mappings"
-              onClick={handleBulkSave}
-              disabled={!hasChanges || bulkSaveMutation.isPending}
-              className="min-w-32"
-            >
-              {bulkSaveMutation.isPending ? (
-                <>
-                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Save Changes
-                </>
-              )}
-            </Button>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-testid="button-save-mappings"
+                  onClick={handleBulkSave}
+                  disabled={!hasChanges || bulkSaveMutation.isPending}
+                  className="min-w-32"
+                  aria-keyshortcuts={isMacPlatform ? 'Meta+S' : 'Control+S'}
+                  title={saveShortcutHint}
+                >
+                  {bulkSaveMutation.isPending ? (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="mr-2 h-4 w-4" />
+                      Save Changes
+                      <kbd
+                        data-testid="kbd-save-shortcut"
+                        className="ml-2 hidden rounded border border-white/30 bg-white/10 px-1.5 py-0.5 text-[10px] font-medium leading-none sm:inline-block"
+                      >
+                        {saveShortcutLabel}
+                      </kbd>
+                    </>
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent data-testid="tooltip-save-shortcut">
+                {saveShortcutHint}
+              </TooltipContent>
+            </Tooltip>
           </div>
 
           {/* Recent bulk actions: snapshots of recently cleared overrides
@@ -1605,24 +1632,39 @@ export default function AdminCountryLanguageMappings() {
                 <X className="mr-2 h-4 w-4" />
                 Discard
               </Button>
-              <Button
-                data-testid="button-save-mappings-banner"
-                size="sm"
-                onClick={handleBulkSave}
-                disabled={bulkSaveMutation.isPending}
-              >
-                {bulkSaveMutation.isPending ? (
-                  <>
-                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="mr-2 h-4 w-4" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    data-testid="button-save-mappings-banner"
+                    size="sm"
+                    onClick={handleBulkSave}
+                    disabled={bulkSaveMutation.isPending}
+                    aria-keyshortcuts={isMacPlatform ? 'Meta+S' : 'Control+S'}
+                    title={saveShortcutHint}
+                  >
+                    {bulkSaveMutation.isPending ? (
+                      <>
+                        <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Changes
+                        <kbd
+                          data-testid="kbd-save-shortcut-banner"
+                          className="ml-2 hidden rounded border border-white/30 bg-white/10 px-1.5 py-0.5 text-[10px] font-medium leading-none sm:inline-block"
+                        >
+                          {saveShortcutLabel}
+                        </kbd>
+                      </>
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent data-testid="tooltip-save-shortcut-banner">
+                  {saveShortcutHint}
+                </TooltipContent>
+              </Tooltip>
               </div>
             </div>
           )}
