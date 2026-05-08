@@ -9,11 +9,17 @@
  * NOTE: Used by server/seo-renderer.ts in the `pageType === 'regions'` branch
  * (title/description/keywords) AND in the regions SSR body branch (intro paragraphs).
  *
+ * The country/region name is also localized via country-name-translations.ts
+ * before being interpolated into the template, so e.g. Turkish titles read
+ * "Almanya Radyo İstasyonları" instead of "Germany Radyo İstasyonları".
+ *
  * Without per-language titles/descriptions, all 44 languages served the SAME English
  * `<title>` ("Germany Radio Stations - Regional Broadcasting | Mega Radio") and the
  * same English `<meta description>`. With ~120 countries × 44 languages = ~5,280
  * pages, Google was collapsing them into one EN canonical and dropping the rest.
  */
+
+import { getLocalizedCountryName, getLocalizedRegionName } from './country-name-translations';
 
 export interface RegionSeoTemplate {
   // `kind` differentiates a single country (Germany, Brazil) from a multi-country
@@ -896,6 +902,11 @@ export function buildCountrySeo(
   dbTranslations?: Record<string, string>,
 ): RegionSeoOutput {
   const tpl = getRegionSeoTemplate(language);
+  // Localize the country name itself (e.g. "Germany" -> "Almanya" in Turkish)
+  // so the surrounding templated copy doesn't mix English country names with
+  // localized framing. Falls back to the canonical English name when the
+  // language has no entry for this country in country-name-translations.
+  const localizedName = getLocalizedCountryName(countryName, language);
 
   const radioStations = dbTranslations?.seo_radio_stations?.trim();
   const listenLive = dbTranslations?.seo_listen_live_online?.trim();
@@ -905,23 +916,23 @@ export function buildCountrySeo(
 
   const title =
     radioStations && listenLive
-      ? `${countryName} ${radioStations} - ${listenLive} | Mega Radio`
-      : tpl.countryTitle(countryName);
+      ? `${localizedName} ${radioStations} - ${listenLive} | Mega Radio`
+      : tpl.countryTitle(localizedName);
 
   let description =
     listenFrom && discoverLocal && radioBroadcastingFree
-      ? `${listenFrom} ${countryName}. ${discoverLocal} ${countryName} ${radioBroadcastingFree}.`
-      : tpl.countryDescription(countryName);
+      ? `${listenFrom} ${localizedName}. ${discoverLocal} ${localizedName} ${radioBroadcastingFree}.`
+      : tpl.countryDescription(localizedName);
 
   description = clampDescription(description);
 
   return {
     title,
     description,
-    keywords: tpl.countryKeywords(countryName),
-    h1: tpl.countryH1(countryName),
-    bodyIntro: tpl.countryBodyIntro(countryName),
-    bodyAvailability: tpl.countryBodyAvailability(countryName),
+    keywords: tpl.countryKeywords(localizedName),
+    h1: tpl.countryH1(localizedName),
+    bodyIntro: tpl.countryBodyIntro(localizedName),
+    bodyAvailability: tpl.countryBodyAvailability(localizedName),
   };
 }
 
@@ -934,6 +945,10 @@ export function buildRegionSeo(
   dbTranslations?: Record<string, string>,
 ): RegionSeoOutput {
   const tpl = getRegionSeoTemplate(language);
+  // Localize the continent/region name itself (e.g. "Europe" -> "Avrupa") so
+  // the surrounding templated copy doesn't mix English region names with
+  // localized framing. Falls back to the canonical English name when missing.
+  const localizedName = getLocalizedRegionName(regionName, language);
 
   const radioStations = dbTranslations?.seo_radio_stations?.trim();
   const regionalBroadcasting = dbTranslations?.seo_regional_broadcasting?.trim();
@@ -942,22 +957,22 @@ export function buildRegionSeo(
 
   const title =
     radioStations && regionalBroadcasting
-      ? `${regionName} ${radioStations} - ${regionalBroadcasting} | Mega Radio`
-      : tpl.regionTitle(regionName);
+      ? `${localizedName} ${radioStations} - ${regionalBroadcasting} | Mega Radio`
+      : tpl.regionTitle(localizedName);
 
   let description =
     exploreFrom && listenRegional
-      ? `${exploreFrom} ${regionName}. ${listenRegional}.`
-      : tpl.regionDescription(regionName);
+      ? `${exploreFrom} ${localizedName}. ${listenRegional}.`
+      : tpl.regionDescription(localizedName);
 
   description = clampDescription(description);
 
   return {
     title,
     description,
-    keywords: tpl.regionKeywords(regionName),
-    h1: tpl.regionH1(regionName),
-    bodyIntro: tpl.regionBodyIntro(regionName),
-    bodyAvailability: tpl.regionBodyAvailability(regionName),
+    keywords: tpl.regionKeywords(localizedName),
+    h1: tpl.regionH1(localizedName),
+    bodyIntro: tpl.regionBodyIntro(localizedName),
+    bodyAvailability: tpl.regionBodyAvailability(localizedName),
   };
 }
