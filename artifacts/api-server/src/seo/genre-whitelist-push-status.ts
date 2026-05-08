@@ -116,9 +116,9 @@ export function updatePushStep(
   pushes.set(pushId, { ...current, [step]: result });
 }
 
-export function completePushStatus(pushId: PushId): void {
+export function completePushStatus(pushId: PushId): GenreWhitelistPushStatus | null {
   const current = pushes.get(pushId);
-  if (!current) return;
+  if (!current) return null;
   const completedAtIso = new Date().toISOString();
   const completed: GenreWhitelistPushStatus = { ...current, completedAt: completedAtIso };
   pushes.set(pushId, completed);
@@ -142,6 +142,13 @@ export function completePushStatus(pushId: PushId): void {
       err?.message ?? err,
     );
   });
+  // Return the completed snapshot so callers (e.g. the failure
+  // notifier in `triggerSearchEnginePush`) can act on the exact
+  // run-local state, even if a concurrent push has already started
+  // and overwritten `lastPushId`. This closes the cross-run
+  // contamination risk between task #255 (per-push isolation) and
+  // task #256 (failure alerting).
+  return completed;
 }
 
 function stepToDoc(step: PushStepResult) {

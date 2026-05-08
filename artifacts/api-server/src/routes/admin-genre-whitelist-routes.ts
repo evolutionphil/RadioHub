@@ -36,6 +36,7 @@ import {
   getLastPushStatus,
   getRecentPushHistory,
 } from '../seo/genre-whitelist-push-status';
+import { notifyWhitelistPushResult } from '../services/genre-whitelist-push-notifier';
 
 const PUSH_HISTORY_LIMIT = 20;
 
@@ -114,10 +115,11 @@ function triggerSearchEnginePush(
     }
     if (affectedSlugs.length === 0) {
       updatePushStep(pushId, 'indexnowGenreUrls', { status: 'skipped' });
-      completePushStatus(pushId);
-      return;
-    }
-
+      // Fall through to the single completion + notify block below so
+      // the zero-slug short-circuit still fires the failure alert when
+      // an earlier step (sitemap rebuild / IndexNow sitemap ping)
+      // failed (task #256).
+    } else {
     // Expand per qualified language using the same translation map the
     // sitemap uses, so we ping the canonical localized URL (not a
     // redirect source). Fall back to a single `/en/...` ping if we
@@ -173,7 +175,20 @@ function triggerSearchEnginePush(
         });
       }
     }
-    completePushStatus(pushId);
+    }
+    // Task #256 + #255: complete the per-push record and pass the
+    // run-local snapshot (returned by completePushStatus) to the
+    // failure notifier. We deliberately do NOT call
+    // `getLastPushStatus()` here — a concurrent push may have started
+    // and overwritten `lastPushId` between our last `updatePushStep`
+    // and this point, which would mis-attribute the alert. Runs on
+    // every code path, including the zero-slug short-circuit above.
+    const finalStatus = completePushStatus(pushId);
+    try {
+      await notifyWhitelistPushResult(finalStatus);
+    } catch (err) {
+      logger.error('genre-whitelist: push notifier threw:', err);
+    }
   })();
 }
 
