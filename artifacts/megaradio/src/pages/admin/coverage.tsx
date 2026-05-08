@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
@@ -2619,11 +2620,15 @@ function ReconstructHistoryButton() {
   );
 }
 
-// Task #232: read-only status card showing the outcome of the
-// first-deploy historical backfill (`services/coverage-backfill-on-boot.ts`).
-// The boot service writes a singleton status doc on every boot decision
-// (skipped/started/done/failed) and we just render whatever we find.
+// Task #232 / Task #315: status card showing the outcome of the
+// first-deploy historical backfill (`services/coverage-backfill-on-boot.ts`),
+// plus a "Run backfill now" button that re-runs the same seeder from
+// the UI when the boot path skipped (env override, threshold met but
+// rows later deleted, etc.) — closes the loop without forcing an API
+// restart or shelling into the CLI script.
 function CoverageBackfillBootStatusCard() {
+  const { toast } = useToast();
+  const [dryRun, setDryRun] = useState(false);
   // Task #310: country pages link to this card via
   // `?backfillRange=START..END#card-coverage-backfill-boot-status` so an
   // admin who clicks a "Reconstructed: 2026-04-08 → 2026-04-22" caption
@@ -2738,6 +2743,78 @@ function CoverageBackfillBootStatusCard() {
       if (fade != null) window.clearTimeout(fade);
     };
   }, [focusedRange, runWindow, isLoading, matchVerdict]);
+
+  const runNowMutation = useMutation({
+    mutationFn: async (vars: { dryRun: boolean }) => {
+      const res = await apiRequest(
+        'POST',
+        '/api/admin/coverage/run-backfill-now',
+        { body: { dryRun: vars.dryRun } },
+      );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          (json as any)?.error || `Request failed (${res.status})`,
+        );
+      }
+      return json as
+        | { kind: 'started'; seedDays: number; startedAt: string }
+        | {
+            kind: 'dry-run';
+            seedDays: number;
+            daysSeeded: number;
+            wouldWrite: number;
+            skippedReason?: 'no-stations';
+          };
+    },
+    onSuccess: (result) => {
+      if (result.kind === 'dry-run') {
+        if (result.skippedReason === 'no-stations') {
+          toast({
+            title: 'Dry run — nothing to reconstruct',
+            description: 'Stations collection is empty.',
+          });
+        } else {
+          toast({
+            title: `Dry run complete (${result.daysSeeded} day${
+              result.daysSeeded === 1 ? '' : 's'
+            })`,
+            description: `Would attempt ${result.wouldWrite.toLocaleString()} (country × day) upsert${
+              result.wouldWrite === 1 ? '' : 's'
+            }. No rows were written.`,
+          });
+        }
+        return;
+      }
+      toast({
+        title: 'Backfill started',
+        description: `Seeding ${result.seedDays} day${
+          result.seedDays === 1 ? '' : 's'
+        } in the background. This card will update automatically.`,
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/backfill-status'],
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Failed to start backfill',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const isAlreadyRunning = status?.outcome === 'running';
+  const runDisabled = runNowMutation.isPending || (isAlreadyRunning && !dryRun);
+
+  const handleRunNow = () => {
+    const confirmMsg = dryRun
+      ? 'Run a DRY RUN of the historical coverage backfill?\n\nThis aggregates the stations collection day-by-day to report what would be written. Nothing will be saved to MongoDB.'
+      : 'Re-run the historical coverage backfill now?\n\nThis re-walks the last 30 UTC days and inserts any missing per-country snapshots. Real cron-written rows are preserved (idempotent), but the seeder can take a minute or two on a large stations collection.';
+    if (!window.confirm(confirmMsg)) return;
+    runNowMutation.mutate({ dryRun });
+  };
 
   const meta = (() => {
     switch (status?.outcome) {
@@ -3040,6 +3117,44 @@ function CoverageBackfillBootStatusCard() {
             </CollapsibleContent>
           </Collapsible>
         ) : null}
+        <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleRunNow}
+            disabled={runDisabled}
+            data-testid="button-backfill-boot-run-now"
+            title={
+              isAlreadyRunning && !dryRun
+                ? 'A backfill is already running — wait for it to finish, or use the dry-run toggle to preview without writing.'
+                : 'Re-run the same first-deploy historical seeder against this database.'
+            }
+          >
+            {runNowMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4 mr-2" />
+            )}
+            {dryRun ? 'Run dry run' : 'Run backfill now'}
+          </Button>
+          <label
+            className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer select-none"
+            data-testid="label-backfill-boot-dry-run"
+          >
+            <Checkbox
+              checked={dryRun}
+              onCheckedChange={(checked) => setDryRun(checked === true)}
+              disabled={runNowMutation.isPending}
+              data-testid="checkbox-backfill-boot-dry-run"
+            />
+            <span>Dry run (don't write anything)</span>
+          </label>
+          {isAlreadyRunning && !dryRun ? (
+            <span className="text-xs text-muted-foreground">
+              A backfill is already running — wait for it to finish.
+            </span>
+          ) : null}
+        </div>
       </CardContent>
     </Card>
   );

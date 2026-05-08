@@ -71,6 +71,13 @@ function todayUtcMidnight(): Date {
 
 let hasRunOnce = false;
 
+// In-process guard so an admin who rapid-fires the "Run backfill now"
+// button doesn't kick off two seeders at once on the same node. The
+// underlying `$setOnInsert` upserts are idempotent, but the seeder
+// walks every day × every country once per run and we'd rather not
+// double the load (and double-write the boot status doc) for nothing.
+let manualRunInFlight = false;
+
 /**
  * Persist the latest boot-backfill outcome into the singleton status doc
  * so the admin coverage page can read it. Best-effort — a write failure
@@ -342,4 +349,161 @@ export async function maybeRunCoverageBackfillOnBoot(): Promise<void> {
         error: errMsg,
       });
     });
+}
+
+export type RunCoverageBackfillNowResult =
+  | { kind: 'started'; seedDays: number; startedAt: string }
+  | { kind: 'busy' }
+  | {
+      kind: 'dry-run';
+      seedDays: number;
+      daysSeeded: number;
+      wouldWrite: number;
+      skippedReason?: 'no-stations';
+    };
+
+/**
+ * Admin-triggered re-run of the historical coverage seeder (Task #315).
+ *
+ * Mirrors the boot path: writes the singleton status doc through the same
+ * 'running' → 'done' / 'done-no-stations' / 'failed' lifecycle so the
+ * existing "Sparkline data — first-deploy backfill" card on the admin
+ * coverage page reflects progress without needing a separate UI surface.
+ *
+ * Differences from `maybeRunCoverageBackfillOnBoot`:
+ *   - Bypasses the `SKIP_COVERAGE_BACKFILL_ON_BOOT` env gate and the
+ *     historical-day-count threshold; the admin pressing the button has
+ *     already opted in.
+ *   - Bypasses the in-process `hasRunOnce` boot guard (a separate
+ *     `manualRunInFlight` lock prevents concurrent manual runs only).
+ *   - Honours `dryRun`, in which case it runs synchronously, returns the
+ *     would-write counters inline, and never touches the persisted
+ *     status doc — we don't want to overwrite real boot history with a
+ *     "done — 0 inserted" line that's actually a dry run.
+ */
+export async function runCoverageBackfillNow(opts: {
+  days?: number;
+  dryRun?: boolean;
+}): Promise<RunCoverageBackfillNowResult> {
+  const seedDays = parsePositiveInt(
+    opts.days != null ? String(opts.days) : undefined,
+    DEFAULT_BACKFILL_DAYS,
+  );
+  const dryRun = !!opts.dryRun;
+
+  if (dryRun) {
+    // Run synchronously — dry runs don't write to Mongo and finish
+    // quickly enough that the admin can wait for the response. Keeps
+    // the boot-status doc untouched so the card still shows the real
+    // last run.
+    logger.log(
+      `📈 Coverage manual backfill (dry-run): days=${seedDays}`,
+    );
+    const res = await runCoverageBackfill({ days: seedDays, dryRun: true });
+    return {
+      kind: 'dry-run',
+      seedDays,
+      daysSeeded: res.daysSeeded,
+      wouldWrite: res.wouldWrite,
+      skippedReason: res.skippedReason,
+    };
+  }
+
+  if (manualRunInFlight) {
+    return { kind: 'busy' };
+  }
+  manualRunInFlight = true;
+
+  let historicalDayCount: number;
+  try {
+    const distinctDays = await CoverageSnapshot.distinct('snapshotDate', {
+      snapshotDate: { $lt: todayUtcMidnight() },
+    });
+    historicalDayCount = Array.isArray(distinctDays) ? distinctDays.length : 0;
+  } catch {
+    historicalDayCount = 0;
+  }
+
+  const startedAt = new Date();
+  logger.log(
+    `📈 Coverage manual backfill: STARTING (admin-triggered) — seeding ${seedDays} day(s) in background`,
+  );
+  await recordStatus(
+    'running',
+    `Admin-triggered: seeding ${seedDays} day(s) of historical coverage in the background.`,
+    {
+      startedAt,
+      seedDays,
+      historicalDayCount,
+    },
+  );
+
+  // Fire-and-forget like the boot path. The admin UI polls the
+  // backfill-status endpoint every 5s while `outcome === 'running'`
+  // and flips to the terminal state automatically.
+  runCoverageBackfill({ days: seedDays, dryRun: false })
+    .then(async (res) => {
+      const finishedAt = new Date();
+      const durationMs = finishedAt.getTime() - startedAt.getTime();
+      if (res.skippedReason === 'no-stations') {
+        logger.log(
+          '📈 Coverage manual backfill: DONE — stations collection empty, nothing seeded',
+        );
+        await recordStatus(
+          'done-no-stations',
+          'Stations collection was empty — nothing to reconstruct.',
+          {
+            startedAt,
+            finishedAt,
+            durationMs,
+            seedDays,
+            historicalDayCount,
+            daysSeeded: 0,
+            inserted: 0,
+            preserved: 0,
+          },
+        );
+        return;
+      }
+      logger.log(
+        `📈 Coverage manual backfill: DONE — daysSeeded=${res.daysSeeded} inserted=${res.inserted} preserved=${res.preserved}`,
+      );
+      await recordStatus(
+        'done',
+        `Admin-triggered: seeded ${res.daysSeeded} day(s); inserted ${res.inserted} row(s), preserved ${res.preserved} pre-existing row(s).`,
+        {
+          startedAt,
+          finishedAt,
+          durationMs,
+          seedDays,
+          historicalDayCount,
+          daysSeeded: res.daysSeeded,
+          inserted: res.inserted,
+          preserved: res.preserved,
+        },
+      );
+    })
+    .catch(async (err: any) => {
+      const finishedAt = new Date();
+      const durationMs = finishedAt.getTime() - startedAt.getTime();
+      const errMsg = err?.message || String(err);
+      logger.error(`❌ Coverage manual backfill: FAILED — ${errMsg}`);
+      await recordStatus('failed', `Admin-triggered backfill failed: ${errMsg}`, {
+        startedAt,
+        finishedAt,
+        durationMs,
+        seedDays,
+        historicalDayCount,
+        error: errMsg,
+      });
+    })
+    .finally(() => {
+      manualRunInFlight = false;
+    });
+
+  return {
+    kind: 'started',
+    seedDays,
+    startedAt: startedAt.toISOString(),
+  };
 }
