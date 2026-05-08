@@ -5,6 +5,7 @@ import {
   runGenreSlugCleanup,
   type GenreSlugCleanupStats,
 } from '../scripts/cleanup-malformed-genre-slugs';
+import { notifyGenreSlugCleanupResult } from './genre-slug-cleanup-notifier';
 
 /**
  * Weekly cron that re-runs the genre-slug cleanup pass added one-shot in
@@ -178,6 +179,10 @@ class ScheduledGenreSlugCleanup {
           `scanned=${stats.scanned} normalized=${stats.normalized} ` +
           `demoted=${stats.markedUndiscoverable} rewarmed=${rewarmed}`,
       );
+      // Notifier swallows its own errors and bounds webhook latency
+      // internally so a flaky alert channel can never poison the
+      // cron. Quiet runs (changed rows below threshold) stay silent.
+      await notifyGenreSlugCleanupResult(run);
       return run;
     } catch (err: unknown) {
       const finishedAt = new Date();
@@ -194,6 +199,9 @@ class ScheduledGenreSlugCleanup {
           logger.error('⚠️  Could not save GenreSlugCleanupRun failure row:', saveErr);
         }
       }
+      // Failed runs always alert (regardless of threshold) so on-call
+      // sees the cron broke.
+      await notifyGenreSlugCleanupResult(run);
       return run;
     } finally {
       this.isRunning = false;
