@@ -34,6 +34,10 @@ import {
   type LegalSeoTemplate,
 } from '@workspace/seo-shared/legal-seo-templates';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import {
+  STATIC_PAGE_SEO_TEMPLATES,
+  type StaticPageSeoTemplate,
+} from '@workspace/seo-shared/static-page-seo-templates';
 
 const SEARCH_DESCRIPTION_MAX_CHARS = 145;
 
@@ -78,6 +82,17 @@ const LEGAL_TEMPLATE_FIELDS = [
   'privacy.description',
 ] as const;
 
+// STATIC_PAGE_SEO_TEMPLATES entries nest three pages (about / contact /
+// applications) each with title + description, mirroring the legal coverage.
+const STATIC_PAGE_TEMPLATE_FIELDS = [
+  'about.title',
+  'about.description',
+  'contact.title',
+  'contact.description',
+  'applications.title',
+  'applications.description',
+] as const;
+
 type TemplateRegistry = Record<string, Record<string, unknown>>;
 type ExpectedFieldType = 'function' | 'string';
 
@@ -111,6 +126,12 @@ const REGISTRIES: ReadonlyArray<RegistrySpec> = [
     name: 'LEGAL_SEO_TEMPLATES',
     registry: LEGAL_SEO_TEMPLATES as unknown as TemplateRegistry,
     expectedFields: LEGAL_TEMPLATE_FIELDS as ReadonlyArray<string>,
+    expectedFieldType: 'string',
+  },
+  {
+    name: 'STATIC_PAGE_SEO_TEMPLATES',
+    registry: STATIC_PAGE_SEO_TEMPLATES as unknown as TemplateRegistry,
+    expectedFields: STATIC_PAGE_TEMPLATE_FIELDS as ReadonlyArray<string>,
     expectedFieldType: 'string',
   },
 ];
@@ -273,6 +294,8 @@ describe('Per-language SEO template coverage', () => {
   });
 });
 
-// Touch the LegalSeoTemplate type so tsc --noEmit doesn't strip the import
-// and re-introduces a future regression where the type drifts from the registry.
+// Touch the LegalSeoTemplate / StaticPageSeoTemplate types so tsc --noEmit
+// doesn't strip the imports and re-introduce a future regression where the
+// type drifts from the registry.
 type _LegalSeoTemplateRef = LegalSeoTemplate;
+type _StaticPageSeoTemplateRef = StaticPageSeoTemplate;

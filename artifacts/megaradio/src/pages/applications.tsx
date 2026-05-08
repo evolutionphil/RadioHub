@@ -2,11 +2,13 @@ import { DesktopAndPhoneIcon } from "@/components/icons/DesktopAndPhone";
 import { AppStoreDownloadLink } from "@/components/links/AppStoreDownloadLink";
 import { PlaystoreDownloadLink } from "@/components/links/PlaystoreDownloadLink";
 import { useTranslation } from "@/hooks/useTranslation";
+import { SeoHead } from "@/components/SeoHead";
 
 export function Applications() {
   const { t } = useTranslation();
   return (
     <div className="text-white flex flex-col">
+      <SeoHead pageType="applications" />
       <div className="py-7 md:py-12 bg-gradient-to-bl from-[#FF55A4] from-0% to-[#BD52FF] to-100%">
         <div className="container flex justify-center items-center flex-col gap-3">
           <DesktopAndPhoneIcon />

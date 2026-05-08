@@ -5,6 +5,7 @@ import { generateSeoTags, getLanguageFromPath, generateLanguageUrls } from '@wor
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
+import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
 import { useQuery } from '@tanstack/react-query';
 import { 
   generateOrganizationSchema, 
@@ -28,7 +29,7 @@ interface SeoHeadProps {
     bitrate?: number;
     votes?: number;
   } | null;
-  pageType?: 'home' | 'station' | 'genres' | 'stations' | 'users' | 'about' | 'search' | 'faq' | 'terms' | 'privacy';
+  pageType?: 'home' | 'station' | 'genres' | 'stations' | 'users' | 'about' | 'contact' | 'applications' | 'search' | 'faq' | 'terms' | 'privacy';
   /**
    * Genre detail name (e.g. "Pop", "Rock"). When provided alongside `pageType="genres"`,
    * the SeoHead overrides the generic genres-listing meta tags with a fully localized
@@ -122,6 +123,23 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
       seoTags.ogDescription = legalSeo.description;
       seoTags.twitterTitle = legalSeo.title;
       seoTags.twitterDescription = legalSeo.description;
+    }
+
+    // Static info pages override: keeps client hydration aligned with server SSR for
+    // /xx/about, /xx/contact and /xx/applications. Without this, React would
+    // overwrite the SSR-localized title/description with the generic English copy
+    // baked into generateSeoTags' static templates / SEO_KEY_FALLBACKS — the same
+    // duplicate-content trap regions/genres/search/legal had before they were
+    // localised. buildStaticPageSeo emits the per-language template when DB keys
+    // are missing in the requested language.
+    if (pageType === 'about' || pageType === 'contact' || pageType === 'applications') {
+      const staticSeo = buildStaticPageSeo(pageType, language, translationMap);
+      seoTags.title = staticSeo.title;
+      seoTags.description = staticSeo.description;
+      seoTags.ogTitle = staticSeo.title;
+      seoTags.ogDescription = staticSeo.description;
+      seoTags.twitterTitle = staticSeo.title;
+      seoTags.twitterDescription = staticSeo.description;
     }
 
     // Update title

@@ -43,6 +43,7 @@ import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-seo-templates';
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
+import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
 import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
 import {
   getCanonicalGenreSlug,
@@ -1000,22 +1001,17 @@ export class SeoRenderer {
       baseSeoTags.keywords = genreSeo.keywords;
     }
     
-    if (pageType === 'about') {
-      baseSeoTags.title = getTranslation('about_mega_radio');
-      baseSeoTags.description = getTranslation('about_mega_radio_description');
-      baseSeoTags.ogType = 'website';
-    }
-    
-    if (pageType === 'contact') {
-      baseSeoTags.title = getTranslation('contact_page_title');
-      baseSeoTags.description = getTranslation('contact_page_description');
-      baseSeoTags.ogType = 'website';
-    }
-    
-    if (pageType === 'applications') {
-      baseSeoTags.title = 'Mega Radio Apps - Download for iOS, Android, Smart TV & Desktop';
-      // Bing SEO: 150+ char description (was 140).
-      baseSeoTags.description = 'Download free Mega Radio apps for iOS, Android, Smart TV, Apple TV, Roku and desktop. Stream 60,000+ live radio stations from 120+ countries on every device.';
+    if (pageType === 'about' || pageType === 'contact' || pageType === 'applications') {
+      // Use multilingual SEO templates (lib/seo-shared/static-page-seo-templates.ts).
+      // DB translation keys (about_mega_radio/_description, contact_page_title/_description,
+      // applications_page_seo_title/_description) win when present in the requested
+      // language; otherwise we fall back to the natural per-language template so non-top-15
+      // languages don't all serve the SAME English title and description across
+      // /xx/about, /xx/contact and /xx/applications (the same duplicate-content trap
+      // regions, genres, search and legal had before they were localised).
+      const staticSeo = buildStaticPageSeo(pageType, language, translations);
+      baseSeoTags.title = staticSeo.title;
+      baseSeoTags.description = staticSeo.description;
       baseSeoTags.ogType = 'website';
     }
     
@@ -1253,13 +1249,13 @@ export class SeoRenderer {
         return getLocalizedText('stations_page_title');
       
       case 'about':
-        return getLocalizedText('about_mega_radio');
-      
+        return buildStaticPageSeo('about', language, translations).title;
+
       case 'contact':
-        return getLocalizedText('contact_page_title');
-      
+        return buildStaticPageSeo('contact', language, translations).title;
+
       case 'applications':
-        return 'Mega Radio Apps - Download for iOS, Android, Smart TV & Desktop';
+        return buildStaticPageSeo('applications', language, translations).title;
       
       case 'terms':
         return buildLegalSeo('terms', language, translations).title;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "@/hooks/useTranslation";
 import { EnvelopeIcon } from "@heroicons/react/24/solid";
+import { SeoHead } from "@/components/SeoHead";
 
 export function Contact() {
   const { t } = useTranslation();
@@ -55,6 +56,7 @@ export function Contact() {
 
   return (
     <div>
+      <SeoHead pageType="contact" />
       <div className="bg-[#151515] py-7">
         <div className="container mx-auto">
           <h1 className="text-2xl font-bold text-white md:text-3xl">{t('contact_page_title')}</h1>
