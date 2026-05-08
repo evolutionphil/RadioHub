@@ -61,8 +61,14 @@ export function precomputeTranslationScripts(): void {
       (lang !== 'en' ? `Mega Radio - ${langName} radyo istasyonları` : 'Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free.');
 
     const hasCritical = Object.keys(critical).length > 0;
+    // R5-XSS FIX (2026-05-08): escape `</` sequences inside the embedded JSON
+    // so a translation value containing `</script>` (or `</style>` etc.)
+    // cannot break out of the inline <script> block. JSON allows the
+    // backslash-escape `\u003C` in place of `<`, which is parsed identically
+    // by JSON.parse and the JS engine but is opaque to the HTML parser.
+    const safeJson = JSON.stringify(critical).replace(/<\//g, '\\u003c/');
     const script = hasCritical
-      ? `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${JSON.stringify(critical)};window.__PRELOADED__=true;</script>`
+      ? `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${safeJson};window.__PRELOADED__=true;</script>`
       : `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";</script>`;
 
     precomputedTranslationScripts.set(lang, { script, metaTitle, metaDescription });
@@ -139,8 +145,10 @@ export function htmlLangMiddleware(req: Request, res: Response, next: NextFuncti
         metaDescription = translations?.meta_description ||
           (lang !== 'en' ? `Mega Radio - ${langName} radyo istasyonları` : 'Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free.');
         const hasCritical = Object.keys(critical).length > 0;
+        // R5-XSS FIX (2026-05-08): see precomputeTranslationScripts above.
+        const safeJson = JSON.stringify(critical).replace(/<\//g, '\\u003c/');
         translationsScript = hasCritical
-          ? `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${JSON.stringify(critical)};window.__PRELOADED__=true;</script>`
+          ? `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";window.__INITIAL_TRANSLATIONS__=${safeJson};window.__PRELOADED__=true;</script>`
           : `<script id="initial-translations">window.__INITIAL_LANGUAGE__="${lang}";</script>`;
       }
       

@@ -225,12 +225,13 @@ export default function Footer() {
                       <Link to={getLocalizedUrl("/pages/privacy-policy")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_privacy', 'Privacy')}
                       </Link>
-                      <div 
-                        className="cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
+                      <button
+                        type="button"
+                        className="text-left bg-transparent border-0 p-0 m-0 cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
                         onClick={() => setShowAddStationModal(true)}
                       >
                         {t('footer_add_station', 'Add Your Station')}
-                      </div>
+                      </button>
                     </div>
                   </>
                 )}

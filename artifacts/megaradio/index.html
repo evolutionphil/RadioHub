@@ -150,50 +150,14 @@
       window.performance.mark && window.performance.mark('head-end');
     </script>
 
-    <!-- Base Structured Data (JSON-LD) for SEO -->
-    <script type="application/ld+json" id="base-structured-data">
-    {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "Mega Radio",
-      "url": "https://themegaradio.com",
-      "alternateName": "MegaRadio",
-      "logo": "https://themegaradio.com/images/logo-icon.webp",
-      "description": "Mega Radio - Your ultimate destination for live radio streaming from around the world. Discover thousands of radio stations across all genres and countries.",
-      "sameAs": [
-        "https://themegaradio.com"
-      ],
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "customer service"
-      },
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://themegaradio.com/?search={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
-
-    <script type="application/ld+json" id="website-structured-data">
-    {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "Mega Radio - Live Radio Streaming",
-      "url": "https://themegaradio.com",
-      "description": "Stream live radio stations from around the world. Discover music, news, talk shows, and more across thousands of radio stations in multiple languages and genres.",
-      "inLanguage": ["en", "es", "fr", "de", "tr", "ar"],
-      "audience": {
-        "@type": "Audience",
-        "audienceType": "Music lovers, radio enthusiasts, international listeners"
-      },
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": "https://themegaradio.com/?search={search_term_string}",
-        "query-input": "required name=search_term_string"
-      }
-    }
-    </script>
+    <!-- V-A4 FIX (2026-05-08): static Organization + WebSite JSON-LD blocks
+         removed. The SSR layer (server/seo-renderer.ts -> generateHtmlHead)
+         emits authoritative Organization, WebSite, and page-specific
+         schemas dynamically per request/locale with the correct
+         hreflang-aware URLs. Keeping static copies here caused duplicate
+         schema warnings in Search Console (two Organization entities
+         pointing at the same URL) and forced English-only descriptions
+         into non-English pages. -->
 
     <!-- Microsoft Clarity tracking code for https://themegaradio.com/ - Deferred for performance -->
     <script type="text/javascript">

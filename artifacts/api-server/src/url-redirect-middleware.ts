@@ -68,6 +68,24 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
   }
 
   // =================================================================
+  // DUPLICATE-SLASH COLLAPSE → 301 REDIRECT
+  // Crawlers/external links sometimes produce //path or /a//b which Google
+  // treats as separate URLs (duplicate content). Collapse to single slash
+  // and 301 in a single hop, preserving the query string.
+  // =================================================================
+  if (urlPath.includes('//')) {
+    const collapsed = urlPath.replace(/\/{2,}/g, '/');
+    if (collapsed !== urlPath) {
+      const qIdx = req.originalUrl.indexOf('?');
+      const query = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+      const target = `${collapsed}${query}`;
+      logger.log(`🔀 DUP-SLASH 301: ${req.originalUrl} → ${target}`);
+      res.redirect(301, target);
+      return;
+    }
+  }
+
+  // =================================================================
   // ?lang=xx QUERY STRING → 301 REDIRECT to /{lang}/<path>
   // Many sites (and external links) use ?lang=tr — convert to canonical
   // /tr URL so useTranslation can detect language from URL prefix.

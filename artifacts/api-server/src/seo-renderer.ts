@@ -2008,8 +2008,8 @@ export class SeoRenderer {
     <meta name="theme-color" content="#000000">
     <meta name="msapplication-TileColor" content="#000000">
     
-    ${seoTags.canonical ? `<link rel="canonical" href="${seoTags.canonical}">` : ''}
-    ${seoTags.hreflangs ? seoTags.hreflangs.map((h: any) => `<link rel="alternate" hreflang="${h.hreflang}" href="${h.url}">`).join('\n    ') : ''}
+    ${seoTags.canonical ? `<link rel="canonical" href="${seoTags.canonical}" data-managed="seo-head">` : ''}
+    ${seoTags.hreflangs ? seoTags.hreflangs.map((h: any) => `<link rel="alternate" hreflang="${h.hreflang}" href="${h.url}" data-managed="seo-head">`).join('\n    ') : ''}
     
     <!-- JSON-LD Structured Data for Rich Snippets -->
     <script type="application/ld+json">

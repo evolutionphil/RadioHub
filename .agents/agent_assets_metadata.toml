@@ -29,3 +29,9 @@ id = "4Luo6a8_hFmqQd2odRa0C"
 uri = "file://.local/seo-sitemap-audit-rapor.md"
 type = "text"
 title = "MegaRadio SEO + Sitemap Denetim Raporu (30 Architect)"
+
+[[outputs]]
+id = "DK8i8CI645IUIKct6dO9i"
+uri = "file://.local/SEO_AUDIT_REPORT.md"
+type = "text"
+title = "MegaRadio SEO Audit & Fix Report"

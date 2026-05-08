@@ -8,7 +8,7 @@ import { getStationUrl } from "@/utils/slugs";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 
 const formatVoteCount = (count: number): string => {
   if (count >= 1000000) {
@@ -172,9 +172,14 @@ const StationCard = memo(function StationCard({
       className="group flex items-center rounded-[10px] bg-[#2F2F2F] overflow-hidden w-full md:w-full h-[102px] lg:h-[130px] p-3 lg:p-[20px] transition-colors duration-300 ease-out hover:bg-[#383838] cursor-pointer"
       style={{ maxWidth: '100%' }}
     >
-      <div 
-        className="flex-shrink-0 cursor-pointer relative bg-[#1a1a1a] rounded-[9px] overflow-hidden w-[70px] h-[70px] md:w-[90px] md:h-[90px]" 
-        onClick={handleNavigateAndPlay}
+      <Link
+        href={getStationUrl(station)}
+        onClick={(e: any) => {
+          e.preventDefault();
+          handleNavigateAndPlay();
+        }}
+        aria-label={t('seo_listen_to_station', `Listen to ${station.name}`, { name: station.name })}
+        className="flex-shrink-0 cursor-pointer relative bg-[#1a1a1a] rounded-[9px] overflow-hidden w-[70px] h-[70px] md:w-[90px] md:h-[90px] block"
       >
         <StationLogo
           station={station}
@@ -186,10 +191,17 @@ const StationCard = memo(function StationCard({
           }
           className="absolute inset-0 rounded-[9px]"
         />
-      </div>
+      </Link>
 
       {/* Text Content - Figma: width 106px, height 48px, positioned at left 130px (logo 90px + gap 20px + padding 20px) */}
-      <div className="ml-3 md:ml-[20px] truncate flex-1 cursor-pointer pr-2 flex flex-col justify-center gap-[4px]" onClick={handleNavigateAndPlay}>
+      <Link
+        href={getStationUrl(station)}
+        onClick={(e: any) => {
+          e.preventDefault();
+          handleNavigateAndPlay();
+        }}
+        className="ml-3 md:ml-[20px] truncate flex-1 cursor-pointer pr-2 flex flex-col justify-center gap-[4px] text-inherit no-underline"
+      >
         <h4 className="text-base md:text-[20px] font-medium text-white truncate leading-[20px] md:leading-[23px]">
           {station.name}
         </h4>
@@ -255,7 +267,7 @@ const StationCard = memo(function StationCard({
             <span className="text-xs">{formatVoteCount(station.votes)}</span>
           </div>
         )}
-      </div>
+      </Link>
 
       <div className="ml-auto flex items-center gap-[10px]">
         {/* Favorite Button - Mobile Only - Figma: 40x40, border 1.6px solid #000000, border-radius 32.22px, transparent bg, icon 22.4x22.4 */}
