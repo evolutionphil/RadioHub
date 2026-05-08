@@ -222,6 +222,46 @@ export default function SeoMaintenancePage() {
       scheduledStatusQuery.data?.status?.isRunning ? 5000 : false,
   });
 
+  // Task #222: a deep link like ?runId=<id> can point to a run older
+  // than the first page of `runsQuery` (which only fetches the latest
+  // 10). When that happens, fall back to the single-run endpoint so the
+  // page can either render the missing row inline or show a clear
+  // "not found" notice instead of staying silent.
+  const runsList = runsQuery.data?.runs;
+  const deepLinkInFirstPage = initialDeepLinkRunId
+    ? !!runsList?.some((r) => r._id === initialDeepLinkRunId)
+    : false;
+  const deepLinkLookupEnabled =
+    !!initialDeepLinkRunId && !!runsList && !deepLinkInFirstPage;
+  const deepLinkRunQuery = useQuery<
+    { run: ScheduledBackfillRun },
+    Error
+  >({
+    queryKey: [
+      "/api/admin/maintenance/scheduled-backfill/runs",
+      "deep-link",
+      initialDeepLinkRunId,
+    ],
+    enabled: deepLinkLookupEnabled,
+    retry: false,
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/admin/maintenance/scheduled-backfill/runs/${encodeURIComponent(
+          initialDeepLinkRunId!,
+        )}`,
+        { credentials: "include" },
+      );
+      if (res.status === 404) throw new Error("not_found");
+      if (res.status === 400) throw new Error("invalid_id");
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+  const deepLinkExtraRun =
+    deepLinkLookupEnabled && deepLinkRunQuery.data?.run
+      ? deepLinkRunQuery.data.run
+      : null;
+
   const startScheduled = useMutation({
     mutationFn: async (countryCode: string) =>
       apiRequest("POST", "/api/admin/maintenance/scheduled-backfill/run", {
@@ -269,15 +309,18 @@ export default function SeoMaintenancePage() {
     if (!initialDeepLinkRunId || deepLinkScrolledRef.current) return;
     const runs = runsQuery.data?.runs;
     if (!runs) return;
-    const match = runs.find((r) => r._id === initialDeepLinkRunId);
-    if (!match) return;
+    const inFirstPage = runs.some((r) => r._id === initialDeepLinkRunId);
+    // Wait until either the row is on the first page, or the fallback
+    // single-run lookup has resolved (success or 404). Otherwise we'd
+    // try to scroll before the row exists in the DOM.
+    if (!inFirstPage && !deepLinkExtraRun) return;
     setExpandedRunId(initialDeepLinkRunId);
     const row = runRowRefs.current[initialDeepLinkRunId];
     if (row) {
       row.scrollIntoView({ behavior: "smooth", block: "center" });
       deepLinkScrolledRef.current = true;
     }
-  }, [initialDeepLinkRunId, runsQuery.data]);
+  }, [initialDeepLinkRunId, runsQuery.data, deepLinkExtraRun]);
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -514,9 +557,44 @@ export default function SeoMaintenancePage() {
               Geçmiş alınamadı.
             </div>
           )}
-          {runsQuery.data && runsQuery.data.runs.length === 0 && (
+          {runsQuery.data && runsQuery.data.runs.length === 0 && !deepLinkExtraRun && !deepLinkLookupEnabled && (
             <div className="text-sm text-slate-500">
               Bu filtreyle henüz bir çalışma kaydı yok.
+            </div>
+          )}
+          {/* Task #222: deep-link fallback states. The runs table only
+              fetches the latest 10 rows, so a ?runId=… that points to
+              an older run is fetched separately via the single-run
+              endpoint and either prepended to the table or surfaced
+              as an inline notice. */}
+          {deepLinkLookupEnabled && deepLinkRunQuery.isFetching && (
+            <div
+              className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded px-3 py-2"
+              data-testid="text-deep-link-fetching"
+            >
+              Bu çalışma ({initialDeepLinkRunId}) ilk 10 sonuç içinde
+              değil, ayrıca getiriliyor…
+            </div>
+          )}
+          {deepLinkLookupEnabled && deepLinkRunQuery.isError && (
+            <div
+              className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2"
+              data-testid="text-deep-link-not-found"
+            >
+              {deepLinkRunQuery.error?.message === "invalid_id"
+                ? `Geçersiz çalışma kimliği: ${initialDeepLinkRunId}`
+                : deepLinkRunQuery.error?.message === "not_found"
+                ? `Çalışma bulunamadı: ${initialDeepLinkRunId} (silinmiş veya saklama süresi dolmuş olabilir).`
+                : `Çalışma getirilemedi: ${initialDeepLinkRunId}`}
+            </div>
+          )}
+          {deepLinkExtraRun && (
+            <div
+              className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2"
+              data-testid="text-deep-link-extra"
+            >
+              Bağlantıdaki çalışma ilk 10 sonuçta yok; en üste ayrıca
+              eklendi.
             </div>
           )}
           {runsQuery.data && runsQuery.data.runs.length > 0 && (
@@ -540,7 +618,7 @@ export default function SeoMaintenancePage() {
               })()}
             </div>
           )}
-          {runsQuery.data && runsQuery.data.runs.length > 0 && (
+          {runsQuery.data && (runsQuery.data.runs.length > 0 || deepLinkExtraRun) && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="table-backfill-runs">
                 <thead>
@@ -558,7 +636,10 @@ export default function SeoMaintenancePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {runsQuery.data.runs.map((run) => {
+                  {(deepLinkExtraRun
+                    ? [deepLinkExtraRun, ...runsQuery.data.runs]
+                    : runsQuery.data.runs
+                  ).map((run) => {
                     const totals = summarizeRunTotals(run);
                     const isExpanded = expandedRunId === run._id;
                     const isDeepLinked =
