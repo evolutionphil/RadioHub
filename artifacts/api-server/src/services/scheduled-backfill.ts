@@ -403,6 +403,13 @@ class ScheduledBackfillService {
         logger.log(
           `🗓️  Scheduled backfill DONE in ${Math.round(run.durationMs / 1000)}s — ${run.logos.length} logo countries, ${run.tags.length} tag countries${retryNote}`,
         );
+        // Recovery alert (Task #224): if the run only completed after
+        // multiple retries, surface it proactively so the team can get
+        // ahead of upstream flakiness before it turns into a paging
+        // failure. The notifier itself decides whether the attempt
+        // count clears the configured threshold and stays silent for
+        // clean first-try runs.
+        await notifyBackfillResult(run);
       } else {
         run.status = 'failed';
         run.finishedAt = finishedAt;
