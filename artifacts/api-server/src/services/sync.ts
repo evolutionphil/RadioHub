@@ -735,8 +735,9 @@ export class SyncService {
    * genuinely-empty stations forever.
    */
   async hydrateMissingTagsInBackground(
-    options: { limit?: number; countryCode?: string } = {},
-  ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number }> {
+    options: { limit?: number; countryCode?: string; isCancelled?: () => boolean } = {},
+  ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number; cancelled?: boolean }> {
+    const { isCancelled } = options;
     const limit = options.limit ?? 1000;
     const cooldownMs = 30 * 24 * 60 * 60 * 1000; // 30 days
     const cooldownCutoff = new Date(Date.now() - cooldownMs);
@@ -765,6 +766,7 @@ export class SyncService {
     let hydrated = 0;
     let emptyUpstream = 0;
     let failed = 0;
+    let cancelled = false;
 
     try {
       type TagHydrationCandidate = {
@@ -792,6 +794,13 @@ export class SyncService {
 
       const batchSize = 10;
       for (let i = 0; i < stations.length; i += batchSize) {
+        if (isCancelled?.()) {
+          cancelled = true;
+          logger.log(
+            `🛑 Tags hydration cancelled after ${processed}/${stations.length} processed`,
+          );
+          break;
+        }
         const batch = stations.slice(i, i + batchSize);
 
         const batchResults = await Promise.allSettled(
@@ -845,13 +854,13 @@ export class SyncService {
       }
 
       logger.log(
-        `✅ Tags hydration completed: ${hydrated} hydrated, ${emptyUpstream} upstream-empty, ${failed} failed (of ${processed})`,
+        `${cancelled ? '🛑 Tags hydration cancelled' : '✅ Tags hydration completed'}: ${hydrated} hydrated, ${emptyUpstream} upstream-empty, ${failed} failed (of ${processed})`,
       );
     } catch (error) {
       console.error('❌ Tags hydration process failed:', error);
     }
 
-    return { processed, hydrated, emptyUpstream, failed };
+    return { processed, hydrated, emptyUpstream, failed, cancelled };
   }
 
   /**

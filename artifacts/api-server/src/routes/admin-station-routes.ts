@@ -1420,12 +1420,29 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           }
         } else if (resolvedIso) {
           job.total = matched;
+          job.cancellable = true;
           void syncService
             .hydrateMissingTagsInBackground({
               countryCode: resolvedIso,
               limit: Math.max(matched, 1000),
+              isCancelled,
             })
-            .then(() => finish())
+            .then((result) => {
+              // Country sweep doesn't stream per-batch progress, so fold
+              // the final tallies back into the job tracker before
+              // finish() decides between completed / cancelled. Without
+              // this the `fullyProcessed` safeguard in finish() can't
+              // tell a fully-done sweep apart from a late-cancelled one.
+              const current = recheckTagsJobs.get(jobId);
+              if (current) {
+                current.processed = result.processed;
+                current.hydrated = result.hydrated;
+                current.emptyUpstream = result.emptyUpstream;
+                current.failed = result.failed;
+                recheckTagsJobs.set(jobId, current);
+              }
+              finish();
+            })
             .catch((err) => {
               logger.error('bulk tags recheck (country) failed', err);
               finish(err);
@@ -1492,12 +1509,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     },
   );
 
-  // Cancel a running bulk tag re-check job. The background loop in
-  // `recheckStationsTagsByIds` polls the job's `cancelRequested` flag
-  // between batches and exits cleanly, after which `finish()` will
-  // mark the job as `cancelled`. Country-scoped sweeps that go through
-  // `hydrateMissingTagsInBackground` are not cancellable (job.cancellable
-  // is false in that case).
+  // Cancel a running bulk tag re-check job. The background loops in
+  // `recheckStationsTagsByIds` and `hydrateMissingTagsInBackground` both
+  // poll the job's `cancelRequested` flag between batches and exit
+  // cleanly, after which `finish()` will mark the job as `cancelled`.
   app.post(
     '/api/admin/stations/recheck-tags-job-cancel/:jobId',
     requireAdmin,
