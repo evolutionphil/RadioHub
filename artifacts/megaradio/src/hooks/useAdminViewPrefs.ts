@@ -1,6 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
 import { toast } from '@/hooks/use-toast';
+import { ToastAction } from '@/components/ui/toast';
+
+const CROSS_TAB_TOAST_MS = 5000;
 
 // Reusable cross-device admin view-prefs sync.
 //
@@ -108,6 +111,12 @@ export function useAdminViewPrefs<T>(
     latestRef.current = prefs;
   }, [prefs]);
 
+  // Stable handle to "revert to a snapshot and push it to the server now"
+  // so the cross-tab/focus toast Undo actions can reach the latest
+  // flushToServer without re-binding the storage/visibility listeners on
+  // every render.
+  const undoToRef = useRef<(previous: T) => void>(() => {});
+
   // Initial server load + migration from localStorage.
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +217,26 @@ export function useAdminViewPrefs<T>(
       });
   }, [key]);
 
+  // Wire the Undo handler to the latest flushToServer / key. Re-binding
+  // a ref (rather than the listeners themselves) keeps the storage and
+  // visibility effects from re-subscribing on every render.
+  useEffect(() => {
+    undoToRef.current = (previous: T) => {
+      latestRef.current = previous;
+      setPrefsState(previous);
+      writeLocal(key, previous);
+      // Treat the revert as a user-driven change so it persists across
+      // unmount and propagates back to the originating tab on its next
+      // sync (focus refresh / fresh GET).
+      userDirtyRef.current = true;
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      flushToServer();
+    };
+  }, [key, flushToServer]);
+
   // Cross-tab sync: when another tab in the same browser writes to
   // localStorage under our key, mirror the change into this tab's state
   // so admins don't see drifted filters between tabs. We deliberately do
@@ -226,11 +255,20 @@ export function useAdminViewPrefs<T>(
         const currentStr = JSON.stringify(latestRef.current);
         const incomingStr = JSON.stringify(sanitized);
         if (currentStr === incomingStr) return;
+        const previous = latestRef.current;
         latestRef.current = sanitized;
         setPrefsState(sanitized);
         toast({
           title: 'Filters updated from another tab',
-          duration: 3000,
+          duration: CROSS_TAB_TOAST_MS,
+          action: createElement(
+            ToastAction,
+            {
+              altText: 'Undo filter change',
+              onClick: () => undoToRef.current(previous),
+            },
+            'Undo',
+          ),
         });
       } catch {
         // Ignore malformed payloads from other tabs.
@@ -267,12 +305,21 @@ export function useAdminViewPrefs<T>(
         const currentStr = JSON.stringify(latestRef.current);
         const incomingStr = JSON.stringify(sanitized);
         if (currentStr === incomingStr) return;
+        const previous = latestRef.current;
         latestRef.current = sanitized;
         setPrefsState(sanitized);
         writeLocal(key, sanitized);
         toast({
           title: 'Filters updated from another tab',
-          duration: 3000,
+          duration: CROSS_TAB_TOAST_MS,
+          action: createElement(
+            ToastAction,
+            {
+              altText: 'Undo filter change',
+              onClick: () => undoToRef.current(previous),
+            },
+            'Undo',
+          ),
         });
       } catch {
         // Best-effort — leave existing state untouched.
