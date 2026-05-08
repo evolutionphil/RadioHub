@@ -29,6 +29,37 @@ interface TrendPoint {
   total: number;
   withLogo: number;
   withTags: number;
+  // 'cron' = real nightly snapshot of live data; 'backfill' = day was
+  // reconstructed by the one-shot historical seeder (Task #144) from
+  // existing station signals. Tag counts in particular are best-effort
+  // for backfilled days — see help text under the chart.
+  source?: 'cron' | 'backfill';
+}
+
+// Splits a single TrendPoint series into two parallel value columns
+// (`<key>Backfill` and `<key>Cron`) so reconstructed days can be drawn
+// dashed and real cron days drawn solid in the same Recharts LineChart.
+// The first cron point following a run of backfill days is duplicated
+// into the dashed series so the two segments visually connect at the
+// handover (no gap in the line).
+type SplitPoint = TrendPoint & { [splitKey: string]: number | null | string | undefined };
+
+function splitBySource<K extends 'logoCoveragePct' | 'tagCoveragePct' | 'total' | 'withLogo' | 'withTags'>(
+  points: TrendPoint[],
+  keys: K[],
+): SplitPoint[] {
+  return points.map((p, i) => {
+    const isBackfill = p.source === 'backfill';
+    const prevWasBackfill = i > 0 && points[i - 1].source === 'backfill';
+    const inBackfill = isBackfill || prevWasBackfill;
+    const out: Record<string, number | null> = {};
+    for (const k of keys) {
+      const v = p[k] as number;
+      out[`${k}Backfill`] = inBackfill ? v : null;
+      out[`${k}Cron`] = isBackfill ? null : v;
+    }
+    return { ...p, ...out } as SplitPoint;
+  });
 }
 
 interface TrendsResponse {
@@ -117,9 +148,25 @@ export default function AdminCoverageCountry() {
         total: country.total,
         withLogo: country.withLogo,
         withTags: country.withTags,
+        // Today's live point is straight off the by-country
+        // aggregation, not a backfill — render it as solid.
+        source: 'cron',
       },
     ];
   }, [trend, country]);
+
+  const hasBackfill = useMemo(
+    () => series.some((p) => p.source === 'backfill'),
+    [series],
+  );
+  const percentSeries = useMemo(
+    () => splitBySource(series, ['logoCoveragePct', 'tagCoveragePct']),
+    [series],
+  );
+  const rawSeries = useMemo(
+    () => splitBySource(series, ['total', 'withLogo', 'withTags']),
+    [series],
+  );
 
   const oldest = series[0];
   const latest = series[series.length - 1];
@@ -303,6 +350,21 @@ export default function AdminCoverageCountry() {
             Logo and tag coverage by day. Snapshots are written nightly by the
             scheduled job; today's point reflects live numbers.
           </CardDescription>
+          {hasBackfill ? (
+            <div
+              className="mt-2 text-xs text-muted-foreground"
+              data-testid="backfill-caveat-percent"
+            >
+              <span className="font-medium">Dashed segments</span> are
+              reconstructed from existing station data by the one-shot
+              historical backfill — they are best-effort, not real nightly
+              snapshots. In particular, the dashed{' '}
+              <span style={{ color: '#2563eb' }}>tag coverage</span> uses each
+              station's <code className="px-1 bg-muted rounded">createdAt</code>{' '}
+              date as a proxy for when it first received tags, since we don't
+              track that per-station.
+            </div>
+          ) : null}
         </CardHeader>
         <CardContent>
           {trendsLoading ? (
@@ -319,10 +381,11 @@ export default function AdminCoverageCountry() {
             <div
               className="w-full h-[360px]"
               data-testid="chart-coverage-percent"
+              data-has-backfill={hasBackfill ? 'true' : 'false'}
             >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
-                  data={series}
+                  data={percentSeries}
                   margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -346,21 +409,49 @@ export default function AdminCoverageCountry() {
                   <Legend />
                   <Line
                     type="monotone"
-                    dataKey="logoCoveragePct"
+                    dataKey="logoCoveragePctCron"
                     name="Logo coverage"
                     stroke="#16a34a"
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
+                    connectNulls={false}
                   />
                   <Line
                     type="monotone"
-                    dataKey="tagCoveragePct"
+                    dataKey="logoCoveragePctBackfill"
+                    name="Logo coverage (backfilled)"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
+                    strokeOpacity={0.6}
+                    dot={false}
+                    isAnimationActive={false}
+                    connectNulls={false}
+                    legendType={hasBackfill ? 'line' : 'none'}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="tagCoveragePctCron"
                     name="Tag coverage"
                     stroke="#2563eb"
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="tagCoveragePctBackfill"
+                    name="Tag coverage (backfilled)"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
+                    strokeOpacity={0.6}
+                    dot={false}
+                    isAnimationActive={false}
+                    connectNulls={false}
+                    legendType={hasBackfill ? 'line' : 'none'}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -389,10 +480,14 @@ export default function AdminCoverageCountry() {
               Not enough snapshots yet to draw a chart for {code}.
             </div>
           ) : (
-            <div className="w-full h-[320px]" data-testid="chart-coverage-raw">
+            <div
+              className="w-full h-[320px]"
+              data-testid="chart-coverage-raw"
+              data-has-backfill={hasBackfill ? 'true' : 'false'}
+            >
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
-                  data={series}
+                  data={rawSeries}
                   margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
@@ -413,32 +508,75 @@ export default function AdminCoverageCountry() {
                     ]}
                   />
                   <Legend />
+                  {/* Solid = real cron snapshots, dashed = backfilled days. */}
                   <Line
                     type="monotone"
-                    dataKey="total"
+                    dataKey="totalCron"
                     name="Total stations"
                     stroke="#6b7280"
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
+                    connectNulls={false}
                   />
                   <Line
                     type="monotone"
-                    dataKey="withLogo"
+                    dataKey="totalBackfill"
+                    name="Total stations (backfilled)"
+                    stroke="#6b7280"
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
+                    strokeOpacity={0.6}
+                    dot={false}
+                    isAnimationActive={false}
+                    connectNulls={false}
+                    legendType={hasBackfill ? 'line' : 'none'}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="withLogoCron"
                     name="With logo"
                     stroke="#16a34a"
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
+                    connectNulls={false}
                   />
                   <Line
                     type="monotone"
-                    dataKey="withTags"
+                    dataKey="withLogoBackfill"
+                    name="With logo (backfilled)"
+                    stroke="#16a34a"
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
+                    strokeOpacity={0.6}
+                    dot={false}
+                    isAnimationActive={false}
+                    connectNulls={false}
+                    legendType={hasBackfill ? 'line' : 'none'}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="withTagsCron"
                     name="With tags"
                     stroke="#2563eb"
                     strokeWidth={2}
                     dot={false}
                     isAnimationActive={false}
+                    connectNulls={false}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="withTagsBackfill"
+                    name="With tags (backfilled)"
+                    stroke="#2563eb"
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
+                    strokeOpacity={0.6}
+                    dot={false}
+                    isAnimationActive={false}
+                    connectNulls={false}
+                    legendType={hasBackfill ? 'line' : 'none'}
                   />
                 </LineChart>
               </ResponsiveContainer>

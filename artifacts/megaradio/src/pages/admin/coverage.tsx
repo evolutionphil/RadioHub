@@ -55,6 +55,33 @@ interface TrendPoint {
   total: number;
   withLogo: number;
   withTags: number;
+  // 'cron' = real nightly snapshot of live data;
+  // 'backfill' = reconstructed by the one-shot historical seeder
+  // (Task #144) from existing station signals. Tag values for
+  // backfilled days in particular are best-effort because we don't
+  // track when each station first received tags.
+  source?: 'cron' | 'backfill';
+}
+
+// Builds two parallel series so we can render reconstructed (backfill)
+// days dashed and real cron-written days solid in the same chart. The
+// first cron point that follows a run of backfill days is duplicated
+// into the backfill series so the dashed line connects continuously to
+// the start of the solid line (no visual gap at the handover).
+function splitBySourceForKey(
+  points: TrendPoint[],
+  key: 'logoCoveragePct' | 'tagCoveragePct',
+): Array<TrendPoint & { backfilled: number | null; cron: number | null }> {
+  return points.map((p, i) => {
+    const isBackfill = p.source === 'backfill';
+    const prevWasBackfill = i > 0 && points[i - 1].source === 'backfill';
+    const value = p[key];
+    return {
+      ...p,
+      backfilled: isBackfill || prevWasBackfill ? value : null,
+      cron: isBackfill ? null : value,
+    };
+  });
 }
 
 interface TrendsResponse {
@@ -97,21 +124,43 @@ function Sparkline({
       </span>
     );
   }
+  const split = splitBySourceForKey(points, dataKey);
+  const hasBackfill = points.some((p) => p.source === 'backfill');
+  const title = hasBackfill
+    ? 'Dashed segment is reconstructed from existing station data (backfill); solid segment is real nightly snapshots.'
+    : undefined;
   return (
-    <div className="w-[90px] h-[24px]" data-testid={testId}>
+    <div
+      className="w-[90px] h-[24px]"
+      data-testid={testId}
+      data-has-backfill={hasBackfill ? 'true' : 'false'}
+      title={title}
+    >
       <ResponsiveContainer width="100%" height="100%">
         <LineChart
-          data={points}
+          data={split}
           margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
         >
           <YAxis hide domain={[0, 100]} />
           <Line
             type="monotone"
-            dataKey={dataKey}
+            dataKey="backfilled"
+            stroke={color}
+            strokeWidth={1.5}
+            strokeDasharray="3 2"
+            strokeOpacity={0.6}
+            dot={false}
+            isAnimationActive={false}
+            connectNulls={false}
+          />
+          <Line
+            type="monotone"
+            dataKey="cron"
             stroke={color}
             strokeWidth={1.5}
             dot={false}
             isAnimationActive={false}
+            connectNulls={false}
           />
         </LineChart>
       </ResponsiveContainer>
@@ -556,6 +605,38 @@ export default function AdminCoverage() {
             <code className="mx-1 px-1 bg-muted rounded">backfill-tr-*</code>
             scripts.
           </CardDescription>
+          <div
+            className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground"
+            data-testid="coverage-sparkline-legend"
+          >
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="22" height="6" aria-hidden="true">
+                <line x1="0" y1="3" x2="22" y2="3" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+              Real nightly snapshot
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <svg width="22" height="6" aria-hidden="true">
+                <line
+                  x1="0"
+                  y1="3"
+                  x2="22"
+                  y2="3"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeDasharray="3 2"
+                  strokeOpacity="0.6"
+                />
+              </svg>
+              Reconstructed (backfilled from existing station data)
+            </span>
+            <span>
+              Tag values for backfilled days are best-effort — we don't track
+              when each station first received tags, so a station's
+              <code className="mx-1 px-1 bg-muted rounded">createdAt</code>
+              date is used as a proxy.
+            </span>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-3 items-center">
@@ -665,6 +746,10 @@ export default function AdminCoverage() {
                                 total: row.total,
                                 withLogo: row.withLogo,
                                 withTags: row.withTags,
+                                // Today's live point comes straight
+                                // from the by-country aggregation, not
+                                // a backfill — render it as solid.
+                                source: 'cron',
                               },
                             ];
                     return (

@@ -238,6 +238,10 @@ async function main(): Promise<void> {
               withTags: row.withTags,
               logoCoveragePct,
               tagCoveragePct,
+              // Tag this row as a reconstructed/backfilled point so the
+              // admin coverage chart can render it differently from real
+              // cron-written snapshots. See `CoverageSnapshot.source`.
+              source: 'backfill' as const,
               createdAt: new Date(),
             },
           },

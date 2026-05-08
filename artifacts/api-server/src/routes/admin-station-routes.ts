@@ -1844,9 +1844,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           total: number;
           withLogo: number;
           withTags: number;
+          source?: 'cron' | 'backfill';
         };
         type TrendPoint = Omit<SnapshotRow, 'countryCode' | 'snapshotDate'> & {
           date: string;
+          // Always present in the response (legacy rows missing the DB
+          // field default to 'cron'), so the UI can render reconstructed
+          // backfill points distinctly from real cron snapshots.
+          source: 'cron' | 'backfill';
         };
 
         const rows = await CoverageSnapshot.find(
@@ -1862,6 +1867,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             total: 1,
             withLogo: 1,
             withTags: 1,
+            source: 1,
             _id: 0,
           },
         )
@@ -1884,6 +1890,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             total: Number(r.total) || 0,
             withLogo: Number(r.withLogo) || 0,
             withTags: Number(r.withTags) || 0,
+            source: r.source === 'backfill' ? 'backfill' : 'cron',
           });
           byCountry.set(code, list);
         }

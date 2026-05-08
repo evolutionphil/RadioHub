@@ -192,6 +192,11 @@ class ScheduledCoverageSnapshot {
                 withTags: row.withTags,
                 logoCoveragePct,
                 tagCoveragePct,
+                // Re-running the cron on the same UTC day must promote
+                // a previously-backfilled row to 'cron' (the live numbers
+                // have replaced the reconstruction), so set this on
+                // every write, not just on insert.
+                source: 'cron' as const,
               },
               $setOnInsert: { createdAt: new Date() },
             },

@@ -699,6 +699,16 @@ export interface ICoverageSnapshot extends Document {
   withTags: number;
   logoCoveragePct: number; // rounded to 0.1
   tagCoveragePct: number;  // rounded to 0.1
+  // How this row landed in the collection:
+  //   'cron'     — written by the nightly snapshot job from live data
+  //   'backfill' — seeded by `scripts/backfill-coverage-snapshots.ts`
+  //                from existing station signals (best-effort
+  //                reconstruction; tag counts in particular use station
+  //                createdAt as a proxy because we don't track when each
+  //                station first received tags).
+  // Rows missing this field were written before the discriminator
+  // existed; the API and UI treat them as 'cron'.
+  source?: 'cron' | 'backfill';
   createdAt: Date;
 }
 
@@ -1118,6 +1128,11 @@ const CoverageSnapshotSchema = new Schema<ICoverageSnapshot>({
   withTags: { type: Number, default: 0 },
   logoCoveragePct: { type: Number, default: 0 },
   tagCoveragePct: { type: Number, default: 0 },
+  // 'cron' = nightly snapshot from live data; 'backfill' = seeded from
+  // historical station signals by the one-shot reconstruction script.
+  // Optional + no default so legacy rows written before this field
+  // existed remain `undefined` (interpreted as 'cron' downstream).
+  source: { type: String, enum: ['cron', 'backfill'] },
   createdAt: { type: Date, default: Date.now },
 });
 // One snapshot per country per day (idempotent re-runs of the cron just
