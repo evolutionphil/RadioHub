@@ -923,6 +923,116 @@ ${keysText}`;
     }
   });
 
+  // ADMIN MERGE-PREVIEW API (Task #288) - Read-only preview of which stations
+  // a `merge-into-winner` call would re-tag. Mirrors the matching rules used
+  // by the POST endpoint so admins see exactly the set of stations about to
+  // move before they pull the trigger. The matching set depends only on the
+  // demoted genre's name (not the chosen target), so `targetGenreId` is not
+  // required — but if supplied we surface basic guard errors (self-merge,
+  // missing target) so the dialog can warn before the admin clicks Merge.
+  app.get("/api/admin/genres/:id/merge-preview", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const rawTarget = req.query.targetGenreId;
+      const targetGenreId =
+        typeof rawTarget === 'string' && rawTarget.trim().length > 0
+          ? rawTarget.trim()
+          : undefined;
+      const rawLimit = Number.parseInt(String(req.query.limit ?? '50'), 10);
+      const sampleLimit =
+        Number.isFinite(rawLimit) && rawLimit > 0
+          ? Math.min(rawLimit, 200)
+          : 50;
+
+      type GenreLean = Pick<IGenre, 'name' | 'slug' | 'cleanupDemotion'> & {
+        _id: Types.ObjectId | string;
+      };
+      type StationPreviewLean = Pick<
+        IStation,
+        'name' | 'slug' | 'genre' | 'tags' | 'country'
+      > & { _id: Types.ObjectId };
+
+      const demoted = await Genre.findById(id)
+        .select('_id name slug cleanupDemotion')
+        .lean<GenreLean | null>();
+      if (!demoted) {
+        return void res.status(404).json({ error: 'Demoted genre not found' });
+      }
+      if (!demoted.cleanupDemotion) {
+        return void res.status(400).json({
+          error: 'Genre is not a slug-cleanup demoted row',
+        });
+      }
+      const demotedName = String(demoted.name || '').trim();
+      if (!demotedName) {
+        return void res.status(409).json({
+          error: 'Demoted genre is missing a usable name; cannot preview merge',
+        });
+      }
+
+      let winnerName: string | undefined;
+      let winnerSlug: string | undefined;
+      if (targetGenreId) {
+        if (String(targetGenreId) === String(demoted._id)) {
+          return void res.status(400).json({
+            error: 'Cannot merge a demoted genre into itself',
+          });
+        }
+        const winner = await Genre.findById(targetGenreId)
+          .select('_id name slug')
+          .lean<GenreLean | null>();
+        if (!winner) {
+          return void res.status(409).json({
+            error: 'Picked target genre no longer exists',
+          });
+        }
+        winnerName = String(winner.name || '').trim() || undefined;
+        winnerSlug = String(winner.slug || '').trim() || undefined;
+      }
+
+      const escapeForRegex = (s: string): string =>
+        s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const escapedDemoted = escapeForRegex(demotedName);
+      const matchFilter = {
+        $or: [
+          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedDemoted}\\s*(,|$)`, 'i') } },
+          { genre: { $regex: new RegExp(`^\\s*${escapedDemoted}\\s*$`, 'i') } },
+        ],
+      };
+
+      const [stationsMatched, sampleStations] = await Promise.all([
+        Station.countDocuments(matchFilter),
+        Station.find(matchFilter)
+          .select('_id name slug genre tags country')
+          .sort({ name: 1 })
+          .limit(sampleLimit)
+          .lean<StationPreviewLean[]>(),
+      ]);
+
+      return void res.json({
+        demotedGenreId: String(demoted._id),
+        demotedGenreName: demotedName,
+        demotedGenreSlug: demoted.slug,
+        targetGenreId: targetGenreId ?? null,
+        targetGenreName: winnerName ?? null,
+        targetGenreSlug: winnerSlug ?? null,
+        stationsMatched,
+        sampleLimit,
+        sampleStations: sampleStations.map((st) => ({
+          _id: String(st._id),
+          name: st.name,
+          slug: st.slug,
+          genre: st.genre ?? null,
+          tags: st.tags ?? null,
+          country: st.country ?? null,
+        })),
+      });
+    } catch (error) {
+      logger.error('Error building merge preview:', error);
+      res.status(500).json({ error: 'Failed to build merge preview' });
+    }
+  });
+
   // ADMIN MERGE-INTO-WINNER API (Task #166) - Re-tag the stations attached to
   // a demoted genre onto its recorded `cleanupDemotion.collisionWinnerId`,
   // then delete the demoted row. Closes the loop on the slug-cleanup

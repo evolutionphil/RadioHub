@@ -375,9 +375,10 @@ export default function AdminGenres() {
 
   const handleConfirmManualMerge = (target: Genre) => {
     if (!mergePickerGenre) return;
+    const previewCount = mergePreview?.stationsMatched ?? 0;
     if (
       !confirm(
-        `Re-tag every station currently attached to "${mergePickerGenre.name}" onto "${target.name}", then delete the demoted row? This cannot be undone.`,
+        `Re-tag ${previewCount} station(s) currently attached to "${mergePickerGenre.name}" onto "${target.name}", then delete the demoted row? This cannot be undone.`,
       )
     ) {
       return;
@@ -387,6 +388,49 @@ export default function AdminGenres() {
       targetGenreId: target._id,
     });
   };
+
+  // Task #288: read-only preview of which stations the merge would re-tag.
+  // The matching set depends only on the demoted genre's name (not the
+  // chosen target), so we fetch it as soon as the picker dialog opens and
+  // surface a count + sample list before the admin commits.
+  interface MergePreviewStation {
+    _id: string;
+    name: string;
+    slug: string;
+    genre: string | null;
+    tags: string | null;
+    country: string | null;
+  }
+  interface MergePreviewResponse {
+    demotedGenreId: string;
+    demotedGenreName: string;
+    stationsMatched: number;
+    sampleLimit: number;
+    sampleStations: MergePreviewStation[];
+  }
+  const {
+    data: mergePreview,
+    isLoading: mergePreviewLoading,
+    error: mergePreviewError,
+  } = useQuery<MergePreviewResponse>({
+    queryKey: [
+      '/api/admin/genres/merge-preview',
+      mergePickerGenre?._id ?? null,
+    ],
+    enabled: !!mergePickerGenre,
+    queryFn: async () => {
+      const response = await fetch(
+        `/api/admin/genres/${mergePickerGenre!._id}/merge-preview?limit=25`,
+      );
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.error || `Failed to load merge preview (${response.status})`,
+        );
+      }
+      return response.json();
+    },
+  });
 
   // Delete genre mutation
   const deleteMutation = useMutation({
@@ -1013,6 +1057,85 @@ export default function AdminGenres() {
               the merge. This cannot be undone.
             </DialogDescription>
           </DialogHeader>
+          {/* Task #288: read-only preview of which stations the merge will move. */}
+          <div
+            className="rounded border border-amber-200 bg-amber-50 p-3 text-sm"
+            data-testid="merge-preview-panel"
+          >
+            {mergePreviewLoading ? (
+              <div className="text-amber-900" data-testid="merge-preview-loading">
+                Loading preview…
+              </div>
+            ) : mergePreviewError ? (
+              <div className="text-red-700" data-testid="merge-preview-error">
+                {(mergePreviewError as Error).message ||
+                  'Failed to load merge preview.'}
+              </div>
+            ) : mergePreview ? (
+              mergePreview.stationsMatched === 0 ? (
+                <div
+                  className="text-amber-900"
+                  data-testid="merge-preview-empty"
+                >
+                  No stations are currently tagged with
+                  {' '}
+                  <span className="font-medium">
+                    "{mergePreview.demotedGenreName}"
+                  </span>
+                  . The merge will only delete the demoted row.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div
+                    className="font-medium text-amber-900"
+                    data-testid="merge-preview-count"
+                  >
+                    {mergePreview.stationsMatched} station
+                    {mergePreview.stationsMatched === 1 ? '' : 's'} will be
+                    re-tagged.
+                    {mergePreview.stationsMatched >
+                      mergePreview.sampleStations.length && (
+                      <span className="font-normal text-amber-800">
+                        {' '}Showing first {mergePreview.sampleStations.length}.
+                      </span>
+                    )}
+                  </div>
+                  <ul
+                    className="max-h-40 overflow-y-auto divide-y divide-amber-100 rounded border border-amber-100 bg-white text-xs"
+                    data-testid="merge-preview-list"
+                  >
+                    {mergePreview.sampleStations.map((st) => (
+                      <li
+                        key={st._id}
+                        className="p-2"
+                        data-testid={`merge-preview-station-${st._id}`}
+                      >
+                        <div className="font-medium text-gray-900 truncate">
+                          {st.name}
+                        </div>
+                        <div className="text-gray-600 truncate">
+                          <code className="bg-gray-100 px-1 rounded">
+                            {st.slug}
+                          </code>
+                          {st.country ? (
+                            <span> · {st.country}</span>
+                          ) : null}
+                          {st.genre ? (
+                            <span> · genre: {st.genre}</span>
+                          ) : null}
+                        </div>
+                        {st.tags ? (
+                          <div className="text-gray-500 truncate">
+                            tags: {st.tags}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            ) : null}
+          </div>
           <div className="space-y-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -1062,7 +1185,19 @@ export default function AdminGenres() {
                         <Button
                           size="sm"
                           onClick={() => handleConfirmManualMerge(target)}
-                          disabled={mergeIntoWinnerMutation.isPending}
+                          disabled={
+                            mergeIntoWinnerMutation.isPending ||
+                            mergePreviewLoading ||
+                            !!mergePreviewError ||
+                            !mergePreview
+                          }
+                          title={
+                            mergePreviewLoading
+                              ? 'Loading preview…'
+                              : mergePreviewError
+                                ? 'Preview failed to load — cannot safely merge'
+                                : undefined
+                          }
                           data-testid={`button-merge-pick-target-${target._id}`}
                         >
                           {isMergingThis ? 'Merging…' : 'Merge'}
