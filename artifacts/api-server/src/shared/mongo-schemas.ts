@@ -914,9 +914,23 @@ const MediaGroupSchema = new Schema<IMediaGroup>({
   updatedAt: { type: Date, default: Date.now }
 });
 
+// Task #110: enforce safe URL/SEO slug charset (lowercase letters, digits,
+// dash) at the schema layer so future writes can't reintroduce the
+// XML-unsafe values cleaned up by the one-off migration script
+// `scripts/cleanup-malformed-genre-slugs.ts`.
+export const SAFE_GENRE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 const GenreSchema = new Schema<IGenre>({
   name: { type: String, required: true },
-  slug: { type: String },
+  slug: {
+    type: String,
+    validate: {
+      validator: (v: string | null | undefined) =>
+        v == null || SAFE_GENRE_SLUG_RE.test(v),
+      message: (props: { value: unknown }) =>
+        `Genre.slug "${String(props.value)}" must match ${SAFE_GENRE_SLUG_RE}`,
+    },
+  },
   posterImage: String,
   discoverableImage: String,
   description: String,

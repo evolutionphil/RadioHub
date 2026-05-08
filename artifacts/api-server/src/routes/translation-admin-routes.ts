@@ -959,26 +959,38 @@ ${keysText}`;
       logger.log(`📈 Found ${Object.keys(tagCounts).length} unique tags`);
       
       // Create genres for tags with at least 1 station
+      // Task #110: skip empty/malformed slugs (would otherwise leak the
+      // XML-unsafe legacy values that #102 + #110 just cleaned up).
+      const SAFE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
       let genresCreated = 0;
+      let genresSkipped = 0;
       for (const [tag, count] of Object.entries(tagCounts)) {
         if (count >= 1) {
+          const slug = tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+          if (!slug || !SAFE_SLUG_RE.test(slug)) {
+            genresSkipped++;
+            continue;
+          }
           const genreData = {
             name: tag.charAt(0).toUpperCase() + tag.slice(1), // Capitalize first letter
-            slug: tag.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''),
+            slug,
             stationCount: count,
             isDiscoverable: count >= 2, // Make discoverable if 2+ stations
             createdAt: new Date(),
             updatedAt: new Date()
           };
-          
+
           // Insert genre (update if exists)
           await Genre.findOneAndUpdate(
             { slug: genreData.slug },
             genreData,
-            { upsert: true, returnDocument: 'after' }
+            { upsert: true, returnDocument: 'after', runValidators: true }
           );
           genresCreated++;
         }
+      }
+      if (genresSkipped > 0) {
+        logger.log(`⏭️ Skipped ${genresSkipped} tags with unsafe/empty slugs`);
       }
       
       logger.log(`✅ Successfully populated ${genresCreated} genres!`);

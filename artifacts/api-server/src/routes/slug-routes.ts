@@ -335,9 +335,13 @@ export function registerSlugRoutes(app: Express, deps: any) {
               }
             }
             
-            // Execute bulk operations for genres
+            // Execute bulk operations for genres.
+            // Task #110: GenreSchema.slug now has a regex validator. Mongoose
+            // bulkWrite runs validators by default (unless skipValidation:true),
+            // so leaving the default in place blocks any malformed slug from
+            // sneaking through this admin path.
             if (genreBulkOps.length > 0) {
-              await Genre.bulkWrite(genreBulkOps);
+              await Genre.bulkWrite(genreBulkOps, { ordered: false });
               logger.log(`✅ Genre batch complete: ${genreBulkOps.length} genre slugs updated`);
             }
           }
