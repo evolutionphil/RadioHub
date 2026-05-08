@@ -259,7 +259,10 @@ app.use((req, res, next) => {
   // CRITICAL: always emit Vary: Origin so Cloudflare/CDN doesn't cache an
   // ACAO header for one origin and replay it for another. Without this, a
   // credentialed POST from themegaradio.com can fail intermittently.
-  res.header('Vary', 'Origin');
+  // CRITICAL: `Origin` for the ACAO mirroring above; `Accept-Encoding`
+  // so a gzipped JSON response isn't replayed to a client that didn't
+  // negotiate gzip (and vice versa) once Cloudflare/CDN caches it.
+  res.header('Vary', 'Origin, Accept-Encoding');
   const isAllowed = !!origin && (
     CORS_ALLOWED_ORIGINS.includes(origin) ||
     /^https:\/\/([a-z0-9-]+\.)*themegaradio\.com$/i.test(origin)

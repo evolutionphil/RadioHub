@@ -103,14 +103,20 @@ export const SEO_LANGUAGES: SeoLanguage[] = [
   { code: 'ro', name: 'Română', iso: 'ro-RO', enabled: true, isDefault: false },
   { code: 'bg', name: 'Български', iso: 'bg-BG', enabled: true, isDefault: false },
   { code: 'hr', name: 'Hrvatski', iso: 'hr-HR', enabled: true, isDefault: false },
-  { code: 'sr', name: 'Српски', iso: 'sr-RS', enabled: true, isDefault: false },
+  // BCP47 fix: `sr-RS` is ambiguous (Serbian uses both Cyrillic & Latin scripts).
+  // Google Search Console merges/loses ambiguous tags. Pin to Cyrillic since
+  // the visible language label is in Cyrillic ("Српски").
+  { code: 'sr', name: 'Српски', iso: 'sr-Cyrl', enabled: true, isDefault: false },
   { code: 'sl', name: 'Slovenščina', iso: 'sl-SI', enabled: true, isDefault: false },
   { code: 'lv', name: 'Latviešu', iso: 'lv-LV', enabled: true, isDefault: false },
   { code: 'lt', name: 'Lietuvių', iso: 'lt-LT', enabled: true, isDefault: false },
   { code: 'et', name: 'Eesti', iso: 'et-EE', enabled: true, isDefault: false },
   
   // Asian languages
-  { code: 'zh', name: '中文', iso: 'zh-CN', enabled: true, isDefault: false },
+  // BCP47 fix: `zh-CN` is region-specific (mainland China). For a global
+  // audience the script subtag `zh-Hans` (Simplified Chinese) is the
+  // correct hreflang signal.
+  { code: 'zh', name: '中文', iso: 'zh-Hans', enabled: true, isDefault: false },
   { code: 'ja', name: '日本語', iso: 'ja-JP', enabled: true, isDefault: false },
   { code: 'ko', name: '한국어', iso: 'ko-KR', enabled: true, isDefault: false },
   { code: 'hi', name: 'हिन्दी', iso: 'hi-IN', enabled: true, isDefault: false },

@@ -136,7 +136,7 @@ export function generateRadioStationSchema(
       "target": {
         "@type": "EntryPoint",
         "urlTemplate": stationUrl,
-        "actionPlatform": ["http://schema.org/DesktopWebPlatform", "http://schema.org/MobileWebPlatform"]
+        "actionPlatform": ["https://schema.org/DesktopWebPlatform", "https://schema.org/MobileWebPlatform"]
       }
     }
   };

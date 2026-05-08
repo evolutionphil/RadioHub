@@ -99,7 +99,11 @@ function maybeFlushLog(): void {
 // verification is too slow for the request hot path and the worst-case
 // downside (an attacker spoofing Googlebot to bypass a country block)
 // is acceptable: they still hit our normal app surface.
-const SEARCH_BOT_BYPASS_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider|applebot|sogou|petalbot)\b/i;
+// Note: GPTBot, ChatGPT-User, CCBot, anthropic-ai, claudebot, perplexitybot
+// and friends are intentionally NOT on this bypass list because they're
+// explicitly Disallow:'d in robots.txt — letting them tunnel past the geo
+// block would just burn bandwidth on traffic we've already opted out of.
+const SEARCH_BOT_BYPASS_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider|applebot|sogou|petalbot|seznambot|naverbot|facebookexternalhit|twitterbot|linkedinbot)\b/i;
 
 export function geoBlockMiddleware(req: Request, res: Response, next: NextFunction): void {
   const cc = String(

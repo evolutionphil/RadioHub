@@ -1968,10 +1968,10 @@ export class SeoRenderer {
             "@type": "EntryPoint",
             "urlTemplate": stationUrl,
             "actionPlatform": [
-              "http://schema.org/DesktopWebPlatform",
-              "http://schema.org/MobileWebPlatform",
-              "http://schema.org/IOSPlatform",
-              "http://schema.org/AndroidPlatform"
+              "https://schema.org/DesktopWebPlatform",
+              "https://schema.org/MobileWebPlatform",
+              "https://schema.org/IOSPlatform",
+              "https://schema.org/AndroidPlatform"
             ]
           }
         },
@@ -2006,7 +2006,6 @@ export class SeoRenderer {
     return `
     <title>${safeTitle}</title>
     <meta name="description" content="${safeDescription}">
-    <meta name="keywords" content="${seoTags.keywords || 'online radio, live radio, free music, radio stations'}">
     <meta name="author" content="MegaRadio">
     
     <!-- Enhanced Open Graph tags -->

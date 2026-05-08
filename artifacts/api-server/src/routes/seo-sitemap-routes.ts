@@ -545,6 +545,10 @@ Disallow: /*/import-export
 Disallow: /*/analytics
 Disallow: /*/messages
 Disallow: /*/profile
+Disallow: /search
+Disallow: /*/search
+Disallow: /*?*q=
+Disallow: /*?*utm_
 Allow: /
 
 User-agent: Baiduspider

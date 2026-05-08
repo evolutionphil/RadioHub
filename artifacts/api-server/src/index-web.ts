@@ -136,7 +136,14 @@ function getHstsHeader(): string {
     const preload = process.env.HSTS_PRELOAD === 'true' ? '; preload' : '';
     return `max-age=${maxAge}${includeSubdomains}${preload}`;
   }
-  const hstsPhase = process.env.HSTS_PHASE || 'confident';
+  // Default to the year-long `production` preset in real production so we
+  // never accidentally ship the lower `confident` (1 week) max-age to
+  // crawlers/users when the env var is forgotten on a new deploy. Lower
+  // environments still default to `confident` to avoid pinning a long
+  // HSTS on a non-production host by accident.
+  const hstsPhase =
+    process.env.HSTS_PHASE ||
+    (process.env.NODE_ENV === 'production' ? 'production' : 'confident');
   const hstsConfigs: Record<string, string> = {
     testing: 'max-age=60',
     initial: 'max-age=3600; includeSubDomains',
@@ -212,7 +219,10 @@ app.use((req, res, next) => {
     res.header('Content-Security-Policy-Report-Only', cspDirectives.join('; '));
   }
 
-  res.header('Expect-CT', 'max-age=86400, enforce');
+  // Note: `Expect-CT` was removed (deprecated and ignored by all modern
+  // browsers as of Chrome 107 / 2022). CT is now enforced unconditionally
+  // by browsers for any cert chain shipped after 2018, so the header was
+  // pure noise.
 
   if (req.method === 'OPTIONS') {
     res.sendStatus(200);
@@ -414,15 +424,17 @@ const apiProxy = createProxyMiddleware({
   }
 });
 
-app.get('/admin-login', (_req, res) => {
-  res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
-});
-app.get('/admin', (_req, res) => {
-  res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
-});
-app.get('/admin/*path', (_req, res) => {
-  res.status(404).send('<!DOCTYPE html><html><head><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>');
-});
+// /admin* lives client-side; from a crawler's perspective it doesn't exist.
+// We return a real 404 + a noindex header so any accidental external link
+// can't get the path indexed under "Indexed though 404".
+const ADMIN_404_HTML = '<!DOCTYPE html><html><head><meta name="robots" content="noindex, nofollow"><title>404 - Page Not Found</title></head><body style="background:#0a0a0a;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0"><div style="text-align:center"><h1 style="font-size:48px;margin:0">404</h1><p style="color:#888;margin-top:12px">Page Not Found</p><a href="/" style="color:#3b82f6;margin-top:20px;display:inline-block">Go Home</a></div></body></html>';
+function sendAdmin404(_req: any, res: any) {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  res.status(404).send(ADMIN_404_HTML);
+}
+app.get('/admin-login', sendAdmin404);
+app.get('/admin', sendAdmin404);
+app.get('/admin/*path', sendAdmin404);
 
 // Server-side proxy for /api/image/* and /api/stream/* — forwards to the
 // dedicated stream-proxy service at STREAM_PROXY_URL. This means clients can
