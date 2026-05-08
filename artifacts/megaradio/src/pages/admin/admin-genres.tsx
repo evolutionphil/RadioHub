@@ -266,12 +266,22 @@ export default function AdminGenres() {
     },
   });
 
-  // Merge demoted genre into recorded collision winner (Task #166)
+  // Merge demoted genre into a winner (Task #166 + Task #214).
+  // When `targetGenreId` is supplied the admin-picked target overrides the
+  // recorded `cleanupDemotion.collisionWinnerId`, which also unlocks the
+  // action for empty-slug demotions and older rows missing the pointer.
   const mergeIntoWinnerMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({
+      id,
+      targetGenreId,
+    }: {
+      id: string;
+      targetGenreId?: string;
+    }) => {
       const response = await fetch(`/api/admin/genres/${id}/merge-into-winner`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(targetGenreId ? { targetGenreId } : {}),
       });
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -286,6 +296,8 @@ export default function AdminGenres() {
         title: 'Stations Merged',
         description: `${data.stationsRetagged} station(s) re-tagged onto "${data.winnerGenreName}". Demoted row deleted.`,
       });
+      setMergePickerGenre(null);
+      setMergePickerSearch('');
     },
     onError: (error: any) => {
       toast({
@@ -308,7 +320,72 @@ export default function AdminGenres() {
     ) {
       return;
     }
-    mergeIntoWinnerMutation.mutate(genre._id);
+    mergeIntoWinnerMutation.mutate({ id: genre._id });
+  };
+
+  // Task #214: manual merge picker — admin chooses any live genre as the
+  // winner, covering empty-slug demotions and older rows missing a recorded
+  // `collisionWinnerId`.
+  const [mergePickerGenre, setMergePickerGenre] = useState<Genre | null>(null);
+  const [mergePickerSearch, setMergePickerSearch] = useState('');
+  const [mergePickerDebouncedSearch, setMergePickerDebouncedSearch] =
+    useState('');
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setMergePickerDebouncedSearch(mergePickerSearch.trim());
+    }, 300);
+    return () => clearTimeout(t);
+  }, [mergePickerSearch]);
+
+  // Reset search when the picker opens for a new genre.
+  useEffect(() => {
+    if (mergePickerGenre) {
+      setMergePickerSearch('');
+      setMergePickerDebouncedSearch('');
+    }
+  }, [mergePickerGenre]);
+
+  const { data: mergePickerResults, isFetching: mergePickerLoading } = useQuery({
+    queryKey: ['/api/admin/genres/merge-picker', mergePickerDebouncedSearch],
+    enabled: !!mergePickerGenre,
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: '1',
+        limit: '20',
+        sortBy: 'stationCount',
+      });
+      if (mergePickerDebouncedSearch) {
+        params.append('search', mergePickerDebouncedSearch);
+      }
+      const response = await fetch(`/api/admin/genres?${params}`);
+      if (!response.ok) {
+        throw new Error(`Failed to search genres: ${response.status}`);
+      }
+      const data = await response.json();
+      // Drop the demoted row itself and any other demoted rows — admins
+      // should only be able to merge into a live, non-demoted target.
+      const list: Genre[] = (data.data || []).filter(
+        (g: Genre) =>
+          !g.cleanupDemotion && (!mergePickerGenre || g._id !== mergePickerGenre._id),
+      );
+      return list;
+    },
+  });
+
+  const handleConfirmManualMerge = (target: Genre) => {
+    if (!mergePickerGenre) return;
+    if (
+      !confirm(
+        `Re-tag every station currently attached to "${mergePickerGenre.name}" onto "${target.name}", then delete the demoted row? This cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    mergeIntoWinnerMutation.mutate({
+      id: mergePickerGenre._id,
+      targetGenreId: target._id,
+    });
   };
 
   // Delete genre mutation
@@ -692,12 +769,14 @@ export default function AdminGenres() {
                                 onClick={() => handleMergeIntoWinner(genre)}
                                 disabled={
                                   mergeIntoWinnerMutation.isPending &&
-                                  mergeIntoWinnerMutation.variables === genre._id
+                                  mergeIntoWinnerMutation.variables?.id === genre._id &&
+                                  !mergeIntoWinnerMutation.variables?.targetGenreId
                                 }
                                 data-testid={`button-merge-into-winner-${genre._id}`}
                               >
                                 {mergeIntoWinnerMutation.isPending &&
-                                mergeIntoWinnerMutation.variables === genre._id
+                                mergeIntoWinnerMutation.variables?.id === genre._id &&
+                                !mergeIntoWinnerMutation.variables?.targetGenreId
                                   ? 'Merging…'
                                   : 'Merge stations into winner'}
                               </Button>
@@ -715,6 +794,20 @@ export default function AdminGenres() {
                           </div>
                         </>
                       )}
+                      {/* Task #214: manual merge picker — works for both
+                          empty-slug and collision demotions, including older
+                          rows missing a recorded `collisionWinnerId`. */}
+                      <div className="pt-1">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-amber-400 text-amber-900 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900"
+                          onClick={() => setMergePickerGenre(genre)}
+                          data-testid={`button-merge-into-picker-${genre._id}`}
+                        >
+                          Merge into…
+                        </Button>
+                      </div>
                     </AlertDescription>
                   </Alert>
                 )}
@@ -896,6 +989,100 @@ export default function AdminGenres() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task #214: manual "Merge into…" picker dialog */}
+      <Dialog
+        open={!!mergePickerGenre}
+        onOpenChange={(open) => {
+          if (!open) setMergePickerGenre(null);
+        }}
+      >
+        <DialogContent
+          className="max-w-md bg-white border border-gray-200 shadow-lg text-gray-900"
+          data-testid="dialog-merge-into-picker"
+        >
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">
+              Merge "{mergePickerGenre?.name}" into…
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Pick a live genre to receive every station currently tagged with
+              "{mergePickerGenre?.name}". The demoted row will be deleted after
+              the merge. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                autoFocus
+                placeholder="Search live genres…"
+                value={mergePickerSearch}
+                onChange={(e) => setMergePickerSearch(e.target.value)}
+                className="pl-9 bg-white border-gray-300 text-gray-900"
+                data-testid="input-merge-picker-search"
+              />
+            </div>
+            <div className="max-h-72 overflow-y-auto border border-gray-200 rounded">
+              {mergePickerLoading ? (
+                <div className="p-4 text-sm text-muted-foreground text-center">
+                  Searching…
+                </div>
+              ) : !mergePickerResults || mergePickerResults.length === 0 ? (
+                <div className="p-4 text-sm text-muted-foreground text-center">
+                  No matching live genres.
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {mergePickerResults.map((target) => {
+                    const isMergingThis =
+                      mergeIntoWinnerMutation.isPending &&
+                      mergeIntoWinnerMutation.variables?.id ===
+                        mergePickerGenre?._id &&
+                      mergeIntoWinnerMutation.variables?.targetGenreId ===
+                        target._id;
+                    return (
+                      <li
+                        key={target._id}
+                        className="flex items-center justify-between gap-2 p-2 hover:bg-gray-50"
+                      >
+                        <div className="min-w-0">
+                          <div className="font-medium text-sm truncate">
+                            {target.name}
+                          </div>
+                          <div className="text-xs text-muted-foreground truncate">
+                            <code className="bg-gray-100 px-1 rounded">
+                              {target.slug}
+                            </code>{' '}
+                            · {target.stationCount} stations
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => handleConfirmManualMerge(target)}
+                          disabled={mergeIntoWinnerMutation.isPending}
+                          data-testid={`button-merge-pick-target-${target._id}`}
+                        >
+                          {isMergingThis ? 'Merging…' : 'Merge'}
+                        </Button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMergePickerGenre(null)}
+              disabled={mergeIntoWinnerMutation.isPending}
+            >
+              Cancel
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

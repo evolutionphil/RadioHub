@@ -927,9 +927,20 @@ ${keysText}`;
   // a demoted genre onto its recorded `cleanupDemotion.collisionWinnerId`,
   // then delete the demoted row. Closes the loop on the slug-cleanup
   // migration which intentionally avoids auto-merging stations.
+  //
+  // Task #214: also accepts an optional `targetGenreId` body param. When
+  // provided, the admin-picked target genre overrides the recorded
+  // collision winner — and the action becomes available for empty-slug
+  // demotions and any older demoted rows missing a `collisionWinnerId`.
   app.post("/api/admin/genres/:id/merge-into-winner", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
+      const rawTarget = (req.body as { targetGenreId?: unknown } | undefined)
+        ?.targetGenreId;
+      const targetGenreId =
+        typeof rawTarget === 'string' && rawTarget.trim().length > 0
+          ? rawTarget.trim()
+          : undefined;
 
       // Genre._id is mixed (ObjectId for new docs, plain strings for legacy
       // seed data — see mongo-schemas.ts), so type the lean shape with the
@@ -948,18 +959,35 @@ ${keysText}`;
         return void res.status(404).json({ error: 'Demoted genre not found' });
       }
       const demotion: IGenreCleanupDemotion | undefined = demoted.cleanupDemotion;
-      if (!demotion || demotion.reason !== 'collision' || !demotion.collisionWinnerId) {
+      if (!demotion) {
         return void res.status(400).json({
-          error: 'Genre is not a collision-demoted row with a recorded winner',
+          error: 'Genre is not a slug-cleanup demoted row',
         });
       }
 
-      const winner = await Genre.findById(demotion.collisionWinnerId)
+      // Resolve which winner to merge into: an admin-picked override, or
+      // the recorded `collisionWinnerId` for the original auto-pick path.
+      const winnerId = targetGenreId ?? demotion.collisionWinnerId;
+      if (!winnerId) {
+        return void res.status(400).json({
+          error:
+            'No target genre supplied and this demoted row has no recorded winner — pick a target genre to merge into.',
+        });
+      }
+      if (String(winnerId) === String(demoted._id)) {
+        return void res.status(400).json({
+          error: 'Cannot merge a demoted genre into itself',
+        });
+      }
+
+      const winner = await Genre.findById(winnerId)
         .select('_id name slug')
         .lean<GenreLean | null>();
       if (!winner) {
         return void res.status(409).json({
-          error: 'Recorded collision winner no longer exists; cannot merge',
+          error: targetGenreId
+            ? 'Picked target genre no longer exists; cannot merge'
+            : 'Recorded collision winner no longer exists; cannot merge',
         });
       }
 
