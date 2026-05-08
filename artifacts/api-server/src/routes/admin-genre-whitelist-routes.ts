@@ -158,7 +158,14 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // indexable. Mirrors the gate in sitemap-manifest-builder.ts:
         // Genre.stationCount >= MIN_STATIONS_FOR_GENRE_INDEX. Slugs with no
         // matching Genre row at all show up as 0.
+        //
+        // Task #184: also surface which slugs have NO matching Genre row at
+        // all (vs. a row that just happens to have stationCount=0). The two
+        // look identical in `stationCounts` but mean very different things —
+        // "no row" usually points to a typo or never-seeded slug that needs
+        // to be removed or have a Genre row created.
         const stationCounts: Record<string, number> = {};
+        const slugsWithGenreRow = new Set<string>();
         if (sortedSlugs.length > 0) {
           const genres = await Genre.find({ slug: { $in: sortedSlugs } })
             .select('slug stationCount')
@@ -166,13 +173,18 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           for (const g of genres as Array<{ slug?: string; stationCount?: number }>) {
             if (typeof g.slug === 'string') {
               stationCounts[g.slug] = g.stationCount ?? 0;
+              slugsWithGenreRow.add(g.slug);
             }
           }
         }
+        const slugsWithoutGenreRow = sortedSlugs.filter(
+          (s) => !slugsWithGenreRow.has(s),
+        );
 
         return res.json({
           slugs: sortedSlugs,
           slugStationCounts: stationCounts,
+          slugsWithoutGenreRow,
           minStationsThreshold: MIN_STATIONS_FOR_GENRE_INDEX,
           aliases: Array.from(aliases.entries())
             .map(([source, canonical]) => ({ source, canonical }))
@@ -233,13 +245,20 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
 
         // Task #148: warn (don't block) if no Genre row matches this slug —
         // the page will exist but render empty until station tags catch up.
+        // Task #184: distinguish "Genre row exists with 0 stations" from
+        // "no Genre row at all" so admins know whether the slug is a typo
+        // (no row) or just genuinely empty (row exists, 0 stations).
         const genreDoc = await Genre.findOne({ slug })
           .select('stationCount')
           .lean<{ stationCount?: number } | null>();
+        const hasGenreRow = genreDoc != null;
         const stationCount = genreDoc?.stationCount ?? 0;
-        const warning = stationCount === 0
-          ? `No stations currently match "${slug}" — the genre page will be empty until station tags are imported.`
-          : undefined;
+        let warning: string | undefined;
+        if (!hasGenreRow) {
+          warning = `No Genre row exists for "${slug}" yet — likely a typo or a slug that was never seeded. Create a Genre row from the admin page or remove the slug.`;
+        } else if (stationCount === 0) {
+          warning = `Genre row for "${slug}" exists but has 0 stations — the genre page will be empty until station tags are imported.`;
+        }
 
         // Wipe any prior 'slug-remove' for this slug — adding overrides
         // removing.
@@ -316,6 +335,70 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       } catch (error: any) {
         logger.error('Error removing genre whitelist slug:', error);
         return res.status(500).json({ error: 'Failed to remove slug' });
+      }
+    },
+  );
+
+  // POST /slugs/:slug/genre-row — Task #184. Create a Genre row for a
+  // whitelisted slug that has none. This is the one-click "fix the typo
+  // or seed the row" action surfaced on the admin page next to slugs
+  // flagged "no Genre row". The row starts with stationCount=0 and
+  // isDiscoverable=false; once station tags catch up the count will be
+  // refreshed by the existing genre-count maintenance jobs.
+  app.post(
+    '/api/admin/genre-whitelist/slugs/:slug/genre-row',
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const slug = normalizeSlug(req.params.slug);
+        if (!slug) {
+          return res.status(400).json({ error: 'Invalid slug' });
+        }
+        // Refresh the in-memory snapshot before checking whitelist
+        // membership so we don't reject a slug another replica just added.
+        await refreshGenreWhitelistFromDb();
+        if (!getMergedWhitelist().has(slug)) {
+          return res.status(400).json({
+            error: `"${slug}" is not on the whitelist — add it first`,
+          });
+        }
+        // Humanize the slug into a passable display name
+        // (e.g. "lo-fi-hip-hop" → "Lo Fi Hip Hop"). Admins can rename
+        // later from the existing genre admin tools.
+        const name = slug
+          .split('-')
+          .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
+          .join(' ');
+        // Upsert keeps this idempotent against concurrent clicks: the
+        // Genre collection has a (non-unique) index on slug but no
+        // uniqueness constraint, so a naive read-then-create would race.
+        // findOneAndUpdate with upsert relies on Mongo's atomic upsert
+        // semantics. We detect "row already existed" by checking
+        // lastErrorObject.upserted on the raw result.
+        type UpsertRawResult = {
+          lastErrorObject?: { upserted?: unknown };
+        };
+        const result = (await Genre.findOneAndUpdate(
+          { slug },
+          {
+            $setOnInsert: {
+              name,
+              slug,
+              stationCount: 0,
+              isDiscoverable: false,
+              createdAt: new Date(),
+            },
+          },
+          { upsert: true, new: false, rawResult: true },
+        )) as unknown as UpsertRawResult;
+        const created = result?.lastErrorObject?.upserted != null;
+        if (!created) {
+          return res.status(409).json({ error: `Genre row for "${slug}" already exists` });
+        }
+        return res.json({ ok: true, slug, name });
+      } catch (error: any) {
+        logger.error('Error creating genre row for whitelist slug:', error);
+        return res.status(500).json({ error: 'Failed to create genre row' });
       }
     },
   );

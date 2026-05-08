@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trash2, Plus, Search, AlertCircle } from "lucide-react";
+import { Trash2, Plus, Search, AlertCircle, Wrench } from "lucide-react";
 
 interface AliasEntry {
   source: string;
@@ -26,6 +26,7 @@ interface OverrideEntry {
 interface WhitelistResponse {
   slugs: string[];
   slugStationCounts?: Record<string, number>;
+  slugsWithoutGenreRow?: string[];
   minStationsThreshold?: number;
   aliases: AliasEntry[];
   reservedSlugs?: string[];
@@ -34,11 +35,14 @@ interface WhitelistResponse {
   lastRefreshAt: string | null;
 }
 
-type SlugStatus = 'live' | 'thin' | 'none';
+// Task #184: 'missing' = no Genre row at all (likely a typo / never seeded).
+// 'empty' = Genre row exists but stationCount=0 (genuinely waiting for tags).
+type SlugStatus = 'live' | 'thin' | 'empty' | 'missing';
 type SlugStatusFilter = 'all' | SlugStatus;
 
-function statusFor(count: number, threshold: number): SlugStatus {
-  if (count <= 0) return 'none';
+function statusFor(count: number, threshold: number, hasRow: boolean): SlugStatus {
+  if (!hasRow) return 'missing';
+  if (count <= 0) return 'empty';
   if (count < threshold) return 'thin';
   return 'live';
 }
@@ -88,6 +92,23 @@ export default function AdminGenreWhitelist() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to add slug", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const createGenreRow = useMutation({
+    mutationFn: async (slug: string) => {
+      const res = await apiRequest('POST', `/api/admin/genre-whitelist/slugs/${encodeURIComponent(slug)}/genre-row`);
+      return res.json() as Promise<{ ok: boolean; slug: string; name: string }>;
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Genre row created",
+        description: `Created Genre row "${data?.name}" for "${data?.slug}". Station count will fill in once tags catch up.`,
+      });
+      invalidate();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to create Genre row", description: err.message, variant: "destructive" });
     },
   });
 
@@ -154,23 +175,27 @@ export default function AdminGenreWhitelist() {
 
   const stationCounts = data?.slugStationCounts ?? {};
   const threshold = data?.minStationsThreshold ?? 6;
+  const slugsWithoutGenreRow = useMemo(
+    () => new Set(data?.slugsWithoutGenreRow ?? []),
+    [data?.slugsWithoutGenreRow],
+  );
 
   const slugStatusCounts = useMemo(() => {
-    const counts = { live: 0, thin: 0, none: 0 };
+    const counts = { live: 0, thin: 0, empty: 0, missing: 0 };
     for (const s of data?.slugs ?? []) {
-      counts[statusFor(stationCounts[s] ?? 0, threshold)]++;
+      counts[statusFor(stationCounts[s] ?? 0, threshold, !slugsWithoutGenreRow.has(s))]++;
     }
     return counts;
-  }, [data?.slugs, stationCounts, threshold]);
+  }, [data?.slugs, stationCounts, threshold, slugsWithoutGenreRow]);
 
   const filteredSlugs = useMemo(() => {
     const q = slugFilter.trim().toLowerCase();
     return (data?.slugs ?? []).filter((s) => {
       if (q && !s.includes(q)) return false;
       if (slugStatusFilter === 'all') return true;
-      return statusFor(stationCounts[s] ?? 0, threshold) === slugStatusFilter;
+      return statusFor(stationCounts[s] ?? 0, threshold, !slugsWithoutGenreRow.has(s)) === slugStatusFilter;
     });
-  }, [data?.slugs, slugFilter, slugStatusFilter, stationCounts, threshold]);
+  }, [data?.slugs, slugFilter, slugStatusFilter, stationCounts, threshold, slugsWithoutGenreRow]);
 
   const filteredAliases = useMemo(() => {
     const q = aliasFilter.trim().toLowerCase();
@@ -288,7 +313,8 @@ export default function AdminGenreWhitelist() {
               <option value="all">All ({data.slugs.length})</option>
               <option value="live">Live ({slugStatusCounts.live})</option>
               <option value="thin">Thin — noindex ({slugStatusCounts.thin})</option>
-              <option value="none">No matching stations ({slugStatusCounts.none})</option>
+              <option value="empty">Empty Genre row ({slugStatusCounts.empty})</option>
+              <option value="missing">No Genre row ({slugStatusCounts.missing})</option>
             </select>
           </div>
 
@@ -304,7 +330,8 @@ export default function AdminGenreWhitelist() {
             {filteredSlugs.map((slug) => {
               const adminAdded = overrideBySlug.get(`slug-add:${slug}`);
               const count = stationCounts[slug] ?? 0;
-              const status = statusFor(count, threshold);
+              const hasRow = !slugsWithoutGenreRow.has(slug);
+              const status = statusFor(count, threshold, hasRow);
               return (
                 <div
                   key={slug}
@@ -337,13 +364,24 @@ export default function AdminGenreWhitelist() {
                         thin — noindex
                       </Badge>
                     )}
-                    {status === 'none' && (
+                    {status === 'empty' && (
+                      <Badge
+                        variant="outline"
+                        className="text-xs border-orange-300 text-orange-700 bg-orange-50"
+                        data-testid={`badge-slug-status-${slug}`}
+                        title="A Genre row exists for this slug but no stations match it yet."
+                      >
+                        empty Genre row
+                      </Badge>
+                    )}
+                    {status === 'missing' && (
                       <Badge
                         variant="outline"
                         className="text-xs border-red-300 text-red-700 bg-red-50"
                         data-testid={`badge-slug-status-${slug}`}
+                        title="No Genre document with this slug exists in the database — usually a typo or a slug that was never seeded."
                       >
-                        no matching stations
+                        no Genre row
                       </Badge>
                     )}
                     {adminAdded && (
@@ -352,18 +390,43 @@ export default function AdminGenreWhitelist() {
                       </Badge>
                     )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      if (confirm(`Remove "${slug}" from the whitelist?\n\nIt will be served as noindex and dropped from sitemaps on the next rebuild.`)) {
-                        removeSlug.mutate(slug);
-                      }
-                    }}
-                    data-testid={`button-remove-slug-${slug}`}
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {status === 'missing' && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={createGenreRow.isPending}
+                        onClick={() => {
+                          if (
+                            confirm(
+                              `Create a Genre row for "${slug}"?\n\nA new Genre document will be inserted with stationCount=0 and isDiscoverable=false. Use this only if "${slug}" is a real genre and not just a typo — otherwise remove the slug instead.`,
+                            )
+                          ) {
+                            createGenreRow.mutate(slug);
+                          }
+                        }}
+                        data-testid={`button-create-genre-row-${slug}`}
+                        title="Create a Genre document for this whitelisted slug"
+                      >
+                        <Wrench className="w-4 h-4 mr-1" /> Create row
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const extra = status === 'missing'
+                          ? '\n\nThis slug has no Genre row, so removing it is usually the right call if it was a typo.'
+                          : '';
+                        if (confirm(`Remove "${slug}" from the whitelist?\n\nIt will be served as noindex and dropped from sitemaps on the next rebuild.${extra}`)) {
+                          removeSlug.mutate(slug);
+                        }
+                      }}
+                      data-testid={`button-remove-slug-${slug}`}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               );
             })}
