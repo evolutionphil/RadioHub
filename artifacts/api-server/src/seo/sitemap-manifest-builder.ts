@@ -29,6 +29,7 @@ import { Station, Genre, SitemapManifest, ISitemapManifestChunk } from '../share
 import { logger } from '../utils/logger';
 import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from './qualified-languages';
 import { getIndexableLanguagesForStation } from './junk-station-rules';
+import { isWhitelistedGenreSlug, MIN_STATIONS_FOR_GENRE_INDEX } from './genre-whitelist';
 
 const STATIONS_PER_CHUNK = 1000;
 const MANIFEST_TTL_SUPERSEDED_MS = 24 * 60 * 60 * 1000;     // 24h
@@ -358,6 +359,12 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
 /** Build the genres manifest — one chunk per language (genres are far below
  * 50K). Stores Genre._ids ordered by stationCount desc. */
 async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUpdatedAt?: Date; totalUrls: number }> {
+  // Task #104: only publish genre URLs whose slug is on the curated whitelist
+  // (real music/talk genres) AND that have at least MIN_STATIONS_FOR_GENRE_INDEX
+  // stations backing them. The historical sitemap had ~8,824 slugs/lang derived
+  // from raw station tags — ~80% of which were FM frequencies, city names,
+  // station/brand names, or random noise. Those URLs are now dropped from
+  // sitemaps; the SSR layer (seo-renderer.ts) noindex'es or 301's them.
   const cursor = Genre.find({ slug: { $exists: true, $ne: '' } })
     .select('_id slug stationCount updatedAt')
     .sort({ stationCount: -1, _id: 1 })
@@ -366,10 +373,29 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
 
   const ids: mongoose.Types.ObjectId[] = [];
   const updatedAts: Date[] = [];
+  let scanned = 0;
+  let skippedNotWhitelisted = 0;
+  let skippedThin = 0;
   for await (const g of cursor as any) {
+    scanned++;
+    const slug: string | undefined = (g as any).slug;
+    const stationCount: number = (g as any).stationCount ?? 0;
+    if (!isWhitelistedGenreSlug(slug)) {
+      skippedNotWhitelisted++;
+      continue;
+    }
+    if (stationCount < MIN_STATIONS_FOR_GENRE_INDEX) {
+      skippedThin++;
+      continue;
+    }
     ids.push((g as any)._id);
     if ((g as any).updatedAt instanceof Date) updatedAts.push((g as any).updatedAt);
   }
+  logger.log(
+    `📦 manifest-builder: genres scanned=${scanned} kept=${ids.length} ` +
+    `skipped_not_whitelisted=${skippedNotWhitelisted} skipped_thin=${skippedThin} ` +
+    `(min_stations=${MIN_STATIONS_FOR_GENRE_INDEX})`,
+  );
   const maxUpdatedAt = updatedAts.length > 0
     ? new Date(Math.max(...updatedAts.map((d) => d.getTime())))
     : undefined;

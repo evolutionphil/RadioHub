@@ -7,6 +7,10 @@ import { trackOperation } from './utils/operation-tracker';
 import { isJunkStation } from './seo/junk-station-rules';
 import { buildGenreSeo } from './shared/genre-seo-templates';
 import { buildCountrySeo, buildRegionSeo } from './shared/region-seo-templates';
+import {
+  getCanonicalGenreSlug,
+  MIN_STATIONS_FOR_GENRE_INDEX,
+} from './seo/genre-whitelist';
 
 // Concurrency raised 5 → 15 → 50 → 200 → 1000 → 2500: paired with MongoDB
 // pool 100, heap 10 GB and RSS warning 7 GB on a 24 GB Railway replica to
@@ -464,8 +468,42 @@ export class SeoRenderer {
           additionalData.genreSlug = rawGenreSlug;
           additionalData.genreName = rawGenreSlug;
         } else {
-        additionalData.genreSlug = pathParts[2];
-        additionalData.genreName = pathParts[2].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const requestedSlug = pathParts[2];
+        additionalData.genreSlug = requestedSlug;
+        additionalData.genreName = requestedSlug.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+
+        // Task #104: gate the /genres/:slug surface against the genre whitelist.
+        //   1. If the slug is on the whitelist → render normally (may still be
+        //      noindex'ed below if it has <6 indexable popular stations).
+        //   2. If the slug is a known close-match alias whose canonical IS on
+        //      the whitelist → 301 redirect to the canonical localized URL so
+        //      Google consolidates ranking on the real genre.
+        //   3. Otherwise (raw tag noise — FM frequencies, city names, station
+        //      brands, random tokens) → mark the page noindex; the URL is also
+        //      already dropped from the sitemap by sitemap-manifest-builder.ts.
+        const canonicalSlug = getCanonicalGenreSlug(requestedSlug);
+        if (canonicalSlug && canonicalSlug !== requestedSlug.toLowerCase()) {
+          // Aliased — emit a 301 to the canonical genre URL.
+          const englishCanonicalPath = `/genres/${canonicalSlug}`;
+          const canonicalLocalized = buildLocalizedUrl(
+            englishCanonicalPath,
+            actualLanguage,
+            countryCode,
+            urlTranslations,
+          );
+          logger.log(`🔀 SEO GENRE 301: ${cleanPath} → ${canonicalLocalized} (alias → ${canonicalSlug})`);
+          return {
+            language,
+            cleanPath,
+            seoTags: {},
+            translations: {},
+            pageData: { redirectTo: canonicalLocalized },
+          };
+        }
+        if (!canonicalSlug) {
+          // Not on the whitelist and not aliased — flag for noindex below.
+          additionalData.genreNotWhitelisted = true;
+        }
         // DALGA 2 W2.1: Fetch top 12 stations matching this genre for SSR <img> grid (image indexing)
         try {
           const term = pathParts[2].replace(/-/g, ' ');
@@ -681,6 +719,30 @@ export class SeoRenderer {
             `⚠️ seo-renderer: station indexability gate failed: ${e?.message || e}`,
           );
         } catch {}
+      }
+    }
+
+    // ---- Genre quality safeguard (task #104) ------------------------------
+    // Companion to the sitemap whitelist filter in
+    // sitemap-manifest-builder.ts/buildGenreChunks. Even though those URLs are
+    // dropped from the sitemap, Googlebot may still rediscover them via old
+    // backlinks or its own URL store, so the SSR layer must independently
+    // emit `noindex` for:
+    //   1. genre slugs not on the curated whitelist (raw tag noise — FM
+    //      frequencies, city names, station/brand names, random tokens), and
+    //   2. whitelisted genres that ended up with fewer than
+    //      MIN_STATIONS_FOR_GENRE_INDEX indexable popular stations after
+    //      filtering — a thin grid is the same soft-404 signal that put the
+    //      whole template on Google's low-quality list.
+    if (pageType === 'genres' && additionalData?.genreSlug) {
+      const popularStations = (additionalData?.popularStations as any[] | undefined) || [];
+      const tooThin = popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX;
+      if (additionalData.genreNotWhitelisted || tooThin) {
+        seoTags.robots = 'noindex, follow';
+        seoTags.noIndex = true;
+        // Suppress hreflang alternates on noindex'd genre URLs so we don't
+        // advertise 44 low-quality variants of the same thin page.
+        seoTags.hreflangs = [];
       }
     }
     // -----------------------------------------------------------------------
