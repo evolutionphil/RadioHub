@@ -31,6 +31,7 @@ lib/
 - `pnpm --filter @workspace/api-server run dev` — run API server
 - `pnpm --filter @workspace/megaradio run dev` — run Vite frontend
 - `pnpm --filter @workspace/api-server run build` — build backend
+- `pnpm run test` — run every workspace package's `test` script via `pnpm -r --if-present run test`. Currently this executes the SEO translation guard at `artifacts/api-server/tests/seo-templates-coverage.test.ts`, which fails the build if any `SEO_LANGUAGES` code is missing a region or genre template. The root `pnpm run build` invokes `pnpm run test` after typecheck + per-package builds, so the guard runs automatically on every full build / CI check. To add new automated tests, drop them in a workspace package's `tests/` folder and expose a `test` script — they will be picked up automatically.
 
 ## Proxy Routing
 
