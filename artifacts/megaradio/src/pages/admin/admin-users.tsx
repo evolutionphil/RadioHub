@@ -31,6 +31,7 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
+  Download,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -365,6 +366,81 @@ export default function AdminUsers() {
     return sort.direction === "asc" ? "ascending" : "descending";
   };
 
+  // Quote a single CSV field per RFC 4180: wrap in double quotes and escape
+  // any embedded double quotes by doubling them. We always quote so commas,
+  // newlines, and leading "=" (Excel formula injection) are safe.
+  const csvField = (value: unknown): string => {
+    if (value === null || value === undefined) return '""';
+    let str = String(value);
+    // Defuse spreadsheet formula injection by prefixing risky leading chars.
+    if (/^[=+\-@\t\r]/.test(str)) str = "'" + str;
+    return `"${str.replace(/"/g, '""')}"`;
+  };
+
+  const csvDate = (s?: string): string => {
+    if (!s) return "";
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d.toISOString() : "";
+  };
+
+  const handleDownloadCsv = () => {
+    const headers = [
+      "id",
+      "name",
+      "email",
+      "auth_method",
+      "plan",
+      "plan_active",
+      "expires_at",
+      "followers",
+      "favorites",
+      "created_at",
+      "updated_at",
+    ];
+    const rows = filteredUsers.map((u) => {
+      const name =
+        u.fullName ||
+        [u.firstName, u.lastName].filter(Boolean).join(" ") ||
+        "";
+      const sub = u.subscription;
+      const plan = sub?.plan ?? "none";
+      const planActive = sub?.isActive === true;
+      return [
+        u._id,
+        name,
+        u.email,
+        (u.authProvider || "email").toLowerCase(),
+        plan,
+        planActive ? "true" : "false",
+        csvDate(sub?.expiresAt ?? undefined),
+        u.followers ?? 0,
+        u.favorites ?? 0,
+        csvDate(u.createdAt),
+        csvDate(u.updatedAt),
+      ];
+    });
+    const csv =
+      [headers, ...rows].map((r) => r.map(csvField).join(",")).join("\r\n") +
+      "\r\n";
+    // Prepend BOM so Excel opens UTF-8 names/emails correctly.
+    const blob = new Blob(["\uFEFF" + csv], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
+    const ts = new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .replace("T", "_")
+      .replace("Z", "");
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `megaradio-users-${ts}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const sortableHeaderClass =
     "inline-flex items-center gap-1 px-0 py-1 text-sm font-bold hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm";
 
@@ -559,6 +635,19 @@ export default function AdminUsers() {
                 <SelectItem value="apple">Apple</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDownloadCsv}
+              disabled={filteredUsers.length === 0}
+              data-testid="button-download-users-csv"
+              aria-label="Download filtered users as CSV"
+              title="Download the currently filtered user list as a CSV file"
+              className="bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            >
+              <Download size={16} className="mr-2" />
+              Download CSV
+            </Button>
             <ResetViewButton
               hasNonDefaultPrefs={hasNonDefaultViewPrefs}
               reset={resetViewPrefs}
