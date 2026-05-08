@@ -1,5 +1,10 @@
 import { logger } from '../utils/logger';
-import { User, UserNotification, CoverageSnapshot } from '../shared/mongo-schemas';
+import {
+  User,
+  UserNotification,
+  CoverageSnapshot,
+  AdminSetting,
+} from '../shared/mongo-schemas';
 
 /**
  * Coverage-drop notifier (Task #145).
@@ -47,24 +52,161 @@ const DEFAULT_MIN_STATIONS = 10;
 const DEFAULT_MAX_LISTED = 25;
 const WEBHOOK_TIMEOUT_MS = 5_000;
 
+export const COVERAGE_DROP_SETTINGS_KEY = 'coverage-drop-alert';
+const SETTINGS_CACHE_TTL_MS = 30_000;
+
+export interface CoverageDropAlertSettings {
+  thresholdPp: number | null;
+  minStations: number | null;
+  webhookUrl: string | null;
+}
+
+interface ResolvedSettings {
+  thresholdPp: number;
+  minStations: number;
+  webhookUrl: string | null;
+  source: {
+    thresholdPp: 'db' | 'env' | 'default';
+    minStations: 'db' | 'env' | 'default';
+    webhookUrl: 'db' | 'env' | 'none';
+  };
+}
+
 function parsePositiveNumber(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
-export function getThresholdPp(): number {
-  return parsePositiveNumber(
-    process.env.COVERAGE_DROP_ALERT_THRESHOLD_PP,
-    DEFAULT_THRESHOLD_PP,
-  );
+function envThresholdPp(): { value: number; source: 'env' | 'default' } {
+  const raw = process.env.COVERAGE_DROP_ALERT_THRESHOLD_PP;
+  if (raw && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+    return { value: Number(raw), source: 'env' };
+  }
+  return { value: DEFAULT_THRESHOLD_PP, source: 'default' };
 }
 
-export function getMinStations(): number {
-  return parsePositiveNumber(
-    process.env.COVERAGE_DROP_ALERT_MIN_STATIONS,
-    DEFAULT_MIN_STATIONS,
-  );
+function envMinStations(): { value: number; source: 'env' | 'default' } {
+  const raw = process.env.COVERAGE_DROP_ALERT_MIN_STATIONS;
+  if (raw && Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+    return { value: Number(raw), source: 'env' };
+  }
+  return { value: DEFAULT_MIN_STATIONS, source: 'default' };
+}
+
+function envWebhookUrl(): string | null {
+  const raw = process.env.COVERAGE_DROP_ALERT_WEBHOOK_URL;
+  return raw && raw.trim().length > 0 ? raw.trim() : null;
+}
+
+function sanitizeStoredSettings(value: unknown): CoverageDropAlertSettings {
+  const out: CoverageDropAlertSettings = {
+    thresholdPp: null,
+    minStations: null,
+    webhookUrl: null,
+  };
+  if (!value || typeof value !== 'object') return out;
+  const v = value as Record<string, unknown>;
+  if (
+    typeof v.thresholdPp === 'number' &&
+    Number.isFinite(v.thresholdPp) &&
+    v.thresholdPp >= 0
+  ) {
+    out.thresholdPp = v.thresholdPp;
+  }
+  if (
+    typeof v.minStations === 'number' &&
+    Number.isFinite(v.minStations) &&
+    v.minStations >= 0
+  ) {
+    out.minStations = Math.floor(v.minStations);
+  }
+  if (typeof v.webhookUrl === 'string' && v.webhookUrl.trim().length > 0) {
+    out.webhookUrl = v.webhookUrl.trim();
+  }
+  return out;
+}
+
+let settingsCache: { at: number; value: CoverageDropAlertSettings } | null = null;
+
+export function invalidateCoverageDropSettingsCache(): void {
+  settingsCache = null;
+}
+
+export async function loadStoredCoverageDropSettings(
+  opts: { bypassCache?: boolean } = {},
+): Promise<CoverageDropAlertSettings> {
+  if (!opts.bypassCache && settingsCache && Date.now() - settingsCache.at < SETTINGS_CACHE_TTL_MS) {
+    return settingsCache.value;
+  }
+  try {
+    const doc = await AdminSetting.findOne({ key: COVERAGE_DROP_SETTINGS_KEY }).lean();
+    const value = sanitizeStoredSettings(doc?.value);
+    settingsCache = { at: Date.now(), value };
+    return value;
+  } catch (err) {
+    logger.warn('⚠️  Failed to load coverage-drop settings from DB, using env/defaults:', err);
+    const value: CoverageDropAlertSettings = {
+      thresholdPp: null,
+      minStations: null,
+      webhookUrl: null,
+    };
+    settingsCache = { at: Date.now(), value };
+    return value;
+  }
+}
+
+export async function resolveCoverageDropSettings(): Promise<ResolvedSettings> {
+  const stored = await loadStoredCoverageDropSettings();
+  const envT = envThresholdPp();
+  const envM = envMinStations();
+  const envW = envWebhookUrl();
+
+  const thresholdPp = stored.thresholdPp ?? envT.value;
+  const minStations = stored.minStations ?? envM.value;
+  const webhookUrl = stored.webhookUrl ?? envW;
+
+  return {
+    thresholdPp,
+    minStations,
+    webhookUrl,
+    source: {
+      thresholdPp: stored.thresholdPp != null ? 'db' : envT.source,
+      minStations: stored.minStations != null ? 'db' : envM.source,
+      webhookUrl:
+        stored.webhookUrl != null ? 'db' : envW != null ? 'env' : 'none',
+    },
+  };
+}
+
+export async function getThresholdPp(): Promise<number> {
+  return (await resolveCoverageDropSettings()).thresholdPp;
+}
+
+export async function getMinStations(): Promise<number> {
+  return (await resolveCoverageDropSettings()).minStations;
+}
+
+export function getDefaultCoverageDropSettings(): {
+  thresholdPp: number;
+  minStations: number;
+} {
+  return {
+    thresholdPp: DEFAULT_THRESHOLD_PP,
+    minStations: DEFAULT_MIN_STATIONS,
+  };
+}
+
+export function getEnvCoverageDropSettings(): {
+  thresholdPp: { value: number; source: 'env' | 'default' };
+  minStations: { value: number; source: 'env' | 'default' };
+  webhookUrl: string | null;
+} {
+  return {
+    thresholdPp: envThresholdPp(),
+    minStations: envMinStations(),
+    webhookUrl: envWebhookUrl(),
+  };
 }
 
 function getMaxListed(): number {
@@ -92,8 +234,9 @@ export async function detectCoverageDrops(opts: {
   minStations?: number;
   lookbackDays?: number;
 }): Promise<CoverageDrop[]> {
-  const thresholdPp = opts.thresholdPp ?? getThresholdPp();
-  const minStations = opts.minStations ?? getMinStations();
+  const resolved = await resolveCoverageDropSettings();
+  const thresholdPp = opts.thresholdPp ?? resolved.thresholdPp;
+  const minStations = opts.minStations ?? resolved.minStations;
   const lookbackDays = opts.lookbackDays ?? 7;
 
   const today = new Date(opts.snapshotDate);
@@ -243,7 +386,8 @@ export type CoverageDropNotifier = (
 ) => Promise<void> | void;
 
 const defaultNotifier: CoverageDropNotifier = async (drops, snapshotDate) => {
-  const thresholdPp = getThresholdPp();
+  const resolved = await resolveCoverageDropSettings();
+  const thresholdPp = resolved.thresholdPp;
   const summary = summarizeDrops(drops, thresholdPp, snapshotDate);
   // Always surface in logs so the alert is visible even with no
   // webhook configured and no admin users in the DB.
@@ -256,9 +400,8 @@ const defaultNotifier: CoverageDropNotifier = async (drops, snapshotDate) => {
     logger.warn('⚠️  Failed to write coverage drop in-app notifications:', err);
   }
 
-  const url = process.env.COVERAGE_DROP_ALERT_WEBHOOK_URL;
-  if (url) {
-    await postWebhook(url, summary, drops);
+  if (resolved.webhookUrl) {
+    await postWebhook(resolved.webhookUrl, summary, drops);
   }
 };
 

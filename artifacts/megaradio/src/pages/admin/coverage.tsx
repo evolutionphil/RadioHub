@@ -615,6 +615,8 @@ export default function AdminCoverage() {
         </div>
       </div>
 
+      <CoverageDropAlertSettingsCard />
+
       {latestAlert && latestAlert.drops.length > 0 ? (
         <Alert
           variant="destructive"
@@ -1173,5 +1175,284 @@ function CoverageJobProgressRow({
           : null}
       </div>
     </div>
+  );
+}
+
+interface CoverageDropAlertSettingsResponse {
+  stored: {
+    thresholdPp: number | null;
+    minStations: number | null;
+    webhookUrl: string | null;
+  };
+  env: {
+    thresholdPp: number | null;
+    minStations: number | null;
+    webhookUrl: string | null;
+  };
+  defaults: {
+    thresholdPp: number;
+    minStations: number;
+  };
+  effective: {
+    thresholdPp: number;
+    minStations: number;
+    webhookUrl: string | null;
+    source: {
+      thresholdPp: 'db' | 'env' | 'default';
+      minStations: 'db' | 'env' | 'default';
+      webhookUrl: 'db' | 'env' | 'none';
+    };
+  };
+  updatedAt: string | null;
+  updatedBy: string | null;
+}
+
+function sourceLabel(source: 'db' | 'env' | 'default' | 'none'): string {
+  switch (source) {
+    case 'db':
+      return 'set in UI';
+    case 'env':
+      return 'from env var';
+    case 'default':
+      return 'default';
+    case 'none':
+      return 'not set';
+  }
+}
+
+function CoverageDropAlertSettingsCard() {
+  const { toast } = useToast();
+  const { data, isLoading, refetch } = useQuery<CoverageDropAlertSettingsResponse>({
+    queryKey: ['/api/admin/settings/coverage-drop-alert'],
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+  });
+
+  const [thresholdPp, setThresholdPp] = useState<string>('');
+  const [minStations, setMinStations] = useState<string>('');
+  const [webhookUrl, setWebhookUrl] = useState<string>('');
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    if (!data || hydrated) return;
+    setThresholdPp(
+      data.stored.thresholdPp != null ? String(data.stored.thresholdPp) : '',
+    );
+    setMinStations(
+      data.stored.minStations != null ? String(data.stored.minStations) : '',
+    );
+    setWebhookUrl(data.stored.webhookUrl ?? '');
+    setHydrated(true);
+  }, [data, hydrated]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const body: Record<string, unknown> = {};
+      body.thresholdPp = thresholdPp.trim() === '' ? null : Number(thresholdPp);
+      body.minStations = minStations.trim() === '' ? null : Number(minStations);
+      body.webhookUrl = webhookUrl.trim() === '' ? null : webhookUrl.trim();
+      const res = await apiRequest(
+        'PUT',
+        '/api/admin/settings/coverage-drop-alert',
+        { body },
+      );
+      return (await res.json()) as CoverageDropAlertSettingsResponse;
+    },
+    onSuccess: (next) => {
+      toast({
+        title: 'Coverage drop alert saved',
+        description: `Effective: >${next.effective.thresholdPp}pp drop, n≥${next.effective.minStations}.`,
+      });
+      queryClient.setQueryData(
+        ['/api/admin/settings/coverage-drop-alert'],
+        next,
+      );
+      setHydrated(false);
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Failed to save settings',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        'DELETE',
+        '/api/admin/settings/coverage-drop-alert',
+      );
+      return (await res.json()) as CoverageDropAlertSettingsResponse;
+    },
+    onSuccess: (next) => {
+      toast({
+        title: 'Reverted to env / defaults',
+        description: `Effective: >${next.effective.thresholdPp}pp drop, n≥${next.effective.minStations}.`,
+      });
+      queryClient.setQueryData(
+        ['/api/admin/settings/coverage-drop-alert'],
+        next,
+      );
+      setHydrated(false);
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Failed to clear settings',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  return (
+    <Card data-testid="card-coverage-drop-settings">
+      <CardHeader>
+        <CardTitle>Coverage drop alert</CardTitle>
+        <CardDescription>
+          Tune when the nightly snapshot warns the team about a country
+          whose logo or tag coverage has dropped vs 7 days ago. Leave a
+          field blank to fall back to the env var or built-in default.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {isLoading || !data ? (
+          <div className="flex items-center gap-2 py-6 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" /> Loading settings…
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-1">
+                <label
+                  htmlFor="coverage-drop-threshold"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Drop threshold (percentage points)
+                </label>
+                <Input
+                  id="coverage-drop-threshold"
+                  type="number"
+                  min={0}
+                  max={100}
+                  step={0.1}
+                  inputMode="decimal"
+                  placeholder={`e.g. ${data.defaults.thresholdPp}`}
+                  value={thresholdPp}
+                  onChange={(e) => setThresholdPp(e.target.value)}
+                  data-testid="input-coverage-drop-threshold"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Effective: <strong>{data.effective.thresholdPp}pp</strong>{' '}
+                  ({sourceLabel(data.effective.source.thresholdPp)})
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="coverage-drop-min-stations"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Minimum stations per country
+                </label>
+                <Input
+                  id="coverage-drop-min-stations"
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  placeholder={`e.g. ${data.defaults.minStations}`}
+                  value={minStations}
+                  onChange={(e) => setMinStations(e.target.value)}
+                  data-testid="input-coverage-drop-min-stations"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Effective: <strong>n≥{data.effective.minStations}</strong>{' '}
+                  ({sourceLabel(data.effective.source.minStations)})
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <label
+                  htmlFor="coverage-drop-webhook"
+                  className="text-xs font-medium text-muted-foreground"
+                >
+                  Webhook URL (optional)
+                </label>
+                <Input
+                  id="coverage-drop-webhook"
+                  type="url"
+                  placeholder="https://hooks.slack.com/…"
+                  value={webhookUrl}
+                  onChange={(e) => setWebhookUrl(e.target.value)}
+                  data-testid="input-coverage-drop-webhook"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Effective:{' '}
+                  <strong>
+                    {data.effective.webhookUrl ? 'configured' : 'none'}
+                  </strong>{' '}
+                  ({sourceLabel(data.effective.source.webhookUrl)})
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+              <p className="text-[11px] text-muted-foreground">
+                {data.updatedAt
+                  ? `Last updated ${new Date(data.updatedAt).toLocaleString()}${
+                      data.updatedBy ? ` by ${data.updatedBy}` : ''
+                    }.`
+                  : 'No UI override saved yet — using env vars or defaults.'}
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setHydrated(false);
+                    void refetch();
+                  }}
+                  disabled={saveMutation.isPending || resetMutation.isPending}
+                  data-testid="button-coverage-drop-revert"
+                >
+                  Revert
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => resetMutation.mutate()}
+                  disabled={
+                    saveMutation.isPending ||
+                    resetMutation.isPending ||
+                    (data.stored.thresholdPp == null &&
+                      data.stored.minStations == null &&
+                      data.stored.webhookUrl == null)
+                  }
+                  data-testid="button-coverage-drop-clear"
+                >
+                  {resetMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : null}
+                  Use env / defaults
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => saveMutation.mutate()}
+                  disabled={saveMutation.isPending || resetMutation.isPending}
+                  data-testid="button-coverage-drop-save"
+                >
+                  {saveMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : null}
+                  Save
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

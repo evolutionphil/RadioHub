@@ -3050,6 +3050,35 @@ export const AdminPreference = mongoose.model<IAdminPreference>(
 );
 
 // =====================================================================
+// Admin global settings
+//
+// Stores team-wide settings that override env defaults at runtime, so
+// admins can tune them from the UI without a redeploy. Keyed by a
+// stable string namespace (e.g. `coverage-drop-alert`) so the same
+// mechanism backs any number of admin settings panels.
+// =====================================================================
+export interface IAdminSetting extends Document {
+  key: string;
+  value: any;
+  updatedBy?: string;
+  updatedAt: Date;
+  createdAt: Date;
+}
+
+const AdminSettingSchema = new Schema<IAdminSetting>({
+  key: { type: String, required: true, unique: true },
+  value: { type: Schema.Types.Mixed, default: null },
+  updatedBy: { type: String, default: null },
+  updatedAt: { type: Date, default: Date.now },
+  createdAt: { type: Date, default: Date.now },
+});
+
+export const AdminSetting = mongoose.model<IAdminSetting>(
+  'AdminSetting',
+  AdminSettingSchema,
+);
+
+// =====================================================================
 // GenreWhitelistOverride — admin-managed deltas on top of the static
 // genre whitelist seed (`seo/genre-whitelist.ts`). Lets the team add or
 // remove canonical genre slugs and source→canonical aliases without
