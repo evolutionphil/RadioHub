@@ -1,32 +1,36 @@
-name: API Server SEO sitemap & robots smoke tests
+name: CI — api-server tests & workspace typecheck
 
-# Runs the api-server smoke test suite (Task #153) on every PR / push that
-# touches the SEO sitemap pipeline so /sitemap.xml, /sitemap-index.xml,
-# /sitemap-main-{lang}.xml, /llms.txt or /robots.txt regressions are caught
-# before deploy instead of via Google Search Console errors in production.
+# Task #195: run the api-server smoke tests (Task #153) and the full
+# workspace typecheck on every push / PR that touches artifacts/api-server/**.
+# This catches SEO sitemap / robots regressions and type regressions before
+# they reach production instead of relying on developers to remember to run
+# `pnpm --filter @workspace/api-server run test` locally.
 
 on:
   push:
     paths:
-      - 'artifacts/api-server/src/routes/seo-sitemap-routes.ts'
-      - 'artifacts/api-server/src/seo/**'
-      - 'artifacts/api-server/src/index-web.ts'
-      - 'artifacts/api-server/tests/**'
-      - 'artifacts/api-server/package.json'
+      - 'artifacts/api-server/**'
+      - 'lib/**'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'tsconfig.json'
       - '.github/workflows/api-server-seo-tests.yml'
   pull_request:
     paths:
-      - 'artifacts/api-server/src/routes/seo-sitemap-routes.ts'
-      - 'artifacts/api-server/src/seo/**'
-      - 'artifacts/api-server/src/index-web.ts'
-      - 'artifacts/api-server/tests/**'
-      - 'artifacts/api-server/package.json'
+      - 'artifacts/api-server/**'
+      - 'lib/**'
       - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - 'package.json'
+      - 'tsconfig.base.json'
+      - 'tsconfig.json'
       - '.github/workflows/api-server-seo-tests.yml'
 
 jobs:
   test:
+    name: api-server tests + workspace typecheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,4 +40,7 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @workspace/api-server run test
+      - name: Typecheck workspace
+        run: pnpm run typecheck
+      - name: Run api-server tests
+        run: pnpm --filter @workspace/api-server run test
