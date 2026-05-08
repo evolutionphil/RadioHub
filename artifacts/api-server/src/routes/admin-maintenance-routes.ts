@@ -1,12 +1,19 @@
 import type { Express, Request, Response } from "express";
 import mongoose from "mongoose";
-import { Station, BackfillRun, type IBackfillRun } from "../shared/mongo-schemas";
+import {
+  Station,
+  BackfillRun,
+  GenreSlugCleanupRun,
+  type IBackfillRun,
+} from "../shared/mongo-schemas";
 import {
   BACKFILL_RETENTION_DAYS,
   BACKFILL_RETENTION_MAX_ROWS,
 } from "../services/scheduled-backfill";
 import { radioBrowserService } from "../services/radio-browser";
 import { scheduledBackfill } from "../services/scheduled-backfill";
+import { scheduledGenreSlugCleanup } from "../services/scheduled-genre-slug-cleanup";
+import { getGenreSlugCleanupAlertThreshold } from "../services/genre-slug-cleanup-notifier";
 import { logger } from "../utils/logger";
 
 // SEO maintenance dashboard endpoints. Surface the health metrics the
@@ -502,6 +509,54 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
       } catch (err: any) {
         logger.error(
           "[scheduled-backfill status] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
+  // Task #198: paginated history of GenreSlugCleanupRun rows so the
+  // admin dashboard can render the same scanned/normalized/demoted
+  // counts the alert webhook uses. Mirrors the scheduled-backfill/runs
+  // shape (newest-first, optional `?trigger=` filter, capped `?limit=`,
+  // collection totals + oldest row) so the frontend table component
+  // can be implemented the same way. Also echoes the live status and
+  // the configured alert threshold so the UI can highlight rows that
+  // would have alerted.
+  app.get(
+    "/api/admin/maintenance/genre-slug-cleanup/runs",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const limit = Math.max(
+          1,
+          Math.min(50, Number(req.query.limit) || 10),
+        );
+        const trigger = (req.query.trigger as string | undefined)?.trim();
+        const filter: any = {};
+        if (trigger) filter.trigger = trigger;
+        const [runs, total, oldest] = await Promise.all([
+          GenreSlugCleanupRun.find(filter)
+            .sort({ startedAt: -1 })
+            .limit(limit)
+            .lean(),
+          GenreSlugCleanupRun.countDocuments(filter),
+          GenreSlugCleanupRun.findOne(filter)
+            .sort({ startedAt: 1 })
+            .select({ startedAt: 1 })
+            .lean<{ startedAt: Date } | null>(),
+        ]);
+        res.json({
+          runs,
+          total,
+          oldestStartedAt: oldest?.startedAt ?? null,
+          alertThreshold: getGenreSlugCleanupAlertThreshold(),
+          status: scheduledGenreSlugCleanup.getStatus(),
+        });
+      } catch (err: any) {
+        logger.error(
+          "[genre-slug-cleanup runs] error:",
           err?.message || err,
         );
         res.status(500).json({ error: err?.message || "internal_error" });

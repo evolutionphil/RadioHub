@@ -93,6 +93,7 @@ const navigation: NavigationItem[] = [
       { name: 'URL Translations', href: '/admin/url-translations' },
       { name: 'Country-Language Map', href: '/admin/country-language-mappings' },
       { name: 'Genre Whitelist', href: '/admin/genre-whitelist' },
+      { name: 'Genre Slug Cleanup', href: '/admin/genre-slug-cleanup' },
     ]
   },
 ];

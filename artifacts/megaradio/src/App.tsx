@@ -142,6 +142,7 @@ function AdminRouterContent() {
         {/* Content Management - Working Pages Only */}
         <Route path="/admin/genres" component={LazyAdminRoutes.AdminGenresPage} />
         <Route path="/admin/genre-whitelist" component={LazyAdminRoutes.AdminGenreWhitelist} />
+        <Route path="/admin/genre-slug-cleanup" component={LazyAdminRoutes.AdminGenreSlugCleanup} />
         <Route path="/admin/codecs" component={LazyAdminRoutes.Codecs} />
         
         {/* Radio Browser API - Working Pages Only */}
