@@ -170,4 +170,127 @@ router.get('/stats', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/admin/indexnow/sitemap-diff-runs - Recent nightly sitemap-diff
+// runs (Task #190) grouped by calendar day so admins can see which new
+// URLs were pinged to search engines last night without querying Mongo.
+//
+// Each "run" is one calendar day (UTC) of `trigger=sitemap-diff` log
+// entries. We surface aggregate counts plus per-language breakdown
+// (parsed from the first path segment of `sampleUrls`) and the raw
+// submission rows (capped sampleUrls per row already at 5).
+router.get('/sitemap-diff-runs', async (req: Request, res: Response) => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query.days as string) || 14, 1), 60);
+    const since = new Date();
+    since.setUTCDate(since.getUTCDate() - days);
+    since.setUTCHours(0, 0, 0, 0);
+
+    const submissions = await IndexNowLog.find({
+      trigger: 'sitemap-diff',
+      timestamp: { $gte: since },
+    })
+      .sort({ timestamp: -1 })
+      .lean();
+
+    interface LangAgg { urls: number; successful: number; failed: number; }
+    interface SubmissionView {
+      _id: string;
+      timestamp: Date;
+      host: string;
+      urlCount: number;
+      status: 'success' | 'failed';
+      statusCode?: number;
+      errorMessage?: string;
+      sampleUrls: string[];
+      language: string;
+      responseTime?: number;
+    }
+    interface RunView {
+      date: string;
+      totalUrls: number;
+      successfulUrls: number;
+      failedUrls: number;
+      submissionCount: number;
+      submitSuccessCount: number;
+      submitFailedCount: number;
+      languageBreakdown: Array<{ language: string } & LangAgg>;
+      submissions: SubmissionView[];
+    }
+
+    const inferLanguage = (urls: string[] | undefined): string => {
+      if (!urls || urls.length === 0) return 'unknown';
+      try {
+        const u = new URL(urls[0]);
+        const seg = u.pathname.split('/').filter(Boolean)[0];
+        if (seg && /^[a-z]{2}(?:-[a-z]{2})?$/i.test(seg)) return seg.toLowerCase();
+      } catch {
+        // fall through
+      }
+      return 'unknown';
+    };
+
+    const runMap = new Map<string, RunView>();
+    for (const s of submissions) {
+      const ts = new Date(s.timestamp);
+      const date = ts.toISOString().slice(0, 10);
+      let run = runMap.get(date);
+      if (!run) {
+        run = {
+          date,
+          totalUrls: 0,
+          successfulUrls: 0,
+          failedUrls: 0,
+          submissionCount: 0,
+          submitSuccessCount: 0,
+          submitFailedCount: 0,
+          languageBreakdown: [],
+          submissions: [],
+        };
+        runMap.set(date, run);
+      }
+      const language = inferLanguage(s.sampleUrls);
+      const isOk = s.status === 'success';
+      run.submissionCount += 1;
+      run.totalUrls += s.urlCount || 0;
+      if (isOk) {
+        run.submitSuccessCount += 1;
+        run.successfulUrls += s.urlCount || 0;
+      } else {
+        run.submitFailedCount += 1;
+        run.failedUrls += s.urlCount || 0;
+      }
+      run.submissions.push({
+        _id: String(s._id),
+        timestamp: s.timestamp,
+        host: s.host,
+        urlCount: s.urlCount,
+        status: s.status,
+        statusCode: s.statusCode,
+        errorMessage: s.errorMessage,
+        sampleUrls: s.sampleUrls ?? [],
+        language,
+        responseTime: s.responseTime,
+      });
+      let lb = run.languageBreakdown.find((l) => l.language === language);
+      if (!lb) {
+        lb = { language, urls: 0, successful: 0, failed: 0 };
+        run.languageBreakdown.push(lb);
+      }
+      lb.urls += s.urlCount || 0;
+      if (isOk) lb.successful += s.urlCount || 0;
+      else lb.failed += s.urlCount || 0;
+    }
+
+    const runs = Array.from(runMap.values()).sort((a, b) => b.date.localeCompare(a.date));
+    for (const r of runs) {
+      r.languageBreakdown.sort((a, b) => b.urls - a.urls || a.language.localeCompare(b.language));
+    }
+
+    res.json({ runs, days });
+  } catch (error) {
+    console.error('Error fetching sitemap-diff runs:', error);
+    res.status(500).json({ error: 'Failed to fetch sitemap-diff runs' });
+  }
+});
+
 export default router;
