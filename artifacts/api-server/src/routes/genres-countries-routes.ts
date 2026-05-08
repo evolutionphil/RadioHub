@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Genre, Country, Station, UserProfile, UserListeningHistory } from '../shared/mongo-schemas';
+import { Genre, Country, Station, UserProfile, UserListeningHistory, SAFE_GENRE_SLUG_RE } from '../shared/mongo-schemas';
 import { RecommendationEngine } from '../services/recommendation-engine';
 import CacheManager, { CacheKeys } from '../cache';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
@@ -487,6 +487,99 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     } catch (error) {
       console.error('Error fetching genre by slug:', error);
       res.status(500).json({ error: 'Failed to fetch genre' });
+    }
+  });
+
+  // Admin-only update: PUT /api/genres/:id
+  // Restores Edit support on the admin genres page (Task #167). Also clears
+  // `cleanupDemotion` when an admin re-enables a genre demoted by the
+  // slug-cleanup migration (Task #133).
+  app.put("/api/genres/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const {
+        name,
+        description,
+        slug,
+        isDiscoverable,
+        discoverable,
+        posterImage,
+        discoverableImage,
+        displayOrder,
+      } = req.body || {};
+
+      const set: Record<string, unknown> = {};
+      if (typeof name === 'string') set.name = name.trim();
+      if (typeof description === 'string') set.description = description;
+      if (typeof posterImage === 'string') set.posterImage = posterImage;
+      if (typeof discoverableImage === 'string') set.discoverableImage = discoverableImage;
+      if (typeof displayOrder === 'number') set.displayOrder = displayOrder;
+
+      const isDisc =
+        typeof isDiscoverable === 'boolean' ? isDiscoverable
+          : typeof discoverable === 'boolean' ? discoverable
+            : undefined;
+      if (typeof isDisc === 'boolean') set.isDiscoverable = isDisc;
+
+      if (typeof slug === 'string' && slug.length > 0) {
+        if (!SAFE_GENRE_SLUG_RE.test(slug)) {
+          return res.status(400).json({
+            error: `Invalid slug "${slug}". Must match ${SAFE_GENRE_SLUG_RE}`,
+          });
+        }
+        set.slug = slug;
+      }
+
+      const ops: Record<string, unknown> = { $set: set };
+      // Re-enabling a genre clears the forensic demotion record so it stops
+      // appearing in the admin "Recently demoted by slug cleanup" view.
+      if (isDisc === true) {
+        ops.$unset = { cleanupDemotion: '' };
+      }
+
+      const updated = await Genre.findByIdAndUpdate(id, ops, {
+        new: true,
+        runValidators: true,
+      });
+      if (!updated) {
+        return res.status(404).json({ error: 'Genre not found' });
+      }
+
+      try {
+        await PrecomputedGenresService.refreshAll();
+      } catch (err) {
+        logger.warn({ err }, 'Failed to refresh precomputed genres after update');
+      }
+
+      res.json(updated);
+    } catch (error: any) {
+      if (error?.name === 'ValidationError') {
+        return res.status(400).json({ error: error.message });
+      }
+      logger.error({ err: error }, 'Failed to update genre');
+      res.status(500).json({ error: 'Failed to update genre' });
+    }
+  });
+
+  // Admin-only delete: DELETE /api/genres/:id (Task #167)
+  app.delete("/api/genres/:id", requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const deleted = await Genre.findByIdAndDelete(id);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Genre not found' });
+      }
+
+      try {
+        await PrecomputedGenresService.refreshAll();
+      } catch (err) {
+        logger.warn({ err }, 'Failed to refresh precomputed genres after delete');
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      logger.error({ err: error }, 'Failed to delete genre');
+      res.status(500).json({ error: 'Failed to delete genre' });
     }
   });
 
