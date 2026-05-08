@@ -817,6 +817,15 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled sitemap-diff IndexNow:', error.message);
         }
+
+        // Task #191: surface GSC URL Inspection data to admins.
+        try {
+          const { gscInspectionService } = await import('./services/gsc-inspection');
+          gscInspectionService.initialize();
+          logger.log('✅ BACKGROUND: GSC inspection cron initialized (discovery 12h, inspection hourly)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize GSC inspection cron:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {

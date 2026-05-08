@@ -11,6 +11,7 @@ import performanceRouter from './routes/performance';
 import apiKeysRouter, { apiKeyMiddleware, seedDemoApiKey } from './routes/api-keys';
 import { userEngagementRouter } from './routes/user-engagement';
 import indexnowMonitoringRouter from './routes/indexnow-monitoring';
+import gscInspectionRouter from './routes/gsc-inspection';
 import { IndexNowService } from './services/indexnow';
 import { COUNTRY_TO_LANGUAGE, CODE_TO_COUNTRY } from '@workspace/seo-shared/seo-config';
 import CacheManager, { CacheKeys, invalidateSocialCacheForUser } from './cache';
@@ -483,6 +484,12 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
 
   // === INDEXNOW ROUTES ===
   app.use('/api/admin/indexnow', requireAdmin, indexnowMonitoringRouter);
+
+  // === GSC URL INSPECTION ROUTES (task #191) ===
+  // Surfaces cached Google Search Console URL Inspection results so admins
+  // can see, without leaving the app, which sitemap URLs Google has actually
+  // indexed vs. left in "Discovered – currently not indexed".
+  app.use('/api/admin/gsc-inspection', requireAdmin, gscInspectionRouter);
 
   app.post('/api/admin/indexnow/submit', requireAdmin, async (req, res) => {
     try {

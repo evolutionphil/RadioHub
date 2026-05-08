@@ -793,6 +793,46 @@ export interface ITranslationMetadata extends Document {
   updatedAt: Date;
 }
 
+/**
+ * Task #191 — Cached Google Search Console URL Inspection results for every
+ * URL we publish in the sitemap. Refreshed on a schedule by the
+ * `gsc-inspection` service so admins can see, without leaving the app,
+ * whether the URLs we already submitted to Google have actually been indexed.
+ */
+export interface IGscUrlInspection extends Document {
+  url: string;
+  language: string;
+  group: 'static' | 'country' | 'station' | 'genre';
+  // Normalized bucket so the UI can filter without parsing GSC's free-form
+  // strings (which are localized + sometimes change wording across years).
+  state:
+    | 'indexed'
+    | 'crawled-not-indexed'
+    | 'discovered-not-indexed'
+    | 'excluded'
+    | 'error'
+    | 'unknown'
+    | 'pending';
+  // Raw values from the GSC URL Inspection API response (see
+  // https://developers.google.com/webmaster-tools/v1/urlInspection.index/inspect).
+  coverageState?: string;
+  verdict?: string;
+  robotsTxtState?: string;
+  indexingState?: string;
+  pageFetchState?: string;
+  lastCrawlTime?: Date;
+  googleCanonical?: string;
+  userCanonical?: string;
+  inspectionResultLink?: string;
+  // Last-error / freshness bookkeeping so admins can see when data is stale.
+  lastInspectedAt?: Date;
+  lastError?: string;
+  errorCount: number;
+  // Discovery bookkeeping so the scheduler can rotate cheapest-first.
+  discoveredAt: Date;
+  updatedAt: Date;
+}
+
 export interface IIndexNowLog extends Document {
   timestamp: Date;
   host: string;
@@ -2284,6 +2324,36 @@ const UrlTranslationSchema = new Schema<IUrlTranslation>({
   updatedAt: { type: Date, default: Date.now }
 });
 
+const GscUrlInspectionSchema = new Schema<IGscUrlInspection>({
+  url: { type: String, required: true, unique: true },
+  language: { type: String, required: true, index: true },
+  group: { type: String, enum: ['static', 'country', 'station', 'genre'], required: true, index: true },
+  state: {
+    type: String,
+    enum: ['indexed', 'crawled-not-indexed', 'discovered-not-indexed', 'excluded', 'error', 'unknown', 'pending'],
+    required: true,
+    default: 'pending',
+    index: true,
+  },
+  coverageState: String,
+  verdict: String,
+  robotsTxtState: String,
+  indexingState: String,
+  pageFetchState: String,
+  lastCrawlTime: Date,
+  googleCanonical: String,
+  userCanonical: String,
+  inspectionResultLink: String,
+  lastInspectedAt: Date,
+  lastError: String,
+  errorCount: { type: Number, default: 0 },
+  discoveredAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+GscUrlInspectionSchema.index({ language: 1, group: 1, state: 1 });
+// Cheapest-first rotation key: oldest lastInspectedAt first, then newest discovered.
+GscUrlInspectionSchema.index({ lastInspectedAt: 1, discoveredAt: -1 });
+
 const IndexNowLogSchema = new Schema<IIndexNowLog>({
   timestamp: { type: Date, default: Date.now, required: true },
   host: { type: String, required: true },
@@ -2395,6 +2465,7 @@ const SitemapUrlSnapshotSchema = new Schema<ISitemapUrlSnapshot>({
 });
 SitemapUrlSnapshotSchema.index({ type: 1, language: 1 }, { unique: true });
 export const SitemapUrlSnapshot = mongoose.model<ISitemapUrlSnapshot>('SitemapUrlSnapshot', SitemapUrlSnapshotSchema);
+export const GscUrlInspection = mongoose.model<IGscUrlInspection>('GscUrlInspection', GscUrlInspectionSchema);
 export const BulkDescriptionJob = mongoose.model<IBulkDescriptionJob>('BulkDescriptionJob', BulkDescriptionJobSchema);
 export const Advertisement = mongoose.model<IAdvertisement>('Advertisement', AdvertisementSchema);
 export const FooterSocialMedia = mongoose.model<IFooterSocialMedia>('FooterSocialMedia', FooterSocialMediaSchema);

@@ -24,6 +24,7 @@ export const AdminCountryLanguageMappings = lazy(() => import("@/pages/admin/Adm
 export const AdminUrlTranslations = lazy(() => import("@/pages/admin/AdminUrlTranslations"));
 export const AdminSeoPreview = lazy(() => import("@/pages/admin/seo-preview"));
 export const IndexNowMonitoring = lazy(() => import("@/pages/admin/IndexNowMonitoring"));
+export const GscInspection = lazy(() => import("@/pages/admin/gsc-inspection"));
 export const Advertisements = lazy(() => import("@/pages/admin/advertisements"));
 export const FooterSocialMedia = lazy(() => import("@/pages/admin/footer-social-media"));
 export const AdminUsers = lazy(() => import("@/pages/admin/admin-users"));

@@ -184,6 +184,7 @@ function AdminRouterContent() {
         {/* SEO Tools */}
         <Route path="/admin/seo-preview" component={LazyAdminRoutes.AdminSeoPreview} />
         <Route path="/admin/indexnow" component={LazyAdminRoutes.IndexNowMonitoring} />
+        <Route path="/admin/gsc-inspection" component={LazyAdminRoutes.GscInspection} />
         
         {/* Error Monitoring */}
         <Route path="/admin/error-logs" component={LazyAdminRoutes.AdminErrorLogs} />

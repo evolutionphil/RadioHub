@@ -90,6 +90,7 @@ const navigation: NavigationItem[] = [
     icon: Search,
     children: [
       { name: 'IndexNow Monitoring', href: '/admin/indexnow' },
+      { name: 'GSC URL Inspection', href: '/admin/gsc-inspection' },
       { name: 'URL Translations', href: '/admin/url-translations' },
       { name: 'Country-Language Map', href: '/admin/country-language-mappings' },
       { name: 'Genre Whitelist', href: '/admin/genre-whitelist' },
