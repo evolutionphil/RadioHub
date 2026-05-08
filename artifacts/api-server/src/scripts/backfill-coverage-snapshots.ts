@@ -55,12 +55,6 @@ function parseDays(raw: string | undefined): number {
   return n;
 }
 
-const DAYS = parseDays(process.env.BACKFILL_DAYS);
-const DRY_RUN =
-  process.env.DRY_RUN === '1' ||
-  process.env.DRY_RUN === 'true' ||
-  process.env.DRY_RUN === 'yes';
-
 function utcMidnight(d: Date): Date {
   return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
 }
@@ -72,7 +66,7 @@ interface DailyRow {
   withTags: number;
 }
 
-async function aggregateForDay(endOfDay: Date): Promise<DailyRow[]> {
+export async function aggregateForDay(endOfDay: Date): Promise<DailyRow[]> {
   // endOfDay = exclusive upper bound (i.e. start of the next UTC day).
   // A station "existed on day D" iff createdAt < startOfDay(D+1) = endOfDay.
   const rows = await Station.aggregate<{
@@ -144,21 +138,36 @@ async function aggregateForDay(endOfDay: Date): Promise<DailyRow[]> {
     }));
 }
 
-async function main(): Promise<void> {
-  const uri =
-    process.env.MONGODB_URI ||
-    process.env.DATABASE_URL ||
-    process.env.MONGO_URI;
-  if (!uri) {
-    throw new Error(
-      'MONGODB_URI / DATABASE_URL / MONGO_URI not set in env — cannot connect to Mongo.',
-    );
-  }
+export interface RunCoverageBackfillOptions {
+  days: number;
+  dryRun?: boolean;
+}
+
+export interface RunCoverageBackfillResult {
+  daysSeeded: number;
+  inserted: number;
+  preserved: number;
+  wouldWrite: number; // dry-run only
+  skippedReason?: 'no-stations';
+}
+
+/**
+ * Reusable core: walks the last `days` UTC days and upserts a per-country
+ * synthetic snapshot for any (country, day) pair that doesn't already have
+ * a real cron-written row. Assumes the caller has already connected to
+ * MongoDB — does NOT call mongoose.connect/disconnect itself, so it can be
+ * invoked from the API server's boot path without disturbing the shared
+ * connection.
+ */
+export async function runCoverageBackfill(
+  opts: RunCoverageBackfillOptions,
+): Promise<RunCoverageBackfillResult> {
+  const days = opts.days;
+  const dryRun = !!opts.dryRun;
 
   logger.log(
-    `📈 Coverage backfill START — days=${DAYS} dryRun=${DRY_RUN}`,
+    `📈 Coverage backfill START — days=${days} dryRun=${dryRun}`,
   );
-  await mongoose.connect(uri);
 
   // Quick sanity check: do we actually have any historical signal? If not,
   // log loudly and exit cleanly instead of silently writing a flat line.
@@ -169,8 +178,7 @@ async function main(): Promise<void> {
     logger.warn(
       '📈 Coverage backfill: stations collection is empty — nothing to seed.',
     );
-    await mongoose.disconnect();
-    return;
+    return { daysSeeded: 0, inserted: 0, preserved: 0, wouldWrite: 0, skippedReason: 'no-stations' };
   }
   logger.log(
     `📈 Earliest station createdAt = ${new Date(earliestStation.createdAt).toISOString()}`,
@@ -185,7 +193,7 @@ async function main(): Promise<void> {
   let totalRowsInserted = 0;
   let totalRowsPreserved = 0;
 
-  for (let i = DAYS; i >= 1; i--) {
+  for (let i = days; i >= 1; i--) {
     const snapshotDate = new Date(todayStart.getTime() - i * dayMs);
     const endOfDay = new Date(snapshotDate.getTime() + dayMs);
     const isoDay = snapshotDate.toISOString().slice(0, 10);
@@ -202,7 +210,7 @@ async function main(): Promise<void> {
       continue;
     }
 
-    if (DRY_RUN) {
+    if (dryRun) {
       const sample = rows
         .slice(0, 3)
         .map(
@@ -261,7 +269,7 @@ async function main(): Promise<void> {
     );
   }
 
-  if (DRY_RUN) {
+  if (dryRun) {
     logger.log(
       `📈 Coverage backfill DONE (dry-run) — days=${totalDaysSeeded} wouldAttempt=${totalRowsWouldWrite} (no writes)`,
     );
@@ -271,11 +279,51 @@ async function main(): Promise<void> {
     );
   }
 
-  await mongoose.disconnect();
-  logger.log('🔌 Disconnected from MongoDB.');
+  return {
+    daysSeeded: totalDaysSeeded,
+    inserted: totalRowsInserted,
+    preserved: totalRowsPreserved,
+    wouldWrite: totalRowsWouldWrite,
+  };
 }
 
-main().catch((err) => {
-  console.error('❌ Coverage backfill failed:', err);
-  process.exit(1);
-});
+async function main(): Promise<void> {
+  const uri =
+    process.env.MONGODB_URI ||
+    process.env.DATABASE_URL ||
+    process.env.MONGO_URI;
+  if (!uri) {
+    throw new Error(
+      'MONGODB_URI / DATABASE_URL / MONGO_URI not set in env — cannot connect to Mongo.',
+    );
+  }
+  const days = parseDays(process.env.BACKFILL_DAYS);
+  const dryRun =
+    process.env.DRY_RUN === '1' ||
+    process.env.DRY_RUN === 'true' ||
+    process.env.DRY_RUN === 'yes';
+
+  await mongoose.connect(uri);
+  try {
+    await runCoverageBackfill({ days, dryRun });
+  } finally {
+    await mongoose.disconnect();
+    logger.log('🔌 Disconnected from MongoDB.');
+  }
+}
+
+const isDirectRun = (() => {
+  try {
+    const invoked = process.argv[1] ? new URL(`file://${process.argv[1]}`).href : '';
+    return invoked === import.meta.url;
+  } catch {
+    return false;
+  }
+})();
+
+if (isDirectRun) {
+  main().catch((err) => {
+    console.error('❌ Coverage backfill failed:', err);
+    process.exit(1);
+  });
+}

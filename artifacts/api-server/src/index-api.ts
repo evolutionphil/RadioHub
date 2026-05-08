@@ -791,6 +791,17 @@ app.use(session(sessionConfig));
           logger.warn('⚠️ Failed to initialize scheduled coverage snapshot:', error.message);
         }
 
+        // Task #176: auto-seed historical coverage snapshots on first
+        // deploy so the admin sparkline isn't empty for a month. The
+        // helper is idempotent and gated on the existing row count, so
+        // it's a no-op once the collection has been seeded.
+        try {
+          const { maybeRunCoverageBackfillOnBoot } = await import('./services/coverage-backfill-on-boot');
+          await maybeRunCoverageBackfillOnBoot();
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to evaluate coverage boot backfill:', error.message);
+        }
+
         try {
           const { scheduledGenreSlugCleanup } = await import('./services/scheduled-genre-slug-cleanup');
           scheduledGenreSlugCleanup.initialize();
