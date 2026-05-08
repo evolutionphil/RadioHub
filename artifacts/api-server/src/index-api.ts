@@ -826,6 +826,14 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize GSC inspection cron:', error.message);
         }
+
+        try {
+          const { scheduledMappingAuditDigest } = await import('./services/scheduled-mapping-audit-digest');
+          scheduledMappingAuditDigest.initialize();
+          logger.log('✅ BACKGROUND: Scheduled mapping-audit digest initialized (daily 06:00)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled mapping-audit digest:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {

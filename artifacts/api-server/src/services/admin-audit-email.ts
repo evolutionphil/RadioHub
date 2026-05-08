@@ -403,6 +403,298 @@ export async function emailBlacklistChangesCsv(params: {
   });
 }
 
+// =====================================================================
+// Mapping audit digest (Task #211)
+// =====================================================================
+//
+// Daily summary of every country-language mapping action logged in the
+// last 24h, grouped by action type with a small sample of per-row diffs
+// and snapshot rows. Lets admins keep tabs on overrides without polling
+// the audit panel.
+// =====================================================================
+
+export type MappingAuditDigestAction =
+  | 'clear-overrides'
+  | 'reset-all'
+  | 'edit'
+  | 'delete'
+  | 'bulk-save';
+
+export interface MappingAuditDigestChange {
+  countryCode: string;
+  countryName: string;
+  previousLanguageCode: string | null;
+  newLanguageCode: string | null;
+}
+
+export interface MappingAuditDigestSnapshotEntry {
+  countryCode: string;
+  countryName: string;
+  currentLanguageCode: string;
+  defaultLanguageCode: string;
+}
+
+export interface MappingAuditDigestEntry {
+  createdAt: Date;
+  action: MappingAuditDigestAction;
+  actorEmail: string | null;
+  deletedCount: number;
+  changes: MappingAuditDigestChange[];
+  snapshot: MappingAuditDigestSnapshotEntry[];
+}
+
+export interface MappingAuditDigestActionGroup {
+  action: MappingAuditDigestAction;
+  count: number;
+  rowsAffected: number;
+  sampleChange: MappingAuditDigestChange | null;
+  sampleSnapshot: MappingAuditDigestSnapshotEntry | null;
+  sampleActorEmail: string | null;
+  sampleAt: Date | null;
+}
+
+const MAPPING_AUDIT_ACTION_LABELS: Record<MappingAuditDigestAction, string> = {
+  'clear-overrides': 'Cleared overrides',
+  'reset-all': 'Reset all mappings',
+  edit: 'Edited mapping',
+  delete: 'Deleted mapping',
+  'bulk-save': 'Bulk save',
+};
+
+/**
+ * Group raw audit-log entries from the last window into per-action
+ * counts plus a single representative diff/snapshot row, ready to drop
+ * into both the digest CSV and the email body.
+ */
+export function summarizeMappingAuditDigest(
+  entries: MappingAuditDigestEntry[],
+): MappingAuditDigestActionGroup[] {
+  const groups = new Map<MappingAuditDigestAction, MappingAuditDigestActionGroup>();
+  for (const e of entries) {
+    let g = groups.get(e.action);
+    if (!g) {
+      g = {
+        action: e.action,
+        count: 0,
+        rowsAffected: 0,
+        sampleChange: null,
+        sampleSnapshot: null,
+        sampleActorEmail: null,
+        sampleAt: null,
+      };
+      groups.set(e.action, g);
+    }
+    g.count += 1;
+    g.rowsAffected +=
+      (e.changes?.length ?? 0) +
+      (e.snapshot?.length ?? 0) +
+      (e.changes?.length || e.snapshot?.length ? 0 : e.deletedCount || 0);
+    if (!g.sampleChange && e.changes && e.changes.length > 0) {
+      g.sampleChange = e.changes[0];
+      g.sampleActorEmail = e.actorEmail;
+      g.sampleAt = e.createdAt;
+    }
+    if (!g.sampleSnapshot && e.snapshot && e.snapshot.length > 0) {
+      g.sampleSnapshot = e.snapshot[0];
+      if (!g.sampleAt) {
+        g.sampleActorEmail = e.actorEmail;
+        g.sampleAt = e.createdAt;
+      }
+    }
+  }
+  return [...groups.values()].sort((a, b) => b.count - a.count);
+}
+
+function describeSampleChange(c: MappingAuditDigestChange): string {
+  const prev = c.previousLanguageCode ?? '∅';
+  const next = c.newLanguageCode ?? '∅';
+  return `${c.countryName} (${c.countryCode}): ${prev} → ${next}`;
+}
+
+function describeSampleSnapshot(s: MappingAuditDigestSnapshotEntry): string {
+  return `${s.countryName} (${s.countryCode}): ${s.currentLanguageCode} → ${s.defaultLanguageCode}`;
+}
+
+export function buildMappingAuditDigestCsv(
+  groups: MappingAuditDigestActionGroup[],
+): string {
+  const header = [
+    'Action',
+    'Entries',
+    'Rows Affected',
+    'Sample Diff',
+    'Sample Snapshot',
+    'Sample Actor',
+    'Sample Timestamp',
+  ];
+  const body = groups.map((g) => [
+    MAPPING_AUDIT_ACTION_LABELS[g.action] ?? g.action,
+    String(g.count),
+    String(g.rowsAffected),
+    g.sampleChange ? describeSampleChange(g.sampleChange) : '',
+    g.sampleSnapshot ? describeSampleSnapshot(g.sampleSnapshot) : '',
+    g.sampleActorEmail ?? '',
+    g.sampleAt ? g.sampleAt.toISOString() : '',
+  ]);
+  return rowsToCsv(header, body);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function buildMappingAuditDigestHtmlTable(
+  groups: MappingAuditDigestActionGroup[],
+): string {
+  const rows = groups
+    .map((g) => {
+      const label = MAPPING_AUDIT_ACTION_LABELS[g.action] ?? g.action;
+      const sample =
+        (g.sampleChange ? describeSampleChange(g.sampleChange) : '') ||
+        (g.sampleSnapshot ? describeSampleSnapshot(g.sampleSnapshot) : '') ||
+        '—';
+      return `
+        <tr>
+          <td style="padding:6px 10px;border:1px solid #ddd;">${escapeHtml(label)}</td>
+          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${g.count}</td>
+          <td style="padding:6px 10px;border:1px solid #ddd;text-align:right;">${g.rowsAffected}</td>
+          <td style="padding:6px 10px;border:1px solid #ddd;font-family:monospace;">${escapeHtml(sample)}</td>
+        </tr>`;
+    })
+    .join('');
+  return `
+    <table style="border-collapse:collapse;border:1px solid #ddd;font-size:14px;">
+      <thead>
+        <tr style="background:#f4f4f4;">
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;">Action</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:right;">Entries</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:right;">Rows affected</th>
+          <th style="padding:6px 10px;border:1px solid #ddd;text-align:left;">Sample</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+/**
+ * Send a daily digest of country-language mapping audit activity.
+ * Silently skips if the window is empty so admins don't get noise.
+ */
+export async function emailMappingAuditDigest(params: {
+  entries: MappingAuditDigestEntry[];
+  windowStart: Date;
+  windowEnd: Date;
+}): Promise<{ skipped: boolean; reason?: string; totalEntries: number }> {
+  const { entries, windowStart, windowEnd } = params;
+  const totalEntries = entries.length;
+  if (totalEntries === 0) {
+    return { skipped: true, reason: 'no-entries', totalEntries: 0 };
+  }
+
+  const groups = summarizeMappingAuditDigest(entries);
+  const totalRows = groups.reduce((acc, g) => acc + g.rowsAffected, 0);
+  const csv = buildMappingAuditDigestCsv(groups);
+
+  const recipients = getRecipients();
+  if (recipients.length === 0) {
+    logger.info(
+      { totalEntries },
+      'ADMIN_AUDIT_EMAIL_RECIPIENTS not set - skipping mapping audit digest email',
+    );
+    return { skipped: true, reason: 'no-recipients', totalEntries };
+  }
+
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) {
+    logger.warn(
+      { totalEntries },
+      'SENDGRID_API_KEY not set - cannot send mapping audit digest email',
+    );
+    return { skipped: true, reason: 'no-api-key', totalEntries };
+  }
+
+  try {
+    const yyyy = windowEnd.getFullYear();
+    const mm = String(windowEnd.getMonth() + 1).padStart(2, '0');
+    const dd = String(windowEnd.getDate()).padStart(2, '0');
+    const filename = `mapping-audit-digest-${yyyy}-${mm}-${dd}.csv`;
+    const csvWithBom = '\ufeff' + csv;
+    const base64 = Buffer.from(csvWithBom, 'utf8').toString('base64');
+
+    const sgMail = (await import('@sendgrid/mail')).default;
+    sgMail.setApiKey(apiKey);
+
+    const from = process.env.ADMIN_AUDIT_EMAIL_FROM || 'noreply@themegaradio.com';
+    const env = process.env.NODE_ENV || 'development';
+    const subjectSummary =
+      `Country-language mapping digest — ${totalEntries} ` +
+      `${totalEntries === 1 ? 'change' : 'changes'} in last 24h`;
+    const summary =
+      `${totalEntries} audit ${totalEntries === 1 ? 'entry' : 'entries'} ` +
+      `(${totalRows} ${totalRows === 1 ? 'row' : 'rows'} affected) between ` +
+      `${windowStart.toISOString()} and ${windowEnd.toISOString()}.`;
+
+    const textGroups = groups
+      .map((g) => {
+        const label = MAPPING_AUDIT_ACTION_LABELS[g.action] ?? g.action;
+        const sample =
+          (g.sampleChange ? describeSampleChange(g.sampleChange) : '') ||
+          (g.sampleSnapshot ? describeSampleSnapshot(g.sampleSnapshot) : '') ||
+          '—';
+        return `  • ${label}: ${g.count} entries, ${g.rowsAffected} rows — sample: ${sample}`;
+      })
+      .join('\n');
+
+    await sgMail.send({
+      to: recipients,
+      from,
+      subject: `[MegaRadio][${env}] ${subjectSummary}`,
+      text: [
+        summary,
+        '',
+        'By action:',
+        textGroups,
+        '',
+        'See attached CSV for the full per-action breakdown with sample diffs.',
+      ].join('\n'),
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+          <h2>Country-language mapping daily digest</h2>
+          <p>${escapeHtml(summary)}</p>
+          ${buildMappingAuditDigestHtmlTable(groups)}
+          <p style="color:#666;font-size:12px;">Environment: ${escapeHtml(env)}</p>
+          <p>See attached CSV for the full per-action breakdown.</p>
+        </div>
+      `,
+      attachments: [
+        {
+          content: base64,
+          filename,
+          type: 'text/csv',
+          disposition: 'attachment',
+        },
+      ],
+    });
+
+    logger.info(
+      { recipients: recipients.length, totalEntries, totalRows },
+      'Sent mapping audit digest email',
+    );
+    return { skipped: false, totalEntries };
+  } catch (err) {
+    logger.error(
+      { err, totalEntries },
+      'Failed to send mapping audit digest email',
+    );
+    return { skipped: true, reason: 'send-error', totalEntries };
+  }
+}
+
 export async function emailRemovedStreamsCsv(params: {
   /** Short slug used in the CSV filename, e.g. "playlist-streams-removed" */
   filenamePrefix: string;

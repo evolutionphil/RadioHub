@@ -851,4 +851,21 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       res.status(500).json({ error: 'Failed to delete country-language mapping' });
     }
   });
+
+  // Manual trigger for the daily mapping-audit digest email (Task #211).
+  // Same opt-in gates as the scheduled cron — if recipients or SendGrid
+  // aren't configured the underlying sender skips with a structured
+  // reason, which we surface to the admin UI for diagnostics.
+  app.post('/api/admin/country-language-mappings/audit-digest/run', requireAdmin, async (_req, res) => {
+    try {
+      const { scheduledMappingAuditDigest } = await import(
+        '../services/scheduled-mapping-audit-digest'
+      );
+      const result = await scheduledMappingAuditDigest.runOnce('manual:admin-api');
+      res.json({ ok: true, result, status: scheduledMappingAuditDigest.getStatus() });
+    } catch (error) {
+      console.error('Error running mapping audit digest:', error);
+      res.status(500).json({ error: 'Failed to run mapping audit digest' });
+    }
+  });
 }
