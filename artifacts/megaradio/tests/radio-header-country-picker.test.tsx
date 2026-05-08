@@ -8,8 +8,20 @@ import React from "react";
 
 vi.mock("@assets/notification1.png", () => ({ default: "notification1.png" }));
 
+// Mutable auth state so we can flip between unauthenticated and authenticated
+// renders within the same test file (vi.mock is hoisted, so a closure here is
+// the cleanest way to parametrize the SUT without re-importing it).
+type AuthState = {
+  user: { id?: string; username?: string; fullName?: string; avatar?: string } | null;
+  isAuthenticated: boolean;
+  isLoading: boolean;
+};
+const authState: { current: AuthState } = {
+  current: { user: null, isAuthenticated: false, isLoading: false },
+};
+
 vi.mock("@/hooks/useAuth", () => ({
-  useAuth: () => ({ user: null, isAuthenticated: false, isLoading: false }),
+  useAuth: () => authState.current,
 }));
 
 vi.mock("@/hooks/useGlobalPlayer", () => ({
@@ -144,6 +156,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  // Always reset auth state so one describe block can't leak into another.
+  authState.current = { user: null, isAuthenticated: false, isLoading: false };
 });
 
 function getTriggers(): HTMLButtonElement[] {
@@ -173,164 +187,200 @@ function getDesktopTrigger(): HTMLButtonElement {
   return desktop!;
 }
 
-function getDropdown(): HTMLElement | null {
-  return screen.queryByTestId("country-dropdown-unauthenticated");
-}
+type Variant = {
+  label: string;
+  authState: AuthState;
+  dropdownTestId: "country-dropdown-unauthenticated" | "country-dropdown-authenticated";
+};
 
-function getSearchInput(): HTMLInputElement {
-  const dropdown = getDropdown();
-  expect(dropdown).not.toBeNull();
-  return within(dropdown!).getByRole("combobox") as HTMLInputElement;
-}
+const VARIANTS: Variant[] = [
+  {
+    label: "unauthenticated",
+    authState: { user: null, isAuthenticated: false, isLoading: false },
+    dropdownTestId: "country-dropdown-unauthenticated",
+  },
+  {
+    label: "authenticated",
+    authState: {
+      user: {
+        id: "u1",
+        username: "ada",
+        fullName: "Ada Lovelace",
+        avatar: undefined,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+    },
+    dropdownTestId: "country-dropdown-authenticated",
+  },
+];
 
-/**
- * Open the dropdown via a click on the trigger (which is what both Enter and
- * Space activate at the HTML level for <button>). Then make sure focus is
- * actually on the search input — autoFocus + portal + jsdom can race in a
- * way that real browsers don't, so we explicitly normalize focus here so
- * subsequent keyboard events go to the input handler we want to test.
- */
-async function openAndFocus(user: ReturnType<typeof userEvent.setup>) {
-  const trigger = getMobileTrigger();
-  await user.click(trigger);
-  const search = getSearchInput();
-  if (document.activeElement !== search) {
-    act(() => search.focus());
-  }
-  expect(search).toHaveFocus();
-  return { trigger, search };
-}
-
-describe("RadioHeader country picker keyboard support", () => {
-  it("exposes aria-haspopup=listbox on every trigger and aria-expanded reflects the open state on both mobile and desktop variants", async () => {
-    renderHeader();
-
-    const triggers = getTriggers();
-    // We expect at least the mobile + desktop unauth variants to render.
-    expect(triggers.length).toBeGreaterThanOrEqual(2);
-    triggers.forEach((b) => {
-      expect(b).toHaveAttribute("aria-haspopup", "listbox");
-      expect(b).toHaveAttribute("aria-expanded", "false");
+describe.each(VARIANTS)(
+  "RadioHeader country picker keyboard support ($label)",
+  ({ authState: variantAuth, dropdownTestId }) => {
+    beforeEach(() => {
+      authState.current = variantAuth;
     });
 
-    const mobile = getMobileTrigger();
-    const desktop = getDesktopTrigger();
-    expect(mobile).not.toBe(desktop);
+    function getDropdown(): HTMLElement | null {
+      return screen.queryByTestId(dropdownTestId);
+    }
 
-    fireEvent.click(mobile);
+    function getSearchInput(): HTMLInputElement {
+      const dropdown = getDropdown();
+      expect(dropdown).not.toBeNull();
+      return within(dropdown!).getByRole("combobox") as HTMLInputElement;
+    }
 
-    // Both variants must reflect the new state — they share state via the
-    // same isCountryDropdownOpen flag.
-    expect(mobile).toHaveAttribute("aria-expanded", "true");
-    expect(desktop).toHaveAttribute("aria-expanded", "true");
-    expect(getDropdown()).not.toBeNull();
-  });
+    /**
+     * Open the dropdown via a click on the trigger (which is what both Enter
+     * and Space activate at the HTML level for <button>). Then make sure
+     * focus is actually on the search input — autoFocus + portal + jsdom can
+     * race in a way that real browsers don't, so we explicitly normalize
+     * focus here so subsequent keyboard events go to the input handler we
+     * want to test.
+     */
+    async function openAndFocus(user: ReturnType<typeof userEvent.setup>) {
+      const trigger = getMobileTrigger();
+      await user.click(trigger);
+      const search = getSearchInput();
+      if (document.activeElement !== search) {
+        act(() => search.focus());
+      }
+      expect(search).toHaveFocus();
+      return { trigger, search };
+    }
 
-  it("Pressing Enter on a focused trigger opens the dropdown (no manual click)", async () => {
-    const user = userEvent.setup();
-    renderHeader();
+    it("exposes aria-haspopup=listbox on every trigger and aria-expanded reflects the open state on both mobile and desktop variants", async () => {
+      renderHeader();
 
-    const trigger = getMobileTrigger();
-    trigger.focus();
-    expect(trigger).toHaveFocus();
+      const triggers = getTriggers();
+      // We expect at least the mobile + desktop variants to render.
+      expect(triggers.length).toBeGreaterThanOrEqual(2);
+      triggers.forEach((b) => {
+        expect(b).toHaveAttribute("aria-haspopup", "listbox");
+        expect(b).toHaveAttribute("aria-expanded", "false");
+      });
 
-    // Real keyboard-only activation. <button> elements activate on Enter
-    // natively — if that contract regresses (e.g. trigger gets re-rolled
-    // as a non-button div), this test will fail.
-    await user.keyboard("{Enter}");
+      const mobile = getMobileTrigger();
+      const desktop = getDesktopTrigger();
+      expect(mobile).not.toBe(desktop);
 
-    expect(getDropdown()).not.toBeNull();
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-  });
+      fireEvent.click(mobile);
 
-  it("Pressing Space on a focused trigger opens the dropdown and moves focus to the search input (no manual click)", async () => {
-    const user = userEvent.setup();
-    renderHeader();
+      // Both variants must reflect the new state — they share state via the
+      // same isCountryDropdownOpen flag.
+      expect(mobile).toHaveAttribute("aria-expanded", "true");
+      expect(desktop).toHaveAttribute("aria-expanded", "true");
+      expect(getDropdown()).not.toBeNull();
+    });
 
-    const trigger = getMobileTrigger();
-    trigger.focus();
-    expect(trigger).toHaveFocus();
+    it("Pressing Enter on a focused trigger opens the dropdown (no manual click)", async () => {
+      const user = userEvent.setup();
+      renderHeader();
 
-    await user.keyboard(" ");
+      const trigger = getMobileTrigger();
+      trigger.focus();
+      expect(trigger).toHaveFocus();
 
-    expect(getDropdown()).not.toBeNull();
-    expect(trigger).toHaveAttribute("aria-expanded", "true");
-    expect(getSearchInput()).toHaveFocus();
-  });
+      // Real keyboard-only activation. <button> elements activate on Enter
+      // natively — if that contract regresses (e.g. trigger gets re-rolled
+      // as a non-button div), this test will fail.
+      await user.keyboard("{Enter}");
 
-  it("Opening the dropdown moves focus to the country search input", async () => {
-    const user = userEvent.setup();
-    renderHeader();
+      expect(getDropdown()).not.toBeNull();
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+    });
 
-    const trigger = getMobileTrigger();
-    trigger.focus();
-    await user.keyboard("{Enter}");
+    it("Pressing Space on a focused trigger opens the dropdown and moves focus to the search input (no manual click)", async () => {
+      const user = userEvent.setup();
+      renderHeader();
 
-    const search = getSearchInput();
-    // The combobox carries autoFocus; jsdom should honor it during commit.
-    expect(search).toHaveFocus();
-  });
+      const trigger = getMobileTrigger();
+      trigger.focus();
+      expect(trigger).toHaveFocus();
 
-  it("Escape with an empty query closes the dropdown and restores focus to the trigger", async () => {
-    const user = userEvent.setup();
-    renderHeader();
+      await user.keyboard(" ");
 
-    const { trigger, search } = await openAndFocus(user);
-    expect(search.value).toBe("");
+      expect(getDropdown()).not.toBeNull();
+      expect(trigger).toHaveAttribute("aria-expanded", "true");
+      expect(getSearchInput()).toHaveFocus();
+    });
 
-    await user.keyboard("{Escape}");
+    it("Opening the dropdown moves focus to the country search input", async () => {
+      const user = userEvent.setup();
+      renderHeader();
 
-    expect(getDropdown()).toBeNull();
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(trigger).toHaveFocus();
-  });
+      const trigger = getMobileTrigger();
+      trigger.focus();
+      await user.keyboard("{Enter}");
 
-  it("Escape with a non-empty query clears the query but keeps the dropdown open", async () => {
-    const user = userEvent.setup();
-    renderHeader();
+      const search = getSearchInput();
+      // The combobox carries autoFocus; jsdom should honor it during commit.
+      expect(search).toHaveFocus();
+    });
 
-    const { search } = await openAndFocus(user);
-    await user.type(search, "ger");
-    expect(search.value).toBe("ger");
+    it("Escape with an empty query closes the dropdown and restores focus to the trigger", async () => {
+      const user = userEvent.setup();
+      renderHeader();
 
-    await user.keyboard("{Escape}");
+      const { trigger, search } = await openAndFocus(user);
+      expect(search.value).toBe("");
 
-    // Still open, query cleared
-    expect(getDropdown()).not.toBeNull();
-    expect(getSearchInput().value).toBe("");
-  });
+      await user.keyboard("{Escape}");
 
-  it("Selecting a country with Enter closes the dropdown and restores focus to the trigger", async () => {
-    const user = userEvent.setup();
-    const { onCountryChange } = renderHeader();
+      expect(getDropdown()).toBeNull();
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).toHaveFocus();
+    });
 
-    const { trigger } = await openAndFocus(user);
+    it("Escape with a non-empty query clears the query but keeps the dropdown open", async () => {
+      const user = userEvent.setup();
+      renderHeader();
 
-    // The first item is the synthetic "global" entry; the second is the
-    // first real country ("Turkey" given our mocked data).
-    await user.keyboard("{ArrowDown}");
-    await user.keyboard("{ArrowDown}");
-    await user.keyboard("{Enter}");
+      const { search } = await openAndFocus(user);
+      await user.type(search, "ger");
+      expect(search.value).toBe("ger");
 
-    expect(getDropdown()).toBeNull();
-    expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(trigger).toHaveFocus();
-    expect(onCountryChange).toHaveBeenCalled();
-    expect(onCountryChange.mock.calls.at(-1)?.[0]).toBe("Turkey");
-  });
+      await user.keyboard("{Escape}");
 
-  it("Tab and Shift+Tab inside the open dropdown do not move focus away from the search input", async () => {
-    const user = userEvent.setup();
-    renderHeader();
+      // Still open, query cleared
+      expect(getDropdown()).not.toBeNull();
+      expect(getSearchInput().value).toBe("");
+    });
 
-    const { search } = await openAndFocus(user);
+    it("Selecting a country with Enter closes the dropdown and restores focus to the trigger", async () => {
+      const user = userEvent.setup();
+      const { onCountryChange } = renderHeader();
 
-    await user.tab();
-    expect(search).toHaveFocus();
-    expect(getDropdown()).not.toBeNull();
+      const { trigger } = await openAndFocus(user);
 
-    await user.tab({ shift: true });
-    expect(search).toHaveFocus();
-    expect(getDropdown()).not.toBeNull();
-  });
-});
+      // The first item is the synthetic "global" entry; the second is the
+      // first real country ("Turkey" given our mocked data).
+      await user.keyboard("{ArrowDown}");
+      await user.keyboard("{ArrowDown}");
+      await user.keyboard("{Enter}");
+
+      expect(getDropdown()).toBeNull();
+      expect(trigger).toHaveAttribute("aria-expanded", "false");
+      expect(trigger).toHaveFocus();
+      expect(onCountryChange).toHaveBeenCalled();
+      expect(onCountryChange.mock.calls.at(-1)?.[0]).toBe("Turkey");
+    });
+
+    it("Tab and Shift+Tab inside the open dropdown do not move focus away from the search input", async () => {
+      const user = userEvent.setup();
+      renderHeader();
+
+      const { search } = await openAndFocus(user);
+
+      await user.tab();
+      expect(search).toHaveFocus();
+      expect(getDropdown()).not.toBeNull();
+
+      await user.tab({ shift: true });
+      expect(search).toHaveFocus();
+      expect(getDropdown()).not.toBeNull();
+    });
+  }
+);
