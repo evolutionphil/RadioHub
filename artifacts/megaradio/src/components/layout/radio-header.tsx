@@ -55,6 +55,13 @@ export default function RadioHeader({
   const [touchStartY, setTouchStartY] = useState<number>(0);
   const [touchStartTime, setTouchStartTime] = useState<number>(0);
   const [avatarError, setAvatarError] = useState(false);
+  const [isMac, setIsMac] = useState(false);
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
+    }
+  }, []);
   
   // Refs for positioning dropdown
   const countryButtonRef = useRef<HTMLButtonElement>(null);
@@ -540,12 +547,16 @@ export default function RadioHeader({
                   {/* 3. Search Button - desktop only (xl+) - Figma: 38x38px, #1D1D1D, rounded-[5px] */}
                   <button
                     onClick={() => setIsSearchOpen(true)}
-                    className="hidden xl:flex items-center justify-center w-[38px] h-[38px] rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
+                    className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
                     aria-label={t('general_search', 'Search')}
+                    title={isMac ? '⌘K' : 'Ctrl+K'}
                   >
                     <svg className="w-[20px] h-[20px] text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
+                    <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
+                      {isMac ? '⌘K' : 'Ctrl K'}
+                    </kbd>
                   </button>
 
                   {/* 4. Vertical Divider */}
@@ -617,12 +628,16 @@ export default function RadioHeader({
                   {/* Search Button - desktop only (xl+) - Figma: 38x38px */}
                   <button
                     onClick={() => setIsSearchOpen(true)}
-                    className="hidden xl:flex items-center justify-center w-[38px] h-[38px] rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
+                    className="hidden xl:flex items-center justify-center gap-2 h-[38px] px-2 rounded-[5px] bg-[#1D1D1D] hover:bg-[#2A2A2A] transition-colors"
                     aria-label={t('general_search', 'Search')}
+                    title={isMac ? '⌘K' : 'Ctrl+K'}
                   >
                     <svg className="w-[20px] h-[20px] text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                     </svg>
+                    <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
+                      {isMac ? '⌘K' : 'Ctrl K'}
+                    </kbd>
                   </button>
                   
                   {/* Vertical Divider - desktop only (xl+) */}

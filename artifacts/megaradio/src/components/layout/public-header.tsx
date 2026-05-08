@@ -15,7 +15,14 @@ export default function PublicHeader() {
   const [countrySearchQuery, setCountrySearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isMac, setIsMac] = useState(false);
   const [location] = useLocation();
+
+  useEffect(() => {
+    if (typeof navigator !== 'undefined') {
+      setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
+    }
+  }, []);
   const countryButtonRef = useRef<HTMLButtonElement>(null);
   const { navigateTranslated, getLocalizedUrl, englishPath, cleanPath, currentLanguage, reverseTranslateUrl: reverseTranslate } = useSeoRouting();
   const { t } = useTranslation();
@@ -224,12 +231,16 @@ export default function PublicHeader() {
               <button
                 onClick={() => setIsSearchOpen(true)}
                 aria-label="Search radios"
-                className="rounded-[10px] bg-[#1D1D1D] p-2.5 text-[15px] font-bold"
+                title={isMac ? '⌘K' : 'Ctrl+K'}
+                className="flex items-center gap-2 rounded-[10px] bg-[#1D1D1D] px-2.5 py-2.5 text-[15px] font-bold"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <circle cx="11" cy="11" r="8" />
                   <path d="m21 21-4.35-4.35" />
                 </svg>
+                <kbd className="inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
+                  {isMac ? '⌘K' : 'Ctrl K'}
+                </kbd>
               </button>
 
               <Link 
