@@ -23,3 +23,9 @@ id = "VImJh-N8MZGBQfMlN53H7"
 uri = "file://.local/outputs/RadioHub.pdf"
 type = "pdf"
 title = "RadioHub.pdf"
+
+[[outputs]]
+id = "4Luo6a8_hFmqQd2odRa0C"
+uri = "file://.local/seo-sitemap-audit-rapor.md"
+type = "text"
+title = "MegaRadio SEO + Sitemap Denetim Raporu (30 Architect)"
