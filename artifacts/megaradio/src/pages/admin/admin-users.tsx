@@ -108,7 +108,14 @@ const AUTH_METHOD_FILTER_VALUES: readonly AuthMethodFilter[] = [
   "apple",
 ] as const;
 
-type SortColumn = "createdAt" | "updatedAt" | "plan" | "followers";
+type SortColumn =
+  | "createdAt"
+  | "updatedAt"
+  | "plan"
+  | "followers"
+  | "name"
+  | "email"
+  | "favorites";
 type SortDirection = "asc" | "desc";
 
 interface UsersViewPrefs {
@@ -130,7 +137,17 @@ const SORT_COLUMNS: ReadonlyArray<SortColumn> = [
   "updatedAt",
   "plan",
   "followers",
+  "name",
+  "email",
+  "favorites",
 ];
+
+function getNameKey(user: UserProfile): string {
+  const name =
+    user.fullName ||
+    `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim();
+  return name.toLowerCase();
+}
 
 function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
   if (!raw || typeof raw !== "object") return DEFAULT_VIEW_PREFS;
@@ -297,8 +314,8 @@ export default function AdminUsers() {
       return Number.isFinite(t) ? t : null;
     };
     const sorted = [...matches].sort((a, b) => {
-      let av: number | null;
-      let bv: number | null;
+      let av: number | string | null;
+      let bv: number | string | null;
       switch (sort.column) {
         case "createdAt":
           av = dateKey(a.createdAt);
@@ -316,17 +333,40 @@ export default function AdminUsers() {
           av = a.followers || 0;
           bv = b.followers || 0;
           break;
+        case "favorites":
+          av = a.favorites || 0;
+          bv = b.favorites || 0;
+          break;
+        case "name": {
+          const an = getNameKey(a);
+          const bn = getNameKey(b);
+          av = an === "" ? null : an;
+          bv = bn === "" ? null : bn;
+          break;
+        }
+        case "email":
+          av = a.email ? a.email.toLowerCase() : null;
+          bv = b.email ? b.email.toLowerCase() : null;
+          break;
       }
       // Missing values always sort to the bottom regardless of direction
       // so admins always see real data first.
       if (av === null && bv === null) return a.email.localeCompare(b.email);
       if (av === null) return 1;
       if (bv === null) return -1;
-      if (av === bv) {
+      const cmp =
+        typeof av === "string" && typeof bv === "string"
+          ? av.localeCompare(bv)
+          : av < bv
+            ? -1
+            : av > bv
+              ? 1
+              : 0;
+      if (cmp === 0) {
         // Stable secondary sort by email for predictable grouping.
         return a.email.localeCompare(b.email);
       }
-      return av < bv ? -dir : dir;
+      return cmp * dir;
     });
     return sorted;
   }, [users, searchQuery, planFilter, authMethodFilter, sort]);
@@ -688,8 +728,48 @@ export default function AdminUsers() {
               <Table>
                 <TableHeader>
                   <TableRow className="bg-gray-50 hover:bg-gray-50">
-                    <TableHead className="font-bold">Name</TableHead>
-                    <TableHead className="font-bold">Email</TableHead>
+                    <TableHead
+                      className="font-bold"
+                      aria-sort={ariaSortFor("name")}
+                    >
+                      <button
+                        type="button"
+                        data-testid="button-sort-name"
+                        onClick={() => handleToggleSort("name")}
+                        aria-label={
+                          sort?.column === "name" && sort.direction === "desc"
+                            ? "Sorted by name, Z to A. Click to sort A to Z."
+                            : sort?.column === "name" && sort.direction === "asc"
+                              ? "Sorted by name, A to Z. Click to sort Z to A."
+                              : "Sort by name"
+                        }
+                        className={sortableHeaderClass}
+                      >
+                        <span>Name</span>
+                        {renderSortIcon("name")}
+                      </button>
+                    </TableHead>
+                    <TableHead
+                      className="font-bold"
+                      aria-sort={ariaSortFor("email")}
+                    >
+                      <button
+                        type="button"
+                        data-testid="button-sort-email"
+                        onClick={() => handleToggleSort("email")}
+                        aria-label={
+                          sort?.column === "email" && sort.direction === "desc"
+                            ? "Sorted by email, Z to A. Click to sort A to Z."
+                            : sort?.column === "email" && sort.direction === "asc"
+                              ? "Sorted by email, A to Z. Click to sort Z to A."
+                              : "Sort by email"
+                        }
+                        className={sortableHeaderClass}
+                      >
+                        <span>Email</span>
+                        {renderSortIcon("email")}
+                      </button>
+                    </TableHead>
                     <TableHead
                       className="font-bold text-center"
                       aria-sort={ariaSortFor("followers")}
@@ -733,7 +813,27 @@ export default function AdminUsers() {
                         {renderSortIcon("plan")}
                       </button>
                     </TableHead>
-                    <TableHead className="font-bold text-center">Favorites</TableHead>
+                    <TableHead
+                      className="font-bold text-center"
+                      aria-sort={ariaSortFor("favorites")}
+                    >
+                      <button
+                        type="button"
+                        data-testid="button-sort-favorites"
+                        onClick={() => handleToggleSort("favorites")}
+                        aria-label={
+                          sort?.column === "favorites" && sort.direction === "desc"
+                            ? "Sorted by favorites, highest first. Click to sort lowest first."
+                            : sort?.column === "favorites" && sort.direction === "asc"
+                              ? "Sorted by favorites, lowest first. Click to sort highest first."
+                              : "Sort by favorites"
+                        }
+                        className={sortableHeaderClass}
+                      >
+                        <span>Favorites</span>
+                        {renderSortIcon("favorites")}
+                      </button>
+                    </TableHead>
                     <TableHead
                       className="font-bold"
                       aria-sort={ariaSortFor("createdAt")}
