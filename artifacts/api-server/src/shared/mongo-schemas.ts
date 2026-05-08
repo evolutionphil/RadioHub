@@ -687,6 +687,26 @@ export interface ICoverageSnapshot extends Document {
   createdAt: Date;
 }
 
+// Task #132: weekly genre-slug cleanup audit log. Mirrors the BackfillRun
+// shape so admins can see "scanned 1284, normalized 3, demoted 2" without
+// having to grep server logs. See `services/scheduled-genre-slug-cleanup.ts`.
+export interface IGenreSlugCleanupRun extends Document {
+  trigger: string; // 'cron:weekly' | 'manual' | 'boot:deploy'
+  status: 'running' | 'completed' | 'failed';
+  startedAt: Date;
+  finishedAt?: Date;
+  durationMs?: number;
+  scanned: number;
+  alreadyValid: number;
+  normalized: number;
+  markedUndiscoverable: number;
+  emptySlugMarked: number;
+  collisionMarked: number;
+  errorCount: number;
+  rewarmed: boolean;
+  errorMessage?: string;
+}
+
 // Blacklisted Station Interface - prevents re-syncing deleted stations
 export interface IBlacklistedStation extends Document {
   stationUuid?: string; // Original Radio Browser UUID
@@ -1059,6 +1079,24 @@ const CoverageSnapshotSchema = new Schema<ICoverageSnapshot>({
 // upsert today's row).
 CoverageSnapshotSchema.index({ countryCode: 1, snapshotDate: 1 }, { unique: true });
 CoverageSnapshotSchema.index({ snapshotDate: -1 });
+
+const GenreSlugCleanupRunSchema = new Schema<IGenreSlugCleanupRun>({
+  trigger: { type: String, required: true, index: true },
+  status: { type: String, enum: ['running', 'completed', 'failed'], required: true, index: true },
+  startedAt: { type: Date, required: true },
+  finishedAt: Date,
+  durationMs: Number,
+  scanned: { type: Number, default: 0 },
+  alreadyValid: { type: Number, default: 0 },
+  normalized: { type: Number, default: 0 },
+  markedUndiscoverable: { type: Number, default: 0 },
+  emptySlugMarked: { type: Number, default: 0 },
+  collisionMarked: { type: Number, default: 0 },
+  errorCount: { type: Number, default: 0 },
+  rewarmed: { type: Boolean, default: false },
+  errorMessage: String,
+});
+GenreSlugCleanupRunSchema.index({ startedAt: -1 });
 
 const SyncLogSchema = new Schema<ISyncLog>({
   syncType: { type: String, enum: ['full', 'incremental'], required: true },
@@ -1747,6 +1785,10 @@ export const Codec = mongoose.model<ICodec>('Codec', CodecSchema);
 export const SyncLog = mongoose.model<ISyncLog>('SyncLog', SyncLogSchema);
 export const BackfillRun = mongoose.model<IBackfillRun>('BackfillRun', BackfillRunSchema);
 export const CoverageSnapshot = mongoose.model<ICoverageSnapshot>('CoverageSnapshot', CoverageSnapshotSchema);
+export const GenreSlugCleanupRun = mongoose.model<IGenreSlugCleanupRun>(
+  'GenreSlugCleanupRun',
+  GenreSlugCleanupRunSchema,
+);
 UserSchema.index({ slug: 1 }, { sparse: true }); // Used in profile lookups
 UserSchema.index({ isPublicProfile: 1 }); // Used in community listings
 

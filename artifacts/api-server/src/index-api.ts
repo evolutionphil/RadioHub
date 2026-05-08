@@ -761,6 +761,14 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled coverage snapshot:', error.message);
         }
+
+        try {
+          const { scheduledGenreSlugCleanup } = await import('./services/scheduled-genre-slug-cleanup');
+          scheduledGenreSlugCleanup.initialize();
+          logger.log('✅ BACKGROUND: Scheduled genre-slug cleanup initialized (Sun 05:00 Europe/Berlin)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled genre-slug cleanup:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {
