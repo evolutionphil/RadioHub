@@ -25,15 +25,9 @@ import {
 // Centralized XML escape helper (Architect B P0)
 // Escapes the 5 XML predefined entities for safe inclusion in <loc>, <image:loc>,
 // <xhtml:link href>, station name fields, etc. Use everywhere instead of ad-hoc replace chains.
-function escapeXml(value: string): string {
-  if (typeof value !== 'string') return '';
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
+// Task #127: extracted to `utils/escape-xml.ts` so the integration test suite can
+// import & assert that every <loc> URL is escaped.
+import { escapeXml } from '../utils/escape-xml';
 
 /** A4 fix: image:image emit eligibility — only owned/verified hosts.
  * Architect 4 mandate: no arbitrary external favicon URLs. Allowed hosts:

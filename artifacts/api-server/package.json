@@ -17,7 +17,8 @@
     "backfill:sample-cohort": "tsx src/scripts/sample-process-cohort.mts",
     "backfill:coverage-snapshots": "tsx src/scripts/backfill-coverage-snapshots.ts",
     "cleanup:genre-slugs": "tsx src/scripts/cleanup-malformed-genre-slugs.ts",
-    "cleanup:junk-genres": "tsx src/scripts/cleanup-junk-genres.ts"
+    "cleanup:junk-genres": "tsx src/scripts/cleanup-junk-genres.ts",
+    "test:seo": "tsx --test test/seo-soft-404.test.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1041.0",

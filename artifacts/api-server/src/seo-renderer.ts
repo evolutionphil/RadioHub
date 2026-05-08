@@ -78,44 +78,22 @@ export interface StaticPageData {
   urlTranslations?: Map<string, string>;
 }
 
-/**
- * Build localized URL path using URL translations from database
- * @param englishPath - English path (e.g., '/genres/pop' or '/stations')
- * @param languageCode - Target language code (e.g., 'de', 'sq')
- * @param countryCode - Optional country code for country-specific URLs
- * @param translationMap - Map of "languageCode:englishPath" -> translatedPath
- * @returns Localized URL path (e.g., '/de/genres' or '/sq/zhanret')
- */
-export function buildLocalizedUrl(
-  englishPath: string,
-  languageCode: string,
-  countryCode?: string,
-  translationMap?: Map<string, string>
-): string {
-  // UPDATED: All languages (including English) use /{lang}/* format for consistency
-  // If no translation map provided, return English path with language prefix
-  if (!translationMap) {
-    const prefix = countryCode ? `/${countryCode}` : `/${languageCode}`;
-    return `${prefix}${englishPath}`;
-  }
-  
-  // Split path into segments
-  const segments = englishPath.split('/').filter(Boolean);
-  
-  // Translate each segment
-  const translatedSegments = segments.map(segment => {
-    const key = `${languageCode}:${segment}`;
-    const translated = translationMap.get(key);
-    return translated || segment; // Fall back to English if no translation
-  });
-  
-  // Build final URL with language or country prefix
-  // UPDATED: All languages use /{lang}/* format (including English = /en)
-  const translatedPath = translatedSegments.length > 0 ? '/' + translatedSegments.join('/') : '';
-  const prefix = countryCode ? `/${countryCode}` : `/${languageCode}`;
-  
-  return `${prefix}${translatedPath}`;
-}
+// Task #127: pure URL helpers live in `seo/url-helpers.ts` so the soft-404
+// regression test suite can import them without booting the renderer
+// (which registers setInterval handles for event-loop monitoring). Re-exported
+// here to preserve the existing `buildLocalizedUrl` import path used across
+// the codebase.
+export {
+  buildLocalizedUrl,
+  VALID_CONTINENT_SLUGS,
+  validateRegionRouteShape,
+  isExactCountryPagePath,
+} from './seo/url-helpers';
+import {
+  buildLocalizedUrl,
+  validateRegionRouteShape,
+  isExactCountryPagePath,
+} from './seo/url-helpers';
 
 export class SeoRenderer {
   
@@ -542,6 +520,17 @@ export class SeoRenderer {
       pageType = 'regions';
       // Extract region/country information for more specific SEO
       const pathParts = cleanPath.split('/');
+
+      // Task #127: route-shape detection + validation. The two URL families
+      // share the same SSR pageType but have different slug semantics:
+      //   /regions/<continent>[/<country>[/<city>]]   pathParts[2] = continent
+      //   /country/<country>[/<city>]                 pathParts[2] = country
+      // The continent whitelist applies ONLY to /regions/* — applying it to
+      // /country/* would false-404 every valid country page (the v1 fix had
+      // this regression). Logic extracted to `seo/url-helpers.ts` so the
+      // regression suite can unit-test it without booting the renderer.
+      const routeShape = validateRegionRouteShape(cleanPath);
+
       if (pathParts.length > 2) {
         additionalData.region = pathParts[2];
         // Set regionName for title generation (capitalize properly)
@@ -555,35 +544,75 @@ export class SeoRenderer {
         if (pathParts.length > 4) {
           additionalData.city = pathParts[4];
         }
-        // DALGA 2 W2.2: Fetch top 12 stations from this country for SSR flag + <img> grid
-        try {
-          const countryName = additionalData.regionName as string;
-          const escapedCountry = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const topStations = await withSignal(
-            Station.find({
-              country: { $regex: `^${escapedCountry}$`, $options: 'i' },
-              slug: { $exists: true, $ne: '' },
-              $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-              votes: { $gt: 0 },
-            })
-              .sort({ votes: -1 })
-              .limit(24)
-              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
-              .lean(),
-            signal
-          );
-          // DALGA 2 W2.REVIEW P2: Junk gate via isJunkStation + noIndex (see W2.1 comment).
-          const indexableStations = topStations.filter((s: any) =>
-            s.noIndex !== true && !isJunkStation(s)
-          );
-          additionalData.popularStations = indexableStations.slice(0, 12);
-          // Pull lowercase ISO countryCode from first matching station for flagcdn.com
-          const cc = (topStations[0] as any)?.countryCode;
-          if (cc && typeof cc === 'string' && /^[a-z]{2}$/i.test(cc)) {
-            additionalData.countryCode = cc.toLowerCase();
+
+        if (!routeShape.ok) {
+          // Task #127: route-shape failure → real 404. index-web.ts catch-all
+          // maps notFound:true to HTTP 404 + 404 page body for bot traffic.
+          stationNotFound = true;
+          additionalData.notFound = true;
+          additionalData.popularStations = [];
+        } else {
+          // DALGA 2 W2.2: Fetch top 12 stations from this country for SSR flag + <img> grid
+          try {
+            const countryName = additionalData.regionName as string;
+            const escapedCountry = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const topStations = await withSignal(
+              Station.find({
+                country: { $regex: `^${escapedCountry}$`, $options: 'i' },
+                slug: { $exists: true, $ne: '' },
+                $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+                votes: { $gt: 0 },
+              })
+                .sort({ votes: -1 })
+                .limit(24)
+                .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
+                .lean(),
+              signal
+            );
+            // DALGA 2 W2.REVIEW P2: Junk gate via isJunkStation + noIndex (see W2.1 comment).
+            const indexableStations = topStations.filter((s: any) =>
+              s.noIndex !== true && !isJunkStation(s)
+            );
+            additionalData.popularStations = indexableStations.slice(0, 12);
+            // Pull lowercase ISO countryCode from first matching station for flagcdn.com
+            const cc = (topStations[0] as any)?.countryCode;
+            if (cc && typeof cc === 'string' && /^[a-z]{2}$/i.test(cc)) {
+              additionalData.countryCode = cc.toLowerCase();
+            }
+
+            // Task #127: empty-country soft-404 promotion. ONLY applies to the
+            // EXACT country page — `isExactCountryPagePath()` enforces this so
+            // deeper sub-pages stay 200 even when stations are sparse:
+            //   /regions/:continent/:country/stations
+            //   /regions/:continent/:country/:city[/stations]
+            //   /country/:country/stations
+            // (those paths derive `regionName` from a non-country last segment
+            // so the country-name DB lookup would falsely 404 valid content).
+            if (isExactCountryPagePath(cleanPath) && indexableStations.length === 0) {
+              try {
+                const { Country } = await import('./shared/mongo-schemas');
+                const escapedCountrySlug = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const countryDoc = await withSignal(
+                  Country.findOne({
+                    name: { $regex: `^${escapedCountrySlug}$`, $options: 'i' },
+                  })
+                    .select('_id')
+                    .lean(),
+                  signal,
+                );
+                if (!countryDoc) {
+                  stationNotFound = true;
+                  additionalData.notFound = true;
+                }
+              } catch (countryErr: any) {
+                if (countryErr?.name === 'AbortError' || signal?.aborted) throw countryErr;
+                // DB failure is transient — leave the page as a 200 thin
+                // page rather than a false 404.
+              }
+            }
+          } catch (error: any) {
+            if (error?.name === 'AbortError' || signal?.aborted) throw error;
           }
-        } catch (error: any) {
-          if (error?.name === 'AbortError' || signal?.aborted) throw error;
         }
       }
     } else if (cleanPath === '/tv') {
@@ -745,6 +774,16 @@ export class SeoRenderer {
         // Suppress hreflang alternates on noindex'd genre URLs so we don't
         // advertise 44 low-quality variants of the same thin page.
         seoTags.hreflangs = [];
+      }
+      // Task #127: Promote a NOT-whitelisted genre with ZERO indexable
+      // stations from `noindex 200` to a real `404 Not Found`. Google had
+      // been classifying these as soft-404s; a hard 404 drops them from
+      // the index immediately. We keep the softer noindex-200 path for
+      // whitelisted-but-thin genres because real users typing the URL
+      // still see a useful (though sparse) genre grid.
+      if (additionalData.genreNotWhitelisted && popularStations.length === 0) {
+        stationNotFound = true;
+        additionalData.notFound = true;
       }
     }
     // -----------------------------------------------------------------------
