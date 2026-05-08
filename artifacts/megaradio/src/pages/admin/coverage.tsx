@@ -39,7 +39,13 @@ import {
   ChevronDown,
   ChevronRight,
   Undo2,
+  History,
 } from 'lucide-react';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -256,6 +262,13 @@ interface CoverageBackfillBootStatusResponse {
   status: CoverageBackfillBootStatus | null;
 }
 
+interface CoverageDropAlertHistoryResponse {
+  alert: CoverageDropAlert | null;
+  history: CoverageDropAlert[];
+  hasMore: boolean;
+  nextBefore: string | null;
+}
+
 interface CoverageJobStatus {
   jobId: string;
   countryCode: string;
@@ -332,9 +345,28 @@ export default function AdminCoverage() {
     refetchOnWindowFocus: false,
   });
 
+  // Recent-alerts history. We default to 10 alerts but let admins page
+  // back further with the "Load older" button. Wrapped in a separate
+  // query so the latest-alert banner above keeps its existing cache key
+  // and refresh cadence untouched.
+  const [historyLimit, setHistoryLimit] = useState(10);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const { data: dropAlertHistoryData, isFetching: historyFetching } =
+    useQuery<CoverageDropAlertHistoryResponse>({
+      queryKey: [
+        '/api/admin/coverage/drop-alerts',
+        { history: 1, limit: historyLimit },
+      ],
+      staleTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      enabled: historyOpen,
+    });
+
   const trendsByCountry = trendsData?.trends ?? {};
   const latestAlert = dropAlertData?.alert ?? null;
   const isAlertAcknowledged = latestAlert?.acknowledged === true;
+  const alertHistory = dropAlertHistoryData?.history ?? [];
+  const alertHistoryHasMore = !!dropAlertHistoryData?.hasMore;
 
   // Index the latest alert's drops by country code so each row can show a
   // badge — and remember which metrics dropped so we can colour the badge
@@ -927,6 +959,17 @@ export default function AdminCoverage() {
           </AlertDescription>
         </Alert>
       ) : null}
+
+      <CoverageDropAlertHistorySection
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        history={alertHistory}
+        hasMore={alertHistoryHasMore}
+        isFetching={historyFetching}
+        onLoadMore={() => setHistoryLimit((n) => n + 10)}
+        latestSnapshotDate={latestAlert?.snapshotDate ?? null}
+      />
+
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
@@ -2404,5 +2447,246 @@ function CoverageBackfillBootStatusCard() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+// Collapsible "Recent coverage drop alerts" panel. Sits under the
+// latest-alert banner and gives admins a quick way to spot countries
+// that have been flaky over time without leaving the coverage page.
+// Each row is independently expandable to reveal the full set of
+// country/metric chips (same deep-link target as the live banner).
+function CoverageDropAlertHistorySection(props: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  history: CoverageDropAlert[];
+  hasMore: boolean;
+  isFetching: boolean;
+  onLoadMore: () => void;
+  // The latest alert is already shown in its own banner — surface a hint
+  // when the topmost history row matches it so admins aren't surprised
+  // to see it again.
+  latestSnapshotDate: string | null;
+}) {
+  const {
+    open,
+    onOpenChange,
+    history,
+    hasMore,
+    isFetching,
+    onLoadMore,
+    latestSnapshotDate,
+  } = props;
+
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange}>
+      <Card data-testid="card-coverage-drop-history">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="w-full text-left"
+            data-testid="button-coverage-drop-history-toggle"
+          >
+            <CardHeader className="flex-row items-center gap-2 space-y-0">
+              <History className="w-4 h-4 text-muted-foreground" />
+              <div className="flex-1">
+                <CardTitle className="text-base">
+                  Recent coverage drop alerts
+                </CardTitle>
+                <CardDescription>
+                  History of nightly alerts so you can spot chronically flaky
+                  countries at a glance.
+                </CardDescription>
+              </div>
+              {open ? (
+                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              )}
+            </CardHeader>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent
+            className="space-y-2"
+            data-testid="content-coverage-drop-history"
+          >
+            {isFetching && history.length === 0 ? (
+              <div className="flex items-center gap-2 py-6 justify-center text-muted-foreground text-sm">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading alert history…
+              </div>
+            ) : history.length === 0 ? (
+              <div
+                className="py-6 text-center text-sm text-muted-foreground"
+                data-testid="empty-coverage-drop-history"
+              >
+                No coverage drop alerts have been recorded yet.
+              </div>
+            ) : (
+              <>
+                <ul className="space-y-2">
+                  {history.map((alert, idx) => (
+                    <CoverageDropAlertHistoryRow
+                      key={`${alert.snapshotDate ?? alert.createdAt}:${idx}`}
+                      alert={alert}
+                      isLatest={
+                        !!latestSnapshotDate &&
+                        alert.snapshotDate === latestSnapshotDate &&
+                        idx === 0
+                      }
+                    />
+                  ))}
+                </ul>
+                <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
+                  <span>
+                    Showing {history.length} alert
+                    {history.length === 1 ? '' : 's'}
+                    {hasMore ? ' (more available)' : ''}.
+                  </span>
+                  {hasMore ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onLoadMore}
+                      disabled={isFetching}
+                      data-testid="button-coverage-drop-history-load-more"
+                    >
+                      {isFetching ? (
+                        <Loader2 className="w-3 h-3 mr-2 animate-spin" />
+                      ) : null}
+                      Load older
+                    </Button>
+                  ) : null}
+                </div>
+              </>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
+  );
+}
+
+function CoverageDropAlertHistoryRow(props: {
+  alert: CoverageDropAlert;
+  isLatest: boolean;
+}) {
+  const { alert, isLatest } = props;
+  const [open, setOpen] = useState(false);
+  // Group drops by country so the collapsed summary can show a useful
+  // top-offenders preview ("US +2, DE +1") instead of just a raw count.
+  const byCountry = useMemo(() => {
+    const map = new Map<string, CoverageDropAlertEntry[]>();
+    for (const d of alert.drops) {
+      const code = d.countryCode.toUpperCase();
+      const list = map.get(code) ?? [];
+      list.push(d);
+      map.set(code, list);
+    }
+    return Array.from(map.entries())
+      .map(([code, entries]) => ({
+        code,
+        entries,
+        // Worst (most negative) deltaPp drives ranking so the loudest
+        // regressions float to the top of the preview.
+        worstDeltaPp: entries.reduce(
+          (acc, e) => Math.min(acc, e.deltaPp),
+          0,
+        ),
+      }))
+      .sort((a, b) => a.worstDeltaPp - b.worstDeltaPp);
+  }, [alert.drops]);
+
+  const topOffenders = byCountry.slice(0, 3);
+  const dateLabel = alert.snapshotDate ?? alert.createdAt.slice(0, 10);
+
+  return (
+    <li
+      className="rounded-md border border-border bg-card"
+      data-testid={`coverage-drop-history-row-${dateLabel}`}
+    >
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="w-full flex flex-wrap items-center gap-3 p-3 text-left hover:bg-muted/40 rounded-md"
+            data-testid={`button-coverage-drop-history-row-toggle-${dateLabel}`}
+          >
+            {open ? (
+              <ChevronDown className="w-4 h-4 text-muted-foreground shrink-0" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-muted-foreground shrink-0" />
+            )}
+            <div className="flex flex-col min-w-[140px]">
+              <span className="text-sm font-medium tabular-nums">
+                {dateLabel}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {alert.thresholdPp != null
+                  ? `threshold ${alert.thresholdPp}pp`
+                  : 'threshold —'}
+                {isLatest ? ' · latest' : ''}
+              </span>
+            </div>
+            <Badge
+              variant="outline"
+              className="border-red-300 text-red-800"
+              data-testid={`badge-coverage-drop-history-count-${dateLabel}`}
+            >
+              {alert.drops.length}{' '}
+              {alert.drops.length === 1 ? 'drop' : 'drops'} ·{' '}
+              {byCountry.length}{' '}
+              {byCountry.length === 1 ? 'country' : 'countries'}
+            </Badge>
+            <div className="flex flex-wrap gap-1 ml-auto">
+              {topOffenders.map((c) => (
+                <span
+                  key={c.code}
+                  className="inline-flex items-center gap-1 rounded border border-border bg-background px-1.5 py-0.5 text-xs"
+                >
+                  <span className="font-mono font-semibold">{c.code}</span>
+                  <span className="tabular-nums text-red-700">
+                    {c.worstDeltaPp.toFixed(1)}pp
+                  </span>
+                </span>
+              ))}
+              {byCountry.length > topOffenders.length ? (
+                <span className="text-xs text-muted-foreground self-center">
+                  +{byCountry.length - topOffenders.length} more
+                </span>
+              ) : null}
+            </div>
+          </button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div
+            className="px-3 pb-3 pt-0 flex flex-wrap gap-2"
+            data-testid={`coverage-drop-history-chips-${dateLabel}`}
+          >
+            {alert.drops.map((d, i) => (
+              <Link
+                key={`${d.countryCode}:${d.metric}:${i}`}
+                href={`/admin/coverage/${d.countryCode}`}
+                className="inline-flex items-center gap-1.5 rounded border border-red-300 bg-red-50/60 px-2 py-1 text-xs hover:bg-red-50"
+                data-testid={`history-drop-${dateLabel}-${d.countryCode}-${d.metric}`}
+              >
+                <span className="font-mono font-semibold">
+                  {d.countryCode}
+                </span>
+                <span className="text-red-800/80">
+                  {d.metric === 'logo' ? 'logo' : 'tags'}
+                </span>
+                <span className="tabular-nums">
+                  {d.weekAgoPct.toFixed(1)}% → {d.todayPct.toFixed(1)}%
+                </span>
+                <span className="font-semibold tabular-nums">
+                  ({d.deltaPp.toFixed(1)}pp)
+                </span>
+              </Link>
+            ))}
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </li>
   );
 }

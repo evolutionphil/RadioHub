@@ -2217,62 +2217,57 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     },
   );
 
-  // COVERAGE DROP ALERTS — surface the most recent nightly coverage drop
-  // alert (written by `services/coverage-drop-notifier.ts` as admin
-  // `UserNotification` rows with `data.kind === 'coverage_drop'`) so the
-  // admin coverage page can highlight which countries triggered the alert
-  // without forcing admins to dig through the generic notifications UI.
-  // We return the latest single alert (most recent snapshotDate) — earlier
-  // alerts are still available in the notifications surface.
+  // COVERAGE DROP ALERTS — surface nightly coverage drop alerts (written
+  // by `services/coverage-drop-notifier.ts` as admin `UserNotification`
+  // rows with `data.kind === 'coverage_drop'`) so the admin coverage
+  // page can highlight which countries triggered the alert without
+  // forcing admins to dig through the generic notifications UI.
+  //
+  // Default response (no query params) preserves the original shape:
+  //   { alert: <latestAlert | null> }
+  //
+  // When `history=1` is passed, the response also includes a paginated
+  // tail of older alerts (Task #239) so admins can spot chronically
+  // flaky countries straight from the coverage page:
+  //   { alert, history: <Alert[]>, hasMore: boolean, nextBefore: string|null }
+  // Use `before=<isoTimestamp>` to fetch the next page (cursor on the
+  // alert's snapshotDate, fallback createdAt). `limit` defaults to 10
+  // and is clamped to [1, 50].
   //
   // Acknowledgement (Task #238): admins can dismiss the banner for the
   // current alert via POST /api/admin/coverage/drop-alerts/acknowledge.
   // The acknowledgement is keyed by snapshotDate and stored in
   // `AdminSetting` under `coverage-drop-alert-ack`, so it is shared
   // across admins and survives reloads. Once a newer alert (different
-  // snapshotDate) arrives the banner shows again automatically.
+  // snapshotDate) arrives the banner shows again automatically. Only
+  // the alert whose `snapshotDate` matches the stored ack carries
+  // `acknowledged: true` — historical alerts in the `history` array
+  // always render with `acknowledged: false`.
   app.get(
     '/api/admin/coverage/drop-alerts',
     requireAdmin,
-    async (_req, res) => {
+    async (req, res) => {
       try {
-        // Sort by `data.snapshotDate` first (the date the alert is *about*)
-        // and fall back to `createdAt` so historical replays / backfills
-        // don't misorder. In normal nightly operation the two correlate.
-        const latest = await UserNotification.findOne(
-          { type: 'system', 'data.kind': 'coverage_drop' },
-          {
-            createdAt: 1,
-            message: 1,
-            data: 1,
-          },
-        )
-          .sort({ 'data.snapshotDate': -1, createdAt: -1 })
-          .lean();
-
-        if (!latest) {
-          return void res.json({ alert: null });
-        }
-
-        const data = (latest.data ?? {}) as {
+        type RawDrop = {
+          countryCode: string;
+          metric: 'logo' | 'tag';
+          todayPct: number;
+          weekAgoPct: number;
+          deltaPp: number;
+          total: number;
+        };
+        type RawAlertData = {
           kind?: string;
           snapshotDate?: string;
           thresholdPp?: number;
-          drops?: Array<{
-            countryCode: string;
-            metric: 'logo' | 'tag';
-            todayPct: number;
-            weekAgoPct: number;
-            deltaPp: number;
-            total: number;
-          }>;
+          drops?: RawDrop[];
         };
-
-        const drops = Array.isArray(data.drops) ? data.drops : [];
-
-        // Look up any acknowledgement that matches this alert's
-        // snapshotDate. We always resolve `acknowledged` so the client
-        // can decide whether to render the banner.
+        // Look up any acknowledgement (Task #238) once per request and
+        // annotate the alert whose snapshotDate matches it. We always
+        // resolve `acknowledged` so the client can decide whether to
+        // render the banner. In history mode only the matching alert
+        // (typically the latest) carries `acknowledged: true`; older
+        // alerts in the list always come back as `acknowledged: false`.
         const ackDoc = await AdminSetting.findOne({
           key: COVERAGE_DROP_ACK_KEY,
         }).lean();
@@ -2281,21 +2276,32 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           acknowledgedAt?: string | null;
           acknowledgedBy?: string | null;
         } | null;
-        const ackMatches =
-          !!ackValue &&
-          typeof ackValue.snapshotDate === 'string' &&
-          ackValue.snapshotDate === (data.snapshotDate ?? null);
+        const ackSnapshotDate =
+          ackValue && typeof ackValue.snapshotDate === 'string'
+            ? ackValue.snapshotDate
+            : null;
 
-        return void res.json({
-          alert: {
+        const shapeAlert = (doc: {
+          createdAt?: Date | string | null;
+          message?: string | null;
+          data?: unknown;
+        }) => {
+          const data = (doc.data ?? {}) as RawAlertData;
+          const drops = Array.isArray(data.drops) ? data.drops : [];
+          const snapshotDate = data.snapshotDate ?? null;
+          const ackMatches =
+            !!ackSnapshotDate && ackSnapshotDate === snapshotDate;
+          return {
             createdAt:
-              latest.createdAt instanceof Date
-                ? latest.createdAt.toISOString()
-                : new Date().toISOString(),
-            snapshotDate: data.snapshotDate ?? null,
+              doc.createdAt instanceof Date
+                ? doc.createdAt.toISOString()
+                : typeof doc.createdAt === 'string'
+                  ? doc.createdAt
+                  : new Date().toISOString(),
+            snapshotDate,
             thresholdPp:
               typeof data.thresholdPp === 'number' ? data.thresholdPp : null,
-            message: latest.message ?? '',
+            message: doc.message ?? '',
             drops: drops.map((d) => ({
               countryCode: String(d.countryCode || '').toUpperCase(),
               metric: d.metric,
@@ -2305,9 +2311,79 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               total: Number(d.total) || 0,
             })),
             acknowledged: ackMatches,
-            acknowledgedAt: ackMatches ? ackValue?.acknowledgedAt ?? null : null,
-            acknowledgedBy: ackMatches ? ackValue?.acknowledgedBy ?? null : null,
-          },
+            acknowledgedAt: ackMatches
+              ? ackValue?.acknowledgedAt ?? null
+              : null,
+            acknowledgedBy: ackMatches
+              ? ackValue?.acknowledgedBy ?? null
+              : null,
+          };
+        };
+
+        const wantHistory =
+          req.query.history === '1' ||
+          req.query.history === 'true' ||
+          req.query.history === 'yes';
+
+        // Sort by `data.snapshotDate` first (the date the alert is *about*)
+        // and fall back to `createdAt` so historical replays / backfills
+        // don't misorder. In normal nightly operation the two correlate.
+        if (!wantHistory) {
+          const latest = await UserNotification.findOne(
+            { type: 'system', 'data.kind': 'coverage_drop' },
+            { createdAt: 1, message: 1, data: 1 },
+          )
+            .sort({ 'data.snapshotDate': -1, createdAt: -1 })
+            .lean();
+
+          if (!latest) {
+            return void res.json({ alert: null });
+          }
+          return void res.json({ alert: shapeAlert(latest) });
+        }
+
+        const rawLimit = Number(req.query.limit);
+        const limit =
+          Number.isFinite(rawLimit) && rawLimit > 0
+            ? Math.min(50, Math.max(1, Math.floor(rawLimit)))
+            : 10;
+
+        const filter: Record<string, unknown> = {
+          type: 'system',
+          'data.kind': 'coverage_drop',
+        };
+        const beforeParam =
+          typeof req.query.before === 'string' ? req.query.before.trim() : '';
+        if (beforeParam) {
+          // Cursor: only return alerts strictly older than the supplied
+          // snapshot date. We use the same date string the client got
+          // back in the previous page's `nextBefore` (a YYYY-MM-DD or an
+          // ISO timestamp).
+          filter['data.snapshotDate'] = { $lt: beforeParam };
+        }
+
+        // Fetch one extra row to determine `hasMore` without a count.
+        const rows = await UserNotification.find(filter, {
+          createdAt: 1,
+          message: 1,
+          data: 1,
+        })
+          .sort({ 'data.snapshotDate': -1, createdAt: -1 })
+          .limit(limit + 1)
+          .lean();
+
+        const hasMore = rows.length > limit;
+        const pageRows = hasMore ? rows.slice(0, limit) : rows;
+        const history = pageRows.map((r) => shapeAlert(r));
+        const last = history[history.length - 1];
+        const nextBefore =
+          hasMore && last && last.snapshotDate ? last.snapshotDate : null;
+
+        return void res.json({
+          alert: history[0] ?? null,
+          history,
+          hasMore,
+          nextBefore,
         });
       } catch (error: any) {
         logger.error('coverage drop-alerts failed', error);
