@@ -395,6 +395,36 @@ export default function AdminCoverage() {
     return map;
   }, [latestAlert, isAlertAcknowledged]);
 
+  const unacknowledgeAlertMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest(
+        'DELETE',
+        '/api/admin/coverage/drop-alerts/acknowledge',
+      );
+      return (await res.json()) as {
+        acknowledged: boolean;
+        cleared: boolean;
+      };
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/drop-alerts'],
+      });
+      toast({
+        title: 'Coverage drop alert reopened',
+        description:
+          'The banner and per-country badges are visible again for everyone.',
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Could not reopen alert',
+        description: err?.message ?? 'Please refresh and try again.',
+        variant: 'destructive',
+      });
+    },
+  });
+
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (snapshotDate: string) => {
       const res = await apiRequest(
@@ -413,10 +443,23 @@ export default function AdminCoverage() {
       void queryClient.invalidateQueries({
         queryKey: ['/api/admin/coverage/drop-alerts'],
       });
-      toast({
+      const t = toast({
         title: 'Coverage drop alert acknowledged',
         description:
           'The banner is hidden until a newer alert arrives. Earlier alerts remain in your notifications.',
+        duration: 10_000,
+        action: (
+          <ToastAction
+            altText="Undo acknowledge and reopen the coverage drop alert"
+            data-testid="button-undo-acknowledge-coverage-drop"
+            onClick={() => {
+              unacknowledgeAlertMutation.mutate();
+              t.dismiss();
+            }}
+          >
+            Undo
+          </ToastAction>
+        ),
       });
     },
     onError: (err: any) => {
@@ -964,6 +1007,41 @@ export default function AdminCoverage() {
       <CoverageBackfillBootStatusCard />
 
       <CoverageDropAlertSettingsCard />
+
+      {latestAlert && latestAlert.drops.length > 0 && isAlertAcknowledged ? (
+        <div
+          className="flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+          data-testid="notice-coverage-drop-acknowledged"
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+          <span>
+            Coverage drop alert for snapshot {latestAlert.snapshotDate ?? '—'} was
+            acknowledged
+            {latestAlert.acknowledgedBy
+              ? ` by ${latestAlert.acknowledgedBy}`
+              : ''}
+            {latestAlert.acknowledgedAt
+              ? ` on ${new Date(latestAlert.acknowledgedAt).toLocaleString()}`
+              : ''}
+            . The banner and per-row badges are hidden until a newer alert
+            arrives.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto h-7 border-amber-300 bg-white/70 px-2 text-xs text-amber-900 hover:bg-white"
+            onClick={() => unacknowledgeAlertMutation.mutate()}
+            disabled={unacknowledgeAlertMutation.isPending}
+            data-testid="button-reopen-coverage-drop"
+            title="Bring the banner and per-country badges back for everyone"
+          >
+            {unacknowledgeAlertMutation.isPending ? (
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+            ) : null}
+            Reopen alert
+          </Button>
+        </div>
+      ) : null}
 
       {latestAlert && latestAlert.drops.length > 0 && !isAlertAcknowledged ? (
         <Alert

@@ -2537,6 +2537,33 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     },
   );
 
+  // Un-acknowledge the most recent coverage drop alert (Task #321). Clears
+  // the stored `coverage-drop-alert-ack` AdminSetting row so the banner
+  // and per-row badges reappear for everyone. Used by the toast "Undo"
+  // affordance and the "Reopen alert" button on the coverage page when an
+  // admin dismissed the banner by accident.
+  app.delete(
+    '/api/admin/coverage/drop-alerts/acknowledge',
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const result = await AdminSetting.deleteOne({
+          key: COVERAGE_DROP_ACK_KEY,
+        });
+        return void res.json({
+          acknowledged: false,
+          cleared: (result?.deletedCount ?? 0) > 0,
+        });
+      } catch (error: any) {
+        logger.error('coverage drop-alerts un-acknowledge failed', error);
+        return void res.status(500).json({
+          error:
+            error?.message || 'Failed to un-acknowledge coverage drop alert',
+        });
+      }
+    },
+  );
+
   // Re-enqueue the same logo / tag backfill that
   // `scripts/backfill-tr-logos.ts` and `scripts/backfill-tr-tags.ts` run from
   // the CLI, but for any country and from the admin UI. `scope` selects which
