@@ -54,6 +54,7 @@ import { registerAppleWebhookRoutes } from './routes/iap-apple-webhook';
 import { registerAdminMaintenanceRoutes } from './routes/admin-maintenance-routes';
 import { registerAdminPreferencesRoutes } from './routes/admin-preferences-routes';
 import { registerAdminCoverageDropSettingsRoutes } from './routes/admin-coverage-drop-settings-routes';
+import { registerAdminMappingAuditDigestSettingsRoutes } from './routes/admin-mapping-audit-digest-settings-routes';
 import { registerAdminGenreWhitelistRoutes } from './routes/admin-genre-whitelist-routes';
 import { startGenreWhitelistRefreshLoop } from './seo/genre-whitelist-store';
 import { registerSilentPushRoutes } from './routes/silent-push-routes';
@@ -634,6 +635,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerAdminMaintenanceRoutes(app, deps);
   registerAdminPreferencesRoutes(app, deps);
   registerAdminCoverageDropSettingsRoutes(app, deps);
+  registerAdminMappingAuditDigestSettingsRoutes(app, deps);
   registerAdminGenreWhitelistRoutes(app, deps);
   // Task #114: prime the merged whitelist snapshot from Mongo and refresh
   // it periodically so admin overrides made on other replicas propagate.

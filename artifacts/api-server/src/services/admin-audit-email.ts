@@ -185,6 +185,13 @@ export interface AdminAuditEmailInput {
  *   ADMIN_AUDIT_EMAIL_FROM       - sender address (defaults to noreply@themegaradio.com)
  *   SENDGRID_API_KEY             - required for delivery
  *
+ * Mapping-audit digest cadence (Task #284):
+ *   MAPPING_AUDIT_DIGEST_CADENCE - 'off' | 'daily' | 'weekly' (default
+ *     'daily'). Admins can also override this from the UI via
+ *     PUT /api/admin/settings/mapping-audit-digest, which takes
+ *     precedence over the env var. When set to 'off' the scheduled
+ *     cron skips silently; manual runs from the admin panel still work.
+ *
  * Designed to be fire-and-forget: errors are logged but never thrown so the
  * request handler stays unaffected by mail-provider issues.
  */

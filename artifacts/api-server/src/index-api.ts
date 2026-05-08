@@ -847,7 +847,7 @@ app.use(session(sessionConfig));
         try {
           const { scheduledMappingAuditDigest } = await import('./services/scheduled-mapping-audit-digest');
           scheduledMappingAuditDigest.initialize();
-          logger.log('✅ BACKGROUND: Scheduled mapping-audit digest initialized (daily 06:00)');
+          logger.log('✅ BACKGROUND: Scheduled mapping-audit digest initialized (06:00 Europe/Berlin, cadence per-tick)');
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled mapping-audit digest:', error.message);
         }
