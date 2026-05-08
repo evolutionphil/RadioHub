@@ -51,6 +51,28 @@ function cleanupRecheckTagsJobs() {
   for (const [jobId, job] of recheckTagsJobs) {
     if (job.finishedAt && now - job.finishedAt > RECHECK_TAGS_JOB_TTL_MS) {
       recheckTagsJobs.delete(jobId);
+      recheckTagsJobSubscribers.delete(jobId);
+    }
+  }
+}
+
+// SSE subscribers for live recheck-job progress. Each entry holds the
+// callbacks attached by an open `/recheck-tags-job-stream/:jobId`
+// connection; they are invoked whenever the job's snapshot changes
+// (per-batch progress or terminal status transition) so clients see
+// updates instantly instead of polling on a 2s timer.
+type RecheckTagsJobSubscriber = (job: RecheckTagsJob) => void;
+const recheckTagsJobSubscribers = new Map<string, Set<RecheckTagsJobSubscriber>>();
+function notifyRecheckTagsJobSubscribers(jobId: string) {
+  const subs = recheckTagsJobSubscribers.get(jobId);
+  if (!subs || subs.size === 0) return;
+  const job = recheckTagsJobs.get(jobId);
+  if (!job) return;
+  for (const sub of Array.from(subs)) {
+    try {
+      sub(job);
+    } catch (err) {
+      logger.warn(`recheck-tags SSE subscriber threw: ${(err as Error)?.message}`);
     }
   }
 }
@@ -1367,6 +1389,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           current.emptyUpstream = p.emptyUpstream;
           current.failed = p.failed;
           recheckTagsJobs.set(jobId, current);
+          notifyRecheckTagsJobSubscribers(jobId);
         };
         const finish = (err?: unknown) => {
           const current = recheckTagsJobs.get(jobId);
@@ -1387,6 +1410,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             current.error = err instanceof Error ? err.message : String(err);
           }
           recheckTagsJobs.set(jobId, current);
+          notifyRecheckTagsJobSubscribers(jobId);
         };
 
         // Kick off the actual re-query in the background so the admin
@@ -1442,6 +1466,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
                 current.emptyUpstream = result.emptyUpstream;
                 current.failed = result.failed;
                 recheckTagsJobs.set(jobId, current);
+                notifyRecheckTagsJobSubscribers(jobId);
               }
               finish();
             })
@@ -1536,8 +1561,104 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }
       job.cancelRequested = true;
       recheckTagsJobs.set(jobId, job);
+      notifyRecheckTagsJobSubscribers(jobId);
       logger.log(`🛑 Bulk tag re-check job ${jobId} cancellation requested`);
       return res.json({ success: true, job });
+    },
+  );
+
+  // Live progress stream for a bulk tag re-check job. Replaces the
+  // 2-second polling loop so admins see processed/hydrated/failed
+  // counts the moment each batch finishes, and the header tagless
+  // badge updates as soon as the server reports progress. The stream
+  // emits an initial `snapshot`, one `progress` event per change
+  // while the job is running, and a final `done` event on terminal
+  // status before closing. Unknown jobs (e.g. evicted after the
+  // 1-hour TTL) get a `not-found` event so the client can stop
+  // reconnecting and clear the persisted job id.
+  app.get(
+    '/api/admin/stations/recheck-tags-job-stream/:jobId',
+    requireAdmin,
+    async (req, res) => {
+      const { jobId } = req.params as { jobId: string };
+      cleanupRecheckTagsJobs();
+
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        // Disable proxy buffering so each event flushes immediately.
+        'X-Accel-Buffering': 'no',
+      });
+      // Express 5 doesn't always flush headers eagerly for SSE.
+      res.flushHeaders?.();
+
+      const send = (event: string, payload: unknown) => {
+        try {
+          res.write(`event: ${event}\n`);
+          res.write(`data: ${JSON.stringify(payload)}\n\n`);
+        } catch {
+          // socket likely already closed; cleanup happens via 'close'
+        }
+      };
+
+      const job = recheckTagsJobs.get(jobId);
+      if (!job) {
+        send('not-found', { jobId });
+        return res.end();
+      }
+
+      send('snapshot', job);
+      if (job.status !== 'running') {
+        send('done', job);
+        return res.end();
+      }
+
+      let closed = false;
+      const keepalive = setInterval(() => {
+        if (closed) return;
+        try {
+          res.write(': ping\n\n');
+        } catch {
+          // ignore; 'close' will clean up
+        }
+      }, 15000);
+
+      const sub: RecheckTagsJobSubscriber = (j) => {
+        if (closed) return;
+        if (j.status === 'running') {
+          send('progress', j);
+        } else {
+          send('done', j);
+          cleanup();
+          try {
+            res.end();
+          } catch {
+            // ignore
+          }
+        }
+      };
+
+      let subs = recheckTagsJobSubscribers.get(jobId);
+      if (!subs) {
+        subs = new Set();
+        recheckTagsJobSubscribers.set(jobId, subs);
+      }
+      subs.add(sub);
+
+      const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        clearInterval(keepalive);
+        const s = recheckTagsJobSubscribers.get(jobId);
+        if (s) {
+          s.delete(sub);
+          if (s.size === 0) recheckTagsJobSubscribers.delete(jobId);
+        }
+      };
+
+      req.on('close', cleanup);
+      return;
     },
   );
 

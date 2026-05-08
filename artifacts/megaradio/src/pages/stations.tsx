@@ -370,44 +370,70 @@ export default function Stations() {
   // toast (once per jobId) so the admin can see the outcome without
   // refreshing the page.
   const [isCancellingRecheck, setIsCancellingRecheck] = useState(false);
-  const { data: recheckTagsJobStatus } = useQuery<{
+  type RecheckTagsJobSnapshot = {
+    jobId: string;
+    status: 'running' | 'completed' | 'failed' | 'cancelled';
+    total: number;
+    processed: number;
+    hydrated: number;
+    emptyUpstream: number;
+    failed: number;
+    cleared: number;
+    matched: number;
+    scope?: string;
+    error?: string;
+    cancelRequested?: boolean;
+    cancellable?: boolean;
+  };
+  type RecheckTagsJobStatus = {
     success: boolean;
-    job?: {
-      jobId: string;
-      status: 'running' | 'completed' | 'failed' | 'cancelled';
-      total: number;
-      processed: number;
-      hydrated: number;
-      emptyUpstream: number;
-      failed: number;
-      cleared: number;
-      matched: number;
-      scope?: string;
-      error?: string;
-      cancelRequested?: boolean;
-      cancellable?: boolean;
-    };
-  } | null>({
-    queryKey: ['/api/admin/stations/recheck-tags-job-status', recheckTagsJobId],
-    queryFn: async () => {
-      if (!recheckTagsJobId) return null;
-      const response = await fetch(
-        `/api/admin/stations/recheck-tags-job-status/${recheckTagsJobId}`,
-        { credentials: 'include' },
-      );
-      if (!response.ok) {
-        // Job is no longer known to the server (expired/evicted after a
-        // reload). Clear the persisted id so the stale indicator goes away.
-        return { success: false } as const;
+    job?: RecheckTagsJobSnapshot;
+  };
+  // Live progress over Server-Sent Events instead of a 2s poll. The
+  // backend pushes a `snapshot` once on connect, then `progress` per
+  // batch, and `done` on terminal status. `not-found` covers the
+  // case where the in-memory job map evicted this id (e.g. after a
+  // page reload past the 1h TTL) so we can clear the stale indicator.
+  const [recheckTagsJobStatus, setRecheckTagsJobStatus] = useState<
+    RecheckTagsJobStatus | undefined
+  >(undefined);
+  useEffect(() => {
+    if (!recheckTagsJobId) {
+      setRecheckTagsJobStatus(undefined);
+      return;
+    }
+    // Reset to undefined on a new id so downstream effects don't fire
+    // with the previous job's terminal snapshot.
+    setRecheckTagsJobStatus(undefined);
+
+    const url = `/api/admin/stations/recheck-tags-job-stream/${recheckTagsJobId}`;
+    const es = new EventSource(url, { withCredentials: true });
+    const applyJob = (raw: string) => {
+      try {
+        const job = JSON.parse(raw) as RecheckTagsJobSnapshot;
+        setRecheckTagsJobStatus({ success: true, job });
+      } catch {
+        // ignore malformed event
       }
-      return response.json();
-    },
-    enabled: !!recheckTagsJobId,
-    refetchInterval: (query) => {
-      const status = query.state.data?.job?.status;
-      return status === 'running' ? 2000 : false;
-    },
-  });
+    };
+    es.addEventListener('snapshot', (ev) =>
+      applyJob((ev as MessageEvent).data),
+    );
+    es.addEventListener('progress', (ev) =>
+      applyJob((ev as MessageEvent).data),
+    );
+    es.addEventListener('done', (ev) => {
+      applyJob((ev as MessageEvent).data);
+      es.close();
+    });
+    es.addEventListener('not-found', () => {
+      setRecheckTagsJobStatus({ success: false });
+      es.close();
+    });
+    return () => {
+      es.close();
+    };
+  }, [recheckTagsJobId]);
 
   // While the background recheck job is running, invalidate the
   // tagless/cooldown summary each time a progress poll comes back so
@@ -1350,12 +1376,9 @@ export default function Stations() {
                               description:
                                 'The re-check will stop after the current batch.',
                             });
-                            queryClient.invalidateQueries({
-                              queryKey: [
-                                '/api/admin/stations/recheck-tags-job-status',
-                                recheckTagsJobId,
-                              ],
-                            });
+                            // The SSE stream will push the updated
+                            // cancelRequested flag automatically; no
+                            // query invalidation needed here.
                           } catch (err: any) {
                             toast({
                               title: 'Cancel failed',
