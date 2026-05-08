@@ -441,6 +441,28 @@ export class SeoRenderer {
       // Extract genre slug if present for more specific SEO
       const pathParts = cleanPath.split('/');
       if (pathParts.length > 2) {
+        // Task #102: Genre detail URLs with non-conforming slugs (containing
+        // `"`, `%22`, spaces, or other unsafe chars) are leftover artifacts of
+        // a sitemap bug that emitted unescaped tag-derived slugs. They render
+        // empty thin pages and are the largest source of soft-404s. Reject
+        // them at the SSR layer with notFound:true so index-web returns 404,
+        // dropping them out of Google's index.
+        // Guard against malformed percent-encoding (e.g. lone `%`) which
+        // would throw URIError and bubble up as a 500. Treat undecodable
+        // input as a not-found genre slug.
+        let rawGenreSlug: string;
+        try {
+          rawGenreSlug = decodeURIComponent(pathParts[2]);
+        } catch {
+          rawGenreSlug = pathParts[2];
+        }
+        const SAFE_GENRE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+        if (!SAFE_GENRE_SLUG_RE.test(rawGenreSlug)) {
+          stationNotFound = true;
+          additionalData.notFound = true;
+          additionalData.genreSlug = rawGenreSlug;
+          additionalData.genreName = rawGenreSlug;
+        } else {
         additionalData.genreSlug = pathParts[2];
         additionalData.genreName = pathParts[2].replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
         // DALGA 2 W2.1: Fetch top 12 stations matching this genre for SSR <img> grid (image indexing)
@@ -470,6 +492,7 @@ export class SeoRenderer {
             .slice(0, 12);
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
+        }
         }
       }
     } else if (cleanPath.startsWith('/stations')) {

@@ -839,9 +839,17 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">`);
 
       let genreCount = 0;
+      // Task #102: Some legacy Genre.slug values were derived directly from
+      // station tag strings and contain XML-unsafe characters (notably `"`),
+      // producing malformed <loc> entries like `/en/genres/bassline"/>` that
+      // Google indexed as soft-404 thin pages. Restrict slugs to the safe
+      // URL/SEO charset (lowercase letters, digits, dash) before emitting.
+      // escapeXml(fullUrl) below remains as defense-in-depth.
+      const SAFE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
       for (const objId of genreIds) {
         const genre = genreById.get(String(objId));
         if (!genre || !genre.slug) continue;
+        if (!SAFE_SLUG_RE.test(String(genre.slug))) continue;
         genreCount++;
         const genrePath = `/genres/${genre.slug}`;
         const localizedPath = buildLocalizedUrl(genrePath, lang, undefined, urlTranslations);
