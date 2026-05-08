@@ -528,6 +528,17 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
             error: `Invalid slug "${slug}". Must match ${SAFE_GENRE_SLUG_RE}`,
           });
         }
+        // Task #210: Reject slug collisions before they hit the DB so two
+        // genres can't end up sharing a slug (which breaks
+        // `/api/genres/slug/:slug` lookups and SEO routing).
+        const collision = await Genre.findOne({ slug, _id: { $ne: id } })
+          .select('_id name')
+          .lean<{ _id: unknown; name: string } | null>();
+        if (collision) {
+          return res.status(409).json({
+            error: `Slug "${slug}" is already used by genre "${collision.name}".`,
+          });
+        }
         set.slug = slug;
       }
 
@@ -556,6 +567,14 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     } catch (error: any) {
       if (error?.name === 'ValidationError') {
         return void res.status(400).json({ error: error.message });
+      }
+      // Task #210: Mongo duplicate-key fallback for the partial unique slug
+      // index. Covers the race window between the findOne check above and the
+      // findByIdAndUpdate below.
+      if (error?.code === 11000 && error?.keyPattern?.slug) {
+        return res.status(409).json({
+          error: `Slug "${error?.keyValue?.slug}" is already used by another genre.`,
+        });
       }
       logger.error({ err: error }, 'Failed to update genre');
       res.status(500).json({ error: 'Failed to update genre' });

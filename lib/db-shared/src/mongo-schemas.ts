@@ -1109,7 +1109,14 @@ const GenreSchema = new Schema<IGenre>({
 
 GenreSchema.index({ name: 1 });
 GenreSchema.index({ isDiscoverable: 1 });
-GenreSchema.index({ slug: 1 }, { sparse: true });
+// Partial unique index on slug (Task #210). Prevents two genres from sharing
+// the same slug, which would break `/api/genres/slug/:slug` lookups and SEO
+// routing. Partial filter ensures genres without a slug (slug == null) don't
+// collide with each other.
+GenreSchema.index(
+  { slug: 1 },
+  { unique: true, partialFilterExpression: { slug: { $type: 'string' } } },
+);
 GenreSchema.index({ stationCount: -1 });
 // Speeds up the admin "Recently demoted by slug cleanup" filter view.
 GenreSchema.index({ 'cleanupDemotion.demotedAt': -1 }, { sparse: true });
