@@ -984,6 +984,22 @@ export default function RadioHeader({
                   )}
                 </div>
               )}
+
+              {/* Keyboard shortcut hints - hidden on small/touch screens */}
+              <div className="hidden sm:flex [@media(pointer:coarse)]:!hidden items-center justify-end gap-3 mt-4 pt-3 border-t border-[#2F2F2F] text-[11px] text-gray-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
+                    {t('search_kbd_enter', 'Enter')}
+                  </kbd>
+                  <span>{t('search_kbd_enter_hint', 'to select')}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
+                    {t('search_kbd_esc', 'Esc')}
+                  </kbd>
+                  <span>{t('search_kbd_esc_hint', 'to close')}</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>,

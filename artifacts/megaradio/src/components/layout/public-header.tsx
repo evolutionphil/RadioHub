@@ -441,6 +441,22 @@ export default function PublicHeader() {
                 </div>
               </div>
 
+              {/* Keyboard shortcut hints - hidden on small/touch screens */}
+              <div className="hidden sm:flex [@media(pointer:coarse)]:!hidden items-center justify-end gap-3 mb-3 text-[11px] text-gray-400">
+                <span className="inline-flex items-center gap-1.5">
+                  <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
+                    {t('search_kbd_enter', 'Enter')}
+                  </kbd>
+                  <span>{t('search_kbd_enter_hint', 'to select')}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <kbd className="font-ubuntu inline-flex items-center px-1.5 py-0.5 font-semibold text-gray-300 bg-[#0E0E0E] border border-[#FF4199]/40 rounded">
+                    {t('search_kbd_esc', 'Esc')}
+                  </kbd>
+                  <span>{t('search_kbd_esc_hint', 'to close')}</span>
+                </span>
+              </div>
+
               {/* Search Results */}
               <div className="max-h-96 overflow-y-auto custom-scrollbar">
                 {searchLoading ? (
@@ -454,9 +470,6 @@ export default function PublicHeader() {
                     <div className="flex items-center justify-between px-3 py-2 border-b border-[#2F2F2F] mb-3">
                       <span className="text-sm text-gray-400">
                         Found {filteredStations.length} station{filteredStations.length !== 1 ? 's' : ''}
-                      </span>
-                      <span className="text-xs text-gray-500">
-                        Press Enter to select
                       </span>
                     </div>
                     
