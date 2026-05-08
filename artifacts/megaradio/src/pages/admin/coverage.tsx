@@ -706,6 +706,7 @@ export default function AdminCoverage() {
             Compare countries
           </Button>
         </Link>
+        <ReconstructHistoryButton />
         <Button
           variant="outline"
           size="sm"
@@ -1618,5 +1619,101 @@ function CoverageDropAlertSettingsCard() {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+interface ReconstructHistoryResponse {
+  success: boolean;
+  days: number;
+  dryRun: boolean;
+  daysSeeded: number;
+  inserted: number;
+  preserved: number;
+  wouldWrite: number;
+  skippedReason?: 'no-stations';
+}
+
+// Admin-only "Reconstruct sparkline history" button (Task #237). Runs
+// the same one-shot historical seeder as
+// `scripts/backfill-coverage-snapshots.ts`, but from the UI so admins
+// can re-seed history after a bulk import without shell access. Days
+// window defaults to 30 (the sparkline's range) and can be tuned in
+// the prompt. Idempotent — real cron-written rows are preserved.
+function ReconstructHistoryButton() {
+  const { toast } = useToast();
+  const mutation = useMutation({
+    mutationFn: async (vars: { days: number }) => {
+      const res = await apiRequest(
+        'POST',
+        '/api/admin/coverage/reconstruct-history',
+        { body: { days: vars.days } },
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Request failed (${res.status})`);
+      }
+      return (await res.json()) as ReconstructHistoryResponse;
+    },
+    onSuccess: (result) => {
+      if (result.skippedReason === 'no-stations') {
+        toast({
+          title: 'Nothing to reconstruct',
+          description: 'Stations collection is empty.',
+        });
+      } else {
+        toast({
+          title: `Reconstructed ${result.daysSeeded} day${
+            result.daysSeeded === 1 ? '' : 's'
+          } of history`,
+          description: `${result.inserted.toLocaleString()} inserted · ${result.preserved.toLocaleString()} preserved (already present).`,
+        });
+      }
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/trends?days=30'],
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Failed to reconstruct sparkline history',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const handleClick = () => {
+    const raw = window.prompt(
+      'How many days of history to reconstruct? (1–365)',
+      '30',
+    );
+    if (raw === null) return;
+    const days = Number(raw.trim());
+    if (!Number.isFinite(days) || !Number.isInteger(days) || days < 1 || days > 365) {
+      toast({
+        title: 'Invalid days value',
+        description: 'Enter an integer between 1 and 365.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    mutation.mutate({ days });
+  };
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleClick}
+      disabled={mutation.isPending}
+      data-testid="button-reconstruct-history"
+      title="Re-run the one-shot historical sparkline reconstruction. Idempotent — real nightly snapshots are preserved."
+    >
+      {mutation.isPending ? (
+        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+      ) : (
+        <RefreshCw className="w-4 h-4 mr-2" />
+      )}
+      Reconstruct sparkline history
+    </Button>
   );
 }

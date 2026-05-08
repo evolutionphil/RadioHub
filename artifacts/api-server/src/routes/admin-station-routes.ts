@@ -15,6 +15,7 @@ import { getQuotaStatus } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
 import { stripPlaceholders } from "./shared-utils";
 import { triggerGenreStationCountsRecompute } from "../services/genre-station-counts";
+import { runCoverageBackfill } from "../services/coverage-snapshot-backfill";
 
 const faviconUpload = multer({
   storage: multer.memoryStorage(),
@@ -2475,6 +2476,40 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         `🛑 Coverage backfill ${jobId} (${job.countryCode}) cancellation requested`,
       );
       return void res.json({ success: true });
+    },
+  );
+
+  // Re-run the historical sparkline reconstruction (Task #237). Mirrors
+  // `scripts/backfill-coverage-snapshots.ts` but invokable from the
+  // admin coverage page so admins can re-seed history after a bulk
+  // import without shell access. Idempotent: real cron-written rows are
+  // preserved by `$setOnInsert`. Reconstructed rows are tagged with
+  // `source: 'backfill'` and the nightly cron promotes them to `'cron'`
+  // as days roll over.
+  app.post(
+    '/api/admin/coverage/reconstruct-history',
+    express.json(),
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const rawDays = req.body?.days;
+        const daysNum = rawDays === undefined ? 30 : Number(rawDays);
+        if (!Number.isFinite(daysNum) || !Number.isInteger(daysNum) || daysNum < 1 || daysNum > 365) {
+          return void res.status(400).json({
+            success: false,
+            error: 'days must be an integer between 1 and 365',
+          });
+        }
+        const dryRun = req.body?.dryRun === true;
+        const result = await runCoverageBackfill({ days: daysNum, dryRun });
+        return void res.json({ success: true, days: daysNum, dryRun, ...result });
+      } catch (error: any) {
+        logger.error('coverage reconstruct-history failed', error);
+        return void res.status(500).json({
+          success: false,
+          error: error?.message || 'Failed to reconstruct sparkline history',
+        });
+      }
     },
   );
 }
