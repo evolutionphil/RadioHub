@@ -805,6 +805,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const station = await Station.findById(stationId);
       if (!station) return res.status(404).json({ error: 'Station not found' });
       
+      let blacklisted = false;
       try {
         await BlacklistedStation.create({
           stationUuid: station.stationuuid,
@@ -814,6 +815,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           deletedBy: 'admin',
           radioBrowserId: station.changeUuid,
         });
+        blacklisted = true;
       } catch (blacklistError) {}
       
       if (station.slug) performanceCache.invalidateStationCache(station.slug);
@@ -824,7 +826,33 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       await CacheManager.clearByPattern('stations');
       await CacheManager.clearByPattern('genres');
       await CacheManager.clearByPattern('community_favorites');
-      
+
+      if (blacklisted) {
+        const actorEmail =
+          (req.user as { email?: string } | undefined)?.email ?? undefined;
+        void import('../services/admin-audit-email')
+          .then(({ emailBlacklistChangesCsv }) =>
+            emailBlacklistChangesCsv({
+              action: 'add',
+              source: 'single deletion',
+              rows: [
+                {
+                  name: station.name ?? '',
+                  url: station.url ?? '',
+                  stationUuid: station.stationuuid,
+                  country: (station as any).country ?? '',
+                  countryCode: (station as any).countrycode ?? '',
+                  reason: 'Admin deletion',
+                },
+              ],
+              actorEmail,
+            }),
+          )
+          .catch((err) => {
+            logger.error({ err }, 'Failed to send blacklist audit email');
+          });
+      }
+
       res.json({ success: true, message: 'Station deleted successfully and added to blacklist' });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to delete station' });
@@ -848,6 +876,15 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       let deletedCount = 0;
       let blacklistedCount = 0;
       const errors: string[] = [];
+      const SAMPLE_CAP = 500;
+      const blacklistSamples: Array<{
+        name: string;
+        url: string;
+        stationUuid?: string;
+        country?: string;
+        countryCode?: string;
+        reason?: string;
+      }> = [];
 
       for (const stationId of stationIds) {
         try {
@@ -867,6 +904,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               radioBrowserId: station.changeUuid,
             });
             blacklistedCount++;
+            if (blacklistSamples.length < SAMPLE_CAP) {
+              blacklistSamples.push({
+                name: station.name ?? '',
+                url: station.url ?? '',
+                stationUuid: station.stationuuid,
+                country: (station as any).country ?? '',
+                countryCode: (station as any).countrycode ?? '',
+                reason: 'Admin bulk deletion from duplicates management',
+              });
+            }
           } catch (blacklistError: any) {
             if (!blacklistError.message.includes('duplicate')) {
               logger.warn(`Failed to blacklist station ${station.name}:`, blacklistError.message);
@@ -894,6 +941,23 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         triggerGenreStationCountsRecompute('bulk-delete-stations');
       }
 
+      if (blacklistSamples.length > 0) {
+        const actorEmail =
+          (req.user as { email?: string } | undefined)?.email ?? undefined;
+        void import('../services/admin-audit-email')
+          .then(({ emailBlacklistChangesCsv }) =>
+            emailBlacklistChangesCsv({
+              action: 'add',
+              source: `bulk deletion (${blacklistedCount} station${blacklistedCount === 1 ? '' : 's'})`,
+              rows: blacklistSamples,
+              actorEmail,
+            }),
+          )
+          .catch((err) => {
+            logger.error({ err }, 'Failed to send blacklist audit email');
+          });
+      }
+
       res.json({
         success: true,
         deletedCount,
@@ -916,10 +980,19 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       let deletedCount = 0;
       let blacklistedCount = 0;
       const errors: string[] = [];
+      const SAMPLE_CAP = 500;
+      const blacklistSamples: Array<{
+        name: string;
+        url: string;
+        stationUuid?: string;
+        country?: string;
+        countryCode?: string;
+        reason?: string;
+      }> = [];
 
       // Stream matching stations via cursor — bounded memory regardless of match count
       const cursor = Station.find(filter)
-        .select('_id name url stationuuid slug')
+        .select('_id name url stationuuid slug country countrycode')
         .lean()
         .cursor({ batchSize: 500 });
 
@@ -934,6 +1007,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               deletedBy: 'admin',
             });
             blacklistedCount++;
+            if (blacklistSamples.length < SAMPLE_CAP) {
+              blacklistSamples.push({
+                name: station.name ?? '',
+                url: station.url ?? '',
+                stationUuid: station.stationuuid,
+                country: station.country ?? '',
+                countryCode: station.countrycode ?? '',
+                reason: 'Station name is a URL - auto-cleanup',
+              });
+            }
           } catch (blacklistError: any) {}
 
           if (station.slug) performanceCache.invalidateStationCache(station.slug);
@@ -951,7 +1034,24 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       
       await CacheManager.clearByPattern('popular_stations');
       await CacheManager.clearByPattern('stations');
-      
+
+      if (blacklistSamples.length > 0) {
+        const actorEmail =
+          (req.user as { email?: string } | undefined)?.email ?? undefined;
+        void import('../services/admin-audit-email')
+          .then(({ emailBlacklistChangesCsv }) =>
+            emailBlacklistChangesCsv({
+              action: 'add',
+              source: `URL-name cleanup (${blacklistedCount} station${blacklistedCount === 1 ? '' : 's'})`,
+              rows: blacklistSamples,
+              actorEmail,
+            }),
+          )
+          .catch((err) => {
+            logger.error({ err }, 'Failed to send blacklist audit email');
+          });
+      }
+
       res.json({
         success: true,
         deletedCount,
@@ -998,6 +1098,31 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   });
 
   app.post("/api/admin/blacklisted-stations/:blacklistId/restore", requireAdmin, async (req, res) => {
+    const sendUnblacklistEmail = (
+      bl: { name?: string; url?: string; stationUuid?: string; reason?: string },
+    ) => {
+      const actorEmail =
+        (req.user as { email?: string } | undefined)?.email ?? undefined;
+      void import('../services/admin-audit-email')
+        .then(({ emailBlacklistChangesCsv }) =>
+          emailBlacklistChangesCsv({
+            action: 'remove',
+            source: 'restore from blacklist',
+            rows: [
+              {
+                name: bl.name ?? '',
+                url: bl.url ?? '',
+                stationUuid: bl.stationUuid,
+                reason: bl.reason ?? '',
+              },
+            ],
+            actorEmail,
+          }),
+        )
+        .catch((err) => {
+          logger.error({ err }, 'Failed to send blacklist audit email');
+        });
+    };
     try {
       const { blacklistId } = req.params;
       const blacklistedStation = await BlacklistedStation.findById(blacklistId);
@@ -1048,6 +1173,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               await BlacklistedStation.findByIdAndDelete(blacklistId);
               await CacheManager.clearByPattern('stations');
               await CacheManager.clearByPattern('popular_stations');
+              sendUnblacklistEmail({
+                name: blacklistedStation.name,
+                url: blacklistedStation.url,
+                stationUuid: blacklistedStation.stationUuid,
+                reason: blacklistedStation.reason,
+              });
               return res.json({ success: true, message: 'Station restored successfully with fresh data', station: restoredStation });
             }
           }
@@ -1064,6 +1195,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       await BlacklistedStation.findByIdAndDelete(blacklistId);
       await CacheManager.clearByPattern('stations');
       await CacheManager.clearByPattern('popular_stations');
+      sendUnblacklistEmail({
+        name: blacklistedStation.name,
+        url: blacklistedStation.url,
+        stationUuid: blacklistedStation.stationUuid,
+        reason: blacklistedStation.reason,
+      });
       res.json({ success: true, message: 'Station restored successfully with cached data', station: restoredStation });
     } catch (error) {
       res.status(500).json({ error: 'Failed to restore station' });

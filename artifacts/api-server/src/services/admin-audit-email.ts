@@ -304,6 +304,65 @@ export async function emailFlushStationsCsv(params: {
  * breakdown plus a sampled list of removed stations (capped to keep the email
  * size sane).
  */
+export interface BlacklistChangeRow {
+  name: string;
+  url: string;
+  stationUuid?: string;
+  country?: string;
+  countryCode?: string;
+  reason?: string;
+}
+
+export function buildBlacklistChangesCsv(
+  action: 'add' | 'remove',
+  rows: BlacklistChangeRow[],
+): string {
+  const header = ['Action', 'Name', 'URL', 'Station UUID', 'Country', 'Country Code', 'Reason'];
+  const body: string[][] = rows.map((r) => [
+    action === 'add' ? 'blacklisted' : 'unblacklisted',
+    r.name ?? '',
+    r.url ?? '',
+    r.stationUuid ?? '',
+    r.country ?? '',
+    r.countryCode ?? '',
+    r.reason ?? '',
+  ]);
+  return rowsToCsv(header, body);
+}
+
+/**
+ * Email a CSV record of stations that were just added to or removed from the
+ * blacklist by an admin action (single deletion, bulk deletion, URL-name
+ * cleanup, or restore-from-blacklist). Fire-and-forget; respects the
+ * ADMIN_AUDIT_EMAIL_RECIPIENTS opt-in.
+ */
+export async function emailBlacklistChangesCsv(params: {
+  action: 'add' | 'remove';
+  /** Short label describing the source action, e.g. "single deletion",
+   * "bulk deletion", "URL-name cleanup", "restore". Used in the subject. */
+  source: string;
+  rows: BlacklistChangeRow[];
+  actorEmail?: string;
+}): Promise<void> {
+  const { action, source, rows, actorEmail } = params;
+  if (rows.length === 0) return;
+
+  const verb = action === 'add' ? 'Blacklisted' : 'Unblacklisted';
+  const noun = action === 'add' ? 'blacklisted' : 'unblacklisted';
+  const filenamePrefix = action === 'add' ? 'stations-blacklisted' : 'stations-unblacklisted';
+
+  await sendAdminAuditEmail({
+    filenamePrefix,
+    subjectSummary: `${verb} ${rows.length} station${rows.length === 1 ? '' : 's'} (${source})`,
+    title: `${verb} stations`,
+    summary:
+      `${rows.length} station${rows.length === 1 ? ' was' : 's were'} ${noun} via ${source}.`,
+    csv: buildBlacklistChangesCsv(action, rows),
+    recordCount: rows.length,
+    actorEmail,
+  });
+}
+
 export async function emailRemovedStreamsCsv(params: {
   /** Short slug used in the CSV filename, e.g. "playlist-streams-removed" */
   filenamePrefix: string;
