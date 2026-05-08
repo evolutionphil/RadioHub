@@ -58,7 +58,7 @@ export default function AdminGenreWhitelist() {
     },
     onSuccess: () => {
       setNewSlug("");
-      toast({ title: "Slug added" });
+      toast({ title: "Slug added", description: "Sitemap rebuild queued — search engines will be pinged shortly." });
       invalidate();
     },
     onError: (err: Error) => {
@@ -72,7 +72,7 @@ export default function AdminGenreWhitelist() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Slug removed" });
+      toast({ title: "Slug removed", description: "Sitemap rebuild queued — search engines will be pinged shortly." });
       invalidate();
     },
     onError: (err: Error) => {
@@ -90,7 +90,7 @@ export default function AdminGenreWhitelist() {
     onSuccess: () => {
       setNewAliasSource("");
       setNewAliasCanonical("");
-      toast({ title: "Alias added" });
+      toast({ title: "Alias added", description: "Sitemap rebuild queued — search engines will be pinged shortly." });
       invalidate();
     },
     onError: (err: Error) => {
@@ -104,7 +104,7 @@ export default function AdminGenreWhitelist() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Alias removed" });
+      toast({ title: "Alias removed", description: "Sitemap rebuild queued — search engines will be pinged shortly." });
       invalidate();
     },
     onError: (err: Error) => {
@@ -162,8 +162,8 @@ export default function AdminGenreWhitelist() {
         <p className="text-sm text-gray-500 mt-1">
           Controls which <code>/genres/:slug</code> URLs MegaRadio publishes to search engines.
           Slugs not on the whitelist (and without an alias) are served as <code>noindex</code> and
-          dropped from sitemaps. Changes take effect immediately for SSR; sitemaps update on the
-          next manifest rebuild.
+          dropped from sitemaps. Changes take effect immediately for SSR; each mutation also
+          queues a sitemap rebuild and pings IndexNow so search engines pick it up within minutes.
         </p>
         <div className="flex gap-2 mt-3 text-xs text-gray-600 flex-wrap">
           <Badge variant="outline">Seed slugs: {data.seed.slugCount}</Badge>

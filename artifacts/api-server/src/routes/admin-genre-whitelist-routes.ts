@@ -8,6 +8,90 @@ import {
   getLastRefreshAt,
 } from '../seo/genre-whitelist-store';
 import { logger } from '../utils/logger';
+import { IndexNowService } from '../services/indexnow';
+import { buildAllSitemapManifests } from '../seo/sitemap-manifest-builder';
+import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
+import { buildLocalizedUrl } from '../seo/url-helpers';
+import { URL_TRANSLATIONS } from '../shared/url-translations';
+import { performanceCache } from '../performance-cache';
+
+const PRIMARY_HOST = 'themegaradio.com';
+
+// Build the merged forward translation map (database overrides + static)
+// the same way the sitemap routes do. Keeps the per-language genre URLs
+// we ping IndexNow with in lockstep with what's actually published in
+// the sitemap.
+async function loadForwardTranslationMap(): Promise<Map<string, string>> {
+  const forwardMap = new Map<string, string>();
+  try {
+    const dbTranslations = await performanceCache.getUrlTranslations();
+    for (const [k, v] of dbTranslations) forwardMap.set(k, v);
+  } catch (err: any) {
+    // Non-fatal — we'll fall back to static translations only.
+    logger.error('genre-whitelist: failed to load db url translations:', err?.message ?? err);
+  }
+  for (const [lang, translations] of Object.entries(URL_TRANSLATIONS)) {
+    for (const [english, translated] of Object.entries(translations)) {
+      const key = `${lang}:${english}`;
+      if (!forwardMap.has(key)) forwardMap.set(key, translated);
+    }
+  }
+  return forwardMap;
+}
+
+// Fire-and-forget: force-rebuild the sitemap manifests so the affected
+// genre URLs appear/disappear from the published sitemap right away,
+// then ping IndexNow with both the sitemap index and the affected
+// /genres/<slug> URLs across every qualified language (sitemap publishes
+// one localized URL per language, e.g. `/de/genre/<slug>`,
+// `/it/generi/<slug>`). Without this the change would only become
+// visible to Google/Bing on the next 6h manifest cycle.
+//
+// We deliberately do NOT await this — admins shouldn't wait on an
+// outbound HTTP call to api.indexnow.org or a full manifest scan
+// before their UI returns. Errors are logged and swallowed.
+function triggerSearchEnginePush(affectedSlugs: string[]): void {
+  void (async () => {
+    try {
+      await buildAllSitemapManifests({ force: true });
+    } catch (err: any) {
+      logger.error('genre-whitelist: sitemap rebuild failed:', err?.message ?? err);
+    }
+    try {
+      await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
+    } catch (err: any) {
+      logger.error('genre-whitelist: IndexNow sitemap ping failed:', err?.message ?? err);
+    }
+    if (affectedSlugs.length === 0) return;
+
+    // Expand per qualified language using the same translation map the
+    // sitemap uses, so we ping the canonical localized URL (not a
+    // redirect source). Fall back to a single `/en/...` ping if we
+    // can't load qualified languages — better than nothing.
+    try {
+      const languages = await getCachedQualifiedLanguages();
+      const translations = await loadForwardTranslationMap();
+      const urls: string[] = [];
+      for (const slug of affectedSlugs) {
+        for (const lang of languages) {
+          const path = buildLocalizedUrl(`/genres/${slug}`, lang, undefined, translations);
+          urls.push(`https://${PRIMARY_HOST}${path}`);
+        }
+      }
+      if (urls.length > 0) {
+        await IndexNowService.submitToIndexNow(urls, 'manual');
+      }
+    } catch (err: any) {
+      logger.error('genre-whitelist: IndexNow genre URL ping failed:', err?.message ?? err);
+      // Best-effort fallback: ping the English canonical only.
+      try {
+        await IndexNowService.submitGenreUrls(affectedSlugs, undefined, 'manual');
+      } catch (fallbackErr: any) {
+        logger.error('genre-whitelist: IndexNow fallback ping failed:', fallbackErr?.message ?? fallbackErr);
+      }
+    }
+  })();
+}
 
 // Admin endpoints backing the "Genre whitelist" dashboard page (task #114).
 // Each mutation:
@@ -129,7 +213,8 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         }
 
         await refreshGenreWhitelistFromDb();
-        return res.json({ ok: true, slug });
+        triggerSearchEnginePush([slug]);
+        return res.json({ ok: true, slug, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre whitelist slug:', error);
         return res.status(500).json({ error: 'Failed to add slug' });
@@ -180,7 +265,8 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         }
 
         await refreshGenreWhitelistFromDb();
-        return res.json({ ok: true, slug });
+        triggerSearchEnginePush([slug]);
+        return res.json({ ok: true, slug, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error removing genre whitelist slug:', error);
         return res.status(500).json({ error: 'Failed to remove slug' });
@@ -243,7 +329,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         );
 
         await refreshGenreWhitelistFromDb();
-        return res.json({ ok: true, source, canonical });
+        // Push both the alias source (now 301s to canonical) and the
+        // canonical (which may have just appeared) so search engines
+        // pick up the new redirect target without waiting 6h.
+        triggerSearchEnginePush([source, canonical]);
+        return res.json({ ok: true, source, canonical, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre alias:', error);
         return res.status(500).json({ error: 'Failed to add alias' });
@@ -287,7 +377,8 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         }
 
         await refreshGenreWhitelistFromDb();
-        return res.json({ ok: true, source });
+        triggerSearchEnginePush([source]);
+        return res.json({ ok: true, source, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error removing genre alias:', error);
         return res.status(500).json({ error: 'Failed to remove alias' });
