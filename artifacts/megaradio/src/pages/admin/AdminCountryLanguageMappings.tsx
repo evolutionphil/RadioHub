@@ -4,6 +4,7 @@ import { queryClient, apiRequest } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
+import { ResetViewButton } from '@/components/admin/ResetViewButton';
 import { useAuth } from '@/hooks/useAuth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -297,14 +298,6 @@ export default function AdminCountryLanguageMappings() {
       setRememberDiscardChoice(false);
       setConfirmDiscardPending(true);
     }
-  };
-
-  const handleResetView = () => {
-    resetViewPrefs();
-    toast({
-      title: 'View reset',
-      description: 'Search, sort, and toggles restored to defaults on this device and your account.',
-    });
   };
 
   // Fetch available countries
@@ -1363,19 +1356,12 @@ export default function AdminCountryLanguageMappings() {
                 className="pl-10"
               />
             </div>
-            {hasNonDefaultViewPrefs && (
-              <Button
-                data-testid="button-reset-view"
-                variant="ghost"
-                size="sm"
-                onClick={handleResetView}
-                className="whitespace-nowrap"
-                title="Clear search, sort, and toggles on this device and your account"
-              >
-                <X className="mr-2 h-4 w-4" />
-                Reset view
-              </Button>
-            )}
+            <ResetViewButton
+              hasNonDefaultPrefs={hasNonDefaultViewPrefs}
+              reset={resetViewPrefs}
+              toastDescription="Search, sort, and toggles restored to defaults on this device and your account."
+              title="Clear search, sort, and toggles on this device and your account"
+            />
             <div className="flex items-center gap-2">
               <Checkbox
                 id="show-overrides-only"
