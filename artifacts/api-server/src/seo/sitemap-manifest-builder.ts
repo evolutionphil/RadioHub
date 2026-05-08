@@ -30,6 +30,11 @@ import { logger } from '../utils/logger';
 import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from './qualified-languages';
 import { getIndexableLanguagesForStation } from './junk-station-rules';
 import { isWhitelistedGenreSlug, MIN_STATIONS_FOR_GENRE_INDEX } from './genre-whitelist';
+import { RESERVED_GENRE_SLUGS } from './reserved-genre-slugs';
+
+// Re-export so other modules importing from the manifest builder still
+// get a single source of truth (task #148).
+export { RESERVED_GENRE_SLUGS };
 
 const STATIONS_PER_CHUNK = 1000;
 const MANIFEST_TTL_SUPERSEDED_MS = 24 * 60 * 60 * 1000;     // 24h

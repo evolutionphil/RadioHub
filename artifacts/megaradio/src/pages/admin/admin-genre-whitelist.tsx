@@ -28,6 +28,7 @@ interface WhitelistResponse {
   slugStationCounts?: Record<string, number>;
   minStationsThreshold?: number;
   aliases: AliasEntry[];
+  reservedSlugs?: string[];
   seed: { slugCount: number; aliasCount: number };
   overrides: OverrideEntry[];
   lastRefreshAt: string | null;
@@ -66,11 +67,23 @@ export default function AdminGenreWhitelist() {
       const res = await apiRequest('POST', '/api/admin/genre-whitelist/slugs', {
         body: { slug },
       });
-      return res.json();
+      return res.json() as Promise<{ ok: boolean; slug: string; stationCount: number; warning?: string }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setNewSlug("");
-      toast({ title: "Slug added", description: "Sitemap rebuild queued — search engines will be pinged shortly." });
+      // Task #148: surface the server's "no matching stations" warning
+      // instead of silently accepting a slug that won't render anything.
+      if (data?.warning) {
+        toast({
+          title: "Slug added (with warning)",
+          description: `${data.warning} Sitemap rebuild queued — search engines will be pinged shortly.`,
+        });
+      } else {
+        toast({
+          title: "Slug added",
+          description: `${data?.stationCount ?? 0} matching stations. Sitemap rebuild queued — search engines will be pinged shortly.`,
+        });
+      }
       invalidate();
     },
     onError: (err: Error) => {
@@ -123,6 +136,13 @@ export default function AdminGenreWhitelist() {
       toast({ title: "Failed to remove alias", description: err.message, variant: "destructive" });
     },
   });
+
+  // Task #148: client-side mirror of the server's reserved set so we can
+  // block obviously-bad input before a round trip.
+  const reservedSet = useMemo(
+    () => new Set((data?.reservedSlugs ?? []).map((s) => s.toLowerCase())),
+    [data?.reservedSlugs],
+  );
 
   const overrideBySlug = useMemo(() => {
     const map = new Map<string, OverrideEntry>();
@@ -217,7 +237,16 @@ export default function AdminGenreWhitelist() {
             onSubmit={(e) => {
               e.preventDefault();
               const slug = newSlug.trim().toLowerCase();
-              if (slug) addSlug.mutate(slug);
+              if (!slug) return;
+              if (reservedSet.has(slug)) {
+                toast({
+                  title: "Reserved slug",
+                  description: `"${slug}" is a reserved system path and can't be used as a genre slug.`,
+                  variant: "destructive",
+                });
+                return;
+              }
+              addSlug.mutate(slug);
             }}
           >
             <Input
@@ -230,6 +259,14 @@ export default function AdminGenreWhitelist() {
               <Plus className="w-4 h-4 mr-1" /> Add
             </Button>
           </form>
+          {newSlug.trim() && reservedSet.has(newSlug.trim().toLowerCase()) && (
+            <Alert variant="destructive">
+              <AlertCircle className="w-4 h-4" />
+              <AlertDescription>
+                "{newSlug.trim().toLowerCase()}" is a reserved system path — pick a different slug.
+              </AlertDescription>
+            </Alert>
+          )}
 
           <div className="flex gap-2 flex-wrap">
             <div className="relative flex-1 min-w-[200px]">
@@ -350,7 +387,26 @@ export default function AdminGenreWhitelist() {
               e.preventDefault();
               const source = newAliasSource.trim().toLowerCase();
               const canonical = newAliasCanonical.trim().toLowerCase();
-              if (source && canonical) addAlias.mutate({ source, canonical });
+              if (!source || !canonical) return;
+              // Task #148: mirror server-side reserved + canonical-must-
+              // exist checks client-side so admins get instant feedback.
+              if (reservedSet.has(source) || reservedSet.has(canonical)) {
+                toast({
+                  title: "Reserved slug",
+                  description: `Reserved system path can't be used in an alias.`,
+                  variant: "destructive",
+                });
+                return;
+              }
+              if (!data.slugs.includes(canonical)) {
+                toast({
+                  title: "Unknown canonical",
+                  description: `"${canonical}" isn't on the whitelist — add it first.`,
+                  variant: "destructive",
+                });
+                return;
+              }
+              addAlias.mutate({ source, canonical });
             }}
           >
             <Input
@@ -361,13 +417,21 @@ export default function AdminGenreWhitelist() {
               data-testid="input-alias-source"
             />
             <span className="self-center text-gray-400">→</span>
+            {/* Task #148: autocomplete the canonical input from the merged
+                whitelist so admins don't have to remember exact spelling. */}
             <Input
               className="flex-1 min-w-[180px]"
               placeholder="canonical-slug"
               value={newAliasCanonical}
               onChange={(e) => setNewAliasCanonical(e.target.value)}
+              list="canonical-slug-options"
               data-testid="input-alias-canonical"
             />
+            <datalist id="canonical-slug-options">
+              {data.slugs.map((s) => (
+                <option key={s} value={s} />
+              ))}
+            </datalist>
             <Button type="submit" disabled={addAlias.isPending} data-testid="button-add-alias">
               <Plus className="w-4 h-4 mr-1" /> Add
             </Button>

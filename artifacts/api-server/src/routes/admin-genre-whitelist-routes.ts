@@ -11,6 +11,7 @@ import {
   refreshGenreWhitelistFromDb,
   getLastRefreshAt,
 } from '../seo/genre-whitelist-store';
+import { RESERVED_GENRE_SLUGS, isReservedGenreSlug } from '../seo/reserved-genre-slugs';
 import { logger } from '../utils/logger';
 import { IndexNowService } from '../services/indexnow';
 import { buildAllSitemapManifests } from '../seo/sitemap-manifest-builder';
@@ -176,6 +177,9 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           aliases: Array.from(aliases.entries())
             .map(([source, canonical]) => ({ source, canonical }))
             .sort((a, b) => a.source.localeCompare(b.source)),
+          // Mirror the server-side reserved set to the admin UI so it can
+          // block these client-side instead of round-tripping (task #148).
+          reservedSlugs: Array.from(RESERVED_GENRE_SLUGS).sort(),
           seed: {
             slugCount: GENRE_WHITELIST.size,
             aliasCount: GENRE_ALIASES.size,
@@ -213,11 +217,29 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
             .status(400)
             .json({ error: 'Invalid slug — must be lowercase letters/digits with single hyphens' });
         }
+        // Task #148: reject reserved/system slugs (e.g. `stations`,
+        // `about`) — those would never produce a useful /genres/:slug page
+        // and could conflict with existing top-level routes.
+        if (isReservedGenreSlug(slug)) {
+          return res.status(400).json({
+            error: `"${slug}" is a reserved system path and can't be used as a genre slug`,
+          });
+        }
         const notes = String((req.body ?? {}).notes ?? '').slice(0, MAX_NOTES_LEN);
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
           return res.status(401).json({ error: 'Admin identity unavailable' });
         }
+
+        // Task #148: warn (don't block) if no Genre row matches this slug —
+        // the page will exist but render empty until station tags catch up.
+        const genreDoc = await Genre.findOne({ slug })
+          .select('stationCount')
+          .lean<{ stationCount?: number } | null>();
+        const stationCount = genreDoc?.stationCount ?? 0;
+        const warning = stationCount === 0
+          ? `No stations currently match "${slug}" — the genre page will be empty until station tags are imported.`
+          : undefined;
 
         // Wipe any prior 'slug-remove' for this slug — adding overrides
         // removing.
@@ -238,7 +260,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
 
         await refreshGenreWhitelistFromDb();
         triggerSearchEnginePush([slug]);
-        return res.json({ ok: true, slug, rebuildQueued: true });
+        return res.json({ ok: true, slug, stationCount, warning, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre whitelist slug:', error);
         return res.status(500).json({ error: 'Failed to add slug' });
@@ -315,6 +337,18 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         }
         if (source === canonical) {
           return res.status(400).json({ error: 'Source cannot equal canonical' });
+        }
+        // Task #148: reserved system slugs can't appear on either side of
+        // an alias for the same reasons they can't be added directly.
+        if (isReservedGenreSlug(source)) {
+          return res.status(400).json({
+            error: `"${source}" is a reserved system path and can't be used as an alias source`,
+          });
+        }
+        if (isReservedGenreSlug(canonical)) {
+          return res.status(400).json({
+            error: `"${canonical}" is a reserved system path and can't be used as a canonical slug`,
+          });
         }
 
         // Make sure the merged snapshot is current before we validate
