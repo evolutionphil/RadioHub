@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
+import { toast } from '@/hooks/use-toast';
 
 // Reusable cross-device admin view-prefs sync.
 //
@@ -227,6 +228,10 @@ export function useAdminViewPrefs<T>(
         if (currentStr === incomingStr) return;
         latestRef.current = sanitized;
         setPrefsState(sanitized);
+        toast({
+          title: 'Filters updated from another tab',
+          duration: 3000,
+        });
       } catch {
         // Ignore malformed payloads from other tabs.
       }
@@ -265,6 +270,10 @@ export function useAdminViewPrefs<T>(
         latestRef.current = sanitized;
         setPrefsState(sanitized);
         writeLocal(key, sanitized);
+        toast({
+          title: 'Filters updated from another tab',
+          duration: 3000,
+        });
       } catch {
         // Best-effort — leave existing state untouched.
       }
