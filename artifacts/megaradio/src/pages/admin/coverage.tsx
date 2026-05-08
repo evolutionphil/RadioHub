@@ -1434,14 +1434,18 @@ function CoverageJobProgressRow({
           <div className="flex items-center gap-1 ml-auto">
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
               className="h-6 px-2 text-xs"
               disabled={resumePending}
               onClick={onResume}
               data-testid={`button-resume-coverage-${job.countryCode}`}
             >
-              <Undo2 className="w-3 h-3 mr-1" />
-              {resumePending ? 'Resuming…' : 'Resume'}
+              {resumePending ? (
+                <Loader2 className="w-3 h-3 animate-spin" />
+              ) : (
+                <RefreshCw className="w-3 h-3" />
+              )}
+              <span className="ml-1">Resume</span>
             </Button>
             <Button
               size="sm"
