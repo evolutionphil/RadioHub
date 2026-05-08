@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -159,8 +159,16 @@ export default function SeoMaintenancePage() {
     refetchInterval: (q) => (q.state.data?.status?.isRunning ? 3000 : false),
   });
 
+  const initialDeepLinkRunId =
+    typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("runId")
+      : null;
   const [runsTrigger, setRunsTrigger] = useState<RunsTriggerFilter>("");
-  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(
+    initialDeepLinkRunId,
+  );
+  const runRowRefs = useRef<Record<string, HTMLTableRowElement | null>>({});
+  const deepLinkScrolledRef = useRef(false);
   const runsQuery = useQuery<ScheduledBackfillRunsResponse>({
     queryKey: [
       "/api/admin/maintenance/scheduled-backfill/runs",
@@ -224,6 +232,20 @@ export default function SeoMaintenancePage() {
   const scheduled = scheduledStatusQuery.data;
   const scheduledRunning = scheduled?.status?.isRunning ?? false;
   const lastRun = scheduled?.lastRun ?? null;
+
+  useEffect(() => {
+    if (!initialDeepLinkRunId || deepLinkScrolledRef.current) return;
+    const runs = runsQuery.data?.runs;
+    if (!runs) return;
+    const match = runs.find((r) => r._id === initialDeepLinkRunId);
+    if (!match) return;
+    setExpandedRunId(initialDeepLinkRunId);
+    const row = runRowRefs.current[initialDeepLinkRunId];
+    if (row) {
+      row.scrollIntoView({ behavior: "smooth", block: "center" });
+      deepLinkScrolledRef.current = true;
+    }
+  }, [initialDeepLinkRunId, runsQuery.data]);
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -484,10 +506,20 @@ export default function SeoMaintenancePage() {
                   {runsQuery.data.runs.map((run) => {
                     const totals = summarizeRunTotals(run);
                     const isExpanded = expandedRunId === run._id;
+                    const isDeepLinked =
+                      initialDeepLinkRunId === run._id;
                     return (
                       <Fragment key={run._id}>
                         <tr
-                          className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
+                          id={`backfill-run-${run._id}`}
+                          ref={(el) => {
+                            runRowRefs.current[run._id] = el;
+                          }}
+                          className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${
+                            isDeepLinked
+                              ? "ring-2 ring-amber-400 bg-amber-50"
+                              : ""
+                          }`}
                           onClick={() =>
                             setExpandedRunId(isExpanded ? null : run._id)
                           }

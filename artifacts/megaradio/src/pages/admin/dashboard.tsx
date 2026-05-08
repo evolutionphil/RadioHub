@@ -506,11 +506,26 @@ export default function AdminDashboard() {
               Sunday 04:00 (Europe/Berlin) cross-country logo + tag sweep
             </CardDescription>
           </div>
-          <Link href="/admin/seo-maintenance">
-            <Button variant="outline" size="sm" data-testid="button-open-seo-maintenance">
-              Manage
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            {backfillStatus?.lastRun?._id && (
+              <Link
+                href={`/admin/seo-maintenance?runId=${encodeURIComponent(backfillStatus.lastRun._id)}#backfill-run-${backfillStatus.lastRun._id}`}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  data-testid="button-view-backfill-run-details"
+                >
+                  View details
+                </Button>
+              </Link>
+            )}
+            <Link href="/admin/seo-maintenance">
+              <Button variant="outline" size="sm" data-testid="button-open-seo-maintenance">
+                Manage
+              </Button>
+            </Link>
+          </div>
         </CardHeader>
         <CardContent>
           {isLoadingBackfill ? (
@@ -590,6 +605,21 @@ export default function AdminDashboard() {
                     data-testid="text-backfill-error"
                   >
                     Error: {run.errorMessage}
+                  </div>
+                )}
+                {isFailed && (
+                  <div>
+                    <Link
+                      href={`/admin/seo-maintenance?runId=${encodeURIComponent(run._id)}#backfill-run-${run._id}`}
+                    >
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        data-testid="button-view-failed-backfill-run"
+                      >
+                        View failed run details →
+                      </Button>
+                    </Link>
                   </div>
                 )}
                 {isFailed && (run.logos.length > 0 || run.tags.length > 0) && (
