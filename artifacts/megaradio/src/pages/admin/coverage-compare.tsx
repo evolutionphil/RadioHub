@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 import { Link } from 'wouter';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   CartesianGrid,
   Legend,
@@ -38,11 +38,16 @@ import {
 import {
   ArrowLeft,
   ChevronDown,
+  Eye,
+  EyeOff,
   GripVertical,
   Loader2,
   Star,
+  Users,
   X,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -52,6 +57,7 @@ import {
   resolveInitialCoverageRange,
   writeRememberedCoverageRange,
 } from '@/lib/admin-coverage-range';
+import { apiRequest } from '@/lib/queryClient';
 
 interface TrendPoint {
   date: string;
@@ -118,45 +124,83 @@ interface ComparisonPreset {
 
 interface ComparisonPresetsPrefs {
   presets: ComparisonPreset[];
+  // Shared (team) presets the signed-in admin has chosen to hide locally
+  // (Task #306). Shared presets live server-side; this list lets each
+  // admin remove ones they don't want cluttering their own quick-pick
+  // bar without affecting the rest of the team.
+  hiddenSharedIds?: string[];
 }
 
 const PRESETS_PREFS_KEY = 'coverage-compare:presets:v1';
-const DEFAULT_PRESETS_PREFS: ComparisonPresetsPrefs = { presets: [] };
+const DEFAULT_PRESETS_PREFS: ComparisonPresetsPrefs = {
+  presets: [],
+  hiddenSharedIds: [],
+};
 const MAX_PRESETS = 24;
 const MAX_PRESET_NAME_LEN = 60;
 
 function sanitizePresetsPrefs(raw: unknown): ComparisonPresetsPrefs {
   if (!raw || typeof raw !== 'object') return DEFAULT_PRESETS_PREFS;
   const list = (raw as { presets?: unknown }).presets;
-  if (!Array.isArray(list)) return DEFAULT_PRESETS_PREFS;
-  const seenIds = new Set<string>();
   const cleaned: ComparisonPreset[] = [];
-  for (const item of list) {
-    if (!item || typeof item !== 'object') continue;
-    const obj = item as Record<string, unknown>;
-    const id = typeof obj.id === 'string' ? obj.id : '';
-    const name = typeof obj.name === 'string' ? obj.name.trim() : '';
-    const rawCountries = obj.countries;
-    if (!id || !name || !Array.isArray(rawCountries)) continue;
-    if (seenIds.has(id)) continue;
-    const countries = Array.from(
-      new Set(
-        rawCountries
-          .filter((c): c is string => typeof c === 'string')
-          .map((c) => c.trim().toUpperCase())
-          .filter((c) => /^[A-Z]{2}$/.test(c)),
-      ),
-    ).slice(0, MAX_SELECTED);
-    if (countries.length === 0) continue;
-    seenIds.add(id);
-    cleaned.push({
-      id,
-      name: name.slice(0, MAX_PRESET_NAME_LEN),
-      countries,
-    });
-    if (cleaned.length >= MAX_PRESETS) break;
+  if (Array.isArray(list)) {
+    const seenIds = new Set<string>();
+    for (const item of list) {
+      if (!item || typeof item !== 'object') continue;
+      const obj = item as Record<string, unknown>;
+      const id = typeof obj.id === 'string' ? obj.id : '';
+      const name = typeof obj.name === 'string' ? obj.name.trim() : '';
+      const rawCountries = obj.countries;
+      if (!id || !name || !Array.isArray(rawCountries)) continue;
+      if (seenIds.has(id)) continue;
+      const countries = Array.from(
+        new Set(
+          rawCountries
+            .filter((c): c is string => typeof c === 'string')
+            .map((c) => c.trim().toUpperCase())
+            .filter((c) => /^[A-Z]{2}$/.test(c)),
+        ),
+      ).slice(0, MAX_SELECTED);
+      if (countries.length === 0) continue;
+      seenIds.add(id);
+      cleaned.push({
+        id,
+        name: name.slice(0, MAX_PRESET_NAME_LEN),
+        countries,
+      });
+      if (cleaned.length >= MAX_PRESETS) break;
+    }
   }
-  return { presets: cleaned };
+  const hiddenRaw = (raw as { hiddenSharedIds?: unknown }).hiddenSharedIds;
+  const hiddenSharedIds = Array.isArray(hiddenRaw)
+    ? Array.from(
+        new Set(
+          hiddenRaw.filter((x): x is string => typeof x === 'string' && x.length > 0),
+        ),
+      ).slice(0, 200)
+    : [];
+  return { presets: cleaned, hiddenSharedIds };
+}
+
+// =====================================================================
+// Shared (team) presets — Task #306
+// Backed by the SharedComparisonPreset Mongo collection via
+// /api/admin/shared-presets. Any admin can publish one; only the owner
+// (or a SUPER_ADMIN_USERNAMES-listed admin) can edit/delete it.
+// =====================================================================
+interface SharedPreset {
+  id: string;
+  name: string;
+  countries: string[];
+  ownerUsername: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+interface SharedPresetsResponse {
+  callerUsername: string | null;
+  callerIsSuperAdmin: boolean;
+  presets: SharedPreset[];
 }
 
 function newPresetId(): string {
@@ -223,7 +267,9 @@ export default function AdminCoverageCompare() {
   const [pickerSearch, setPickerSearch] = useState('');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveDialogName, setSaveDialogName] = useState('');
+  const [saveDialogShare, setSaveDialogShare] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { prefs: presetPrefs, setPrefs: setPresetPrefs } =
     useAdminViewPrefs<ComparisonPresetsPrefs>(
@@ -232,6 +278,51 @@ export default function AdminCoverageCompare() {
       sanitizePresetsPrefs,
     );
   const presets = presetPrefs.presets;
+  const hiddenSharedIds = useMemo(
+    () => new Set(presetPrefs.hiddenSharedIds ?? []),
+    [presetPrefs.hiddenSharedIds],
+  );
+
+  // Team-shared presets (Task #306). Independent query — fetched once
+  // per page load and refreshed on focus so other admins' new chips show
+  // up promptly without manual refresh.
+  const { data: sharedData } = useQuery<SharedPresetsResponse>({
+    queryKey: ['/api/admin/shared-presets'],
+    staleTime: 30_000,
+  });
+  const sharedPresets = sharedData?.presets ?? [];
+  const callerUsername = sharedData?.callerUsername ?? null;
+  const callerIsSuperAdmin = sharedData?.callerIsSuperAdmin ?? false;
+  const visibleSharedPresets = useMemo(
+    () => sharedPresets.filter((p) => !hiddenSharedIds.has(p.id)),
+    [sharedPresets, hiddenSharedIds],
+  );
+
+  const sharePresetMutation = useMutation({
+    mutationFn: async (input: { name: string; countries: string[] }) => {
+      const res = await apiRequest('POST', '/api/admin/shared-presets', {
+        body: input,
+      });
+      return (await res.json()) as SharedPreset;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/shared-presets'],
+      });
+    },
+  });
+
+  const deleteSharedPresetMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest('DELETE', `/api/admin/shared-presets/${id}`);
+      return id;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/shared-presets'],
+      });
+    },
+  });
 
   // Drag-and-drop / keyboard reordering of saved-comparison chips.
   // We use pointer events (which unify mouse + touch) plus Alt+Arrow
@@ -344,6 +435,13 @@ export default function AdminCoverageCompare() {
     );
     return match?.id ?? null;
   }, [presets, selected]);
+
+  const activeSharedPresetId = useMemo(() => {
+    const match = visibleSharedPresets.find((p) =>
+      arraysEqualUnordered(p.countries, selected),
+    );
+    return match?.id ?? null;
+  }, [visibleSharedPresets, selected]);
 
   const { data: coverageData } = useQuery<CoverageResponse>({
     queryKey: ['/api/admin/coverage/by-country'],
@@ -479,10 +577,11 @@ export default function AdminCoverageCompare() {
 
   const openSaveDialog = () => {
     setSaveDialogName('');
+    setSaveDialogShare(false);
     setSaveDialogOpen(true);
   };
 
-  const handleSavePreset = () => {
+  const handleSavePreset = async () => {
     const name = saveDialogName.trim().slice(0, MAX_PRESET_NAME_LEN);
     if (!name) {
       toast({
@@ -501,6 +600,29 @@ export default function AdminCoverageCompare() {
       return;
     }
     const countries = [...selected];
+
+    if (saveDialogShare) {
+      // Share-with-team: persisted server-side so every admin sees it.
+      // We do NOT also write a private copy — the chip already shows up
+      // in the Saved-comparisons row via the shared-presets query.
+      try {
+        await sharePresetMutation.mutateAsync({ name, countries });
+        setSaveDialogOpen(false);
+        toast({
+          title: 'Shared with team',
+          description: `"${name}" is now visible to every admin.`,
+        });
+      } catch (err: any) {
+        const message = err?.message || 'Failed to share preset';
+        toast({
+          title: 'Could not share preset',
+          description: message,
+          variant: 'destructive',
+        });
+      }
+      return;
+    }
+
     setPresetPrefs((p) => {
       const existingIdx = p.presets.findIndex(
         (x) => x.name.toLowerCase() === name.toLowerCase(),
@@ -529,10 +651,62 @@ export default function AdminCoverageCompare() {
     });
   };
 
+  const applySharedPreset = (preset: SharedPreset) => {
+    updateSelected(preset.countries);
+  };
+
+  const hideSharedPreset = (id: string) => {
+    setPresetPrefs((p) => {
+      const current = new Set(p.hiddenSharedIds ?? []);
+      current.add(id);
+      return { ...p, hiddenSharedIds: Array.from(current) };
+    });
+    toast({
+      title: 'Hidden from your view',
+      description:
+        "We'll keep it for the rest of the team — you can show all hidden ones again from the Saved-comparisons header.",
+    });
+  };
+
+  const unhideAllShared = () => {
+    setPresetPrefs((p) => ({ ...p, hiddenSharedIds: [] }));
+  };
+
+  const handleDeleteShared = (preset: SharedPreset) => {
+    if (
+      typeof window !== 'undefined' &&
+      !window.confirm(
+        `Delete the team-shared preset "${preset.name}"? This removes it for every admin.`,
+      )
+    ) {
+      return;
+    }
+    deleteSharedPresetMutation.mutate(preset.id, {
+      onSuccess: () => {
+        toast({
+          title: 'Shared preset removed',
+          description: `"${preset.name}" is no longer visible to the team.`,
+        });
+      },
+      onError: (err: any) => {
+        toast({
+          title: 'Could not delete preset',
+          description: err?.message || 'Try again in a moment.',
+          variant: 'destructive',
+        });
+      },
+    });
+  };
+
+  // Selection is "saved" if it matches either a private preset or a
+  // team-shared preset that's still visible to this admin.
+  const selectionAlreadySaved =
+    activePresetId !== null || activeSharedPresetId !== null;
   const canSavePreset =
     selected.length > 0 &&
-    activePresetId === null &&
-    presets.length < MAX_PRESETS;
+    !selectionAlreadySaved &&
+    (saveDialogShare || presets.length < MAX_PRESETS);
+  const hiddenSharedCount = sharedPresets.length - visibleSharedPresets.length;
 
   const nameFor = (code: string): string => {
     const c = countries.find((x) => x.countryCode === code);
@@ -588,82 +762,177 @@ export default function AdminCoverageCompare() {
         </div>
       </div>
 
-      {presets.length > 0 && (
+      {(presets.length > 0 || visibleSharedPresets.length > 0) && (
         <Card data-testid="card-saved-presets">
           <CardHeader>
-            <CardTitle className="text-base">Saved comparisons</CardTitle>
-            <CardDescription>
-              Quick-pick the country sets you've saved. Click a preset to load
-              it; the X removes it. Drag the grip handle to reorder, or focus a
-              handle and press Alt + arrow keys.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div
-              ref={presetListRef}
-              className="flex flex-wrap gap-2"
-              data-testid="list-presets"
-            >
-              {presets.map((preset) => {
-                const isActive = preset.id === activePresetId;
-                const isDragging = preset.id === draggingId;
-                return (
-                  <div
-                    key={preset.id}
-                    data-preset-id={preset.id}
-                    className={`flex items-center gap-1 rounded-full border pl-0.5 pr-1 py-0.5 text-xs transition-opacity ${
-                      isActive
-                        ? 'border-primary bg-primary/10'
-                        : 'border-border bg-background hover:bg-muted'
-                    } ${isDragging ? 'opacity-60 ring-2 ring-primary/40' : ''}`}
-                    data-testid={`chip-preset-${preset.id}`}
-                  >
-                    <button
-                      type="button"
-                      onPointerDown={(e) =>
-                        handleGripPointerDown(e, preset.id)
-                      }
-                      onPointerMove={(e) =>
-                        handleGripPointerMove(e, preset.id)
-                      }
-                      onPointerUp={endDrag}
-                      onPointerCancel={endDrag}
-                      onKeyDown={(e) => handleGripKeyDown(e, preset.id)}
-                      className="p-1 rounded-full text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing touch-none"
-                      style={{ touchAction: 'none' }}
-                      aria-label={`Reorder preset ${preset.name}. Drag to move, or hold Alt and press the arrow keys.`}
-                      title="Drag to reorder, or Alt+Arrow keys"
-                      data-testid={`button-drag-preset-${preset.id}`}
-                    >
-                      <GripVertical className="w-3 h-3" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyPreset(preset)}
-                      className="flex items-center gap-2 px-2 py-1 rounded-full"
-                      data-testid={`button-apply-preset-${preset.id}`}
-                      title={`Load ${preset.countries.join(', ')}`}
-                    >
-                      <span className="font-medium truncate max-w-[180px]">
-                        {preset.name}
-                      </span>
-                      <span className="text-[10px] text-muted-foreground tabular-nums">
-                        {preset.countries.length}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deletePreset(preset.id)}
-                      className="p-1 rounded-full hover:bg-muted"
-                      aria-label={`Delete preset ${preset.name}`}
-                      data-testid={`button-delete-preset-${preset.id}`}
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                );
-              })}
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div>
+                <CardTitle className="text-base">Saved comparisons</CardTitle>
+                <CardDescription>
+                  Quick-pick the country sets you've saved. Chips with the team
+                  icon are shared by other admins for stand-ups and incident
+                  reviews. Click a private preset to load it; the X removes it.
+                  Drag the grip handle to reorder, or focus a handle and press
+                  Alt + arrow keys.
+                </CardDescription>
+              </div>
+              {hiddenSharedCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={unhideAllShared}
+                  data-testid="button-unhide-all-shared"
+                  className="text-xs"
+                >
+                  <Eye className="w-3 h-3 mr-1" />
+                  Show {hiddenSharedCount} hidden team{' '}
+                  {hiddenSharedCount === 1 ? 'preset' : 'presets'}
+                </Button>
+              )}
             </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {presets.length > 0 && (
+              <div
+                ref={presetListRef}
+                className="flex flex-wrap gap-2"
+                data-testid="list-presets"
+              >
+                {presets.map((preset) => {
+                  const isActive = preset.id === activePresetId;
+                  const isDragging = preset.id === draggingId;
+                  return (
+                    <div
+                      key={preset.id}
+                      data-preset-id={preset.id}
+                      className={`flex items-center gap-1 rounded-full border pl-0.5 pr-1 py-0.5 text-xs transition-opacity ${
+                        isActive
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border bg-background hover:bg-muted'
+                      } ${isDragging ? 'opacity-60 ring-2 ring-primary/40' : ''}`}
+                      data-testid={`chip-preset-${preset.id}`}
+                    >
+                      <button
+                        type="button"
+                        onPointerDown={(e) =>
+                          handleGripPointerDown(e, preset.id)
+                        }
+                        onPointerMove={(e) =>
+                          handleGripPointerMove(e, preset.id)
+                        }
+                        onPointerUp={endDrag}
+                        onPointerCancel={endDrag}
+                        onKeyDown={(e) => handleGripKeyDown(e, preset.id)}
+                        className="p-1 rounded-full text-muted-foreground hover:bg-muted cursor-grab active:cursor-grabbing touch-none"
+                        style={{ touchAction: 'none' }}
+                        aria-label={`Reorder preset ${preset.name}. Drag to move, or hold Alt and press the arrow keys.`}
+                        title="Drag to reorder, or Alt+Arrow keys"
+                        data-testid={`button-drag-preset-${preset.id}`}
+                      >
+                        <GripVertical className="w-3 h-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyPreset(preset)}
+                        className="flex items-center gap-2 px-2 py-1 rounded-full"
+                        data-testid={`button-apply-preset-${preset.id}`}
+                        title={`Load ${preset.countries.join(', ')}`}
+                      >
+                        <span className="font-medium truncate max-w-[180px]">
+                          {preset.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {preset.countries.length}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deletePreset(preset.id)}
+                        className="p-1 rounded-full hover:bg-muted"
+                        aria-label={`Delete preset ${preset.name}`}
+                        data-testid={`button-delete-preset-${preset.id}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {visibleSharedPresets.length > 0 && (
+              <div
+                className="flex flex-wrap gap-2"
+                data-testid="list-shared-presets"
+              >
+                {visibleSharedPresets.map((preset) => {
+                  const isActive = preset.id === activeSharedPresetId;
+                  const isOwner =
+                    callerUsername !== null &&
+                    preset.ownerUsername === callerUsername;
+                  const canDelete = isOwner || callerIsSuperAdmin;
+                  return (
+                    <div
+                      key={preset.id}
+                      className={`flex items-center gap-1 rounded-full border pl-1 pr-1 py-0.5 text-xs ${
+                        isActive
+                          ? 'border-primary bg-primary/10'
+                          : 'border-blue-500/40 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-100/60 dark:hover:bg-blue-950/40'
+                      }`}
+                      data-testid={`chip-shared-preset-${preset.id}`}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => applySharedPreset(preset)}
+                        className="flex items-center gap-2 px-2 py-1 rounded-full"
+                        data-testid={`button-apply-shared-preset-${preset.id}`}
+                        title={`Shared by ${preset.ownerUsername} — ${preset.countries.join(', ')}`}
+                      >
+                        <Users
+                          className="w-3 h-3 text-blue-600 dark:text-blue-300 shrink-0"
+                          aria-label="Shared with team"
+                        />
+                        <span className="font-medium truncate max-w-[180px]">
+                          {preset.name}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground tabular-nums">
+                          {preset.countries.length}
+                        </span>
+                        <span
+                          className="text-[10px] text-muted-foreground truncate max-w-[100px]"
+                          data-testid={`text-shared-owner-${preset.id}`}
+                        >
+                          · {preset.ownerUsername}
+                        </span>
+                      </button>
+                      {canDelete ? (
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteShared(preset)}
+                          disabled={deleteSharedPresetMutation.isPending}
+                          className="p-1 rounded-full hover:bg-muted disabled:opacity-50"
+                          aria-label={`Delete shared preset ${preset.name}`}
+                          data-testid={`button-delete-shared-preset-${preset.id}`}
+                          title="Delete for the whole team"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => hideSharedPreset(preset.id)}
+                          className="p-1 rounded-full hover:bg-muted"
+                          aria-label={`Hide shared preset ${preset.name} from your view`}
+                          data-testid={`button-hide-shared-preset-${preset.id}`}
+                          title="Hide from your view (other admins still see it)"
+                        >
+                          <EyeOff className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -759,16 +1028,16 @@ export default function AdminCoverageCompare() {
               title={
                 selected.length === 0
                   ? 'Pick at least one country first'
-                  : activePresetId
+                  : selectionAlreadySaved
                     ? 'This selection is already saved as a preset'
                     : presets.length >= MAX_PRESETS
-                      ? `You already have ${MAX_PRESETS} presets — delete one first`
-                      : 'Save the current country selection as a named preset'
+                      ? `You already have ${MAX_PRESETS} private presets — delete one or share with the team instead`
+                      : 'Save the current country selection as a named preset (privately or shared with the team)'
               }
               data-testid="button-save-preset"
             >
               <Star className="w-4 h-4 mr-1" />
-              {activePresetId ? 'Saved as preset' : 'Save as preset'}
+              {selectionAlreadySaved ? 'Saved as preset' : 'Save as preset'}
             </Button>
           </div>
           {selected.length > 0 && (
@@ -1015,10 +1284,11 @@ export default function AdminCoverageCompare() {
             <DialogDescription>
               Give the current selection a short name (e.g. "Western Europe").
               It will appear as a quick-pick chip at the top of this page on
-              every device you sign in to.
+              every device you sign in to. Toggle "Share with team" to make
+              it visible to every admin instead.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-2">
+          <div className="space-y-3">
             <Input
               autoFocus
               value={saveDialogName}
@@ -1034,6 +1304,28 @@ export default function AdminCoverageCompare() {
               placeholder="Preset name"
               data-testid="input-preset-name"
             />
+            <div className="flex items-start gap-3 rounded-md border p-3">
+              <Switch
+                id="share-with-team"
+                checked={saveDialogShare}
+                onCheckedChange={(v) => setSaveDialogShare(Boolean(v))}
+                data-testid="switch-share-with-team"
+              />
+              <div className="space-y-0.5">
+                <Label
+                  htmlFor="share-with-team"
+                  className="text-sm font-medium cursor-pointer flex items-center gap-1.5"
+                >
+                  <Users className="w-3.5 h-3.5 text-blue-600 dark:text-blue-300" />
+                  Share with team
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  {saveDialogShare
+                    ? 'Every admin will see this chip; only you (or a super-admin) can edit or delete it.'
+                    : 'Saved privately to your account — other admins will not see it.'}
+                </p>
+              </div>
+            </div>
             <p className="text-xs text-muted-foreground">
               {selected.length === 0
                 ? 'Pick at least one country first.'
@@ -1052,10 +1344,17 @@ export default function AdminCoverageCompare() {
             </Button>
             <Button
               onClick={handleSavePreset}
-              disabled={selected.length === 0 || !saveDialogName.trim()}
+              disabled={
+                selected.length === 0 ||
+                !saveDialogName.trim() ||
+                sharePresetMutation.isPending
+              }
               data-testid="button-confirm-save-preset"
             >
-              Save preset
+              {sharePresetMutation.isPending ? (
+                <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              ) : null}
+              {saveDialogShare ? 'Share with team' : 'Save preset'}
             </Button>
           </DialogFooter>
         </DialogContent>

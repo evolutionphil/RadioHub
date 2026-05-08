@@ -3781,3 +3781,45 @@ export const GenreMergeAuditLog = mongoose.model<IGenreMergeAuditLog>(
   'GenreMergeAuditLog',
   GenreMergeAuditLogSchema,
 );
+
+// =====================================================================
+// SharedComparisonPreset — Task #306. Shared admin coverage-compare
+// presets that any signed-in admin can pin so the entire team sees the
+// same quick-pick chip on /admin/coverage/compare. Per-admin private
+// presets continue to live under `AdminPreference` keyed by
+// `coverage-compare:presets:v1`; this collection holds only the ones an
+// admin has explicitly chosen to share with the rest of the team.
+//
+// Editing/deleting a shared preset is restricted to the original owner
+// (or to a username listed in the optional `SUPER_ADMIN_USERNAMES`
+// env var). Other admins can hide a shared preset locally; the hidden
+// id list is persisted alongside their private presets in
+// AdminPreference and never reaches this collection.
+// =====================================================================
+export interface ISharedComparisonPreset extends Document {
+  name: string;
+  countries: string[];
+  ownerUsername: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const SharedComparisonPresetSchema = new Schema<ISharedComparisonPreset>({
+  name: { type: String, required: true, trim: true, maxlength: 60 },
+  countries: { type: [String], required: true },
+  ownerUsername: { type: String, required: true, index: true },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+});
+
+// Case-insensitive uniqueness on name so admins don't accidentally
+// publish two team chips with the same label.
+SharedComparisonPresetSchema.index(
+  { name: 1 },
+  { unique: true, collation: { locale: 'en', strength: 2 } },
+);
+
+export const SharedComparisonPreset = mongoose.model<ISharedComparisonPreset>(
+  'SharedComparisonPreset',
+  SharedComparisonPresetSchema,
+);

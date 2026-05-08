@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting, CoverageBackfillStatus, CoverageBackfillRun } from '@workspace/db-shared/mongo-schemas';
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting, CoverageBackfillStatus, CoverageBackfillRun, SharedComparisonPreset } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -3163,6 +3163,251 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         `🛑 Coverage reconstruction ${jobId} cancellation requested`,
       );
       return void res.json({ success: true });
+    },
+  );
+
+  // ====================================================================
+  // Shared coverage-compare presets (Task #306)
+  //
+  // Lets one admin pin a saved comparison so every other admin sees the
+  // same quick-pick chip on /admin/coverage/compare. Personal presets
+  // continue to live in AdminPreference; this collection only holds the
+  // ones explicitly shared with the team.
+  //
+  // Edit/delete is restricted to the original owner. An optional
+  // `SUPER_ADMIN_USERNAMES` env var (comma-separated usernames) lets a
+  // designated admin override that restriction without changing schema.
+  // ====================================================================
+  const SHARED_PRESET_NAME_MAX = 60;
+  const SHARED_PRESET_COUNTRIES_MAX = 8;
+  const SHARED_PRESET_TOTAL_MAX = 100;
+
+  function getCallerAdminUsername(req: any): string | null {
+    const adminAuth = req.session?.adminAuth;
+    const username = adminAuth?.username;
+    return typeof username === 'string' && username.length > 0 ? username : null;
+  }
+
+  function isSuperAdminUsername(username: string): boolean {
+    const raw = process.env.SUPER_ADMIN_USERNAMES || '';
+    if (!raw.trim()) return false;
+    const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+    return list.includes(username);
+  }
+
+  function normalizeSharedPresetCountries(raw: unknown): string[] | null {
+    if (!Array.isArray(raw)) return null;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const item of raw) {
+      if (typeof item !== 'string') continue;
+      const code = item.trim().toUpperCase();
+      if (!/^[A-Z]{2}$/.test(code)) continue;
+      if (seen.has(code)) continue;
+      seen.add(code);
+      out.push(code);
+      if (out.length >= SHARED_PRESET_COUNTRIES_MAX) break;
+    }
+    return out.length > 0 ? out : null;
+  }
+
+  function serializeSharedPreset(doc: any) {
+    return {
+      id: String(doc._id),
+      name: doc.name,
+      countries: doc.countries ?? [],
+      ownerUsername: doc.ownerUsername,
+      createdAt: doc.createdAt,
+      updatedAt: doc.updatedAt,
+    };
+  }
+
+  app.get('/api/admin/shared-presets', requireAdmin, async (req, res) => {
+    try {
+      const callerUsername = getCallerAdminUsername(req);
+      const docs = await SharedComparisonPreset.find({})
+        .sort({ updatedAt: -1 })
+        .lean();
+      const callerCanManageAll =
+        callerUsername !== null && isSuperAdminUsername(callerUsername);
+      return void res.json({
+        callerUsername,
+        callerIsSuperAdmin: callerCanManageAll,
+        presets: docs.map(serializeSharedPreset),
+      });
+    } catch (error: any) {
+      logger.error('Error listing shared comparison presets:', error);
+      return void res
+        .status(500)
+        .json({ error: 'Failed to list shared comparison presets' });
+    }
+  });
+
+  app.post(
+    '/api/admin/shared-presets',
+    express.json(),
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const ownerUsername = getCallerAdminUsername(req);
+        if (!ownerUsername) {
+          return void res
+            .status(401)
+            .json({ error: 'Admin identity unavailable' });
+        }
+        const body = (req.body ?? {}) as { name?: unknown; countries?: unknown };
+        const name =
+          typeof body.name === 'string'
+            ? body.name.trim().slice(0, SHARED_PRESET_NAME_MAX)
+            : '';
+        if (!name) {
+          return void res.status(400).json({ error: 'Preset name is required' });
+        }
+        const countries = normalizeSharedPresetCountries(body.countries);
+        if (!countries) {
+          return void res
+            .status(400)
+            .json({ error: 'At least one valid country code is required' });
+        }
+        const existingTotal = await SharedComparisonPreset.estimatedDocumentCount();
+        if (existingTotal >= SHARED_PRESET_TOTAL_MAX) {
+          return void res.status(409).json({
+            error: `The team already has ${SHARED_PRESET_TOTAL_MAX} shared presets. Delete one before adding more.`,
+          });
+        }
+        const now = new Date();
+        try {
+          const doc = await SharedComparisonPreset.create({
+            name,
+            countries,
+            ownerUsername,
+            createdAt: now,
+            updatedAt: now,
+          });
+          return void res.status(201).json(serializeSharedPreset(doc.toObject()));
+        } catch (err: any) {
+          if (err?.code === 11000) {
+            return void res
+              .status(409)
+              .json({ error: 'A shared preset with that name already exists' });
+          }
+          throw err;
+        }
+      } catch (error: any) {
+        logger.error('Error creating shared comparison preset:', error);
+        return void res
+          .status(500)
+          .json({ error: 'Failed to create shared comparison preset' });
+      }
+    },
+  );
+
+  app.put(
+    '/api/admin/shared-presets/:id',
+    express.json(),
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const callerUsername = getCallerAdminUsername(req);
+        if (!callerUsername) {
+          return void res
+            .status(401)
+            .json({ error: 'Admin identity unavailable' });
+        }
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+          return void res.status(400).json({ error: 'Invalid preset id' });
+        }
+        const existing = await SharedComparisonPreset.findById(id);
+        if (!existing) {
+          return void res.status(404).json({ error: 'Preset not found' });
+        }
+        if (
+          existing.ownerUsername !== callerUsername &&
+          !isSuperAdminUsername(callerUsername)
+        ) {
+          return void res.status(403).json({
+            error: 'Only the owner can edit this shared preset',
+          });
+        }
+        const body = (req.body ?? {}) as { name?: unknown; countries?: unknown };
+        if (body.name !== undefined) {
+          const name =
+            typeof body.name === 'string'
+              ? body.name.trim().slice(0, SHARED_PRESET_NAME_MAX)
+              : '';
+          if (!name) {
+            return void res
+              .status(400)
+              .json({ error: 'Preset name is required' });
+          }
+          existing.name = name;
+        }
+        if (body.countries !== undefined) {
+          const countries = normalizeSharedPresetCountries(body.countries);
+          if (!countries) {
+            return void res
+              .status(400)
+              .json({ error: 'At least one valid country code is required' });
+          }
+          existing.countries = countries;
+        }
+        existing.updatedAt = new Date();
+        try {
+          await existing.save();
+        } catch (err: any) {
+          if (err?.code === 11000) {
+            return void res
+              .status(409)
+              .json({ error: 'A shared preset with that name already exists' });
+          }
+          throw err;
+        }
+        return void res.json(serializeSharedPreset(existing.toObject()));
+      } catch (error: any) {
+        logger.error('Error updating shared comparison preset:', error);
+        return void res
+          .status(500)
+          .json({ error: 'Failed to update shared comparison preset' });
+      }
+    },
+  );
+
+  app.delete(
+    '/api/admin/shared-presets/:id',
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const callerUsername = getCallerAdminUsername(req);
+        if (!callerUsername) {
+          return void res
+            .status(401)
+            .json({ error: 'Admin identity unavailable' });
+        }
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+          return void res.status(400).json({ error: 'Invalid preset id' });
+        }
+        const existing = await SharedComparisonPreset.findById(id);
+        if (!existing) {
+          return void res.json({ id, deleted: 0 });
+        }
+        if (
+          existing.ownerUsername !== callerUsername &&
+          !isSuperAdminUsername(callerUsername)
+        ) {
+          return void res.status(403).json({
+            error: 'Only the owner can delete this shared preset',
+          });
+        }
+        await existing.deleteOne();
+        return void res.json({ id, deleted: 1 });
+      } catch (error: any) {
+        logger.error('Error deleting shared comparison preset:', error);
+        return void res
+          .status(500)
+          .json({ error: 'Failed to delete shared comparison preset' });
+      }
     },
   );
 }
