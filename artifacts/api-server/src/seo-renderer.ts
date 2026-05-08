@@ -1278,7 +1278,7 @@ export class SeoRenderer {
                   const logo = this.pickLogoUrl(stationData);
                   if (!logo) return '';
                   const name = this.escapeHtml(stationData.name || 'Radio Station');
-                  const country = stationData.country ? this.escapeHtml(stationData.country) : '';
+                  const country = stationData.country ? this.escapeHtml(getLocalizedCountryName(stationData.country, language)) : '';
                   const altText = country ? `${name} logo — ${country}` : `${name} logo`;
                   const caption = country ? `${name} — ${country}` : name;
                   return `
@@ -1296,7 +1296,9 @@ export class SeoRenderer {
                     'Listen to {STATION} live online from {COUNTRY} — free internet radio streaming on Mega Radio.'
                   );
                   const stationName = stationData.name || 'Radio Station';
-                  const country = stationData.country || 'around the world';
+                  const country = stationData.country
+                    ? getLocalizedCountryName(stationData.country, language)
+                    : 'around the world';
                   const introText = introTemplate
                     .replace(/\{STATION\}/g, stationName)
                     .replace(/\{COUNTRY\}/g, country);
