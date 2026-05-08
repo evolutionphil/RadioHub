@@ -1881,11 +1881,41 @@ export class SeoRenderer {
       const stationUrl = `${baseDomain}/${language}/${stationSegmentForRadioJsonLd}/${stationData.slug || stationData._id}`;
       const stationLogo = stationData.logoAssets?.webp256 || stationData.logoAssets?.webp96 || stationData.favicon || `${baseDomain}/images/default-station.png`;
       
+      // D-A1 FIX (2026-05-08): broadcastDisplayName is required for Google's
+      // RadioStation rich result. broadcastFrequency is emitted as a
+      // structured BroadcastFrequencySpecification when we can parse a real
+      // frequency from station tags (e.g. "FM 102.5"); otherwise we fall
+      // back to the simple "FM"/"AM" string. broadcastAffiliateOf links
+      // the station to the parent Mega Radio Organization @id so the
+      // entity graph cross-references correctly.
+      let parsedBroadcastFrequency: any = undefined;
+      const tagsForFreq = Array.isArray(stationData.tags) ? stationData.tags.join(',') : (stationData.tags || '');
+      if (tagsForFreq) {
+        const m = String(tagsForFreq).match(/(FM|AM)\s*([0-9]{2,4}(?:[.,][0-9]+)?)/i);
+        if (m) {
+          const band = m[1].toUpperCase();
+          const value = parseFloat(m[2].replace(',', '.'));
+          if (Number.isFinite(value)) {
+            parsedBroadcastFrequency = {
+              "@type": "BroadcastFrequencySpecification",
+              "broadcastFrequencyValue": value,
+              "broadcastSignalModulation": band,
+              "frequencyUnit": band === 'FM' ? 'MHz' : 'kHz',
+            };
+          } else {
+            parsedBroadcastFrequency = band;
+          }
+        } else if (/\bFM\b/i.test(tagsForFreq) || /\bAM\b/i.test(tagsForFreq)) {
+          parsedBroadcastFrequency = /\bFM\b/i.test(tagsForFreq) ? 'FM' : 'AM';
+        }
+      }
+
       radioStationSchema = {
         "@context": "https://schema.org",
         "@type": "RadioStation",
-        "@id": stationUrl,
+        "@id": `${stationUrl}#radiostation`,
         "name": stationData.name,
+        "broadcastDisplayName": stationData.name,
         "description": stationData.aiDescription || stationData.description || `Listen to ${stationData.name} live online. Free radio streaming on Mega Radio.`,
         "url": stationUrl,
         "logo": stationLogo,
@@ -1894,7 +1924,13 @@ export class SeoRenderer {
         ...(stationData.country && { "areaServed": getLocalizedCountryName(stationData.country, language) }),
         ...(stationData.language && { "broadcastLanguage": stationData.language }),
         ...(stationData.codec && { "broadcastFormat": stationData.codec }),
+        ...(parsedBroadcastFrequency && { "broadcastFrequency": parsedBroadcastFrequency }),
         ...(stationData.bitrate && { "additionalProperty": { "@type": "PropertyValue", "name": "bitrate", "value": `${stationData.bitrate} kbps` } }),
+        "broadcastAffiliateOf": {
+          "@type": "Organization",
+          "@id": `${baseDomain}/#organization`,
+          "name": "Mega Radio"
+        },
         "broadcaster": {
           "@type": "Organization",
           "name": stationData.name,

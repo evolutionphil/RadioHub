@@ -91,12 +91,29 @@ function maybeFlushLog(): void {
   }
 }
 
+// SEO FIX (2026-05-08): bypass geo-blocking for verified search-engine
+// crawlers. Google/Bing/Yandex distribute their crawl across regions and
+// will sometimes hit us from a "blocked" country (e.g. SG datacenter).
+// Dropping their socket = "host unreachable" in GSC, which throttles
+// indexing site-wide. We trust the UA string here because reverse-DNS
+// verification is too slow for the request hot path and the worst-case
+// downside (an attacker spoofing Googlebot to bypass a country block)
+// is acceptable: they still hit our normal app surface.
+const SEARCH_BOT_BYPASS_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider|applebot|sogou|petalbot)\b/i;
+
 export function geoBlockMiddleware(req: Request, res: Response, next: NextFunction): void {
   const cc = String(
     req.headers['cf-ipcountry'] ||
     req.headers['x-country-code'] ||
     ''
   ).toUpperCase();
+
+  // 0. Always let verified crawlers through, even from blocked geos.
+  const ua = String(req.headers['user-agent'] || '');
+  if (SEARCH_BOT_BYPASS_RE.test(ua)) {
+    next();
+    return;
+  }
 
   // 1. Block known bad countries
   if (BLOCKED_COUNTRIES.size > 0 && cc && BLOCKED_COUNTRIES.has(cc)) {

@@ -13,8 +13,11 @@ const API_KEY = process.env.INDEXNOW_API_KEY || '5ace9b68e3a60b85c7c5a61f1226a65
 if (!process.env.INDEXNOW_API_KEY) {
   logger.log('⚠️ IndexNow: INDEXNOW_API_KEY env not set, using legacy committed key. Set the env var (and update the .txt key file at the domain root) to rotate.');
 }
-// Production domain only
-const ALLOWED_HOSTS = ['themegaradio.com'];
+// Production domains. Both apex and www are accepted so URLs sourced
+// from either host shape are submitted (the apex is canonical; www is
+// kept here so an accidental www. URL still gets submitted instead of
+// being silently dropped).
+const ALLOWED_HOSTS = ['themegaradio.com', 'www.themegaradio.com'];
 const PRIMARY_HOST = 'themegaradio.com'; // Default for helper methods
 const MAX_URLS_PER_REQUEST = 10000;
 

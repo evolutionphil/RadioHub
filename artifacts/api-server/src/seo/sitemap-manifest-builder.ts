@@ -37,7 +37,13 @@ import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from '@work
 // get a single source of truth (task #148).
 export { RESERVED_GENRE_SLUGS };
 
-const STATIONS_PER_CHUNK = 1000;
+// S-A4 FIX (2026-05-08): bumped from 1000 → 10000. The XML sitemap spec
+// allows up to 50,000 URLs per file; 1000 was over-fragmenting our 60k+
+// catalog into 60 child sitemaps per language × 57 languages, blowing
+// past the 50k child-entry sitemap-index cap and forcing Google to
+// re-crawl tiny chunks. 10k keeps each file under ~5 MB pre-gzip
+// (well under the 50 MB hard limit) while reducing index entries 10×.
+const STATIONS_PER_CHUNK = 10000;
 const MANIFEST_TTL_SUPERSEDED_MS = 24 * 60 * 60 * 1000;     // 24h
 const MANIFEST_TTL_ACTIVE_MS = 7 * 24 * 60 * 60 * 1000;     // 7 days (refreshed every 6h)
 const MANIFEST_TTL_BUILDING_MS = 6 * 60 * 60 * 1000;        // 6h cleanup for crashed builds

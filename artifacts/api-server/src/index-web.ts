@@ -315,14 +315,16 @@ app.use((req, res, next) => {
 app.use(urlRedirectMiddleware);
 app.use(stationCountryValidator);
 
-const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot|gptbot|chatgpt|ccbot|anthropic|bytespider|perplexitybot|cohere/i;
+// C-A2 FIX (2026-05-08): aligned with index-api.ts. Always gzip text-like
+// responses (HTML/JSON/JS/XML/SVG) for ALL clients including Googlebot,
+// Bingbot, GPTBot, ApplebOt etc. Modern crawlers all support and PREFER
+// gzip — serving them raw HTML wastes crawl budget and inflates page-load
+// latency in GSC.
 app.use(compression({
   level: 1,
   threshold: 1024,
   filter: (req, res) => {
     if (req.headers['upgrade']) return false;
-    const ua = req.headers['user-agent'] || '';
-    if (BOT_UA_RE.test(ua)) return false;
     const contentType = res.getHeader('Content-Type') as string;
     if (contentType && /text|json|javascript|xml|svg/.test(contentType)) return true;
     return compression.filter(req, res);
@@ -667,8 +669,14 @@ app.use('/api/stream', streamServiceProxy);
       const seoTags = { ...seoData.seoTags, domain: ogImageDomain };
       const pageType = seoData.pageData?.pageType || 'unknown';
 
+      // RTL FIX (2026-05-08): emit dir="rtl" for right-to-left languages
+      // so the SSR HTML renders correctly for Googlebot / Bingbot. Without
+      // this, Arabic/Hebrew/Persian/Urdu pages were flagged as having
+      // mixed-direction content vs the language attribute.
+      const RTL_LANGS = new Set(['ar', 'he', 'fa', 'ur']);
+      const htmlDir = RTL_LANGS.has((seoData.language || '').toLowerCase().split('-')[0]) ? 'rtl' : 'ltr';
       const htmlContent = `<!DOCTYPE html>
-<html lang="${seoData.language}">
+<html lang="${seoData.language}" dir="${htmlDir}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />

@@ -89,7 +89,12 @@ export const SEO_LANGUAGES: SeoLanguage[] = [
   { code: 'pl', name: 'Polski', iso: 'pl-PL', enabled: true, isDefault: false },
   { code: 'sv', name: 'Svenska', iso: 'sv-SE', enabled: true, isDefault: false },
   { code: 'da', name: 'Dansk', iso: 'da-DK', enabled: true, isDefault: false },
-  { code: 'no', name: 'Norsk', iso: 'no-NO', enabled: true, isDefault: false },
+  // Hreflang fix (2026-05-08): Google ignores `no` as a hreflang code
+  // (it is not a valid BCP 47 macrolanguage tag for indexing). The URL
+  // path stays `/no/` to avoid breaking external backlinks, but the
+  // emitted hreflang ISO is `nb-NO` (Norwegian Bokmål) which is the
+  // canonical form Google honours.
+  { code: 'no', name: 'Norsk', iso: 'nb-NO', enabled: true, isDefault: false },
   { code: 'fi', name: 'Suomi', iso: 'fi-FI', enabled: true, isDefault: false },
   { code: 'el', name: 'Ελληνικά', iso: 'el-GR', enabled: true, isDefault: false },
   { code: 'hu', name: 'Magyar', iso: 'hu-HU', enabled: true, isDefault: false },
@@ -165,7 +170,7 @@ export const ACTIVE_SITEMAP_LANGUAGES = SITEMAP_PRIORITY_LANGUAGES.phase3;
 export const SITEMAP_CONFIG = {
   // Chunk sizes (Google limit: 50K URLs per sitemap, 50MB per file)
   maxUrlsPerChunk: 40000,          // Conservative limit to stay well under 50K
-  stationsPerChunk: 1000,           // Stations per sitemap file
+  stationsPerChunk: 10000,          // Stations per sitemap file (S-A4 fix 2026-05-08; was 1000)
   imagesPerChunk: 500,              // Image entries per sitemap file
 
   // Caching strategy — refactored 2026-04-30 (manifest-driven)

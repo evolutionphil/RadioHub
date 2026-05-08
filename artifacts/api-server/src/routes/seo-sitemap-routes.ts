@@ -147,7 +147,11 @@ function makeManifestEtag(parts: (string | number | undefined | null)[]): string
 /** 304 Not Modified shortcut. Returns true if response was sent. */
 function send304IfMatch(req: any, res: any, etag: string, cacheControl: string): boolean {
   const clientEtag = req.headers['if-none-match'];
-  if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}` || (typeof clientEtag === 'string' && clientEtag.includes(etag)))) {
+  // ETAG FIX (2026-05-08): only accept exact / weak match. The previous
+  // `clientEtag.includes(etag)` allowed any header that contained the
+  // 16-char hex as a substring to short-circuit, which could trigger
+  // false 304s when a longer composite ETag happened to embed the slug.
+  if (clientEtag && (clientEtag === etag || clientEtag === `W/${etag}`)) {
     res.setHeader('ETag', etag);
     res.setHeader('Cache-Control', cacheControl);
     res.status(304).end();

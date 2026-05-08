@@ -22,11 +22,6 @@ import { runCoverageBackfill } from "../services/coverage-snapshot-backfill";
 // so a newer alert automatically un-suppresses the banner.
 const COVERAGE_DROP_ACK_KEY = 'coverage-drop-alert-ack';
 
-// AdminSetting key used to record the most recent coverage drop alert
-// acknowledgement (Task #238). The stored value is keyed by snapshotDate
-// so a newer alert automatically un-suppresses the banner.
-const COVERAGE_DROP_ACK_KEY = 'coverage-drop-alert-ack';
-
 const faviconUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },

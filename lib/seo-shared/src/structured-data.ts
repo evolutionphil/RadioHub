@@ -35,11 +35,25 @@ export function generateOrganizationSchema(
   // Build localized URL with language prefix
   const localizedUrl = language === 'en' ? `https://${domain}` : `https://${domain}/${language}`;
   
+  // D-A3 FIX (2026-05-08): expose social profiles via sameAs so Google
+  // can link the Knowledge Graph entity to our verified accounts.
+  // Empty strings are filtered out so unset accounts don't ship as
+  // dead links. Override per-deploy via env vars at the call site if
+  // these handles change.
+  const sameAs = [
+    'https://www.facebook.com/megaradio',
+    'https://twitter.com/megaradio',
+    'https://www.instagram.com/megaradio',
+    'https://www.youtube.com/@megaradio',
+    'https://www.linkedin.com/company/megaradio',
+  ].filter(Boolean);
+
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
     "@id": `https://${domain}/#organization`,
     "name": "Mega Radio",
+    "alternateName": "Mega Radio - Free Online Radio",
     "description": description,
     "url": `https://${domain}`,
     "logo": {
@@ -52,7 +66,8 @@ export function generateOrganizationSchema(
       "@type": "ContactPoint",
       "contactType": "Customer Service",
       "availableLanguage": availableLanguages
-    }
+    },
+    "sameAs": sameAs,
   };
 }
 
@@ -96,15 +111,22 @@ export function generateRadioStationSchema(
     stationUrl = `https://${domain}/${language === 'en' ? '' : language + '/'}stations/${station.slug || station._id}`;
   }
   
+  // D-A1 FIX (2026-05-08): emit broadcastDisplayName so Google's Radio
+  // Station rich-result extractor accepts the entity. broadcastAffiliateOf
+  // alone is not enough — broadcastDisplayName is the user-visible label
+  // tied to the station identity.
   const schema: StructuredDataConfig = {
     "@context": "https://schema.org",
     "@type": "RadioStation",
+    "@id": `${stationUrl}#radiostation`,
     "name": station.name,
+    "broadcastDisplayName": station.name,
     "description": stationDescription,
     "url": stationUrl,
     "image": station.favicon || `https://${domain}/images/no-image.webp`,
     "broadcastAffiliateOf": {
       "@type": "Organization",
+      "@id": `https://${domain}/#organization`,
       "name": "Mega Radio"
     },
     "genre": station.tags ? station.tags.split(',').map((tag: string) => tag.trim()) : [],
@@ -184,9 +206,30 @@ export function generateRadioStationSchema(
     schema.broadcastChannelId = station.language.toUpperCase();
   }
 
-  // Add frequency information if available (FM/AM)
-  if (station.tags && (station.tags.includes('FM') || station.tags.includes('AM'))) {
-    schema.broadcastFrequency = station.tags.includes('FM') ? 'FM' : 'AM';
+  // D-A1 FIX (2026-05-08): emit broadcastFrequency as a structured
+  // BroadcastFrequencySpecification when we can parse a real frequency
+  // from the station tags (e.g. "FM 102.5"). Otherwise fall back to a
+  // simple string ("FM" / "AM") which is the schema.org permissive
+  // alternative. Pure online streams omit this field entirely (correct
+  // per spec — they have no broadcast frequency).
+  if (station.tags) {
+    const freqMatch = String(station.tags).match(/(FM|AM)\s*([0-9]{2,4}(?:[.,][0-9]+)?)/i);
+    if (freqMatch) {
+      const band = freqMatch[1].toUpperCase();
+      const value = parseFloat(freqMatch[2].replace(',', '.'));
+      if (Number.isFinite(value)) {
+        schema.broadcastFrequency = {
+          "@type": "BroadcastFrequencySpecification",
+          "broadcastFrequencyValue": value,
+          "broadcastSignalModulation": band,
+          "frequencyUnit": band === 'FM' ? 'MHz' : 'kHz',
+        };
+      } else {
+        schema.broadcastFrequency = band;
+      }
+    } else if (station.tags.includes('FM') || station.tags.includes('AM')) {
+      schema.broadcastFrequency = station.tags.includes('FM') ? 'FM' : 'AM';
+    }
   }
 
   return schema;

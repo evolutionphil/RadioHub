@@ -14,14 +14,11 @@
 
 import type { Response } from 'express';
 
-const JUNK_BODY =
-  '<!doctype html><html><head>' +
-  '<meta charset="utf-8">' +
-  '<meta name="robots" content="noindex">' +
-  '<title>Gone</title>' +
-  '</head><body><h1>410 Gone</h1>' +
-  '<p>This resource is permanently unavailable.</p>' +
-  '</body></html>';
+// R-A2 FIX (2026-05-08): minimal text/plain body for 410 Gone. The
+// previous HTML body was content-rich enough that Googlebot occasionally
+// scored it as a soft-404 candidate based on similarity to other low-
+// content pages. text/plain "410 Gone" is the most explicit drop signal.
+const JUNK_BODY = '410 Gone';
 
 export function sendJunkGone(res: Response): void {
   // CRITICAL: the global SSR middleware in `server/index-web.ts` (and
@@ -34,7 +31,7 @@ export function sendJunkGone(res: Response): void {
   res
     .status(410)
     .set({
-      'Content-Type': 'text/html; charset=utf-8',
+      'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'public, max-age=86400',
       'X-SEO-Cache': 'JUNK-410',
       'X-Robots-Tag': 'noindex, follow',

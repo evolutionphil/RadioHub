@@ -356,11 +356,13 @@ app.use((req, res, next) => {
 });
 
 const BOT_UA_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot/i;
-// S15 FIX (2026-05-08): always gzip XML/sitemap/robots regardless of UA.
-// Sitemap files are 5-10MB uncompressed; sending them raw to Googlebot bloats
-// crawl budget and slows GSC fetches. The bot-skip rule only made sense for
-// HTML responses where some legacy crawlers stumbled on gzip — XML clients
-// (Googlebot, Bingbot, Yandex) all support gzip and prefer it.
+// S15 + C-A2 FIX (2026-05-08):
+// - Always gzip XML/sitemap/robots regardless of UA.
+// - Always gzip text/json/javascript/xml/svg responses for ALL clients
+//   including Googlebot/Bingbot. The historical bot-skip rule was a holdover
+//   from very old crawlers; Googlebot, Bingbot, Yandex, AppleBot, GPTBot
+//   etc. all support and PREFER gzip — serving them raw HTML/JSON wastes
+//   crawl budget and inflates page-load latency in GSC.
 const SITEMAP_PATH_RE = /^\/(sitemap[\w-]*\.xml|robots\.txt)$/i;
 app.use(compression({
   level: 1,
@@ -368,8 +370,6 @@ app.use(compression({
   filter: (req, res) => {
     if (req.headers['upgrade']) return false;
     if (SITEMAP_PATH_RE.test(req.path)) return true;
-    const ua = req.headers['user-agent'] || '';
-    if (BOT_UA_RE.test(ua)) return false;
     const contentType = res.getHeader('Content-Type') as string;
     if (contentType && /text|json|javascript|xml|svg/.test(contentType)) return true;
     return compression.filter(req, res);
