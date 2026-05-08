@@ -194,6 +194,19 @@ export default function SearchPage() {
   const [activeIndex, setActiveIndex] = useState(-1);
   const itemRefs = useRef<Map<string, HTMLAnchorElement | null>>(new Map());
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // After a keyboard navigation, ignore hover-driven activeIndex updates until
+  // the mouse actually moves. This prevents the cursor sitting over a result
+  // from "snapping back" the active item when the next/prev item scrolls under
+  // it on Arrow Down/Up/Home/End.
+  const suppressHoverRef = useRef(false);
+
+  useEffect(() => {
+    const onMove = () => {
+      suppressHoverRef.current = false;
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => window.removeEventListener("mousemove", onMove);
+  }, []);
 
   // Snap focus back to the search input when the user presses Arrow Up/Down
   // anywhere on the page, so keyboard navigation keeps working even after a
@@ -228,6 +241,7 @@ export default function SearchPage() {
       }
       e.preventDefault();
       input.focus();
+      suppressHoverRef.current = true;
       setActiveIndex((i) => {
         if (e.key === "ArrowDown") {
           return i < 0 ? 0 : (i + 1) % flatItems.length;
@@ -266,6 +280,7 @@ export default function SearchPage() {
 
   const setActiveById = useCallback(
     (id: string) => {
+      if (suppressHoverRef.current) return;
       const idx = flatItems.findIndex((it) => it.id === id);
       if (idx >= 0) setActiveIndex(idx);
     },
@@ -292,24 +307,28 @@ export default function SearchPage() {
     if (e.key === "ArrowDown") {
       if (flatItems.length === 0) return;
       e.preventDefault();
+      suppressHoverRef.current = true;
       setActiveIndex((i) => (i + 1) % flatItems.length);
       return;
     }
     if (e.key === "ArrowUp") {
       if (flatItems.length === 0) return;
       e.preventDefault();
+      suppressHoverRef.current = true;
       setActiveIndex((i) => (i <= 0 ? flatItems.length - 1 : i - 1));
       return;
     }
     if (e.key === "Home") {
       if (flatItems.length === 0) return;
       e.preventDefault();
+      suppressHoverRef.current = true;
       setActiveIndex(0);
       return;
     }
     if (e.key === "End") {
       if (flatItems.length === 0) return;
       e.preventDefault();
+      suppressHoverRef.current = true;
       setActiveIndex(flatItems.length - 1);
       return;
     }
