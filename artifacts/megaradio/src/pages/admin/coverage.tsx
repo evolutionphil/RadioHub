@@ -144,10 +144,12 @@ interface CoverageJobStatus {
   jobId: string;
   countryCode: string;
   scope: 'logos' | 'tags' | 'both';
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: number;
   finishedAt?: number;
   error?: string;
+  cancelRequested?: boolean;
+  cancellable?: boolean;
   logos?: {
     matched: number;
     enqueued: number;
@@ -246,6 +248,8 @@ export default function AdminCoverage() {
             scope: result.scope,
             status: 'running',
             startedAt: Date.now(),
+            cancellable: true,
+            cancelRequested: false,
             logos: result.logos
               ? {
                   matched: result.logos.matched,
@@ -279,6 +283,74 @@ export default function AdminCoverage() {
       });
     },
     onSettled: () => setEnqueuing(null),
+  });
+
+  // Cancel a running coverage backfill. The server flips a flag the
+  // tags hydration loop polls between batches; we optimistically mark
+  // the local job as cancel-requested so the button immediately
+  // disables and re-labels while we wait for the next status poll to
+  // observe the terminal `cancelled` state.
+  // Track which job ids have an in-flight cancel request so we can
+  // disable just *that* row's Cancel button instead of every running
+  // row's button (which is what `cancelMutation.isPending` would do —
+  // it's global to the mutation instance).
+  const [cancellingJobIds, setCancellingJobIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const cancelMutation = useMutation({
+    mutationFn: async (vars: { countryCode: string; jobId: string }) => {
+      const res = await apiRequest(
+        'POST',
+        `/api/admin/coverage/enqueue-job-cancel/${encodeURIComponent(
+          vars.jobId,
+        )}`,
+      );
+      if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(text || `Cancel failed (${res.status})`);
+      }
+      return vars;
+    },
+    onMutate: (vars) => {
+      setCancellingJobIds((prev) => {
+        const next = new Set(prev);
+        next.add(vars.jobId);
+        return next;
+      });
+      setActiveJobs((prev) => {
+        const cur = prev[vars.countryCode];
+        if (!cur || cur.jobId !== vars.jobId) return prev;
+        return {
+          ...prev,
+          [vars.countryCode]: { ...cur, cancelRequested: true },
+        };
+      });
+    },
+    onError: (err: any, vars) => {
+      // Roll back the optimistic cancelRequested flag so the Cancel
+      // button comes back instead of being stuck on "Cancelling…".
+      setActiveJobs((prev) => {
+        const cur = prev[vars.countryCode];
+        if (!cur || cur.jobId !== vars.jobId) return prev;
+        return {
+          ...prev,
+          [vars.countryCode]: { ...cur, cancelRequested: false },
+        };
+      });
+      toast({
+        title: 'Failed to cancel backfill',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    },
+    onSettled: (_data, _err, vars) => {
+      setCancellingJobIds((prev) => {
+        if (!prev.has(vars.jobId)) return prev;
+        const next = new Set(prev);
+        next.delete(vars.jobId);
+        return next;
+      });
+    },
   });
 
   // Poll every running job's status. We keep things simple by sharing one
@@ -737,7 +809,16 @@ export default function AdminCoverage() {
                           className="bg-muted/30"
                         >
                           <TableCell colSpan={7} className="py-3">
-                            <CoverageJobProgressRow job={job} />
+                            <CoverageJobProgressRow
+                              job={job}
+                              cancelPending={cancellingJobIds.has(job.jobId)}
+                              onCancel={() =>
+                                cancelMutation.mutate({
+                                  countryCode: job.countryCode,
+                                  jobId: job.jobId,
+                                })
+                              }
+                            />
                           </TableCell>
                         </TableRow>
                       ) : null}
@@ -754,14 +835,27 @@ export default function AdminCoverage() {
   );
 }
 
-function CoverageJobProgressRow({ job }: { job: CoverageJobStatus }) {
+function CoverageJobProgressRow({
+  job,
+  onCancel,
+  cancelPending,
+}: {
+  job: CoverageJobStatus;
+  onCancel: () => void;
+  cancelPending: boolean;
+}) {
   const isRunning = job.status === 'running';
+  const cancelRequested = !!job.cancelRequested;
   const statusLabel =
     job.status === 'completed'
       ? 'Backfill complete'
       : job.status === 'failed'
         ? 'Backfill failed'
-        : 'Backfill in progress';
+        : job.status === 'cancelled'
+          ? 'Backfill cancelled'
+          : cancelRequested
+            ? 'Cancelling backfill…'
+            : 'Backfill in progress';
 
   const renderBar = (
     label: string,
@@ -802,7 +896,9 @@ function CoverageJobProgressRow({ job }: { job: CoverageJobStatus }) {
               ? 'text-red-600 font-medium'
               : job.status === 'completed'
                 ? 'text-green-700 font-medium'
-                : 'text-muted-foreground font-medium'
+                : job.status === 'cancelled'
+                  ? 'text-amber-700 font-medium'
+                  : 'text-muted-foreground font-medium'
           }
           data-testid={`coverage-job-status-${job.countryCode}`}
         >
@@ -810,6 +906,18 @@ function CoverageJobProgressRow({ job }: { job: CoverageJobStatus }) {
         </span>
         {job.error ? (
           <span className="text-red-600">— {job.error}</span>
+        ) : null}
+        {isRunning && job.cancellable ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-xs ml-auto"
+            disabled={cancelRequested || cancelPending}
+            onClick={onCancel}
+            data-testid={`button-cancel-coverage-${job.countryCode}`}
+          >
+            {cancelRequested ? 'Cancelling…' : 'Cancel'}
+          </Button>
         ) : null}
       </div>
       <div className="flex flex-wrap gap-4">

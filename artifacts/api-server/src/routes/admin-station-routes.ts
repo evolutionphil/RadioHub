@@ -89,10 +89,12 @@ type CoverageBackfillJob = {
   jobId: string;
   countryCode: string;
   scope: 'logos' | 'tags' | 'both';
-  status: 'running' | 'completed' | 'failed';
+  status: 'running' | 'completed' | 'failed' | 'cancelled';
   startedAt: number;
   finishedAt?: number;
   error?: string;
+  cancelRequested?: boolean;
+  cancellable?: boolean;
   logos?: {
     matched: number;
     enqueuedIds: string[];
@@ -123,7 +125,11 @@ function maybeFinishCoverageJob(job: CoverageBackfillJob) {
   const logosDone = !job.logos || job.logos.done;
   const tagsDone = !job.tags || job.tags.done;
   if (logosDone && tagsDone && job.status === 'running') {
-    job.status = job.error ? 'failed' : 'completed';
+    job.status = job.cancelRequested
+      ? 'cancelled'
+      : job.error
+        ? 'failed'
+        : 'completed';
     job.finishedAt = Date.now();
   }
 }
@@ -1937,6 +1943,8 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           scope: scopeInput as 'logos' | 'tags' | 'both',
           status: 'running',
           startedAt: Date.now(),
+          cancellable: true,
+          cancelRequested: false,
         };
         coverageBackfillJobs.set(jobId, job);
 
@@ -2036,6 +2044,8 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               // admin-triggered run produces the same Radio-Browser load
               // shape as the CLI backfill.
               limit: 2000,
+              isCancelled: () =>
+                coverageBackfillJobs.get(jobId)?.cancelRequested === true,
               onProgress: (p) => {
                 const current = coverageBackfillJobs.get(jobId);
                 if (!current?.tags) return;
@@ -2174,6 +2184,52 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             : undefined,
         },
       });
+    },
+  );
+
+  // Cancel a running country backfill. The tags subjob's
+  // `hydrateMissingTagsInBackground` polls `cancelRequested` between
+  // batches and exits cleanly; the logo subjob's actual processing is
+  // handled out-of-process by the scheduled-logo-processor, so we can't
+  // truly abort an in-flight favicon download — but we mark the logo
+  // bucket done so the job can transition to `cancelled` and the UI
+  // indicator clears, matching the recheck-tags cancel flow.
+  app.post(
+    '/api/admin/coverage/enqueue-job-cancel/:jobId',
+    requireAdmin,
+    async (req, res) => {
+      const { jobId } = req.params as { jobId: string };
+      const job = coverageBackfillJobs.get(jobId);
+      if (!job) {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Job not found' });
+      }
+      if (job.status !== 'running') {
+        return res.json({ success: true, alreadyFinished: true });
+      }
+      if (!job.cancellable) {
+        return res
+          .status(409)
+          .json({ success: false, error: 'Job is not cancellable' });
+      }
+      job.cancelRequested = true;
+      // Logo processing happens in the out-of-process scheduled sweeper —
+      // we can't pull stations back off its queue, so the most we can do
+      // is stop tracking remaining work and let the job transition.
+      if (job.logos && !job.logos.done) {
+        job.logos.done = true;
+      }
+      // If tags weren't started or already finished, the cancel flag has
+      // nothing to poll; transition immediately.
+      if (!job.tags || job.tags.done) {
+        maybeFinishCoverageJob(job);
+      }
+      coverageBackfillJobs.set(jobId, job);
+      logger.log(
+        `🛑 Coverage backfill ${jobId} (${job.countryCode}) cancellation requested`,
+      );
+      return res.json({ success: true });
     },
   );
 }
