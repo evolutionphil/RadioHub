@@ -1,9 +1,32 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
+
+const FLUSH_CONFIRM_PHRASE = "FLUSH";
+
+interface FlushStationsResult {
+  success?: boolean;
+  message?: string;
+  deletedStations?: number;
+  deletedSyncLogs?: number;
+  deletedBlacklisted?: number;
+}
 
 interface CollectionStat {
   name: string;
@@ -27,10 +50,57 @@ interface DbStatus {
 
 export default function DbManagement() {
   const [cleanupResult, setCleanupResult] = useState<any>(null);
+  const [flushDialogOpen, setFlushDialogOpen] = useState(false);
+  const [flushConfirmText, setFlushConfirmText] = useState("");
+  const [flushResult, setFlushResult] = useState<FlushStationsResult | null>(null);
+  const { toast } = useToast();
 
   const { data: dbStatus, isLoading, refetch } = useQuery<DbStatus>({
     queryKey: ["/api/admin/db-status"],
   });
+
+  const flushCounts = useMemo(() => {
+    const findCount = (name: string) =>
+      dbStatus?.collections.find(
+        (c) => c.name.toLowerCase() === name.toLowerCase(),
+      )?.count ?? 0;
+    return {
+      stations: findCount("stations"),
+      synclogs: findCount("synclogs"),
+      blacklistedstations: findCount("blacklistedstations"),
+    };
+  }, [dbStatus]);
+
+  const flushMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/admin/flush-stations");
+      return (await res.json()) as FlushStationsResult;
+    },
+    onSuccess: (data) => {
+      setFlushResult(data);
+      setFlushDialogOpen(false);
+      setFlushConfirmText("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/db-status"] });
+      toast({
+        title: "Stations flushed",
+        description: `Deleted ${data.deletedStations ?? 0} stations, ${
+          data.deletedSyncLogs ?? 0
+        } sync logs, and ${data.deletedBlacklisted ?? 0} blacklisted entries.`,
+      });
+    },
+    onError: (error: unknown) => {
+      const description =
+        error instanceof Error ? error.message : "Failed to flush station data.";
+      toast({
+        title: "Flush failed",
+        description,
+        variant: "destructive",
+      });
+    },
+  });
+
+  const flushConfirmed =
+    flushConfirmText.trim().toUpperCase() === FLUSH_CONFIRM_PHRASE;
 
   const cleanupMutation = useMutation({
     mutationFn: async (collections?: string[]) => {
@@ -62,9 +132,23 @@ export default function DbManagement() {
     <div className="p-6 space-y-6 bg-white min-h-screen">
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-gray-900">Database Management</h2>
-        <Button onClick={() => refetch()} variant="outline" size="sm">
-          Refresh
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={() => {
+              setFlushConfirmText("");
+              setFlushDialogOpen(true);
+            }}
+            variant="destructive"
+            size="sm"
+            disabled={flushMutation.isPending}
+            data-testid="button-open-flush-stations"
+          >
+            {flushMutation.isPending ? "Flushing..." : "Flush all stations"}
+          </Button>
+          <Button onClick={() => refetch()} variant="outline" size="sm">
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {isLoading && <p className="text-gray-600">Loading...</p>}
@@ -201,8 +285,101 @@ export default function DbManagement() {
               </CardContent>
             </Card>
           )}
+
+          {flushResult && (
+            <Card className="bg-green-50 border-green-300">
+              <CardHeader>
+                <CardTitle className="text-lg text-green-800">Flush Results</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <pre className="text-sm text-green-700 whitespace-pre-wrap" data-testid="text-flush-result">
+                  {JSON.stringify(flushResult, null, 2)}
+                </pre>
+              </CardContent>
+            </Card>
+          )}
         </>
       )}
+
+      <AlertDialog
+        open={flushDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setFlushDialogOpen(false);
+            setFlushConfirmText("");
+          }
+        }}
+      >
+        <AlertDialogContent
+          className="bg-white border border-gray-200 shadow-lg text-gray-900"
+          data-testid="dialog-confirm-flush-stations"
+        >
+          <AlertDialogHeader>
+            <AlertDialogTitle>Flush all station data?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently wipes every station, sync log, and blacklisted-station
+              record from the database. This cannot be undone — the team will receive
+              an audit email recording the action.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div
+            className="rounded-md border border-gray-200 bg-gray-50 p-3 text-sm"
+            data-testid="list-flush-preview"
+          >
+            <div className="font-medium text-gray-900 mb-2">Will be deleted:</div>
+            <ul className="space-y-1 text-gray-700">
+              <li className="flex justify-between" data-testid="row-flush-preview-stations">
+                <span>Stations</span>
+                <span className="font-mono">{flushCounts.stations.toLocaleString()}</span>
+              </li>
+              <li className="flex justify-between" data-testid="row-flush-preview-synclogs">
+                <span>Sync logs</span>
+                <span className="font-mono">{flushCounts.synclogs.toLocaleString()}</span>
+              </li>
+              <li className="flex justify-between" data-testid="row-flush-preview-blacklisted">
+                <span>Blacklisted stations</span>
+                <span className="font-mono">
+                  {flushCounts.blacklistedstations.toLocaleString()}
+                </span>
+              </li>
+            </ul>
+          </div>
+
+          <div className="space-y-2 pt-1">
+            <Label htmlFor="flush-confirm-input" className="text-sm text-gray-700">
+              Type <span className="font-mono font-semibold">{FLUSH_CONFIRM_PHRASE}</span> to
+              confirm:
+            </Label>
+            <Input
+              id="flush-confirm-input"
+              data-testid="input-flush-confirm"
+              value={flushConfirmText}
+              onChange={(e) => setFlushConfirmText(e.target.value)}
+              autoComplete="off"
+              autoFocus
+            />
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-flush-stations">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="button-confirm-flush-stations"
+              disabled={!flushConfirmed || flushMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                if (!flushConfirmed || flushMutation.isPending) return;
+                flushMutation.mutate();
+              }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {flushMutation.isPending ? "Flushing..." : "Flush all stations"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
