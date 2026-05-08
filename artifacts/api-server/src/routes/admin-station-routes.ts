@@ -60,7 +60,7 @@ function cleanupRecheckTagsJobs() {
 // callbacks attached by an open `/recheck-tags-job-stream/:jobId`
 // connection; they are invoked whenever the job's snapshot changes
 // (per-batch progress or terminal status transition) so clients see
-// updates instantly instead of polling on a 2s timer.
+// updates instantly.
 type RecheckTagsJobSubscriber = (job: RecheckTagsJob) => void;
 const recheckTagsJobSubscribers = new Map<string, Set<RecheckTagsJobSubscriber>>();
 function notifyRecheckTagsJobSubscribers(jobId: string) {
@@ -1397,12 +1397,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           matched = updateResult.matchedCount ?? cleared;
         }
 
-        // Create an in-memory job so the admin UI can poll progress
-        // while the background hydration runs. Only ID-scoped paths
-        // produce per-station progress; the country hydration sweep
-        // runs as a fire-and-forget background scan that doesn't
-        // expose progress, so we leave the job in `running` until
-        // we detect it has nothing to track and mark it completed.
+        // Create an in-memory job so the admin UI can stream progress
+        // (over SSE) while the background hydration runs. Only
+        // ID-scoped paths produce per-station progress; the country
+        // hydration sweep runs as a fire-and-forget background scan
+        // that doesn't expose progress, so we leave the job in
+        // `running` until we detect it has nothing to track and mark
+        // it completed.
         cleanupRecheckTagsJobs();
         const jobId = new mongoose.Types.ObjectId().toString();
         const scopeBits: string[] = [];
@@ -1575,24 +1576,6 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     },
   );
 
-  // Poll status for a bulk tag re-check job. Returns 404 if the job is
-  // unknown or has been evicted by the TTL cleanup.
-  app.get(
-    '/api/admin/stations/recheck-tags-job-status/:jobId',
-    requireAdmin,
-    async (req, res) => {
-      const { jobId } = req.params as { jobId: string };
-      cleanupRecheckTagsJobs();
-      const job = recheckTagsJobs.get(jobId);
-      if (!job) {
-        return res
-          .status(404)
-          .json({ success: false, error: 'Job not found' });
-      }
-      return res.json({ success: true, job });
-    },
-  );
-
   // Cancel a running bulk tag re-check job. The background loops in
   // `recheckStationsTagsByIds` and `hydrateMissingTagsInBackground` both
   // poll the job's `cancelRequested` flag between batches and exit
@@ -1624,15 +1607,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     },
   );
 
-  // Live progress stream for a bulk tag re-check job. Replaces the
-  // 2-second polling loop so admins see processed/hydrated/failed
-  // counts the moment each batch finishes, and the header tagless
-  // badge updates as soon as the server reports progress. The stream
-  // emits an initial `snapshot`, one `progress` event per change
-  // while the job is running, and a final `done` event on terminal
-  // status before closing. Unknown jobs (e.g. evicted after the
-  // 1-hour TTL) get a `not-found` event so the client can stop
-  // reconnecting and clear the persisted job id.
+  // Live progress stream for a bulk tag re-check job. Admins see
+  // processed/hydrated/failed counts the moment each batch finishes,
+  // and the header tagless badge updates as soon as the server reports
+  // progress. The stream emits an initial `snapshot`, one `progress`
+  // event per change while the job is running, and a final `done`
+  // event on terminal status before closing. Unknown jobs (e.g.
+  // evicted after the 1-hour TTL) get a `not-found` event so the
+  // client can stop reconnecting and clear the persisted job id.
   app.get(
     '/api/admin/stations/recheck-tags-job-stream/:jobId',
     requireAdmin,

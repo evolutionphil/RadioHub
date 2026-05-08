@@ -364,11 +364,11 @@ export default function Stations() {
     },
   });
 
-  // Poll progress for the bulk tag re-check job. The server keeps an
-  // in-memory job record updated by the hydration sweep; we stop
-  // polling once it transitions to completed/failed and surface a
-  // toast (once per jobId) so the admin can see the outcome without
-  // refreshing the page.
+  // Track progress for the bulk tag re-check job over SSE. The server
+  // keeps an in-memory job record updated by the hydration sweep and
+  // pushes snapshots; we close the stream once it transitions to
+  // completed/failed and surface a toast (once per jobId) so the
+  // admin can see the outcome without refreshing the page.
   const [isCancellingRecheck, setIsCancellingRecheck] = useState(false);
   type RecheckTagsJobSnapshot = {
     jobId: string;
@@ -436,7 +436,7 @@ export default function Stations() {
   }, [recheckTagsJobId]);
 
   // While the background recheck job is running, invalidate the
-  // tagless/cooldown summary each time a progress poll comes back so
+  // tagless/cooldown summary each time a progress event arrives so
   // the header badge shrinks in real time instead of waiting for the
   // job to complete or for a manual refresh.
   const recheckProgressRef = useRef<{ jobId: string; processed: number } | null>(null);
