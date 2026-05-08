@@ -2225,23 +2225,33 @@ interface ReconstructHistoryResponse {
 function ReconstructHistoryButton() {
   const { toast } = useToast();
   const mutation = useMutation({
-    mutationFn: async (vars: { days: number }) => {
+    mutationFn: async (vars: { days: number; dryRun: boolean }) => {
       const res = await apiRequest(
         'POST',
         '/api/admin/coverage/reconstruct-history',
-        { body: { days: vars.days } },
+        { body: { days: vars.days, dryRun: vars.dryRun } },
       );
       if (!res.ok) {
         const text = await res.text().catch(() => '');
         throw new Error(text || `Request failed (${res.status})`);
       }
-      return (await res.json()) as ReconstructHistoryResponse;
+      const json = (await res.json()) as ReconstructHistoryResponse;
+      return { ...json, dryRun: vars.dryRun };
     },
     onSuccess: (result) => {
       if (result.skippedReason === 'no-stations') {
         toast({
           title: 'Nothing to reconstruct',
           description: 'Stations collection is empty.',
+        });
+      } else if (result.dryRun) {
+        toast({
+          title: `Preview: would seed ${result.daysSeeded} day${
+            result.daysSeeded === 1 ? '' : 's'
+          } of history`,
+          description: `${result.wouldWrite.toLocaleString()} row${
+            result.wouldWrite === 1 ? '' : 's'
+          } would be written · ${result.preserved.toLocaleString()} already present (preserved). No rows written.`,
         });
       } else {
         toast({
@@ -2251,9 +2261,11 @@ function ReconstructHistoryButton() {
           description: `${result.inserted.toLocaleString()} inserted · ${result.preserved.toLocaleString()} preserved (already present).`,
         });
       }
-      void queryClient.invalidateQueries({
-        queryKey: ['/api/admin/coverage/trends?days=30'],
-      });
+      if (!result.dryRun) {
+        void queryClient.invalidateQueries({
+          queryKey: ['/api/admin/coverage/trends?days=30'],
+        });
+      }
     },
     onError: (err: any) => {
       toast({
@@ -2264,12 +2276,12 @@ function ReconstructHistoryButton() {
     },
   });
 
-  const handleClick = () => {
+  const promptDays = (): number | null => {
     const raw = window.prompt(
       'How many days of history to reconstruct? (1–365)',
       '30',
     );
-    if (raw === null) return;
+    if (raw === null) return null;
     const days = Number(raw.trim());
     if (!Number.isFinite(days) || !Number.isInteger(days) || days < 1 || days > 365) {
       toast({
@@ -2277,27 +2289,56 @@ function ReconstructHistoryButton() {
         description: 'Enter an integer between 1 and 365.',
         variant: 'destructive',
       });
-      return;
+      return null;
     }
-    mutation.mutate({ days });
+    return days;
+  };
+
+  const handleRun = () => {
+    const days = promptDays();
+    if (days === null) return;
+    mutation.mutate({ days, dryRun: false });
+  };
+
+  const handleDryRun = () => {
+    const days = promptDays();
+    if (days === null) return;
+    mutation.mutate({ days, dryRun: true });
   };
 
   return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleClick}
-      disabled={mutation.isPending}
-      data-testid="button-reconstruct-history"
-      title="Re-run the one-shot historical sparkline reconstruction. Idempotent — real nightly snapshots are preserved."
-    >
-      {mutation.isPending ? (
-        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-      ) : (
-        <RefreshCw className="w-4 h-4 mr-2" />
-      )}
-      Reconstruct sparkline history
-    </Button>
+    <div className="flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleDryRun}
+        disabled={mutation.isPending}
+        data-testid="button-reconstruct-history-dry-run"
+        title="Preview how many rows would be seeded without writing anything to the database."
+      >
+        {mutation.isPending && mutation.variables?.dryRun ? (
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        ) : (
+          <RefreshCw className="w-4 h-4 mr-2" />
+        )}
+        Preview (dry run)
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={handleRun}
+        disabled={mutation.isPending}
+        data-testid="button-reconstruct-history"
+        title="Re-run the one-shot historical sparkline reconstruction. Idempotent — real nightly snapshots are preserved."
+      >
+        {mutation.isPending && !mutation.variables?.dryRun ? (
+          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+        ) : (
+          <RefreshCw className="w-4 h-4 mr-2" />
+        )}
+        Reconstruct sparkline history
+      </Button>
+    </div>
   );
 }
 
