@@ -829,6 +829,11 @@ ${keysText}`;
       const limit = parseInt(req.query.limit as string) || 50;
       const search = (req.query.search as string)?.trim() || '';
       const sortBy = (req.query.sortBy as string) || 'stationCount';
+      // Task #133: filter to only genres auto-demoted by the slug-cleanup
+      // migration so admins can review what went dark and decide whether to
+      // merge stations, rename one duplicate, or delete the row.
+      const demotedOnly =
+        req.query.demoted === '1' || req.query.demoted === 'true';
       
       // Build MongoDB query
       const query: any = {};
@@ -836,6 +841,10 @@ ${keysText}`;
       // Add search filter if provided (case-insensitive search in name field)
       if (search) {
         query.name = { $regex: search, $options: 'i' };
+      }
+
+      if (demotedOnly) {
+        query['cleanupDemotion.reason'] = { $in: ['empty-slug', 'collision'] };
       }
       
       // Count total matching documents
@@ -850,6 +859,10 @@ ${keysText}`;
         sortOptions = { name: 1 }; // Alphabetical A-Z
       } else if (sortBy === 'recent') {
         sortOptions = { createdAt: -1 }; // Newest first
+      } else if (sortBy === 'demotedAt') {
+        // Most recently demoted first — only meaningful when demotedOnly is on
+        // but harmless otherwise (genres without the field sort last).
+        sortOptions = { 'cleanupDemotion.demotedAt': -1 };
       }
       
       const realGenres = await Genre.find(query)

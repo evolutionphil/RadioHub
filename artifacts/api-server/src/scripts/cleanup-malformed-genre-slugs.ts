@@ -76,6 +76,7 @@ async function runCleanup(): Promise<CleanupStats> {
   // the projected _id as the union and feed it back to the driver as-is.
   interface GenreSlugDoc {
     _id: ObjectId | string;
+    name?: string | null;
     slug?: string | null;
     isDiscoverable?: boolean;
   }
@@ -85,8 +86,10 @@ async function runCleanup(): Promise<CleanupStats> {
   const coll = Genre.collection as unknown as Collection<GenreSlugDoc>;
   const cursor = coll.find(
     {},
-    { projection: { _id: 1, slug: 1, isDiscoverable: 1 } },
+    { projection: { _id: 1, name: 1, slug: 1, isDiscoverable: 1 } },
   );
+
+  const nowDate = new Date();
 
   for await (const doc of cursor) {
     stats.scanned++;
@@ -106,9 +109,22 @@ async function runCleanup(): Promise<CleanupStats> {
         `🧹 [${doc._id}] slug=${JSON.stringify(currentSlug)} → unrecoverable, marking isDiscoverable=false`,
       );
       if (!DRY_RUN) {
+        // Persist the demotion forensics so the admin UI can surface
+        // *why* this row went dark (Task #133).
         await coll.updateOne(
           { _id: doc._id },
-          { $set: { isDiscoverable: false, updatedAt: new Date() } },
+          {
+            $set: {
+              isDiscoverable: false,
+              updatedAt: nowDate,
+              cleanupDemotion: {
+                reason: 'empty-slug',
+                originalSlug: typeof currentSlug === 'string' ? currentSlug : '',
+                normalizedSlug: '',
+                demotedAt: nowDate,
+              },
+            },
+          },
         );
       }
       continue;
@@ -118,7 +134,7 @@ async function runCleanup(): Promise<CleanupStats> {
     // normalized slug. We don't merge — we just demote this duplicate.
     const collision = await coll.findOne(
       { slug: normalized, _id: { $ne: doc._id } },
-      { projection: { _id: 1 } },
+      { projection: { _id: 1, name: 1, slug: 1 } },
     );
 
     if (collision) {
@@ -130,7 +146,21 @@ async function runCleanup(): Promise<CleanupStats> {
       if (!DRY_RUN) {
         await coll.updateOne(
           { _id: doc._id },
-          { $set: { isDiscoverable: false, updatedAt: new Date() } },
+          {
+            $set: {
+              isDiscoverable: false,
+              updatedAt: nowDate,
+              cleanupDemotion: {
+                reason: 'collision',
+                originalSlug: typeof currentSlug === 'string' ? currentSlug : '',
+                normalizedSlug: normalized,
+                collisionWinnerId: collision._id,
+                collisionWinnerSlug: collision.slug ?? undefined,
+                collisionWinnerName: collision.name ?? undefined,
+                demotedAt: nowDate,
+              },
+            },
+          },
         );
       }
       continue;

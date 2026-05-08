@@ -108,6 +108,26 @@ export interface IMediaGroup extends Document {
   updatedAt: Date;
 }
 
+export interface IGenreCleanupDemotion {
+  // Why the slug-cleanup migration auto-flipped isDiscoverable to false.
+  // 'empty-slug'  → original slug normalized to "" (unrecoverable).
+  // 'collision'   → another doc already owns the safe slug; we kept that
+  //                 winner and demoted this duplicate.
+  reason: 'empty-slug' | 'collision';
+  // The raw slug as it existed before normalization (may contain
+  // XML/URL-unsafe chars — display only, never link to it).
+  originalSlug?: string;
+  // What the script tried to normalize the original slug to.
+  normalizedSlug?: string;
+  // For 'collision' only: identity of the doc that already owns the
+  // normalized slug. Stored denormalized so the admin UI can render the
+  // winner without an extra lookup.
+  collisionWinnerId?: mongoose.Types.ObjectId | string;
+  collisionWinnerSlug?: string;
+  collisionWinnerName?: string;
+  demotedAt: Date;
+}
+
 export interface IGenre extends Document {
   name: string;
   slug: string;
@@ -116,6 +136,7 @@ export interface IGenre extends Document {
   description?: string;
   isDiscoverable?: boolean;
   stationCount: number;
+  cleanupDemotion?: IGenreCleanupDemotion;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -951,6 +972,20 @@ const GenreSchema = new Schema<IGenre>({
   description: String,
   isDiscoverable: { type: Boolean, default: false },
   stationCount: { type: Number, default: 0 },
+  // Forensic record written by `cleanup-malformed-genre-slugs.ts` when it
+  // demotes a genre. Lets the admin UI surface "Recently demoted by slug
+  // cleanup" so admins can decide whether to merge, rename, or delete.
+  // Subdoc lives inline; absent on healthy genres so existing reads are
+  // unaffected.
+  cleanupDemotion: {
+    reason: { type: String, enum: ['empty-slug', 'collision'] },
+    originalSlug: String,
+    normalizedSlug: String,
+    collisionWinnerId: Schema.Types.Mixed,
+    collisionWinnerSlug: String,
+    collisionWinnerName: String,
+    demotedAt: Date,
+  },
   createdAt: { type: Date, default: Date.now }
 }, { strict: false }); // Allow any _id type without strict validation
 
@@ -958,6 +993,8 @@ GenreSchema.index({ name: 1 });
 GenreSchema.index({ isDiscoverable: 1 });
 GenreSchema.index({ slug: 1 }, { sparse: true });
 GenreSchema.index({ stationCount: -1 });
+// Speeds up the admin "Recently demoted by slug cleanup" filter view.
+GenreSchema.index({ 'cleanupDemotion.demotedAt': -1 }, { sparse: true });
 
 const CodecSchema = new Schema<ICodec>({
   name: { type: String, required: true, unique: true },  

@@ -14,6 +14,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Upload, Edit, Eye, EyeOff, Plus, Image as ImageIcon, Trash2, Globe, Filter, Search, AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
+interface GenreCleanupDemotion {
+  reason: 'empty-slug' | 'collision';
+  originalSlug?: string;
+  normalizedSlug?: string;
+  collisionWinnerId?: string;
+  collisionWinnerSlug?: string;
+  collisionWinnerName?: string;
+  demotedAt?: string;
+}
+
 interface Genre {
   _id: string;
   name: string;
@@ -25,6 +35,7 @@ interface Genre {
   discoverable?: boolean;
   isDiscoverable?: boolean;
   displayOrder?: number;
+  cleanupDemotion?: GenreCleanupDemotion;
   createdAt: string;
   updatedAt?: string;
 }
@@ -50,6 +61,7 @@ export default function AdminGenres() {
   // State for filters and pagination
   const [filters, setFilters] = useState({
     showDiscoverableOnly: false,
+    showDemotedOnly: false,
     sortBy: 'stationCount',
     searchQuery: ''
   });
@@ -74,7 +86,7 @@ export default function AdminGenres() {
 
   // Fetch all genres from database (paginated) - using admin endpoint
   const { data: genresResponse, isLoading, error } = useQuery({
-    queryKey: ['/api/admin/genres', pagination.page, pagination.limit, filters.sortBy, filters.searchQuery, filters.showDiscoverableOnly],
+    queryKey: ['/api/admin/genres', pagination.page, pagination.limit, filters.sortBy, filters.searchQuery, filters.showDiscoverableOnly, filters.showDemotedOnly],
     queryFn: async () => {
       // Build query parameters
       const params = new URLSearchParams({
@@ -87,6 +99,13 @@ export default function AdminGenres() {
       if (filters.searchQuery) {
         params.append('search', filters.searchQuery);
       }
+
+      // Server-side filter: only genres auto-demoted by the slug-cleanup
+      // migration (Task #133). Recorded by
+      // `cleanup-malformed-genre-slugs.ts` in `cleanupDemotion`.
+      if (filters.showDemotedOnly) {
+        params.append('demoted', '1');
+      }
       
       // Fetch genres from admin endpoint with server-side filtering
       const response = await fetch(`/api/admin/genres?${params}`);
@@ -97,7 +116,7 @@ export default function AdminGenres() {
       let filteredGenres = data.data || [];
       
       if (filters.showDiscoverableOnly) {
-        filteredGenres = filteredGenres.filter(g => g.isDiscoverable || g.discoverable);
+        filteredGenres = filteredGenres.filter((g: Genre) => g.isDiscoverable || g.discoverable);
       }
       
       return {
@@ -478,7 +497,26 @@ export default function AdminGenres() {
             Show only discoverable
           </Label>
         </div>
-        
+
+        <div className="flex items-center space-x-2">
+          <Switch
+            id="demoted-filter"
+            checked={filters.showDemotedOnly}
+            onCheckedChange={(checked) =>
+              handleFilterChange({
+                showDemotedOnly: checked,
+                // When opting in, default the sort to "most recently demoted"
+                // so the freshest cleanup output is at the top.
+                ...(checked ? { sortBy: 'demotedAt' } : {}),
+              })
+            }
+            data-testid="switch-show-demoted-only"
+          />
+          <Label htmlFor="demoted-filter" className="text-sm">
+            Recently demoted by slug cleanup
+          </Label>
+        </div>
+
         <div className="flex items-center space-x-2">
           <Label className="text-sm">Sort by:</Label>
           <Select 
@@ -491,7 +529,8 @@ export default function AdminGenres() {
             <SelectContent>
               <SelectItem value="stationCount">Station Count</SelectItem>
               <SelectItem value="name">Name (A-Z)</SelectItem>
-              <SelectItem value="createdAt">Created Date</SelectItem>
+              <SelectItem value="recent">Created Date</SelectItem>
+              <SelectItem value="demotedAt">Recently Demoted</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -552,6 +591,68 @@ export default function AdminGenres() {
                   )}
                 </div>
                 <p className="text-sm text-muted-foreground">{genre.description}</p>
+                {genre.cleanupDemotion && (
+                  <Alert
+                    className="border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950"
+                    data-testid={`alert-cleanup-demoted-${genre._id}`}
+                  >
+                    <AlertTriangle className="h-4 w-4 text-amber-700" />
+                    <AlertDescription className="text-amber-900 dark:text-amber-200 text-xs space-y-1">
+                      <div>
+                        <strong>Demoted by slug cleanup</strong>
+                        {genre.cleanupDemotion.demotedAt && (
+                          <span className="text-muted-foreground ml-1">
+                            ({new Date(genre.cleanupDemotion.demotedAt).toLocaleDateString()})
+                          </span>
+                        )}
+                      </div>
+                      <div>
+                        Original slug:{' '}
+                        <code className="px-1 rounded bg-amber-100 dark:bg-amber-900">
+                          {genre.cleanupDemotion.originalSlug || '(empty)'}
+                        </code>
+                      </div>
+                      {genre.cleanupDemotion.reason === 'collision' ? (
+                        <>
+                          <div>
+                            Normalized to:{' '}
+                            <code className="px-1 rounded bg-amber-100 dark:bg-amber-900">
+                              {genre.cleanupDemotion.normalizedSlug}
+                            </code>
+                          </div>
+                          <div>
+                            Collides with:{' '}
+                            <strong>
+                              {genre.cleanupDemotion.collisionWinnerName || '(unknown)'}
+                            </strong>
+                            {genre.cleanupDemotion.collisionWinnerSlug && (
+                              <>
+                                {' '}
+                                <code className="px-1 rounded bg-amber-100 dark:bg-amber-900">
+                                  {genre.cleanupDemotion.collisionWinnerSlug}
+                                </code>
+                              </>
+                            )}
+                          </div>
+                          <div className="text-muted-foreground">
+                            Either delete this row, or rename + re-enable to a unique slug.
+                            Stations were not auto-merged.
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            Reason: original slug had no safe characters and could not be
+                            normalized.
+                          </div>
+                          <div className="text-muted-foreground">
+                            Either delete this row, or rename + re-enable with a real slug.
+                          </div>
+                        </>
+                      )}
+                    </AlertDescription>
+                  </Alert>
+                )}
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex gap-2">
                     <Badge variant="secondary">
@@ -565,6 +666,11 @@ export default function AdminGenres() {
                     <Badge variant="default">
                       <Globe className="w-3 h-3 mr-1" />
                       Discoverable
+                    </Badge>
+                  ) : genre.cleanupDemotion ? (
+                    <Badge variant="outline" className="border-amber-400 text-amber-800">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      Demoted
                     </Badge>
                   ) : (
                     <Badge variant="outline">
