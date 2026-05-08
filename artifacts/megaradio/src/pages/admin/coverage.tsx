@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Card,
@@ -25,9 +25,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import { Loader2, RefreshCw, Image as ImageIcon, Tag } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 
 interface CountryCoverage {
   countryCode: string;
@@ -66,12 +67,45 @@ function coverageBadgeClass(pct: number): string {
   return 'bg-red-100 text-red-700 border-red-200';
 }
 
+interface CoverageJobStatus {
+  jobId: string;
+  countryCode: string;
+  scope: 'logos' | 'tags' | 'both';
+  status: 'running' | 'completed' | 'failed';
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
+  logos?: {
+    matched: number;
+    enqueued: number;
+    completed: number;
+    remaining: number;
+    done: boolean;
+  };
+  tags?: {
+    total: number;
+    processed: number;
+    hydrated: number;
+    emptyUpstream: number;
+    failed: number;
+    done: boolean;
+  };
+}
+
 export default function AdminCoverage() {
   const { toast } = useToast();
   const [sortKey, setSortKey] = useState<SortKey>('logoCoveragePct');
   const [search, setSearch] = useState('');
   const [minStations, setMinStations] = useState(10);
   const [enqueuing, setEnqueuing] = useState<string | null>(null);
+  // Per-country active job. Only one job is tracked per country at a time
+  // — re-clicking a button while a job runs replaces the handle with the
+  // new one (the previous job continues in the background and will TTL
+  // out server-side). Keyed by countryCode for O(1) row lookups.
+  const [activeJobs, setActiveJobs] = useState<
+    Record<string, CoverageJobStatus>
+  >({});
+  const completedJobsRef = useRef<Set<string>>(new Set());
 
   const {
     data,
@@ -97,8 +131,9 @@ export default function AdminCoverage() {
       );
       return (await res.json()) as {
         success: boolean;
+        jobId?: string;
         countryCode: string;
-        scope: string;
+        scope: 'logos' | 'tags' | 'both';
         logos: { matched: number; enqueued: number } | null;
         tags: { started: boolean } | null;
       };
@@ -119,7 +154,41 @@ export default function AdminCoverage() {
         title: `Backfill kicked off for ${result.countryCode}`,
         description: bits.join(' · ') || 'Nothing to enqueue.',
       });
-      void refetch();
+      if (result.jobId) {
+        // Seed an initial running job so the row immediately shows a
+        // progress indicator while the first poll lands.
+        setActiveJobs((prev) => ({
+          ...prev,
+          [result.countryCode]: {
+            jobId: result.jobId!,
+            countryCode: result.countryCode,
+            scope: result.scope,
+            status: 'running',
+            startedAt: Date.now(),
+            logos: result.logos
+              ? {
+                  matched: result.logos.matched,
+                  enqueued: result.logos.enqueued,
+                  completed: 0,
+                  remaining: result.logos.enqueued,
+                  done: result.logos.enqueued === 0,
+                }
+              : undefined,
+            tags: result.tags?.started
+              ? {
+                  total: 0,
+                  processed: 0,
+                  hydrated: 0,
+                  emptyUpstream: 0,
+                  failed: 0,
+                  done: false,
+                }
+              : undefined,
+          },
+        }));
+      } else {
+        void refetch();
+      }
     },
     onError: (err: any) => {
       toast({
@@ -130,6 +199,84 @@ export default function AdminCoverage() {
     },
     onSettled: () => setEnqueuing(null),
   });
+
+  // Poll every running job's status. We keep things simple by sharing one
+  // 2s tick across all in-flight jobs rather than spawning a useQuery per
+  // country — coverage backfills almost always run one country at a time.
+  useEffect(() => {
+    const runningCodes = Object.values(activeJobs)
+      .filter((j) => j.status === 'running')
+      .map((j) => j.countryCode);
+    if (runningCodes.length === 0) return;
+
+    let cancelled = false;
+    const tick = async () => {
+      const snapshot = activeJobs;
+      await Promise.all(
+        runningCodes.map(async (code) => {
+          const job = snapshot[code];
+          if (!job || job.status !== 'running') return;
+          try {
+            const res = await apiRequest(
+              'GET',
+              `/api/admin/coverage/enqueue-job-status/${encodeURIComponent(
+                job.jobId,
+              )}`,
+            );
+            if (!res.ok) return;
+            const payload = (await res.json()) as {
+              success: boolean;
+              job: CoverageJobStatus;
+            };
+            if (cancelled || !payload?.job) return;
+            setActiveJobs((prev) => ({
+              ...prev,
+              [code]: { ...payload.job, countryCode: code },
+            }));
+          } catch {
+            /* network blip — try again on next tick */
+          }
+        }),
+      );
+    };
+    const interval = window.setInterval(tick, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+    // We only want to (re)start the timer when the *set* of running jobs
+    // changes, not on every counter tick within them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    Object.values(activeJobs)
+      .filter((j) => j.status === 'running')
+      .map((j) => `${j.countryCode}:${j.jobId}`)
+      .sort()
+      .join('|'),
+  ]);
+
+  // When a job finishes, refresh the coverage table once so the
+  // percentages catch up, then drop the row indicator after a short
+  // celebratory pause so admins can see the final counts.
+  useEffect(() => {
+    for (const job of Object.values(activeJobs)) {
+      if (job.status === 'running') continue;
+      if (completedJobsRef.current.has(job.jobId)) continue;
+      completedJobsRef.current.add(job.jobId);
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/by-country'],
+      });
+      const code = job.countryCode;
+      const handle = window.setTimeout(() => {
+        setActiveJobs((prev) => {
+          const next = { ...prev };
+          if (next[code]?.jobId === job.jobId) delete next[code];
+          return next;
+        });
+      }, 6000);
+      return () => window.clearTimeout(handle);
+    }
+  }, [activeJobs]);
 
   const visible = useMemo(() => {
     const rows = data?.countries ?? [];
@@ -322,9 +469,10 @@ export default function AdminCoverage() {
                     const logoKey = `${row.countryCode}:logos`;
                     const tagsKey = `${row.countryCode}:tags`;
                     const bothKey = `${row.countryCode}:both`;
+                    const job = activeJobs[row.countryCode];
                     return (
+                      <Fragment key={row.countryCode}>
                       <TableRow
-                        key={row.countryCode}
                         data-testid={`row-coverage-${row.countryCode}`}
                       >
                         <TableCell>
@@ -423,6 +571,17 @@ export default function AdminCoverage() {
                           </div>
                         </TableCell>
                       </TableRow>
+                      {job ? (
+                        <TableRow
+                          data-testid={`row-coverage-progress-${row.countryCode}`}
+                          className="bg-muted/30"
+                        >
+                          <TableCell colSpan={7} className="py-3">
+                            <CoverageJobProgressRow job={job} />
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                      </Fragment>
                     );
                   })}
                 </TableBody>
@@ -431,6 +590,86 @@ export default function AdminCoverage() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function CoverageJobProgressRow({ job }: { job: CoverageJobStatus }) {
+  const isRunning = job.status === 'running';
+  const statusLabel =
+    job.status === 'completed'
+      ? 'Backfill complete'
+      : job.status === 'failed'
+        ? 'Backfill failed'
+        : 'Backfill in progress';
+
+  const renderBar = (
+    label: string,
+    processed: number,
+    total: number,
+    extra?: string,
+  ) => {
+    const pct =
+      total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+    return (
+      <div className="flex-1 min-w-[220px]">
+        <div className="flex items-center justify-between text-xs mb-1">
+          <span className="font-medium">{label}</span>
+          <span className="tabular-nums text-muted-foreground">
+            {total > 0
+              ? `${processed.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`
+              : '0 / 0'}
+            {extra ? ` · ${extra}` : ''}
+          </span>
+        </div>
+        <Progress value={pct} className="h-2" />
+      </div>
+    );
+  };
+
+  return (
+    <div
+      className="flex flex-col gap-2"
+      data-testid={`coverage-job-${job.countryCode}`}
+    >
+      <div className="flex items-center gap-2 text-xs">
+        {isRunning ? (
+          <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+        ) : null}
+        <span
+          className={
+            job.status === 'failed'
+              ? 'text-red-600 font-medium'
+              : job.status === 'completed'
+                ? 'text-green-700 font-medium'
+                : 'text-muted-foreground font-medium'
+          }
+          data-testid={`coverage-job-status-${job.countryCode}`}
+        >
+          {statusLabel}
+        </span>
+        {job.error ? (
+          <span className="text-red-600">— {job.error}</span>
+        ) : null}
+      </div>
+      <div className="flex flex-wrap gap-4">
+        {job.logos
+          ? renderBar(
+              'Logos',
+              job.logos.completed,
+              job.logos.enqueued,
+              `${job.logos.remaining.toLocaleString()} remaining`,
+            )
+          : null}
+        {job.tags
+          ? renderBar(
+              'Tags',
+              job.tags.processed,
+              job.tags.total,
+              `✅${job.tags.hydrated} ∅${job.tags.emptyUpstream} ❌${job.tags.failed}`,
+            )
+          : null}
+      </div>
     </div>
   );
 }

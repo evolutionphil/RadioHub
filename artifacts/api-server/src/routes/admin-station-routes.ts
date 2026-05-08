@@ -77,6 +77,57 @@ function notifyRecheckTagsJobSubscribers(jobId: string) {
   }
 }
 
+// In-memory progress tracker for per-country coverage backfill jobs (the
+// "Re-enqueue" buttons on the coverage page). Each job tracks the logo
+// pipeline (driven by the scheduled-logo-processor sweeping the stations
+// we just $unset) and the tags pipeline (the in-process Radio-Browser
+// hydration). Logo progress is computed lazily on each status poll by
+// counting how many of the originally-enqueued station IDs still lack a
+// completed `logoAssets`. Tags progress is streamed from the helper's
+// `onProgress` callback.
+type CoverageBackfillJob = {
+  jobId: string;
+  countryCode: string;
+  scope: 'logos' | 'tags' | 'both';
+  status: 'running' | 'completed' | 'failed';
+  startedAt: number;
+  finishedAt?: number;
+  error?: string;
+  logos?: {
+    matched: number;
+    enqueuedIds: string[];
+    completed: number;
+    remaining: number;
+    done: boolean;
+  };
+  tags?: {
+    total: number;
+    processed: number;
+    hydrated: number;
+    emptyUpstream: number;
+    failed: number;
+    done: boolean;
+  };
+};
+const coverageBackfillJobs = new Map<string, CoverageBackfillJob>();
+const COVERAGE_BACKFILL_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
+function cleanupCoverageBackfillJobs() {
+  const now = Date.now();
+  for (const [jobId, job] of coverageBackfillJobs) {
+    if (job.finishedAt && now - job.finishedAt > COVERAGE_BACKFILL_JOB_TTL_MS) {
+      coverageBackfillJobs.delete(jobId);
+    }
+  }
+}
+function maybeFinishCoverageJob(job: CoverageBackfillJob) {
+  const logosDone = !job.logos || job.logos.done;
+  const tagsDone = !job.tags || job.tags.done;
+  if (logosDone && tagsDone && job.status === 'running') {
+    job.status = job.error ? 'failed' : 'completed';
+    job.finishedAt = Date.now();
+  }
+}
+
 const STATION_UPDATE_ALLOWED_FIELDS = [
   'name', 'url', 'homepage', 'favicon', 'country', 'countryCode',
   'language', 'tags', 'bitrate', 'codec', 'hls', 'noIndex'
@@ -1780,11 +1831,26 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           });
         }
 
+        cleanupCoverageBackfillJobs();
+        const jobId = new mongoose.Types.ObjectId().toString();
+        const job: CoverageBackfillJob = {
+          jobId,
+          countryCode: rawCode,
+          scope: scopeInput as 'logos' | 'tags' | 'both',
+          status: 'running',
+          startedAt: Date.now(),
+        };
+        coverageBackfillJobs.set(jobId, job);
+
         // Logo enqueue — mirror `backfill-tr-logos.ts` exactly (same filter,
         // same `$unset` so the next scheduled-logo-processor sweep picks the
-        // station up). Idempotent: completed assets are excluded.
+        // station up). Idempotent: completed assets are excluded. We resolve
+        // the matching `_id`s up front so the status endpoint can later
+        // count how many of *those specific* stations now have a completed
+        // logoAssets record (instead of conflating with unrelated traffic).
         let logoMatched = 0;
         let logoEnqueued = 0;
+        let logoEnqueuedIds: string[] = [];
         if (wantLogos) {
           const STALE_PROCESSING_MS = 60 * 60 * 1000;
           const stalePivot = new Date(Date.now() - STALE_PROCESSING_MS);
@@ -1822,13 +1888,33 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               },
             ],
           };
-          logoMatched = await Station.countDocuments(logoFilter);
-          if (logoMatched > 0) {
-            const result = await Station.updateMany(logoFilter, {
-              $unset: { logoAssets: '' },
-            });
+          const matchedDocs = (await Station.find(logoFilter)
+            .select('_id')
+            .lean()) as unknown as Array<{ _id: mongoose.Types.ObjectId }>;
+          logoMatched = matchedDocs.length;
+          logoEnqueuedIds = matchedDocs.map((d) => d._id.toString());
+          if (logoEnqueuedIds.length > 0) {
+            const result = await Station.updateMany(
+              {
+                _id: {
+                  $in: logoEnqueuedIds.map(
+                    (id) => new mongoose.Types.ObjectId(id),
+                  ),
+                },
+              },
+              { $unset: { logoAssets: '' } },
+            );
             logoEnqueued = result.modifiedCount ?? 0;
           }
+          job.logos = {
+            matched: logoMatched,
+            enqueuedIds: logoEnqueuedIds,
+            completed: 0,
+            remaining: logoEnqueuedIds.length,
+            // Nothing to track → already done so the job can complete
+            // immediately rather than sit "running" forever.
+            done: logoEnqueuedIds.length === 0,
+          };
         }
 
         // Tags enqueue — fire-and-forget call into the same hydration helper
@@ -1837,6 +1923,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         let tagsStarted = false;
         if (wantTags) {
           tagsStarted = true;
+          job.tags = {
+            total: 0,
+            processed: 0,
+            hydrated: 0,
+            emptyUpstream: 0,
+            failed: 0,
+            done: false,
+          };
           void syncService
             .hydrateMissingTagsInBackground({
               countryCode: rawCode,
@@ -1844,17 +1938,56 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               // admin-triggered run produces the same Radio-Browser load
               // shape as the CLI backfill.
               limit: 2000,
+              onProgress: (p) => {
+                const current = coverageBackfillJobs.get(jobId);
+                if (!current?.tags) return;
+                current.tags.total = p.total;
+                current.tags.processed = p.processed;
+                current.tags.hydrated = p.hydrated;
+                current.tags.emptyUpstream = p.emptyUpstream;
+                current.tags.failed = p.failed;
+                coverageBackfillJobs.set(jobId, current);
+              },
+            })
+            .then((result) => {
+              const current = coverageBackfillJobs.get(jobId);
+              if (!current?.tags) return;
+              current.tags.total = Math.max(
+                current.tags.total,
+                result.processed,
+              );
+              current.tags.processed = result.processed;
+              current.tags.hydrated = result.hydrated;
+              current.tags.emptyUpstream = result.emptyUpstream;
+              current.tags.failed = result.failed;
+              current.tags.done = true;
+              maybeFinishCoverageJob(current);
+              coverageBackfillJobs.set(jobId, current);
             })
             .catch((err) => {
               logger.error(
                 `coverage tags enqueue (${rawCode}) failed`,
                 err,
               );
+              const current = coverageBackfillJobs.get(jobId);
+              if (current?.tags) {
+                current.tags.done = true;
+                current.error =
+                  err instanceof Error ? err.message : String(err);
+                maybeFinishCoverageJob(current);
+                coverageBackfillJobs.set(jobId, current);
+              }
             });
         }
 
+        // If both subjobs ended up no-ops (e.g. nothing matched and
+        // nothing was started), close the job out immediately.
+        maybeFinishCoverageJob(job);
+        coverageBackfillJobs.set(jobId, job);
+
         return res.json({
           success: true,
+          jobId,
           countryCode: rawCode,
           scope: scopeInput,
           logos: wantLogos
@@ -1869,6 +2002,80 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           error: error?.message || 'Failed to enqueue country backfill',
         });
       }
+    },
+  );
+
+  // Poll status for a coverage backfill job. The logo subjob has no
+  // in-process callback we can hook (the actual processing is done by the
+  // scheduled-logo-processor sweeping `logoAssets`-less rows), so we
+  // recompute "remaining" lazily here by counting how many of the
+  // originally-enqueued station IDs still don't have a completed
+  // `logoAssets` record.
+  app.get(
+    '/api/admin/coverage/enqueue-job-status/:jobId',
+    requireAdmin,
+    async (req, res) => {
+      const { jobId } = req.params as { jobId: string };
+      cleanupCoverageBackfillJobs();
+      const job = coverageBackfillJobs.get(jobId);
+      if (!job) {
+        return res
+          .status(404)
+          .json({ success: false, error: 'Job not found' });
+      }
+      if (job.logos && !job.logos.done && job.logos.enqueuedIds.length > 0) {
+        try {
+          const completed = await Station.countDocuments({
+            _id: {
+              $in: job.logos.enqueuedIds.map(
+                (id) => new mongoose.Types.ObjectId(id),
+              ),
+            },
+            'logoAssets.status': 'completed',
+          });
+          job.logos.completed = completed;
+          job.logos.remaining = Math.max(
+            job.logos.enqueuedIds.length - completed,
+            0,
+          );
+          if (job.logos.remaining === 0) {
+            job.logos.done = true;
+            maybeFinishCoverageJob(job);
+          }
+          coverageBackfillJobs.set(jobId, job);
+        } catch (err) {
+          logger.error('coverage logo progress recompute failed', err);
+        }
+      }
+      // Sanity ceiling: if a job has been "running" for >2h it almost
+      // certainly missed a finish signal (e.g. logo processor lagged or a
+      // station was deleted). Mark it complete so the UI doesn't spin
+      // forever and the row goes back to its normal coverage display.
+      const MAX_RUN_MS = 2 * 60 * 60 * 1000;
+      if (job.status === 'running' && Date.now() - job.startedAt > MAX_RUN_MS) {
+        if (job.logos) job.logos.done = true;
+        if (job.tags) job.tags.done = true;
+        maybeFinishCoverageJob(job);
+        coverageBackfillJobs.set(jobId, job);
+      }
+      // Don't ship the full enqueuedIds array on every poll — it can be
+      // a few thousand strings per country.
+      const { logos, ...rest } = job;
+      return res.json({
+        success: true,
+        job: {
+          ...rest,
+          logos: logos
+            ? {
+                matched: logos.matched,
+                enqueued: logos.enqueuedIds.length,
+                completed: logos.completed,
+                remaining: logos.remaining,
+                done: logos.done,
+              }
+            : undefined,
+        },
+      });
     },
   );
 }
