@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { Station, CoverageSnapshot } from '../shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { checkAndNotifyCoverageDrops } from './coverage-drop-notifier';
 
 /**
  * Nightly job that snapshots per-country logo + tag coverage into the
@@ -207,6 +208,20 @@ class ScheduledCoverageSnapshot {
       logger.log(
         `📈 Coverage snapshot DONE: wrote ${rows.length} countries in ${seconds}s`,
       );
+      // Task #145: after each snapshot, compare to 7 days ago and alert
+      // the team about any country whose logo/tag coverage dropped
+      // beyond the configured threshold. Best-effort: notifier swallows
+      // its own errors so a regression here can never block the cron.
+      try {
+        const result = await checkAndNotifyCoverageDrops(snapshotDate);
+        if (result.checked) {
+          logger.log(
+            `📈 Coverage drop check: ${result.drops.length} drop(s) detected`,
+          );
+        }
+      } catch (err) {
+        logger.warn('⚠️  Coverage drop check failed:', err);
+      }
       return { countries: rows.length, snapshotDate };
     } catch (err: any) {
       logger.error('❌ Coverage snapshot failed:', err?.message || err);
