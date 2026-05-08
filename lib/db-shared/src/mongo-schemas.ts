@@ -652,6 +652,16 @@ export interface IBulkDescriptionJob extends Document {
 // Scheduled cross-country logo + tag backfill — one row per cron sweep so
 // admins can see "DE: 372 logos enqueued, 295 tags hydrated" without
 // re-running the manual scripts. See `services/scheduled-backfill.ts`.
+// A small sample of stations a single per-country backfill phase actually
+// touched, persisted on the BackfillRun row so admins can click straight
+// from the run detail page into a problem station instead of grepping
+// server logs (Task #234). Capped to `BACKFILL_SAMPLE_STATIONS_PER_COUNTRY`
+// in `services/scheduled-backfill.ts` to keep the document small.
+export interface IBackfillRunSampleStation {
+  _id: string;
+  slug?: string;
+  name?: string;
+}
 export interface IBackfillRunCountryLogos {
   countryCode: string;
   candidates: number;
@@ -660,6 +670,9 @@ export interface IBackfillRunCountryLogos {
   // detail page can show which country/step actually dominated a slow
   // Sunday sweep instead of just the overall `durationMs`.
   durationMs?: number;
+  // Sample of stations whose `logoAssets` was actually $unset by this
+  // sweep (i.e. the head of the candidate filter, capped to N).
+  sampleStations?: IBackfillRunSampleStation[];
 }
 export interface IBackfillRunCountryTags {
   countryCode: string;
@@ -671,6 +684,11 @@ export interface IBackfillRunCountryTags {
   // is the radio-browser-bound step so it's typically the long pole on
   // markets with thousands of un-hydrated stations.
   durationMs?: number;
+  // Sample of stations the tags-hydration phase considered (head of the
+  // candidate filter at sweep start, capped to N). The hydrator itself
+  // doesn't report which stationuuids it touched, so this is the
+  // intent-list rather than per-result success/fail.
+  sampleStations?: IBackfillRunSampleStation[];
 }
 export interface IBackfillRun extends Document {
   trigger: string; // 'cron:weekly' | 'manual:logos:<CC>' | 'manual:tags:<CC>'
@@ -1211,6 +1229,14 @@ const BackfillRunSchema = new Schema<IBackfillRun>({
     candidates: { type: Number, default: 0 },
     enqueued: { type: Number, default: 0 },
     durationMs: Number,
+    sampleStations: {
+      type: [{
+        _id: { type: String, required: true },
+        slug: String,
+        name: String,
+      }],
+      default: undefined,
+    },
   }],
   tags: [{
     _id: false,
@@ -1220,6 +1246,14 @@ const BackfillRunSchema = new Schema<IBackfillRun>({
     emptyUpstream: { type: Number, default: 0 },
     failed: { type: Number, default: 0 },
     durationMs: Number,
+    sampleStations: {
+      type: [{
+        _id: { type: String, required: true },
+        slug: String,
+        name: String,
+      }],
+      default: undefined,
+    },
   }],
   errorMessage: String,
   attempts: {

@@ -1,15 +1,22 @@
+import { useState } from "react";
 import { Link, useRoute } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
+interface RunSampleStation {
+  _id: string;
+  slug?: string;
+  name?: string;
+}
 interface RunCountryLogos {
   countryCode: string;
   candidates: number;
   enqueued: number;
   durationMs?: number;
+  sampleStations?: RunSampleStation[];
 }
 interface RunCountryTags {
   countryCode: string;
@@ -18,6 +25,7 @@ interface RunCountryTags {
   emptyUpstream: number;
   failed: number;
   durationMs?: number;
+  sampleStations?: RunSampleStation[];
 }
 interface RunAttempt {
   attempt: number;
@@ -50,6 +58,65 @@ function formatDuration(ms?: number) {
   const m = Math.floor(s / 60);
   const rs = s % 60;
   return `${m}m ${rs}s`;
+}
+
+function stationHref(s: RunSampleStation): string {
+  // Public station detail page accepts both slugs and ObjectIds; prefer
+  // the slug when present so the URL is human-readable in the address
+  // bar after admins click through.
+  return `/station/${s.slug || s._id}`;
+}
+
+function SampleStationsToggle({
+  stations,
+  testIdPrefix,
+}: {
+  stations?: RunSampleStation[];
+  testIdPrefix: string;
+}) {
+  const [open, setOpen] = useState(false);
+  if (!stations || stations.length === 0) {
+    return <span className="text-xs text-slate-400">—</span>;
+  }
+  return (
+    <div className="space-y-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-slate-900"
+        data-testid={`button-toggle-${testIdPrefix}`}
+        aria-expanded={open}
+      >
+        <ChevronRight
+          className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`}
+        />
+        {open ? "Gizle" : `${stations.length} istasyon`}
+      </button>
+      {open && (
+        <ul
+          className="ml-4 space-y-1 border-l border-slate-200 pl-3"
+          data-testid={`list-${testIdPrefix}`}
+        >
+          {stations.map((s) => (
+            <li key={s._id} className="text-xs">
+              <Link
+                href={stationHref(s)}
+                className="text-sky-600 hover:underline break-all"
+                data-testid={`link-${testIdPrefix}-${s._id}`}
+              >
+                {s.name || s.slug || s._id}
+              </Link>
+              {s.name && (s.slug || s._id) && (
+                <span className="ml-1 font-mono text-[10px] text-slate-400">
+                  {s.slug || s._id}
+                </span>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
 }
 
 function statusVariant(status: BackfillRun["status"]) {
@@ -249,13 +316,14 @@ export default function AdminSeoMaintenanceRunPage() {
                         <th className="py-2 pr-3">Aday</th>
                         <th className="py-2 pr-3">Enqueued</th>
                         <th className="py-2 pr-3">Süre</th>
+                        <th className="py-2 pr-3">Örnek istasyonlar</th>
                       </tr>
                     </thead>
                     <tbody>
                       {run.logos.map((c) => (
                         <tr
                           key={`logos-${c.countryCode}`}
-                          className="border-b border-slate-100"
+                          className="border-b border-slate-100 align-top"
                         >
                           <td className="py-2 pr-3 font-mono">
                             {c.countryCode}
@@ -269,6 +337,12 @@ export default function AdminSeoMaintenanceRunPage() {
                             data-testid={`cell-logo-duration-${c.countryCode}`}
                           >
                             {formatDuration(c.durationMs)}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <SampleStationsToggle
+                              stations={c.sampleStations}
+                              testIdPrefix={`logos-${c.countryCode}`}
+                            />
                           </td>
                         </tr>
                       ))}
@@ -300,13 +374,14 @@ export default function AdminSeoMaintenanceRunPage() {
                         <th className="py-2 pr-3">Upstream boş</th>
                         <th className="py-2 pr-3">Fail</th>
                         <th className="py-2 pr-3">Süre</th>
+                        <th className="py-2 pr-3">Örnek istasyonlar</th>
                       </tr>
                     </thead>
                     <tbody>
                       {run.tags.map((c) => (
                         <tr
                           key={`tags-${c.countryCode}`}
-                          className="border-b border-slate-100"
+                          className="border-b border-slate-100 align-top"
                         >
                           <td className="py-2 pr-3 font-mono">
                             {c.countryCode}
@@ -332,6 +407,12 @@ export default function AdminSeoMaintenanceRunPage() {
                             data-testid={`cell-tag-duration-${c.countryCode}`}
                           >
                             {formatDuration(c.durationMs)}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <SampleStationsToggle
+                              stations={c.sampleStations}
+                              testIdPrefix={`tags-${c.countryCode}`}
+                            />
                           </td>
                         </tr>
                       ))}

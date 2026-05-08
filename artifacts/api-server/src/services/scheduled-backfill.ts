@@ -4,6 +4,7 @@ import {
   BackfillRun,
   AdminSetting,
   type IBackfillRun,
+  type IBackfillRunSampleStation,
 } from '@workspace/db-shared/mongo-schemas';
 import { SyncService } from './sync';
 import { logger } from '../utils/logger';
@@ -191,6 +192,35 @@ export function getEnvBackfillRetention(): {
   };
 }
 
+// How many sample station ids/slugs to persist per country per phase
+// (Task #234). Capped so a single BackfillRun row stays well under
+// Mongo's 16MB limit even for the worst markets.
+export const BACKFILL_SAMPLE_STATIONS_PER_COUNTRY: number = Math.max(
+  0,
+  Number.parseInt(process.env.BACKFILL_SAMPLE_STATIONS_PER_COUNTRY ?? '', 10) || 50,
+);
+
+async function sampleStationsForFilter(
+  filter: Record<string, unknown>,
+): Promise<IBackfillRunSampleStation[]> {
+  if (BACKFILL_SAMPLE_STATIONS_PER_COUNTRY <= 0) return [];
+  try {
+    type Row = { _id: unknown; slug?: string; name?: string };
+    const rows = (await Station.find(filter)
+      .select('_id slug name')
+      .limit(BACKFILL_SAMPLE_STATIONS_PER_COUNTRY)
+      .lean()) as unknown as Row[];
+    return rows.map((r) => ({
+      _id: String(r._id),
+      slug: typeof r.slug === 'string' && r.slug ? r.slug : undefined,
+      name: typeof r.name === 'string' && r.name ? r.name : undefined,
+    }));
+  } catch (err) {
+    logger.warn('⚠️  sampleStationsForFilter failed (non-fatal):', err);
+    return [];
+  }
+}
+
 /**
  * Drop BackfillRun rows that fall outside the retention window. Best-
  * effort: any error is logged and swallowed so a transient Mongo blip
@@ -307,12 +337,17 @@ export function buildTagsBackfillFilter(
  */
 export async function enqueueLogosForCountry(
   countryCode: string,
-): Promise<{ candidates: number; enqueued: number }> {
+): Promise<{ candidates: number; enqueued: number; sampleStations: IBackfillRunSampleStation[] }> {
   const filter = buildLogoBackfillFilter(countryCode);
   const candidates = await Station.countDocuments(filter);
-  if (candidates === 0) return { candidates: 0, enqueued: 0 };
+  if (candidates === 0) return { candidates: 0, enqueued: 0, sampleStations: [] };
+  // Snapshot the head of the candidate set BEFORE the $unset so admins
+  // can click into specific touched stations from the run detail page.
+  // Captured pre-update because the $unset removes the very fields the
+  // filter matches on, so re-querying afterwards would return nothing.
+  const sampleStations = await sampleStationsForFilter(filter);
   const result = await Station.updateMany(filter, { $unset: { logoAssets: '' } });
-  return { candidates, enqueued: result.modifiedCount ?? 0 };
+  return { candidates, enqueued: result.modifiedCount ?? 0, sampleStations };
 }
 
 interface CountryCount {
@@ -611,6 +646,7 @@ class ScheduledBackfillService {
           candidates: r.candidates,
           enqueued: r.enqueued,
           durationMs: Date.now() - phaseStart,
+          sampleStations: r.sampleStations.length > 0 ? r.sampleStations : undefined,
         });
         logger.log(`📥 ${c.countryCode}: enqueued ${r.enqueued}/${r.candidates} logos`);
       } catch (err) {
@@ -626,6 +662,13 @@ class ScheduledBackfillService {
 
     for (const c of topTags) {
       const phaseStart = Date.now();
+      // Capture the head of the tags candidate set BEFORE invoking the
+      // hydrator. The hydrator itself doesn't report which stationuuids
+      // it touched, so this gives admins at least the intent-list to
+      // click into from the run detail page (Task #234).
+      const tagsSample = await sampleStationsForFilter(
+        buildTagsBackfillFilter(c.countryCode),
+      );
       try {
         const r = await sync.hydrateMissingTagsInBackground({
           countryCode: c.countryCode,
@@ -638,6 +681,7 @@ class ScheduledBackfillService {
           emptyUpstream: r.emptyUpstream,
           failed: r.failed,
           durationMs: Date.now() - phaseStart,
+          sampleStations: tagsSample.length > 0 ? tagsSample : undefined,
         });
         logger.log(
           `🏷️  ${c.countryCode}: tags processed=${r.processed} hydrated=${r.hydrated} empty=${r.emptyUpstream} failed=${r.failed}`,
