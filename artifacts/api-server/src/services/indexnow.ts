@@ -18,7 +18,7 @@ const ALLOWED_HOSTS = ['themegaradio.com'];
 const PRIMARY_HOST = 'themegaradio.com'; // Default for helper methods
 const MAX_URLS_PER_REQUEST = 10000;
 
-type IndexNowTrigger = 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete';
+type IndexNowTrigger = 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete' | 'sitemap-diff';
 
 interface IndexNowResponse {
   success: boolean;

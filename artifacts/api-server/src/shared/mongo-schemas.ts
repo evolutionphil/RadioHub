@@ -799,12 +799,21 @@ export interface IIndexNowLog extends Document {
   urlCount: number;
   status: 'success' | 'failed';
   statusCode?: number;
-  trigger: 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete';
+  trigger: 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete' | 'sitemap-diff';
   errorMessage?: string;
   sampleUrls?: string[];
   retryAttempt?: number;
   responseTime?: number;
   createdAt: Date;
+}
+
+export interface ISitemapUrlSnapshot extends Document {
+  type: 'main';
+  language: string;
+  urls: string[];
+  urlCount: number;
+  generatedAt: Date;
+  updatedAt: Date;
 }
 
 export interface IAdvertisement extends Document {
@@ -2281,7 +2290,7 @@ const IndexNowLogSchema = new Schema<IIndexNowLog>({
   urlCount: { type: Number, required: true },
   status: { type: String, enum: ['success', 'failed'], required: true },
   statusCode: Number,
-  trigger: { type: String, enum: ['manual', 'station-update', 'sitemap-regen', 'sync-complete'], required: true },
+  trigger: { type: String, enum: ['manual', 'station-update', 'sitemap-regen', 'sync-complete', 'sitemap-diff'], required: true },
   errorMessage: String,
   sampleUrls: [String],
   retryAttempt: { type: Number, default: 0 },
@@ -2375,6 +2384,17 @@ export const CountryLanguageMapping = mongoose.model<ICountryLanguageMapping>('C
 export const UrlTranslation = mongoose.model<IUrlTranslation>('UrlTranslation', UrlTranslationSchema);
 export const MediaGroup = mongoose.model<IMediaGroup>('MediaGroup', MediaGroupSchema);
 export const IndexNowLog = mongoose.model<IIndexNowLog>('IndexNowLog', IndexNowLogSchema);
+
+const SitemapUrlSnapshotSchema = new Schema<ISitemapUrlSnapshot>({
+  type: { type: String, enum: ['main'], required: true },
+  language: { type: String, required: true },
+  urls: { type: [String], default: [] },
+  urlCount: { type: Number, required: true },
+  generatedAt: { type: Date, default: Date.now, required: true },
+  updatedAt: { type: Date, default: Date.now },
+});
+SitemapUrlSnapshotSchema.index({ type: 1, language: 1 }, { unique: true });
+export const SitemapUrlSnapshot = mongoose.model<ISitemapUrlSnapshot>('SitemapUrlSnapshot', SitemapUrlSnapshotSchema);
 export const BulkDescriptionJob = mongoose.model<IBulkDescriptionJob>('BulkDescriptionJob', BulkDescriptionJobSchema);
 export const Advertisement = mongoose.model<IAdvertisement>('Advertisement', AdvertisementSchema);
 export const FooterSocialMedia = mongoose.model<IFooterSocialMedia>('FooterSocialMedia', FooterSocialMediaSchema);

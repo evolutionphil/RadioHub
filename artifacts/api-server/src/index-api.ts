@@ -809,6 +809,14 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled genre-slug cleanup:', error.message);
         }
+
+        try {
+          const { scheduledSitemapDiff } = await import('./services/scheduled-sitemap-diff');
+          scheduledSitemapDiff.initialize();
+          logger.log('✅ BACKGROUND: Scheduled sitemap-diff IndexNow initialized (nightly 04:45)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled sitemap-diff IndexNow:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {
