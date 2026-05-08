@@ -9,13 +9,30 @@
  * cost is O(1). Both canonical slugs and slug aliases are included so a
  * legitimate alias URL still passes the existence gate (the SSR layer
  * will then 301 it to the canonical form).
+ *
+ * Task #269: extended with country + city slug sets so the same
+ * shape-valid-but-DB-unknown short-circuit covers the regions/country/
+ * city families. Country slugs are derived from the Country collection
+ * + every distinct station.country value (canonicalized via
+ * `canonicalizeCountry` and slugified to match URL conventions).
+ * City slugs are computed per-country via PrecomputedCitiesService —
+ * the same source of truth used to render the country → cities listing
+ * pages, so a city URL is "valid" iff the cities page actually shows it.
  */
 
-import { Station, Genre } from '@workspace/db-shared/mongo-schemas';
+import { Station, Genre, Country } from '@workspace/db-shared/mongo-schemas';
+import {
+  COUNTRY_TO_REGION_SLUG,
+  canonicalizeCountry,
+  countrySlug,
+} from '@workspace/seo-shared/country-regions';
+import { PrecomputedCitiesService } from '../services/precomputed-cities';
 import { logger } from '../utils/logger';
 
 let stationSlugs: Set<string> = new Set();
 let genreSlugs: Set<string> = new Set();
+let countrySlugs: Set<string> = new Set();
+let citySlugsByCountry: Map<string, Set<string>> = new Map();
 let ready = false;
 
 export function isSlugExistenceReady(): boolean {
@@ -30,6 +47,32 @@ export function hasGenreSlug(slug: string): boolean {
   return genreSlugs.has(slug);
 }
 
+export function hasCountrySlug(slug: string): boolean {
+  return countrySlugs.has(slug);
+}
+
+/**
+ * Returns true when `citySlug` is a known city under `countrySlugValue`.
+ * Both slugs must be lowercased URL slugs (no leading slash). Returns
+ * false when the country is unknown or has no precomputed city set —
+ * callers should also gate on `isSlugExistenceReady()` so a cold start
+ * doesn't false-404 valid pages.
+ */
+export function hasCitySlug(countrySlugValue: string, citySlug: string): boolean {
+  const cities = citySlugsByCountry.get(countrySlugValue);
+  return cities ? cities.has(citySlug) : false;
+}
+
+/**
+ * True when we have *any* city data for the given country slug. Used to
+ * skip the city existence gate for countries we don't precompute cities
+ * for (would otherwise false-404 valid city URLs in those countries).
+ */
+export function hasCityDataForCountry(countrySlugValue: string): boolean {
+  const cities = citySlugsByCountry.get(countrySlugValue);
+  return !!cities && cities.size > 0;
+}
+
 /**
  * Load (or reload) the slug sets from MongoDB. Failures are logged but
  * do not throw — a stale set is preferable to a 404 storm if Mongo is
@@ -38,7 +81,7 @@ export function hasGenreSlug(slug: string): boolean {
  */
 export async function loadSlugExistence(): Promise<void> {
   try {
-    const [stationDocs, genreDocs] = await Promise.all([
+    const [stationDocs, genreDocs, countryDocs, distinctStationCountries] = await Promise.all([
       Station.find(
         { slug: { $exists: true, $ne: null } },
         { slug: 1, slugAliases: 1, _id: 0 },
@@ -47,6 +90,12 @@ export async function loadSlugExistence(): Promise<void> {
         { slug: { $exists: true, $ne: null } },
         { slug: 1, _id: 0 },
       ).lean(),
+      Country.find({}, { name: 1, _id: 0 }).lean(),
+      Station.distinct('country').then((vals: unknown[]) =>
+        (vals as Array<string | null | undefined>).filter(
+          (v): v is string => typeof v === 'string' && v.length > 0,
+        ),
+      ),
     ]);
 
     const nextStations = new Set<string>();
@@ -64,11 +113,57 @@ export async function loadSlugExistence(): Promise<void> {
       if (doc.slug) nextGenres.add(doc.slug.toLowerCase());
     }
 
+    const nextCountries = new Set<string>();
+    // 1. Static canonical map — covers every country we generate region URLs for.
+    for (const name of Object.keys(COUNTRY_TO_REGION_SLUG)) {
+      const slug = countrySlug(name);
+      if (slug) nextCountries.add(slug);
+    }
+    // 2. Country docs in Mongo (admin-managed list, may diverge from static).
+    for (const doc of countryDocs as Array<{ name?: string }>) {
+      if (doc.name) {
+        const slug = countrySlug(doc.name);
+        if (slug) nextCountries.add(slug);
+      }
+    }
+    // 3. Every distinct station.country (canonicalized via alias map first
+    // so e.g. "Türkiye" → "Turkey" → "turkey" matches the URL slug).
+    for (const raw of distinctStationCountries) {
+      const slug = countrySlug(canonicalizeCountry(raw));
+      if (slug) nextCountries.add(slug);
+    }
+
+    // Per-country city slug sets — sourced from PrecomputedCitiesService
+    // so a city URL is "valid" iff the cities listing actually shows it
+    // (the same `generateSlug()` is applied so URL/slug stay in sync).
+    const nextCities = new Map<string, Set<string>>();
+    const supportedCountries = PrecomputedCitiesService.getSupportedCountries();
+    for (const countryName of supportedCountries) {
+      try {
+        const data = await PrecomputedCitiesService.getCitiesForCountry(countryName);
+        if (!data?.cities?.length) continue;
+        const set = new Set<string>();
+        for (const c of data.cities) {
+          if (c.slug) set.add(c.slug.toLowerCase());
+        }
+        if (set.size > 0) {
+          nextCities.set(countrySlug(countryName), set);
+        }
+      } catch (cityErr: any) {
+        logger.log(
+          `⚠️ SLUG-EXISTENCE: city precompute failed for ${countryName} (${cityErr?.message || cityErr})`,
+        );
+      }
+    }
+
     stationSlugs = nextStations;
     genreSlugs = nextGenres;
+    countrySlugs = nextCountries;
+    citySlugsByCountry = nextCities;
     ready = true;
+    const cityTotal = Array.from(nextCities.values()).reduce((n, s) => n + s.size, 0);
     logger.log(
-      `🗂️ SLUG-EXISTENCE: loaded ${nextStations.size} station slugs, ${nextGenres.size} genre slugs`,
+      `🗂️ SLUG-EXISTENCE: loaded ${nextStations.size} station slugs, ${nextGenres.size} genre slugs, ${nextCountries.size} country slugs, ${cityTotal} city slugs across ${nextCities.size} countries`,
     );
   } catch (err: any) {
     logger.log(`⚠️ SLUG-EXISTENCE: load failed (${err?.message || err}) — keeping previous sets`);

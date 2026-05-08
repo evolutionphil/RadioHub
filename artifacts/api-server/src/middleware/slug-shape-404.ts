@@ -28,6 +28,9 @@ import {
   isSlugExistenceReady,
   hasStationSlug,
   hasGenreSlug,
+  hasCountrySlug,
+  hasCitySlug,
+  hasCityDataForCountry,
 } from '../seo/slug-existence';
 
 const BOT_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot|gptbot|chatgpt|ccbot|anthropic|bytespider|perplexitybot|cohere/i;
@@ -173,6 +176,33 @@ export function createSlugShape404Middleware(opts: SlugShape404Options) {
           !SAFE_REGION_SLUG_RE.test(slug4)
         ) {
           invalid = true;
+        } else if (
+          // Task #269: country/city existence gate — mirror the SSR's
+          // `/regions/<continent>/<country>` empty-country promotion to
+          // bot-traffic for non-bot visitors too. Only applies to the
+          // canonical English `regions` family because country/city
+          // slugs in URLs are English-style (e.g. `germany`, not
+          // `deutschland`); applying it to localized aliases would
+          // false-404 valid `/regionen/europa/deutschland` style URLs.
+          family === 'regions' &&
+          slug3 !== undefined &&
+          slug3 !== 'stations' &&
+          isSlugExistenceReady() &&
+          !hasCountrySlug(slug3)
+        ) {
+          invalid = true;
+        } else if (
+          family === 'regions' &&
+          slug3 !== undefined &&
+          slug3 !== 'stations' &&
+          slug4 !== undefined &&
+          slug4 !== 'stations' &&
+          isSlugExistenceReady() &&
+          hasCountrySlug(slug3) &&
+          hasCityDataForCountry(slug3) &&
+          !hasCitySlug(slug3, slug4)
+        ) {
+          invalid = true;
         }
       }
     } else if (family === 'country') {
@@ -183,6 +213,24 @@ export function createSlugShape404Middleware(opts: SlugShape404Options) {
         slug3 !== undefined &&
         slug3 !== 'stations' &&
         !SAFE_REGION_SLUG_RE.test(slug3)
+      ) {
+        invalid = true;
+      } else if (
+        // Task #269: same country/city existence gate as the regions
+        // family above (`/country/<country>[/<city>]`).
+        slug2 !== undefined &&
+        isSlugExistenceReady() &&
+        !hasCountrySlug(slug2)
+      ) {
+        invalid = true;
+      } else if (
+        slug2 !== undefined &&
+        slug3 !== undefined &&
+        slug3 !== 'stations' &&
+        isSlugExistenceReady() &&
+        hasCountrySlug(slug2) &&
+        hasCityDataForCountry(slug2) &&
+        !hasCitySlug(slug2, slug3)
       ) {
         invalid = true;
       }
