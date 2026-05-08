@@ -323,6 +323,8 @@ export async function connectToMongoDB() {
     isConnected = true;
     reconnectAttempt = 0;
     logger.log('✅ MongoDB: Connected successfully');
+    // Identity log — used to detect multi-cluster / wrong-DB writes for AuthToken
+    logger.log(`🔗 Mongo identity host=${mongoose.connection.host} port=${(mongoose.connection as any).port} db=${mongoose.connection.name}`);
     await seedDefaultLanguages();
   } catch (error: any) {
     console.error('❌ MongoDB connection error:', error?.message || error);

@@ -1537,6 +1537,13 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         return res.status(400).json({ success: false, error: 'Token is required' });
       }
 
+      // Identity log — compare with the host/db logged at write time in
+      // generateAuthToken(). If they differ, login and lookup are talking to
+      // different MongoDB clusters / databases (root cause of "fresh tokens
+      // not found while old tokens work").
+      const _conn = mongoose.connection;
+      logger.log(`🔍 token-session lookup tokenPrefix=${tokenPrefix} host=${_conn.host} db=${_conn.name} readyState=${_conn.readyState}`);
+
       const authToken = await AuthToken.findOne({ token, isRevoked: false });
       if (!authToken) {
         // Diagnose: token exists but revoked? token doesn't exist at all?
@@ -1544,7 +1551,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         if (anyMatch) {
           logger.warn(`🔐 token-session 401 — token found but isRevoked=${(anyMatch as any).isRevoked} expiresAt=${(anyMatch as any).expiresAt} userId=${(anyMatch as any).userId}`);
         } else {
-          logger.warn(`🔐 token-session 401 — token NOT FOUND in DB at all (prefix=${tokenPrefix})`);
+          // Count total tokens in this DB so we can tell "wrong cluster" from "really missing".
+          let totalTokens = -1;
+          try { totalTokens = await AuthToken.estimatedDocumentCount(); } catch {}
+          logger.warn(`🔐 token-session 401 — token NOT FOUND in DB at all (prefix=${tokenPrefix}) host=${_conn.host} db=${_conn.name} totalAuthTokensInThisDb=${totalTokens}`);
         }
         return res.status(401).json({ success: false, error: 'Invalid or expired token' });
       }

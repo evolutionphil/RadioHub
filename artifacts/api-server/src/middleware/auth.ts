@@ -80,7 +80,14 @@ export const generateAuthToken = async (
   const token = `${prefix}${crypto.randomBytes(32).toString('hex')}`;
   const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
 
-  await AuthToken.create({
+  // Pre-flight: ensure mongoose is actually connected. With bufferCommands=false
+  // (db-mongo.ts), .create() would throw fast — but we want a clean diagnostic.
+  if (mongoose.connection.readyState !== 1) {
+    logger.error(`🔴 generateAuthToken: Mongo NOT ready (readyState=${mongoose.connection.readyState}) — refusing to mint token that won't persist`);
+    throw new Error('Database not ready — cannot generate auth token');
+  }
+
+  const created = await AuthToken.create({
     token,
     userId: new mongoose.Types.ObjectId(userId),
     deviceType,
@@ -90,6 +97,18 @@ export const generateAuthToken = async (
     createdAt: new Date(),
     isRevoked: false,
   });
+
+  // CRITICAL: round-trip verify the write actually landed and is readable.
+  // Catches: silent writeConcern downgrades, wrong-cluster routing, duplicate
+  // mongoose instances (monorepo hoisting), TTL-on-create misconfigs.
+  const verify = await AuthToken.findOne({ token }).select('_id userId').lean();
+  const conn = mongoose.connection;
+  if (!verify) {
+    logger.error(`🔴 generateAuthToken: WRITE returned ok but doc NOT readable! createdId=${String(created._id)} tokenPrefix=${token.slice(0, 16)} host=${conn.host} db=${conn.name} readyState=${conn.readyState}`);
+    throw new Error('AuthToken persistence verification failed');
+  }
+
+  logger.log(`✅ generateAuthToken persisted+verified userId=${userId} deviceType=${deviceType} tokenPrefix=${token.slice(0, 16)} _id=${String(created._id)} host=${conn.host} db=${conn.name}`);
 
   return token;
 };

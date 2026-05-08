@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode, useEffect } from "react";
+import { createContext, useContext, useState, ReactNode, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { faIdentify, faReset } from '../lib/flowalive';
 
@@ -42,8 +42,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [tokenProcessed, setTokenProcessed] = useState(false);
+  const tokenExchangeStarted = useRef(false);
 
   useEffect(() => {
+    if (tokenExchangeStarted.current) {
+      console.log('[AUTH] ⏭️ token exchange already started in this mount — skipping duplicate effect run');
+      return;
+    }
+    tokenExchangeStarted.current = true;
+
     const params = new URLSearchParams(window.location.search);
     const authToken = params.get('auth_token');
 

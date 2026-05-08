@@ -258,12 +258,21 @@ if (!CORS_ALLOWED_ORIGINS.includes(FRONTEND_URL)) {
 
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  if (origin && CORS_ALLOWED_ORIGINS.some(o => origin === o || origin.endsWith('.themegaradio.com'))) {
-    res.header('Access-Control-Allow-Origin', origin);
+  // CRITICAL: always emit Vary: Origin so Cloudflare/CDN doesn't cache an
+  // ACAO header for one origin and replay it for another. Without this, a
+  // credentialed POST from themegaradio.com can fail intermittently.
+  res.header('Vary', 'Origin');
+  const isAllowed = !!origin && (
+    CORS_ALLOWED_ORIGINS.includes(origin) ||
+    /^https:\/\/([a-z0-9-]+\.)*themegaradio\.com$/i.test(origin)
+  );
+  if (isAllowed) {
+    res.header('Access-Control-Allow-Origin', origin!);
     res.header('Access-Control-Allow-Credentials', 'true');
-  } else {
-    res.header('Access-Control-Allow-Origin', '*');
   }
+  // Note: do NOT emit '*' for unknown origins when credentials are in play —
+  // browsers reject 'ACAO: *' on credentialed requests anyway, and emitting
+  // it just hides real misconfigurations.
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS, HEAD');
   res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Range, X-API-Key, X-API-User-Token');
   res.header('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges, Content-Length');
@@ -390,6 +399,23 @@ if ((process.env.NODE_ENV === 'production' || isReplit) && !process.env.SESSION_
   process.exit(1);
 }
 
+// Production env hygiene — surface common misconfigs at boot instead of
+// having login silently fail later.
+if (process.env.NODE_ENV === 'production') {
+  if (!process.env.MONGODB_URI) {
+    console.error('🚨 PROD WARNING: MONGODB_URI is not set — session store and AuthToken writes may go to localhost or two different clusters!');
+  }
+  if (!process.env.GOOGLE_CALLBACK_URL) {
+    console.error('🚨 PROD WARNING: GOOGLE_CALLBACK_URL is not set — Passport will fall back to FRONTEND_URL/api/auth/google/callback which is the wrong host on Railway!');
+  }
+  if (!process.env.COOKIE_DOMAIN) {
+    console.error('🚨 PROD WARNING: COOKIE_DOMAIN is not set — set it to ".themegaradio.com" so the session cookie works across api.themegaradio.com and themegaradio.com.');
+  }
+  if (!process.env.FRONTEND_URL) {
+    console.error('🚨 PROD WARNING: FRONTEND_URL is not set — OAuth will redirect to default https://themegaradio.com.');
+  }
+}
+
 const cookieDomain = process.env.COOKIE_DOMAIN || undefined;
 
 const sessionConfig: session.SessionOptions = {
@@ -400,7 +426,12 @@ const sessionConfig: session.SessionOptions = {
     secure: useSecureCookies,
     httpOnly: true,
     maxAge: 3 * 24 * 60 * 60 * 1000,
-    sameSite: cookieDomain ? 'none' : (isReplit ? 'none' : 'lax'),
+    // Force sameSite='none' whenever the cookie is secure (production /
+    // Replit / Railway). The frontend (themegaradio.com) and the API
+    // (api.themegaradio.com) are different origins from the browser's POV,
+    // so the session cookie MUST be SameSite=None;Secure to be sent on the
+    // POST /api/auth/token-session call after the OAuth redirect.
+    sameSite: useSecureCookies ? 'none' : 'lax',
     domain: cookieDomain,
     path: '/'
   },
