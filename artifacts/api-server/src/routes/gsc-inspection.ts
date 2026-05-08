@@ -21,8 +21,17 @@ const router = Router();
 router.get('/status', async (_req: Request, res: Response) => {
   try {
     const status = gscInspectionService.getStatus();
-    const total = await GscUrlInspection.estimatedDocumentCount();
-    res.json({ ...status, totalUrls: total });
+    const stuckCutoff = new Date(
+      Date.now() - status.resubmitStuckDays * 24 * 60 * 60 * 1000,
+    );
+    const [total, stuck] = await Promise.all([
+      GscUrlInspection.estimatedDocumentCount(),
+      GscUrlInspection.countDocuments({
+        state: { $in: ['discovered-not-indexed', 'crawled-not-indexed'] },
+        notIndexedSince: { $lte: stuckCutoff },
+      }),
+    ]);
+    res.json({ ...status, totalUrls: total, stuckUrls: stuck });
   } catch (err: any) {
     logger.error('GSC inspection /status failed:', err?.message ?? err);
     res.status(500).json({ error: 'failed to fetch status' });
@@ -181,6 +190,28 @@ router.post('/refresh', async (req: Request, res: Response) => {
     return res.json({ ok: true, stats });
   } catch (err: any) {
     logger.error('GSC inspection /refresh failed:', err?.message ?? err);
+    return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
+  }
+});
+
+router.post('/resubmit-stuck', async (_req: Request, res: Response) => {
+  try {
+    if (!isGscConfigured()) {
+      return res.status(400).json({
+        ok: false,
+        error:
+          'GSC is not configured. Set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL env vars.',
+      });
+    }
+    const stats = await gscInspectionService.runResubmitStuckOnce(
+      'admin-manual',
+    );
+    return res.json({ ok: true, stats });
+  } catch (err: any) {
+    logger.error(
+      'GSC inspection /resubmit-stuck failed:',
+      err?.message ?? err,
+    );
     return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
   }
 });

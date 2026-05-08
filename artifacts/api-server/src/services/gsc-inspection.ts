@@ -43,7 +43,9 @@ import { logger } from '../utils/logger';
 import {
   getActiveManifest,
   extractTopCountriesFromChunk,
+  buildAllSitemapManifests,
 } from '../seo/sitemap-manifest-builder';
+import { IndexNowService } from './indexnow';
 import { performanceCache } from '../performance-cache';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { buildLocalizedUrl } from '../seo/url-helpers';
@@ -67,6 +69,29 @@ const STATION_DISCOVERY_CAP_PER_LANG = parseInt(
 // When discovery hasn't found a URL recently, prune it. We keep this
 // generous so a temporary sitemap blip doesn't wipe the cache.
 const STALE_DISCOVERY_MS = 14 * 24 * 60 * 60 * 1000;
+
+// Task #266 — auto-resubmit thresholds. A URL is considered "stuck" when
+// it has been in a non-indexed state continuously for at least
+// RESUBMIT_STUCK_DAYS. We won't re-ping the same URL more often than
+// once every RESUBMIT_COOLDOWN_DAYS, and we cap how many URLs we pump
+// through IndexNow per run so a backlog can't burn the whole quota in
+// one cron tick.
+const RESUBMIT_STUCK_DAYS = parseInt(
+  process.env.GSC_RESUBMIT_STUCK_DAYS || '14',
+  10,
+);
+const RESUBMIT_COOLDOWN_DAYS = parseInt(
+  process.env.GSC_RESUBMIT_COOLDOWN_DAYS || '7',
+  10,
+);
+const RESUBMIT_BATCH_LIMIT = parseInt(
+  process.env.GSC_RESUBMIT_BATCH_LIMIT || '200',
+  10,
+);
+const NON_INDEXED_STATES: IGscUrlInspection['state'][] = [
+  'discovered-not-indexed',
+  'crawled-not-indexed',
+];
 
 type Group = IGscUrlInspection['group'];
 
@@ -408,9 +433,11 @@ class GscInspectionService {
   private static instance: GscInspectionService;
   private discoveryRunning = false;
   private inspectionRunning = false;
+  private resubmitRunning = false;
   private isInitialized = false;
   private lastDiscoveryAt: Date | null = null;
   private lastInspectionAt: Date | null = null;
+  private lastResubmitAt: Date | null = null;
   private lastDiscoveryStats: {
     inserted: number;
     refreshed: number;
@@ -421,6 +448,12 @@ class GscInspectionService {
     attempted: number;
     succeeded: number;
     failed: number;
+  } | null = null;
+  private lastResubmitStats: {
+    attempted: number;
+    succeeded: number;
+    failed: number;
+    sitemapRebuilt: boolean;
   } | null = null;
 
   static getInstance(): GscInspectionService {
@@ -463,8 +496,21 @@ class GscInspectionService {
       { timezone: 'Europe/Berlin' },
     );
 
+    // Task #266 — auto-resubmit stuck URLs once a day at 04:30 Berlin time.
+    // Runs after the 03:15 discovery so the freshest discovery snapshot is
+    // already in place before we re-ping IndexNow.
+    cron.schedule(
+      '30 4 * * *',
+      () => {
+        this.runResubmitStuckOnce('cron').catch((err) =>
+          logger.error('❌ GSC resubmit cron crashed:', err),
+        );
+      },
+      { timezone: 'Europe/Berlin' },
+    );
+
     logger.log(
-      `🔍 GSC inspection cron initialized (discovery 03:15+15:15, inspection hourly :07, batch=${DEFAULT_BATCH_SIZE}/run)`,
+      `🔍 GSC inspection cron initialized (discovery 03:15+15:15, inspection hourly :07, resubmit 04:30, batch=${DEFAULT_BATCH_SIZE}/run, stuck>${RESUBMIT_STUCK_DAYS}d)`,
     );
 
     // Cold-start: kick off a discovery shortly after boot so a freshly
@@ -475,7 +521,44 @@ class GscInspectionService {
       this.runDiscoveryOnce('boot').catch((err) =>
         logger.error('❌ GSC discovery boot crashed:', err),
       );
+      // Task #266 — one-shot backfill for legacy rows. Any URL that's
+      // already in a non-indexed bucket but is missing `notIndexedSince`
+      // (because the field didn't exist before this task) gets anchored
+      // to its `lastInspectedAt` (or `updatedAt`) so the existing stuck
+      // backlog is immediately eligible for the resubmit cron. This is
+      // idempotent — the filter excludes rows that already have a value.
+      this.backfillNotIndexedSince().catch((err) =>
+        logger.error('❌ GSC notIndexedSince backfill crashed:', err),
+      );
     }, 30_000);
+  }
+
+  /**
+   * One-shot migration so URLs that were already stuck in a non-indexed
+   * state when task #266 shipped become resubmit-eligible without
+   * waiting for the slow inspection rotation to revisit each one.
+   */
+  private async backfillNotIndexedSince(): Promise<void> {
+    const res = await GscUrlInspection.updateMany(
+      {
+        state: { $in: NON_INDEXED_STATES },
+        notIndexedSince: { $exists: false },
+      },
+      [
+        {
+          $set: {
+            notIndexedSince: {
+              $ifNull: ['$lastInspectedAt', { $ifNull: ['$updatedAt', '$$NOW'] }],
+            },
+          },
+        },
+      ],
+    );
+    if ((res.modifiedCount ?? 0) > 0) {
+      logger.log(
+        `🔁 GSC backfill: anchored notIndexedSince on ${res.modifiedCount} legacy non-indexed rows`,
+      );
+    }
   }
 
   getStatus() {
@@ -485,12 +568,18 @@ class GscInspectionService {
       siteUrl: process.env.GSC_SITE_URL ?? null,
       discoveryRunning: this.discoveryRunning,
       inspectionRunning: this.inspectionRunning,
+      resubmitRunning: this.resubmitRunning,
       lastDiscoveryAt: this.lastDiscoveryAt,
       lastInspectionAt: this.lastInspectionAt,
+      lastResubmitAt: this.lastResubmitAt,
       lastDiscoveryStats: this.lastDiscoveryStats,
       lastInspectionStats: this.lastInspectionStats,
+      lastResubmitStats: this.lastResubmitStats,
       defaultBatchSize: DEFAULT_BATCH_SIZE,
       stationDiscoveryCapPerLanguage: STATION_DISCOVERY_CAP_PER_LANG,
+      resubmitStuckDays: RESUBMIT_STUCK_DAYS,
+      resubmitCooldownDays: RESUBMIT_COOLDOWN_DAYS,
+      resubmitBatchLimit: RESUBMIT_BATCH_LIMIT,
     };
   }
 
@@ -591,29 +680,54 @@ class GscInspectionService {
         const lastCrawl = idx.lastCrawlTime
           ? new Date(idx.lastCrawlTime)
           : undefined;
-        await GscUrlInspection.updateOne(
-          { _id: row._id },
-          {
-            $set: {
-              state: classifyState(result.payload),
-              coverageState: idx.coverageState,
-              verdict: idx.verdict,
-              robotsTxtState: idx.robotsTxtState,
-              indexingState: idx.indexingState,
-              pageFetchState: idx.pageFetchState,
-              lastCrawlTime:
-                lastCrawl && !isNaN(lastCrawl.getTime()) ? lastCrawl : undefined,
-              googleCanonical: idx.googleCanonical,
-              userCanonical: idx.userCanonical,
-              inspectionResultLink:
-                result.payload?.inspectionResult?.inspectionResultLink,
-              lastInspectedAt: now,
-              lastError: undefined,
-              errorCount: 0,
-              updatedAt: now,
-            },
-          },
+        const newState = classifyState(result.payload);
+        const wasNonIndexed = NON_INDEXED_STATES.includes(
+          row.state as IGscUrlInspection['state'],
         );
+        const isNonIndexed = NON_INDEXED_STATES.includes(newState);
+        // Maintain `notIndexedSince` so the resubmit cron can find URLs
+        // that have been stuck for a while. We only set it on the
+        // transition INTO a non-indexed bucket; if the row is already
+        // non-indexed we leave the timestamp untouched so the "stuck for
+        // X days" window keeps growing.
+        const set: Record<string, unknown> = {
+          state: newState,
+          coverageState: idx.coverageState,
+          verdict: idx.verdict,
+          robotsTxtState: idx.robotsTxtState,
+          indexingState: idx.indexingState,
+          pageFetchState: idx.pageFetchState,
+          lastCrawlTime:
+            lastCrawl && !isNaN(lastCrawl.getTime()) ? lastCrawl : undefined,
+          googleCanonical: idx.googleCanonical,
+          userCanonical: idx.userCanonical,
+          inspectionResultLink:
+            result.payload?.inspectionResult?.inspectionResultLink,
+          lastInspectedAt: now,
+          lastError: undefined,
+          errorCount: 0,
+          updatedAt: now,
+        };
+        const unset: Record<string, ''> = {};
+        if (isNonIndexed && !wasNonIndexed) {
+          set.notIndexedSince = now;
+        } else if (isNonIndexed && !row.notIndexedSince) {
+          // Legacy/backfill case: row was already non-indexed before
+          // task #266 shipped (so the field is missing). Anchor the
+          // "stuck since" timestamp to the best signal we have for when
+          // we first observed this state — preferring the previous
+          // inspection time over `now` so the URL can become stuck-
+          // eligible immediately if it was already stuck for a while.
+          set.notIndexedSince =
+            (row.lastInspectedAt as Date | undefined) ??
+            (row.updatedAt as Date | undefined) ??
+            now;
+        } else if (!isNonIndexed) {
+          unset.notIndexedSince = '';
+        }
+        const update: Record<string, unknown> = { $set: set };
+        if (Object.keys(unset).length > 0) update.$unset = unset;
+        await GscUrlInspection.updateOne({ _id: row._id }, update);
         // Pace ourselves to ~10 req/s — well below GSC's published cap.
         await new Promise((r) => setTimeout(r, 120));
       }
@@ -629,6 +743,136 @@ class GscInspectionService {
       this.inspectionRunning = false;
     }
   }
+
+  /**
+   * Task #266 — Auto-resubmit URLs that have been stuck in
+   * "Discovered – not indexed" or "Crawled – not indexed" beyond the
+   * configured threshold. Re-pings IndexNow for each, force-rebuilds the
+   * sitemap so the lastmod bumps, and clears `lastInspectedAt` so the
+   * next inspection batch picks them up first to verify whether Google
+   * moved them.
+   */
+  async runResubmitStuckOnce(trigger: string = 'manual'): Promise<{
+    attempted: number;
+    succeeded: number;
+    failed: number;
+    sitemapRebuilt: boolean;
+  } | null> {
+    if (this.resubmitRunning) {
+      logger.log(
+        `⏭️  GSC resubmit: skip (${trigger}) — previous run in progress`,
+      );
+      return null;
+    }
+    this.resubmitRunning = true;
+    const start = Date.now();
+    let attempted = 0;
+    let succeeded = 0;
+    let failed = 0;
+    let sitemapRebuilt = false;
+    try {
+      const now = Date.now();
+      const stuckCutoff = new Date(
+        now - RESUBMIT_STUCK_DAYS * 24 * 60 * 60 * 1000,
+      );
+      const cooldownCutoff = new Date(
+        now - RESUBMIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
+      );
+      const candidates = await GscUrlInspection.find({
+        state: { $in: NON_INDEXED_STATES },
+        notIndexedSince: { $lte: stuckCutoff },
+        $or: [
+          { lastResubmitAt: { $exists: false } },
+          { lastResubmitAt: null },
+          { lastResubmitAt: { $lte: cooldownCutoff } },
+        ],
+      })
+        .sort({ notIndexedSince: 1 })
+        .limit(Math.max(1, RESUBMIT_BATCH_LIMIT))
+        .lean();
+
+      logger.log(
+        `🔁 GSC resubmit START (${trigger}) — ${candidates.length} stuck URLs (>${RESUBMIT_STUCK_DAYS}d)`,
+      );
+
+      if (candidates.length === 0) {
+        const stats = { attempted: 0, succeeded: 0, failed: 0, sitemapRebuilt };
+        this.lastResubmitAt = new Date();
+        this.lastResubmitStats = stats;
+        return stats;
+      }
+
+      // Group by host (IndexNow requires a single host per submission). All
+      // discovered URLs are themegaradio.com today but submitToIndexNow
+      // handles per-host grouping internally and returns a combined result.
+      const allUrls = candidates.map((c) => c.url);
+      const submitNow = new Date();
+      const result = await IndexNowService.submitToIndexNow(
+        allUrls,
+        'sitemap-regen',
+      );
+      attempted = allUrls.length;
+      if (result.success) {
+        succeeded = allUrls.length;
+      } else {
+        failed = allUrls.length;
+      }
+
+      const status: 'success' | 'failed' = result.success
+        ? 'success'
+        : 'failed';
+      const errorMsg = result.success
+        ? undefined
+        : (result.error ?? 'IndexNow submission failed').slice(0, 1000);
+
+      // Persist the resubmit attempt on every row, regardless of outcome,
+      // so the dashboard truthfully reports the last attempt and the
+      // cooldown filter prevents hammering on repeated failures. Clear
+      // `lastInspectedAt` so the next inspection batch (sorted asc on
+      // that field) picks these rows up first to verify if Google moved
+      // them after the re-ping.
+      const ids = candidates.map((c) => c._id);
+      await GscUrlInspection.updateMany(
+        { _id: { $in: ids } },
+        {
+          $set: {
+            lastResubmitAt: submitNow,
+            lastResubmitStatus: status,
+            lastResubmitError: errorMsg,
+            updatedAt: submitNow,
+          },
+          $inc: { resubmitCount: 1 },
+          $unset: { lastInspectedAt: '' },
+        },
+      );
+
+      // Force-rebuild the sitemap so each affected URL gets a fresh
+      // <lastmod>. The rebuild is cluster-wide and not per-URL, so we
+      // only do it once per resubmit run (and only when there was at
+      // least one URL to resubmit).
+      try {
+        await buildAllSitemapManifests({ force: true });
+        sitemapRebuilt = true;
+      } catch (err: any) {
+        logger.error(
+          '❌ GSC resubmit: sitemap rebuild failed:',
+          err?.message ?? err,
+        );
+      }
+
+      const stats = { attempted, succeeded, failed, sitemapRebuilt };
+      this.lastResubmitAt = new Date();
+      this.lastResubmitStats = stats;
+      logger.log(
+        `🔁 GSC resubmit DONE: ${succeeded}/${attempted} succeeded (${failed} failed, sitemap=${sitemapRebuilt}) in ${Math.round((Date.now() - start) / 1000)}s`,
+      );
+      return stats;
+    } finally {
+      this.resubmitRunning = false;
+    }
+  }
 }
+
+export { RESUBMIT_STUCK_DAYS, RESUBMIT_COOLDOWN_DAYS, NON_INDEXED_STATES };
 
 export const gscInspectionService = GscInspectionService.getInstance();

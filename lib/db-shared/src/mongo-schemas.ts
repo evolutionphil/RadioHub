@@ -905,6 +905,16 @@ export interface IGscUrlInspection extends Document {
   // Discovery bookkeeping so the scheduler can rotate cheapest-first.
   discoveredAt: Date;
   updatedAt: Date;
+  // Task #266 — auto-resubmit bookkeeping. `notIndexedSince` is the first
+  // time GSC reported one of the "not indexed" buckets for this URL and
+  // is cleared when the state flips back to indexed/excluded. The
+  // resubmit fields track the most recent IndexNow re-ping so admins can
+  // see (and the cron can rate-limit) repeated attempts.
+  notIndexedSince?: Date;
+  lastResubmitAt?: Date;
+  lastResubmitStatus?: 'success' | 'failed';
+  lastResubmitError?: string;
+  resubmitCount: number;
 }
 
 export interface IIndexNowLog extends Document {
@@ -2487,10 +2497,17 @@ const GscUrlInspectionSchema = new Schema<IGscUrlInspection>({
   errorCount: { type: Number, default: 0 },
   discoveredAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
+  notIndexedSince: Date,
+  lastResubmitAt: Date,
+  lastResubmitStatus: { type: String, enum: ['success', 'failed'] },
+  lastResubmitError: String,
+  resubmitCount: { type: Number, default: 0 },
 });
 GscUrlInspectionSchema.index({ language: 1, group: 1, state: 1 });
 // Cheapest-first rotation key: oldest lastInspectedAt first, then newest discovered.
 GscUrlInspectionSchema.index({ lastInspectedAt: 1, discoveredAt: -1 });
+// Task #266 — fast lookup of stuck rows by (state, notIndexedSince).
+GscUrlInspectionSchema.index({ state: 1, notIndexedSince: 1 });
 
 const IndexNowLogSchema = new Schema<IIndexNowLog>({
   timestamp: { type: Date, default: Date.now, required: true },

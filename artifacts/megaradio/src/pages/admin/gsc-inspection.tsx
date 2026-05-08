@@ -42,8 +42,10 @@ interface StatusResponse {
   siteUrl: string | null;
   discoveryRunning: boolean;
   inspectionRunning: boolean;
+  resubmitRunning: boolean;
   lastDiscoveryAt: string | null;
   lastInspectionAt: string | null;
+  lastResubmitAt: string | null;
   lastDiscoveryStats: {
     inserted: number;
     refreshed: number;
@@ -55,9 +57,19 @@ interface StatusResponse {
     succeeded: number;
     failed: number;
   } | null;
+  lastResubmitStats: {
+    attempted: number;
+    succeeded: number;
+    failed: number;
+    sitemapRebuilt: boolean;
+  } | null;
   defaultBatchSize: number;
   stationDiscoveryCapPerLanguage: number;
+  resubmitStuckDays: number;
+  resubmitCooldownDays: number;
+  resubmitBatchLimit: number;
   totalUrls: number;
+  stuckUrls: number;
 }
 
 type GscState =
@@ -99,6 +111,11 @@ interface UrlRow {
   lastInspectedAt?: string;
   lastError?: string;
   inspectionResultLink?: string;
+  notIndexedSince?: string;
+  lastResubmitAt?: string;
+  lastResubmitStatus?: 'success' | 'failed';
+  lastResubmitError?: string;
+  resubmitCount?: number;
 }
 
 interface UrlsResponse {
@@ -216,6 +233,30 @@ export default function GscInspectionPage() {
     },
   });
 
+  const resubmitStuck = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/admin/gsc-inspection/resubmit-stuck', {
+        method: 'POST',
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/gsc-inspection/status'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/gsc-inspection/stats'],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['/api/admin/gsc-inspection/urls'],
+      });
+    },
+  });
+
   const rediscover = useMutation({
     mutationFn: async () => {
       const r = await fetch('/api/admin/gsc-inspection/discover', {
@@ -280,7 +321,7 @@ export default function GscInspectionPage() {
           </Card>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <Card className="bg-[#1A1A1A] border-gray-800">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm text-gray-400">
@@ -353,6 +394,27 @@ export default function GscInspectionPage() {
               </p>
             </CardContent>
           </Card>
+          <Card className="bg-[#1A1A1A] border-gray-800">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm text-gray-400">
+                Stuck (&gt; {status?.resubmitStuckDays ?? 14}d)
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-400">
+                {(status?.stuckUrls ?? 0).toLocaleString()}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                {status?.lastResubmitAt
+                  ? `Last resubmit ${fmt(status.lastResubmitAt)}${
+                      status.lastResubmitStats
+                        ? ` — ${status.lastResubmitStats.succeeded}/${status.lastResubmitStats.attempted}`
+                        : ''
+                    }`
+                  : 'No auto-resubmit yet'}
+              </p>
+            </CardContent>
+          </Card>
         </div>
 
         <Card className="bg-[#1A1A1A] border-gray-800">
@@ -365,7 +427,7 @@ export default function GscInspectionPage() {
                   genres, and station pages.
                 </CardDescription>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button
                   variant="outline"
                   size="sm"
@@ -375,6 +437,23 @@ export default function GscInspectionPage() {
                 >
                   <RefreshCcw className="w-4 h-4 mr-2" />
                   {rediscover.isPending ? 'Re-discovering…' : 'Re-discover URLs'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-red-700 text-red-200 hover:bg-red-950/40"
+                  disabled={
+                    resubmitStuck.isPending ||
+                    !status?.configured ||
+                    (status?.stuckUrls ?? 0) === 0
+                  }
+                  onClick={() => resubmitStuck.mutate()}
+                  title={`Re-pings IndexNow + force-rebuilds the sitemap for URLs stuck > ${status?.resubmitStuckDays ?? 14} days. Cooldown ${status?.resubmitCooldownDays ?? 7}d, max ${status?.resubmitBatchLimit ?? 200}/run.`}
+                >
+                  <RefreshCcw className="w-4 h-4 mr-2" />
+                  {resubmitStuck.isPending
+                    ? 'Resubmitting…'
+                    : `Resubmit stuck (${status?.stuckUrls ?? 0})`}
                 </Button>
                 <Button
                   size="sm"
@@ -392,6 +471,23 @@ export default function GscInspectionPage() {
             {refreshBatch.error && (
               <p className="text-sm text-red-400 mt-2">
                 {(refreshBatch.error as Error).message}
+              </p>
+            )}
+            {resubmitStuck.error && (
+              <p className="text-sm text-red-400 mt-2">
+                {(resubmitStuck.error as Error).message}
+              </p>
+            )}
+            {resubmitStuck.data?.stats && (
+              <p className="text-sm text-gray-400 mt-2">
+                Resubmitted {resubmitStuck.data.stats.succeeded}/
+                {resubmitStuck.data.stats.attempted} stuck URL
+                {resubmitStuck.data.stats.attempted === 1 ? '' : 's'} via
+                IndexNow
+                {resubmitStuck.data.stats.sitemapRebuilt
+                  ? ' and rebuilt the sitemap'
+                  : ''}
+                .
               </p>
             )}
           </CardHeader>
@@ -550,6 +646,12 @@ export default function GscInspectionPage() {
                       <TableHead className="text-gray-400">Group</TableHead>
                       <TableHead className="text-gray-400">Lang</TableHead>
                       <TableHead className="text-gray-400">State</TableHead>
+                      <TableHead className="text-gray-400">
+                        Stuck since
+                      </TableHead>
+                      <TableHead className="text-gray-400">
+                        Last resubmit
+                      </TableHead>
                       <TableHead className="text-gray-400">Last crawl</TableHead>
                       <TableHead className="text-gray-400">Last checked</TableHead>
                     </TableRow>
@@ -606,6 +708,43 @@ export default function GscInspectionPage() {
                                 {row.coverageState}
                               </p>
                             )}
+                        </TableCell>
+                        <TableCell className="text-gray-300">
+                          {row.notIndexedSince ? (
+                            <span className="text-orange-300">
+                              {fmt(row.notIndexedSince)}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                        </TableCell>
+                        <TableCell className="text-gray-300">
+                          {row.lastResubmitAt ? (
+                            <div>
+                              <div
+                                className={
+                                  row.lastResubmitStatus === 'failed'
+                                    ? 'text-red-400'
+                                    : 'text-green-400'
+                                }
+                              >
+                                {fmt(row.lastResubmitAt)}
+                              </div>
+                              <div
+                                className="text-xs text-gray-500 truncate max-w-[160px]"
+                                title={
+                                  row.lastResubmitError ??
+                                  `Resubmitted ${row.resubmitCount ?? 1}×`
+                                }
+                              >
+                                {row.lastResubmitStatus === 'failed'
+                                  ? row.lastResubmitError ?? 'failed'
+                                  : `×${row.resubmitCount ?? 1}`}
+                              </div>
+                            </div>
+                          ) : (
+                            '—'
+                          )}
                         </TableCell>
                         <TableCell className="text-gray-300">
                           {fmt(row.lastCrawlTime)}
