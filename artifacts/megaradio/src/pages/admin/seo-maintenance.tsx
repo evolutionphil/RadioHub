@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useRef, useState } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -532,6 +533,7 @@ export default function SeoMaintenancePage() {
                     <th className="py-2 pr-3">Logos (enq/cand)</th>
                     <th className="py-2 pr-3">Tags (hyd/proc)</th>
                     <th className="py-2 pr-3">Fail</th>
+                    <th className="py-2 pr-3"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -632,6 +634,17 @@ export default function SeoMaintenancePage() {
                             ) : (
                               <span className="text-slate-400">0</span>
                             )}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <Link href={`/admin/seo-maintenance/runs/${run._id}`}>
+                              <a
+                                className="text-xs text-blue-600 hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                                data-testid={`link-backfill-run-${run._id}`}
+                              >
+                                Detay →
+                              </a>
+                            </Link>
                           </td>
                         </tr>
                         {isExpanded && (

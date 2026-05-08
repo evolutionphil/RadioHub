@@ -1,4 +1,5 @@
 import type { Express, Request, Response } from "express";
+import mongoose from "mongoose";
 import { Station, BackfillRun } from "../shared/mongo-schemas";
 import {
   BACKFILL_RETENTION_DAYS,
@@ -371,6 +372,35 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
       } catch (err: any) {
         logger.error(
           "[scheduled-backfill runs] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
+  // Single BackfillRun document by id. Powers the deep-linkable
+  // /admin/seo-maintenance/runs/:id detail page so an admin can paste
+  // a link to a specific run without making the recipient scroll the
+  // history table. Returns 400 for malformed ObjectIds and 404 when
+  // the row doesn't exist (or has been pruned by retention).
+  app.get(
+    "/api/admin/maintenance/scheduled-backfill/runs/:id",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { id } = req.params;
+        if (!mongoose.isValidObjectId(id)) {
+          return res.status(400).json({ error: "invalid_id" });
+        }
+        const run = await BackfillRun.findById(id).lean();
+        if (!run) {
+          return res.status(404).json({ error: "not_found" });
+        }
+        res.json({ run });
+      } catch (err: any) {
+        logger.error(
+          "[scheduled-backfill run detail] error:",
           err?.message || err,
         );
         res.status(500).json({ error: err?.message || "internal_error" });
