@@ -444,14 +444,28 @@ export default function SearchPage() {
             aria-activedescendant={activeId ?? undefined}
             aria-autocomplete="list"
             placeholder={placeholder}
-            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-12 py-4 text-base text-white placeholder:text-gray-500 focus:outline-none focus:border-[#FF4199] transition-colors"
+            className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-24 py-4 text-base text-white placeholder:text-gray-500 focus:outline-none focus:border-[#FF4199] transition-colors"
           />
           {isFetching && enabled && (
             <Loader2
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 animate-spin"
+              className="absolute right-16 top-1/2 -translate-y-1/2 text-gray-400 animate-spin"
               size={20}
             />
           )}
+          <kbd
+            data-testid="search-esc-hint"
+            aria-hidden="true"
+            title={
+              query
+                ? t("search_esc_hint_clear_title", "Press Esc to clear")
+                : t("search_esc_hint_close_title", "Press Esc to close search")
+            }
+            className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:inline-flex items-center px-2 py-0.5 rounded-md border border-white/15 bg-white/5 text-[11px] font-medium text-gray-400 pointer-events-none select-none"
+          >
+            {query
+              ? t("search_esc_hint_clear", "Esc to clear")
+              : t("search_esc_hint_close", "Esc")}
+          </kbd>
         </div>
 
         {enabled && totalHits > 0 && (
