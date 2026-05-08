@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting, CoverageBackfillStatus } from '@workspace/db-shared/mongo-schemas';
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting, CoverageBackfillStatus, CoverageBackfillRun } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -2146,51 +2146,64 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     requireAdmin,
     async (_req, res) => {
       try {
-        const doc = await CoverageBackfillStatus.findOne({ key: 'latest' })
-          .lean<{
-            outcome: string;
-            message: string;
-            observedAt: Date;
-            startedAt?: Date;
-            finishedAt?: Date;
-            durationMs?: number;
-            thresholdDays?: number;
-            historicalDayCount?: number;
-            seedDays?: number;
-            daysSeeded?: number;
-            inserted?: number;
-            preserved?: number;
-            error?: string;
-            updatedAt?: Date;
-          }>();
+        type BackfillStatusDoc = {
+          outcome: string;
+          message: string;
+          observedAt: Date;
+          startedAt?: Date;
+          finishedAt?: Date;
+          durationMs?: number;
+          thresholdDays?: number;
+          historicalDayCount?: number;
+          seedDays?: number;
+          daysSeeded?: number;
+          inserted?: number;
+          preserved?: number;
+          error?: string;
+          updatedAt?: Date;
+        };
+        const [doc, historyDocs] = await Promise.all([
+          CoverageBackfillStatus.findOne({ key: 'latest' }).lean<BackfillStatusDoc | null>(),
+          // Task #316: small bounded list of past boot evaluations so
+          // the UI can render a "Previous boot runs" panel under the
+          // latest status. Sorted newest-first; capped writes-side to
+          // ~20 rows so this is always a tiny query.
+          CoverageBackfillRun.find({})
+            .sort({ observedAt: -1, _id: -1 })
+            .limit(20)
+            .lean<BackfillStatusDoc[]>(),
+        ]);
+        const serializeRun = (d: BackfillStatusDoc) => ({
+          outcome: d.outcome,
+          message: d.message,
+          observedAt:
+            d.observedAt instanceof Date
+              ? d.observedAt.toISOString()
+              : d.observedAt,
+          startedAt:
+            d.startedAt instanceof Date
+              ? d.startedAt.toISOString()
+              : (d.startedAt ?? null),
+          finishedAt:
+            d.finishedAt instanceof Date
+              ? d.finishedAt.toISOString()
+              : (d.finishedAt ?? null),
+          durationMs: d.durationMs ?? null,
+          thresholdDays: d.thresholdDays ?? null,
+          historicalDayCount: d.historicalDayCount ?? null,
+          seedDays: d.seedDays ?? null,
+          daysSeeded: d.daysSeeded ?? null,
+          inserted: d.inserted ?? null,
+          preserved: d.preserved ?? null,
+          error: d.error ?? null,
+        });
+        const history = historyDocs.map(serializeRun);
         if (!doc) {
-          return void res.json({ status: null });
+          return void res.json({ status: null, history });
         }
         return void res.json({
-          status: {
-            outcome: doc.outcome,
-            message: doc.message,
-            observedAt:
-              doc.observedAt instanceof Date
-                ? doc.observedAt.toISOString()
-                : doc.observedAt,
-            startedAt:
-              doc.startedAt instanceof Date
-                ? doc.startedAt.toISOString()
-                : doc.startedAt,
-            finishedAt:
-              doc.finishedAt instanceof Date
-                ? doc.finishedAt.toISOString()
-                : doc.finishedAt,
-            durationMs: doc.durationMs ?? null,
-            thresholdDays: doc.thresholdDays ?? null,
-            historicalDayCount: doc.historicalDayCount ?? null,
-            seedDays: doc.seedDays ?? null,
-            daysSeeded: doc.daysSeeded ?? null,
-            inserted: doc.inserted ?? null,
-            preserved: doc.preserved ?? null,
-            error: doc.error ?? null,
-          },
+          status: serializeRun(doc),
+          history,
         });
       } catch (error: any) {
         logger.error('coverage backfill-status failed', error);

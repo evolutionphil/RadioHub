@@ -261,6 +261,11 @@ interface CoverageBackfillBootStatus {
 
 interface CoverageBackfillBootStatusResponse {
   status: CoverageBackfillBootStatus | null;
+  // Task #316: bounded list (~20) of past boot evaluations, newest
+  // first. Each entry is the same shape as `status` so the UI can
+  // render them in a "Previous boot runs" panel under the latest
+  // status. `running` rows are intentionally excluded server-side.
+  history?: CoverageBackfillBootStatus[];
 }
 
 interface CoverageDropAlertHistoryResponse {
@@ -2673,6 +2678,14 @@ function CoverageBackfillBootStatusCard() {
   }, [outcome]);
 
   const status = data?.status ?? null;
+  // Drop any history row that matches the live status's `observedAt`
+  // so the "Previous boot runs" panel really is previous — otherwise
+  // the latest terminal evaluation would show up twice (once as the
+  // live status above, once at the top of this list).
+  const history = (data?.history ?? []).filter(
+    (h) => !status || h.observedAt !== status.observedAt,
+  );
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   // Compute the date window the recorded run actually wrote: the seeder
   // backfills `daysSeeded` (or the requested `seedDays`) days ending the
@@ -2983,8 +2996,171 @@ function CoverageBackfillBootStatusCard() {
             ) : null}
           </>
         )}
+        {history.length > 0 ? (
+          <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+            <CollapsibleTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-2 w-full text-left pt-2 border-t border-border text-sm font-medium hover:text-foreground/80"
+                data-testid="button-backfill-boot-history-toggle"
+              >
+                {historyOpen ? (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                )}
+                <History className="w-4 h-4 text-muted-foreground" />
+                <span>Previous boot runs</span>
+                <Badge
+                  variant="outline"
+                  className="ml-auto text-xs"
+                  data-testid="badge-backfill-boot-history-count"
+                >
+                  {history.length}
+                </Badge>
+              </button>
+            </CollapsibleTrigger>
+            <CollapsibleContent>
+              <ul
+                className="mt-2 space-y-1.5"
+                data-testid="list-backfill-boot-history"
+              >
+                {history.map((run, idx) => (
+                  <BackfillBootHistoryRow
+                    key={`${run.observedAt}:${idx}`}
+                    run={run}
+                  />
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Showing the most recent {history.length} boot evaluation
+                {history.length === 1 ? '' : 's'}. Older runs are pruned
+                automatically.
+              </p>
+            </CollapsibleContent>
+          </Collapsible>
+        ) : null}
       </CardContent>
     </Card>
+  );
+}
+
+// Compact row for one historical boot evaluation. Mirrors the labels
+// used in the live status grid above so admins can quickly scan past
+// outcomes without re-learning the layout.
+function BackfillBootHistoryRow({
+  run,
+}: {
+  run: CoverageBackfillBootStatus;
+}) {
+  function fmtDate(iso?: string | null) {
+    if (!iso) return '—';
+    try {
+      return new Date(iso).toLocaleString();
+    } catch {
+      return iso;
+    }
+  }
+  function fmtDuration(ms?: number | null) {
+    if (ms == null || !Number.isFinite(ms) || ms < 0) return null;
+    if (ms < 1000) return `${ms} ms`;
+    const s = Math.round(ms / 100) / 10;
+    if (s < 60) return `${s.toFixed(1)} s`;
+    const m = Math.floor(s / 60);
+    const rem = Math.round(s - m * 60);
+    return `${m}m ${rem}s`;
+  }
+  const tone = (() => {
+    switch (run.outcome) {
+      case 'done':
+        return 'bg-green-100 text-green-800 border-green-200';
+      case 'done-no-stations':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'failed':
+        return 'bg-red-100 text-red-800 border-red-200';
+      case 'skipped-count-error':
+        return 'bg-amber-100 text-amber-800 border-amber-200';
+      case 'running':
+        return 'bg-blue-100 text-blue-800 border-blue-200';
+      default:
+        return 'bg-muted text-muted-foreground border-border';
+    }
+  })();
+  const label = (() => {
+    switch (run.outcome) {
+      case 'done':
+        return 'ran';
+      case 'done-no-stations':
+        return 'ran (no stations)';
+      case 'failed':
+        return 'failed';
+      case 'skipped-env':
+        return 'skipped (env)';
+      case 'skipped-already-seeded':
+        return 'skipped (not needed)';
+      case 'skipped-count-error':
+        return 'skipped (DB error)';
+      case 'running':
+        return 'running…';
+      default:
+        return run.outcome;
+    }
+  })();
+  const detailBits: string[] = [];
+  if (run.outcome === 'done' || run.outcome === 'done-no-stations') {
+    if (run.daysSeeded != null) {
+      detailBits.push(
+        `${run.daysSeeded} day${run.daysSeeded === 1 ? '' : 's'} seeded`,
+      );
+    }
+    if (run.inserted != null) detailBits.push(`${run.inserted} inserted`);
+    if (run.preserved != null) detailBits.push(`${run.preserved} preserved`);
+  } else if (run.outcome === 'skipped-already-seeded') {
+    if (run.historicalDayCount != null && run.thresholdDays != null) {
+      detailBits.push(
+        `${run.historicalDayCount}/${run.thresholdDays} days present`,
+      );
+    }
+  }
+  const dur = fmtDuration(run.durationMs);
+  if (dur) detailBits.push(dur);
+
+  return (
+    <li
+      className="flex flex-wrap items-center gap-2 rounded border border-border bg-card px-2 py-1.5 text-xs"
+      data-testid={`backfill-boot-history-row-${run.observedAt}`}
+    >
+      <Badge
+        variant="outline"
+        className={tone}
+        data-testid={`badge-backfill-boot-history-outcome-${run.observedAt}`}
+      >
+        {label}
+      </Badge>
+      <span
+        className="tabular-nums text-muted-foreground"
+        data-testid={`text-backfill-boot-history-observed-${run.observedAt}`}
+      >
+        {fmtDate(run.observedAt)}
+      </span>
+      {detailBits.length > 0 ? (
+        <span
+          className="text-muted-foreground"
+          data-testid={`text-backfill-boot-history-detail-${run.observedAt}`}
+        >
+          · {detailBits.join(' · ')}
+        </span>
+      ) : null}
+      {run.error ? (
+        <code
+          className="ml-auto max-w-full truncate text-red-700"
+          title={run.error}
+          data-testid={`text-backfill-boot-history-error-${run.observedAt}`}
+        >
+          {run.error}
+        </code>
+      ) : null}
+    </li>
   );
 }
 

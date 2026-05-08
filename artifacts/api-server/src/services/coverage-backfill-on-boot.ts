@@ -38,9 +38,11 @@
  *     (default 30, matching the admin sparkline window).
  */
 
+import mongoose from 'mongoose';
 import {
   CoverageSnapshot,
   CoverageBackfillStatus,
+  CoverageBackfillRun,
   type CoverageBackfillBootOutcome,
 } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
@@ -48,6 +50,12 @@ import { runCoverageBackfill } from '../scripts/backfill-coverage-snapshots';
 
 const DEFAULT_MIN_HISTORICAL_DAYS = 7;
 const DEFAULT_BACKFILL_DAYS = 30;
+// Cap on how many past boot evaluations we keep in
+// `coveragebackfillruns` (Task #316). The history is meant for spotting
+// silent regressions across the last few deploys, not as a long-term
+// audit log — keeping it small keeps reads/UI rendering trivial and
+// prevents the collection from growing unbounded on long-lived nodes.
+const HISTORY_MAX = 20;
 
 function parsePositiveInt(raw: string | undefined, fallback: number): number {
   if (raw === undefined || raw === '') return fallback;
@@ -135,6 +143,60 @@ async function recordStatus(
   } catch (err: any) {
     logger.warn(
       `⚠️  Coverage boot backfill: status write failed (${outcome}): ${err?.message || err}`,
+    );
+  }
+
+  // Task #316: also append to the bounded history collection so admins
+  // can see past boot evaluations under the latest status. We skip the
+  // transient `running` state — it would create two rows per boot
+  // (running + terminal) and the singleton already shows it in real
+  // time. After insert we prune oldest rows beyond `HISTORY_MAX` so
+  // the collection can't grow unbounded on a long-lived node.
+  if (outcome === 'running') {
+    return;
+  }
+  try {
+    const now = new Date();
+    const historyDoc: Record<string, unknown> = {
+      outcome,
+      message,
+      observedAt: now,
+    };
+    for (const name of OPTIONAL_STATUS_FIELDS) {
+      const value = (fields as Record<string, unknown>)[name];
+      if (value !== undefined) {
+        historyDoc[name] = value;
+      }
+    }
+    await CoverageBackfillRun.create(historyDoc);
+    // Prune anything older than the most recent HISTORY_MAX rows.
+    // findOne on the boundary index is cheap; deleteMany of a tail is
+    // bounded so this never grows in cost over time.
+    // Strict top-N prune: pick the boundary row at position HISTORY_MAX
+    // (0-indexed) and delete everything strictly older. The _id
+    // tie-break in the delete clause ensures rows with identical
+    // `observedAt` ticks (possible when several recordStatus calls land
+    // in the same millisecond) are pruned deterministically rather than
+    // all kept, so the collection stays at exactly HISTORY_MAX rows.
+    const boundary = await CoverageBackfillRun.findOne({})
+      .sort({ observedAt: -1, _id: -1 })
+      .skip(HISTORY_MAX)
+      .select({ observedAt: 1, _id: 1 })
+      .lean<{ observedAt: Date; _id: mongoose.Types.ObjectId } | null>();
+    if (boundary) {
+      await CoverageBackfillRun.deleteMany({
+        $or: [
+          { observedAt: { $lt: boundary.observedAt } },
+          {
+            observedAt: boundary.observedAt,
+            _id: { $lte: boundary._id },
+          },
+        ],
+      });
+    }
+  } catch (err: any) {
+    logger.warn(
+      `⚠️  Coverage boot backfill: history write failed (${outcome}): ${err?.message || err}`,
     );
   }
 }

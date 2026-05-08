@@ -786,6 +786,34 @@ export interface ICoverageBackfillStatus extends Document {
   updatedAt: Date;
 }
 
+// Task #316: bounded history of past first-deploy backfill boot
+// evaluations. The singleton `CoverageBackfillStatus` doc above only
+// remembers the most recent outcome; this collection keeps one row per
+// evaluation so admins can see whether the last few deploys all
+// skipped because the threshold was met, or whether one of them
+// silently failed. Inserts happen only on terminal outcomes (skipped*,
+// done*, failed) — the transient `running` state is left to the
+// singleton so the history doesn't accumulate two rows per boot.
+// `services/coverage-backfill-on-boot.ts` prunes the collection back
+// to `COVERAGE_BACKFILL_HISTORY_MAX` rows after every insert so it
+// can't grow unbounded.
+export interface ICoverageBackfillRun extends Document {
+  outcome: CoverageBackfillBootOutcome;
+  message: string;
+  observedAt: Date;
+  startedAt?: Date;
+  finishedAt?: Date;
+  durationMs?: number;
+  thresholdDays?: number;
+  historicalDayCount?: number;
+  seedDays?: number;
+  daysSeeded?: number;
+  inserted?: number;
+  preserved?: number;
+  error?: string;
+  createdAt: Date;
+}
+
 // Task #132: weekly genre-slug cleanup audit log. Mirrors the BackfillRun
 // shape so admins can see "scanned 1284, normalized 3, demoted 2" without
 // having to grep server logs. See `services/scheduled-genre-slug-cleanup.ts`.
@@ -1355,6 +1383,39 @@ const CoverageBackfillStatusSchema = new Schema<ICoverageBackfillStatus>({
   updatedAt: { type: Date, default: Date.now },
 });
 CoverageBackfillStatusSchema.index({ key: 1 }, { unique: true });
+
+// Task #316: bounded history collection for past boot evaluations.
+// Mirrors the singleton schema (without the `key` field) and is
+// pruned to a small cap by `services/coverage-backfill-on-boot.ts`.
+const CoverageBackfillRunSchema = new Schema<ICoverageBackfillRun>({
+  outcome: {
+    type: String,
+    enum: [
+      'skipped-env',
+      'skipped-already-seeded',
+      'skipped-count-error',
+      'running',
+      'done',
+      'done-no-stations',
+      'failed',
+    ],
+    required: true,
+  },
+  message: { type: String, required: true },
+  observedAt: { type: Date, required: true },
+  startedAt: Date,
+  finishedAt: Date,
+  durationMs: Number,
+  thresholdDays: Number,
+  historicalDayCount: Number,
+  seedDays: Number,
+  daysSeeded: Number,
+  inserted: Number,
+  preserved: Number,
+  error: String,
+  createdAt: { type: Date, default: Date.now },
+});
+CoverageBackfillRunSchema.index({ observedAt: -1 });
 
 const GenreSlugCleanupRunSchema = new Schema<IGenreSlugCleanupRun>({
   trigger: { type: String, required: true, index: true },
@@ -2064,6 +2125,10 @@ export const CoverageSnapshot = mongoose.model<ICoverageSnapshot>('CoverageSnaps
 export const CoverageBackfillStatus = mongoose.model<ICoverageBackfillStatus>(
   'CoverageBackfillStatus',
   CoverageBackfillStatusSchema,
+);
+export const CoverageBackfillRun = mongoose.model<ICoverageBackfillRun>(
+  'CoverageBackfillRun',
+  CoverageBackfillRunSchema,
 );
 export const GenreSlugCleanupRun = mongoose.model<IGenreSlugCleanupRun>(
   'GenreSlugCleanupRun',
