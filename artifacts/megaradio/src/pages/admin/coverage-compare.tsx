@@ -36,6 +36,12 @@ interface TrendPoint {
   total: number;
   withLogo: number;
   withTags: number;
+  // 'cron' = real nightly snapshot of live data; 'backfill' = day was
+  // reconstructed by the historical seeder (Task #144 / boot backfill in
+  // Task #176) from existing station signals. Backfilled days — and tag
+  // values for those days in particular — are best-effort reconstructions,
+  // not real point-in-time snapshots, so the chart draws them dashed.
+  source?: 'cron' | 'backfill';
 }
 
 interface TrendsResponse {
@@ -152,16 +158,26 @@ export default function AdminCoverageCompare() {
       refetchOnWindowFocus: false,
     });
 
-  // Combine each country's trend into a single { date, <CC>_logo, <CC>_tag }
-  // row so Recharts can render one Line per country per metric off the same
-  // dataset.
-  const merged = useMemo(() => {
+  // Combine each country's trend into a single row per date so Recharts can
+  // render multiple Lines off the same dataset. For each country we emit
+  // two parallel value columns per metric — `<CC>_logo_cron` / `<CC>_logo_backfill`
+  // (and the equivalent `_tag` pair) — so reconstructed (synthetic) days
+  // are drawn dashed and real cron days drawn solid. The first cron point
+  // following a run of backfill days is duplicated into the backfill series
+  // so the dashed segment connects continuously to the solid one (no
+  // visual gap at the handover).
+  //
+  // `hasBackfill` is true if any selected country has at least one
+  // synthetic day in the visible window; the page uses it to show the
+  // legend entry + caveat note explaining the dashed segments.
+  const { merged, hasBackfill } = useMemo(() => {
     const trendsByCountry = trendsData?.trends ?? {};
     const todayUtc = new Date().toISOString().slice(0, 10);
     const liveByCountry = new Map<string, CountryCoverage>();
     for (const c of countries) liveByCountry.set(c.countryCode, c);
 
-    const dateMap = new Map<string, Record<string, number | string>>();
+    const dateMap = new Map<string, Record<string, number | string | null>>();
+    let anyBackfill = false;
     for (const code of selected) {
       const series = [...(trendsByCountry[code] ?? [])];
       const live = liveByCountry.get(code);
@@ -174,18 +190,36 @@ export default function AdminCoverageCompare() {
           total: live.total,
           withLogo: live.withLogo,
           withTags: live.withTags,
+          // Today's live point is straight from the by-country
+          // aggregation, never a backfill — render it solid.
+          source: 'cron',
         });
       }
-      for (const point of series) {
+      for (let i = 0; i < series.length; i++) {
+        const point = series[i];
+        const isBackfill = point.source === 'backfill';
+        const prevWasBackfill =
+          i > 0 && series[i - 1].source === 'backfill';
+        const inBackfill = isBackfill || prevWasBackfill;
+        if (isBackfill) anyBackfill = true;
         const row = dateMap.get(point.date) ?? { date: point.date };
-        row[`${code}_logo`] = point.logoCoveragePct;
-        row[`${code}_tag`] = point.tagCoveragePct;
+        row[`${code}_logo_cron`] = isBackfill ? null : point.logoCoveragePct;
+        row[`${code}_logo_backfill`] = inBackfill
+          ? point.logoCoveragePct
+          : null;
+        row[`${code}_tag_cron`] = isBackfill ? null : point.tagCoveragePct;
+        row[`${code}_tag_backfill`] = inBackfill
+          ? point.tagCoveragePct
+          : null;
         dateMap.set(point.date, row);
       }
     }
-    return Array.from(dateMap.values()).sort((a, b) =>
-      String(a.date).localeCompare(String(b.date)),
-    );
+    return {
+      merged: Array.from(dateMap.values()).sort((a, b) =>
+        String(a.date).localeCompare(String(b.date)),
+      ),
+      hasBackfill: anyBackfill,
+    };
   }, [trendsData, countries, selected]);
 
   const filteredCountries = useMemo(() => {
@@ -396,6 +430,17 @@ export default function AdminCoverageCompare() {
           <CardDescription>
             One line per selected country. Today's point reflects live numbers;
             prior days come from the nightly snapshot.
+            {hasBackfill ? (
+              <>
+                {' '}
+                <span data-testid="backfill-caveat-logo">
+                  <span className="font-medium">Dashed segments</span> are
+                  reconstructed by the historical backfill from existing
+                  station data — they are best-effort, not real nightly
+                  snapshots.
+                </span>
+              </>
+            ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -445,19 +490,34 @@ export default function AdminCoverageCompare() {
                     ]}
                   />
                   <Legend />
-                  {selected.map((code, i) => (
+                  {selected.flatMap((code, i) => [
                     <Line
-                      key={code}
+                      key={`${code}-logo-cron`}
                       type="monotone"
-                      dataKey={`${code}_logo`}
+                      dataKey={`${code}_logo_cron`}
                       name={code}
                       stroke={colorForIndex(i)}
                       strokeWidth={2}
                       dot={false}
-                      connectNulls
+                      connectNulls={false}
                       isAnimationActive={false}
-                    />
-                  ))}
+                    />,
+                    <Line
+                      key={`${code}-logo-backfill`}
+                      type="monotone"
+                      dataKey={`${code}_logo_backfill`}
+                      // Hide from legend so each country appears once.
+                      legendType="none"
+                      name={`${code} (backfilled)`}
+                      stroke={colorForIndex(i)}
+                      strokeWidth={2}
+                      strokeDasharray="4 3"
+                      strokeOpacity={0.7}
+                      dot={false}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                    />,
+                  ])}
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -470,6 +530,20 @@ export default function AdminCoverageCompare() {
           <CardTitle>Tag coverage % over time</CardTitle>
           <CardDescription>
             Same selection, comparing tag (genre) coverage instead of logos.
+            {hasBackfill ? (
+              <>
+                {' '}
+                <span data-testid="backfill-caveat-tag">
+                  <span className="font-medium">Dashed segments</span> are
+                  reconstructed by the historical backfill from existing
+                  station data. Tag values for those days are particularly
+                  approximate — the backfill uses each station's
+                  <code className="mx-1 px-1 bg-muted rounded">createdAt</code>
+                  date as a proxy because we don't track when a station first
+                  received tags.
+                </span>
+              </>
+            ) : null}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -519,19 +593,34 @@ export default function AdminCoverageCompare() {
                     ]}
                   />
                   <Legend />
-                  {selected.map((code, i) => (
+                  {selected.flatMap((code, i) => [
                     <Line
-                      key={code}
+                      key={`${code}-tag-cron`}
                       type="monotone"
-                      dataKey={`${code}_tag`}
+                      dataKey={`${code}_tag_cron`}
                       name={code}
                       stroke={colorForIndex(i)}
                       strokeWidth={2}
                       dot={false}
-                      connectNulls
+                      connectNulls={false}
                       isAnimationActive={false}
-                    />
-                  ))}
+                    />,
+                    <Line
+                      key={`${code}-tag-backfill`}
+                      type="monotone"
+                      dataKey={`${code}_tag_backfill`}
+                      // Hide from legend so each country appears once.
+                      legendType="none"
+                      name={`${code} (backfilled)`}
+                      stroke={colorForIndex(i)}
+                      strokeWidth={2}
+                      strokeDasharray="4 3"
+                      strokeOpacity={0.7}
+                      dot={false}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                    />,
+                  ])}
                 </LineChart>
               </ResponsiveContainer>
             </div>
