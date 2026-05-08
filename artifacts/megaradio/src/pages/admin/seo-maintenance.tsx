@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { RetryTrendSparkline } from "@/components/admin/RetryTrendSparkline";
 
 interface HealthStats {
   country: string | null;
@@ -516,10 +517,23 @@ export default function SeoMaintenancePage() {
 
       {/* Scheduled backfill — history of past runs */}
       <Card className="bg-white">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
           <CardTitle className="text-base">
             Geçmiş haftalık backfill çalışmaları
           </CardTitle>
+          {runsQuery.data && runsQuery.data.runs.length > 0 && (
+            <div className="text-right">
+              <div className="text-[11px] uppercase tracking-wide text-slate-500 mb-1">
+                Retry trend (son {Math.min(10, runsQuery.data.runs.length)} çalışma)
+              </div>
+              <RetryTrendSparkline
+                runs={runsQuery.data.runs}
+                width={220}
+                height={48}
+                testId="seo-maintenance-retry-trend"
+              />
+            </div>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-3 flex-wrap">

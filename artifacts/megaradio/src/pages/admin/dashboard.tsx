@@ -22,6 +22,7 @@ import {
   CalendarClock
 } from "lucide-react";
 import { Link } from "wouter";
+import { RetryTrendSparkline, type RetryTrendRun } from "@/components/admin/RetryTrendSparkline";
 
 interface DashboardStats {
   totalStations: number;
@@ -98,6 +99,22 @@ export default function AdminDashboard() {
     queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
     staleTime: 30000,
     refetchInterval: (q) => (q.state.data?.status?.isRunning ? 5000 : false),
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: backfillRunsData } = useQuery<{ runs: RetryTrendRun[] }>({
+    queryKey: ["/api/admin/maintenance/scheduled-backfill/runs", "trend"],
+    queryFn: async () => {
+      const res = await fetch(
+        "/api/admin/maintenance/scheduled-backfill/runs?limit=10",
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+    staleTime: 30000,
+    refetchInterval: () =>
+      backfillStatus?.status?.isRunning ? 5000 : false,
     refetchOnWindowFocus: false,
   });
 
@@ -507,7 +524,17 @@ export default function AdminDashboard() {
               Sunday 04:00 (Europe/Berlin) cross-country logo + tag sweep
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
+            {backfillRunsData && backfillRunsData.runs.length > 0 && (
+              <div className="hidden md:block">
+                <RetryTrendSparkline
+                  runs={backfillRunsData.runs}
+                  width={180}
+                  height={40}
+                  testId="dashboard-retry-trend"
+                />
+              </div>
+            )}
             {backfillStatus?.lastRun?._id && (
               <Link
                 href={`/admin/seo-maintenance?runId=${encodeURIComponent(backfillStatus.lastRun._id)}#backfill-run-${backfillStatus.lastRun._id}`}
