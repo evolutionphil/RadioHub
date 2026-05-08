@@ -224,6 +224,7 @@ mock.module(new URL('../src/seo/genre-whitelist-push-status.ts', import.meta.url
     updatePushStep: () => {},
     completePushStatus: () => {},
     getLastPushStatus: () => null,
+    getRecentPushHistory: async () => [],
   },
 });
 

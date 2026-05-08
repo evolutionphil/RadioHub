@@ -41,12 +41,14 @@ let genreStationCount = 0; // controls Genre.findOne(...) responses.
 interface FakeQuery<T> extends PromiseLike<T> {
   select: () => FakeQuery<T>;
   sort: () => FakeQuery<T>;
+  limit: () => FakeQuery<T>;
   lean: <U = T>() => Promise<U>;
 }
 function fakeQuery<T>(value: T): FakeQuery<T> {
   const q: FakeQuery<T> = {
     select: () => q,
     sort: () => q,
+    limit: () => q,
     lean: async () => value as unknown as never,
     then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
   };
@@ -118,6 +120,10 @@ mock.module('@workspace/db-shared/mongo-schemas', {
     Genre: FakeGenreModel,
     GenreWhitelistOverride: FakeOverrideModel,
     Station: { aggregate: async () => [] },
+    GenreWhitelistPushLog: {
+      create: async () => ({}),
+      find: () => fakeQuery([]),
+    },
     SAFE_GENRE_SLUG_RE: /^[a-z0-9-]+$/,
     normalizeGenreSlug: (slug: string) =>
       String(slug ?? '')
