@@ -120,6 +120,8 @@ mock.module('@workspace/db-shared/mongo-schemas', {
     Genre: FakeGenreModel,
     GenreWhitelistOverride: FakeOverrideModel,
     Station: { aggregate: async () => [] },
+    User: { find: () => fakeQuery([]) },
+    UserNotification: { create: async () => ({}) },
     GenreWhitelistPushLog: {
       create: async () => ({}),
       find: () => fakeQuery([]),
