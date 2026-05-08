@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useRoute } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -103,16 +103,49 @@ function deltaClass(delta: number): string {
   return 'text-muted-foreground';
 }
 
+const RANGE_OPTIONS = [7, 14, 30, 90, 180] as const;
+type RangeDays = (typeof RANGE_OPTIONS)[number];
+const DEFAULT_RANGE: RangeDays = 90;
+
+function readRangeFromUrl(): RangeDays {
+  if (typeof window === 'undefined') return DEFAULT_RANGE;
+  const params = new URLSearchParams(window.location.search);
+  const raw = Number(params.get('days'));
+  return (RANGE_OPTIONS as readonly number[]).includes(raw)
+    ? (raw as RangeDays)
+    : DEFAULT_RANGE;
+}
+
+function writeRangeToUrl(days: RangeDays): void {
+  if (typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  if (days !== DEFAULT_RANGE) {
+    params.set('days', String(days));
+  } else {
+    params.delete('days');
+  }
+  const next = `${window.location.pathname}${
+    params.toString() ? `?${params.toString()}` : ''
+  }`;
+  window.history.replaceState(null, '', next);
+}
+
 export default function AdminCoverageCountry() {
   const [, params] = useRoute<{ countryCode: string }>(
     '/admin/coverage/:countryCode',
   );
   const code = (params?.countryCode || '').toUpperCase();
+  const [days, setDays] = useState<RangeDays>(() => readRangeFromUrl());
+
+  const updateDays = (next: RangeDays) => {
+    setDays(next);
+    writeRangeToUrl(next);
+  };
 
   const { data: trendsData, isLoading: trendsLoading } =
     useQuery<TrendsResponse>({
       queryKey: [
-        `/api/admin/coverage/trends?days=90&countryCode=${encodeURIComponent(code)}`,
+        `/api/admin/coverage/trends?days=${days}&countryCode=${encodeURIComponent(code)}`,
       ],
       enabled: !!code,
       staleTime: 5 * 60_000,
@@ -242,20 +275,45 @@ export default function AdminCoverageCountry() {
             </h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            Daily logo and tag coverage over the last 90 days. Use this view to
-            inspect a sudden drop or share a screenshot with the team.
+            Daily logo and tag coverage over the last {days} days. Use this view
+            to inspect a sudden drop or share a screenshot with the team.
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={handleDownloadCsv}
-          disabled={series.length === 0}
-          data-testid="button-download-csv"
-        >
-          <Download className="w-4 h-4 mr-1" />
-          Download CSV
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <div
+            className="flex items-center gap-1 rounded-md border bg-muted/30 p-0.5"
+            role="group"
+            aria-label="Date range"
+            data-testid="range-selector"
+          >
+            {RANGE_OPTIONS.map((opt) => {
+              const active = opt === days;
+              return (
+                <Button
+                  key={opt}
+                  size="sm"
+                  variant={active ? 'default' : 'ghost'}
+                  className="h-7 px-2 text-xs"
+                  onClick={() => updateDays(opt)}
+                  aria-pressed={active}
+                  data-testid={`button-range-${opt}d`}
+                >
+                  {opt}d
+                </Button>
+              );
+            })}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadCsv}
+            disabled={series.length === 0}
+            data-testid="button-download-csv"
+          >
+            <Download className="w-4 h-4 mr-1" />
+            Download CSV
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

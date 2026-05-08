@@ -73,6 +73,10 @@ const SERIES_COLORS = [
 
 const MAX_SELECTED = 8;
 
+const RANGE_OPTIONS = [7, 14, 30, 90, 180] as const;
+type RangeDays = (typeof RANGE_OPTIONS)[number];
+const DEFAULT_RANGE: RangeDays = 90;
+
 function colorForIndex(i: number): string {
   return SERIES_COLORS[i % SERIES_COLORS.length];
 }
@@ -91,13 +95,27 @@ function readSelectedFromUrl(): string[] {
   ).slice(0, MAX_SELECTED);
 }
 
-function writeSelectedToUrl(codes: string[]): void {
+function readRangeFromUrl(): RangeDays {
+  if (typeof window === 'undefined') return DEFAULT_RANGE;
+  const params = new URLSearchParams(window.location.search);
+  const raw = Number(params.get('days'));
+  return (RANGE_OPTIONS as readonly number[]).includes(raw)
+    ? (raw as RangeDays)
+    : DEFAULT_RANGE;
+}
+
+function writeUrlState(codes: string[], days: RangeDays): void {
   if (typeof window === 'undefined') return;
   const params = new URLSearchParams(window.location.search);
   if (codes.length > 0) {
     params.set('countries', codes.join(','));
   } else {
     params.delete('countries');
+  }
+  if (days !== DEFAULT_RANGE) {
+    params.set('days', String(days));
+  } else {
+    params.delete('days');
   }
   const next = `${window.location.pathname}${
     params.toString() ? `?${params.toString()}` : ''
@@ -109,6 +127,7 @@ export default function AdminCoverageCompare() {
   const [selected, setSelected] = useState<string[]>(() =>
     readSelectedFromUrl(),
   );
+  const [days, setDays] = useState<RangeDays>(() => readRangeFromUrl());
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
 
@@ -122,7 +141,7 @@ export default function AdminCoverageCompare() {
 
   const csvSelected = selected.join(',');
   const trendsKey = csvSelected
-    ? `/api/admin/coverage/trends?days=90&countryCode=${encodeURIComponent(csvSelected)}`
+    ? `/api/admin/coverage/trends?days=${days}&countryCode=${encodeURIComponent(csvSelected)}`
     : '';
 
   const { data: trendsData, isLoading: trendsLoading } =
@@ -182,7 +201,12 @@ export default function AdminCoverageCompare() {
   const updateSelected = (next: string[]) => {
     const capped = next.slice(0, MAX_SELECTED);
     setSelected(capped);
-    writeSelectedToUrl(capped);
+    writeUrlState(capped, days);
+  };
+
+  const updateDays = (next: RangeDays) => {
+    setDays(next);
+    writeUrlState(selected, next);
   };
 
   const toggleCountry = (code: string) => {
@@ -223,6 +247,29 @@ export default function AdminCoverageCompare() {
             tag coverage on a single chart. Use this to tell whether a sudden
             drop is happening in just one market or across several.
           </p>
+        </div>
+        <div
+          className="flex items-center gap-1 rounded-md border bg-muted/30 p-0.5"
+          role="group"
+          aria-label="Date range"
+          data-testid="range-selector"
+        >
+          {RANGE_OPTIONS.map((opt) => {
+            const active = opt === days;
+            return (
+              <Button
+                key={opt}
+                size="sm"
+                variant={active ? 'default' : 'ghost'}
+                className="h-7 px-2 text-xs"
+                onClick={() => updateDays(opt)}
+                aria-pressed={active}
+                data-testid={`button-range-${opt}d`}
+              >
+                {opt}d
+              </Button>
+            );
+          })}
         </div>
       </div>
 
