@@ -66,7 +66,7 @@ select {
 /* Ensure dropdown options stay within viewport */
 @media (max-width: 768px) {
   select {
-    font-size: 14px !important;
+    font-size: 16px !important;
     padding: 8px 12px !important;
     min-width: 100px !important;
     max-width: 120px !important;
@@ -74,7 +74,7 @@ select {
   }
   
   select option {
-    font-size: 14px !important;
+    font-size: 16px !important;
     padding: 4px 8px !important;
     background-color: #292929 !important;
     color: white !important;

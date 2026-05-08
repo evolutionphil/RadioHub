@@ -172,7 +172,27 @@ export function StationLogo({
   
   const logoUrl = sources[Math.min(sourceIndex, sources.length - 1)];
 
-  const srcSet = undefined;
+  // Build a responsive srcSet from the available logoAssets resolutions so
+  // browsers can pick the optimal logo for high-DPI screens. Falls back to
+  // undefined when only the legacy/external favicon path is available.
+  const srcSet = useMemo(() => {
+    if (
+      sourceIndex !== 0 ||
+      station.logoAssets?.status !== 'completed' ||
+      !station.logoAssets.folder
+    ) {
+      return undefined;
+    }
+    const parts: string[] = [];
+    const folder = station.logoAssets.folder;
+    if (station.logoAssets.webp48)
+      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp48)} 48w`);
+    if (station.logoAssets.webp96)
+      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp96)} 96w`);
+    if (station.logoAssets.webp256)
+      parts.push(`${resolveLogoUrl(folder, station.logoAssets.webp256)} 256w`);
+    return parts.length > 1 ? parts.join(', ') : undefined;
+  }, [station.logoAssets, sourceIndex]);
 
   const stationName = station.name || 'Radio Station';
   const altText = alt || t('station_logo_alt', `${stationName} logo`, { stationName });
@@ -206,6 +226,8 @@ export function StationLogo({
       srcSet={srcSet}
       sizes={srcSet ? getSizes(size) : undefined}
       alt={altText}
+      width={sizeConfig.px}
+      height={sizeConfig.px}
       loading={priority ? 'eager' : 'lazy'}
       decoding="async"
       onError={handleError}

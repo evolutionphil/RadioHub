@@ -1257,8 +1257,12 @@ export function generateLanguageUrls(
         url = `${currentDomain}/${lang.code}${translatedPath}`;
       }
       
-      const hreflang = lang.code;
-      
+      // CRITICAL SEO FIX: Use the full ISO BCP-47 code (e.g. "nb-NO", "pt-BR")
+      // for the hreflang attribute. Using just the 2-letter code (e.g. "no")
+      // causes Google to ignore the alternate (Norwegian must be "nb-NO" or
+      // "no" with a region) and merges Brazilian/European Portuguese, etc.
+      const hreflang = lang.iso || lang.code;
+
       return {
         lang: lang.code,
         url,

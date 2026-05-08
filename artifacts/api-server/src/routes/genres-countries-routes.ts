@@ -556,13 +556,13 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         logger.warn({ err }, 'Failed to refresh precomputed genres after create');
       }
 
-      res.status(201).json(created);
+      return res.status(201).json(created);
     } catch (error: any) {
       if (error?.name === 'ValidationError') {
         return res.status(400).json({ error: error.message });
       }
       logger.error({ err: error }, 'Failed to create genre');
-      res.status(500).json({ error: 'Failed to create genre' });
+      return res.status(500).json({ error: 'Failed to create genre' });
     }
   });
 
@@ -638,7 +638,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         logger.warn({ err }, 'Failed to refresh precomputed genres after update');
       }
 
-      res.json(updated);
+      return res.json(updated);
     } catch (error: any) {
       if (error?.name === 'ValidationError') {
         return void res.status(400).json({ error: error.message });
@@ -652,7 +652,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         });
       }
       logger.error({ err: error }, 'Failed to update genre');
-      res.status(500).json({ error: 'Failed to update genre' });
+      return res.status(500).json({ error: 'Failed to update genre' });
     }
   });
 

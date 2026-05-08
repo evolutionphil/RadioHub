@@ -1933,6 +1933,7 @@ export class SeoRenderer {
         },
         "broadcaster": {
           "@type": "Organization",
+          "@id": `${stationUrl}#broadcaster`,
           "name": stationData.name,
           ...(stationData.homepage && { "url": stationData.homepage })
         },
@@ -1964,7 +1965,7 @@ export class SeoRenderer {
     // using that language's own translation map.
     const FINAL_TITLE_FALLBACK = 'Mega Radio: Free Live Radio from 120+ Countries';
     const FINAL_DESCRIPTION_FALLBACK = 'Mega Radio is your free online radio platform with 60,000+ live stations from 120+ countries.';
-    const MAX_DESC_LEN = 145;
+    const MAX_DESC_LEN = 160;
     const ensureDescriptionLength = (raw: any): string => {
       const trimmed = (raw && String(raw).trim()) ? String(raw).trim() : '';
       if (!trimmed) return truncateAtWordBoundary(FINAL_DESCRIPTION_FALLBACK, MAX_DESC_LEN);
@@ -2005,8 +2006,8 @@ export class SeoRenderer {
     
     <!-- Additional meta tags -->
     <meta name="robots" content="${seoTags.robots || 'index, follow'}">
-    <meta name="theme-color" content="#000000">
-    <meta name="msapplication-TileColor" content="#000000">
+    <meta name="theme-color" content="#1a1a2e">
+    <meta name="msapplication-TileColor" content="#1a1a2e">
     
     ${seoTags.canonical ? `<link rel="canonical" href="${seoTags.canonical}" data-managed="seo-head">` : ''}
     ${seoTags.hreflangs ? seoTags.hreflangs.map((h: any) => `<link rel="alternate" hreflang="${h.hreflang}" href="${h.url}" data-managed="seo-head">`).join('\n    ') : ''}

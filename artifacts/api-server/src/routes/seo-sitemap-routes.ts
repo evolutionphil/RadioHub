@@ -3,7 +3,16 @@ import crypto from 'crypto';
 import { Station, Country, Genre, AuthToken, AppLog } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
-import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations } from '@workspace/seo-shared/seo-config';
+import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
+
+// Map a SEO language code (e.g. "nb") to its BCP47/hreflang tag (e.g. "nb-NO")
+// so XML sitemap alternates match the HTML <link rel="alternate"> tags emitted
+// by lib/seo-shared/src/seo-config.ts. Without this mapping Google sees a
+// HTML/sitemap mismatch and ignores the entire alternate cluster.
+function toHreflangTag(code: string): string {
+  const lang = SEO_LANGUAGES.find((l) => l.code === code);
+  return lang?.iso || code;
+}
 import { performanceCache } from "../performance-cache";
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import CacheManager, { CacheKeys } from "../cache";
@@ -82,7 +91,10 @@ function send503QualifiedLangs(res: any, route: string): void {
  * (CRITICAL LASTMOD RULE: never use today as fallback). */
 function formatLastmod(date?: Date | null): string {
   if (!(date instanceof Date) || isNaN(date.getTime())) return '';
-  return date.toISOString().split('T')[0];
+  // W3C Datetime full ISO 8601 with timezone (UTC) — Google/Bing prefer
+  // millisecond-precise lastmod when re-crawl decisions matter, and the
+  // bare YYYY-MM-DD form was flagged in the SEO audit as too coarse.
+  return date.toISOString();
 }
 
 /**
@@ -531,7 +543,6 @@ Disallow: /*/admin
 Disallow: /*/settings
 Disallow: /*/import-export
 Disallow: /*/analytics
-Disallow: /*/search*
 Disallow: /*/messages
 Disallow: /*/profile
 Allow: /
@@ -551,7 +562,6 @@ Disallow: /*/admin
 Disallow: /*/settings
 Disallow: /*/import-export
 Disallow: /*/analytics
-Disallow: /*/search*
 Disallow: /*/messages
 Disallow: /*/profile
 Allow: /
@@ -571,7 +581,6 @@ Disallow: /*/admin
 Disallow: /*/settings
 Disallow: /*/import-export
 Disallow: /*/analytics
-Disallow: /*/search*
 Disallow: /*/messages
 Disallow: /*/profile
 Allow: /
@@ -702,10 +711,13 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
     <changefreq>${changefreq}</changefreq>
     <priority>${priority}</priority>`);
 
+        // Self-reference is REQUIRED by Google — the current language must
+        // appear in its own xhtml:link list. Iterating qualifiedLanguages
+        // already includes `lang`, so no need to dedupe.
         for (const altLang of qualifiedLanguages) {
           const altPath = buildLocalizedUrl(page, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
+    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
         }
         const enPath = buildLocalizedUrl(page, 'en', undefined, urlTranslations);
         parts.push(`
@@ -726,7 +738,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         for (const altLang of qualifiedLanguages) {
           const altPath = buildLocalizedUrl(enginePath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
+    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
         }
         const enPath = buildLocalizedUrl(enginePath, 'en', undefined, urlTranslations);
         parts.push(`
@@ -858,16 +870,22 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         // A4: image:image ONLY for verified hosts (S3 / themegaradio.com).
         const stationImg = pickStationImage(station);
         if (stationImg) {
+          const imgTitle = station.name ? `${station.name} logo` : 'Radio station logo';
+          const imgCaption = station.name && station.country
+            ? `${station.name} — ${station.country} radio station logo`
+            : (station.name || 'Radio station logo');
           parts.push(`
     <image:image>
       <image:loc>${escapeXml(stationImg)}</image:loc>
+      <image:title>${escapeXml(imgTitle)}</image:title>
+      <image:caption>${escapeXml(imgCaption)}</image:caption>
     </image:image>`);
         }
 
         for (const altLang of indexable) {
           const altPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
+    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
         }
         const enPath = buildLocalizedUrl(stationPath, 'en', undefined, urlTranslations);
         parts.push(`
@@ -983,7 +1001,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         for (const altLang of qualifiedLanguages) {
           const altPath = buildLocalizedUrl(genrePath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${altLang}" href="${escapeXml(baseUrl + altPath)}"/>`);
+    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
         }
         const enPath = buildLocalizedUrl(genrePath, 'en', undefined, urlTranslations);
         parts.push(`

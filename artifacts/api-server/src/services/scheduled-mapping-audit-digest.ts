@@ -95,7 +95,7 @@ class ScheduledMappingAuditDigest {
     try {
       logger.log(`📬 mapping-audit digest START (${trigger})`);
       const { ClearedOverridesAuditLog } = await import(
-        '../shared/mongo-schemas'
+        '@workspace/db-shared/mongo-schemas'
       );
       const rows = await ClearedOverridesAuditLog
         .find({ createdAt: { $gte: windowStart, $lt: windowEnd } })

@@ -277,6 +277,10 @@ app.use((req, res, next) => {
   res.header('Access-Control-Max-Age', '86400');
 
   res.header('X-Content-Type-Options', 'nosniff');
+  // SEO: API responses are JSON and must NEVER be indexed even if a stray
+  // referrer link leaks the URL. robots.txt blocks /api/ but external links
+  // can still trigger indexing without a page-level signal.
+  res.header('X-Robots-Tag', 'noindex, nofollow');
   const frameOptions = getFrameOptionsHeader();
   if (frameOptions) res.header('X-Frame-Options', frameOptions);
   res.header('X-XSS-Protection', '1; mode=block');

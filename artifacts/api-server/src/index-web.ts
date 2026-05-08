@@ -172,6 +172,10 @@ app.use((req, res, next) => {
   }
 
   res.header('X-Content-Type-Options', 'nosniff');
+  // Vary on User-Agent (bot vs SPA SSR branch), Accept-Language (lang
+  // detection), Accept-Encoding (gzip), and CF-IPCountry (geo) so CDN
+  // caches don't poison cross-locale or cross-bot variants.
+  res.header('Vary', 'Accept-Encoding, User-Agent, Accept-Language, CF-IPCountry');
   const frameOptions = getFrameOptionsHeader();
   if (frameOptions) res.header('X-Frame-Options', frameOptions);
   res.header('X-XSS-Protection', '1; mode=block');
@@ -679,7 +683,7 @@ app.use('/api/stream', streamServiceProxy);
 <html lang="${seoData.language}" dir="${htmlDir}">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     ${seoRenderer.generateHtmlHead(seoTags, seoData.language, seoData.translations || {}, seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData)}
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png">
@@ -712,20 +716,11 @@ app.use('/api/stream', streamServiceProxy);
       .skeleton-placeholder { background: #404040; border-radius: 0.5rem; animation: pulse 2s infinite; }
       @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
     </style>
-    ${pageType === 'station' && seoData.pageData?.station ? `
-    <script type="application/ld+json">
-    ${JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "BroadcastService",
-      "name": seoData.pageData.station.name,
-      "url": seoTags.canonical || '',
-      "description": seoTags.description,
-      "broadcastFrequency": "Internet Streaming",
-      ...(seoData.pageData.station.country ? { "areaServed": { "@type": "Country", "name": seoData.pageData.station.country } } : {}),
-      "provider": { "@type": "Organization", "name": "Mega Radio", "url": "https://themegaradio.com" },
-      "potentialAction": { "@type": "ListenAction", "target": seoTags.canonical || '' }
-    })}
-    </script>` : ''}
+    <!-- BroadcastService JSON-LD intentionally removed to avoid dual-primary
+         entity conflict with the RadioStation block emitted from
+         seo-renderer.ts. Search engines were seeing two competing primary
+         entities at the same @id-less URL. -->
+
   </head>
   <body>
     <div id="root">

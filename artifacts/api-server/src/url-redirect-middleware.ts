@@ -179,14 +179,15 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
   // /En/Radios → /en/radios (single 301). Without this Google may
   // index both casings as duplicate content.
   // =================================================================
-  const firstSegRaw = segments[0];
-  if (firstSegRaw !== firstSegRaw.toLowerCase()) {
-    const lowered = '/' + segments.map((s, i) => i === 0 ? s.toLowerCase() : s).join('/');
-    // Preserve raw query (originalUrl is undecoded; req.url may differ in
-    // length from req.path for percent-encoded segments).
+  // Lowercase normalization for ALL path segments (not just the language code)
+  // so that /EN/Stations and /en/Stations both 301 to /en/stations.
+  // Slug case mismatches (e.g. /tr/istasyon/ABC) are also fixed here.
+  const hasUpper = segments.some(s => s !== s.toLowerCase());
+  if (hasUpper) {
+    const lowered = '/' + segments.map(s => s.toLowerCase()).join('/');
     const qIdx = req.originalUrl.indexOf('?');
     const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
-    logger.log(`🔀 SEO 301: ${urlPath} → ${lowered} (lowercase language code)`);
+    logger.log(`🔀 SEO 301: ${urlPath} → ${lowered} (lowercase normalization)`);
     res.redirect(301, lowered + queryString);
     return;
   }

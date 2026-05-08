@@ -294,7 +294,7 @@ const StationCard = memo(function StationCard({
               e.stopPropagation();
               handlePlay();
             }}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-[#656565] hover:bg-[#FF4199] transition-colors duration-300 group-hover:bg-[#FF4199]"
+            className="flex items-center justify-center w-12 h-12 rounded-full bg-[#656565] hover:bg-[#FF4199] transition-colors duration-300 group-hover:bg-[#FF4199]"
           >
             <span className="sr-only">Play Radio</span>
             <svg className="h-[26px] w-[26px] text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
@@ -307,7 +307,7 @@ const StationCard = memo(function StationCard({
               e.stopPropagation();
               handleStop();
             }}
-            className="flex items-center justify-center w-10 h-10 rounded-full bg-[#FF4199] hover:bg-[#E63A87] transition-colors duration-300"
+            className="flex items-center justify-center w-12 h-12 rounded-full bg-[#FF4199] hover:bg-[#E63A87] transition-colors duration-300"
           >
             <span className="sr-only">Stop Radio</span>
             <svg className="h-[26px] w-[26px] text-white" fill="currentColor" viewBox="0 0 24 24">

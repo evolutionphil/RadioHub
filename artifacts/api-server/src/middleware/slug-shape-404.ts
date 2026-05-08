@@ -23,6 +23,7 @@ import {
   SAFE_REGION_SLUG_RE,
   decodeSegmentSafe,
 } from '../seo/url-helpers';
+import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import {
   isSlugExistenceReady,
   hasStationSlug,
@@ -129,7 +130,16 @@ export function createSlugShape404Middleware(opts: SlugShape404Options) {
       return send404(res);
     }
 
-    // Strip optional 2-letter language prefix (e.g. `/de/...`).
+    // Strip optional 2-letter language prefix (e.g. `/de/...`). If the prefix
+    // looks like a language but isn't in the enabled SEO_LANGUAGES set
+    // (e.g. `/xx/anything`), 404 immediately instead of falling through to
+    // the English default — Google was indexing those bogus prefixes.
+    const langMatch = cleanPath.match(/^\/([a-z]{2})(?=\/|$)/i);
+    if (langMatch) {
+      const candidate = langMatch[1].toLowerCase();
+      const known = SEO_LANGUAGES.some((l) => l.code === candidate && l.enabled);
+      if (!known) return send404(res);
+    }
     const langStripped = cleanPath.replace(/^\/[a-z]{2}(?=\/|$)/i, '');
     const parts = langStripped.split('/').filter(Boolean);
     if (parts.length === 0) return next();

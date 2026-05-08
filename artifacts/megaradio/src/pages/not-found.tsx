@@ -239,7 +239,7 @@ export default function NotFound() {
             </div>
 
             <h1 className="text-2xl md:text-3xl font-bold text-white mb-3">
-              Frekans Bulunamadı
+              404 — Frekans Bulunamadı
             </h1>
             <p className="text-gray-400 max-w-md mx-auto text-base leading-relaxed">
               Aradığın istasyon bu frekansta yayın yapmıyor. Belki taşındı, belki silindi — ama dünya genelinde <span className="text-[#FF4199] font-semibold">60.000+ istasyon</span> seni bekliyor.
