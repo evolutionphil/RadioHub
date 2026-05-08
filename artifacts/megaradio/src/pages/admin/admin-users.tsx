@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2, Search, Edit2, Trash2, Crown, Ban } from "lucide-react";
+import {
+  Loader2,
+  Search,
+  Edit2,
+  Trash2,
+  Crown,
+  Ban,
+  ChevronDown,
+  ChevronUp,
+  ChevronsUpDown,
+} from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { getAvatarUrl } from "@/lib/utils";
@@ -97,23 +107,48 @@ const AUTH_METHOD_FILTER_VALUES: readonly AuthMethodFilter[] = [
   "apple",
 ] as const;
 
+type SortColumn = "createdAt" | "updatedAt" | "plan" | "followers";
+type SortDirection = "asc" | "desc";
+
 interface UsersViewPrefs {
   searchQuery: string;
   planFilter: PlanFilter;
   authMethodFilter: AuthMethodFilter;
+  sort: { column: SortColumn; direction: SortDirection } | null;
 }
 
 const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
   searchQuery: "",
   planFilter: "all",
   authMethodFilter: "all",
+  sort: null,
 };
+
+const SORT_COLUMNS: ReadonlyArray<SortColumn> = [
+  "createdAt",
+  "updatedAt",
+  "plan",
+  "followers",
+];
 
 function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
   if (!raw || typeof raw !== "object") return DEFAULT_VIEW_PREFS;
   const obj = raw as Record<string, unknown>;
   const planRaw = obj.planFilter;
   const authRaw = obj.authMethodFilter;
+  let sort: UsersViewPrefs["sort"] = null;
+  const sortRaw = obj.sort as Record<string, unknown> | undefined;
+  if (
+    sortRaw &&
+    typeof sortRaw === "object" &&
+    SORT_COLUMNS.includes(sortRaw.column as SortColumn) &&
+    (sortRaw.direction === "asc" || sortRaw.direction === "desc")
+  ) {
+    sort = {
+      column: sortRaw.column as SortColumn,
+      direction: sortRaw.direction as SortDirection,
+    };
+  }
   return {
     searchQuery: typeof obj.searchQuery === "string" ? obj.searchQuery : "",
     planFilter:
@@ -126,6 +161,7 @@ function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
       (AUTH_METHOD_FILTER_VALUES as readonly string[]).includes(authRaw)
         ? (authRaw as AuthMethodFilter)
         : "all",
+    sort,
   };
 }
 
@@ -162,6 +198,24 @@ function matchesAuthMethodFilter(
   return provider === filter;
 }
 
+// Ordering for the Plan column. Higher rank = more valuable plan, so
+// 'desc' surfaces lifetime/premium users first which is what admins
+// usually want when scanning. Inactive subscriptions are treated as
+// 'none' regardless of the stored plan value.
+const PLAN_RANK: Record<string, number> = {
+  none: 0,
+  remove_ads: 1,
+  premium_monthly: 2,
+  premium_yearly: 3,
+  premium_lifetime: 4,
+};
+
+function getPlanRank(user: UserProfile): number {
+  const sub = user.subscription;
+  if (!sub || !sub.isActive || sub.plan === "none") return 0;
+  return PLAN_RANK[sub.plan] ?? 0;
+}
+
 export default function AdminUsers() {
   const {
     prefs,
@@ -175,16 +229,26 @@ export default function AdminUsers() {
   const searchQuery = prefs.searchQuery;
   const planFilter = prefs.planFilter;
   const authMethodFilter = prefs.authMethodFilter;
+  const sort = prefs.sort;
   const setSearchQuery = (value: string) =>
     setPrefs((p) => ({ ...p, searchQuery: value }));
   const setPlanFilter = (value: PlanFilter) =>
     setPrefs((p) => ({ ...p, planFilter: value }));
   const setAuthMethodFilter = (value: AuthMethodFilter) =>
     setPrefs((p) => ({ ...p, authMethodFilter: value }));
+  const setSort = (next: UsersViewPrefs["sort"]) =>
+    setPrefs((p) => ({ ...p, sort: next }));
+  const handleToggleSort = (column: SortColumn) => {
+    setSort(
+      !sort || sort.column !== column
+        ? { column, direction: "desc" }
+        : { column, direction: sort.direction === "desc" ? "asc" : "desc" },
+    );
+  };
   const hasActiveFilters =
     planFilter !== "all" || authMethodFilter !== "all";
   const hasNonDefaultViewPrefs =
-    searchQuery.trim() !== "" || hasActiveFilters;
+    searchQuery.trim() !== "" || hasActiveFilters || sort !== null;
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
   // Local form state for the "Admin Overrides" section in the edit modal.
@@ -208,19 +272,101 @@ export default function AdminUsers() {
   });
   const users = usersResponse?.users || [];
 
-  const normalizedSearch = searchQuery.toLowerCase();
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      normalizedSearch === "" ||
-      user.email.toLowerCase().includes(normalizedSearch) ||
-      user.firstName?.toLowerCase().includes(normalizedSearch) ||
-      user.lastName?.toLowerCase().includes(normalizedSearch);
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchQuery.toLowerCase();
+    const matches = users.filter((user) => {
+      const matchesSearch =
+        normalizedSearch === "" ||
+        user.email.toLowerCase().includes(normalizedSearch) ||
+        user.firstName?.toLowerCase().includes(normalizedSearch) ||
+        user.lastName?.toLowerCase().includes(normalizedSearch);
+      return (
+        matchesSearch &&
+        matchesPlanFilter(user.subscription, planFilter) &&
+        matchesAuthMethodFilter(user.authProvider, authMethodFilter)
+      );
+    });
+    if (!sort) return matches;
+    const dir = sort.direction === "asc" ? 1 : -1;
+    // Returns a finite epoch ms or null for missing/invalid dates so the
+    // comparator can push them to the bottom in either direction.
+    const dateKey = (s?: string): number | null => {
+      if (!s) return null;
+      const t = new Date(s).getTime();
+      return Number.isFinite(t) ? t : null;
+    };
+    const sorted = [...matches].sort((a, b) => {
+      let av: number | null;
+      let bv: number | null;
+      switch (sort.column) {
+        case "createdAt":
+          av = dateKey(a.createdAt);
+          bv = dateKey(b.createdAt);
+          break;
+        case "updatedAt":
+          av = dateKey(a.updatedAt);
+          bv = dateKey(b.updatedAt);
+          break;
+        case "plan":
+          av = getPlanRank(a);
+          bv = getPlanRank(b);
+          break;
+        case "followers":
+          av = a.followers || 0;
+          bv = b.followers || 0;
+          break;
+      }
+      // Missing values always sort to the bottom regardless of direction
+      // so admins always see real data first.
+      if (av === null && bv === null) return a.email.localeCompare(b.email);
+      if (av === null) return 1;
+      if (bv === null) return -1;
+      if (av === bv) {
+        // Stable secondary sort by email for predictable grouping.
+        return a.email.localeCompare(b.email);
+      }
+      return av < bv ? -dir : dir;
+    });
+    return sorted;
+  }, [users, searchQuery, planFilter, authMethodFilter, sort]);
+
+  const renderSortIcon = (column: SortColumn) => {
+    if (!sort || sort.column !== column) {
+      return (
+        <ChevronsUpDown
+          className="h-4 w-4 opacity-50 inline-block ml-1"
+          data-testid={`icon-sort-${column}-none`}
+          aria-hidden="true"
+        />
+      );
+    }
+    if (sort.direction === "desc") {
+      return (
+        <ChevronDown
+          className="h-4 w-4 inline-block ml-1"
+          data-testid={`icon-sort-${column}-desc`}
+          aria-hidden="true"
+        />
+      );
+    }
     return (
-      matchesSearch &&
-      matchesPlanFilter(user.subscription, planFilter) &&
-      matchesAuthMethodFilter(user.authProvider, authMethodFilter)
+      <ChevronUp
+        className="h-4 w-4 inline-block ml-1"
+        data-testid={`icon-sort-${column}-asc`}
+        aria-hidden="true"
+      />
     );
-  });
+  };
+
+  const ariaSortFor = (
+    column: SortColumn,
+  ): "ascending" | "descending" | "none" => {
+    if (!sort || sort.column !== column) return "none";
+    return sort.direction === "asc" ? "ascending" : "descending";
+  };
+
+  const sortableHeaderClass =
+    "inline-flex items-center gap-1 px-0 py-1 text-sm font-bold hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm";
 
   const updateUserMutation = useMutation({
     mutationFn: (data: { userId: string; updates: Partial<UserProfile> }) =>
@@ -416,8 +562,8 @@ export default function AdminUsers() {
             <ResetViewButton
               hasNonDefaultPrefs={hasNonDefaultViewPrefs}
               reset={resetViewPrefs}
-              toastDescription="Search and filters restored to defaults on this device and your account."
-              title="Clear search and filters on this device and your account"
+              toastDescription="Search, filters, and sort restored to defaults on this device and your account."
+              title="Clear search, filters, and sort on this device and your account"
             />
           </div>
         </CardContent>
@@ -455,12 +601,92 @@ export default function AdminUsers() {
                   <TableRow className="bg-gray-50 hover:bg-gray-50">
                     <TableHead className="font-bold">Name</TableHead>
                     <TableHead className="font-bold">Email</TableHead>
-                    <TableHead className="font-bold text-center">Followers</TableHead>
+                    <TableHead
+                      className="font-bold text-center"
+                      aria-sort={ariaSortFor("followers")}
+                    >
+                      <button
+                        type="button"
+                        data-testid="button-sort-followers"
+                        onClick={() => handleToggleSort("followers")}
+                        aria-label={
+                          sort?.column === "followers" && sort.direction === "desc"
+                            ? "Sorted by followers, highest first. Click to sort lowest first."
+                            : sort?.column === "followers" && sort.direction === "asc"
+                              ? "Sorted by followers, lowest first. Click to sort highest first."
+                              : "Sort by followers"
+                        }
+                        className={sortableHeaderClass}
+                      >
+                        <span>Followers</span>
+                        {renderSortIcon("followers")}
+                      </button>
+                    </TableHead>
                     <TableHead className="font-bold">Auth Method</TableHead>
-                    <TableHead className="font-bold text-center">Plan</TableHead>
+                    <TableHead
+                      className="font-bold text-center"
+                      aria-sort={ariaSortFor("plan")}
+                    >
+                      <button
+                        type="button"
+                        data-testid="button-sort-plan"
+                        onClick={() => handleToggleSort("plan")}
+                        aria-label={
+                          sort?.column === "plan" && sort.direction === "desc"
+                            ? "Sorted by plan, highest tier first. Click to sort lowest tier first."
+                            : sort?.column === "plan" && sort.direction === "asc"
+                              ? "Sorted by plan, lowest tier first. Click to sort highest tier first."
+                              : "Sort by plan"
+                        }
+                        className={sortableHeaderClass}
+                      >
+                        <span>Plan</span>
+                        {renderSortIcon("plan")}
+                      </button>
+                    </TableHead>
                     <TableHead className="font-bold text-center">Favorites</TableHead>
-                    <TableHead className="font-bold">Created</TableHead>
-                    <TableHead className="font-bold">Last Update</TableHead>
+                    <TableHead
+                      className="font-bold"
+                      aria-sort={ariaSortFor("createdAt")}
+                    >
+                      <button
+                        type="button"
+                        data-testid="button-sort-created-at"
+                        onClick={() => handleToggleSort("createdAt")}
+                        aria-label={
+                          sort?.column === "createdAt" && sort.direction === "desc"
+                            ? "Sorted by joined date, newest first. Click to sort oldest first."
+                            : sort?.column === "createdAt" && sort.direction === "asc"
+                              ? "Sorted by joined date, oldest first. Click to sort newest first."
+                              : "Sort by joined date"
+                        }
+                        className={sortableHeaderClass}
+                      >
+                        <span>Created</span>
+                        {renderSortIcon("createdAt")}
+                      </button>
+                    </TableHead>
+                    <TableHead
+                      className="font-bold"
+                      aria-sort={ariaSortFor("updatedAt")}
+                    >
+                      <button
+                        type="button"
+                        data-testid="button-sort-updated-at"
+                        onClick={() => handleToggleSort("updatedAt")}
+                        aria-label={
+                          sort?.column === "updatedAt" && sort.direction === "desc"
+                            ? "Sorted by last update, newest first. Click to sort oldest first."
+                            : sort?.column === "updatedAt" && sort.direction === "asc"
+                              ? "Sorted by last update, oldest first. Click to sort newest first."
+                              : "Sort by last update"
+                        }
+                        className={sortableHeaderClass}
+                      >
+                        <span>Last Update</span>
+                        {renderSortIcon("updatedAt")}
+                      </button>
+                    </TableHead>
                     <TableHead className="font-bold">User ID</TableHead>
                     <TableHead className="font-bold text-center">Actions</TableHead>
                   </TableRow>
