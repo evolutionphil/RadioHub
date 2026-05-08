@@ -228,7 +228,7 @@ describe("RadioHeader country picker keyboard support", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "true");
   });
 
-  it("Pressing Space on a focused trigger opens the dropdown (no manual click)", async () => {
+  it("Pressing Space on a focused trigger opens the dropdown and moves focus to the search input (no manual click)", async () => {
     const user = userEvent.setup();
     renderHeader();
 
@@ -240,6 +240,7 @@ describe("RadioHeader country picker keyboard support", () => {
 
     expect(getDropdown()).not.toBeNull();
     expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(getSearchInput()).toHaveFocus();
   });
 
   it("Opening the dropdown moves focus to the country search input", async () => {
