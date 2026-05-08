@@ -22,6 +22,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Download, Loader2 } from 'lucide-react';
+import {
+  COVERAGE_DEFAULT_RANGE as DEFAULT_RANGE,
+  COVERAGE_RANGE_OPTIONS as RANGE_OPTIONS,
+  type CoverageRangeDays as RangeDays,
+  resolveInitialCoverageRange,
+  writeRememberedCoverageRange,
+} from '@/lib/admin-coverage-range';
 
 interface TrendPoint {
   date: string;
@@ -183,19 +190,6 @@ function deltaClass(delta: number): string {
   return 'text-muted-foreground';
 }
 
-const RANGE_OPTIONS = [7, 14, 30, 90, 180] as const;
-type RangeDays = (typeof RANGE_OPTIONS)[number];
-const DEFAULT_RANGE: RangeDays = 90;
-
-function readRangeFromUrl(): RangeDays {
-  if (typeof window === 'undefined') return DEFAULT_RANGE;
-  const params = new URLSearchParams(window.location.search);
-  const raw = Number(params.get('days'));
-  return (RANGE_OPTIONS as readonly number[]).includes(raw)
-    ? (raw as RangeDays)
-    : DEFAULT_RANGE;
-}
-
 function writeRangeToUrl(days: RangeDays): void {
   if (typeof window === 'undefined') return;
   const params = new URLSearchParams(window.location.search);
@@ -215,11 +209,14 @@ export default function AdminCoverageCountry() {
     '/admin/coverage/:countryCode',
   );
   const code = (params?.countryCode || '').toUpperCase();
-  const [days, setDays] = useState<RangeDays>(() => readRangeFromUrl());
+  const [days, setDays] = useState<RangeDays>(() =>
+    resolveInitialCoverageRange(),
+  );
 
   const updateDays = (next: RangeDays) => {
     setDays(next);
     writeRangeToUrl(next);
+    writeRememberedCoverageRange(next);
   };
 
   const { data: trendsData, isLoading: trendsLoading } =

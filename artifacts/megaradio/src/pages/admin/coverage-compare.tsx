@@ -38,6 +38,13 @@ import {
 import { ArrowLeft, ChevronDown, Loader2, Star, X } from 'lucide-react';
 import { useAdminViewPrefs } from '@/hooks/useAdminViewPrefs';
 import { useToast } from '@/hooks/use-toast';
+import {
+  COVERAGE_DEFAULT_RANGE as DEFAULT_RANGE,
+  COVERAGE_RANGE_OPTIONS as RANGE_OPTIONS,
+  type CoverageRangeDays as RangeDays,
+  resolveInitialCoverageRange,
+  writeRememberedCoverageRange,
+} from '@/lib/admin-coverage-range';
 
 interface TrendPoint {
   date: string;
@@ -88,10 +95,6 @@ const SERIES_COLORS = [
 ];
 
 const MAX_SELECTED = 8;
-
-const RANGE_OPTIONS = [7, 14, 30, 90, 180] as const;
-type RangeDays = (typeof RANGE_OPTIONS)[number];
-const DEFAULT_RANGE: RangeDays = 90;
 
 function colorForIndex(i: number): string {
   return SERIES_COLORS[i % SERIES_COLORS.length];
@@ -183,15 +186,6 @@ function readSelectedFromUrl(): string[] {
   ).slice(0, MAX_SELECTED);
 }
 
-function readRangeFromUrl(): RangeDays {
-  if (typeof window === 'undefined') return DEFAULT_RANGE;
-  const params = new URLSearchParams(window.location.search);
-  const raw = Number(params.get('days'));
-  return (RANGE_OPTIONS as readonly number[]).includes(raw)
-    ? (raw as RangeDays)
-    : DEFAULT_RANGE;
-}
-
 function writeUrlState(codes: string[], days: RangeDays): void {
   if (typeof window === 'undefined') return;
   const params = new URLSearchParams(window.location.search);
@@ -215,7 +209,9 @@ export default function AdminCoverageCompare() {
   const [selected, setSelected] = useState<string[]>(() =>
     readSelectedFromUrl(),
   );
-  const [days, setDays] = useState<RangeDays>(() => readRangeFromUrl());
+  const [days, setDays] = useState<RangeDays>(() =>
+    resolveInitialCoverageRange(),
+  );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pickerSearch, setPickerSearch] = useState('');
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -341,6 +337,7 @@ export default function AdminCoverageCompare() {
   const updateDays = (next: RangeDays) => {
     setDays(next);
     writeUrlState(selected, next);
+    writeRememberedCoverageRange(next);
   };
 
   const toggleCountry = (code: string) => {
