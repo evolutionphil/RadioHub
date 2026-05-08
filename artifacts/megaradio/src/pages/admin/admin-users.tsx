@@ -4,6 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { useAdminViewPrefs } from "@/hooks/useAdminViewPrefs";
+import { ResetViewButton } from "@/components/admin/ResetViewButton";
 import {
   Table,
   TableBody,
@@ -49,8 +51,41 @@ interface UserProfile {
   isActive?: boolean;
 }
 
+// Namespaced under `admin-users:` so the same admin preferences endpoint
+// can serve other admin pages. The shared hook prefixes with `admin:` for
+// localStorage automatically.
+const VIEW_PREFS_KEY = "admin-users:view-prefs:v1";
+
+interface UsersViewPrefs {
+  searchQuery: string;
+}
+
+const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
+  searchQuery: "",
+};
+
+function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
+  if (!raw || typeof raw !== "object") return DEFAULT_VIEW_PREFS;
+  const obj = raw as Record<string, unknown>;
+  return {
+    searchQuery: typeof obj.searchQuery === "string" ? obj.searchQuery : "",
+  };
+}
+
 export default function AdminUsers() {
-  const [searchQuery, setSearchQuery] = useState("");
+  const {
+    prefs,
+    setPrefs,
+    reset: resetViewPrefs,
+  } = useAdminViewPrefs<UsersViewPrefs>(
+    VIEW_PREFS_KEY,
+    DEFAULT_VIEW_PREFS,
+    sanitizeViewPrefs,
+  );
+  const searchQuery = prefs.searchQuery;
+  const setSearchQuery = (value: string) =>
+    setPrefs((p) => ({ ...p, searchQuery: value }));
+  const hasNonDefaultViewPrefs = searchQuery.trim() !== "";
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
   // Local form state for the "Admin Overrides" section in the edit modal.
@@ -216,13 +251,22 @@ export default function AdminUsers() {
           <CardDescription>Search by email, first name, or last name</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="relative">
-            <Search className="absolute left-3 top-3 text-gray-400" size={20} />
-            <Input
-              placeholder="Search users..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-64">
+              <Search className="absolute left-3 top-3 text-gray-400" size={20} />
+              <Input
+                data-testid="input-search-users"
+                placeholder="Search users..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+            <ResetViewButton
+              hasNonDefaultPrefs={hasNonDefaultViewPrefs}
+              reset={resetViewPrefs}
+              toastDescription="Search restored to defaults on this device and your account."
+              title="Clear search on this device and your account"
             />
           </div>
         </CardContent>
