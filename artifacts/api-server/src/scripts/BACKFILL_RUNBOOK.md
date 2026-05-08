@@ -1,10 +1,31 @@
 # Logo + Tag Backfill Runbook
 
+## Automatic weekly cron (default — Task #68)
+
+A weekly job (`services/scheduled-backfill.ts`) runs every **Sunday 04:00
+Europe/Berlin** in production. It identifies the top-5 worst countries by
+logo-missing and tags-missing counts (using the exact same filters as the
+manual scripts and the nightly logo cron) and runs the same enqueue +
+hydrate logic. Each sweep persists one summary row to the `backfillruns`
+collection — query `db.backfillruns.find().sort({ startedAt: -1 }).limit(5)`
+to see "DE: 372 logos enqueued, 295 tags hydrated" without re-running
+anything.
+
+The cron only fires from a single replica. Set
+`ENABLE_BACKFILL_CRON=false` on any replica that should NOT run it
+(matches the `ENABLE_LOGO_CRON` pattern).
+
+The scripts below remain available as a one-shot escape hatch — they
+write to the same `backfillruns` collection so manual and cron runs are
+auditable side by side.
+
+## Manual escape hatch
+
 The `backfill-tr-logos.ts` and `backfill-tr-tags.ts` scripts both accept a
 `BACKFILL_COUNTRY=<ISO-2>` env var (and `BACKFILL_LIMIT` for tags). They were
 originally written for the TR audit but are fully generic. Use them whenever
 Search Console flags a market for "missing logo / empty tags" indexing-quality
-issues.
+issues outside the weekly cohort.
 
 Run them via the npm aliases:
 

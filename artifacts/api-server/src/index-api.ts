@@ -745,6 +745,14 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled junk cleanup:', error.message);
         }
+
+        try {
+          const { scheduledBackfill } = await import('./services/scheduled-backfill');
+          scheduledBackfill.initialize();
+          logger.log('✅ BACKGROUND: Scheduled logo+tag backfill initialized (Sun 04:00, top-5 countries)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled backfill:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {

@@ -624,6 +624,33 @@ export interface IBulkDescriptionJob extends Document {
   updatedAt: Date;
 }
 
+// Scheduled cross-country logo + tag backfill — one row per cron sweep so
+// admins can see "DE: 372 logos enqueued, 295 tags hydrated" without
+// re-running the manual scripts. See `services/scheduled-backfill.ts`.
+export interface IBackfillRunCountryLogos {
+  countryCode: string;
+  candidates: number;
+  enqueued: number;
+}
+export interface IBackfillRunCountryTags {
+  countryCode: string;
+  processed: number;
+  hydrated: number;
+  emptyUpstream: number;
+  failed: number;
+}
+export interface IBackfillRun extends Document {
+  trigger: string; // 'cron:weekly' | 'manual:logos:<CC>' | 'manual:tags:<CC>'
+  status: 'running' | 'completed' | 'failed';
+  topN: number;
+  startedAt: Date;
+  finishedAt?: Date;
+  durationMs?: number;
+  logos: IBackfillRunCountryLogos[];
+  tags: IBackfillRunCountryTags[];
+  errorMessage?: string;
+}
+
 // Blacklisted Station Interface - prevents re-syncing deleted stations
 export interface IBlacklistedStation extends Document {
   stationUuid?: string; // Original Radio Browser UUID
@@ -926,6 +953,31 @@ const BulkDescriptionJobSchema = new Schema<IBulkDescriptionJob>({
 });
 
 BulkDescriptionJobSchema.index({ status: 1, createdAt: -1 });
+
+const BackfillRunSchema = new Schema<IBackfillRun>({
+  trigger: { type: String, required: true, index: true },
+  status: { type: String, enum: ['running', 'completed', 'failed'], required: true, index: true },
+  topN: { type: Number, default: 5 },
+  startedAt: { type: Date, required: true },
+  finishedAt: Date,
+  durationMs: Number,
+  logos: [{
+    _id: false,
+    countryCode: { type: String, required: true },
+    candidates: { type: Number, default: 0 },
+    enqueued: { type: Number, default: 0 },
+  }],
+  tags: [{
+    _id: false,
+    countryCode: { type: String, required: true },
+    processed: { type: Number, default: 0 },
+    hydrated: { type: Number, default: 0 },
+    emptyUpstream: { type: Number, default: 0 },
+    failed: { type: Number, default: 0 },
+  }],
+  errorMessage: String,
+});
+BackfillRunSchema.index({ startedAt: -1 });
 
 const SyncLogSchema = new Schema<ISyncLog>({
   syncType: { type: String, enum: ['full', 'incremental'], required: true },
@@ -1612,6 +1664,7 @@ export const Language = mongoose.model<ILanguage>('Language', LanguageSchema);
 export const Genre = mongoose.model<IGenre>('Genre', GenreSchema);
 export const Codec = mongoose.model<ICodec>('Codec', CodecSchema);
 export const SyncLog = mongoose.model<ISyncLog>('SyncLog', SyncLogSchema);
+export const BackfillRun = mongoose.model<IBackfillRun>('BackfillRun', BackfillRunSchema);
 UserSchema.index({ slug: 1 }, { sparse: true }); // Used in profile lookups
 UserSchema.index({ isPublicProfile: 1 }); // Used in community listings
 
