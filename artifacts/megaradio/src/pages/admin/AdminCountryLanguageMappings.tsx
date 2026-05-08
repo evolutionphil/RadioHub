@@ -309,14 +309,89 @@ export default function AdminCountryLanguageMappings() {
     deletedCount: number;
     createdAt: string;
   }
+  interface ClearedOverridesAuditPage {
+    entries: ClearedOverridesAuditEntry[];
+    total: number;
+    limit: number;
+    offset: number;
+  }
+
+  // Filters for the cleared-overrides history panel. Live in component
+  // state (not view prefs) since they're inherently transient: admins
+  // typically narrow down to find a specific clear, not save the filter.
+  const AUDIT_LOG_PAGE_SIZE = 25;
+  const [auditFilterActor, setAuditFilterActor] = useState('');
+  const [auditFilterCountry, setAuditFilterCountry] = useState('');
+  const [auditFilterFrom, setAuditFilterFrom] = useState('');
+  const [auditFilterTo, setAuditFilterTo] = useState('');
+  const [auditPageOffset, setAuditPageOffset] = useState(0);
+
+  // Reset offset alongside any filter change in the same event so we don't
+  // fire a transient request with new filters + stale offset before a
+  // useEffect could correct it.
+  const updateAuditFilterActor = (value: string) => {
+    setAuditFilterActor(value);
+    setAuditPageOffset(0);
+  };
+  const updateAuditFilterCountry = (value: string) => {
+    setAuditFilterCountry(value);
+    setAuditPageOffset(0);
+  };
+  const updateAuditFilterFrom = (value: string) => {
+    setAuditFilterFrom(value);
+    setAuditPageOffset(0);
+  };
+  const updateAuditFilterTo = (value: string) => {
+    setAuditFilterTo(value);
+    setAuditPageOffset(0);
+  };
+
+  const auditLogQueryParams = useMemo(() => {
+    const params: Record<string, string | number> = {
+      limit: AUDIT_LOG_PAGE_SIZE,
+      offset: auditPageOffset,
+    };
+    const actor = auditFilterActor.trim();
+    if (actor) params.actorEmail = actor;
+    const country = auditFilterCountry.trim();
+    if (country) params.country = country;
+    if (auditFilterFrom) params.from = auditFilterFrom;
+    if (auditFilterTo) params.to = auditFilterTo;
+    return params;
+  }, [
+    auditFilterActor,
+    auditFilterCountry,
+    auditFilterFrom,
+    auditFilterTo,
+    auditPageOffset,
+  ]);
+
   const {
-    data: clearedOverridesAuditLog,
+    data: clearedOverridesAuditLogPage,
     isLoading: isLoadingAuditLog,
     isError: isAuditLogError,
     refetch: refetchAuditLog,
-  } = useQuery<ClearedOverridesAuditEntry[]>({
-    queryKey: ['/api/admin/country-language-mappings/cleared-overrides-log'],
+  } = useQuery<ClearedOverridesAuditPage>({
+    queryKey: [
+      '/api/admin/country-language-mappings/cleared-overrides-log',
+      auditLogQueryParams,
+    ],
+    placeholderData: (prev) => prev,
   });
+  const clearedOverridesAuditLog = clearedOverridesAuditLogPage?.entries;
+  const auditLogTotal = clearedOverridesAuditLogPage?.total ?? 0;
+  const auditFiltersActive =
+    auditFilterActor.trim() !== '' ||
+    auditFilterCountry.trim() !== '' ||
+    auditFilterFrom !== '' ||
+    auditFilterTo !== '';
+  const handleResetAuditFilters = () => {
+    setAuditFilterActor('');
+    setAuditFilterCountry('');
+    setAuditFilterFrom('');
+    setAuditFilterTo('');
+    setAuditPageOffset(0);
+  };
   const [downloadingAuditId, setDownloadingAuditId] = useState<string | null>(null);
 
   const handleDownloadAuditCsv = async (entry: ClearedOverridesAuditEntry) => {
@@ -1611,8 +1686,13 @@ export default function AdminCountryLanguageMappings() {
               <div className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
                 <History className="h-4 w-4" />
                 <span>Cleared overrides history</span>
-                <span className="text-xs text-muted-foreground">
-                  (server log, last {clearedOverridesAuditLog?.length ?? 0})
+                <span
+                  className="text-xs text-muted-foreground"
+                  data-testid="text-cleared-overrides-audit-count"
+                >
+                  (server log, {auditLogTotal}
+                  {auditFiltersActive ? ' match' : ' total'}
+                  {auditLogTotal === 1 ? '' : auditFiltersActive ? 'es' : ''})
                 </span>
               </div>
               <Button
@@ -1627,6 +1707,91 @@ export default function AdminCountryLanguageMappings() {
                   className={`mr-2 h-3 w-3 ${isLoadingAuditLog ? 'animate-spin' : ''}`}
                 />
                 Refresh
+              </Button>
+            </div>
+            {/* Filters: actor email, country (matched against snapshot
+                country code/name), and a date range. All optional;
+                changing any one resets back to page 1. */}
+            <div
+              data-testid="cleared-overrides-audit-filters"
+              className="flex flex-wrap items-end gap-2 border-b border-gray-200 px-4 py-2 dark:border-gray-700"
+            >
+              <div className="flex flex-col gap-1">
+                <Label
+                  htmlFor="audit-filter-actor"
+                  className="text-[11px] font-medium text-muted-foreground"
+                >
+                  Actor email
+                </Label>
+                <Input
+                  id="audit-filter-actor"
+                  data-testid="input-audit-filter-actor"
+                  type="search"
+                  value={auditFilterActor}
+                  onChange={(e) => updateAuditFilterActor(e.target.value)}
+                  placeholder="e.g. alex@"
+                  className="h-8 w-44 text-xs"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label
+                  htmlFor="audit-filter-country"
+                  className="text-[11px] font-medium text-muted-foreground"
+                >
+                  Country (code or name)
+                </Label>
+                <Input
+                  id="audit-filter-country"
+                  data-testid="input-audit-filter-country"
+                  type="search"
+                  value={auditFilterCountry}
+                  onChange={(e) => updateAuditFilterCountry(e.target.value)}
+                  placeholder="e.g. FR or France"
+                  className="h-8 w-44 text-xs"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label
+                  htmlFor="audit-filter-from"
+                  className="text-[11px] font-medium text-muted-foreground"
+                >
+                  From
+                </Label>
+                <Input
+                  id="audit-filter-from"
+                  data-testid="input-audit-filter-from"
+                  type="date"
+                  value={auditFilterFrom}
+                  onChange={(e) => updateAuditFilterFrom(e.target.value)}
+                  className="h-8 w-36 text-xs"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <Label
+                  htmlFor="audit-filter-to"
+                  className="text-[11px] font-medium text-muted-foreground"
+                >
+                  To
+                </Label>
+                <Input
+                  id="audit-filter-to"
+                  data-testid="input-audit-filter-to"
+                  type="date"
+                  value={auditFilterTo}
+                  onChange={(e) => updateAuditFilterTo(e.target.value)}
+                  className="h-8 w-36 text-xs"
+                />
+              </div>
+              <Button
+                data-testid="button-reset-audit-filters"
+                variant="ghost"
+                size="sm"
+                className="h-8 text-xs"
+                onClick={handleResetAuditFilters}
+                disabled={!auditFiltersActive}
+              >
+                <X className="mr-1 h-3 w-3" />
+                Reset filters
               </Button>
             </div>
             {isLoadingAuditLog ? (
@@ -1648,7 +1813,9 @@ export default function AdminCountryLanguageMappings() {
                 className="px-4 py-3 text-sm text-muted-foreground"
                 data-testid="text-cleared-overrides-audit-empty"
               >
-                No clears recorded yet.
+                {auditFiltersActive
+                  ? 'No clears match the current filters.'
+                  : 'No clears recorded yet.'}
               </div>
             ) : (
               <ul className="divide-y divide-gray-200 dark:divide-gray-700">
@@ -1702,6 +1869,57 @@ export default function AdminCountryLanguageMappings() {
                   );
                 })}
               </ul>
+            )}
+            {/* Pagination footer. Shown whenever there's more than one
+                page of matches (current limit covers fewer rows than the
+                total). Uses prev/next buttons over a fixed page size. */}
+            {!isLoadingAuditLog && !isAuditLogError && auditLogTotal > AUDIT_LOG_PAGE_SIZE && (
+              <div
+                data-testid="cleared-overrides-audit-pagination"
+                className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-4 py-2 text-xs text-muted-foreground dark:border-gray-700"
+              >
+                <span data-testid="text-audit-pagination-range">
+                  Showing {auditPageOffset + 1}–
+                  {Math.min(
+                    auditPageOffset + AUDIT_LOG_PAGE_SIZE,
+                    auditLogTotal,
+                  )}{' '}
+                  of {auditLogTotal}
+                </span>
+                <div className="flex items-center gap-2">
+                  <Button
+                    data-testid="button-audit-page-prev"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() =>
+                      setAuditPageOffset((o) =>
+                        Math.max(0, o - AUDIT_LOG_PAGE_SIZE),
+                      )
+                    }
+                    disabled={auditPageOffset === 0 || isLoadingAuditLog}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    data-testid="button-audit-page-next"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() =>
+                      setAuditPageOffset(
+                        (o) => o + AUDIT_LOG_PAGE_SIZE,
+                      )
+                    }
+                    disabled={
+                      auditPageOffset + AUDIT_LOG_PAGE_SIZE >= auditLogTotal ||
+                      isLoadingAuditLog
+                    }
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
 

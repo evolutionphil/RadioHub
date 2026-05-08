@@ -5,6 +5,13 @@ import { Express } from 'express';
 // limit list responses and prune older entries beyond this cap on write.
 const CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES = 100;
 const CLEAR_OVERRIDES_AUDIT_LIST_LIMIT = 25;
+const CLEAR_OVERRIDES_AUDIT_MAX_PAGE_LIMIT = 100;
+
+// Mongo treats unescaped regex metacharacters as operators. Strip them so
+// admin-provided filter strings are matched literally (case-insensitive).
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 /**
  * Country-Language Mapping Routes
@@ -256,30 +263,99 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
     }
   });
 
-  // List recent cleared-overrides audit entries for the in-app history
-  // panel. Bounded to CLEAR_OVERRIDES_AUDIT_LIST_LIMIT to keep the page
-  // snappy; the on-write prune keeps total count bounded too.
-  app.get('/api/admin/country-language-mappings/cleared-overrides-log', requireAdmin, async (_req, res) => {
+  // List cleared-overrides audit entries for the in-app history panel.
+  // Supports pagination and filtering so admins can find a specific clear
+  // by actor email, date range, or affected country (matching the snapshot
+  // by country code or country name) without scrolling. The on-write prune
+  // keeps total count bounded by CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES.
+  app.get('/api/admin/country-language-mappings/cleared-overrides-log', requireAdmin, async (req, res) => {
     try {
       const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
-      const entries = await ClearedOverridesAuditLog
-        .find({}, { snapshot: 0 })
-        .sort({ createdAt: -1 })
-        .limit(CLEAR_OVERRIDES_AUDIT_LIST_LIMIT)
-        .lean<Array<{
-          _id: unknown;
-          actorEmail: string | null;
-          deletedCount: number;
-          createdAt: Date;
-        }>>();
-      res.json(
-        entries.map((e) => ({
+
+      const parseIntParam = (raw: unknown, fallback: number, max?: number) => {
+        const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
+        if (!Number.isFinite(n) || n < 0) return fallback;
+        return max !== undefined ? Math.min(n, max) : n;
+      };
+
+      const limit = Math.max(
+        1,
+        parseIntParam(
+          req.query.limit,
+          CLEAR_OVERRIDES_AUDIT_LIST_LIMIT,
+          CLEAR_OVERRIDES_AUDIT_MAX_PAGE_LIMIT,
+        ),
+      );
+      const offset = parseIntParam(req.query.offset, 0);
+
+      const actorEmail =
+        typeof req.query.actorEmail === 'string'
+          ? req.query.actorEmail.trim()
+          : '';
+      const country =
+        typeof req.query.country === 'string' ? req.query.country.trim() : '';
+      const fromRaw = typeof req.query.from === 'string' ? req.query.from : '';
+      const toRaw = typeof req.query.to === 'string' ? req.query.to : '';
+
+      const filter: Record<string, unknown> = {};
+
+      if (actorEmail) {
+        filter.actorEmail = { $regex: escapeRegex(actorEmail), $options: 'i' };
+      }
+
+      if (country) {
+        const re = { $regex: escapeRegex(country), $options: 'i' };
+        filter.$or = [
+          { 'snapshot.countryCode': re },
+          { 'snapshot.countryName': re },
+        ];
+      }
+
+      const createdAt: Record<string, Date> = {};
+      const fromDate = fromRaw ? new Date(fromRaw) : null;
+      if (fromDate && !isNaN(fromDate.getTime())) {
+        createdAt.$gte = fromDate;
+      }
+      const toDate = toRaw ? new Date(toRaw) : null;
+      if (toDate && !isNaN(toDate.getTime())) {
+        // If admins pass a date-only value (YYYY-MM-DD), treat the upper
+        // bound as inclusive of that whole day so a same-day from/to picks
+        // up entries created later in the day.
+        if (/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
+          toDate.setUTCHours(23, 59, 59, 999);
+        }
+        createdAt.$lte = toDate;
+      }
+      if (Object.keys(createdAt).length > 0) {
+        filter.createdAt = createdAt;
+      }
+
+      const [entries, total] = await Promise.all([
+        ClearedOverridesAuditLog
+          .find(filter, { snapshot: 0 })
+          .sort({ createdAt: -1 })
+          .skip(offset)
+          .limit(limit)
+          .lean<Array<{
+            _id: unknown;
+            actorEmail: string | null;
+            deletedCount: number;
+            createdAt: Date;
+          }>>(),
+        ClearedOverridesAuditLog.countDocuments(filter),
+      ]);
+
+      res.json({
+        entries: entries.map((e) => ({
           id: String(e._id),
           actorEmail: e.actorEmail,
           deletedCount: e.deletedCount,
           createdAt: e.createdAt,
         })),
-      );
+        total,
+        limit,
+        offset,
+      });
       return;
     } catch (error) {
       console.error('Error listing cleared-overrides audit log:', error);
