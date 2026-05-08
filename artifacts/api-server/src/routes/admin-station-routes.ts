@@ -1820,6 +1820,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         since.setUTCHours(0, 0, 0, 0);
         since.setUTCDate(since.getUTCDate() - (days - 1));
 
+        // Optional countryCode filter — when the per-country trend page asks
+        // for a single market we don't need to ship every other country's
+        // snapshots over the wire.
+        const rawCountry =
+          typeof req.query.countryCode === 'string'
+            ? req.query.countryCode.trim().toUpperCase()
+            : '';
+        const countryFilter =
+          rawCountry && /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null;
+
         type SnapshotRow = {
           countryCode: string;
           snapshotDate: Date;
@@ -1834,7 +1844,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         };
 
         const rows = await CoverageSnapshot.find(
-          { snapshotDate: { $gte: since } },
+          {
+            snapshotDate: { $gte: since },
+            ...(countryFilter ? { countryCode: countryFilter } : {}),
+          },
           {
             countryCode: 1,
             snapshotDate: 1,

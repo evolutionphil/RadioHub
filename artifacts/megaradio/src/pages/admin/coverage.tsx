@@ -1,4 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 import {
@@ -589,14 +590,18 @@ export default function AdminCoverage() {
                         data-testid={`row-coverage-${row.countryCode}`}
                       >
                         <TableCell>
-                          <div className="flex items-center gap-2">
+                          <Link
+                            href={`/admin/coverage/${row.countryCode}`}
+                            className="flex items-center gap-2 hover:underline"
+                            data-testid={`link-country-${row.countryCode}`}
+                          >
                             <span className="font-mono text-xs px-1.5 py-0.5 rounded bg-muted">
                               {row.countryCode}
                             </span>
                             <span className="font-medium">
                               {row.countryName}
                             </span>
-                          </div>
+                          </Link>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
                           {row.total.toLocaleString()}

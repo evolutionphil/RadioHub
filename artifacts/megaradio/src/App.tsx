@@ -176,6 +176,7 @@ function AdminRouterContent() {
         <Route path="/admin/iap-events" component={LazyAdminRoutes.AdminIapEvents} />
         <Route path="/admin/seo-maintenance" component={LazyAdminRoutes.AdminSeoMaintenance} />
         <Route path="/admin/coverage" component={LazyAdminRoutes.AdminCoverage} />
+        <Route path="/admin/coverage/:countryCode" component={LazyAdminRoutes.AdminCoverageCountry} />
         
         {/* SEO Tools */}
         <Route path="/admin/seo-preview" component={LazyAdminRoutes.AdminSeoPreview} />
