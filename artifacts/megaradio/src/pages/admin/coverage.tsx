@@ -1502,6 +1502,81 @@ function CoverageDropAlertSettingsCard() {
     },
   });
 
+  // Fires a synthetic webhook payload through the api-server so admins
+  // can verify Slack/Discord wiring without waiting for a real coverage
+  // drop. Sends whatever URL is currently typed in the field (so they
+  // can validate before saving); falls back to the effective URL when
+  // the field is empty.
+  const testWebhookMutation = useMutation({
+    mutationFn: async () => {
+      const trimmed = webhookUrl.trim();
+      const res = await apiRequest(
+        'POST',
+        '/api/admin/settings/coverage-drop-alert/test',
+        { body: trimmed === '' ? {} : { webhookUrl: trimmed } },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        status?: number | null;
+        statusText?: string | null;
+        responseBody?: string | null;
+        error?: string | null;
+        durationMs?: number;
+        urlSource?: 'request' | 'effective';
+      };
+      if (!res.ok) {
+        throw new Error(
+          json?.error || `Request failed (${res.status} ${res.statusText})`,
+        );
+      }
+      return json;
+    },
+    onSuccess: (result) => {
+      const sourceNote =
+        result.urlSource === 'request'
+          ? ' (using URL typed in the field)'
+          : ' (using currently-effective webhook URL — saved override or env var)';
+      const httpLine =
+        result.status != null
+          ? `HTTP ${result.status}${
+              result.statusText ? ` ${result.statusText}` : ''
+            }`
+          : 'No HTTP response';
+      const bodyPreview = (result.responseBody ?? '').trim();
+      const bodyLine = bodyPreview
+        ? `Response: ${
+            bodyPreview.length > 240
+              ? bodyPreview.slice(0, 240) + '…'
+              : bodyPreview
+          }`
+        : 'Response body: (empty)';
+      const errLine = result.error ? `Error: ${result.error}` : null;
+      const description = [
+        httpLine + ` · ${result.durationMs ?? 0}ms` + sourceNote,
+        bodyLine,
+        errLine,
+      ]
+        .filter(Boolean)
+        .join('\n');
+      toast({
+        title: result.ok
+          ? 'Test webhook delivered'
+          : 'Test webhook returned a non-2xx response',
+        description,
+        variant: result.ok ? undefined : 'destructive',
+        duration: result.ok ? 6_000 : 12_000,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: 'Failed to send test webhook',
+        description: err?.message || String(err),
+        variant: 'destructive',
+        duration: 12_000,
+      });
+    },
+  });
+
   const resetMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest(
@@ -1604,14 +1679,40 @@ function CoverageDropAlertSettingsCard() {
                 >
                   Webhook URL (optional)
                 </label>
-                <Input
-                  id="coverage-drop-webhook"
-                  type="url"
-                  placeholder="https://hooks.slack.com/…"
-                  value={webhookUrl}
-                  onChange={(e) => setWebhookUrl(e.target.value)}
-                  data-testid="input-coverage-drop-webhook"
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="coverage-drop-webhook"
+                    type="url"
+                    placeholder="https://hooks.slack.com/…"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                    data-testid="input-coverage-drop-webhook"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => testWebhookMutation.mutate()}
+                    disabled={
+                      testWebhookMutation.isPending ||
+                      saveMutation.isPending ||
+                      resetMutation.isPending ||
+                      // No URL anywhere — typed-but-empty AND no saved/env URL
+                      (webhookUrl.trim() === '' &&
+                        !data.effective.webhookUrl)
+                    }
+                    title={
+                      webhookUrl.trim() !== ''
+                        ? 'POST a test payload to the URL in the field above (does not save).'
+                        : 'POST a test payload to the currently-effective webhook URL.'
+                    }
+                    data-testid="button-coverage-drop-test-webhook"
+                  >
+                    {testWebhookMutation.isPending ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : null}
+                    Send test
+                  </Button>
+                </div>
                 <p className="text-[11px] text-muted-foreground">
                   Effective:{' '}
                   <strong>

@@ -8,6 +8,7 @@ import {
   resolveCoverageDropSettings,
   getDefaultCoverageDropSettings,
   getEnvCoverageDropSettings,
+  sendTestCoverageDropWebhook,
 } from '../services/coverage-drop-notifier';
 
 // Task #183: admin-tunable coverage drop alert settings.
@@ -153,6 +154,62 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
       } catch (error: any) {
         logger.error('Error writing coverage drop settings:', error);
         return void res.status(500).json({ error: 'Failed to write settings' });
+      }
+    },
+  );
+
+  app.post(
+    '/api/admin/settings/coverage-drop-alert/test',
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const body = (req.body ?? {}) as { webhookUrl?: unknown };
+        // Prefer the URL the admin just typed (so they can validate
+        // before saving). Otherwise fall back to whatever URL would
+        // actually be used the next time a real drop fires.
+        let url: string | null = null;
+        let urlSource: 'request' | 'effective' = 'effective';
+        if (body.webhookUrl !== undefined && body.webhookUrl !== null) {
+          const raw = String(body.webhookUrl).trim();
+          if (raw.length > 0) {
+            if (raw.length > MAX_WEBHOOK_URL_LENGTH) {
+              return void res
+                .status(400)
+                .json({ error: 'webhookUrl is too long' });
+            }
+            if (!isHttpUrl(raw)) {
+              return void res
+                .status(400)
+                .json({ error: 'webhookUrl must be an http(s) URL' });
+            }
+            url = raw;
+            urlSource = 'request';
+          }
+        }
+        if (!url) {
+          const resolved = await resolveCoverageDropSettings();
+          if (resolved.webhookUrl) {
+            url = resolved.webhookUrl;
+            urlSource = 'effective';
+          }
+        }
+        if (!url) {
+          return void res.status(400).json({
+            error:
+              'No webhook URL is currently configured (DB override or env var). Set one before sending a test alert.',
+          });
+        }
+        const adminUsername = getAdminUsername(req);
+        const result = await sendTestCoverageDropWebhook(url, adminUsername);
+        return void res.json({
+          urlSource,
+          ...result,
+        });
+      } catch (error: any) {
+        logger.error('Error sending coverage drop test webhook:', error);
+        return void res
+          .status(500)
+          .json({ error: 'Failed to send test webhook' });
       }
     },
   );

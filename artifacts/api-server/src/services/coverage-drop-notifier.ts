@@ -321,6 +321,95 @@ function summarizeDrops(drops: CoverageDrop[], thresholdPp: number, snapshotDate
   return [head, ...lines].join('\n');
 }
 
+export interface WebhookTestResult {
+  ok: boolean;
+  status: number | null;
+  statusText: string | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number;
+}
+
+const TEST_RESPONSE_BODY_MAX_CHARS = 4_000;
+
+/**
+ * Posts a clearly-marked synthetic payload to the given webhook URL so
+ * admins can verify their Slack/Discord wiring from the UI without
+ * waiting for a real coverage drop. Mirrors the body shape used by the
+ * nightly notifier (`{ text, drops }`) so a working real alert and a
+ * working test alert render identically in the receiving channel.
+ */
+export async function sendTestCoverageDropWebhook(
+  url: string,
+  triggeredBy: string | null,
+): Promise<WebhookTestResult> {
+  const message = [
+    '🧪 MegaRadio coverage drop alert — TEST MESSAGE (no real drop detected).',
+    triggeredBy
+      ? `Triggered manually from the admin UI by ${triggeredBy}.`
+      : 'Triggered manually from the admin UI.',
+    'If you can see this in your channel, the webhook is wired up correctly.',
+  ].join('\n');
+  const drops: CoverageDrop[] = [
+    {
+      countryCode: 'ZZ',
+      metric: 'logo',
+      todayPct: 42.0,
+      weekAgoPct: 50.0,
+      deltaPp: -8.0,
+      total: 123,
+      weekAgoTotal: 120,
+    },
+  ];
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-megaradio-test-alert': '1',
+      },
+      body: JSON.stringify({ text: message, drops, test: true }),
+      signal: controller.signal,
+    });
+    let body: string | null = null;
+    try {
+      const text = await res.text();
+      body =
+        text.length > TEST_RESPONSE_BODY_MAX_CHARS
+          ? text.slice(0, TEST_RESPONSE_BODY_MAX_CHARS) + '…[truncated]'
+          : text;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText || null,
+      responseBody: body,
+      error: null,
+      durationMs: Date.now() - startedAt,
+    };
+  } catch (err: any) {
+    const message =
+      err?.name === 'AbortError'
+        ? `Request timed out after ${WEBHOOK_TIMEOUT_MS}ms`
+        : err?.message || String(err);
+    return {
+      ok: false,
+      status: null,
+      statusText: null,
+      responseBody: null,
+      error: message,
+      durationMs: Date.now() - startedAt,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function postWebhook(url: string, message: string, drops: CoverageDrop[]): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
