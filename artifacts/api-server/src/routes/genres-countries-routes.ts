@@ -491,6 +491,81 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     }
   });
 
+  // Admin-only create: POST /api/genres (Task #209)
+  // The admin genres page already had a "Create" dialog that POSTed here, but
+  // the route was never registered, so creates silently 404'd.
+  app.post("/api/genres", requireAdmin, async (req, res) => {
+    try {
+      const {
+        name,
+        description,
+        slug,
+        isDiscoverable,
+        discoverable,
+        posterImage,
+        discoverableImage,
+        displayOrder,
+      } = req.body || {};
+
+      if (typeof name !== 'string' || name.trim().length === 0) {
+        return res.status(400).json({ error: 'Genre name is required' });
+      }
+      if (typeof slug !== 'string' || slug.length === 0) {
+        return res.status(400).json({ error: 'Genre slug is required' });
+      }
+      if (!SAFE_GENRE_SLUG_RE.test(slug)) {
+        return res.status(400).json({
+          error: `Invalid slug "${slug}". Must match ${SAFE_GENRE_SLUG_RE}`,
+        });
+      }
+
+      const existing = await Genre.findOne({ slug }).lean();
+      if (existing) {
+        return res.status(409).json({ error: `A genre with slug "${slug}" already exists` });
+      }
+
+      const isDisc =
+        typeof isDiscoverable === 'boolean' ? isDiscoverable
+          : typeof discoverable === 'boolean' ? discoverable
+            : false;
+
+      const doc: Record<string, unknown> = {
+        name: name.trim(),
+        slug,
+        isDiscoverable: isDisc,
+      };
+      if (typeof description === 'string') doc.description = description;
+      if (typeof posterImage === 'string') doc.posterImage = posterImage;
+      if (typeof discoverableImage === 'string') doc.discoverableImage = discoverableImage;
+      if (typeof displayOrder === 'number') doc.displayOrder = displayOrder;
+
+      let created;
+      try {
+        created = await Genre.create(doc);
+      } catch (err: any) {
+        // Race-condition safety net: unique-index violation on slug.
+        if (err?.code === 11000) {
+          return res.status(409).json({ error: `A genre with slug "${slug}" already exists` });
+        }
+        throw err;
+      }
+
+      try {
+        await PrecomputedGenresService.refreshAll();
+      } catch (err) {
+        logger.warn({ err }, 'Failed to refresh precomputed genres after create');
+      }
+
+      res.status(201).json(created);
+    } catch (error: any) {
+      if (error?.name === 'ValidationError') {
+        return res.status(400).json({ error: error.message });
+      }
+      logger.error({ err: error }, 'Failed to create genre');
+      res.status(500).json({ error: 'Failed to create genre' });
+    }
+  });
+
   // Admin-only update: PUT /api/genres/:id
   // Restores Edit support on the admin genres page (Task #167). Also clears
   // `cleanupDemotion` when an admin re-enables a genre demoted by the
