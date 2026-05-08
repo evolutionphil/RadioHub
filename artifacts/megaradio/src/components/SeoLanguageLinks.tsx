@@ -1,5 +1,5 @@
 import { useSeoRouting } from "@/hooks/useSeoRouting";
-import { SEO_LANGUAGES } from "@shared/seo-config";
+import { SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
 import { Link } from "wouter";
 
 export function SeoLanguageLinks() {

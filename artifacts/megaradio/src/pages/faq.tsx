@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { SeoHead } from "@/components/SeoHead";
-import { FAQ_PAGE_ITEMS, type FAQTranslatedItem } from "@shared/faq-schema";
+import { FAQ_PAGE_ITEMS, type FAQTranslatedItem } from "@workspace/seo-shared/faq-schema";
 
 interface FaqItem {
   q: string;

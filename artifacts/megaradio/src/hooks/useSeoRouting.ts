@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 import { useEffect, useState, useRef } from "react";
-import { getLanguageFromPath, DEFAULT_LANGUAGE, SEO_LANGUAGES, COUNTRY_TO_CODE, COUNTRY_TO_LANGUAGE, getCountryCodeFromName } from "@shared/seo-config";
-import { translateUrl, reverseTranslateUrl, normalizeUrlForLanguage } from "@shared/url-translations";
+import { getLanguageFromPath, DEFAULT_LANGUAGE, SEO_LANGUAGES, COUNTRY_TO_CODE, COUNTRY_TO_LANGUAGE, getCountryCodeFromName } from "@workspace/seo-shared/seo-config";
+import { translateUrl, reverseTranslateUrl, normalizeUrlForLanguage } from "@workspace/seo-shared/url-translations";
 import { useTranslation } from "./useTranslation";
 import { useQuery } from "@tanstack/react-query";
 import { logger } from '@/lib/logger';

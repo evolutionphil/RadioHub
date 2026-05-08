@@ -17,7 +17,7 @@ import { IndexNowService } from '../services/indexnow';
 import { buildAllSitemapManifests } from '../seo/sitemap-manifest-builder';
 import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
 import { buildLocalizedUrl } from '../seo/url-helpers';
-import { URL_TRANSLATIONS } from '../shared/url-translations';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { performanceCache } from '../performance-cache';
 
 const PRIMARY_HOST = 'themegaradio.com';

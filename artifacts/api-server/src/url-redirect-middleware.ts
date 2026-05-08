@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import { URL_TRANSLATIONS, normalizeUrlForLanguage, GLOBAL_REVERSE_URL_TRANSLATIONS } from './shared/url-translations';
-import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from './shared/seo-config';
+import { URL_TRANSLATIONS, normalizeUrlForLanguage, GLOBAL_REVERSE_URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from '@workspace/seo-shared/seo-config';
 import { logger } from './utils/logger';
 import { performanceCache } from './performance-cache';
 

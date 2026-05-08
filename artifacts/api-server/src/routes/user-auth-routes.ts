@@ -2,7 +2,7 @@ import type { Express } from "express";
 import mongoose from 'mongoose';
 import { User, UserFollow, AuthToken, UserNotification, UserFavorite, StationRating, StationComment, UserListeningHistory, UserProfile, PublicUserProfile, ListeningSession, Recommendation, UserMusicProfile, PushToken, UserDevice, CastSession, DirectMessage, UserSession, Notification, AdvancedSearch, AnalyticsEvent, CastCommand, CastNowPlaying, TvLoginCode } from '../shared/mongo-schemas';
 import { logger } from '../utils/logger';
-import { SEO_LANGUAGES } from '../shared/seo-config';
+import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 // Build the canonical set of enabled language codes for OAuth referer parsing.
 // Used to distinguish a real language prefix (`/en`, `/tr`) from a route name

@@ -39,7 +39,7 @@ import { performanceCache } from '../performance-cache';
 import {
   ACTIVE_SITEMAP_LANGUAGES,
   hasCompleteSeoTranslations,
-} from '../shared/seo-config';
+} from '@workspace/seo-shared/seo-config';
 import { logger } from '../utils/logger';
 import { SeoQualifiedLanguagesLkg } from '../shared/mongo-schemas';
 

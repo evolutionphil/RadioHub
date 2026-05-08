@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, useCallback } from "react";
-import { getLanguageFromPath, getLanguageFromCode, COUNTRY_TO_CODE, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from "@shared/seo-config";
-import { CRITICAL_TRANSLATION_KEYS } from "@shared/critical-translation-keys";
+import { getLanguageFromPath, getLanguageFromCode, COUNTRY_TO_CODE, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
+import { CRITICAL_TRANSLATION_KEYS } from "@workspace/seo-shared/critical-translation-keys";
 import { logger } from '@/lib/logger';
 
 // TypeScript declarations for server-preloaded translations

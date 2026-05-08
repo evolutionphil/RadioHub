@@ -35,7 +35,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Get all available countries from COUNTRY_TO_CODE
   app.get('/api/admin/available-countries', requireAdmin, async (req, res) => {
     try {
-      const { COUNTRY_TO_CODE } = await import('../shared/seo-config');
+      const { COUNTRY_TO_CODE } = await import('@workspace/seo-shared/seo-config');
       const countries = Object.keys(COUNTRY_TO_CODE).map(name => ({
         name,
         code: COUNTRY_TO_CODE[name]
@@ -50,7 +50,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Get hardcoded country-language defaults from COUNTRY_TO_LANGUAGE
   app.get('/api/admin/country-language-defaults', requireAdmin, async (req, res) => {
     try {
-      const { COUNTRY_TO_LANGUAGE } = await import('../shared/seo-config');
+      const { COUNTRY_TO_LANGUAGE } = await import('@workspace/seo-shared/seo-config');
       const defaults = Object.entries(COUNTRY_TO_LANGUAGE).map(([countryCode, languageCode]) => ({
         countryCode,
         languageCode,
@@ -65,7 +65,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Get all available languages from SEO_LANGUAGES
   app.get('/api/admin/available-languages', requireAdmin, async (req, res) => {
     try {
-      const { SEO_LANGUAGES } = await import('../shared/seo-config');
+      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
       const languages = SEO_LANGUAGES.map(lang => ({
         code: lang.code,
         name: lang.name
@@ -168,7 +168,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   app.delete('/api/admin/country-language-mappings/overrides', requireAdmin, async (req, res) => {
     try {
       const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
-      const { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } = await import('../shared/seo-config');
+      const { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
 
       const allMappings = await CountryLanguageMapping
         .find({}, { countryCode: 1, countryName: 1, languageCode: 1 })
@@ -376,7 +376,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       }
 
       const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
-      const { SEO_LANGUAGES } = await import('../shared/seo-config');
+      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
       const entry = await ClearedOverridesAuditLog.findById(id).lean<{
         _id: unknown;
         snapshot: Array<{
@@ -482,7 +482,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   app.delete('/api/admin/country-language-mappings', requireAdmin, async (req, res) => {
     try {
       const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
-      const { SEO_LANGUAGES } = await import('../shared/seo-config');
+      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
 
       // Snapshot every mapping before deletion so the audit email captures
       // exactly what was wiped, mirroring the "Cleared overrides" flow.

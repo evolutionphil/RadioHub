@@ -858,20 +858,6 @@ export function setDatabaseCountryLanguageMappings(mappings: Map<string, string>
   databaseMappingsCache = mappings;
 }
 
-// Function to get database mappings (for server-side loading)
-export async function loadDatabaseCountryLanguageMappings(): Promise<void> {
-  // Only run on server-side
-  if (typeof window !== 'undefined') return;
-  
-  try {
-    const { performanceCache } = await import('../performance-cache');
-    const mappings = await performanceCache.getCountryLanguageMappings();
-    setDatabaseCountryLanguageMappings(mappings);
-  } catch (error) {
-    console.error('❌ Failed to load database country-language mappings:', error);
-  }
-}
-
 // Helper to get user's preferred language from localStorage (client-side only)
 function getStoredPreferredLanguage(): string | null {
   if (typeof window === 'undefined') return null;

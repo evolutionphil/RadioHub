@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { UrlTranslation } from '../shared/mongo-schemas';
-import { URL_TRANSLATIONS } from '../shared/url-translations';
-import { SEO_LANGUAGES } from '../shared/seo-config';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import OpenAI from 'openai';
 
 const router = Router();
@@ -133,7 +133,7 @@ router.post('/bulk', requireAdmin, async (req: Request, res: Response) => {
     performanceCache.clearUrlTranslations();
     
     // Reload URL translations into memory
-    const { loadDatabaseUrlTranslations } = await import('../shared/url-translations');
+    const { loadDatabaseUrlTranslations } = await import('../seo/load-database-mappings');
     await loadDatabaseUrlTranslations();
     
     res.json({ 

@@ -34,15 +34,15 @@
 
 import mongoose from 'mongoose';
 import { Station } from '../shared/mongo-schemas';
-import { ACTIVE_SITEMAP_LANGUAGES } from '../shared/seo-config';
+import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { buildLocalizedUrl } from '../seo/url-helpers';
 import {
   canonicalizeCountry,
   countrySlug,
   getRegionSlugForCountry,
-} from '../shared/country-regions';
+} from '@workspace/seo-shared/country-regions';
 import { performanceCache } from '../performance-cache';
-import { URL_TRANSLATIONS } from '../shared/url-translations';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { IndexNowService } from '../services/indexnow';
 import { logger } from '../utils/logger';
 

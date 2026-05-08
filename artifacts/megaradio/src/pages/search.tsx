@@ -10,7 +10,7 @@ import {
   canonicalizeCountry,
   countrySlug,
   getRegionSlugForCountry,
-} from "@shared/country-regions";
+} from "@workspace/seo-shared/country-regions";
 
 interface SearchStation {
   _id?: string;

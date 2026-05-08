@@ -4,7 +4,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery } from "@tanstack/react-query";
-import { SEO_LANGUAGES } from "@shared/seo-config";
+import { SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
 import AddYourStationModal from "@/components/modals/AddYourStationModal";
 import RequestStationModal from "@/components/modals/RequestStationModal";
 import { Globe } from "lucide-react";

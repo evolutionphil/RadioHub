@@ -12,7 +12,7 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { Shuffle, ChevronLeft, ChevronRight } from "lucide-react";
-import { COUNTRY_TO_LANGUAGE } from "@shared/seo-config";
+import { COUNTRY_TO_LANGUAGE } from "@workspace/seo-shared/seo-config";
 
 // Genre background gradients - same as homepage
 const getRandomImage = (index: number) => {

@@ -38,7 +38,7 @@ import { ThemeProvider } from "@/lib/theme-provider";
 import { TranslationPreloader } from "@/components/translation/TranslationPreloader";
 import { useState, useEffect, useDeferredValue } from "react";
 import { useLocation } from "wouter";
-import { getLanguageFromPath } from "@shared/seo-config";
+import { getLanguageFromPath } from "@workspace/seo-shared/seo-config";
 import { useScrollToTop } from "@/hooks/useScrollToTop";
 import { initGA } from "./lib/analytics";
 import { useAnalytics } from "./hooks/use-analytics";
@@ -108,9 +108,9 @@ const LazyProfileLayout = ({ children }: { children: React.ReactNode }) => (
 import { SeoPageWrapper } from "@/components/SeoPageWrapper";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
-import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, COUNTRY_TO_CODE, getLanguageForCountry } from "@shared/seo-config";
+import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, COUNTRY_TO_CODE, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
 
-import { URL_TRANSLATIONS } from "@shared/url-translations";
+import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 
 import AddYourStationModal from "@/components/modals/AddYourStationModal";
 import StructuredData from "@/components/seo/StructuredData";

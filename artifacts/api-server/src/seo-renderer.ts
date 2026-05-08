@@ -1,4 +1,4 @@
-import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from './shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 import { Translation, Station, SeoMetadata, ISeoMetadata } from './shared/mongo-schemas';
 
 // Lean document shapes returned by Mongoose `.lean()` for the queries in this
@@ -36,17 +36,17 @@ interface LeanStationCard {
 type LeanSeoMetadataDoc = Omit<ISeoMetadata, keyof import('mongoose').Document>;
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
-import { URL_TRANSLATIONS } from './shared/url-translations';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { trackOperation } from './utils/operation-tracker';
 import { isJunkStation } from './seo/junk-station-rules';
-import { buildGenreSeo } from './shared/genre-seo-templates';
-import { buildCountrySeo, buildRegionSeo } from './shared/region-seo-templates';
-import { getLocalizedCountryName } from './shared/country-name-translations';
+import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
+import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-seo-templates';
+import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
 import {
   getCanonicalGenreSlug,
   MIN_STATIONS_FOR_GENRE_INDEX,
 } from './seo/genre-whitelist';
-import { FAQ_PAGE_ITEMS } from './shared/faq-schema';
+import { FAQ_PAGE_ITEMS } from '@workspace/seo-shared/faq-schema';
 
 // Concurrency raised 5 → 15 → 50 → 200 → 1000 → 2500: paired with MongoDB
 // pool 100, heap 10 GB and RSS warning 7 GB on a 24 GB Railway replica to

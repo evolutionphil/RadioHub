@@ -1,0 +1,17 @@
+{
+  "name": "@workspace/seo-shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./faq-schema": "./src/faq-schema.ts",
+    "./structured-data": "./src/structured-data.ts",
+    "./seo-config": "./src/seo-config.ts",
+    "./genre-seo-templates": "./src/genre-seo-templates.ts",
+    "./region-seo-templates": "./src/region-seo-templates.ts",
+    "./url-translations": "./src/url-translations.ts",
+    "./country-name-translations": "./src/country-name-translations.ts",
+    "./country-regions": "./src/country-regions.ts",
+    "./critical-translation-keys": "./src/critical-translation-keys.ts"
+  }
+}

@@ -18,7 +18,7 @@ import { serveStatic, log } from "./serve-static";
 import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
-import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from './shared/seo-config';
+import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 import { geoBlockMiddleware } from './middleware/geo-block';
 
@@ -486,7 +486,7 @@ app.use('/api/stream', streamServiceProxy);
 
   const seoRenderer = new SeoRenderer();
 
-  const { URL_TRANSLATIONS: seoUrlTranslations } = await import('./shared/url-translations');
+  const { URL_TRANSLATIONS: seoUrlTranslations } = await import('@workspace/seo-shared/url-translations');
   function collectSeoTranslations(englishKey: string): string[] {
     const vals = new Set<string>();
     vals.add(englishKey);
@@ -965,10 +965,8 @@ app.use('/api/stream', streamServiceProxy);
         logger.log('✅ FRONTEND-WEB: Cache warmup completed');
       }
 
-      const { loadDatabaseCountryLanguageMappings } = await import('./shared/seo-config');
+      const { loadDatabaseCountryLanguageMappings, loadDatabaseUrlTranslations } = await import('./seo/load-database-mappings');
       await loadDatabaseCountryLanguageMappings();
-
-      const { loadDatabaseUrlTranslations } = await import('./shared/url-translations');
       await loadDatabaseUrlTranslations();
 
       // Task #158: load slug-existence sets used by the slug-shape-404

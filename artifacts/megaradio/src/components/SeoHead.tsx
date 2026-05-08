@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useTranslation } from '@/hooks/useTranslation';
-import { generateSeoTags, getLanguageFromPath, generateLanguageUrls } from '@shared/seo-config';
-import { buildGenreSeo } from '@shared/genre-seo-templates';
+import { generateSeoTags, getLanguageFromPath, generateLanguageUrls } from '@workspace/seo-shared/seo-config';
+import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { useQuery } from '@tanstack/react-query';
 import { 
   generateOrganizationSchema, 
@@ -10,8 +10,8 @@ import {
   generateWebSiteSchema,
   generateBreadcrumbSchema,
   type StructuredDataConfig 
-} from '@shared/structured-data';
-import { generateFAQSchema, FAQ_PAGE_ITEMS, type FAQTranslatedItem } from '@shared/faq-schema';
+} from '@workspace/seo-shared/structured-data';
+import { generateFAQSchema, FAQ_PAGE_ITEMS, type FAQTranslatedItem } from '@workspace/seo-shared/faq-schema';
 
 interface SeoHeadProps {
   stationData?: {

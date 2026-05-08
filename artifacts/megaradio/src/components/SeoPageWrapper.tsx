@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { SeoHead } from "@/components/seo/SeoHead";
-import { SeoMetaTags } from "@shared/seo-config";
+import { SeoMetaTags } from "@workspace/seo-shared/seo-config";
 import { useLocation } from "wouter";
 
 interface SeoPageWrapperProps {

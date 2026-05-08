@@ -2115,24 +2115,6 @@ export function setDatabaseUrlTranslations(translations: Map<string, string>) {
 }
 
 /**
- * Load database URL translations (server-side only)
- */
-export async function loadDatabaseUrlTranslations(): Promise<void> {
-  // Only run on server-side. Use a runtime check against `globalThis` so the
-  // file can be imported by both the API server (no DOM lib) and the client
-  // bundle without pulling in `lib.dom.d.ts` just for the `window` global.
-  if ('window' in globalThis) return;
-  
-  try {
-    const { performanceCache } = await import('../performance-cache');
-    const translations = await performanceCache.getUrlTranslations();
-    setDatabaseUrlTranslations(translations);
-  } catch (error) {
-    console.error('❌ Failed to load database URL translations:', error);
-  }
-}
-
-/**
  * Get translated URL path (checks database first, then static file)
  * Priority: Database translations > Static file translations
  */

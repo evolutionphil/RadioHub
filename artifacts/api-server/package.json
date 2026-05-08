@@ -27,6 +27,7 @@
     "@google-cloud/storage": "^7.19.0",
     "@sendgrid/mail": "^8.1.6",
     "@workspace/api-zod": "workspace:*",
+    "@workspace/seo-shared": "workspace:*",
     "@workspace/db": "workspace:*",
     "axios": "^1.15.2",
     "bcrypt": "^6.0.0",

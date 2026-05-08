@@ -12,7 +12,7 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import { getLanguageFromPath, SEO_LANGUAGES, DEFAULT_LANGUAGE } from './shared/seo-config';
+import { getLanguageFromPath, SEO_LANGUAGES, DEFAULT_LANGUAGE } from '@workspace/seo-shared/seo-config';
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
 

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { SeoMetaTags } from '@shared/seo-config';
+import { SeoMetaTags } from '@workspace/seo-shared/seo-config';
 
 interface SeoHeadProps {
   seoData: SeoMetaTags;

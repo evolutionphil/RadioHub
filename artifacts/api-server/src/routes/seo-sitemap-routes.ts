@@ -3,13 +3,14 @@ import crypto from 'crypto';
 import { Station, Country, Genre, AuthToken, AppLog } from "../shared/mongo-schemas";
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
-import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations } from '../shared/seo-config';
+import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations } from '@workspace/seo-shared/seo-config';
 import { performanceCache } from "../performance-cache";
-import { URL_TRANSLATIONS } from '../shared/url-translations';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
 import { sendSitemapGone } from "../seo/send-sitemap-gone";
+import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from "@workspace/seo-shared/country-regions";
 import {
   getCachedQualifiedLanguages,
   getQualifiedLanguagesState,

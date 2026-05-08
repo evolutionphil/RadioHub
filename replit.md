@@ -14,6 +14,11 @@ artifacts/
 lib/
   api-zod/      → Zod validation schemas (shared)
   db/           → Drizzle ORM + PostgreSQL (for future relational data)
+  seo-shared/   → Shared SEO/FAQ modules (faq-schema, structured-data,
+                  seo-config, genre/region-seo-templates, url-translations,
+                  country-name-translations, country-regions,
+                  critical-translation-keys) used by both api-server and
+                  megaradio. Imported as `@workspace/seo-shared/<module>`.
 ```
 
 ## Stack
@@ -52,9 +57,8 @@ A shared reverse proxy routes by path:
 
 ## Important Migration Notes
 
-- `artifacts/api-server/src/shared/` — shared Mongoose schemas (duplicated from legacy `shared/`)
-- `artifacts/megaradio/src/shared/` — shared frontend types/SEO config (duplicated from legacy)
-- `artifacts/megaradio/src/server/performance-cache.ts` — browser stub for server-only import
+- `artifacts/api-server/src/shared/` and `artifacts/megaradio/src/shared/` — only Mongoose schemas (`mongo-schemas.ts`, `schema.ts`) remain duplicated here. All SEO/FAQ shared code lives in `lib/seo-shared` and is imported via `@workspace/seo-shared/<module>`.
+- The api-server-only cache loaders for SEO/URL translations live in `artifacts/api-server/src/seo/load-database-mappings.ts` (they call `setDatabase*` setters exposed by `@workspace/seo-shared`).
 - Express 5 breaking changes fixed:
   - `/*` wildcards → `/*path`
   - `:param?` optional params → `{:param}`

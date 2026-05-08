@@ -1,5 +1,5 @@
 import OpenAI from "openai";
-import { COUNTRY_TO_LANGUAGE, getNativeCountryName } from "../shared/seo-config";
+import { COUNTRY_TO_LANGUAGE, getNativeCountryName } from "@workspace/seo-shared/seo-config";
 import { logger } from "../utils/logger";
 
 // Using existing OpenAI API key (same as translation system)

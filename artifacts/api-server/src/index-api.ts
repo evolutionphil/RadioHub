@@ -699,10 +699,8 @@ app.use(session(sessionConfig));
         logger.log('⚡ Caches will be populated on-demand on first request');
       }
 
-      const { loadDatabaseCountryLanguageMappings } = await import('./shared/seo-config');
+      const { loadDatabaseCountryLanguageMappings, loadDatabaseUrlTranslations } = await import('./seo/load-database-mappings');
       await loadDatabaseCountryLanguageMappings();
-
-      const { loadDatabaseUrlTranslations } = await import('./shared/url-translations');
       await loadDatabaseUrlTranslations();
 
       if (process.env.NODE_ENV !== 'development') {

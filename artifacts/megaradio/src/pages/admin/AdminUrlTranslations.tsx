@@ -23,8 +23,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Search, Save, RefreshCw, Sparkles, Languages } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
-import { URL_TRANSLATIONS } from '@shared/url-translations';
-import { SEO_LANGUAGES } from '@shared/seo-config';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 interface UrlTranslation {
   _id?: string;

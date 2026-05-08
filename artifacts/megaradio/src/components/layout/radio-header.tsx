@@ -13,12 +13,12 @@ import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { getImageUrl } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
 import { HighlightMatch } from "@/components/HighlightMatch";
-import { getCountryCodeFromApiName, getLanguageForCountry } from "@shared/seo-config";
+import { getCountryCodeFromApiName, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
 import {
   canonicalizeCountry,
   countrySlug,
   getRegionSlugForCountry,
-} from "@shared/country-regions";
+} from "@workspace/seo-shared/country-regions";
 import { Music, Globe } from "lucide-react";
 
 interface RadioHeaderProps {

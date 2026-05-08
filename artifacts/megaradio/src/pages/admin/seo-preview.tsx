@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Loader2, RefreshCw, Eye, Search } from 'lucide-react';
-import { SEO_LANGUAGES } from '@shared/seo-config';
+import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { queryClient } from '@/lib/queryClient';
 
 interface SeoData {

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { COUNTRY_TO_LANGUAGE } from '@shared/seo-config';
+import { COUNTRY_TO_LANGUAGE } from '@workspace/seo-shared/seo-config';
 
 /**
  * TranslationPreloader - Intelligent translation loading based on user preferences

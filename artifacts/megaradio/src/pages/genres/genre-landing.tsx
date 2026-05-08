@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useParams, useLocation, useRoute } from 'wouter';
 import { SeoHead } from '@/components/SeoHead';
 import StationCard from '@/components/ui/station-card';
-import { CODE_TO_COUNTRY, SEO_LANGUAGES, getCountryCodeFromName } from '@shared/seo-config';
+import { CODE_TO_COUNTRY, SEO_LANGUAGES, getCountryCodeFromName } from '@workspace/seo-shared/seo-config';
 import { useTranslation } from '@/hooks/useTranslation';
 
 // Import arrow icons for pagination

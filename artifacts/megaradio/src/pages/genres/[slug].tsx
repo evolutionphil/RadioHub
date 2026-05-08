@@ -7,7 +7,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
-import { getCountryFromCode, SEO_LANGUAGES } from "@shared/seo-config";
+import { getCountryFromCode, SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
 import { useTranslation } from "@/hooks/useTranslation";
 import {
   Select,

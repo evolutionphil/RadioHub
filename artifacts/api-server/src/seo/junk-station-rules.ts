@@ -21,7 +21,7 @@
  */
 
 import { slugify as transliterateSlugify } from 'transliteration';
-import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '../shared/seo-config';
+import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 const KNOWN_LANGUAGE_CODES = new Set(SEO_LANGUAGES.map((l) => l.code.toLowerCase()));
 
