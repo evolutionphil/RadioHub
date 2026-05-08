@@ -1476,6 +1476,9 @@ export default function AdminCountryLanguageMappings() {
                         window.sessionStorage.removeItem('admin-mappings:skipDiscardConfirm');
                       }
                       setSkipDiscardConfirm(false);
+                      toast({
+                        title: 'Discard confirmation turned back on',
+                      });
                     }}
                   >
                     Re-enable Discard
@@ -1492,6 +1495,9 @@ export default function AdminCountryLanguageMappings() {
                         window.sessionStorage.removeItem('admin-mappings:skipResetAllConfirm');
                       }
                       setSkipResetAllConfirm(false);
+                      toast({
+                        title: 'Reset all confirmation turned back on',
+                      });
                     }}
                   >
                     Re-enable Reset all
