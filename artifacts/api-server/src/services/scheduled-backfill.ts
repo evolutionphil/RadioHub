@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { Station, BackfillRun, type IBackfillRun } from '../shared/mongo-schemas';
 import { SyncService } from './sync';
 import { logger } from '../utils/logger';
+import { notifyBackfillResult } from './backfill-notifier';
 
 /**
  * Weekly cross-country backfill that mirrors the per-country
@@ -285,6 +286,10 @@ class ScheduledBackfillService {
       await run.save();
       this.lastRunAt = finishedAt;
       logger.error('❌ Scheduled backfill failed:', err);
+      // Notifier swallows its own errors (and bounds webhook latency
+      // internally) so a flaky alert channel can never poison the cron
+      // job's return value.
+      await notifyBackfillResult(run);
       return run;
     } finally {
       this.isRunning = false;
