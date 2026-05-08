@@ -18,7 +18,8 @@ import {
   CheckCircle,
   AlertCircle,
   Image,
-  ShieldAlert
+  ShieldAlert,
+  CalendarClock
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -75,6 +76,27 @@ export default function AdminDashboard() {
   }>({
     queryKey: ["/api/admin/sync/auto-flagged-report"],
     staleTime: 30000,
+    refetchOnWindowFocus: false,
+  });
+
+  const { data: backfillStatus, isLoading: isLoadingBackfill } = useQuery<{
+    status: { isRunning: boolean; lastRunAt: string | null; lastRunId: string | null };
+    lastRun: {
+      _id: string;
+      trigger: string;
+      status: "running" | "completed" | "failed";
+      topN: number;
+      startedAt: string;
+      finishedAt?: string;
+      durationMs?: number;
+      logos: Array<{ countryCode: string; candidates: number; enqueued: number }>;
+      tags: Array<{ countryCode: string; processed: number; hydrated: number; emptyUpstream: number; failed: number }>;
+      errorMessage?: string;
+    } | null;
+  }>({
+    queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
+    staleTime: 30000,
+    refetchInterval: (q) => (q.state.data?.status?.isRunning ? 5000 : false),
     refetchOnWindowFocus: false,
   });
 
@@ -471,6 +493,141 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Last weekly backfill health card */}
+      <Card data-testid="card-last-weekly-backfill">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <CalendarClock className="w-4 h-4" />
+              Last weekly backfill
+            </CardTitle>
+            <CardDescription>
+              Sunday 04:00 (Europe/Berlin) cross-country logo + tag sweep
+            </CardDescription>
+          </div>
+          <Link href="/admin/seo-maintenance">
+            <Button variant="outline" size="sm" data-testid="button-open-seo-maintenance">
+              Manage
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {isLoadingBackfill ? (
+            <div className="space-y-2 animate-pulse">
+              <div className="h-5 bg-gray-200 rounded w-1/3" />
+              <div className="h-3 bg-gray-200 rounded w-2/3" />
+              <div className="h-3 bg-gray-200 rounded w-1/2" />
+            </div>
+          ) : !backfillStatus?.lastRun ? (
+            <div className="text-sm text-muted-foreground" data-testid="text-no-backfill-runs">
+              No weekly backfill runs recorded yet.
+            </div>
+          ) : (() => {
+            const run = backfillStatus.lastRun;
+            const finishedAtRaw = run.finishedAt ?? run.startedAt;
+            const finishedAt = new Date(finishedAtRaw);
+            const now = Date.now();
+            const diffMs = Math.max(0, now - finishedAt.getTime());
+            const fmtAgo = (ms: number) => {
+              const sec = Math.round(ms / 1000);
+              if (sec < 60) return `${sec}s ago`;
+              const min = Math.round(sec / 60);
+              if (min < 60) return `${min}m ago`;
+              const hr = Math.round(min / 60);
+              if (hr < 48) return `${hr}h ago`;
+              return `${Math.round(hr / 24)}d ago`;
+            };
+            const failedTagCountries = run.tags.filter((t) => t.failed > 0);
+            const isFailed = run.status === "failed";
+            const isRunning = run.status === "running";
+            const containerClass = isFailed
+              ? "border-rose-200 bg-rose-50"
+              : isRunning
+              ? "border-blue-200 bg-blue-50"
+              : "border-emerald-200 bg-emerald-50";
+            const StatusIcon = isFailed
+              ? AlertCircle
+              : isRunning
+              ? Activity
+              : CheckCircle;
+            const statusIconClass = isFailed
+              ? "text-rose-600"
+              : isRunning
+              ? "text-blue-600"
+              : "text-emerald-600";
+            const statusText = isFailed
+              ? "Failed"
+              : isRunning
+              ? "Running…"
+              : `OK, finished ${fmtAgo(diffMs)}`;
+            const totalLogosEnqueued = run.logos.reduce((s, c) => s + c.enqueued, 0);
+            const totalTagsHydrated = run.tags.reduce((s, c) => s + c.hydrated, 0);
+            return (
+              <div className={`rounded-md border p-3 space-y-2 ${containerClass}`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <StatusIcon className={`w-4 h-4 ${statusIconClass}`} />
+                  <span
+                    className={`text-sm font-semibold ${statusIconClass}`}
+                    data-testid="text-backfill-status"
+                  >
+                    {statusText}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    · trigger <code>{run.trigger}</code>
+                    {` · top-${run.topN}`}
+                    {typeof run.durationMs === "number" &&
+                      ` · ${Math.round(run.durationMs / 1000)}s`}
+                  </span>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  Started {new Date(run.startedAt).toLocaleString()}
+                  {run.finishedAt && ` · finished ${new Date(run.finishedAt).toLocaleString()}`}
+                </div>
+                {isFailed && run.errorMessage && (
+                  <div
+                    className="text-xs text-rose-700 bg-white border border-rose-200 rounded px-2 py-1"
+                    data-testid="text-backfill-error"
+                  >
+                    Error: {run.errorMessage}
+                  </div>
+                )}
+                {isFailed && (run.logos.length > 0 || run.tags.length > 0) && (
+                  <div className="text-xs text-rose-700">
+                    Countries attempted:{" "}
+                    <span className="font-mono">
+                      {Array.from(
+                        new Set([
+                          ...run.logos.map((c) => c.countryCode),
+                          ...run.tags.map((c) => c.countryCode),
+                        ]),
+                      ).join(", ") || "—"}
+                    </span>
+                  </div>
+                )}
+                {!isFailed && failedTagCountries.length > 0 && (
+                  <div className="text-xs text-amber-700">
+                    Tag failures in:{" "}
+                    <span className="font-mono">
+                      {failedTagCountries
+                        .map((c) => `${c.countryCode} (${c.failed})`)
+                        .join(", ")}
+                    </span>
+                  </div>
+                )}
+                {!isFailed && (
+                  <div className="text-xs text-muted-foreground">
+                    {run.logos.length} logo countr{run.logos.length === 1 ? "y" : "ies"} ·{" "}
+                    <strong className="text-emerald-700">{totalLogosEnqueued}</strong> logos enqueued ·{" "}
+                    {run.tags.length} tag countr{run.tags.length === 1 ? "y" : "ies"} ·{" "}
+                    <strong className="text-emerald-700">{totalTagsHydrated}</strong> tags hydrated
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
 
       {/* Quick Actions */}
       <Card>
