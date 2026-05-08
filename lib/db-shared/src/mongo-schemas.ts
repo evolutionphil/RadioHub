@@ -3654,3 +3654,65 @@ export const ClearedOverridesAuditLog = mongoose.model<IClearedOverridesAuditLog
   'ClearedOverridesAuditLog',
   ClearedOverridesAuditLogSchema,
 );
+
+// =====================================================================
+// GenreMergeAuditLog — Task #289 — durable audit trail for the admin
+// "merge demoted genre into winner" action exposed at
+// POST /api/admin/genres/:id/merge-into-winner.
+//
+// The merge endpoint deletes the demoted Genre row and rewrites every
+// matching station in place, so a single mis-click is otherwise
+// unrecoverable from the application logs. Each successful merge writes
+// one structured row capturing: the demoted side (id/name/slug), the
+// winner side (id/name/slug), whether the winner came from the recorded
+// `cleanupDemotion.collisionWinnerId` ("auto-recorded") or was picked
+// manually by the admin ("manual"), the count of matched vs re-tagged
+// stations, and the acting admin (id + email when available).
+//
+// Bounded growth: 180-day TTL plus a per-collection MAX_ENTRIES soft cap
+// pruned on write so the admin "merge history" panel and backing query
+// stay fast even after years of merges.
+// =====================================================================
+export type GenreMergeAuditTargetSource = 'manual' | 'auto-recorded';
+
+export interface IGenreMergeAuditLog extends Document {
+  demotedGenreId: string;
+  demotedGenreName: string;
+  demotedGenreSlug: string;
+  winnerGenreId: string;
+  winnerGenreName: string;
+  winnerGenreSlug: string;
+  targetSource: GenreMergeAuditTargetSource;
+  stationsMatched: number;
+  stationsRetagged: number;
+  actorUserId: string | null;
+  actorEmail: string | null;
+  createdAt: Date;
+}
+
+const GenreMergeAuditLogSchema = new Schema<IGenreMergeAuditLog>({
+  demotedGenreId: { type: String, required: true, index: true },
+  demotedGenreName: { type: String, required: true },
+  demotedGenreSlug: { type: String, default: '' },
+  winnerGenreId: { type: String, required: true, index: true },
+  winnerGenreName: { type: String, required: true },
+  winnerGenreSlug: { type: String, default: '' },
+  targetSource: {
+    type: String,
+    enum: ['manual', 'auto-recorded'],
+    required: true,
+    index: true,
+  },
+  stationsMatched: { type: Number, required: true, default: 0 },
+  stationsRetagged: { type: Number, required: true, default: 0 },
+  actorUserId: { type: String, default: null },
+  actorEmail: { type: String, default: null },
+  createdAt: { type: Date, default: Date.now, expires: 60 * 60 * 24 * 180 },
+});
+
+GenreMergeAuditLogSchema.index({ createdAt: -1 });
+
+export const GenreMergeAuditLog = mongoose.model<IGenreMergeAuditLog>(
+  'GenreMergeAuditLog',
+  GenreMergeAuditLogSchema,
+);

@@ -1189,9 +1189,74 @@ ${keysText}`;
         logger.error('Failed to refresh winner stationCount after merge:', countErr);
       }
 
-      // Delete the demoted row last so a partial failure above leaves the
-      // admin a chance to retry rather than losing the demotion forensics.
+      // Task #289 — write a structured audit row BEFORE the irreversible
+      // demoted-row delete so a successful merge response is never returned
+      // without a queryable forensics record. Captures both the
+      // auto-recorded path (winner came from `cleanupDemotion`) and the
+      // manual override path (Task #214 admin-picked target), plus
+      // empty-slug and collision merges since both reach this branch.
+      // Errors here propagate to the outer catch and surface as a 500 — by
+      // that point stations have already been re-tagged, so the admin can
+      // retry the same endpoint to finish the delete + re-warm and produce
+      // an audit row, rather than losing the demotion record entirely.
+      const { GenreMergeAuditLog } = await import(
+        '@workspace/db-shared/mongo-schemas'
+      );
+      const actor = req.user as
+        | { _id?: unknown; id?: unknown; email?: string }
+        | undefined;
+      const actorUserId = (() => {
+        const raw = actor?._id ?? actor?.id;
+        if (raw === undefined || raw === null) return null;
+        const s = String(raw);
+        return s.length > 0 ? s : null;
+      })();
+      const actorEmail =
+        typeof actor?.email === 'string' && actor.email.length > 0
+          ? actor.email
+          : null;
+      await GenreMergeAuditLog.create({
+        demotedGenreId: String(demoted._id),
+        demotedGenreName: demotedName,
+        demotedGenreSlug: String(demoted.slug || ''),
+        winnerGenreId: String(winner._id),
+        winnerGenreName: winnerName,
+        winnerGenreSlug: String(winner.slug || ''),
+        targetSource: targetGenreId ? 'manual' : 'auto-recorded',
+        stationsMatched: matchingStations.length,
+        stationsRetagged,
+        actorUserId,
+        actorEmail,
+      });
+
+      // Delete the demoted row only AFTER the audit row is durably written
+      // so a successful response always corresponds to a queryable record.
       await Genre.deleteOne({ _id: demoted._id });
+
+      // On-write prune so the audit collection stays bounded even under
+      // heavy admin usage. The 180-day TTL on the schema is the backstop;
+      // this keeps the admin panel and backing query snappy day-to-day.
+      // Failures here are non-fatal — the merge + audit row already
+      // succeeded — so the prune is best-effort and only logged.
+      try {
+        const MAX_ENTRIES = 1000;
+        const total = await GenreMergeAuditLog.estimatedDocumentCount();
+        if (total > MAX_ENTRIES) {
+          const excess = total - MAX_ENTRIES;
+          const oldest = await GenreMergeAuditLog
+            .find({}, { _id: 1 })
+            .sort({ createdAt: 1 })
+            .limit(excess)
+            .lean();
+          if (oldest.length > 0) {
+            await GenreMergeAuditLog.deleteMany({
+              _id: { $in: oldest.map((d) => d._id) },
+            });
+          }
+        }
+      } catch (pruneErr) {
+        logger.error('Failed to prune genre-merge audit log:', pruneErr);
+      }
 
       // Same downstream re-warm the cleanup script uses (Task #133): drop the
       // precomputed-genres caches and force-rebuild the sitemap manifests so
@@ -1227,6 +1292,154 @@ ${keysText}`;
       res.status(500).json({ error: 'Failed to merge demoted genre into winner' });
     }
   });
+
+  // ADMIN GENRE MERGE AUDIT LOG (Task #289) — paginated, filterable list
+  // of every successful merge so admins can answer "who merged what into
+  // where, and when" without grepping the api-server logs. The collection
+  // is bounded by both the schema TTL (180 days) and an on-write soft cap
+  // in the merge handler above, so this endpoint stays fast.
+  app.get(
+    "/api/admin/genres/merge-audit-log",
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const { GenreMergeAuditLog } = await import(
+          '@workspace/db-shared/mongo-schemas'
+        );
+
+        const parseIntParam = (
+          raw: unknown,
+          fallback: number,
+          max?: number,
+        ) => {
+          const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
+          if (!Number.isFinite(n) || n < 0) return fallback;
+          return max !== undefined ? Math.min(n, max) : n;
+        };
+
+        const limit = Math.max(
+          1,
+          parseIntParam(req.query.limit, 50, 200),
+        );
+        const offset = parseIntParam(req.query.offset, 0);
+
+        const escapeForRegex = (s: string): string =>
+          s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        const filter: Record<string, unknown> = {};
+
+        const targetSourceParam =
+          typeof req.query.targetSource === 'string'
+            ? req.query.targetSource
+            : undefined;
+        if (targetSourceParam && targetSourceParam !== 'all') {
+          if (
+            targetSourceParam !== 'manual' &&
+            targetSourceParam !== 'auto-recorded'
+          ) {
+            return void res
+              .status(400)
+              .json({ error: 'Invalid targetSource filter' });
+          }
+          filter.targetSource = targetSourceParam;
+        }
+
+        const actorEmail =
+          typeof req.query.actorEmail === 'string'
+            ? req.query.actorEmail.trim()
+            : '';
+        if (actorEmail) {
+          filter.actorEmail = {
+            $regex: escapeForRegex(actorEmail),
+            $options: 'i',
+          };
+        }
+
+        const genre =
+          typeof req.query.genre === 'string' ? req.query.genre.trim() : '';
+        if (genre) {
+          const re = { $regex: escapeForRegex(genre), $options: 'i' };
+          filter.$or = [
+            { demotedGenreName: re },
+            { demotedGenreSlug: re },
+            { winnerGenreName: re },
+            { winnerGenreSlug: re },
+          ];
+        }
+
+        const fromRaw =
+          typeof req.query.from === 'string' ? req.query.from : '';
+        const toRaw = typeof req.query.to === 'string' ? req.query.to : '';
+        const createdAt: Record<string, Date> = {};
+        const fromDate = fromRaw ? new Date(fromRaw) : null;
+        if (fromDate && !isNaN(fromDate.getTime())) {
+          createdAt.$gte = fromDate;
+        }
+        const toDate = toRaw ? new Date(toRaw) : null;
+        if (toDate && !isNaN(toDate.getTime())) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
+            toDate.setUTCHours(23, 59, 59, 999);
+          }
+          createdAt.$lte = toDate;
+        }
+        if (Object.keys(createdAt).length > 0) {
+          filter.createdAt = createdAt;
+        }
+
+        const [entries, total] = await Promise.all([
+          GenreMergeAuditLog
+            .find(filter)
+            .sort({ createdAt: -1 })
+            .skip(offset)
+            .limit(limit)
+            .lean<Array<{
+              _id: unknown;
+              demotedGenreId: string;
+              demotedGenreName: string;
+              demotedGenreSlug: string;
+              winnerGenreId: string;
+              winnerGenreName: string;
+              winnerGenreSlug: string;
+              targetSource: 'manual' | 'auto-recorded';
+              stationsMatched: number;
+              stationsRetagged: number;
+              actorUserId: string | null;
+              actorEmail: string | null;
+              createdAt: Date;
+            }>>(),
+          GenreMergeAuditLog.countDocuments(filter),
+        ]);
+
+        res.json({
+          entries: entries.map((e) => ({
+            id: String(e._id),
+            demotedGenreId: e.demotedGenreId,
+            demotedGenreName: e.demotedGenreName,
+            demotedGenreSlug: e.demotedGenreSlug,
+            winnerGenreId: e.winnerGenreId,
+            winnerGenreName: e.winnerGenreName,
+            winnerGenreSlug: e.winnerGenreSlug,
+            targetSource: e.targetSource,
+            stationsMatched: e.stationsMatched,
+            stationsRetagged: e.stationsRetagged,
+            actorUserId: e.actorUserId,
+            actorEmail: e.actorEmail,
+            createdAt: e.createdAt,
+          })),
+          total,
+          limit,
+          offset,
+        });
+        return;
+      } catch (error) {
+        console.error('Error listing genre-merge audit log:', error);
+        res
+          .status(500)
+          .json({ error: 'Failed to list genre-merge audit log' });
+        return;
+      }
+    },
+  );
 
   // ADMIN GENRE POPULATION API - Manually trigger genre population from station tags
   app.post("/api/admin/populate-genres", requireAdmin, async (req, res) => {
