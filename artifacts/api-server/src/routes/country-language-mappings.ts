@@ -152,26 +152,32 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // the hardcoded COUNTRY_TO_LANGUAGE default. After deletion, the affected
   // countries fall back to that default. Mappings that already match the
   // default (or whose country is missing from the default map) are left alone.
-  app.delete('/api/admin/country-language-mappings/overrides', requireAdmin, async (_req, res) => {
+  app.delete('/api/admin/country-language-mappings/overrides', requireAdmin, async (req, res) => {
     try {
       const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
-      const { COUNTRY_TO_LANGUAGE } = await import('../shared/seo-config');
+      const { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } = await import('../shared/seo-config');
 
       const allMappings = await CountryLanguageMapping
-        .find({}, { countryCode: 1, languageCode: 1 })
-        .lean<Array<{ countryCode: string; languageCode: string }>>();
+        .find({}, { countryCode: 1, countryName: 1, languageCode: 1 })
+        .lean<Array<{ countryCode: string; countryName?: string; languageCode: string }>>();
       const defaults = COUNTRY_TO_LANGUAGE as Record<string, string>;
-      const overrideCountryCodes = allMappings
+      const overrideSnapshot = allMappings
         .filter(m => {
           const def = defaults[m.countryCode];
           return !!def && m.languageCode !== def;
         })
-        .map(m => m.countryCode);
+        .map(m => ({
+          countryCode: m.countryCode,
+          countryName: m.countryName || m.countryCode,
+          currentLanguageCode: m.languageCode,
+          defaultLanguageCode: defaults[m.countryCode]!,
+        }));
 
-      if (overrideCountryCodes.length === 0) {
+      if (overrideSnapshot.length === 0) {
         return res.json({ success: true, deletedCount: 0 });
       }
 
+      const overrideCountryCodes = overrideSnapshot.map(m => m.countryCode);
       const result = await CountryLanguageMapping.deleteMany({ countryCode: { $in: overrideCountryCodes } });
 
       // Clear performance cache to force reload
@@ -179,6 +185,27 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
       performanceCache.clearCountryLanguageMappings();
 
       console.log(`✅ Deleted ${result.deletedCount} overridden country-language mappings`);
+
+      // Fire-and-forget audit email of the cleared overrides CSV. Opt-in via
+      // ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+      const languageNames: Record<string, string> = {};
+      for (const lang of SEO_LANGUAGES) {
+        languageNames[lang.code] = lang.name;
+      }
+      const actorEmail =
+        (req.user as { email?: string } | undefined)?.email ?? undefined;
+      void import('../services/admin-audit-email')
+        .then(({ emailClearedOverridesCsv }) =>
+          emailClearedOverridesCsv({
+            rows: overrideSnapshot,
+            languageNames,
+            actorEmail,
+          }),
+        )
+        .catch((err) => {
+          console.error('Failed to load admin-audit-email service:', err);
+        });
+
       res.json({ success: true, deletedCount: result.deletedCount });
     } catch (error) {
       console.error('Error deleting overridden country-language mappings:', error);
