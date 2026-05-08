@@ -1,5 +1,10 @@
 import type { Express, Request, Response } from 'express';
-import { Genre, GenreWhitelistOverride } from '../shared/mongo-schemas';
+import {
+  Genre,
+  GenreWhitelistOverride,
+  SAFE_GENRE_SLUG_RE,
+  normalizeGenreSlug,
+} from '../shared/mongo-schemas';
 import {
   GENRE_WHITELIST,
   GENRE_ALIASES,
@@ -177,16 +182,54 @@ function triggerSearchEnginePush(
 // from the sitemap on the next manifest rebuild — same path the static
 // file would have taken.
 
-const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const MAX_SLUG_LEN = 64;
 const MAX_NOTES_LEN = 500;
 
-function normalizeSlug(input: unknown): string | null {
-  if (typeof input !== 'string') return null;
-  const slug = input.trim().toLowerCase();
-  if (!slug || slug.length > MAX_SLUG_LEN) return null;
-  if (!SLUG_REGEX.test(slug)) return null;
-  return slug;
+// Task #205: route every admin-typed slug through the shared
+// `normalizeGenreSlug` + `SAFE_GENRE_SLUG_RE` pair (the same gate the
+// Genre.slug schema validator uses), and refuse to silently coerce. If
+// what the admin typed doesn't already match the safe charset we return
+// 422 with the normalized suggestion instead of quietly rewriting their
+// input — a surprise rewrite is exactly how typos used to slip into
+// `GenreWhitelistOverride` rows and SEO URLs.
+type SlugParseResult =
+  | { ok: true; slug: string }
+  | { ok: false; status: 400 | 422; error: string };
+
+function parseAdminSlug(input: unknown, field = 'slug'): SlugParseResult {
+  if (typeof input !== 'string') {
+    return { ok: false, status: 400, error: `Invalid ${field} — must be a string` };
+  }
+  // Compare against the raw typed value — do NOT trim first. Surrounding
+  // whitespace is itself a coercion the admin would otherwise not see, so
+  // we surface it as a 422 with a "Did you mean ..." suggestion rather
+  // than silently stripping it (Task #205).
+  if (input.length === 0) {
+    return { ok: false, status: 400, error: `Invalid ${field} — empty` };
+  }
+  if (input.length > MAX_SLUG_LEN) {
+    return {
+      ok: false,
+      status: 400,
+      error: `Invalid ${field} — too long (max ${MAX_SLUG_LEN} characters)`,
+    };
+  }
+  const normalized = normalizeGenreSlug(input);
+  if (!normalized || !SAFE_GENRE_SLUG_RE.test(normalized)) {
+    return {
+      ok: false,
+      status: 422,
+      error: `Invalid ${field} "${input}" — must contain lowercase letters or digits separated by single hyphens`,
+    };
+  }
+  if (normalized !== input) {
+    return {
+      ok: false,
+      status: 422,
+      error: `Invalid ${field} "${input}" — slugs must use only lowercase letters, digits, and single hyphens with no leading/trailing hyphens or surrounding whitespace. Did you mean "${normalized}"?`,
+    };
+  }
+  return { ok: true, slug: normalized };
 }
 
 function getAdminUsername(req: Request): string | null {
@@ -321,7 +364,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           if (merged.has(slug)) continue;
           if (aliases.has(slug)) continue;
           if (isReservedGenreSlug(slug)) continue;
-          if (!SLUG_REGEX.test(slug)) continue;
+          if (!SAFE_GENRE_SLUG_RE.test(slug)) continue;
           suggestions.push({ slug, stationCount: g.stationCount ?? 0 });
           if (suggestions.length >= limit) break;
         }
@@ -363,12 +406,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const slug = normalizeSlug((req.body ?? {}).slug);
-        if (!slug) {
-          return res
-            .status(400)
-            .json({ error: 'Invalid slug — must be lowercase letters/digits with single hyphens' });
+        const slugResult = parseAdminSlug((req.body ?? {}).slug);
+        if (!slugResult.ok) {
+          return res.status(slugResult.status).json({ error: slugResult.error });
         }
+        const slug = slugResult.slug;
         // Task #148: reject reserved/system slugs (e.g. `stations`,
         // `about`) — those would never produce a useful /genres/:slug page
         // and could conflict with existing top-level routes.
@@ -435,10 +477,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const slug = normalizeSlug(req.params.slug);
-        if (!slug) {
-          return res.status(400).json({ error: 'Invalid slug' });
+        const slugResult = parseAdminSlug(req.params.slug);
+        if (!slugResult.ok) {
+          return res.status(slugResult.status).json({ error: slugResult.error });
         }
+        const slug = slugResult.slug;
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
           return res.status(401).json({ error: 'Admin identity unavailable' });
@@ -490,10 +533,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const slug = normalizeSlug(req.params.slug);
-        if (!slug) {
-          return res.status(400).json({ error: 'Invalid slug' });
+        const slugResult = parseAdminSlug(req.params.slug);
+        if (!slugResult.ok) {
+          return res.status(slugResult.status).json({ error: slugResult.error });
         }
+        const slug = slugResult.slug;
         // Refresh the in-memory snapshot before checking whitelist
         // membership so we don't reject a slug another replica just added.
         await refreshGenreWhitelistFromDb();
@@ -551,13 +595,16 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const source = normalizeSlug((req.body ?? {}).source);
-        const canonical = normalizeSlug((req.body ?? {}).canonical);
-        if (!source || !canonical) {
-          return res.status(400).json({
-            error: 'Both source and canonical must be valid slugs',
-          });
+        const sourceResult = parseAdminSlug((req.body ?? {}).source, 'source');
+        if (!sourceResult.ok) {
+          return res.status(sourceResult.status).json({ error: sourceResult.error });
         }
+        const canonicalResult = parseAdminSlug((req.body ?? {}).canonical, 'canonical');
+        if (!canonicalResult.ok) {
+          return res.status(canonicalResult.status).json({ error: canonicalResult.error });
+        }
+        const source = sourceResult.slug;
+        const canonical = canonicalResult.slug;
         if (source === canonical) {
           return res.status(400).json({ error: 'Source cannot equal canonical' });
         }
@@ -630,10 +677,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const source = normalizeSlug(req.params.source);
-        if (!source) {
-          return res.status(400).json({ error: 'Invalid source slug' });
+        const sourceResult = parseAdminSlug(req.params.source, 'source');
+        if (!sourceResult.ok) {
+          return res.status(sourceResult.status).json({ error: sourceResult.error });
         }
+        const source = sourceResult.slug;
         const createdBy = getAdminUsername(req);
         if (!createdBy) {
           return res.status(401).json({ error: 'Admin identity unavailable' });
