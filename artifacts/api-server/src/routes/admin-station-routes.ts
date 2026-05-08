@@ -1810,13 +1810,31 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
         // Optional countryCode filter — when the per-country trend page asks
         // for a single market we don't need to ship every other country's
-        // snapshots over the wire.
+        // snapshots over the wire. The compare view passes a comma-separated
+        // list (e.g. `TR,DE,US`) to overlay several markets on one chart, so
+        // accept either a single ISO-2 code or a CSV of them. Anything that
+        // isn't a valid ISO-2 code is silently dropped, and an empty result
+        // means "no filter" (return everything).
         const rawCountry =
           typeof req.query.countryCode === 'string'
             ? req.query.countryCode.trim().toUpperCase()
             : '';
+        const countryList = rawCountry
+          ? Array.from(
+              new Set(
+                rawCountry
+                  .split(',')
+                  .map((c) => c.trim())
+                  .filter((c) => /^[A-Z]{2}$/.test(c)),
+              ),
+            )
+          : [];
         const countryFilter =
-          rawCountry && /^[A-Z]{2}$/.test(rawCountry) ? rawCountry : null;
+          countryList.length === 1
+            ? countryList[0]
+            : countryList.length > 1
+              ? { $in: countryList }
+              : null;
 
         type SnapshotRow = {
           countryCode: string;
@@ -1834,7 +1852,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         const rows = await CoverageSnapshot.find(
           {
             snapshotDate: { $gte: since },
-            ...(countryFilter ? { countryCode: countryFilter } : {}),
+            ...(countryFilter !== null ? { countryCode: countryFilter } : {}),
           },
           {
             countryCode: 1,

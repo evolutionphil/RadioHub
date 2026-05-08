@@ -33,3 +33,4 @@ export const AdminIapEvents = lazy(() => import("@/pages/admin/iap-events"));
 export const AdminSeoMaintenance = lazy(() => import("@/pages/admin/seo-maintenance"));
 export const AdminCoverage = lazy(() => import("@/pages/admin/coverage"));
 export const AdminCoverageCountry = lazy(() => import("@/pages/admin/coverage-country"));
+export const AdminCoverageCompare = lazy(() => import("@/pages/admin/coverage-compare"));

@@ -486,6 +486,16 @@ export default function AdminCoverage() {
             and re-enqueue the same backfill the CLI scripts run.
           </p>
         </div>
+        <div className="flex items-center gap-2">
+        <Link href="/admin/coverage/compare">
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="link-compare-countries"
+          >
+            Compare countries
+          </Button>
+        </Link>
         <Button
           variant="outline"
           size="sm"
@@ -500,6 +510,7 @@ export default function AdminCoverage() {
           )}
           Refresh
         </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
