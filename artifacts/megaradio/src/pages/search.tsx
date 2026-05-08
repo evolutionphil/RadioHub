@@ -473,7 +473,7 @@ export default function SearchPage() {
 
         {enabled && totalHits > 0 && (
           <div
-            className="text-xs text-gray-500 mb-6 -mt-4 flex flex-wrap items-center gap-x-1.5 gap-y-1"
+            className="text-xs text-gray-500 mb-6 -mt-4 hidden sm:flex flex-wrap items-center gap-x-1.5 gap-y-1"
             data-testid="search-paging-hint"
           >
             <span>
@@ -490,6 +490,24 @@ export default function SearchPage() {
               {t(
                 "search_paging_hint_suffix",
                 "to jump a page through the results."
+              )}
+            </span>
+          </div>
+        )}
+
+        {enabled && totalHits > 0 && activeIndex >= 0 && query === "" && (
+          <div
+            className="text-xs text-gray-500 mb-6 -mt-4 hidden sm:flex flex-wrap items-center gap-x-1.5 gap-y-1"
+            data-testid="search-esc-clear-hint"
+          >
+            <span>{t("search_esc_clear_hint_prefix", "Press")}</span>
+            <kbd className="px-1.5 py-0.5 rounded border border-white/10 bg-white/5 text-gray-300 font-mono text-[11px]">
+              {t("search_key_esc", "Esc")}
+            </kbd>
+            <span>
+              {t(
+                "search_esc_clear_hint_suffix",
+                "to clear the highlighted result before closing search."
               )}
             </span>
           </div>
