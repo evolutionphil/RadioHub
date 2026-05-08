@@ -94,6 +94,13 @@ export default function AdminDashboard() {
       color: "bg-amber-500"
     },
     {
+      title: "Coverage by Country",
+      description: "Spot markets with missing logos or tags",
+      icon: Globe,
+      href: "/admin/coverage",
+      color: "bg-teal-500"
+    },
+    {
       title: "Translation Management",
       description: "Manage translation keys and strings",
       icon: Languages,

@@ -1523,4 +1523,214 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       return res.json({ success: true, job });
     },
   );
+
+  // COVERAGE BY COUNTRY — admin diagnostic that surfaces which markets are
+  // dragging down indexing quality. Returns one row per countryCode with
+  // total stations + how many have a completed `logoAssets` record + how
+  // many have a non-empty `tags` field. Designed to replace the ad-hoc
+  // Mongo aggregations admins were running by hand to find regressions.
+  app.get(
+    '/api/admin/coverage/by-country',
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        const rows = await Station.aggregate([
+          {
+            $match: {
+              countryCode: { $exists: true, $nin: [null, '', 'null'] },
+            },
+          },
+          {
+            $group: {
+              _id: { $toUpper: '$countryCode' },
+              total: { $sum: 1 },
+              withLogo: {
+                $sum: {
+                  $cond: [
+                    { $eq: ['$logoAssets.status', 'completed'] },
+                    1,
+                    0,
+                  ],
+                },
+              },
+              withTags: {
+                $sum: {
+                  $cond: [
+                    {
+                      $and: [
+                        { $ne: ['$tags', null] },
+                        { $ne: [{ $ifNull: ['$tags', ''] }, ''] },
+                        {
+                          $not: [
+                            {
+                              $regexMatch: {
+                                input: { $ifNull: ['$tags', ''] },
+                                regex: /^\s*$/,
+                              },
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    1,
+                    0,
+                  ],
+                },
+              },
+            },
+          },
+        ]);
+
+        const decorated = rows
+          .map((row) => {
+            const code = String(row._id || '').toUpperCase();
+            const total = Number(row.total) || 0;
+            const withLogo = Number(row.withLogo) || 0;
+            const withTags = Number(row.withTags) || 0;
+            const dbName = resolveToDbName(code) || code;
+            return {
+              countryCode: code,
+              countryName: dbName,
+              total,
+              withLogo,
+              withTags,
+              missingLogo: Math.max(total - withLogo, 0),
+              missingTags: Math.max(total - withTags, 0),
+              logoCoveragePct:
+                total > 0 ? Math.round((withLogo / total) * 1000) / 10 : 0,
+              tagCoveragePct:
+                total > 0 ? Math.round((withTags / total) * 1000) / 10 : 0,
+            };
+          })
+          .sort((a, b) => b.total - a.total);
+
+        return res.json({ countries: decorated });
+      } catch (error: any) {
+        logger.error('coverage by-country failed', error);
+        return res.status(500).json({
+          error: error?.message || 'Failed to compute country coverage',
+        });
+      }
+    },
+  );
+
+  // Re-enqueue the same logo / tag backfill that
+  // `scripts/backfill-tr-logos.ts` and `scripts/backfill-tr-tags.ts` run from
+  // the CLI, but for any country and from the admin UI. `scope` selects which
+  // pipeline(s) to kick off; defaults to running both.
+  app.post(
+    '/api/admin/coverage/enqueue/:countryCode',
+    express.json(),
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const rawCode = String(req.params.countryCode || '').trim().toUpperCase();
+        if (!rawCode) {
+          return res
+            .status(400)
+            .json({ success: false, error: 'countryCode is required' });
+        }
+
+        const scopeInput =
+          typeof req.body?.scope === 'string' ? req.body.scope : 'both';
+        const wantLogos = scopeInput === 'logos' || scopeInput === 'both';
+        const wantTags = scopeInput === 'tags' || scopeInput === 'both';
+        if (!wantLogos && !wantTags) {
+          return res.status(400).json({
+            success: false,
+            error: "scope must be one of 'logos', 'tags', 'both'",
+          });
+        }
+
+        // Logo enqueue — mirror `backfill-tr-logos.ts` exactly (same filter,
+        // same `$unset` so the next scheduled-logo-processor sweep picks the
+        // station up). Idempotent: completed assets are excluded.
+        let logoMatched = 0;
+        let logoEnqueued = 0;
+        if (wantLogos) {
+          const STALE_PROCESSING_MS = 60 * 60 * 1000;
+          const stalePivot = new Date(Date.now() - STALE_PROCESSING_MS);
+          const logoFilter: Record<string, unknown> = {
+            countryCode: rawCode,
+            favicon: { $exists: true, $nin: ['', null, 'null'] },
+            slug: { $exists: true, $ne: null },
+            $or: [
+              { logoAssets: { $exists: false } },
+              { 'logoAssets.status': { $exists: false } },
+              { 'logoAssets.status': 'pending' },
+              {
+                'logoAssets.status': 'failed',
+                'logoAssets.failureType': {
+                  $nin: ['http_error', 'invalid_format'],
+                },
+              },
+              {
+                'logoAssets.status': 'failed',
+                'logoAssets.failureType': { $exists: false },
+              },
+              {
+                'logoAssets.status': 'processing',
+                $or: [
+                  { 'logoAssets.lastAttempt': { $lt: stalePivot } },
+                  {
+                    'logoAssets.lastAttempt': { $exists: false },
+                    'logoAssets.processedAt': { $lt: stalePivot },
+                  },
+                  {
+                    'logoAssets.lastAttempt': { $exists: false },
+                    'logoAssets.processedAt': { $exists: false },
+                  },
+                ],
+              },
+            ],
+          };
+          logoMatched = await Station.countDocuments(logoFilter);
+          if (logoMatched > 0) {
+            const result = await Station.updateMany(logoFilter, {
+              $unset: { logoAssets: '' },
+            });
+            logoEnqueued = result.modifiedCount ?? 0;
+          }
+        }
+
+        // Tags enqueue — fire-and-forget call into the same hydration helper
+        // used by `backfill-tr-tags.ts`. The job runs in the background; we
+        // return immediately so the admin UI stays responsive.
+        let tagsStarted = false;
+        if (wantTags) {
+          tagsStarted = true;
+          void syncService
+            .hydrateMissingTagsInBackground({
+              countryCode: rawCode,
+              // Mirror the default in scripts/backfill-tr-tags.ts so an
+              // admin-triggered run produces the same Radio-Browser load
+              // shape as the CLI backfill.
+              limit: 2000,
+            })
+            .catch((err) => {
+              logger.error(
+                `coverage tags enqueue (${rawCode}) failed`,
+                err,
+              );
+            });
+        }
+
+        return res.json({
+          success: true,
+          countryCode: rawCode,
+          scope: scopeInput,
+          logos: wantLogos
+            ? { matched: logoMatched, enqueued: logoEnqueued }
+            : null,
+          tags: wantTags ? { started: tagsStarted } : null,
+        });
+      } catch (error: any) {
+        logger.error('coverage enqueue failed', error);
+        return res.status(500).json({
+          success: false,
+          error: error?.message || 'Failed to enqueue country backfill',
+        });
+      }
+    },
+  );
 }
