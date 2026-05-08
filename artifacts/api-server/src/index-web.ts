@@ -732,7 +732,8 @@ app.use('/api/stream', streamServiceProxy);
           seoTags: seoTags,
           stationData: seoData.pageData?.station,
           additionalData: seoData.pageData?.additionalData || {},
-          urlTranslations: seoData.urlTranslations
+          urlTranslations: seoData.urlTranslations,
+          cleanPath: seoData.cleanPath
         })}
       </div>
     </div>

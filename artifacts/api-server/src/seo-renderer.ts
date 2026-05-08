@@ -1137,6 +1137,70 @@ export class SeoRenderer {
     return null;
   }
 
+  /**
+   * Build the breadcrumb trail used by BOTH the BreadcrumbList JSON-LD
+   * (in `generateHtmlHead`) and the visible `<nav class="breadcrumb">`
+   * (in `generateHtmlBody`). Sourcing them from one place is what
+   * Task #280 asks for: Google flags a BreadcrumbList whose items don't
+   * appear as visible links in the body as deceptive markup, the same
+   * class of bug Tasks #129/#164/#208 fixed for FAQPage.
+   *
+   * Returns an empty array for the homepage (no crumbs).
+   */
+  private computeBreadcrumbItems(
+    language: string,
+    cleanPath: string,
+    urlTranslations: Map<string, string> | undefined,
+    stationData: any,
+    getLocalizedText: (key: string, fallback: string) => string,
+  ): Array<{ name: string; path: string }> {
+    if (!cleanPath || cleanPath === '/' || cleanPath === '') return [];
+
+    const items: Array<{ name: string; path: string }> = [
+      { name: getLocalizedText('nav_home', 'Home'), path: `/${language}` },
+    ];
+
+    const pathSegments = cleanPath.split('/').filter(Boolean);
+    const translateSeg = (seg: string): string => {
+      if (!language || language === 'en') return seg;
+      if (!urlTranslations || urlTranslations.size === 0) return seg;
+      return urlTranslations.get(`${language}:${seg}`) || seg;
+    };
+    let currentPath = '';
+
+    for (let i = 0; i < pathSegments.length; i++) {
+      const segment = pathSegments[i];
+      const isLastSegment = i === pathSegments.length - 1;
+      const isStationDetailSlug = isLastSegment && (cleanPath.includes('/station/') || cleanPath.includes('/stations/'));
+      const segForUrl = isStationDetailSlug ? segment : translateSeg(segment);
+      currentPath += '/' + segForUrl;
+
+      if (isStationDetailSlug) {
+        const name = stationData?.name || segment.replace(/-/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+        items.push({ name, path: `/${language}${currentPath}` });
+      } else if (segment !== 'stations' && segment !== 'station') {
+        const translationKey = `nav_${segment}`;
+        const displayName = getLocalizedText(translationKey, segment.replace(/-/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
+        items.push({ name: displayName, path: `/${language}${currentPath}` });
+      }
+    }
+
+    if (cleanPath.includes('/stations') || cleanPath.includes('/station/')) {
+      const idx = items.findIndex(b => !b.path.includes('/station'));
+      const stationsName = getLocalizedText('nav_stations', 'Stations');
+      if (idx >= 0 && !items.find(b => b.name.toLowerCase() === stationsName.toLowerCase())) {
+        let stationSegment = 'stations';
+        if (language !== 'en' && urlTranslations && urlTranslations.size > 0) {
+          const translated = urlTranslations.get(`${language}:station`) || urlTranslations.get(`${language}:stations`);
+          if (translated) stationSegment = translated;
+        }
+        items.splice(idx + 1, 0, { name: stationsName, path: `/${language}/${stationSegment}` });
+      }
+    }
+
+    return items;
+  }
+
   private getH1Text(pageType: string, language: string, translations: Record<string, string>, seoTags?: any, stationData?: any, additionalData?: any): string {
     // Helper function to get localized text from DATABASE ONLY (no hardcoded translations)
     const FALLBACK_TEXTS: Record<string, string> = {
@@ -1214,9 +1278,35 @@ export class SeoRenderer {
     }
   }
 
-  generateHtmlBody(pageData: { pageType: string; language: string; translations: Record<string, string>; seoTags?: any; stationData?: any; additionalData?: any; urlTranslations?: Map<string, string> }): string {
-    const { pageType, language, translations, seoTags, stationData, additionalData, urlTranslations } = pageData;
+  generateHtmlBody(pageData: { pageType: string; language: string; translations: Record<string, string>; seoTags?: any; stationData?: any; additionalData?: any; urlTranslations?: Map<string, string>; cleanPath?: string }): string {
+    const { pageType, language, translations, seoTags, stationData, additionalData, urlTranslations, cleanPath } = pageData;
     const h1Text = this.getH1Text(pageType, language, translations, seoTags, stationData, additionalData);
+
+    // Visible breadcrumb trail — Task #280. Rendered above <main> on every
+    // non-home page so the BreadcrumbList JSON-LD emitted in
+    // `generateHtmlHead` has matching visible <a> links in the body.
+    // Without this, Google flags the schema as deceptive markup (same
+    // class of bug Tasks #129/#164/#208 fixed for FAQPage).
+    let breadcrumbHtml = '';
+    if (pageType !== 'home' && cleanPath) {
+      const getLocalizedText = (key: string, fallback: string): string =>
+        translations[key] || fallback;
+      const breadcrumbItems = this.computeBreadcrumbItems(
+        language,
+        cleanPath,
+        urlTranslations,
+        stationData,
+        getLocalizedText,
+      );
+      if (breadcrumbItems.length > 0) {
+        breadcrumbHtml = `<nav aria-label="breadcrumb" class="breadcrumb"><ol>${breadcrumbItems
+          .map(
+            (it) =>
+              `<li><a href="${this.escapeHtml(it.path)}">${this.escapeHtml(it.name)}</a></li>`,
+          )
+          .join('')}</ol></nav>`;
+      }
+    }
     
     // Generate a minimal but semantic HTML body for SEO
     const getLocalizedText = (key: string, fallback: string): string => {
@@ -1648,7 +1738,7 @@ export class SeoRenderer {
         break;
     }
 
-    return content;
+    return breadcrumbHtml + content;
   }
 
   generateHtmlHead(seoTags: any, language: string = 'en', translations: Record<string, string> = {}, cleanPath: string = '', stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any): string {
@@ -1724,97 +1814,32 @@ export class SeoRenderer {
       }
     };
 
-    // LOCALIZED: BreadcrumbList with proper translated paths
-    // Show breadcrumbs on all pages except homepage (including country homepages)
+    // LOCALIZED: BreadcrumbList with proper translated paths.
+    // Items come from the shared `computeBreadcrumbItems` helper so the
+    // JSON-LD here and the visible `<nav class="breadcrumb">` rendered in
+    // `generateHtmlBody` always reference the same names + paths
+    // (Task #280 — visible-content guard for BreadcrumbList).
     let breadcrumbSchema: any = null;
     if (additionalData?.pageType !== 'home') {
-      const breadcrumbItems: any[] = [
-        {
-          "@type": "ListItem",
-          "position": 1,
-          "name": getLocalizedText('nav_home', 'Home'),
-          "item": baseDomain + `/${language}`
-        }
-      ];
-
-      // Extract breadcrumb path segments.
-      // CRITICAL: build currentPath from LOCALIZED segments so JSON-LD `item`
-      // URLs match the canonical (e.g. `/tr/istasyon/<slug>`, NOT `/tr/station/<slug>`).
-      // English route segments leaking into deep crumbs cause Google to crawl
-      // them, hit the 301 redirect to the localized canonical, and report
-      // "Page with redirect" in Search Console Coverage. (Webmaster #2 P1 fix.)
-      const pathSegments = cleanPath.split('/').filter(Boolean);
-      const translateSeg = (seg: string): string => {
-        if (!language || language === 'en') return seg;
-        if (!urlTranslations || urlTranslations.size === 0) return seg;
-        // Try direct map (e.g. "tr:station" → "istasyon", "tr:genres" → "turler")
-        return urlTranslations.get(`${language}:${seg}`) || seg;
-      };
-      let currentPath = '';
-
-      for (let i = 0; i < pathSegments.length; i++) {
-        const segment = pathSegments[i];
-        const isLastSegment = i === pathSegments.length - 1;
-        // Station slug (e.g. "mangoradio") must NEVER be translated; only route
-        // segments like "station"/"stations"/"genres"/"regions"/"countries" do.
-        const isStationDetailSlug = isLastSegment && (cleanPath.includes('/station/') || cleanPath.includes('/stations/'));
-        const segForUrl = isStationDetailSlug ? segment : translateSeg(segment);
-        currentPath += '/' + segForUrl;
-
-        if (isStationDetailSlug) {
-          // Use station name if available, otherwise use segment
-          const name = stationData?.name || segment.replace(/-/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-          breadcrumbItems.push({
+      const breadcrumbItems = this.computeBreadcrumbItems(
+        language,
+        cleanPath,
+        urlTranslations,
+        stationData,
+        getLocalizedText,
+      );
+      if (breadcrumbItems.length > 0) {
+        breadcrumbSchema = {
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": breadcrumbItems.map((it, idx) => ({
             "@type": "ListItem",
-            "position": breadcrumbItems.length + 1,
-            "name": name,
-            "item": baseDomain + `/${language}` + currentPath
-          });
-        } else if (segment !== 'stations' && segment !== 'station') {
-          // Use translated names for main navigation
-          const translationKey = `nav_${segment}`;
-          const displayName = getLocalizedText(translationKey, segment.replace(/-/g, ' ').split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '));
-          breadcrumbItems.push({
-            "@type": "ListItem",
-            "position": breadcrumbItems.length + 1,
-            "name": displayName,
-            "item": baseDomain + `/${language}` + currentPath
-          });
-        }
+            "position": idx + 1,
+            "name": it.name,
+            "item": baseDomain + it.path,
+          })),
+        };
       }
-
-      // Special handling for stations path - use translated segment
-      if (cleanPath.includes('/stations') || cleanPath.includes('/station/')) {
-        const idx = breadcrumbItems.findIndex(b => !b.item.includes('/station'));
-        if (idx >= 0 && !breadcrumbItems.find(b => b.name.toLowerCase() === getLocalizedText('nav_stations', 'Stations').toLowerCase())) {
-          // Determine the correct translated segment for "station"
-          let stationSegment = 'stations'; // default English
-          if (language !== 'en' && urlTranslations && urlTranslations.size > 0) {
-            // Look for translated "station" or "stations" in the map
-            const stationKey = `${language}:station`;
-            const stationsKey = `${language}:stations`;
-            const translated = urlTranslations.get(stationKey) || urlTranslations.get(stationsKey);
-            if (translated) {
-              stationSegment = translated;
-            }
-          }
-          
-          breadcrumbItems.splice(idx + 1, 0, {
-            "@type": "ListItem",
-            "position": idx + 2,
-            "name": getLocalizedText('nav_stations', 'Stations'),
-            "item": baseDomain + `/${language}/${stationSegment}`
-          });
-        }
-      }
-
-      breadcrumbItems.forEach((item, idx) => { item.position = idx + 1; });
-
-      breadcrumbSchema = {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "itemListElement": breadcrumbItems
-      };
     }
 
     // FAQPage Schema — only on the dedicated /faq page.
