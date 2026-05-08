@@ -674,6 +674,17 @@ export interface IBackfillRun extends Document {
   logos: IBackfillRunCountryLogos[];
   tags: IBackfillRunCountryTags[];
   errorMessage?: string;
+  // Failed retry attempts before the final outcome. Empty when the run
+  // succeeded on the first try. Populated by the bounded auto-retry in
+  // `services/scheduled-backfill.ts` so admins can see whether a run
+  // recovered after a transient blip vs. failed cleanly first time.
+  attempts?: IBackfillRunAttempt[];
+}
+
+export interface IBackfillRunAttempt {
+  attempt: number; // 1-indexed
+  error: string;
+  failedAt: Date;
 }
 
 // Daily per-country coverage snapshot — populated by
@@ -1067,6 +1078,15 @@ const BackfillRunSchema = new Schema<IBackfillRun>({
     failed: { type: Number, default: 0 },
   }],
   errorMessage: String,
+  attempts: {
+    type: [{
+      _id: false,
+      attempt: { type: Number, required: true },
+      error: { type: String, default: '' },
+      failedAt: { type: Date, required: true },
+    }],
+    default: [],
+  },
 });
 BackfillRunSchema.index({ startedAt: -1 });
 

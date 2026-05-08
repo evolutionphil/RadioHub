@@ -26,6 +26,21 @@ import { notifyBackfillResult } from './backfill-notifier';
 export const STALE_PROCESSING_MS = 60 * 60 * 1000; // 1h: matches cron
 export const TAGS_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000; // 30d: matches sync
 
+// Bounded auto-retry for transient failures (Mongo hiccup, upstream
+// radio-browser timeout, etc). Most weekly failures clear on a second
+// attempt a few minutes later, so we retry before paging the team.
+// Overridable via env so ops can tune without a redeploy and tests can
+// drop the backoff to ~zero.
+export const BACKFILL_MAX_ATTEMPTS: number = Math.max(
+  1,
+  Number.parseInt(process.env.BACKFILL_MAX_ATTEMPTS ?? '', 10) || 3,
+);
+export const BACKFILL_RETRY_BASE_MS: number = Math.max(
+  0,
+  Number.parseInt(process.env.BACKFILL_RETRY_BASE_MS ?? '', 10) || 60_000,
+);
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 export function buildLogoBackfillFilter(
   countryCode?: string,
 ): Record<string, unknown> {
@@ -281,91 +296,140 @@ class ScheduledBackfillService {
     overrideCountry?: string,
   ): Promise<void> {
     try {
-      // When admins target a specific country we skip the top-N
-      // aggregation entirely and just run logos + tags for that one
-      // market. Otherwise pick the worst offenders as usual.
-      const [topLogos, topTags] = overrideCountry
-        ? [
-            [{ countryCode: overrideCountry, count: 0 }],
-            [{ countryCode: overrideCountry, count: 0 }],
-          ]
-        : await Promise.all([
-            topCountriesByFilter(buildLogoBackfillFilter(), this.TOP_N),
-            topCountriesByFilter(buildTagsBackfillFilter(), this.TOP_N),
-          ]);
-
-      logger.log(
-        `🗓️  Top logo offenders: ${topLogos.map((c) => `${c.countryCode}(${c.count})`).join(', ') || 'none'}`,
-      );
-      logger.log(
-        `🗓️  Top tag offenders:  ${topTags.map((c) => `${c.countryCode}(${c.count})`).join(', ') || 'none'}`,
-      );
-
-      const sync = new SyncService();
-
-      for (const c of topLogos) {
+      let lastError: unknown;
+      for (let attempt = 1; attempt <= BACKFILL_MAX_ATTEMPTS; attempt++) {
+        // Reset per-attempt accumulators so a partial run from the
+        // previous attempt doesn't leak into the next try's totals.
+        run.logos.splice(0, run.logos.length);
+        run.tags.splice(0, run.tags.length);
         try {
-          const r = await enqueueLogosForCountry(c.countryCode);
-          run.logos.push({ countryCode: c.countryCode, candidates: r.candidates, enqueued: r.enqueued });
-          logger.log(`📥 ${c.countryCode}: enqueued ${r.enqueued}/${r.candidates} logos`);
+          await this.performSweep(run, overrideCountry);
+          lastError = undefined;
+          break;
         } catch (err) {
-          logger.error(`❌ Logo enqueue failed for ${c.countryCode}:`, err);
-          run.logos.push({ countryCode: c.countryCode, candidates: c.count, enqueued: 0 });
-        }
-      }
-
-      for (const c of topTags) {
-        try {
-          const r = await sync.hydrateMissingTagsInBackground({
-            countryCode: c.countryCode,
-            limit: this.TAGS_LIMIT_PER_COUNTRY,
-          });
-          run.tags.push({
-            countryCode: c.countryCode,
-            processed: r.processed,
-            hydrated: r.hydrated,
-            emptyUpstream: r.emptyUpstream,
-            failed: r.failed,
-          });
-          logger.log(
-            `🏷️  ${c.countryCode}: tags processed=${r.processed} hydrated=${r.hydrated} empty=${r.emptyUpstream} failed=${r.failed}`,
-          );
-        } catch (err) {
-          logger.error(`❌ Tag hydration failed for ${c.countryCode}:`, err);
-          run.tags.push({
-            countryCode: c.countryCode,
-            processed: 0,
-            hydrated: 0,
-            emptyUpstream: 0,
-            failed: 0,
-          });
+          lastError = err;
+          const message = err instanceof Error ? err.message : String(err);
+          run.attempts = run.attempts ?? [];
+          run.attempts.push({ attempt, error: message, failedAt: new Date() });
+          if (attempt < BACKFILL_MAX_ATTEMPTS) {
+            const backoff = BACKFILL_RETRY_BASE_MS * attempt;
+            logger.warn(
+              `⏳ Scheduled backfill attempt ${attempt}/${BACKFILL_MAX_ATTEMPTS} failed (${message}); retrying in ${Math.round(backoff / 1000)}s`,
+            );
+            // Persist the in-progress attempts so dashboards can show
+            // "retrying…" while we sleep through backoff.
+            try { await run.save(); } catch { /* best-effort */ }
+            await sleep(backoff);
+          } else {
+            logger.error(
+              `❌ Scheduled backfill exhausted ${BACKFILL_MAX_ATTEMPTS} attempts (last error: ${message})`,
+            );
+          }
         }
       }
 
       const finishedAt = new Date();
-      run.status = 'completed';
-      run.finishedAt = finishedAt;
-      run.durationMs = finishedAt.getTime() - startedAt.getTime();
-      await run.save();
-      this.lastRunAt = finishedAt;
-      logger.log(
-        `🗓️  Scheduled backfill DONE in ${Math.round(run.durationMs / 1000)}s — ${run.logos.length} logo countries, ${run.tags.length} tag countries`,
-      );
-    } catch (err: unknown) {
-      const finishedAt = new Date();
-      run.status = 'failed';
-      run.finishedAt = finishedAt;
-      run.durationMs = finishedAt.getTime() - startedAt.getTime();
-      run.errorMessage = err instanceof Error ? err.message : String(err);
-      await run.save();
-      this.lastRunAt = finishedAt;
-      logger.error('❌ Scheduled backfill failed:', err);
-      // Notifier swallows its own errors (and bounds webhook latency
-      // internally) so a flaky alert channel can never poison the
-      // background worker.
-      await notifyBackfillResult(run);
+      if (lastError === undefined) {
+        run.status = 'completed';
+        run.finishedAt = finishedAt;
+        run.durationMs = finishedAt.getTime() - startedAt.getTime();
+        await run.save();
+        this.lastRunAt = finishedAt;
+        const retryNote = (run.attempts && run.attempts.length > 0)
+          ? ` (recovered after ${run.attempts.length} failed attempt${run.attempts.length === 1 ? '' : 's'})`
+          : '';
+        logger.log(
+          `🗓️  Scheduled backfill DONE in ${Math.round(run.durationMs / 1000)}s — ${run.logos.length} logo countries, ${run.tags.length} tag countries${retryNote}`,
+        );
+      } else {
+        run.status = 'failed';
+        run.finishedAt = finishedAt;
+        run.durationMs = finishedAt.getTime() - startedAt.getTime();
+        run.errorMessage = lastError instanceof Error ? lastError.message : String(lastError);
+        await run.save();
+        this.lastRunAt = finishedAt;
+        logger.error('❌ Scheduled backfill failed:', lastError);
+        // Notifier swallows its own errors (and bounds webhook latency
+        // internally) so a flaky alert channel can never poison the
+        // background worker. Only fires after all retries are exhausted.
+        await notifyBackfillResult(run);
+      }
     } finally {
       this.isRunning = false;
+    }
+  }
+
+  /**
+   * Single attempt at the cross-country sweep. Throws on infrastructure
+   * failure (Mongo aggregate / save) so the caller can decide whether to
+   * retry. Per-country errors are still swallowed inside the loops — a
+   * single bad country shouldn't fail the whole sweep — only the
+   * top-offender aggregations and overall control flow surface as
+   * retry-worthy errors here.
+   */
+  private async performSweep(
+    run: IBackfillRun,
+    overrideCountry?: string,
+  ): Promise<void> {
+    // When admins target a specific country we skip the top-N
+    // aggregation entirely and just run logos + tags for that one
+    // market. Otherwise pick the worst offenders as usual.
+    const [topLogos, topTags] = overrideCountry
+      ? [
+          [{ countryCode: overrideCountry, count: 0 }],
+          [{ countryCode: overrideCountry, count: 0 }],
+        ]
+      : await Promise.all([
+          topCountriesByFilter(buildLogoBackfillFilter(), this.TOP_N),
+          topCountriesByFilter(buildTagsBackfillFilter(), this.TOP_N),
+        ]);
+
+    logger.log(
+      `🗓️  Top logo offenders: ${topLogos.map((c) => `${c.countryCode}(${c.count})`).join(', ') || 'none'}`,
+    );
+    logger.log(
+      `🗓️  Top tag offenders:  ${topTags.map((c) => `${c.countryCode}(${c.count})`).join(', ') || 'none'}`,
+    );
+
+    const sync = new SyncService();
+
+    for (const c of topLogos) {
+      try {
+        const r = await enqueueLogosForCountry(c.countryCode);
+        run.logos.push({ countryCode: c.countryCode, candidates: r.candidates, enqueued: r.enqueued });
+        logger.log(`📥 ${c.countryCode}: enqueued ${r.enqueued}/${r.candidates} logos`);
+      } catch (err) {
+        logger.error(`❌ Logo enqueue failed for ${c.countryCode}:`, err);
+        run.logos.push({ countryCode: c.countryCode, candidates: c.count, enqueued: 0 });
+      }
+    }
+
+    for (const c of topTags) {
+      try {
+        const r = await sync.hydrateMissingTagsInBackground({
+          countryCode: c.countryCode,
+          limit: this.TAGS_LIMIT_PER_COUNTRY,
+        });
+        run.tags.push({
+          countryCode: c.countryCode,
+          processed: r.processed,
+          hydrated: r.hydrated,
+          emptyUpstream: r.emptyUpstream,
+          failed: r.failed,
+        });
+        logger.log(
+          `🏷️  ${c.countryCode}: tags processed=${r.processed} hydrated=${r.hydrated} empty=${r.emptyUpstream} failed=${r.failed}`,
+        );
+      } catch (err) {
+        logger.error(`❌ Tag hydration failed for ${c.countryCode}:`, err);
+        run.tags.push({
+          countryCode: c.countryCode,
+          processed: 0,
+          hydrated: 0,
+          emptyUpstream: 0,
+          failed: 0,
+        });
+      }
     }
   }
 }
