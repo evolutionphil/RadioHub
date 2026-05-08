@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger';
-import type { IBackfillRun } from '../shared/mongo-schemas';
+import type { IBackfillRun } from '@workspace/db-shared/mongo-schemas';
 
 /**
  * Notifier for failed weekly backfill runs (Task #118).

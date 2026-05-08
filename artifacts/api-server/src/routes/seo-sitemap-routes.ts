@@ -1,6 +1,6 @@
 import type { Express, Request } from "express";
 import crypto from 'crypto';
-import { Station, Country, Genre, AuthToken, AppLog } from "../shared/mongo-schemas";
+import { Station, Country, Genre, AuthToken, AppLog } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
 import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations } from '@workspace/seo-shared/seo-config';
@@ -179,7 +179,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
       const userAgent = req.headers['user-agent'] || 'unknown';
 
-      const { StationDebugLog } = await import('../shared/mongo-schemas');
+      const { StationDebugLog } = await import('@workspace/db-shared/mongo-schemas');
 
       // Create comprehensive error log
       const errorLog = new StationDebugLog({
@@ -282,7 +282,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // GET endpoint to retrieve error logs for debugging
   app.get("/api/admin/error-logs", requireAdmin, async (req, res) => {
     try {
-      const { StationDebugLog } = await import('../shared/mongo-schemas');
+      const { StationDebugLog } = await import('@workspace/db-shared/mongo-schemas');
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
       const skip = (page - 1) * limit;
@@ -1046,7 +1046,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       const qualifiedLanguages = state.languages;
 
       // Fetch active manifests for all qualified langs, all 3 types.
-      const { SitemapManifest } = await import('../shared/mongo-schemas');
+      const { SitemapManifest } = await import('@workspace/db-shared/mongo-schemas');
       const allActiveManifests = await SitemapManifest.find({
         status: 'active',
         language: { $in: qualifiedLanguages },

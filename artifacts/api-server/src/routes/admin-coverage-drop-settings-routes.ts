@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { AdminSetting } from '../shared/mongo-schemas';
+import { AdminSetting } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import {
   COVERAGE_DROP_SETTINGS_KEY,

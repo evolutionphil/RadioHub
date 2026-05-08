@@ -1,4 +1,4 @@
-import { User } from '../shared/mongo-schemas';
+import { User } from '@workspace/db-shared/mongo-schemas';
 
 // Check if social auth is configured
 export function getSocialAuthStatus() {

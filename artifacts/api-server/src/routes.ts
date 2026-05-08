@@ -4,7 +4,7 @@ import { WebSocketServer, WebSocket } from 'ws';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
 import passport from './auth/passport-config';
-import { TranslationLanguage, Station, Genre, VisitorSession, UserListeningHistory } from './shared/mongo-schemas';
+import { TranslationLanguage, Station, Genre, VisitorSession, UserListeningHistory } from '@workspace/db-shared/mongo-schemas';
 import { registerCountryLanguageMappingRoutes } from './routes/country-language-mappings';
 import urlTranslationsRouter from './routes/url-translations';
 import performanceRouter from './routes/performance';

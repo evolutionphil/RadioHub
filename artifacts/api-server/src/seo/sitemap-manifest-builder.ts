@@ -25,7 +25,7 @@
 
 import crypto from 'crypto';
 import mongoose from 'mongoose';
-import { Station, Genre, SitemapManifest, ISitemapManifestChunk } from '../shared/mongo-schemas';
+import { Station, Genre, SitemapManifest, ISitemapManifestChunk } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from './qualified-languages';
 import { getIndexableLanguagesForStation } from './junk-station-rules';

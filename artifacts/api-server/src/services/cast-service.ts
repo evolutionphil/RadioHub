@@ -1,6 +1,6 @@
 import { WebSocket } from 'ws';
 import crypto from 'crypto';
-import { CastSession, Station, UserDevice } from '../shared/mongo-schemas';
+import { CastSession, Station, UserDevice } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 interface CastClient {

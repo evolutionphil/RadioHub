@@ -17,7 +17,7 @@
 
 import mongoose from 'mongoose';
 import { SyncService } from '../services/sync';
-import { BackfillRun } from '../shared/mongo-schemas';
+import { BackfillRun } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 const COUNTRY_CODE = (process.env.BACKFILL_COUNTRY || 'TR').toUpperCase();

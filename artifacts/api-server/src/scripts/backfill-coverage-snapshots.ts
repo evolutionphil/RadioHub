@@ -41,7 +41,7 @@
  */
 
 import mongoose from 'mongoose';
-import { Station, CoverageSnapshot } from '../shared/mongo-schemas';
+import { Station, CoverageSnapshot } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 function parseDays(raw: string | undefined): number {

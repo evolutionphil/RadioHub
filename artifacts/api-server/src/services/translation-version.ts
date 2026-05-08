@@ -1,4 +1,4 @@
-import { TranslationMetadata } from '../shared/mongo-schemas';
+import { TranslationMetadata } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 export class TranslationVersionService {

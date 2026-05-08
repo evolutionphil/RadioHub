@@ -11,15 +11,15 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { SEO_LANGUAGES } from '../src/shared/seo-config';
+import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import {
   REGION_SEO_TEMPLATES,
   type RegionSeoTemplate,
-} from '../src/shared/region-seo-templates';
+} from '@workspace/seo-shared/region-seo-templates';
 import {
   GENRE_SEO_TEMPLATES,
   type GenreSeoTemplate,
-} from '../src/shared/genre-seo-templates';
+} from '@workspace/seo-shared/genre-seo-templates';
 
 const REGION_TEMPLATE_FUNCTIONS: Array<keyof RegionSeoTemplate> = [
   'countryTitle',

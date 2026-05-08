@@ -1,4 +1,4 @@
-import { Station, UserListeningHistory, StationSimilarity, UserProfile } from '../shared/mongo-schemas';
+import { Station, UserListeningHistory, StationSimilarity, UserProfile } from '@workspace/db-shared/mongo-schemas';
 import { CacheManager, CacheKeys } from '../cache';
 import { performanceCache } from '../performance-cache';
 import { isQuotaExceeded, handleQuotaError } from '../utils/quota-guard';

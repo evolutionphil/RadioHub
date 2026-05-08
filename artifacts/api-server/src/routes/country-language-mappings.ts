@@ -1,5 +1,5 @@
 import { Express } from 'express';
-import type { CountryLanguageMappingAuditAction, ICountryLanguageMappingAuditChange, IClearedOverridesAuditLogEntry } from '../shared/mongo-schemas';
+import type { CountryLanguageMappingAuditAction, ICountryLanguageMappingAuditChange, IClearedOverridesAuditLogEntry } from '@workspace/db-shared/mongo-schemas';
 
 // Bound the audit collection's working set. The 180-day TTL on the schema
 // caps total growth, but the panel only needs a recent slice — so we both
@@ -35,7 +35,7 @@ async function writeMappingAuditEntry(opts: {
   snapshot?: IClearedOverridesAuditLogEntry[];
 }): Promise<void> {
   try {
-    const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+    const { ClearedOverridesAuditLog } = await import('@workspace/db-shared/mongo-schemas');
     await ClearedOverridesAuditLog.create({
       action: opts.action,
       actorEmail: opts.actorEmail ?? null,
@@ -78,7 +78,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Get all country-language mappings
   app.get('/api/admin/country-language-mappings', requireAdmin, async (req, res) => {
     try {
-      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { CountryLanguageMapping } = await import('@workspace/db-shared/mongo-schemas');
       const mappings = await CountryLanguageMapping.find().sort({ countryName: 1 }).lean();
       res.json(mappings);
     } catch (error) {
@@ -135,7 +135,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Create or update a country-language mapping
   app.post('/api/admin/country-language-mappings', requireAdmin, async (req, res) => {
     try {
-      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { CountryLanguageMapping } = await import('@workspace/db-shared/mongo-schemas');
       const { countryCode, countryName, languageCode, isActive, notes } = req.body;
 
       if (!countryCode || !countryName || !languageCode) {
@@ -195,7 +195,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Bulk update country-language mappings
   app.post('/api/admin/country-language-mappings/bulk', requireAdmin, async (req, res) => {
     try {
-      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { CountryLanguageMapping } = await import('@workspace/db-shared/mongo-schemas');
       const { mappings } = req.body;
 
       if (!Array.isArray(mappings)) {
@@ -278,7 +278,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // default (or whose country is missing from the default map) are left alone.
   app.delete('/api/admin/country-language-mappings/overrides', requireAdmin, async (req, res) => {
     try {
-      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { CountryLanguageMapping } = await import('@workspace/db-shared/mongo-schemas');
       const { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
 
       const allMappings = await CountryLanguageMapping
@@ -363,7 +363,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // keeps total count bounded by CLEAR_OVERRIDES_AUDIT_MAX_ENTRIES.
   app.get('/api/admin/country-language-mappings/cleared-overrides-log', requireAdmin, async (req, res) => {
     try {
-      const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+      const { ClearedOverridesAuditLog } = await import('@workspace/db-shared/mongo-schemas');
 
       const parseIntParam = (raw: unknown, fallback: number, max?: number) => {
         const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
@@ -487,7 +487,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // the literal "all/csv" path doesn't get captured as `:id = "all"`.
   app.get('/api/admin/country-language-mappings/cleared-overrides-log/all/csv', requireAdmin, async (req, res) => {
     try {
-      const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+      const { ClearedOverridesAuditLog } = await import('@workspace/db-shared/mongo-schemas');
 
       const actionParam = typeof req.query.action === 'string' ? req.query.action : undefined;
       const actorEmail =
@@ -627,7 +627,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
         return void res.status(400).json({ error: 'Invalid audit entry id' });
       }
 
-      const { ClearedOverridesAuditLog } = await import('../shared/mongo-schemas');
+      const { ClearedOverridesAuditLog } = await import('@workspace/db-shared/mongo-schemas');
       const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
       const entry = await ClearedOverridesAuditLog.findById(id).lean<{
         _id: unknown;
@@ -676,7 +676,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // (rare) someone re-added a mapping for the same country in between.
   app.post('/api/admin/country-language-mappings/restore', requireAdmin, async (req, res) => {
     try {
-      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { CountryLanguageMapping } = await import('@workspace/db-shared/mongo-schemas');
       const { mappings } = req.body as {
         mappings?: Array<{
           countryCode?: string;
@@ -733,7 +733,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Delete all country-language mappings
   app.delete('/api/admin/country-language-mappings', requireAdmin, async (req, res) => {
     try {
-      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { CountryLanguageMapping } = await import('@workspace/db-shared/mongo-schemas');
       const { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
 
       // Snapshot every mapping before deletion so the audit email captures
@@ -813,7 +813,7 @@ export function registerCountryLanguageMappingRoutes(app: Express, requireAdmin:
   // Delete a country-language mapping
   app.delete('/api/admin/country-language-mappings/:countryCode', requireAdmin, async (req, res) => {
     try {
-      const { CountryLanguageMapping } = await import('../shared/mongo-schemas');
+      const { CountryLanguageMapping } = await import('@workspace/db-shared/mongo-schemas');
       const { countryCode } = req.params;
 
       // Capture the document being deleted so the audit log records what

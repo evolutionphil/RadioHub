@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { User, Station, UserFavorite, UserFollow, StationRating } from '../shared/mongo-schemas';
+import { User, Station, UserFavorite, UserFollow, StationRating } from '@workspace/db-shared/mongo-schemas';
 
 export interface TrendingStation {
   stationId: string;

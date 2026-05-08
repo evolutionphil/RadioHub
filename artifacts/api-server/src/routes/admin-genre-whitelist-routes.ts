@@ -4,7 +4,7 @@ import {
   GenreWhitelistOverride,
   SAFE_GENRE_SLUG_RE,
   normalizeGenreSlug,
-} from '../shared/mongo-schemas';
+} from '@workspace/db-shared/mongo-schemas';
 import {
   GENRE_WHITELIST,
   GENRE_ALIASES,

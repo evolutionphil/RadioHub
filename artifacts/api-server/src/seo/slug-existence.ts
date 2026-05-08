@@ -11,7 +11,7 @@
  * will then 301 it to the canonical form).
  */
 
-import { Station, Genre } from '../shared/mongo-schemas';
+import { Station, Genre } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 let stationSlugs: Set<string> = new Set();

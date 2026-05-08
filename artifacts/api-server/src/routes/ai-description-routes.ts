@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Station, BulkDescriptionJob } from "../shared/mongo-schemas";
+import { Station, BulkDescriptionJob } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { stripPlaceholders, TV_STATION_PROJECTION } from "./shared-utils";
 import { performanceCache } from "../performance-cache";

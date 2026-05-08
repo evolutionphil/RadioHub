@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import type { StationWithCountry as Station } from '@shared/schema';
+import type { StationWithCountry as Station } from '@workspace/db-shared/schema';
 
 export function useRecentlyPlayed() {
   const { isAuthenticated } = useAuth();

@@ -1,5 +1,5 @@
 import { createContext, useContext, ReactNode } from 'react';
-import type { StationWithCountry as Station } from '@shared/schema';
+import type { StationWithCountry as Station } from '@workspace/db-shared/schema';
 
 export interface GlobalPlayerState {
   currentStation: Station | null;

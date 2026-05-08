@@ -33,7 +33,7 @@
  *     (default 30, matching the admin sparkline window).
  */
 
-import { CoverageSnapshot } from '../shared/mongo-schemas';
+import { CoverageSnapshot } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { runCoverageBackfill } from '../scripts/backfill-coverage-snapshots';
 

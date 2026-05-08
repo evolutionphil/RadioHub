@@ -3,7 +3,7 @@ import express from "express";
 import crypto from "crypto";
 import mongoose from "mongoose";
 import * as jose from "jose";
-import { User, IapEvent, AppleWebhookEvent } from "../shared/mongo-schemas";
+import { User, IapEvent, AppleWebhookEvent } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import {
   PRODUCT_TO_PLAN,

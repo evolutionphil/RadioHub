@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppLog, UserListeningHistory, AuthToken, ApiKey as ApiKeyModel } from "../shared/mongo-schemas";
+import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppLog, UserListeningHistory, AuthToken, ApiKey as ApiKeyModel } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import crypto from 'crypto';
 import { isQuotaExceeded, safeWrite, handleQuotaError, isQuotaError } from "../utils/quota-guard";
@@ -848,7 +848,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   app.get("/api/tv/bundle", async (req, res) => {
     try {
-      const { Station: StationModel, Genre: GenreModel } = await import('../shared/mongo-schemas');
+      const { Station: StationModel, Genre: GenreModel } = await import('@workspace/db-shared/mongo-schemas');
       const [popularStations, genres] = await Promise.all([
         StationModel.find().sort({ votes: -1 }).limit(20).lean(),
         GenreModel.find({ discoverable: true }).limit(20).lean()

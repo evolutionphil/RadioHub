@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Station, Genre, User, BulkDescriptionJob, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from "../shared/mongo-schemas";
+import { Station, Genre, User, BulkDescriptionJob, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { slugGenerationJobs, stripPlaceholders } from "./shared-utils";
 import { slugifyStationName, evaluateJunkStation } from "../seo/junk-station-rules";

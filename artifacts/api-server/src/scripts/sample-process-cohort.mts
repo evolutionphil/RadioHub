@@ -9,7 +9,7 @@
  *   SAMPLE=15                    (per-country cohort size, default 15)
  */
 import mongoose from 'mongoose';
-import { Station } from '../shared/mongo-schemas.js';
+import { Station } from '@workspace/db-shared/mongo-schemas';
 import { logoProcessor } from '../services/logo-processor.js';
 
 const uri =

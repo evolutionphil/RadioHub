@@ -38,7 +38,7 @@ import {
   Station,
   Genre,
   type IGscUrlInspection,
-} from '../shared/mongo-schemas';
+} from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import {
   getActiveManifest,
@@ -132,7 +132,7 @@ async function discoverSitemapUrls(): Promise<UrlSpec[]> {
   };
 
   // Pull the union of languages that have an active main manifest.
-  const SitemapManifest = (await import('../shared/mongo-schemas'))
+  const SitemapManifest = (await import('@workspace/db-shared/mongo-schemas'))
     .SitemapManifest;
   const manifests = await SitemapManifest.find(
     { type: 'main', status: 'active' },

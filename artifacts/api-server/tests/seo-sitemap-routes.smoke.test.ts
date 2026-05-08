@@ -146,7 +146,7 @@ mock.module(new URL('../src/seo/sitemap-manifest-builder.ts', import.meta.url).h
 });
 
 // SitemapManifest mongoose-model stub — used by /sitemap-index.xml via
-// `await import('../shared/mongo-schemas')`. The real handler does:
+// `await import('@workspace/db-shared/mongo-schemas')`. The real handler does:
 //   SitemapManifest.find(...).select(...).lean()
 // so the chain returns a thenable / awaitable that resolves to fake docs.
 const FAKE_INDEX_MANIFESTS: FakeManifest[] = QUALIFIED_LANGS.flatMap((lang) => [
@@ -230,7 +230,7 @@ mongoMockExports.Station = FAKE_STATION_MODEL;
 // Constants & types re-exported as runtime values must also be present.
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
 
-mock.module(new URL('../src/shared/mongo-schemas.ts', import.meta.url).href, {
+mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: mongoMockExports,
 });
 

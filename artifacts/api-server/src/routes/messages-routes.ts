@@ -5,7 +5,7 @@ import path from "path";
 import fs from "fs/promises";
 import multer from "multer";
 import { type WebSocketServer, type WebSocket } from 'ws';
-import { DirectMessage, User, UserFollow, UserNotification } from "../shared/mongo-schemas";
+import { DirectMessage, User, UserFollow, UserNotification } from '@workspace/db-shared/mongo-schemas';
 import { chatService } from "../services/chat-service";
 import { logger } from "../utils/logger";
 

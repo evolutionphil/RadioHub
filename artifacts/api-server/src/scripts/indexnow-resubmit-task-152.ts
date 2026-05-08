@@ -33,7 +33,7 @@
  */
 
 import mongoose from 'mongoose';
-import { Station } from '../shared/mongo-schemas';
+import { Station } from '@workspace/db-shared/mongo-schemas';
 import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { buildLocalizedUrl } from '../seo/url-helpers';
 import {

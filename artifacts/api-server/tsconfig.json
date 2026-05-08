@@ -15,6 +15,9 @@
     },
     {
       "path": "../../lib/seo-shared"
+    },
+    {
+      "path": "../../lib/db-shared"
     }
   ]
 }

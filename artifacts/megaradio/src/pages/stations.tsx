@@ -18,7 +18,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 // Remove PostgreSQL import - we're using MongoDB now
-// import { type StationWithCountry } from "@shared/schema";
+// import { type StationWithCountry } from '@workspace/db-shared/schema';
 import { useDebounce } from "@/hooks/use-debounce";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 

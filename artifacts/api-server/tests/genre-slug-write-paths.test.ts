@@ -34,7 +34,7 @@ import type { Server as HttpServer } from 'node:http';
 import {
   normalizeGenreSlug,
   SAFE_GENRE_SLUG_RE,
-} from '../src/shared/mongo-schemas.ts';
+} from '@workspace/db-shared/mongo-schemas';
 
 // ---------------------------------------------------------------------------
 // Recording fakes for the Mongoose models the routes touch.
@@ -129,7 +129,7 @@ const FakeUser = {
 // are imported in `before()`.
 // ---------------------------------------------------------------------------
 
-mock.module(new URL('../src/shared/mongo-schemas.ts', import.meta.url).href, {
+mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: {
     Station: FakeStation,
     Genre: FakeGenre,

@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { IndexNowLog } from '../shared/mongo-schemas';
+import { IndexNowLog } from '@workspace/db-shared/mongo-schemas';
 
 const router = Router();
 

@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { AdminPreference } from '../shared/mongo-schemas';
+import { AdminPreference } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 // Generic per-admin key/value preferences store. Lets admin pages

@@ -2,7 +2,7 @@ import type { Express } from "express";
 import mongoose from "mongoose";
 import type { Types } from "mongoose";
 import { CODE_TO_COUNTRY } from "@workspace/seo-shared/seo-config";
-import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating, SyncLog, BlacklistedStation, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from "../shared/mongo-schemas";
+import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating, SyncLog, BlacklistedStation, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '@workspace/db-shared/mongo-schemas';
 
 async function syncUserFavorites(): Promise<void> {
   // Stub: full sync logic implemented elsewhere; no-op for typecheck.
@@ -16,7 +16,7 @@ async function generateUserSlug(user: any, _excludeId?: any): Promise<string> {
     .replace(/(^-|-$)/g, '');
   return base || 'user';
 }
-import type { IGenre, IGenreCleanupDemotion, IStation } from "../shared/mongo-schemas";
+import type { IGenre, IGenreCleanupDemotion, IStation } from '@workspace/db-shared/mongo-schemas';
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
@@ -3212,7 +3212,7 @@ ${keysText}`;
   // Backs the admin dashboard tile for task #20.
   app.get("/api/admin/sync/auto-flagged-report", requireAdmin, async (req, res) => {
     try {
-      const { SyncLog } = await import('../shared/mongo-schemas');
+      const { SyncLog } = await import('@workspace/db-shared/mongo-schemas');
       const recent = await SyncLog.find()
         .sort({ startedAt: -1 })
         .limit(10)
@@ -3328,7 +3328,7 @@ ${keysText}`;
     try {
       logger.log('🗑️ Flushing all station data...');
       
-      const { Station, SyncLog, BlacklistedStation } = await import('../shared/mongo-schemas');
+      const { Station, SyncLog, BlacklistedStation } = await import('@workspace/db-shared/mongo-schemas');
       
       // Delete all stations
       const stationResult = await Station.deleteMany({});
@@ -3766,7 +3766,7 @@ ${keysText}`;
       }
 
       // Check if AnalyticsEvent collection exists and has data
-      const { AnalyticsEvent } = await import('../shared/mongo-schemas');
+      const { AnalyticsEvent } = await import('@workspace/db-shared/mongo-schemas');
       const events = await AnalyticsEvent.find(filter)
         .sort({ timestamp: -1 })
         .limit(Number(limit))

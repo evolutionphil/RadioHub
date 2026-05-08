@@ -14,6 +14,14 @@ artifacts/
 lib/
   api-zod/      → Zod validation schemas (shared)
   db/           → Drizzle ORM + PostgreSQL (for future relational data)
+  db-shared/    → Shared Mongoose models + cross-app TS types. Exposes two
+                  entry points:
+                    `@workspace/db-shared/mongo-schemas` — full Mongoose
+                      models + interfaces (used by api-server runtime).
+                    `@workspace/db-shared/schema` — Zod auth/station
+                      validators + `StationWithCountry` interface (used
+                      by both api-server and megaradio; megaradio only
+                      pulls types/zod, never Mongoose).
   seo-shared/   → Shared SEO/FAQ modules (faq-schema, structured-data,
                   seo-config, genre/region-seo-templates, url-translations,
                   country-name-translations, country-regions,
@@ -57,7 +65,7 @@ A shared reverse proxy routes by path:
 
 ## Important Migration Notes
 
-- `artifacts/api-server/src/shared/` and `artifacts/megaradio/src/shared/` — only Mongoose schemas (`mongo-schemas.ts`, `schema.ts`) remain duplicated here. All SEO/FAQ shared code lives in `lib/seo-shared` and is imported via `@workspace/seo-shared/<module>`.
+- Nothing is duplicated under `artifacts/*/src/shared/` anymore — those folders have been deleted. SEO/FAQ shared code lives in `lib/seo-shared` (`@workspace/seo-shared/<module>`) and Mongoose models + cross-app TS/zod types live in `lib/db-shared` (`@workspace/db-shared/mongo-schemas` for the server, `@workspace/db-shared/schema` for both server and client).
 - The api-server-only cache loaders for SEO/URL translations live in `artifacts/api-server/src/seo/load-database-mappings.ts` (they call `setDatabase*` setters exposed by `@workspace/seo-shared`).
 - Express 5 breaking changes fixed:
   - `/*` wildcards → `/*path`

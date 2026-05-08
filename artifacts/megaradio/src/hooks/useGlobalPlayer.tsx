@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useRef, useEffect, ReactNode } from 'react';
-import type { StationWithCountry as Station } from '@shared/schema';
+import type { StationWithCountry as Station } from '@workspace/db-shared/schema';
 import { toast } from '@/hooks/use-toast';
 import { createMetadataClient } from '@/services/metadata-client';
 import { trackStationPlay, trackListeningTime, trackStationFavorite } from '../lib/analytics';

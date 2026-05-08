@@ -655,7 +655,7 @@ app.use(session(sessionConfig));
   (async () => {
     try {
       try {
-        const { BulkDescriptionJob } = await import('./shared/mongo-schemas');
+        const { BulkDescriptionJob } = await import('@workspace/db-shared/mongo-schemas');
         const unfinishedJobs = await BulkDescriptionJob.find({ status: 'running' }).sort({ createdAt: -1 }).limit(1);
 
         if (unfinishedJobs.length > 0) {
@@ -684,7 +684,7 @@ app.use(session(sessionConfig));
         });
 
         try {
-          const { Genre } = await import('./shared/mongo-schemas');
+          const { Genre } = await import('@workspace/db-shared/mongo-schemas');
           const CacheManagerModule = (await import('./cache')).default;
           const genres = await Genre.find({ isDiscoverable: true }).sort({ stationCount: -1 }).limit(13).lean();
           await CacheManagerModule.set('genres:discoverable:all:13', genres, { ttl: 600 });
@@ -711,7 +711,7 @@ app.use(session(sessionConfig));
           if (lastRun) {
             logger.log('🧹 CLEANUP: Skipping (already ran within 24h)');
           } else {
-            const { Station } = await import('./shared/mongo-schemas');
+            const { Station } = await import('@workspace/db-shared/mongo-schemas');
             let cleanedCount = 0;
             const placeholderRegex = /^\[(TRANSLATED\s+)?(META|FULL\s+DESCRIPTION|SEO\s+META)[^\]]*\]\s*/i;
             const cursor = Station.find({

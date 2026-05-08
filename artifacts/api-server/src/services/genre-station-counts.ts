@@ -1,4 +1,4 @@
-import { Station, Genre } from '../shared/mongo-schemas';
+import { Station, Genre } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 // Recomputes `Genre.stationCount` from the live Station collection.

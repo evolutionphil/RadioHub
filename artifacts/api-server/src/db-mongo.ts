@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { TranslationLanguage } from './shared/mongo-schemas';
+import { TranslationLanguage } from '@workspace/db-shared/mongo-schemas';
 import { logger } from './utils/logger';
 
 // MongoDB connection string - use in-memory database for development
@@ -334,6 +334,6 @@ export async function connectToMongoDB() {
 }
 
 // Re-export User model for deployment compatibility
-export { User } from './shared/mongo-schemas';
+export { User } from '@workspace/db-shared/mongo-schemas';
 
 export default mongoose;

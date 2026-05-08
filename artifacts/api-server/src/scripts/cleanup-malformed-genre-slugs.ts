@@ -44,7 +44,7 @@
 
 import mongoose from 'mongoose';
 import type { Collection, ObjectId } from 'mongodb';
-import { Genre, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '../shared/mongo-schemas';
+import { Genre, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 // Task #161: the normalize helper now lives next to SAFE_GENRE_SLUG_RE in

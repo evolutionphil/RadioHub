@@ -1,5 +1,5 @@
 import mongoose from 'mongoose';
-import { Station, SyncLog } from '../shared/mongo-schemas';
+import { Station, SyncLog } from '@workspace/db-shared/mongo-schemas';
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import { ImageManager } from './image-manager';
@@ -38,7 +38,7 @@ export class SyncService {
 
       // Load blacklisted stations to prevent re-import
       logger.log('📋 Loading blacklisted stations...');
-      const { BlacklistedStation } = await import('../shared/mongo-schemas');
+      const { BlacklistedStation } = await import('@workspace/db-shared/mongo-schemas');
       const blacklistedStations = await BlacklistedStation.find().select('stationUuid url').lean();
       const blacklistedUuids = new Set(blacklistedStations.map(b => b.stationUuid).filter(Boolean) as string[]);
       const blacklistedUrls = new Set(blacklistedStations.map(b => b.url).filter(Boolean) as string[]);

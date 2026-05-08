@@ -17,7 +17,7 @@
 import {
   SitemapUrlSnapshot,
   SitemapManifest,
-} from '../shared/mongo-schemas';
+} from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { performanceCache } from '../performance-cache';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';

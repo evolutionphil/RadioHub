@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Station, Country, Genre } from "../shared/mongo-schemas";
+import { Station, Country, Genre } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import CacheManager from "../cache";
 

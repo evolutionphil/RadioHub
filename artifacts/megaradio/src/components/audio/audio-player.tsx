@@ -5,7 +5,7 @@ import { Slider } from '@/components/ui/slider';
 import { StationLogo } from '@/components/ui/station-logo';
 import { useGlobalPlayer } from '@/hooks/useGlobalPlayer';
 import { normalizeFaviconUrl } from '@/lib/utils';
-import type { StationWithCountry } from '@shared/schema';
+import type { StationWithCountry } from '@workspace/db-shared/schema';
 
 interface AudioPlayerProps {
   station: StationWithCountry | null;

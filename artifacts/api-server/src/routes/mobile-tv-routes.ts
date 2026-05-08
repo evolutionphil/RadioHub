@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import mongoose from 'mongoose';
-import { TvLoginCode, UserDevice, CastCommand, CastNowPlaying, PushToken, AuthToken, User, CastSession, UserFollow, Station, Genre } from '../shared/mongo-schemas';
+import { TvLoginCode, UserDevice, CastCommand, CastNowPlaying, PushToken, AuthToken, User, CastSession, UserFollow, Station, Genre } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { TV_STATION_PROJECTION, tvSlimStation, tvSlimGenre } from './shared-utils';
 import { normalizeCountryFilter } from '../utils/normalize-country';

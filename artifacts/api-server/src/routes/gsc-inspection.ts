@@ -12,7 +12,7 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { GscUrlInspection } from '../shared/mongo-schemas';
+import { GscUrlInspection } from '@workspace/db-shared/mongo-schemas';
 import { gscInspectionService, isGscConfigured } from '../services/gsc-inspection';
 import { logger } from '../utils/logger';
 

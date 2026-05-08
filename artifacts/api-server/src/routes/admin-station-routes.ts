@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import mongoose from "mongoose";
 import multer from "multer";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot } from "../shared/mongo-schemas";
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";

@@ -5,7 +5,7 @@ import {
   AuthToken,
   IapEvent,
   type IapEventResult,
-} from "../shared/mongo-schemas";
+} from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import {
   PRODUCT_TO_PLAN,

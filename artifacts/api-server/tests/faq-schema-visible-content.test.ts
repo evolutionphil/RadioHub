@@ -83,7 +83,7 @@ const mongoMockExports: Record<string, unknown> = {};
 for (const name of MONGO_MODEL_NAMES) mongoMockExports[name] = NULL_MODEL;
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
 
-mock.module(new URL('../src/shared/mongo-schemas.ts', import.meta.url).href, {
+mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: mongoMockExports,
 });
 

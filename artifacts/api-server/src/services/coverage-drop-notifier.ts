@@ -4,7 +4,7 @@ import {
   UserNotification,
   CoverageSnapshot,
   AdminSetting,
-} from '../shared/mongo-schemas';
+} from '@workspace/db-shared/mongo-schemas';
 
 /**
  * Coverage-drop notifier (Task #145).

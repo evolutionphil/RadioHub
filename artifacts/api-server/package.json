@@ -28,6 +28,7 @@
     "@sendgrid/mail": "^8.1.6",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
+    "@workspace/db-shared": "workspace:*",
     "@workspace/seo-shared": "workspace:*",
     "axios": "^1.15.2",
     "bcrypt": "^6.0.0",

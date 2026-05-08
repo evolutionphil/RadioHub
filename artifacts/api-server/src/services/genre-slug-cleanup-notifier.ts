@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger';
-import type { IGenreSlugCleanupRun } from '../shared/mongo-schemas';
+import type { IGenreSlugCleanupRun } from '@workspace/db-shared/mongo-schemas';
 
 /**
  * Notifier for the weekly genre-slug cleanup cron (Task #160).

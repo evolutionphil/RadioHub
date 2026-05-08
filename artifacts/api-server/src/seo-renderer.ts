@@ -1,5 +1,5 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
-import { Translation, Station, SeoMetadata, ISeoMetadata } from './shared/mongo-schemas';
+import { Translation, Station, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
 
 // Lean document shapes returned by Mongoose `.lean()` for the queries in this
 // module. Mongoose 8's typings hand `.lean()` results back as `unknown` once
@@ -631,7 +631,7 @@ export class SeoRenderer {
             // so the country-name DB lookup would falsely 404 valid content).
             if (isExactCountryPagePath(cleanPath) && indexableStations.length === 0) {
               try {
-                const { Country } = await import('./shared/mongo-schemas');
+                const { Country } = await import('@workspace/db-shared/mongo-schemas');
                 const escapedCountrySlug = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const countryDoc = await withSignal(
                   Country.findOne({

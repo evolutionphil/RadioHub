@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import mongoose from "mongoose";
-import { IapEvent, User } from "../shared/mongo-schemas";
+import { IapEvent, User } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 
 // Admin endpoints for the IAP audit log + admin-side subscription overrides.

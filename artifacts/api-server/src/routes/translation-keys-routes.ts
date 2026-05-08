@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { TranslationKey, Translation, TranslationLanguage } from "../shared/mongo-schemas";
+import { TranslationKey, Translation, TranslationLanguage } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import CacheManager from "../cache";
 

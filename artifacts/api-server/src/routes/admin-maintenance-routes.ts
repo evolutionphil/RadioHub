@@ -5,7 +5,7 @@ import {
   BackfillRun,
   GenreSlugCleanupRun,
   type IBackfillRun,
-} from "../shared/mongo-schemas";
+} from '@workspace/db-shared/mongo-schemas';
 import {
   BACKFILL_RETENTION_DAYS,
   BACKFILL_RETENTION_MAX_ROWS,

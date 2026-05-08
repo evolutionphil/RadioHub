@@ -1,6 +1,6 @@
 import { logger } from '../utils/logger';
 import axios from 'axios';
-import { IndexNowLog } from '../shared/mongo-schemas';
+import { IndexNowLog } from '@workspace/db-shared/mongo-schemas';
 import { validateOutboundUrl } from '../utils/safe-fetch';
 
 const INDEXNOW_ENDPOINT = 'https://api.indexnow.org/indexnow';

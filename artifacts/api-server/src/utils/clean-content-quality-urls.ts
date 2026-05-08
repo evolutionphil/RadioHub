@@ -21,7 +21,7 @@
 import mongoose from 'mongoose';
 import fs from 'fs/promises';
 import path from 'path';
-import { Station } from '../shared/mongo-schemas';
+import { Station } from '@workspace/db-shared/mongo-schemas';
 import {
   slugifyStationName,
   evaluateJunkStation,

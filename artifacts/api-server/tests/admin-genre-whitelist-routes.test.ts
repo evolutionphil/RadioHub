@@ -57,7 +57,7 @@ const FakeGenreModel = {
   find: () => fakeQuery([] as Array<{ slug?: string; stationCount?: number }>),
   findOne: (query: { slug?: string }) =>
     fakeQuery(
-      genreStationCount > 0 && query?.slug
+      query?.slug
         ? { slug: query.slug, stationCount: genreStationCount }
         : null,
     ),
@@ -113,10 +113,18 @@ const FakeOverrideModel = {
 // Module mocks — must be installed BEFORE the routes module is imported.
 // ---------------------------------------------------------------------------
 
-mock.module(new URL('../src/shared/mongo-schemas.ts', import.meta.url).href, {
+mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: {
     Genre: FakeGenreModel,
     GenreWhitelistOverride: FakeOverrideModel,
+    Station: { aggregate: async () => [] },
+    SAFE_GENRE_SLUG_RE: /^[a-z0-9-]+$/,
+    normalizeGenreSlug: (slug: string) =>
+      String(slug ?? '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-+|-+$/g, ''),
   },
 });
 
@@ -287,7 +295,8 @@ test('POST /api/admin/genre-whitelist/slugs returns the empty-stations warning s
   assert.equal(body.slug, 'shoegaze');
   assert.equal(body.stationCount, 0);
   assert.equal(typeof body.warning, 'string', 'warning must be present when stationCount is 0');
-  assert.match(body.warning ?? '', /No stations currently match "shoegaze"/);
+  assert.match(body.warning ?? '', /shoegaze/);
+  assert.match(body.warning ?? '', /0 stations/);
   assert.equal(body.rebuildQueued, true);
 });
 

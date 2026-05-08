@@ -4,7 +4,7 @@ import axios from 'axios';
 import sharp from 'sharp';
 import zlib from 'zlib';
 import { promisify } from 'util';
-import { Station } from '../shared/mongo-schemas';
+import { Station } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
 import { validateOutboundUrl } from '../utils/safe-fetch';

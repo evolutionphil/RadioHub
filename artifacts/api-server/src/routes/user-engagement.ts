@@ -1,7 +1,7 @@
 import express from 'express';
 import { UserEngagementService } from '../services/user-engagement-service';
 import CacheManager from '../cache';
-import { User, UserFollow, UserNotification, AuthToken } from '../shared/mongo-schemas';
+import { User, UserFollow, UserNotification, AuthToken } from '@workspace/db-shared/mongo-schemas';
 import { PushNotificationService } from '../services/pushNotificationService';
 import { isQuotaExceeded, handleQuotaError, isQuotaError, safeWrite } from '../utils/quota-guard';
 
@@ -117,7 +117,7 @@ router.get('/profile/:slug/recently-played', async (req, res) => {
     if (cached) return void res.json(cached);
 
     // Fetch from User document recentlyPlayedStations field
-    const { User } = await import('../shared/mongo-schemas');
+    const { User } = await import('@workspace/db-shared/mongo-schemas');
     const isObjectId = /^[0-9a-fA-F]{24}$/.test(slug);
     const user = isObjectId
       ? await User.findById(slug).select('recentlyPlayedStations').lean()

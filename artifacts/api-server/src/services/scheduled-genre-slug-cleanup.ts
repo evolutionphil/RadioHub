@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { GenreSlugCleanupRun, type IGenreSlugCleanupRun } from '../shared/mongo-schemas';
+import { GenreSlugCleanupRun, type IGenreSlugCleanupRun } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import {
   runGenreSlugCleanup,

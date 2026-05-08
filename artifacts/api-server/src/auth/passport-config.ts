@@ -3,7 +3,7 @@ import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as FacebookStrategy } from 'passport-facebook';
 import { Strategy as LocalStrategy } from 'passport-local';
 import bcrypt from 'bcrypt';
-import { User, UserListeningHistory } from '../shared/mongo-schemas';
+import { User, UserListeningHistory } from '@workspace/db-shared/mongo-schemas';
 
 // Local email/password strategy
 passport.use(new LocalStrategy(

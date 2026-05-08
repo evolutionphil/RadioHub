@@ -19,7 +19,7 @@
 // constants would be undefined during partial init and the snapshot
 // would seed empty.
 import { GENRE_WHITELIST_SEED, GENRE_ALIASES_SEED } from './genre-whitelist-seed';
-import { GenreWhitelistOverride } from '../shared/mongo-schemas';
+import { GenreWhitelistOverride } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 // Merged in-memory snapshot. Initialized from the static seed so the

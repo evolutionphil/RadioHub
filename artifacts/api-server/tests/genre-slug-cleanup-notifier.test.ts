@@ -23,7 +23,7 @@
 import { test, mock, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { IGenreSlugCleanupRun } from '../src/shared/mongo-schemas.ts';
+import type { IGenreSlugCleanupRun } from '@workspace/db-shared/mongo-schemas';
 
 // ---------------------------------------------------------------------------
 // Module mocks for the integration-style runOnce() test. Must be installed
@@ -73,7 +73,7 @@ const FakeGenreSlugCleanupRun = {
   },
 };
 
-mock.module(new URL('../src/shared/mongo-schemas.ts', import.meta.url).href, {
+mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: {
     GenreSlugCleanupRun: FakeGenreSlugCleanupRun,
   },

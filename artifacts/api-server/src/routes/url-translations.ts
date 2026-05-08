@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { UrlTranslation } from '../shared/mongo-schemas';
+import { UrlTranslation } from '@workspace/db-shared/mongo-schemas';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import OpenAI from 'openai';

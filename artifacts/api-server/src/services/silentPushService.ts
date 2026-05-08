@@ -1,7 +1,7 @@
 import http2 from 'http2';
 import https from 'https';
 import jwt from 'jsonwebtoken';
-import { PushToken } from '../shared/mongo-schemas';
+import { PushToken } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 export type SilentPushAction = 'cache_refresh' | 'popular_update' | 'genres_update' | 'favorites_sync' | 'clear_cache';

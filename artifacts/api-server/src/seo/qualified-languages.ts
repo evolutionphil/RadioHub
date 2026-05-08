@@ -41,7 +41,7 @@ import {
   hasCompleteSeoTranslations,
 } from '@workspace/seo-shared/seo-config';
 import { logger } from '../utils/logger';
-import { SeoQualifiedLanguagesLkg } from '../shared/mongo-schemas';
+import { SeoQualifiedLanguagesLkg } from '@workspace/db-shared/mongo-schemas';
 
 // ---------------------------------------------------------------------------
 // Public types

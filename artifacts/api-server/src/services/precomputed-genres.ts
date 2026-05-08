@@ -1,5 +1,5 @@
 import { CacheManager } from '../cache';
-import { Station, Genre } from '../shared/mongo-schemas';
+import { Station, Genre } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import { sleep } from '../utils/event-loop-yield';

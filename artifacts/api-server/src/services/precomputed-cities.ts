@@ -1,5 +1,5 @@
 import { CacheManager } from '../cache';
-import { Station } from '../shared/mongo-schemas';
+import { Station } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 interface CityData {

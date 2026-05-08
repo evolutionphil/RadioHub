@@ -7,7 +7,7 @@ import {
   UrlTranslation,
   Translation,
   Station as StationModel,
-} from './shared/mongo-schemas';
+} from '@workspace/db-shared/mongo-schemas';
 
 /**
  * Recursively freeze a value before storing it in a `useClones: false` cache.

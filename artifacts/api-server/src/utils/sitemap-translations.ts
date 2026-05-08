@@ -1,5 +1,5 @@
 import type { Types } from 'mongoose';
-import { TranslationKey, Translation } from '../shared/mongo-schemas';
+import { TranslationKey, Translation } from '@workspace/db-shared/mongo-schemas';
 
 // Lean shapes for the two queries below. Mongoose 8 returns `.lean()` results
 // as `unknown` when their inferred document type can't flow through helpers,

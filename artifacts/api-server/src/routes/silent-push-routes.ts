@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 import { SilentPushService, SilentPushAction } from '../services/silentPushService';
-import { PushToken } from '../shared/mongo-schemas';
+import { PushToken } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import cron from 'node-cron';
 

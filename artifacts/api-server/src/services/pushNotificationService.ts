@@ -1,6 +1,6 @@
 import webpush from 'web-push';
 import { User } from '../db-mongo.js';
-import { PushToken, IUser } from '../shared/mongo-schemas';
+import { PushToken, IUser } from '@workspace/db-shared/mongo-schemas';
 import https from 'https';
 
 // Configure web-push with VAPID keys (for browser/web push)

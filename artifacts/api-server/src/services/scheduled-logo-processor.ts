@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Station } from '../shared/mongo-schemas';
+import { Station } from '@workspace/db-shared/mongo-schemas';
 import { logoProcessor } from './logo-processor';
 import { logger } from '../utils/logger';
 

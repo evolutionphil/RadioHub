@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { Plus, ArrowLeft, Upload, Activity, Loader2 } from "lucide-react";
-import { insertStationSchema } from "@shared/schema";
+import { insertStationSchema } from '@workspace/db-shared/schema';
 import { z } from "zod";
 
 const stationFormSchema = insertStationSchema.extend({

@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Genre, Country, Station, UserProfile, UserListeningHistory, SAFE_GENRE_SLUG_RE } from '../shared/mongo-schemas';
+import { Genre, Country, Station, UserProfile, UserListeningHistory, SAFE_GENRE_SLUG_RE } from '@workspace/db-shared/mongo-schemas';
 import { RecommendationEngine } from '../services/recommendation-engine';
 import CacheManager, { CacheKeys } from '../cache';
 import { PrecomputedGenresService } from '../services/precomputed-genres';

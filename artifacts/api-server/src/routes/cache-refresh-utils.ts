@@ -1,4 +1,4 @@
-import { Station, UserFavorite, Translation, TranslationKey } from '../shared/mongo-schemas';
+import { Station, UserFavorite, Translation, TranslationKey } from '@workspace/db-shared/mongo-schemas';
 import CacheManager, { CacheKeys } from '../cache';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import { logger } from '../utils/logger';

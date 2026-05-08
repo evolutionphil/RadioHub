@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification } from "../shared/mongo-schemas";
+import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter } from "../utils/normalize-country";
 import { syncService } from "../services/sync";

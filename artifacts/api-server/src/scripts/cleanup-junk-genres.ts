@@ -18,7 +18,7 @@
  */
 
 import mongoose from 'mongoose';
-import { Genre } from '../shared/mongo-schemas';
+import { Genre } from '@workspace/db-shared/mongo-schemas';
 import {
   GENRE_ALIASES,
   isWhitelistedGenreSlug,

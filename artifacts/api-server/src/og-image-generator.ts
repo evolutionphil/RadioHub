@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
 import fsp from 'fs/promises';
-import { Station } from './shared/mongo-schemas';
+import { Station } from '@workspace/db-shared/mongo-schemas';
 import NodeCache from 'node-cache';
 
 sharp.cache({ memory: 50, files: 20, items: 100 });

@@ -64,6 +64,7 @@
     "@uppy/react": "^5.2.0",
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
+    "@workspace/db-shared": "workspace:*",
     "@workspace/seo-shared": "workspace:*",
     "autoprefixer": "^10.5.0",
     "axios": "^1.15.2",

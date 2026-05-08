@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import os from 'os';
-import { Station, Country, Genre, Language } from '../shared/mongo-schemas';
+import { Station, Country, Genre, Language } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 interface PerformanceMetrics {

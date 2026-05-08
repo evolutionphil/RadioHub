@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Station, BackfillRun, type IBackfillRun } from '../shared/mongo-schemas';
+import { Station, BackfillRun, type IBackfillRun } from '@workspace/db-shared/mongo-schemas';
 import { SyncService } from './sync';
 import { logger } from '../utils/logger';
 import { notifyBackfillResult } from './backfill-notifier';

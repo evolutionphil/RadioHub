@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as fsp from 'fs/promises';
 import * as path from 'path';
-import { TranslationKey, Translation, TranslationLanguage } from '../shared/mongo-schemas';
+import { TranslationKey, Translation, TranslationLanguage } from '@workspace/db-shared/mongo-schemas';
 import { bumpTranslationVersion } from './translation-version';
 import { logger } from '../utils/logger';
 import OpenAI from 'openai';

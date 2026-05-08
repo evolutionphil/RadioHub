@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import { ApiKey, DemoUsage, ApiUser } from '../shared/mongo-schemas';
+import { ApiKey, DemoUsage, ApiUser } from '@workspace/db-shared/mongo-schemas';
 
 const router = Router();
 

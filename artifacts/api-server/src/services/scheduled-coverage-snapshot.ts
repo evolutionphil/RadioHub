@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Station, CoverageSnapshot } from '../shared/mongo-schemas';
+import { Station, CoverageSnapshot } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { checkAndNotifyCoverageDrops } from './coverage-drop-notifier';
 

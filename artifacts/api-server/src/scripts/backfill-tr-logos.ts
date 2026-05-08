@@ -16,7 +16,7 @@
  */
 
 import mongoose from 'mongoose';
-import { BackfillRun } from '../shared/mongo-schemas';
+import { BackfillRun } from '@workspace/db-shared/mongo-schemas';
 import { enqueueLogosForCountry } from '../services/scheduled-backfill';
 import { logger } from '../utils/logger';
 

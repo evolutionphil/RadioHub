@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import mongoose from 'mongoose';
-import { AuthToken } from '../shared/mongo-schemas';
+import { AuthToken } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
 export type MiddlewareFn = (req: any, res: any, next: any) => void | Promise<void>;
