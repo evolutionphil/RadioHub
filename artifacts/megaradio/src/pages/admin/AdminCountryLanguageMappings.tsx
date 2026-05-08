@@ -1396,6 +1396,48 @@ export default function AdminCountryLanguageMappings() {
               )}
               Reset all mappings
             </Button>
+            {(skipDiscardConfirm || skipResetAllConfirm) && (
+              <div
+                data-testid="indicator-skip-confirm"
+                className="flex items-center gap-1 text-xs text-muted-foreground"
+                title="Confirmation dialogs were silenced for this session"
+              >
+                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                <span className="hidden sm:inline">Confirmations off:</span>
+                {skipDiscardConfirm && (
+                  <Button
+                    data-testid="button-reenable-discard-confirm"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs underline-offset-2 hover:underline"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        window.sessionStorage.removeItem('admin-mappings:skipDiscardConfirm');
+                      }
+                      setSkipDiscardConfirm(false);
+                    }}
+                  >
+                    Re-enable Discard
+                  </Button>
+                )}
+                {skipResetAllConfirm && (
+                  <Button
+                    data-testid="button-reenable-reset-all-confirm"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs underline-offset-2 hover:underline"
+                    onClick={() => {
+                      if (typeof window !== 'undefined') {
+                        window.sessionStorage.removeItem('admin-mappings:skipResetAllConfirm');
+                      }
+                      setSkipResetAllConfirm(false);
+                    }}
+                  >
+                    Re-enable Reset all
+                  </Button>
+                )}
+              </div>
+            )}
             {hasPendingChanges && (
               <Button
                 data-testid="button-discard-pending"
