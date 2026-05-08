@@ -26,7 +26,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, X, History, Undo2 } from 'lucide-react';
+import { Search, Save, RefreshCw, CheckCircle2, XCircle, Wand2, Trash2, Trash, AlertTriangle, ChevronUp, ChevronDown, ChevronsUpDown, X, History, Undo2, Download } from 'lucide-react';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDistanceToNow } from 'date-fns';
 import {
@@ -1269,6 +1269,44 @@ export default function AdminCountryLanguageMappings() {
       .sort((a, b) => a.countryName.localeCompare(b.countryName));
   }, [existingMappings, countries, defaultsMap]);
 
+  const downloadOverridesCsv = () => {
+    if (persistedOverrides.length === 0) return;
+    const escape = (value: string) => {
+      const needsQuoting = /[",\n\r]/.test(value);
+      const escaped = value.replace(/"/g, '""');
+      return needsQuoting ? `"${escaped}"` : escaped;
+    };
+    const header = ['Country Code', 'Country Name', 'Current Language', 'Fallback Language'];
+    const rows = persistedOverrides.map((o) => {
+      const currentName = languageNameMap.get(o.currentLanguageCode);
+      const defaultName = languageNameMap.get(o.defaultLanguageCode);
+      const current = currentName
+        ? `${currentName} (${o.currentLanguageCode})`
+        : o.currentLanguageCode;
+      const fallback = defaultName
+        ? `${defaultName} (${o.defaultLanguageCode})`
+        : o.defaultLanguageCode;
+      return [o.countryCode, o.countryName, current, fallback];
+    });
+    const csv = [header, ...rows]
+      .map((cols) => cols.map((c) => escape(String(c))).join(','))
+      .join('\r\n');
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, '0');
+    const dd = String(now.getDate()).padStart(2, '0');
+    const filename = `country-overrides-${yyyy}-${mm}-${dd}.csv`;
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   return (
     <div className="container mx-auto py-8 px-4">
       <Card>
@@ -2006,6 +2044,17 @@ export default function AdminCountryLanguageMappings() {
             </div>
           )}
           <AlertDialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="button-download-overrides-csv"
+              onClick={() => downloadOverridesCsv()}
+              disabled={persistedOverrides.length === 0}
+              className="sm:mr-auto"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Download CSV
+            </Button>
             <AlertDialogCancel data-testid="button-cancel-clear-overrides">
               Cancel
             </AlertDialogCancel>
