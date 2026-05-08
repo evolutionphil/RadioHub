@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
-import { Station } from "../shared/mongo-schemas";
+import { Station, BackfillRun } from "../shared/mongo-schemas";
 import { radioBrowserService } from "../services/radio-browser";
+import { scheduledBackfill } from "../services/scheduled-backfill";
 import { logger } from "../utils/logger";
 
 // SEO maintenance dashboard endpoints. Surface the health metrics the
@@ -256,6 +257,69 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     requireAdmin,
     (_req: Request, res: Response) => {
       res.json({ job: activeTagsJob });
+    },
+  );
+
+  // Manually kick off the weekly cross-country logo + tag backfill that
+  // normally runs Sundays 04:00 Europe/Berlin. Honours the same single-
+  // instance lock as the cron, so a double-click while one is already
+  // running returns 409 with the in-flight run instead of starting a
+  // second sweep. Returns immediately with the BackfillRun row that the
+  // service just persisted; the actual work continues in the background
+  // and progress can be observed via the status endpoint below.
+  app.post(
+    "/api/admin/maintenance/scheduled-backfill/run",
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        // `start()` persists the BackfillRun row immediately, kicks the
+        // sweep off in the background, and returns the row so we can
+        // hand it back without holding the HTTP connection open for the
+        // (potentially multi-minute) job. Returns null if the single-
+        // instance lock is already held.
+        const run = await scheduledBackfill.start("admin:manual");
+        if (!run) {
+          return res.status(409).json({
+            error: "already_running",
+            status: scheduledBackfill.getStatus(),
+          });
+        }
+        res.json({
+          ok: true,
+          status: scheduledBackfill.getStatus(),
+          run,
+        });
+      } catch (err: any) {
+        logger.error(
+          "[scheduled-backfill manual] failed to start:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
+  // Live status of the scheduled backfill plus the most recent
+  // BackfillRun row so the dashboard can render "running…" vs the last
+  // completed summary without the client having to know about Mongo
+  // shapes.
+  app.get(
+    "/api/admin/maintenance/scheduled-backfill/status",
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const status = scheduledBackfill.getStatus();
+        const lastRun = await BackfillRun.findOne()
+          .sort({ startedAt: -1 })
+          .lean();
+        res.json({ status, lastRun });
+      } catch (err: any) {
+        logger.error(
+          "[scheduled-backfill status] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
     },
   );
 }

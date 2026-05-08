@@ -192,8 +192,32 @@ class ScheduledBackfillService {
    * and tags-missing counts, enqueue logos for each and hydrate tags for
    * each, then persist a summary row. Single-instance lock — concurrent
    * calls return silently.
+   *
+   * Awaits the entire sweep before returning. Used by the weekly cron.
+   * For interactive triggers (admin button) prefer `start()` which
+   * persists the BackfillRun row immediately and runs the work in the
+   * background so the HTTP response doesn't block on a multi-minute job.
    */
   async runOnce(trigger: string = 'manual'): Promise<IBackfillRun | null> {
+    const run = await this.start(trigger);
+    if (!run) return null;
+    // Wait for the in-flight sweep to drain so callers (like the cron)
+    // can log a single completion line. `start()` already kicked off the
+    // background work, so we just poll the lock.
+    while (this.isRunning) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    // Re-read so we get the final status / counts the worker persisted.
+    return BackfillRun.findById(run._id);
+  }
+
+  /**
+   * Persist a `running` BackfillRun row, kick off the sweep in the
+   * background, and return the row immediately. Honours the same
+   * single-instance lock as `runOnce` — returns null if a sweep is
+   * already in progress.
+   */
+  async start(trigger: string = 'manual'): Promise<IBackfillRun | null> {
     if (this.isRunning) {
       logger.log(`⏭️  Scheduled backfill: skip (${trigger}) — previous run still in progress`);
       return null;
@@ -213,6 +237,15 @@ class ScheduledBackfillService {
 
     logger.log(`🗓️  Scheduled backfill START (${trigger}, top-${this.TOP_N})`);
 
+    // Fire-and-forget the actual sweep so callers get the row back
+    // immediately. The lock is released inside the worker's finally.
+    this.executeSweep(run, startedAt).catch((err) => {
+      logger.error('❌ Scheduled backfill worker crashed:', err);
+    });
+    return run;
+  }
+
+  private async executeSweep(run: IBackfillRun, startedAt: Date): Promise<void> {
     try {
       const [topLogos, topTags] = await Promise.all([
         topCountriesByFilter(buildLogoBackfillFilter(), this.TOP_N),
@@ -276,7 +309,6 @@ class ScheduledBackfillService {
       logger.log(
         `🗓️  Scheduled backfill DONE in ${Math.round(run.durationMs / 1000)}s — ${run.logos.length} logo countries, ${run.tags.length} tag countries`,
       );
-      return run;
     } catch (err: unknown) {
       const finishedAt = new Date();
       run.status = 'failed';
@@ -287,10 +319,9 @@ class ScheduledBackfillService {
       this.lastRunAt = finishedAt;
       logger.error('❌ Scheduled backfill failed:', err);
       // Notifier swallows its own errors (and bounds webhook latency
-      // internally) so a flaky alert channel can never poison the cron
-      // job's return value.
+      // internally) so a flaky alert channel can never poison the
+      // background worker.
       await notifyBackfillResult(run);
-      return run;
     } finally {
       this.isRunning = false;
     }

@@ -37,6 +37,39 @@ interface BackfillJob {
   lastError: string | null;
 }
 
+interface ScheduledBackfillRunCountryLogos {
+  countryCode: string;
+  candidates: number;
+  enqueued: number;
+}
+interface ScheduledBackfillRunCountryTags {
+  countryCode: string;
+  processed: number;
+  hydrated: number;
+  emptyUpstream: number;
+  failed: number;
+}
+interface ScheduledBackfillRun {
+  _id: string;
+  trigger: string;
+  status: "running" | "completed" | "failed";
+  topN: number;
+  startedAt: string;
+  finishedAt?: string;
+  durationMs?: number;
+  logos: ScheduledBackfillRunCountryLogos[];
+  tags: ScheduledBackfillRunCountryTags[];
+  errorMessage?: string;
+}
+interface ScheduledBackfillStatusResponse {
+  status: {
+    isRunning: boolean;
+    lastRunAt: string | null;
+    lastRunId: string | null;
+  };
+  lastRun: ScheduledBackfillRun | null;
+}
+
 function pct(n: number, total: number) {
   if (!total) return "0%";
   return `${((n / total) * 100).toFixed(1)}%`;
@@ -95,8 +128,38 @@ export default function SeoMaintenancePage() {
     onError: (e: any) => toast({ title: "Başlatılamadı", description: e?.message || "", variant: "destructive" }),
   });
 
+  const scheduledStatusQuery = useQuery<ScheduledBackfillStatusResponse>({
+    queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
+    refetchInterval: (q) => (q.state.data?.status?.isRunning ? 3000 : false),
+  });
+
+  const startScheduled = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", "/api/admin/maintenance/scheduled-backfill/run", {}),
+    onSuccess: () => {
+      toast({ title: "Haftalık backfill başlatıldı" });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
+      });
+    },
+    onError: (e: any) => {
+      const msg = e?.message || "";
+      if (msg.includes("already_running") || msg.includes("409")) {
+        toast({ title: "Zaten çalışıyor", description: "Bir backfill hâlihazırda devam ediyor." });
+      } else {
+        toast({ title: "Başlatılamadı", description: msg, variant: "destructive" });
+      }
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
+      });
+    },
+  });
+
   const stats = statsQuery.data;
   const job = tagsJobQuery.data?.job;
+  const scheduled = scheduledStatusQuery.data;
+  const scheduledRunning = scheduled?.status?.isRunning ?? false;
+  const lastRun = scheduled?.lastRun ?? null;
 
   return (
     <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
@@ -153,6 +216,115 @@ export default function SeoMaintenancePage() {
                     SSR'da otomatik 410 Gone dönecek.
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Scheduled (weekly) backfill — manual trigger */}
+      <Card className="bg-white">
+        <CardHeader>
+          <CardTitle className="text-base">
+            Haftalık otomatik backfill (logo + tags, top-5 ülke)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Pazar 04:00 (Europe/Berlin) tarifesinde otomatik çalışan haftalık
+            cross-country sweep'i manuel olarak tetikler. En kötü 5 ülke için
+            logo kuyruğunu doldurur ve eksik tag'leri Radio-Browser'dan
+            yeniden çeker. Single-instance kilidi sayesinde çift tıklama
+            yeni bir sweep başlatmaz.
+          </p>
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => startScheduled.mutate()}
+              disabled={startScheduled.isPending || scheduledRunning}
+              data-testid="button-run-scheduled-backfill"
+            >
+              {scheduledRunning
+                ? "Çalışıyor..."
+                : startScheduled.isPending
+                ? "Başlatılıyor..."
+                : "Şimdi çalıştır"}
+            </Button>
+            {scheduled?.status?.lastRunAt && (
+              <span className="text-xs text-slate-500">
+                Son çalışma: {new Date(scheduled.status.lastRunAt).toLocaleString()}
+              </span>
+            )}
+          </div>
+          {lastRun && (
+            <div className="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-2 mt-3">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge
+                  variant={
+                    lastRun.status === "running"
+                      ? "default"
+                      : lastRun.status === "failed"
+                      ? "destructive"
+                      : "secondary"
+                  }
+                >
+                  {lastRun.status.toUpperCase()}
+                </Badge>
+                <span className="text-xs text-slate-500">
+                  Trigger: <code>{lastRun.trigger}</code> · top-{lastRun.topN} · başlangıç{" "}
+                  {new Date(lastRun.startedAt).toLocaleString()}
+                  {typeof lastRun.durationMs === "number" &&
+                    ` · ${Math.round(lastRun.durationMs / 1000)}s`}
+                </span>
+              </div>
+              {lastRun.errorMessage && (
+                <div className="text-xs text-rose-600">
+                  Hata: {lastRun.errorMessage}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                    Logos
+                  </div>
+                  {lastRun.logos.length === 0 ? (
+                    <div className="text-xs text-slate-500">Yok</div>
+                  ) : (
+                    lastRun.logos.map((c) => (
+                      <div key={`logos-${c.countryCode}`} className="text-xs flex justify-between">
+                        <span className="font-mono">{c.countryCode}</span>
+                        <span>
+                          enqueued{" "}
+                          <strong className="text-emerald-600">{c.enqueued}</strong>
+                          {" / "}
+                          {c.candidates}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div>
+                  <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                    Tags
+                  </div>
+                  {lastRun.tags.length === 0 ? (
+                    <div className="text-xs text-slate-500">Yok</div>
+                  ) : (
+                    lastRun.tags.map((c) => (
+                      <div key={`tags-${c.countryCode}`} className="text-xs flex justify-between">
+                        <span className="font-mono">{c.countryCode}</span>
+                        <span>
+                          hydrated{" "}
+                          <strong className="text-emerald-600">{c.hydrated}</strong>
+                          {" / "}
+                          {c.processed}
+                          {c.failed > 0 && (
+                            <span className="text-rose-600"> · {c.failed} fail</span>
+                          )}
+                        </span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           )}
