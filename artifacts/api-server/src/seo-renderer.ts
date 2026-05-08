@@ -1837,7 +1837,7 @@ export class SeoRenderer {
             "name": station.name,
             "url": stationUrl,
             "image": stationLogo,
-            ...(station.country && { "areaServed": station.country }),
+            ...(station.country && { "areaServed": getLocalizedCountryName(station.country, language) }),
             "genre": station.tags?.slice(0, 3) || [],
             "isAccessibleForFree": true
           }
@@ -1872,7 +1872,7 @@ export class SeoRenderer {
         "logo": stationLogo,
         "image": stationLogo,
         "sameAs": stationData.homepage || undefined,
-        ...(stationData.country && { "areaServed": stationData.country }),
+        ...(stationData.country && { "areaServed": getLocalizedCountryName(stationData.country, language) }),
         ...(stationData.language && { "broadcastLanguage": stationData.language }),
         ...(stationData.codec && { "broadcastFormat": stationData.codec }),
         ...(stationData.bitrate && { "additionalProperty": { "@type": "PropertyValue", "name": "bitrate", "value": `${stationData.bitrate} kbps` } }),
