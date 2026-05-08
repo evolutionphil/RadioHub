@@ -35,6 +35,7 @@ import {
   Image as ImageIcon,
   Tag,
   AlertTriangle,
+  Download,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { ToastAction } from '@/components/ui/toast';
@@ -620,6 +621,51 @@ export default function AdminCoverage() {
     return sorted;
   }, [data, sortKey, search, minStations]);
 
+  const handleDownloadAllCsv = () => {
+    const trends = trendsData?.trends ?? {};
+    const codes = Object.keys(trends).sort();
+    if (codes.length === 0) return;
+    const header = [
+      'countryCode',
+      'date',
+      'logoCoveragePct',
+      'tagCoveragePct',
+      'total',
+      'withLogo',
+      'withTags',
+    ];
+    const rows: string[][] = [];
+    for (const code of codes) {
+      const points = trends[code] ?? [];
+      for (const p of points) {
+        rows.push([
+          code,
+          p.date,
+          p.logoCoveragePct.toFixed(2),
+          p.tagCoveragePct.toFixed(2),
+          String(p.total),
+          String(p.withLogo),
+          String(p.withTags),
+        ]);
+      }
+    }
+    if (rows.length === 0) return;
+    const csv =
+      [header, ...rows].map((r) => r.join(',')).join('\n') + '\n';
+    const today = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `coverage-all-${today}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const trendsCountryCount = Object.keys(trendsData?.trends ?? {}).length;
+
   const totals = useMemo(() => {
     const rows = data?.countries ?? [];
     let total = 0;
@@ -660,6 +706,21 @@ export default function AdminCoverage() {
             Compare countries
           </Button>
         </Link>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleDownloadAllCsv}
+          disabled={trendsCountryCount === 0}
+          title={
+            trendsCountryCount === 0
+              ? 'Trend snapshots are still loading…'
+              : `Download ${trendsCountryCount} countries × 30 days as a single CSV`
+          }
+          data-testid="button-download-all-csv"
+        >
+          <Download className="w-4 h-4 mr-2" />
+          Download all (CSV)
+        </Button>
         <Button
           variant="outline"
           size="sm"
