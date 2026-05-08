@@ -1914,6 +1914,80 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     },
   );
 
+  // COVERAGE DROP ALERTS — surface the most recent nightly coverage drop
+  // alert (written by `services/coverage-drop-notifier.ts` as admin
+  // `UserNotification` rows with `data.kind === 'coverage_drop'`) so the
+  // admin coverage page can highlight which countries triggered the alert
+  // without forcing admins to dig through the generic notifications UI.
+  // We return the latest single alert (most recent snapshotDate) — earlier
+  // alerts are still available in the notifications surface.
+  app.get(
+    '/api/admin/coverage/drop-alerts',
+    requireAdmin,
+    async (_req, res) => {
+      try {
+        // Sort by `data.snapshotDate` first (the date the alert is *about*)
+        // and fall back to `createdAt` so historical replays / backfills
+        // don't misorder. In normal nightly operation the two correlate.
+        const latest = await UserNotification.findOne(
+          { type: 'system', 'data.kind': 'coverage_drop' },
+          {
+            createdAt: 1,
+            message: 1,
+            data: 1,
+          },
+        )
+          .sort({ 'data.snapshotDate': -1, createdAt: -1 })
+          .lean();
+
+        if (!latest) {
+          return res.json({ alert: null });
+        }
+
+        const data = (latest.data ?? {}) as {
+          kind?: string;
+          snapshotDate?: string;
+          thresholdPp?: number;
+          drops?: Array<{
+            countryCode: string;
+            metric: 'logo' | 'tag';
+            todayPct: number;
+            weekAgoPct: number;
+            deltaPp: number;
+            total: number;
+          }>;
+        };
+
+        const drops = Array.isArray(data.drops) ? data.drops : [];
+        return res.json({
+          alert: {
+            createdAt:
+              latest.createdAt instanceof Date
+                ? latest.createdAt.toISOString()
+                : new Date().toISOString(),
+            snapshotDate: data.snapshotDate ?? null,
+            thresholdPp:
+              typeof data.thresholdPp === 'number' ? data.thresholdPp : null,
+            message: latest.message ?? '',
+            drops: drops.map((d) => ({
+              countryCode: String(d.countryCode || '').toUpperCase(),
+              metric: d.metric,
+              todayPct: Number(d.todayPct) || 0,
+              weekAgoPct: Number(d.weekAgoPct) || 0,
+              deltaPp: Number(d.deltaPp) || 0,
+              total: Number(d.total) || 0,
+            })),
+          },
+        });
+      } catch (error: any) {
+        logger.error('coverage drop-alerts failed', error);
+        return res.status(500).json({
+          error: error?.message || 'Failed to fetch coverage drop alerts',
+        });
+      }
+    },
+  );
+
   // Re-enqueue the same logo / tag backfill that
   // `scripts/backfill-tr-logos.ts` and `scripts/backfill-tr-tags.ts` run from
   // the CLI, but for any country and from the admin UI. `scope` selects which

@@ -28,7 +28,14 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, RefreshCw, Image as ImageIcon, Tag } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import {
+  Loader2,
+  RefreshCw,
+  Image as ImageIcon,
+  Tag,
+  AlertTriangle,
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 
@@ -189,6 +196,27 @@ function coverageBadgeClass(pct: number): string {
   return 'bg-red-100 text-red-700 border-red-200';
 }
 
+interface CoverageDropAlertEntry {
+  countryCode: string;
+  metric: 'logo' | 'tag';
+  todayPct: number;
+  weekAgoPct: number;
+  deltaPp: number;
+  total: number;
+}
+
+interface CoverageDropAlert {
+  createdAt: string;
+  snapshotDate: string | null;
+  thresholdPp: number | null;
+  message: string;
+  drops: CoverageDropAlertEntry[];
+}
+
+interface CoverageDropAlertResponse {
+  alert: CoverageDropAlert | null;
+}
+
 interface CoverageJobStatus {
   jobId: string;
   countryCode: string;
@@ -248,7 +276,32 @@ export default function AdminCoverage() {
     refetchOnWindowFocus: false,
   });
 
+  const { data: dropAlertData } = useQuery<CoverageDropAlertResponse>({
+    queryKey: ['/api/admin/coverage/drop-alerts'],
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+  });
+
   const trendsByCountry = trendsData?.trends ?? {};
+  const latestAlert = dropAlertData?.alert ?? null;
+
+  // Index the latest alert's drops by country code so each row can show a
+  // badge — and remember which metrics dropped so we can colour the badge
+  // distinctly. A single country may show up twice (logo + tag); merge them.
+  const alertedByCountry = useMemo(() => {
+    const map: Record<
+      string,
+      { metrics: Set<'logo' | 'tag'>; entries: CoverageDropAlertEntry[] }
+    > = {};
+    if (!latestAlert) return map;
+    for (const drop of latestAlert.drops) {
+      const code = drop.countryCode.toUpperCase();
+      if (!map[code]) map[code] = { metrics: new Set(), entries: [] };
+      map[code].metrics.add(drop.metric);
+      map[code].entries.push(drop);
+    }
+    return map;
+  }, [latestAlert]);
 
   const enqueueMutation = useMutation({
     mutationFn: async (vars: {
@@ -562,6 +615,64 @@ export default function AdminCoverage() {
         </div>
       </div>
 
+      {latestAlert && latestAlert.drops.length > 0 ? (
+        <Alert
+          variant="destructive"
+          data-testid="alert-coverage-drop"
+          className="border-red-300 bg-red-50 text-red-900 [&>svg]:text-red-700"
+        >
+          <AlertTriangle className="w-4 h-4" />
+          <AlertTitle className="flex items-center gap-2 flex-wrap">
+            <span>Coverage drop alert</span>
+            {latestAlert.snapshotDate ? (
+              <span className="text-xs font-normal text-red-800/80">
+                snapshot {latestAlert.snapshotDate}
+                {latestAlert.thresholdPp != null
+                  ? ` · threshold ${latestAlert.thresholdPp}pp`
+                  : null}
+              </span>
+            ) : null}
+          </AlertTitle>
+          <AlertDescription>
+            <div className="mt-1 text-sm">
+              {latestAlert.drops.length === 1
+                ? '1 country/metric'
+                : `${latestAlert.drops.length} country/metric pairs`}{' '}
+              dropped beyond the threshold vs 7 days ago. Click a country to
+              jump to its detail view.
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {latestAlert.drops.slice(0, 25).map((d, i) => (
+                <Link
+                  key={`${d.countryCode}:${d.metric}:${i}`}
+                  href={`/admin/coverage/${d.countryCode}`}
+                  className="inline-flex items-center gap-1.5 rounded border border-red-300 bg-white/60 px-2 py-1 text-xs hover:bg-white"
+                  data-testid={`alert-drop-${d.countryCode}-${d.metric}`}
+                >
+                  <span className="font-mono font-semibold">
+                    {d.countryCode}
+                  </span>
+                  <span className="text-red-800/80">
+                    {d.metric === 'logo' ? 'logo' : 'tags'}
+                  </span>
+                  <span className="tabular-nums">
+                    {d.weekAgoPct.toFixed(1)}% → {d.todayPct.toFixed(1)}%
+                  </span>
+                  <span className="font-semibold tabular-nums">
+                    ({d.deltaPp.toFixed(1)}pp)
+                  </span>
+                </Link>
+              ))}
+              {latestAlert.drops.length > 25 ? (
+                <span className="text-xs text-red-800/80 self-center">
+                  …and {latestAlert.drops.length - 25} more
+                </span>
+              ) : null}
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card>
           <CardHeader className="pb-2">
@@ -752,10 +863,18 @@ export default function AdminCoverage() {
                                 source: 'cron',
                               },
                             ];
+                    const alertEntry = alertedByCountry[row.countryCode];
+                    const isAlerted = !!alertEntry;
+                    const alertedMetrics = alertEntry
+                      ? Array.from(alertEntry.metrics).sort()
+                      : [];
                     return (
                       <Fragment key={row.countryCode}>
                       <TableRow
                         data-testid={`row-coverage-${row.countryCode}`}
+                        className={
+                          isAlerted ? 'bg-red-50/60 hover:bg-red-50' : undefined
+                        }
                       >
                         <TableCell>
                           <Link
@@ -769,6 +888,25 @@ export default function AdminCoverage() {
                             <span className="font-medium">
                               {row.countryName}
                             </span>
+                            {isAlerted ? (
+                              <Badge
+                                variant="outline"
+                                className="border-red-300 bg-red-100 text-red-700 text-[10px] px-1.5 py-0 gap-1"
+                                data-testid={`badge-coverage-drop-${row.countryCode}`}
+                                title={alertEntry.entries
+                                  .map(
+                                    (e) =>
+                                      `${e.metric}: ${e.weekAgoPct.toFixed(1)}% → ${e.todayPct.toFixed(1)}% (${e.deltaPp.toFixed(1)}pp)`,
+                                  )
+                                  .join('\n')}
+                              >
+                                <AlertTriangle className="w-3 h-3" />
+                                {alertedMetrics
+                                  .map((m) => (m === 'logo' ? 'logo' : 'tags'))
+                                  .join(' + ')}{' '}
+                                drop
+                              </Badge>
+                            ) : null}
                           </Link>
                         </TableCell>
                         <TableCell className="text-right tabular-nums">
