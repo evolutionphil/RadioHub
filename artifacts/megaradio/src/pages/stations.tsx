@@ -409,6 +409,27 @@ export default function Stations() {
     },
   });
 
+  // While the background recheck job is running, invalidate the
+  // tagless/cooldown summary each time a progress poll comes back so
+  // the header badge shrinks in real time instead of waiting for the
+  // job to complete or for a manual refresh.
+  const recheckProgressRef = useRef<{ jobId: string; processed: number } | null>(null);
+  useEffect(() => {
+    const job = recheckTagsJobStatus?.job;
+    if (!job || job.status !== 'running') {
+      recheckProgressRef.current = null;
+      return;
+    }
+    const last = recheckProgressRef.current;
+    if (last && last.jobId === job.jobId && last.processed === job.processed) {
+      return;
+    }
+    recheckProgressRef.current = { jobId: job.jobId, processed: job.processed };
+    queryClient.invalidateQueries({
+      queryKey: ['/api/admin/stations/tags-status-summary'],
+    });
+  }, [recheckTagsJobStatus, queryClient]);
+
   useEffect(() => {
     if (!recheckTagsJobId) return;
     if (recheckTagsJobStatus === undefined) return;
