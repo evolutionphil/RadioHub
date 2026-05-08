@@ -87,7 +87,22 @@ import RadioHeader from "../src/components/layout/radio-header";
 function makeQueryClient() {
   const qc = new QueryClient({
     defaultOptions: {
-      queries: { retry: false, gcTime: 0, staleTime: Infinity },
+      queries: {
+        retry: false,
+        gcTime: 0,
+        staleTime: Infinity,
+        // The suite seeds every query via setQueryData, so no real fetch
+        // should ever run. Install a fail-fast queryFn so TanStack Query
+        // stops logging "No queryFn was passed as an option", while still
+        // surfacing unexpected query execution (e.g. a query-key drift)
+        // as a loud test failure rather than a silent forever-loading
+        // observer.
+        queryFn: ({ queryKey }) => {
+          throw new Error(
+            `Unexpected query execution in test for key ${JSON.stringify(queryKey)} — seed it with setQueryData or mock the hook.`
+          );
+        },
+      },
     },
   });
   qc.setQueryData(["/api/filters/countries"], [
