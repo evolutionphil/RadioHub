@@ -536,6 +536,112 @@ export default function AdminUsers() {
     return Number.isFinite(d.getTime()) ? d.toISOString() : "";
   };
 
+  // Shared row builder so CSV and XLSX always export the same columns in
+  // the same order. Returns typed values (number | Date | string | null)
+  // so XLSX can write real number/date cells; CSV stringifies as needed.
+  type ExportRow = {
+    id: string;
+    name: string;
+    email: string;
+    auth_method: string;
+    plan: string;
+    plan_active: boolean;
+    expires_at: Date | null;
+    followers: number;
+    favorites: number;
+    created_at: Date | null;
+    updated_at: Date | null;
+  };
+
+  const parseDate = (s?: string | null): Date | null => {
+    if (!s) return null;
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d : null;
+  };
+
+  const buildExportRows = (): ExportRow[] =>
+    filteredUsers.map((u) => {
+      const name =
+        u.fullName ||
+        [u.firstName, u.lastName].filter(Boolean).join(" ") ||
+        "";
+      const sub = u.subscription;
+      return {
+        id: u._id,
+        name,
+        email: u.email,
+        auth_method: (u.authProvider || "email").toLowerCase(),
+        plan: sub?.plan ?? "none",
+        plan_active: sub?.isActive === true,
+        expires_at: parseDate(sub?.expiresAt ?? undefined),
+        followers: u.followers ?? 0,
+        favorites: u.favorites ?? 0,
+        created_at: parseDate(u.createdAt),
+        updated_at: parseDate(u.updatedAt),
+      };
+    });
+
+  // Same naming convention as the CSV export so admins can pair files
+  // together when archiving.
+  const exportTimestamp = (): string =>
+    new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")
+      .replace("T", "_")
+      .replace("Z", "");
+
+  const handleDownloadXlsx = async () => {
+    // exceljs is ~900KB pre-gzip; lazy-load so the rest of the admin UI
+    // stays snappy and only admins who actually click "Download Excel"
+    // pay the cost.
+    let ExcelJS: typeof import("exceljs");
+    try {
+      ExcelJS = await import("exceljs");
+    } catch {
+      toast({
+        title: "Excel export unavailable",
+        description: "Could not load the Excel exporter. Please try CSV instead.",
+        variant: "destructive",
+      });
+      return;
+    }
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = "MegaRadio Admin";
+    workbook.created = new Date();
+    const sheet = workbook.addWorksheet("Users");
+    sheet.columns = [
+      { header: "id", key: "id", width: 26 },
+      { header: "name", key: "name", width: 24 },
+      { header: "email", key: "email", width: 32 },
+      { header: "auth_method", key: "auth_method", width: 14 },
+      { header: "plan", key: "plan", width: 18 },
+      { header: "plan_active", key: "plan_active", width: 12 },
+      // Real Excel date cells so admins can sort/filter by date in Excel.
+      { header: "expires_at", key: "expires_at", width: 20, style: { numFmt: "yyyy-mm-dd hh:mm:ss" } },
+      { header: "followers", key: "followers", width: 12, style: { numFmt: "0" } },
+      { header: "favorites", key: "favorites", width: 12, style: { numFmt: "0" } },
+      { header: "created_at", key: "created_at", width: 20, style: { numFmt: "yyyy-mm-dd hh:mm:ss" } },
+      { header: "updated_at", key: "updated_at", width: 20, style: { numFmt: "yyyy-mm-dd hh:mm:ss" } },
+    ];
+    sheet.getRow(1).font = { bold: true };
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    for (const row of buildExportRows()) {
+      sheet.addRow(row);
+    }
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], {
+      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `megaradio-users-${exportTimestamp()}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleDownloadCsv = () => {
     const headers = [
       "id",
@@ -550,28 +656,19 @@ export default function AdminUsers() {
       "created_at",
       "updated_at",
     ];
-    const rows = filteredUsers.map((u) => {
-      const name =
-        u.fullName ||
-        [u.firstName, u.lastName].filter(Boolean).join(" ") ||
-        "";
-      const sub = u.subscription;
-      const plan = sub?.plan ?? "none";
-      const planActive = sub?.isActive === true;
-      return [
-        u._id,
-        name,
-        u.email,
-        (u.authProvider || "email").toLowerCase(),
-        plan,
-        planActive ? "true" : "false",
-        csvDate(sub?.expiresAt ?? undefined),
-        u.followers ?? 0,
-        u.favorites ?? 0,
-        csvDate(u.createdAt),
-        csvDate(u.updatedAt),
-      ];
-    });
+    const rows = buildExportRows().map((r) => [
+      r.id,
+      r.name,
+      r.email,
+      r.auth_method,
+      r.plan,
+      r.plan_active ? "true" : "false",
+      r.expires_at ? r.expires_at.toISOString() : "",
+      r.followers,
+      r.favorites,
+      r.created_at ? r.created_at.toISOString() : "",
+      r.updated_at ? r.updated_at.toISOString() : "",
+    ]);
     const csv =
       [headers, ...rows].map((r) => r.map(csvField).join(",")).join("\r\n") +
       "\r\n";
@@ -580,14 +677,9 @@ export default function AdminUsers() {
       type: "text/csv;charset=utf-8;",
     });
     const url = URL.createObjectURL(blob);
-    const ts = new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-")
-      .replace("T", "_")
-      .replace("Z", "");
     const a = document.createElement("a");
     a.href = url;
-    a.download = `megaradio-users-${ts}.csv`;
+    a.download = `megaradio-users-${exportTimestamp()}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -823,6 +915,19 @@ export default function AdminUsers() {
             >
               <Download size={16} className="mr-2" />
               Download CSV
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleDownloadXlsx}
+              disabled={filteredUsers.length === 0}
+              data-testid="button-download-users-xlsx"
+              aria-label="Download filtered users as Excel"
+              title="Download the currently filtered user list as an Excel (.xlsx) file"
+              className="bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            >
+              <Download size={16} className="mr-2" />
+              Download Excel
             </Button>
             <ResetViewButton
               hasNonDefaultPrefs={hasNonDefaultViewPrefs}
