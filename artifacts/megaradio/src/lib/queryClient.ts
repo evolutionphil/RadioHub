@@ -20,10 +20,11 @@ export async function apiRequest(
   options: {
     body?: unknown;
     headers?: Record<string, string>;
+    signal?: AbortSignal;
   } = {}
 ): Promise<Response> {
-  const { body, headers = {} } = options;
-  
+  const { body, headers = {}, signal } = options;
+
   const res = await fetch(url, {
     method,
     headers: {
@@ -32,6 +33,7 @@ export async function apiRequest(
     },
     body: body ? JSON.stringify(body) : undefined,
     credentials: "include",
+    signal,
   });
 
   await throwIfResNotOk(res);

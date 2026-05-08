@@ -12,6 +12,9 @@ import { apiRequest } from '@/lib/queryClient';
 //   their setup.
 // - Subsequent local changes are mirrored to localStorage immediately
 //   and PUT to the server (debounced) so other devices pick them up.
+// - reset() wipes local + server prefs and uses a "generation" token so
+//   any GET/PUT in flight when reset fires is ignored, preventing a
+//   late response from re-seeding the record we just deleted.
 //
 // `key` becomes both the localStorage namespace and the server key,
 // so any admin page can call this hook with a fresh string and get
@@ -49,6 +52,7 @@ export interface UseAdminViewPrefsResult<T> {
   prefs: T;
   setPrefs: (next: T | ((prev: T) => T)) => void;
   clearLocal: () => void;
+  reset: () => void;
   loaded: boolean;
 }
 
@@ -87,9 +91,16 @@ export function useAdminViewPrefs<T>(
   const latestRef = useRef<T>(prefs);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef<AbortController | null>(null);
+  const initialLoadRef = useRef<AbortController | null>(null);
   // Most recent server-known updatedAt (epoch ms). Used to decide whether
   // a focus-time refetch carries a newer value than what we already have.
   const lastUpdatedAtRef = useRef<number>(0);
+  // Bumped whenever reset() runs. Any async work (initial GET, debounced
+  // PUT, focus refresh) snapshots the current generation up front and
+  // ignores its results if the generation has advanced by the time it
+  // resolves. Prevents a late response from re-seeding the server record
+  // we just deleted, or re-adopting stale prefs over the freshly-reset UI.
+  const resetGenRef = useRef(0);
 
   // Keep latestRef aligned with state for the debounced flush.
   useEffect(() => {
@@ -99,11 +110,18 @@ export function useAdminViewPrefs<T>(
   // Initial server load + migration from localStorage.
   useEffect(() => {
     let cancelled = false;
+    const generation = resetGenRef.current;
+    const controller = new AbortController();
+    initialLoadRef.current = controller;
     (async () => {
       try {
-        const res = await apiRequest('GET', `/api/admin/preferences/${encodeURIComponent(key)}`);
+        const res = await apiRequest(
+          'GET',
+          `/api/admin/preferences/${encodeURIComponent(key)}`,
+          { signal: controller.signal },
+        );
         const body = (await res.json()) as { value: unknown };
-        if (cancelled) return;
+        if (cancelled || generation !== resetGenRef.current) return;
 
         const serverUpdatedAt = parseUpdatedAt((body as { updatedAt?: unknown }).updatedAt);
         if (serverUpdatedAt > lastUpdatedAtRef.current) {
@@ -118,10 +136,11 @@ export function useAdminViewPrefs<T>(
           // there's nothing meaningful to upload.
           const localStr = JSON.stringify(local);
           const defaultsStr = JSON.stringify(defaults);
-          if (localStr !== defaultsStr) {
+          if (localStr !== defaultsStr && generation === resetGenRef.current) {
             try {
               await apiRequest('PUT', `/api/admin/preferences/${encodeURIComponent(key)}`, {
                 body: { value: local },
+                signal: controller.signal,
               });
             } catch {
               // Ignore — next user-driven change will retry.
@@ -130,20 +149,26 @@ export function useAdminViewPrefs<T>(
         } else {
           const sanitized = sanitize(body.value);
           // Only adopt server value if the user hasn't already started
-          // editing in the meantime, to avoid clobbering their edits.
-          if (!userDirtyRef.current && !cancelled) {
+          // editing in the meantime, and no reset has happened since
+          // this request started.
+          if (
+            !userDirtyRef.current &&
+            !cancelled &&
+            generation === resetGenRef.current
+          ) {
             setPrefsState(sanitized);
             writeLocal(key, sanitized);
           }
         }
       } catch {
-        // Network/auth error — fall back to localStorage values already loaded.
+        // Network/auth error or aborted — fall back to localStorage values.
       } finally {
-        if (!cancelled) setLoaded(true);
+        if (!cancelled && generation === resetGenRef.current) setLoaded(true);
       }
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // Intentionally only on key — defaults/sanitize are expected to be stable
     // per call site (declared at module scope or memoized).
@@ -156,11 +181,16 @@ export function useAdminViewPrefs<T>(
     }
     const controller = new AbortController();
     inFlightRef.current = controller;
+    const generation = resetGenRef.current;
     const value = latestRef.current;
     apiRequest('PUT', `/api/admin/preferences/${encodeURIComponent(key)}`, {
       body: { value },
+      signal: controller.signal,
     })
       .then(async (res) => {
+        // If a reset raced ahead of us, ignore the response so we don't
+        // re-stamp lastUpdatedAtRef from a write the server just deleted.
+        if (generation !== resetGenRef.current) return;
         try {
           const body = (await res.json()) as { updatedAt?: unknown };
           const ts = parseUpdatedAt(body.updatedAt);
@@ -171,7 +201,9 @@ export function useAdminViewPrefs<T>(
       })
       .catch(() => {
         // Best-effort; localStorage already holds the latest copy so the
-        // user doesn't lose anything if the server write fails.
+        // user doesn't lose anything if the server write fails. If a
+        // reset raced ahead of us, the abort above + the generation guard
+        // in reset() ensure the server state stays cleared.
       });
   }, [key]);
 
@@ -214,11 +246,13 @@ export function useAdminViewPrefs<T>(
     const refresh = async () => {
       if (document.visibilityState === 'hidden') return;
       if (debounceRef.current) return;
+      const generation = resetGenRef.current;
       try {
         const res = await apiRequest(
           'GET',
           `/api/admin/preferences/${encodeURIComponent(key)}`,
         );
+        if (generation !== resetGenRef.current) return;
         const body = (await res.json()) as { value?: unknown; updatedAt?: unknown };
         const serverUpdatedAt = parseUpdatedAt(body.updatedAt);
         if (serverUpdatedAt <= lastUpdatedAtRef.current) return;
@@ -270,6 +304,45 @@ export function useAdminViewPrefs<T>(
     removeLocal(key);
   }, [key]);
 
+  const reset = useCallback(() => {
+    // Bump the generation first so any in-flight GET/PUT that resolves
+    // after this point will see a stale generation and bail out before
+    // touching state or the server.
+    resetGenRef.current += 1;
+
+    // Cancel any pending debounce so we don't immediately re-create the
+    // server record we're about to delete.
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+    // Abort any in-flight PUT so it can't land after our DELETE.
+    if (inFlightRef.current) {
+      inFlightRef.current.abort();
+      inFlightRef.current = null;
+    }
+    // Abort the initial GET too, so a slow first-load response can't
+    // re-adopt stale prefs after a quick reset.
+    if (initialLoadRef.current) {
+      initialLoadRef.current.abort();
+      initialLoadRef.current = null;
+    }
+    userDirtyRef.current = false;
+    latestRef.current = defaults;
+    setPrefsState(defaults);
+    // If reset fires before the initial GET finishes, that GET is aborted
+    // and its `setLoaded(true)` is gated by the now-stale generation, so
+    // we settle `loaded` here to keep consumers from waiting forever.
+    setLoaded(true);
+    removeLocal(key);
+    apiRequest('DELETE', `/api/admin/preferences/${encodeURIComponent(key)}`).catch(
+      () => {
+        // Best-effort; localStorage is already cleared so the UI is in
+        // the right state on this device.
+      },
+    );
+  }, [key, defaults]);
+
   // Flush pending writes on unmount so a quick edit + nav doesn't lose data.
   useEffect(() => {
     return () => {
@@ -283,5 +356,5 @@ export function useAdminViewPrefs<T>(
     };
   }, [flushToServer]);
 
-  return { prefs, setPrefs, clearLocal, loaded };
+  return { prefs, setPrefs, clearLocal, reset, loaded };
 }

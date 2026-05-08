@@ -52,6 +52,32 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
     },
   );
 
+  app.delete(
+    '/api/admin/preferences/:key',
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const key = String(req.params.key ?? '');
+        if (!KEY_REGEX.test(key)) {
+          return res.status(400).json({ error: 'Invalid preference key' });
+        }
+        const adminUsername = getAdminUsername(req);
+        if (!adminUsername) {
+          return res.status(401).json({ error: 'Admin identity unavailable' });
+        }
+
+        const result = await AdminPreference.deleteOne({ adminUsername, key });
+        return res.json({
+          key,
+          deleted: result.deletedCount ?? 0,
+        });
+      } catch (error: any) {
+        logger.error('Error deleting admin preference:', error);
+        return res.status(500).json({ error: 'Failed to delete preference' });
+      }
+    },
+  );
+
   app.put(
     '/api/admin/preferences/:key',
     requireAdmin,

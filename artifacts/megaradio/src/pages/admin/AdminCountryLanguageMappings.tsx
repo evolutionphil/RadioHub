@@ -122,7 +122,11 @@ function sanitizeViewPrefs(raw: unknown): ViewPrefs {
 
 export default function AdminCountryLanguageMappings() {
   const { toast } = useToast();
-  const { prefs, setPrefs, clearLocal: clearViewPrefsLocal } = useAdminViewPrefs<ViewPrefs>(
+  const {
+    prefs,
+    setPrefs,
+    reset: resetViewPrefs,
+  } = useAdminViewPrefs<ViewPrefs>(
     VIEW_PREFS_KEY,
     DEFAULT_VIEW_PREFS,
     sanitizeViewPrefs,
@@ -267,8 +271,11 @@ export default function AdminCountryLanguageMappings() {
     }
   }, [recentClearedActions, recentClearsHydrated, recentClearsStorageKey]);
 
-  const hasActiveFilters =
-    searchTerm.trim() !== '' || sort !== null || showOverridesOnly;
+  const hasNonDefaultViewPrefs =
+    searchTerm.trim() !== '' ||
+    sort !== null ||
+    showOverridesOnly ||
+    overwriteExisting !== DEFAULT_VIEW_PREFS.overwriteExisting;
 
   const performDiscardPending = () => {
     setPendingChanges((prev) => {
@@ -292,9 +299,12 @@ export default function AdminCountryLanguageMappings() {
     }
   };
 
-  const handleResetFilters = () => {
-    setPrefs((p) => ({ ...p, searchTerm: '', sort: null, showOverridesOnly: false }));
-    clearViewPrefsLocal();
+  const handleResetView = () => {
+    resetViewPrefs();
+    toast({
+      title: 'View reset',
+      description: 'Search, sort, and toggles restored to defaults on this device and your account.',
+    });
   };
 
   // Fetch available countries
@@ -1353,16 +1363,17 @@ export default function AdminCountryLanguageMappings() {
                 className="pl-10"
               />
             </div>
-            {hasActiveFilters && (
+            {hasNonDefaultViewPrefs && (
               <Button
-                data-testid="button-reset-filters"
+                data-testid="button-reset-view"
                 variant="ghost"
                 size="sm"
-                onClick={handleResetFilters}
+                onClick={handleResetView}
                 className="whitespace-nowrap"
+                title="Clear search, sort, and toggles on this device and your account"
               >
                 <X className="mr-2 h-4 w-4" />
-                Reset filters
+                Reset view
               </Button>
             )}
             <div className="flex items-center gap-2">
