@@ -40,6 +40,7 @@ import {
   ChevronRight,
   Undo2,
   History,
+  CheckCircle2,
 } from 'lucide-react';
 import {
   Collapsible,
@@ -1115,6 +1116,63 @@ export default function AdminCoverage() {
                   …and {latestAlert.drops.length - 25} more
                 </span>
               ) : null}
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : latestAlert &&
+        latestAlert.drops.length > 0 &&
+        isAlertAcknowledged ? (
+        <Alert
+          data-testid="alert-coverage-drop-acknowledged"
+          className="border-green-200 bg-green-50 text-green-900 [&>svg]:text-green-700"
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          <AlertTitle className="flex items-center gap-2 flex-wrap text-sm">
+            <span>Coverage drop alert acknowledged</span>
+            {latestAlert.snapshotDate ? (
+              <span
+                className="text-xs font-normal text-green-800/80"
+                data-testid="text-acknowledged-snapshot-date"
+              >
+                snapshot {latestAlert.snapshotDate}
+              </span>
+            ) : null}
+          </AlertTitle>
+          <AlertDescription>
+            <div className="mt-1 text-sm flex flex-wrap items-center gap-x-1.5">
+              <span>
+                Acknowledged by{' '}
+                <span
+                  className="font-medium"
+                  data-testid="text-acknowledged-by"
+                >
+                  {latestAlert.acknowledgedBy ?? 'an admin'}
+                </span>
+                {latestAlert.acknowledgedAt ? (
+                  <>
+                    {' '}on{' '}
+                    <time
+                      dateTime={latestAlert.acknowledgedAt}
+                      title={new Date(
+                        latestAlert.acknowledgedAt,
+                      ).toLocaleString()}
+                      data-testid="text-acknowledged-at"
+                    >
+                      {new Date(
+                        latestAlert.acknowledgedAt,
+                      ).toLocaleString()}
+                    </time>
+                  </>
+                ) : null}
+                .
+              </span>
+              <Link
+                href="/profile/notifications"
+                className="underline underline-offset-2 hover:text-green-950"
+                data-testid="link-acknowledged-notifications"
+              >
+                View in notifications
+              </Link>
             </div>
           </AlertDescription>
         </Alert>
