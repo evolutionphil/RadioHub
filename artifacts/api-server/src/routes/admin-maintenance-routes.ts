@@ -321,6 +321,38 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     },
   );
 
+  // Paginated list of historical BackfillRun rows so the dashboard can
+  // render a "last N runs" table beside the latest-run summary card.
+  // Optional `?trigger=cron:weekly` (or `admin:manual`) narrows by source;
+  // `?limit=` defaults to 10 and is capped at 50 to keep the payload
+  // small. Rows are returned newest-first by `startedAt`.
+  app.get(
+    "/api/admin/maintenance/scheduled-backfill/runs",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const limit = Math.max(
+          1,
+          Math.min(50, Number(req.query.limit) || 10),
+        );
+        const trigger = (req.query.trigger as string | undefined)?.trim();
+        const filter: any = {};
+        if (trigger) filter.trigger = trigger;
+        const runs = await BackfillRun.find(filter)
+          .sort({ startedAt: -1 })
+          .limit(limit)
+          .lean();
+        res.json({ runs });
+      } catch (err: any) {
+        logger.error(
+          "[scheduled-backfill runs] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
   // Live status of the scheduled backfill plus the most recent
   // BackfillRun row so the dashboard can render "running…" vs the last
   // completed summary without the client having to know about Mongo

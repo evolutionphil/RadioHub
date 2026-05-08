@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -70,6 +70,30 @@ interface ScheduledBackfillStatusResponse {
   };
   lastRun: ScheduledBackfillRun | null;
 }
+interface ScheduledBackfillRunsResponse {
+  runs: ScheduledBackfillRun[];
+}
+
+type RunsTriggerFilter = "" | "cron:weekly" | "admin:manual";
+
+function formatDuration(ms?: number) {
+  if (typeof ms !== "number" || !isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  return `${m}m ${rs}s`;
+}
+
+function summarizeRunTotals(run: ScheduledBackfillRun) {
+  const logosEnqueued = run.logos.reduce((a, c) => a + (c.enqueued || 0), 0);
+  const logosCandidates = run.logos.reduce((a, c) => a + (c.candidates || 0), 0);
+  const tagsHydrated = run.tags.reduce((a, c) => a + (c.hydrated || 0), 0);
+  const tagsProcessed = run.tags.reduce((a, c) => a + (c.processed || 0), 0);
+  const tagsFailed = run.tags.reduce((a, c) => a + (c.failed || 0), 0);
+  return { logosEnqueued, logosCandidates, tagsHydrated, tagsProcessed, tagsFailed };
+}
 
 function pct(n: number, total: number) {
   if (!total) return "0%";
@@ -135,6 +159,29 @@ export default function SeoMaintenancePage() {
     refetchInterval: (q) => (q.state.data?.status?.isRunning ? 3000 : false),
   });
 
+  const [runsTrigger, setRunsTrigger] = useState<RunsTriggerFilter>("");
+  const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
+  const runsQuery = useQuery<ScheduledBackfillRunsResponse>({
+    queryKey: [
+      "/api/admin/maintenance/scheduled-backfill/runs",
+      runsTrigger,
+    ],
+    queryFn: async () => {
+      const qs = new URLSearchParams({ limit: "10" });
+      if (runsTrigger) qs.set("trigger", runsTrigger);
+      const res = await fetch(
+        `/api/admin/maintenance/scheduled-backfill/runs?${qs.toString()}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+    // Auto-refresh while a sweep is in flight so a freshly-finished run
+    // appears in the table without a manual reload.
+    refetchInterval: () =>
+      scheduledStatusQuery.data?.status?.isRunning ? 5000 : false,
+  });
+
   const startScheduled = useMutation({
     mutationFn: async (countryCode: string) =>
       apiRequest("POST", "/api/admin/maintenance/scheduled-backfill/run", {
@@ -148,6 +195,9 @@ export default function SeoMaintenancePage() {
       });
       queryClient.invalidateQueries({
         queryKey: ["/api/admin/maintenance/scheduled-backfill/status"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["/api/admin/maintenance/scheduled-backfill/runs"],
       });
     },
     onError: (e: any) => {
@@ -362,6 +412,219 @@ export default function SeoMaintenancePage() {
                   )}
                 </div>
               </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Scheduled backfill — history of past runs */}
+      <Card className="bg-white">
+        <CardHeader>
+          <CardTitle className="text-base">
+            Geçmiş haftalık backfill çalışmaları
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div>
+              <label className="text-xs text-slate-600 mb-1 block">
+                Tetikleyici
+              </label>
+              <select
+                value={runsTrigger}
+                onChange={(e) =>
+                  setRunsTrigger(e.target.value as RunsTriggerFilter)
+                }
+                className="border border-slate-300 rounded px-2 py-1 text-sm bg-white"
+                data-testid="select-runs-trigger"
+              >
+                <option value="">Tümü</option>
+                <option value="cron:weekly">cron:weekly</option>
+                <option value="admin:manual">admin:manual</option>
+              </select>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => runsQuery.refetch()}
+              disabled={runsQuery.isFetching}
+            >
+              {runsQuery.isFetching ? "Yükleniyor..." : "Yenile"}
+            </Button>
+          </div>
+
+          {runsQuery.isLoading && (
+            <div className="text-sm text-slate-500">Yükleniyor...</div>
+          )}
+          {runsQuery.error && (
+            <div className="text-sm text-rose-600">
+              Geçmiş alınamadı.
+            </div>
+          )}
+          {runsQuery.data && runsQuery.data.runs.length === 0 && (
+            <div className="text-sm text-slate-500">
+              Bu filtreyle henüz bir çalışma kaydı yok.
+            </div>
+          )}
+          {runsQuery.data && runsQuery.data.runs.length > 0 && (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm" data-testid="table-backfill-runs">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="py-2 pr-3"></th>
+                    <th className="py-2 pr-3">Başlangıç</th>
+                    <th className="py-2 pr-3">Tetikleyici</th>
+                    <th className="py-2 pr-3">Süre</th>
+                    <th className="py-2 pr-3">Durum</th>
+                    <th className="py-2 pr-3">Logos (enq/cand)</th>
+                    <th className="py-2 pr-3">Tags (hyd/proc)</th>
+                    <th className="py-2 pr-3">Fail</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {runsQuery.data.runs.map((run) => {
+                    const totals = summarizeRunTotals(run);
+                    const isExpanded = expandedRunId === run._id;
+                    return (
+                      <Fragment key={run._id}>
+                        <tr
+                          className="border-b border-slate-100 hover:bg-slate-50 cursor-pointer"
+                          onClick={() =>
+                            setExpandedRunId(isExpanded ? null : run._id)
+                          }
+                          data-testid={`row-backfill-run-${run._id}`}
+                        >
+                          <td className="py-2 pr-3 text-slate-400 w-6">
+                            {isExpanded ? "▾" : "▸"}
+                          </td>
+                          <td className="py-2 pr-3 whitespace-nowrap">
+                            {new Date(run.startedAt).toLocaleString()}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <code className="text-xs">{run.trigger}</code>
+                          </td>
+                          <td className="py-2 pr-3">
+                            {formatDuration(run.durationMs)}
+                          </td>
+                          <td className="py-2 pr-3">
+                            <Badge
+                              variant={
+                                run.status === "running"
+                                  ? "default"
+                                  : run.status === "failed"
+                                  ? "destructive"
+                                  : "secondary"
+                              }
+                            >
+                              {run.status.toUpperCase()}
+                            </Badge>
+                          </td>
+                          <td className="py-2 pr-3">
+                            <span className="text-emerald-600 font-semibold">
+                              {totals.logosEnqueued}
+                            </span>
+                            <span className="text-slate-400">
+                              {" "}/ {totals.logosCandidates}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3">
+                            <span className="text-emerald-600 font-semibold">
+                              {totals.tagsHydrated}
+                            </span>
+                            <span className="text-slate-400">
+                              {" "}/ {totals.tagsProcessed}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-3">
+                            {totals.tagsFailed > 0 ? (
+                              <span className="text-rose-600">
+                                {totals.tagsFailed}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400">0</span>
+                            )}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr className="bg-slate-50">
+                            <td colSpan={8} className="px-3 py-3">
+                              {run.errorMessage && (
+                                <div className="text-xs text-rose-600 mb-2">
+                                  Hata: {run.errorMessage}
+                                </div>
+                              )}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                                    Logos (top-{run.topN})
+                                  </div>
+                                  {run.logos.length === 0 ? (
+                                    <div className="text-xs text-slate-500">
+                                      Yok
+                                    </div>
+                                  ) : (
+                                    run.logos.map((c) => (
+                                      <div
+                                        key={`logos-${run._id}-${c.countryCode}`}
+                                        className="text-xs flex justify-between"
+                                      >
+                                        <span className="font-mono">
+                                          {c.countryCode}
+                                        </span>
+                                        <span>
+                                          enqueued{" "}
+                                          <strong className="text-emerald-600">
+                                            {c.enqueued}
+                                          </strong>
+                                          {" / "}
+                                          {c.candidates}
+                                        </span>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="text-xs uppercase tracking-wide text-slate-500 mb-1">
+                                    Tags
+                                  </div>
+                                  {run.tags.length === 0 ? (
+                                    <div className="text-xs text-slate-500">
+                                      Yok
+                                    </div>
+                                  ) : (
+                                    run.tags.map((c) => (
+                                      <div
+                                        key={`tags-${run._id}-${c.countryCode}`}
+                                        className="text-xs flex justify-between"
+                                      >
+                                        <span className="font-mono">
+                                          {c.countryCode}
+                                        </span>
+                                        <span>
+                                          hydrated{" "}
+                                          <strong className="text-emerald-600">
+                                            {c.hydrated}
+                                          </strong>
+                                          {" / "}
+                                          {c.processed}
+                                          {c.failed > 0 && (
+                                            <span className="text-rose-600">
+                                              {" "}· {c.failed} fail
+                                            </span>
+                                          )}
+                                        </span>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
         </CardContent>
