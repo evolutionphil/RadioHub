@@ -12,6 +12,7 @@ import {
   getCanonicalGenreSlug,
   MIN_STATIONS_FOR_GENRE_INDEX,
 } from './seo/genre-whitelist';
+import { FAQ_PAGE_ITEMS } from './shared/faq-schema';
 
 // Concurrency raised 5 → 15 → 50 → 200 → 1000 → 2500: paired with MongoDB
 // pool 100, heap 10 GB and RSS warning 7 GB on a 24 GB Railway replica to
@@ -1497,12 +1498,20 @@ export class SeoRenderer {
       case 'faq':
         {
           const langPrefix = `/${language}`;
+          // Task #129: render every FAQ Q&A server-side as <h2>+<p> so
+          // Googlebot sees the exact text referenced by the FAQPage JSON-LD
+          // on first fetch (no schema/visible-content mismatch).
+          const faqBlocks = FAQ_PAGE_ITEMS.map((item) => `
+              <section>
+                <h2>${this.escapeHtml(getLocalizedText(item.qKey, item.qFallback))}</h2>
+                <p>${this.escapeHtml(getLocalizedText(item.aKey, item.aFallback))}</p>
+              </section>`).join('');
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
             <section>
               <p>${this.escapeHtml(getLocalizedText('faq_page_intro', 'Answers to common questions about Mega Radio: how online radio streaming works, supported devices, free access, mobile apps, station coverage across 120+ countries, and account help.'))}</p>
-            </section>
+            </section>${faqBlocks}
             <nav>
               <ul>
                 <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
@@ -1698,96 +1707,24 @@ export class SeoRenderer {
       };
     }
 
-    // FAQPage Schema for homepage and country pages
-    // Uses the actual 10 FAQ accordion questions from RadioFAQ.tsx
-    // Check pageType instead of cleanPath to include country homepages like /at, /de, etc.
+    // FAQPage Schema — only on the dedicated /faq page.
+    // Task #129: this used to fire on the homepage (which renders no Q&A),
+    // which Google flags as schema/visible-content mismatch. Questions and
+    // answers are now sourced from the shared FAQ_PAGE_ITEMS list so the
+    // JSON-LD always matches the visible <h2>+<p> blocks rendered above.
     let faqPageSchema: any = null;
-    if (additionalData?.pageType === 'home') {
+    if (additionalData?.pageType === 'faq') {
       faqPageSchema = {
         "@context": "https://schema.org",
         "@type": "FAQPage",
-        "mainEntity": [
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_what_is_radio', 'What is Radio?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_what_is_radio_answer', 'Radio is a technology that uses electromagnetic waves to transmit audio signals wirelessly. It allows broadcasting of music, news, talk shows, and other content to listeners through AM, FM, and digital frequencies.')
-            }
+        "mainEntity": FAQ_PAGE_ITEMS.map((item) => ({
+          "@type": "Question",
+          "name": getLocalizedText(item.qKey, item.qFallback),
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": getLocalizedText(item.aKey, item.aFallback),
           },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_what_is_internet_radio', 'What is Internet Radio?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_what_is_internet_radio_answer', 'Internet radio is audio broadcasting transmitted over the internet. Unlike traditional radio, it allows you to listen to stations from anywhere in the world through streaming technology on your computer, smartphone, or smart device.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_what_is_web_radio', 'What is Web Radio?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_what_is_web_radio_answer', 'Web radio is another term for internet radio - audio content streamed through websites and web applications. It offers the convenience of listening to live radio directly in your web browser without additional software.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_how_to_listen', 'How can I listen to Radio?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_how_to_listen_answer', 'You can listen to radio through traditional FM/AM receivers, car radios, smart speakers, or online through platforms like Mega Radio. Simply visit our website, choose a station, and click play to start streaming instantly.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_listen_on_phone', 'Can I listen to Radio on my Phone?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_listen_on_phone_answer', 'Yes! Mega Radio works perfectly on smartphones and tablets. Our mobile-optimized website provides seamless streaming on both iOS and Android devices. Simply open your browser and enjoy free radio anywhere.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_is_radio_free', 'Is Internet Radio Free?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_is_radio_free_answer', 'Yes, listening to internet radio on Mega Radio is completely free! We offer access to over 60,000 radio stations worldwide with no subscription fees, no registration required, and no hidden costs.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_listen_on_pc', 'How can I listen to Radio on my PC?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_listen_on_pc_answer', 'Listening on your PC is easy! Just visit Mega Radio in any web browser (Chrome, Firefox, Safari, Edge), find a station you like, and click play. No downloads or installations needed.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_which_stations', 'Which Radio Stations can I listen to?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_which_stations_answer', 'Mega Radio offers over 60,000 radio stations from 120+ countries. You can explore stations by genre (pop, rock, jazz, classical, news, sports), by country, or by language to find exactly what you want to hear.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_best_station', 'Which Radio Station is the best?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_best_station_answer', 'The best station depends on your personal taste! Use our popularity rankings to discover trending stations, or explore by genre to find stations that match your music preferences. Our recommendation system helps you discover new favorites.')
-            }
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_no_ads_stations', 'Which Radio Stations have no Advertising?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_no_ads_stations_answer', 'Many stations on Mega Radio are commercial-free, including public broadcasters, community stations, and specialty music channels. Use our filters to explore stations and find those with minimal or no advertising.')
-            }
-          }
-        ]
+        })),
       };
     }
 

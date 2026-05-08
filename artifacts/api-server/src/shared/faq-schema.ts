@@ -5,6 +5,127 @@ export interface FAQItem {
   answer: string;
 }
 
+// Translation key + English fallback pairs for the public /faq page.
+// MUST stay in sync with the visible Q&A rendered by:
+//   - artifacts/megaradio/src/pages/faq.tsx (client)
+//   - artifacts/api-server/src/seo-renderer.ts (SSR body + FAQPage JSON-LD)
+// Google flags schema/visible-content mismatch as deceptive markup, so any
+// addition/removal here must update all three surfaces together.
+export interface FAQTranslatedItem {
+  qKey: string;
+  qFallback: string;
+  aKey: string;
+  aFallback: string;
+}
+
+export const FAQ_PAGE_ITEMS: FAQTranslatedItem[] = [
+  {
+    qKey: "faq_what_is_radio",
+    qFallback: "What is Radio?",
+    aKey: "faq_what_is_radio_answer",
+    aFallback:
+      "Radio is a wireless technology that transmits audio content through electromagnetic waves.",
+  },
+  {
+    qKey: "faq_what_is_internet_radio",
+    qFallback: "What is Internet Radio?",
+    aKey: "faq_what_is_internet_radio_answer",
+    aFallback:
+      "Internet radio streams audio content over the internet instead of traditional radio waves.",
+  },
+  {
+    qKey: "faq_what_is_web_radio",
+    qFallback: "What is Web Radio?",
+    aKey: "faq_what_is_web_radio_answer",
+    aFallback:
+      "Web radio is essentially the same as internet radio - stations that broadcast online through websites or apps.",
+  },
+  {
+    qKey: "faq_how_to_listen",
+    qFallback: "How can I listen to radio?",
+    aKey: "faq_how_to_listen_answer",
+    aFallback:
+      "You can listen through traditional FM/AM, internet radio websites and apps, DAB+ receivers, smart speakers, or your car.",
+  },
+  {
+    qKey: "faq_listen_on_phone",
+    qFallback: "Can I listen to radio on my phone?",
+    aKey: "faq_listen_on_phone_answer",
+    aFallback:
+      "Yes! Mega Radio works on any smartphone — just visit the site in your mobile browser, no app required.",
+  },
+  {
+    qKey: "faq_is_radio_free",
+    qFallback: "Is internet radio free?",
+    aKey: "faq_is_radio_free_answer",
+    aFallback:
+      "Yes, internet radio on Mega Radio is completely free. No subscription fees, no registration required.",
+  },
+  {
+    qKey: "faq_listen_on_pc",
+    qFallback: "How can I listen to radio on my PC?",
+    aKey: "faq_listen_on_pc_answer",
+    aFallback:
+      "Open any web browser, visit Mega Radio, search for a station and click play. No software install required.",
+  },
+  {
+    qKey: "faq_which_stations",
+    qFallback: "Which radio stations can I listen to?",
+    aKey: "faq_which_stations_answer",
+    aFallback:
+      "Mega Radio offers 60,000+ stations from 120+ countries spanning every genre — pop, rock, jazz, classical, news, sports and talk.",
+  },
+  {
+    qKey: "faq_best_station",
+    qFallback: "Which radio station is the best?",
+    aKey: "faq_best_station_answer",
+    aFallback:
+      "It depends on your taste. Browse trending stations or filter by genre and country to find your perfect fit.",
+  },
+  {
+    qKey: "faq_no_ads_stations",
+    qFallback: "Which radio stations have no advertising?",
+    aKey: "faq_no_ads_stations_answer",
+    aFallback:
+      "Many public broadcasters and classical/jazz stations are commercial-free. Filter by those genres to discover ad-free options.",
+  },
+  {
+    qKey: "faq_how_search",
+    qFallback: "How do I search for a specific station?",
+    aKey: "faq_how_search_answer",
+    aFallback:
+      "Use the search page to look up stations by name, genre, language, or country. Results appear instantly as you type.",
+  },
+  {
+    qKey: "faq_supported_devices",
+    qFallback: "What devices does Mega Radio support?",
+    aKey: "faq_supported_devices_answer",
+    aFallback:
+      "Mega Radio works on desktops, laptops, smartphones, tablets, smart speakers, smart TVs and car infotainment systems.",
+  },
+  {
+    qKey: "faq_account_required",
+    qFallback: "Do I need an account to listen?",
+    aKey: "faq_account_required_answer",
+    aFallback:
+      "No account is needed to stream. An optional free account lets you save favourites, sync devices, and personalise recommendations.",
+  },
+  {
+    qKey: "faq_languages_supported",
+    qFallback: "What languages does Mega Radio support?",
+    aKey: "faq_languages_supported_answer",
+    aFallback:
+      "Our interface is available in 57 languages and stations broadcast in dozens more — local language broadcasting from every region.",
+  },
+  {
+    qKey: "faq_request_station",
+    qFallback: "How can I add or request a station?",
+    aKey: "faq_request_station_answer",
+    aFallback:
+      "Use the Request Station form to submit your favourite broadcaster — our team reviews and adds new stations regularly.",
+  },
+];
+
 export function generateFAQSchema(faqItems: FAQItem[], domain: string): any {
   return {
     "@context": "https://schema.org",

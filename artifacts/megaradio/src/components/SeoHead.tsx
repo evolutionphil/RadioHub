@@ -11,7 +11,7 @@ import {
   generateBreadcrumbSchema,
   type StructuredDataConfig 
 } from '@shared/structured-data';
-import { generateFAQSchema, MEGA_RADIO_FAQ, ABOUT_FAQ } from '@shared/faq-schema';
+import { generateFAQSchema, MEGA_RADIO_FAQ, ABOUT_FAQ, FAQ_PAGE_ITEMS, type FAQTranslatedItem } from '@shared/faq-schema';
 
 interface SeoHeadProps {
   stationData?: {
@@ -151,23 +151,17 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
       schemas.push(generateBreadcrumbSchema(breadcrumbs, domain));
     }
 
-    // Add FAQ schema for home page — same 10 questions as SSR FAQPage schema
-    // CRITICAL: Without this, SSR FAQ schema gets removed on hydration (never re-added)
-    if (pageType === 'home') {
+    // Add FAQ schema for the dedicated /faq page only.
+    // Task #129: previously the FAQPage JSON-LD lived on the homepage (which
+    // shows no Q&A) — Google flagged that as deceptive markup. The schema now
+    // matches the visible Q&A rendered server-side and client-side on /faq.
+    if (pageType === 'faq') {
       const tr = (key: string, fb: string) => translations?.[key] || fb;
-      const homeFaqItems = [
-        { question: tr('faq_what_is_radio', 'What is Radio?'), answer: tr('faq_what_is_radio_answer', 'Radio is a technology that uses electromagnetic waves to transmit audio signals wirelessly.') },
-        { question: tr('faq_what_is_internet_radio', 'What is Internet Radio?'), answer: tr('faq_what_is_internet_radio_answer', 'Internet radio is audio broadcasting transmitted over the internet, allowing you to listen to stations from anywhere in the world.') },
-        { question: tr('faq_what_is_web_radio', 'What is Web Radio?'), answer: tr('faq_what_is_web_radio_answer', 'Web radio is another term for internet radio — audio content streamed through websites and web applications.') },
-        { question: tr('faq_how_to_listen', 'How can I listen to Radio?'), answer: tr('faq_how_to_listen_answer', 'Visit our website, choose a station, and click play to start streaming instantly. No download required.') },
-        { question: tr('faq_listen_on_phone', 'Can I listen to Radio on my Phone?'), answer: tr('faq_listen_on_phone_answer', 'Yes! Mega Radio works perfectly on smartphones and tablets on both iOS and Android devices.') },
-        { question: tr('faq_is_radio_free', 'Is Internet Radio Free?'), answer: tr('faq_is_radio_free_answer', 'Yes, listening to internet radio on Mega Radio is completely free with no subscription fees.') },
-        { question: tr('faq_listen_on_pc', 'How can I listen to Radio on my PC?'), answer: tr('faq_listen_on_pc_answer', 'Just visit Mega Radio in any web browser and click play. No downloads or installations needed.') },
-        { question: tr('faq_which_stations', 'Which Radio Stations can I listen to?'), answer: tr('faq_which_stations_answer', 'Mega Radio offers over 60,000 radio stations from 120+ countries covering all genres.') },
-        { question: tr('faq_best_station', 'Which Radio Station is the best?'), answer: tr('faq_best_station_answer', 'The best station depends on your personal taste! Use our popularity rankings to discover trending stations.') },
-        { question: tr('faq_no_ads_stations', 'Which Radio Stations have no Advertising?'), answer: tr('faq_no_ads_stations_answer', 'Many stations on Mega Radio are commercial-free, including public broadcasters and community stations.') }
-      ];
-      schemas.push(generateFAQSchema(homeFaqItems, domain));
+      const faqItems = FAQ_PAGE_ITEMS.map((item: FAQTranslatedItem) => ({
+        question: tr(item.qKey, item.qFallback),
+        answer: tr(item.aKey, item.aFallback),
+      }));
+      schemas.push(generateFAQSchema(faqItems, domain));
     }
 
     // Add FAQ schema for about page
