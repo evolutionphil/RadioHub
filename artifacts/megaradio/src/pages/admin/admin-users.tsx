@@ -108,6 +108,30 @@ const AUTH_METHOD_FILTER_VALUES: readonly AuthMethodFilter[] = [
   "apple",
 ] as const;
 
+// "all" = no filter applied. Other values map 1:1 to the values stored on
+// UserSubscription.platform. Matching is independent of `isActive` so
+// users who originally signed up on iOS/Android/web/admin still appear
+// in the right bucket after their subscription expires or is cancelled.
+// Users with no subscription at all don't belong to any platform bucket.
+type PlatformFilter =
+  | "all"
+  | "ios"
+  | "android"
+  | "tvos"
+  | "macos"
+  | "web"
+  | "admin";
+
+const PLATFORM_FILTER_VALUES: readonly PlatformFilter[] = [
+  "all",
+  "ios",
+  "android",
+  "tvos",
+  "macos",
+  "web",
+  "admin",
+] as const;
+
 type SortColumn =
   | "createdAt"
   | "updatedAt"
@@ -122,6 +146,7 @@ interface UsersViewPrefs {
   searchQuery: string;
   planFilter: PlanFilter;
   authMethodFilter: AuthMethodFilter;
+  platformFilter: PlatformFilter;
   sort: { column: SortColumn; direction: SortDirection } | null;
 }
 
@@ -129,6 +154,7 @@ const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
   searchQuery: "",
   planFilter: "all",
   authMethodFilter: "all",
+  platformFilter: "all",
   sort: null,
 };
 
@@ -154,6 +180,7 @@ function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
   const obj = raw as Record<string, unknown>;
   const planRaw = obj.planFilter;
   const authRaw = obj.authMethodFilter;
+  const platformRaw = obj.platformFilter;
   let sort: UsersViewPrefs["sort"] = null;
   const sortRaw = obj.sort as Record<string, unknown> | undefined;
   if (
@@ -179,8 +206,26 @@ function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
       (AUTH_METHOD_FILTER_VALUES as readonly string[]).includes(authRaw)
         ? (authRaw as AuthMethodFilter)
         : "all",
+    platformFilter:
+      typeof platformRaw === "string" &&
+      (PLATFORM_FILTER_VALUES as readonly string[]).includes(platformRaw)
+        ? (platformRaw as PlatformFilter)
+        : "all",
     sort,
   };
+}
+
+function matchesPlatformFilter(
+  sub: UserSubscription | null | undefined,
+  filter: PlatformFilter,
+): boolean {
+  if (filter === "all") return true;
+  // Match purely on the stored platform value so users who originally
+  // signed up on iOS/Android/web/admin still show up after their
+  // subscription lapses or is cancelled. Users with no subscription
+  // (and therefore no platform value) are excluded from every bucket.
+  if (!sub) return false;
+  return sub.platform === filter;
 }
 
 function matchesPlanFilter(
@@ -247,6 +292,7 @@ export default function AdminUsers() {
   const searchQuery = prefs.searchQuery;
   const planFilter = prefs.planFilter;
   const authMethodFilter = prefs.authMethodFilter;
+  const platformFilter = prefs.platformFilter;
   const sort = prefs.sort;
   const setSearchQuery = (value: string) =>
     setPrefs((p) => ({ ...p, searchQuery: value }));
@@ -254,6 +300,8 @@ export default function AdminUsers() {
     setPrefs((p) => ({ ...p, planFilter: value }));
   const setAuthMethodFilter = (value: AuthMethodFilter) =>
     setPrefs((p) => ({ ...p, authMethodFilter: value }));
+  const setPlatformFilter = (value: PlatformFilter) =>
+    setPrefs((p) => ({ ...p, platformFilter: value }));
   const setSort = (next: UsersViewPrefs["sort"]) =>
     setPrefs((p) => ({ ...p, sort: next }));
   const handleToggleSort = (column: SortColumn) => {
@@ -264,7 +312,9 @@ export default function AdminUsers() {
     );
   };
   const hasActiveFilters =
-    planFilter !== "all" || authMethodFilter !== "all";
+    planFilter !== "all" ||
+    authMethodFilter !== "all" ||
+    platformFilter !== "all";
   const hasNonDefaultViewPrefs =
     searchQuery.trim() !== "" || hasActiveFilters || sort !== null;
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
@@ -301,7 +351,8 @@ export default function AdminUsers() {
       return (
         matchesSearch &&
         matchesPlanFilter(user.subscription, planFilter) &&
-        matchesAuthMethodFilter(user.authProvider, authMethodFilter)
+        matchesAuthMethodFilter(user.authProvider, authMethodFilter) &&
+        matchesPlatformFilter(user.subscription, platformFilter)
       );
     });
     if (!sort) return matches;
@@ -369,7 +420,7 @@ export default function AdminUsers() {
       return cmp * dir;
     });
     return sorted;
-  }, [users, searchQuery, planFilter, authMethodFilter, sort]);
+  }, [users, searchQuery, planFilter, authMethodFilter, platformFilter, sort]);
 
   // Counts per filter option computed from the currently loaded users so
   // each dropdown doubles as a lightweight breakdown. We deliberately use
@@ -390,6 +441,25 @@ export default function AdminUsers() {
       for (const value of PLAN_FILTER_VALUES) {
         if (value === "all") continue;
         if (matchesPlanFilter(user.subscription, value)) counts[value]++;
+      }
+    }
+    return counts;
+  }, [users]);
+
+  const platformCounts = useMemo(() => {
+    const counts: Record<PlatformFilter, number> = {
+      all: users.length,
+      ios: 0,
+      android: 0,
+      tvos: 0,
+      macos: 0,
+      web: 0,
+      admin: 0,
+    };
+    for (const user of users) {
+      for (const value of PLATFORM_FILTER_VALUES) {
+        if (value === "all") continue;
+        if (matchesPlatformFilter(user.subscription, value)) counts[value]++;
       }
     }
     return counts;
@@ -661,7 +731,7 @@ export default function AdminUsers() {
         <CardHeader>
           <CardTitle>Search Users</CardTitle>
           <CardDescription>
-            Search by email or name, and narrow down by subscription plan or sign-in method
+            Search by email or name, and narrow down by subscription plan, sign-in method, or platform
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -716,6 +786,29 @@ export default function AdminUsers() {
                 <SelectItem value="google">Google ({formatCount(authMethodCounts.google)})</SelectItem>
                 <SelectItem value="facebook">Facebook ({formatCount(authMethodCounts.facebook)})</SelectItem>
                 <SelectItem value="apple">Apple ({formatCount(authMethodCounts.apple)})</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={platformFilter}
+              onValueChange={(value) =>
+                setPlatformFilter(value as PlatformFilter)
+              }
+            >
+              <SelectTrigger
+                className="w-48"
+                data-testid="select-platform-filter"
+                aria-label="Filter by subscription platform"
+              >
+                <SelectValue placeholder="Filter by platform" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All platforms ({formatCount(platformCounts.all)})</SelectItem>
+                <SelectItem value="ios">iOS ({formatCount(platformCounts.ios)})</SelectItem>
+                <SelectItem value="android">Android ({formatCount(platformCounts.android)})</SelectItem>
+                <SelectItem value="tvos">tvOS ({formatCount(platformCounts.tvos)})</SelectItem>
+                <SelectItem value="macos">macOS ({formatCount(platformCounts.macos)})</SelectItem>
+                <SelectItem value="web">Web ({formatCount(platformCounts.web)})</SelectItem>
+                <SelectItem value="admin">Admin-granted ({formatCount(platformCounts.admin)})</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -780,7 +873,7 @@ export default function AdminUsers() {
                 : hasActiveFilters && searchQuery.trim() !== ""
                   ? "No users match your search and filters. Try clearing a filter or adjusting your search."
                   : hasActiveFilters
-                    ? "No users match the selected filters. Try a different plan or sign-in method."
+                    ? "No users match the selected filters. Try a different plan, sign-in method, or platform."
                     : "No users match your search."}
             </div>
           ) : (
