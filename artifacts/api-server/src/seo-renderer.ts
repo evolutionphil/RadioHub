@@ -1,5 +1,39 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from './shared/seo-config';
-import { Translation, Station, SeoMetadata } from './shared/mongo-schemas';
+import { Translation, Station, SeoMetadata, ISeoMetadata } from './shared/mongo-schemas';
+
+// Lean document shapes returned by Mongoose `.lean()` for the queries in this
+// module. Mongoose 8's typings hand `.lean()` results back as `unknown` once
+// they are wrapped in a generic helper like `withSignal<T>` (T is inferred as
+// `unknown` from the `query: any` parameter), which spammed TS18046 errors
+// across the file. Defining the small subset of fields we actually read keeps
+// type-checking honest without re-typing the entire schema.
+interface LeanTranslationDoc {
+  language: string;
+  value: string;
+  keyId?: { key?: string } | null;
+}
+
+interface LeanStationCard {
+  _id: unknown;
+  name?: string;
+  slug?: string;
+  favicon?: string;
+  logoAssets?: unknown;
+  country?: string;
+  countryCode?: string;
+  tags?: string;
+  votes?: number;
+  descriptions?: Record<string, unknown>;
+  url?: string;
+  homepage?: string;
+  bitrate?: number;
+  lastCheckOk?: boolean;
+  lastCheckOkTime?: Date;
+  lastCheckTime?: Date;
+  noIndex?: boolean;
+}
+
+type LeanSeoMetadataDoc = Omit<ISeoMetadata, keyof import('mongoose').Document>;
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from './shared/url-translations';
@@ -104,10 +138,13 @@ export class SeoRenderer {
     }
     
     try {
-      const translations = await withSignal(Translation.find({ language }).populate('keyId').lean(), signal);
+      const translations = await withSignal<LeanTranslationDoc[]>(
+        Translation.find({ language }).populate('keyId').lean(),
+        signal,
+      );
       const translationMap: Record<string, string> = {};
-      
-      translations.forEach((t: any) => {
+
+      translations.forEach((t) => {
         if (t.keyId?.key && t.value) {
           translationMap[t.keyId.key] = t.value;
         }
@@ -130,12 +167,15 @@ export class SeoRenderer {
    */
   async getCustomSeoMetadata(pageType: string, routeKey: string, language: string, signal?: AbortSignal): Promise<any | null> {
     try {
-      const metadata = await withSignal(SeoMetadata.findOne({
-        pageType,
-        routeKey: routeKey || '',
-        language,
-        status: 'published'
-      }).lean(), signal);
+      const metadata = await withSignal<LeanSeoMetadataDoc | null>(
+        SeoMetadata.findOne({
+          pageType: pageType as ISeoMetadata['pageType'],
+          routeKey: routeKey || '',
+          language,
+          status: 'published',
+        }).lean(),
+        signal,
+      );
       
       return metadata;
     } catch (error: any) {
@@ -489,7 +529,7 @@ export class SeoRenderer {
           const term = pathParts[2].replace(/-/g, ' ');
           // Escape regex meta-chars (replit.md SSRF/NoSQL rule)
           const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const topStations = await withSignal(
+          const topStations = await withSignal<LeanStationCard[]>(
             Station.find({
               tags: { $regex: escapedTerm, $options: 'i' },
               slug: { $exists: true, $ne: '' },
@@ -507,7 +547,7 @@ export class SeoRenderer {
           // BOTH meta+full descriptions per language — too restrictive for our image-grid surface
           // where the station's own SSR page already enforces full language gate).
           additionalData.popularStations = topStations
-            .filter((s: any) => s.noIndex !== true && !isJunkStation(s))
+            .filter((s) => s.noIndex !== true && !isJunkStation(s))
             .slice(0, 12);
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
@@ -556,7 +596,7 @@ export class SeoRenderer {
           try {
             const countryName = additionalData.regionName as string;
             const escapedCountry = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            const topStations = await withSignal(
+            const topStations = await withSignal<LeanStationCard[]>(
               Station.find({
                 country: { $regex: `^${escapedCountry}$`, $options: 'i' },
                 slug: { $exists: true, $ne: '' },
@@ -570,12 +610,12 @@ export class SeoRenderer {
               signal
             );
             // DALGA 2 W2.REVIEW P2: Junk gate via isJunkStation + noIndex (see W2.1 comment).
-            const indexableStations = topStations.filter((s: any) =>
+            const indexableStations = topStations.filter((s) =>
               s.noIndex !== true && !isJunkStation(s)
             );
             additionalData.popularStations = indexableStations.slice(0, 12);
             // Pull lowercase ISO countryCode from first matching station for flagcdn.com
-            const cc = (topStations[0] as any)?.countryCode;
+            const cc = topStations[0]?.countryCode;
             if (cc && typeof cc === 'string' && /^[a-z]{2}$/i.test(cc)) {
               additionalData.countryCode = cc.toLowerCase();
             }

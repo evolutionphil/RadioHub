@@ -440,7 +440,6 @@ const ALIAS_TO_DB: Record<string, string> = {
   'bae': 'The United Arab Emirates',
 
   'afganistan': 'Afghanistan',
-  'arnavutluk': 'Albania',
   'angola': 'Angola',
   'andorra': 'Andorra',
   'antigua ve barbuda': 'Antigua And Barbuda',
@@ -519,7 +518,6 @@ const ALIAS_TO_DB: Record<string, string> = {
   'kuveyt': 'Kuwait',
   'kırgızistan': 'Kyrgyzstan',
   'kirgizistan': 'Kyrgyzstan',
-  'laos': 'The Lao Peoples Democratic Republic',
   'lesoto': 'Lesotho',
   'liberya': 'Liberia',
   'libya': 'Libya',
@@ -594,7 +592,6 @@ const ALIAS_TO_DB: Record<string, string> = {
   'özbekistan': 'Uzbekistan',
   'ozbekistan': 'Uzbekistan',
   'vanuatu': 'Vanuatu',
-  'venezuela': 'Bolivarian Republic Of Venezuela',
   'yemen': 'Yemen',
   'zambiya': 'Zambia',
   'zimbabve': 'Zimbabwe',
@@ -676,7 +673,6 @@ const ALIAS_TO_DB: Record<string, string> = {
   'tuv': 'Tuvalu',
   'uga': 'Uganda', 'ukr': 'Ukraine', 'are': 'The United Arab Emirates',
   'gbr': 'The United Kingdom Of Great Britain And Northern Ireland',
-  'usa': 'The United States Of America',
   'ury': 'Uruguay', 'uzb': 'Uzbekistan',
   'vut': 'Vanuatu', 'ven': 'Bolivarian Republic Of Venezuela', 'vnm': 'Vietnam',
   'vgb': 'British Virgin Islands', 'vir': 'US Virgin Islands',
@@ -880,7 +876,6 @@ const ENGLISH_NAMES: Record<string, string> = {
   'VU': 'Vanuatu', 'VE': 'Venezuela', 'VN': 'Vietnam',
   'VG': 'British Virgin Islands', 'VI': 'US Virgin Islands',
   'WF': 'Wallis and Futuna', 'YE': 'Yemen', 'ZM': 'Zambia', 'ZW': 'Zimbabwe',
-  'XK': 'Kosovo', 'BQ': 'Bonaire', 'AX': 'Åland Islands',
   'IO': 'British Indian Ocean Territory',
 };
 

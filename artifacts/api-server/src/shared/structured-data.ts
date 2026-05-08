@@ -1,7 +1,7 @@
 // Structured data schemas for SEO rich snippets
 export interface StructuredDataConfig {
-  context: string;
-  type: string;
+  "@context"?: string;
+  "@type"?: string;
   [key: string]: any;
 }
 

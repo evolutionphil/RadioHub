@@ -1,4 +1,21 @@
+import type { Types } from 'mongoose';
 import { TranslationKey, Translation } from '../shared/mongo-schemas';
+
+// Lean shapes for the two queries below. Mongoose 8 returns `.lean()` results
+// as `unknown` when their inferred document type can't flow through helpers,
+// so we declare the small subset of fields we actually read here. Keeping the
+// shapes explicit means a future schema change surfaces as a compile error
+// instead of silently breaking these mappings.
+interface LeanTranslationKeyDoc {
+  _id?: Types.ObjectId;
+  key: string;
+  defaultValue?: string;
+}
+
+interface LeanTranslationDoc {
+  keyId?: Types.ObjectId;
+  value: string;
+}
 
 export interface SitemapTranslations {
   stationTitle: string;
@@ -28,22 +45,28 @@ export async function loadSitemapTranslations(langCode: string): Promise<Sitemap
   ];
 
   // Batch fetch all translation keys in one query
-  const translationKeys = await TranslationKey.find({ 
-    key: { $in: sitemapKeys } 
-  }).lean();
+  const translationKeys = await TranslationKey.find({
+    key: { $in: sitemapKeys },
+  }).lean<LeanTranslationKeyDoc[]>();
 
   // Harden against missing translation keys in database - fallback values will be used
 
-  const keyMap = new Map(translationKeys.map((k: any) => [k.key, k]));
+  const keyMap = new Map(translationKeys.map((k) => [k.key, k]));
 
   // Batch fetch all translations for this language in one query
-  const keyIds = translationKeys.map((k: any) => k._id).filter(Boolean); // Filter out undefined _id values
+  const keyIds = translationKeys
+    .map((k) => k._id)
+    .filter((id): id is Types.ObjectId => Boolean(id));
   const translations = await Translation.find({
     keyId: { $in: keyIds },
-    language: langCode
-  }).lean();
+    language: langCode,
+  }).lean<LeanTranslationDoc[]>();
 
-  const translationMap = new Map(translations.map((t: any) => [t.keyId?.toString(), t.value]).filter(([k]) => k)); // Filter out entries with undefined keyId
+  const translationMap = new Map(
+    translations
+      .map((t) => [t.keyId?.toString(), t.value] as [string | undefined, string])
+      .filter((entry): entry is [string, string] => Boolean(entry[0]))
+  );
 
   // Helper to safely get translation with null safety
   const getTranslation = (keyName: string, fallback: string): string => {
