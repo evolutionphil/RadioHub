@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Activity, CheckCircle, XCircle, Clock, TrendingUp, ChevronDown, ChevronRight, Calendar, Download, List } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, Clock, TrendingUp, ChevronDown, ChevronRight, Calendar, Download, List, RotateCw } from 'lucide-react';
 import { format } from 'date-fns';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 
 interface SitemapDiffSubmission {
   _id: string;
@@ -91,6 +93,9 @@ export default function IndexNowMonitoring() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
   const [fullUrls, setFullUrls] = useState<Record<string, FullUrlsState>>({});
+  const [rerunErrors, setRerunErrors] = useState<Record<string, string>>({});
+  const [rerunResults, setRerunResults] = useState<Record<string, { totalAdditions: number; pairs: number; dryRun: boolean }>>({});
+  const { toast } = useToast();
 
   const fetchFullUrls = async (submissionId: string) => {
     setFullUrls((prev) => ({ ...prev, [submissionId]: { status: 'loading' } }));
@@ -142,6 +147,59 @@ export default function IndexNowMonitoring() {
   const toggleRun = (date: string) => {
     setExpandedRuns((prev) => ({ ...prev, [date]: !prev[date] }));
   };
+
+  const rerunMutation = useMutation({
+    mutationFn: async (vars: { date: string; dryRun: boolean }) => {
+      const res = await apiRequest('POST', '/api/admin/indexnow/sitemap-diff-runs/rerun', {
+        body: { date: vars.date, dryRun: vars.dryRun },
+      });
+      const data = (await res.json()) as {
+        ok: boolean;
+        dryRun: boolean;
+        summary?: { totalAdditions: number; perLanguage: Array<unknown>; skippedReason?: string };
+        error?: string;
+      };
+      return { ...data, _date: vars.date };
+    },
+    onMutate: ({ date }) => {
+      setRerunErrors((prev) => {
+        const { [date]: _omit, ...rest } = prev;
+        return rest;
+      });
+    },
+    onSuccess: (data) => {
+      const date = data._date;
+      const totalAdditions = data.summary?.totalAdditions ?? 0;
+      const pairs = data.summary?.perLanguage?.length ?? 0;
+      setRerunResults((prev) => ({
+        ...prev,
+        [date]: { totalAdditions, pairs, dryRun: !!data.dryRun },
+      }));
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/indexnow/sitemap-diff-runs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/indexnow/logs'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/indexnow/stats'] });
+      toast({
+        title: data.dryRun ? 'Dry-run complete' : 'Sitemap-diff re-run complete',
+        description: data.summary?.skippedReason
+          ? `Skipped: ${data.summary.skippedReason}`
+          : `${totalAdditions.toLocaleString()} new URL${totalAdditions === 1 ? '' : 's'} ${
+              data.dryRun ? 'would be submitted' : 'submitted'
+            } across ${pairs} (type, language) pair${pairs === 1 ? '' : 's'}.`,
+      });
+    },
+    onError: (error: unknown, vars) => {
+      const message = error instanceof Error ? error.message : 'Re-run failed';
+      setRerunErrors((prev) => ({ ...prev, [vars.date]: message }));
+      toast({
+        title: 'Sitemap-diff re-run failed',
+        description: message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const rerunPendingDate =
+    rerunMutation.isPending && rerunMutation.variables ? rerunMutation.variables.date : null;
 
   // Fetch stats with auto-refresh every 30 seconds
   const { data: stats, isLoading: statsLoading } = useQuery<IndexNowStats>({
@@ -270,56 +328,113 @@ export default function IndexNowMonitoring() {
                 {diffRuns.map((run) => {
                   const isOpen = !!expandedRuns[run.date];
                   const allOk = run.submitFailedCount === 0;
+                  const isRerunning = rerunPendingDate === run.date;
+                  const rerunError = rerunErrors[run.date];
+                  const rerunResult = rerunResults[run.date];
+                  const handleRerun = (dryRun: boolean) => {
+                    if (rerunMutation.isPending) return;
+                    rerunMutation.mutate({ date: run.date, dryRun });
+                  };
                   return (
                     <Collapsible
                       key={run.date}
                       open={isOpen}
                       onOpenChange={() => toggleRun(run.date)}
                     >
-                      <CollapsibleTrigger
-                        className="w-full text-left"
-                        data-testid={`button-toggle-run-${run.date}`}
-                      >
-                        <div className="flex items-center justify-between p-3 rounded-md bg-[#0E0E0E] border border-gray-800 hover:border-gray-700">
-                          <div className="flex items-center gap-3">
-                            {isOpen ? (
-                              <ChevronDown className="h-4 w-4 text-gray-400" />
-                            ) : (
-                              <ChevronRight className="h-4 w-4 text-gray-400" />
-                            )}
-                            <div>
-                              <div className="text-white font-medium" data-testid={`text-run-date-${run.date}`}>
-                                {new Date(`${run.date}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
-                                <span className="ml-1 text-xs text-gray-500">UTC</span>
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {run.submissionCount} submission{run.submissionCount === 1 ? '' : 's'} · {run.languageBreakdown.length} language{run.languageBreakdown.length === 1 ? '' : 's'}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <div className="text-right">
-                              <div className="text-white font-semibold">
-                                {run.totalUrls.toLocaleString()} URLs
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {run.successfulUrls.toLocaleString()} ok · {run.failedUrls.toLocaleString()} failed
-                              </div>
-                            </div>
-                            <Badge
-                              variant={allOk ? 'default' : 'destructive'}
-                              className={allOk ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
-                            >
-                              {allOk ? (
-                                <CheckCircle className="w-3 h-3 mr-1" />
+                      <div className="flex items-stretch gap-2">
+                        <CollapsibleTrigger
+                          className="flex-1 text-left"
+                          data-testid={`button-toggle-run-${run.date}`}
+                        >
+                          <div className="flex items-center justify-between p-3 rounded-md bg-[#0E0E0E] border border-gray-800 hover:border-gray-700 h-full">
+                            <div className="flex items-center gap-3">
+                              {isOpen ? (
+                                <ChevronDown className="h-4 w-4 text-gray-400" />
                               ) : (
-                                <XCircle className="w-3 h-3 mr-1" />
+                                <ChevronRight className="h-4 w-4 text-gray-400" />
                               )}
-                              {allOk ? 'All sent' : `${run.submitFailedCount} failed`}
-                            </Badge>
+                              <div>
+                                <div className="text-white font-medium" data-testid={`text-run-date-${run.date}`}>
+                                  {new Date(`${run.date}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
+                                  <span className="ml-1 text-xs text-gray-500">UTC</span>
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {run.submissionCount} submission{run.submissionCount === 1 ? '' : 's'} · {run.languageBreakdown.length} language{run.languageBreakdown.length === 1 ? '' : 's'}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="text-white font-semibold">
+                                  {run.totalUrls.toLocaleString()} URLs
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                  {run.successfulUrls.toLocaleString()} ok · {run.failedUrls.toLocaleString()} failed
+                                </div>
+                              </div>
+                              <Badge
+                                variant={allOk ? 'default' : 'destructive'}
+                                className={allOk ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}
+                              >
+                                {allOk ? (
+                                  <CheckCircle className="w-3 h-3 mr-1" />
+                                ) : (
+                                  <XCircle className="w-3 h-3 mr-1" />
+                                )}
+                                {allOk ? 'All sent' : `${run.submitFailedCount} failed`}
+                              </Badge>
+                            </div>
                           </div>
+                        </CollapsibleTrigger>
+                        <div className="flex flex-col gap-1 justify-center">
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            disabled={rerunMutation.isPending}
+                            onClick={() => handleRerun(false)}
+                            className="border-gray-700 text-gray-200 hover:bg-gray-800 hover:text-white"
+                            data-testid={`button-rerun-run-${run.date}`}
+                            title="Re-run the diff/submit pass now. Computes additions vs. the current snapshot, so any URLs that previously failed will be retried."
+                          >
+                            <RotateCw className={`h-4 w-4 mr-1 ${isRerunning ? 'animate-spin' : ''}`} />
+                            {isRerunning ? 'Re-running…' : 'Re-run'}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            disabled={rerunMutation.isPending}
+                            onClick={() => handleRerun(true)}
+                            className="text-xs text-gray-400 hover:text-white hover:bg-gray-800 h-7"
+                            data-testid={`button-rerun-dryrun-run-${run.date}`}
+                            title="Compute what would be submitted, but don't ping IndexNow or update the snapshot."
+                          >
+                            Dry-run
+                          </Button>
                         </div>
-                      </CollapsibleTrigger>
+                      </div>
+                      {(rerunError || rerunResult) && (
+                        <div
+                          className={`mt-2 ml-0 mr-0 px-3 py-2 rounded-md text-xs ${
+                            rerunError
+                              ? 'bg-red-950/40 border border-red-900 text-red-300'
+                              : 'bg-emerald-950/30 border border-emerald-900 text-emerald-300'
+                          }`}
+                          data-testid={`text-rerun-status-${run.date}`}
+                        >
+                          {rerunError ? (
+                            <>Re-run failed: {rerunError}</>
+                          ) : rerunResult ? (
+                            <>
+                              Last re-run: {rerunResult.totalAdditions.toLocaleString()} new URL
+                              {rerunResult.totalAdditions === 1 ? '' : 's'}{' '}
+                              {rerunResult.dryRun ? 'would be submitted' : 'submitted'} across{' '}
+                              {rerunResult.pairs} (type, language) pair{rerunResult.pairs === 1 ? '' : 's'}.
+                            </>
+                          ) : null}
+                        </div>
+                      )}
                       <CollapsibleContent>
                         <div className="mt-2 ml-6 p-4 rounded-md bg-[#0A0A0A] border border-gray-800 space-y-4">
                           <div>

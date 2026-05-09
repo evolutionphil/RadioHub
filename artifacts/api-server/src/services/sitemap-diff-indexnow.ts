@@ -246,14 +246,23 @@ function chunk<T>(arr: T[], size: number): T[][] {
  *                                  station/country leaderboard. Defaults true.
  * @param opts.dryRun               If true, compute additions but DO NOT submit
  *                                  to IndexNow and DO NOT persist new snapshots.
+ * @param opts.runDate              Optional UTC YYYY-MM-DD tag attributed to
+ *                                  every IndexNowLog created in this run. Used
+ *                                  by admin-triggered "re-run this night"
+ *                                  actions so the resulting submissions appear
+ *                                  under the targeted night's row in the
+ *                                  Nightly Sitemap Diff Runs panel instead of
+ *                                  today's row. Cron runs leave this unset.
  */
 export async function runSitemapDiffSubmission(opts: {
   ensureManifestFresh?: boolean;
   dryRun?: boolean;
+  runDate?: string;
 } = {}): Promise<SitemapDiffSummary> {
   const startedAt = new Date();
   const ensureManifestFresh = opts.ensureManifestFresh ?? true;
   const dryRun = !!opts.dryRun;
+  const runDate = opts.runDate;
   const perLanguage: SitemapDiffPerLangResult[] = [];
 
   if (ensureManifestFresh) {
@@ -303,7 +312,7 @@ export async function runSitemapDiffSubmission(opts: {
         ? extractTopCountriesFromChunk(mainManifest.chunks[0].stationIds)
         : [];
       const todayUrls = computeMainSitemapUrls({ language, topCountries, translations });
-      const result = await processLanguageDiff({ type: 'main', language, todayUrls, dryRun });
+      const result = await processLanguageDiff({ type: 'main', language, todayUrls, dryRun, runDate });
       totalAdditions += result.additions.length;
       perLanguage.push(result);
     }
@@ -321,7 +330,7 @@ export async function runSitemapDiffSubmission(opts: {
       }
       const slugs = mapGenreIdsToSlugs(manifestIds, genreSlugsById);
       const todayUrls = computeGenresSitemapUrls({ language, genreSlugs: slugs, translations });
-      const result = await processLanguageDiff({ type: 'genres', language, todayUrls, dryRun });
+      const result = await processLanguageDiff({ type: 'genres', language, todayUrls, dryRun, runDate });
       totalAdditions += result.additions.length;
       perLanguage.push(result);
     }
@@ -397,8 +406,9 @@ async function processLanguageDiff(args: {
   chunk?: number;
   todayUrls: string[];
   dryRun: boolean;
+  runDate?: string;
 }): Promise<SitemapDiffPerLangResult> {
-  const { type, language, chunk: chunkIdx, todayUrls, dryRun } = args;
+  const { type, language, chunk: chunkIdx, todayUrls, dryRun, runDate } = args;
 
   // Snapshot key — for stations rows we MUST include `chunk` so two chunks
   // in the same language don't collide on the (type, language, chunk)
@@ -441,7 +451,7 @@ async function processLanguageDiff(args: {
     let lastError: string | undefined;
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      const submit = await IndexNowService.submitToIndexNow(batch, 'sitemap-diff');
+      const submit = await IndexNowService.submitToIndexNow(batch, 'sitemap-diff', runDate);
       if (submit.success) {
         for (const u of batch) successfullySubmitted.push(u);
       } else {

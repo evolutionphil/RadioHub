@@ -5,6 +5,7 @@ import {
   INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
 } from '@workspace/db-shared/mongo-schemas';
 import mongoose from 'mongoose';
+import { scheduledSitemapDiff } from '../services/scheduled-sitemap-diff';
 
 const router = Router();
 
@@ -190,9 +191,17 @@ router.get('/sitemap-diff-runs', async (req: Request, res: Response) => {
     since.setUTCDate(since.getUTCDate() - days);
     since.setUTCHours(0, 0, 0, 0);
 
+    // Include any submissions in the timestamp window OR any submissions tagged
+    // with `runDate` inside the window — admin-triggered re-runs of an older
+    // night still need to appear under that night's row even if the rerun
+    // itself happened today.
+    const sinceIso = since.toISOString().slice(0, 10);
     const submissions = await IndexNowLog.find({
       trigger: 'sitemap-diff',
-      timestamp: { $gte: since },
+      $or: [
+        { timestamp: { $gte: since } },
+        { runDate: { $gte: sinceIso } },
+      ],
     })
       .sort({ timestamp: -1 })
       .lean();
@@ -237,7 +246,10 @@ router.get('/sitemap-diff-runs', async (req: Request, res: Response) => {
     const runMap = new Map<string, RunView>();
     for (const s of submissions) {
       const ts = new Date(s.timestamp);
-      const date = ts.toISOString().slice(0, 10);
+      // When `runDate` is set (admin re-run for a specific night), attribute
+      // this submission to that night so it appears under the targeted row
+      // instead of the day the rerun was actually executed.
+      const date = (s as { runDate?: string }).runDate || ts.toISOString().slice(0, 10);
       let run = runMap.get(date);
       if (!run) {
         run = {
@@ -344,6 +356,70 @@ router.get('/submissions/:id/urls', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching IndexNow submission URLs:', error);
     res.status(500).json({ error: 'Failed to fetch submission URLs' });
+  }
+});
+
+// POST /api/admin/indexnow/sitemap-diff-runs/rerun - Re-trigger the
+// sitemap-diff submission pass for a specific past night.
+//
+// The body must contain `date` (UTC YYYY-MM-DD) identifying the night to
+// re-run. The diff itself is always computed against the current persisted
+// `SitemapUrlSnapshot` (the only source of truth for "what we've already
+// pinged"), which naturally retries every URL whose previous submission
+// for that night failed — failed URLs are intentionally NOT added to the
+// snapshot baseline by the nightly job, so they resurface as additions
+// here. The resulting IndexNowLog rows are tagged with `runDate=<date>`
+// so they appear under the targeted night's row in the Nightly Sitemap
+// Diff Runs panel instead of today's row.
+//
+// Concurrency is guarded by `scheduledSitemapDiff.runOnce` so a manual
+// rerun cannot race against the nightly cron or another in-flight admin
+// click. The dry-run variant bypasses the guard because it has no side
+// effects (no IndexNow ping, no snapshot mutation, no log rows).
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+router.post('/sitemap-diff-runs/rerun', async (req: Request, res: Response) => {
+  try {
+    const dryRun = req.body?.dryRun === true;
+    const date = typeof req.body?.date === 'string' ? req.body.date : '';
+
+    if (!DATE_RE.test(date)) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Missing or malformed `date` — expected UTC calendar date in YYYY-MM-DD format.',
+      });
+    }
+    // Reject obviously invalid (e.g. 2026-13-40) and future dates — re-running
+    // a night that hasn't happened yet would just retag a fresh diff under a
+    // future row, which is misleading.
+    const parsed = new Date(`${date}T00:00:00Z`);
+    if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+      return res.status(400).json({ ok: false, error: `Invalid calendar date: ${date}` });
+    }
+    const todayUtc = new Date().toISOString().slice(0, 10);
+    if (date > todayUtc) {
+      return res.status(400).json({ ok: false, error: `Cannot re-run a future night (${date}).` });
+    }
+
+    const trigger = `manual:admin-rerun:${date}${dryRun ? ':dry-run' : ''}`;
+
+    if (dryRun) {
+      const { runSitemapDiffSubmission } = await import('../services/sitemap-diff-indexnow');
+      const summary = await runSitemapDiffSubmission({ ensureManifestFresh: true, dryRun: true, runDate: date });
+      return res.json({ ok: true, dryRun: true, trigger, runDate: date, summary });
+    }
+
+    const summary = await scheduledSitemapDiff.runOnce(trigger, { runDate: date });
+    if (!summary) {
+      return res.status(409).json({
+        ok: false,
+        error: 'A sitemap-diff run is already in progress. Please wait for it to finish, then try again.',
+      });
+    }
+    return res.json({ ok: true, dryRun: false, trigger, runDate: date, summary });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to re-run sitemap-diff submission';
+    console.error('Error re-running sitemap-diff:', error);
+    return res.status(500).json({ ok: false, error: message });
   }
 });
 

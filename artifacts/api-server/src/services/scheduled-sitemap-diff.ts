@@ -61,7 +61,7 @@ class ScheduledSitemapDiff {
     };
   }
 
-  async runOnce(trigger: string = 'manual'): Promise<SitemapDiffSummary | null> {
+  async runOnce(trigger: string = 'manual', opts: { runDate?: string } = {}): Promise<SitemapDiffSummary | null> {
     if (this.isRunning) {
       logger.log(`⏭️  sitemap-diff: skip (${trigger}) — previous run still in progress`);
       return null;
@@ -70,8 +70,8 @@ class ScheduledSitemapDiff {
     let summary: SitemapDiffSummary | null = null;
     let errorMsg: string | undefined;
     try {
-      logger.log(`🗺️ sitemap-diff START (${trigger})`);
-      summary = await runSitemapDiffSubmission({ ensureManifestFresh: true });
+      logger.log(`🗺️ sitemap-diff START (${trigger}${opts.runDate ? ` runDate=${opts.runDate}` : ''})`);
+      summary = await runSitemapDiffSubmission({ ensureManifestFresh: true, runDate: opts.runDate });
     } catch (err: any) {
       errorMsg = err?.message || String(err);
       logger.error('❌ sitemap-diff error:', errorMsg);

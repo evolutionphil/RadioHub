@@ -67,7 +67,7 @@ interface IndexNowResponse {
 }
 
 export class IndexNowService {
-  private static async submitRequest(urls: string[], trigger: IndexNowTrigger, retryCount = 0): Promise<IndexNowResponse> {
+  private static async submitRequest(urls: string[], trigger: IndexNowTrigger, retryCount = 0, runDate?: string): Promise<IndexNowResponse> {
     const startTime = Date.now();
     let host = '';
     
@@ -142,7 +142,8 @@ export class IndexNowService {
           errorMessage: (statusCode !== 200 && statusCode !== 202) ? (response.data ? JSON.stringify(response.data) : 'Unknown error') : undefined,
           sampleUrls: urls.slice(0, 5),
           retryAttempt: retryCount,
-          responseTime
+          responseTime,
+          runDate
         });
         await persistFullSubmissionUrls(logDoc, host, trigger, urls);
       } catch (dbError: any) {
@@ -162,7 +163,7 @@ export class IndexNowService {
         if (retryCount === 0) {
           logger.log(`🔄 IndexNow: Retrying submission (attempt 2/2)...`);
           await new Promise(resolve => setTimeout(resolve, 1000));
-          return this.submitRequest(urls, trigger, 1);
+          return this.submitRequest(urls, trigger, 1, runDate);
         }
         
         return { 
@@ -186,7 +187,8 @@ export class IndexNowService {
           errorMessage: error.message || 'Unknown error occurred',
           sampleUrls: urls.slice(0, 5),
           retryAttempt: retryCount,
-          responseTime
+          responseTime,
+          runDate
         });
         await persistFullSubmissionUrls(logDoc, host || 'unknown', trigger, urls);
       } catch (dbError: any) {
@@ -196,7 +198,7 @@ export class IndexNowService {
       if (retryCount === 0) {
         logger.log(`🔄 IndexNow: Retrying after error (attempt 2/2)...`);
         await new Promise(resolve => setTimeout(resolve, 1000));
-        return this.submitRequest(urls, trigger, 1);
+        return this.submitRequest(urls, trigger, 1, runDate);
       }
       
       return { 
@@ -206,7 +208,7 @@ export class IndexNowService {
     }
   }
 
-  static async submitToIndexNow(urls: string[], trigger: IndexNowTrigger = 'manual'): Promise<IndexNowResponse> {
+  static async submitToIndexNow(urls: string[], trigger: IndexNowTrigger = 'manual', runDate?: string): Promise<IndexNowResponse> {
     if (!urls || urls.length === 0) {
       logger.log(`⚠️ IndexNow: No URLs provided for submission`);
       return { success: false, error: 'No URLs provided' };
@@ -249,7 +251,7 @@ export class IndexNowService {
     
     for (const [host, hostUrls] of Array.from(urlsByHost.entries())) {
       logger.log(`📡 IndexNow: Submitting ${hostUrls.length} URLs for host: ${host}`);
-      const result = await this.submitRequest(hostUrls, trigger);
+      const result = await this.submitRequest(hostUrls, trigger, 0, runDate);
       results.push(result);
     }
 

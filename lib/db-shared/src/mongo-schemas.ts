@@ -995,6 +995,12 @@ export interface IIndexNowLog extends Document {
   sampleUrls?: string[];
   retryAttempt?: number;
   responseTime?: number;
+  // For sitemap-diff submissions, the calendar night (UTC YYYY-MM-DD) the
+  // submission is attributed to. Set when an admin manually re-runs a
+  // specific past night so the resulting submission appears under that
+  // night's row instead of today's. Nightly cron submissions leave this
+  // unset and are grouped by `timestamp` as before.
+  runDate?: string;
   createdAt: Date;
 }
 
@@ -2685,6 +2691,7 @@ const IndexNowLogSchema = new Schema<IIndexNowLog>({
   sampleUrls: [String],
   retryAttempt: { type: Number, default: 0 },
   responseTime: Number,
+  runDate: { type: String, required: false },
   createdAt: { type: Date, default: Date.now }
 });
 
