@@ -1931,13 +1931,38 @@ export class SeoRenderer {
         }
       }
 
+      // Task #372: source the schema description from the SAME copy the
+      // visible station body renders (descriptions[language].full > description)
+      // so AI-rewritten / per-language strings can't drift into the JSON-LD
+      // and trigger Google's "deceptive markup" warning. `aiDescription` is
+      // intentionally NOT used here because the visible body never renders
+      // it — see generateHtmlBody case 'station' (~line 1461).
+      const schemaDescriptionSource = (() => {
+        const langDesc = stationData.descriptions?.[language];
+        let candidate = '';
+        if (langDesc) {
+          if (typeof langDesc === 'object' && langDesc.full) candidate = langDesc.full;
+          else if (typeof langDesc === 'string') candidate = langDesc;
+        }
+        if (!candidate && stationData.description) candidate = stationData.description;
+        candidate = String(candidate)
+          .replace(/^\s*\[TRANSLATED\s+FULL\s+DESCRIPTION\]\s*/i, '')
+          .replace(/^\s*\[TRANSLATED\s+META[^\]]*\]\s*/i, '')
+          .replace(/^\s*\[FULL\s+DESCRIPTION[^\]]*\]\s*/i, '')
+          .replace(/^\s*\[[^\]]*DESCRIPTION[^\]]*\]\s*/i, '')
+          .replace(/^\s*\[[^\]]*\]\s*/g, '')
+          .replace(/\{STATION_NAME\}/g, stationData.name || '')
+          .trim();
+        return candidate || `Listen to ${stationData.name} live online. Free radio streaming on Mega Radio.`;
+      })();
+
       radioStationSchema = {
         "@context": "https://schema.org",
         "@type": "RadioStation",
         "@id": `${stationUrl}#radiostation`,
         "name": stationData.name,
         "broadcastDisplayName": stationData.name,
-        "description": stationData.aiDescription || stationData.description || `Listen to ${stationData.name} live online. Free radio streaming on Mega Radio.`,
+        "description": schemaDescriptionSource,
         "url": stationUrl,
         "logo": stationLogo,
         "image": stationLogo,
