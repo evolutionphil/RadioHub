@@ -1798,6 +1798,20 @@ interface CoverageDropAlertSettingsResponse {
   };
   updatedAt: string | null;
   updatedBy: string | null;
+  lastTest: CoverageDropAlertLastTest | null;
+}
+
+interface CoverageDropAlertLastTest {
+  triggeredAt: string;
+  triggeredBy: string | null;
+  urlSource: 'request' | 'effective';
+  urlHost: string | null;
+  ok: boolean;
+  status: number | null;
+  statusText: string | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number;
 }
 
 function sourceLabel(source: 'db' | 'env' | 'default' | 'none'): string {
@@ -1942,6 +1956,7 @@ function CoverageDropAlertSettingsCard() {
         error?: string | null;
         durationMs?: number;
         urlSource?: 'request' | 'effective';
+        lastTest?: CoverageDropAlertLastTest | null;
       };
       if (!res.ok) {
         throw new Error(
@@ -1951,6 +1966,20 @@ function CoverageDropAlertSettingsCard() {
       return json;
     },
     onSuccess: (result) => {
+      // Patch the cached settings payload with the freshly-recorded
+      // last-test summary so the inline "Last test" line under the
+      // webhook field updates instantly without a full refetch.
+      // Only overwrite when the server returned a record — if
+      // persistence failed (lastTest === null) we keep the previously
+      // displayed value so a transient DB hiccup can't hide an
+      // earlier successful test from the admin.
+      if (result.lastTest) {
+        const nextLastTest = result.lastTest;
+        queryClient.setQueryData<CoverageDropAlertSettingsResponse | undefined>(
+          ['/api/admin/settings/coverage-drop-alert'],
+          (prev) => (prev ? { ...prev, lastTest: nextLastTest } : prev),
+        );
+      }
       const sourceNote =
         result.urlSource === 'request'
           ? ' (using URL typed in the field)'
@@ -2193,6 +2222,68 @@ function CoverageDropAlertSettingsCard() {
                   </strong>{' '}
                   ({sourceLabel(data.effective.source.webhookUrl)})
                 </p>
+                {data.lastTest ? (
+                  <div
+                    className={`mt-2 rounded border px-2 py-1.5 text-[11px] ${
+                      data.lastTest.ok
+                        ? 'border-emerald-500/40 bg-emerald-500/5 text-emerald-700 dark:text-emerald-300'
+                        : 'border-destructive/40 bg-destructive/5 text-destructive'
+                    }`}
+                    data-testid="coverage-drop-last-test"
+                  >
+                    <div className="font-medium">
+                      Last test:{' '}
+                      {data.lastTest.status != null
+                        ? `HTTP ${data.lastTest.status}${
+                            data.lastTest.statusText
+                              ? ` ${data.lastTest.statusText}`
+                              : ''
+                          }`
+                        : data.lastTest.error
+                          ? 'no HTTP response'
+                          : 'unknown'}
+                      {' · '}
+                      {data.lastTest.ok ? 'ok' : 'failed'}
+                      {' · '}
+                      {data.lastTest.durationMs}ms
+                    </div>
+                    <div className="opacity-80">
+                      {new Date(data.lastTest.triggeredAt).toLocaleString()}
+                      {data.lastTest.triggeredBy
+                        ? ` by ${data.lastTest.triggeredBy}`
+                        : ''}
+                      {data.lastTest.urlHost
+                        ? ` → ${data.lastTest.urlHost}`
+                        : ''}
+                      {data.lastTest.urlSource === 'request'
+                        ? ' (typed URL)'
+                        : ' (saved/env URL)'}
+                    </div>
+                    {data.lastTest.error ? (
+                      <div className="mt-1 break-all opacity-90">
+                        Error: {data.lastTest.error}
+                      </div>
+                    ) : null}
+                    {data.lastTest.responseBody ? (
+                      <div
+                        className="mt-1 break-all opacity-80"
+                        data-testid="coverage-drop-last-test-body"
+                      >
+                        Response:{' '}
+                        {data.lastTest.responseBody.length > 200
+                          ? data.lastTest.responseBody.slice(0, 200) + '…'
+                          : data.lastTest.responseBody}
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p
+                    className="mt-2 text-[11px] italic text-muted-foreground"
+                    data-testid="coverage-drop-last-test-empty"
+                  >
+                    No test webhook has been sent yet.
+                  </p>
+                )}
               </div>
             </div>
 

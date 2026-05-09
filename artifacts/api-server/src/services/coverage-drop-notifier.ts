@@ -53,7 +53,10 @@ const DEFAULT_MAX_LISTED = 25;
 const WEBHOOK_TIMEOUT_MS = 5_000;
 
 export const COVERAGE_DROP_SETTINGS_KEY = 'coverage-drop-alert';
+export const COVERAGE_DROP_LAST_TEST_KEY = 'coverage-drop-alert-last-test';
 const SETTINGS_CACHE_TTL_MS = 30_000;
+const LAST_TEST_RESPONSE_BODY_MAX_CHARS = 500;
+const LAST_TEST_ERROR_MAX_CHARS = 500;
 
 export interface CoverageDropAlertSettings {
   thresholdPp: number | null;
@@ -328,6 +331,113 @@ export interface WebhookTestResult {
   responseBody: string | null;
   error: string | null;
   durationMs: number;
+}
+
+export interface CoverageDropLastTestRecord {
+  triggeredAt: Date;
+  triggeredBy: string | null;
+  urlSource: 'request' | 'effective';
+  urlHost: string | null;
+  ok: boolean;
+  status: number | null;
+  statusText: string | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number;
+}
+
+function safeUrlHost(url: string): string | null {
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
+}
+
+function truncate(value: string | null, max: number): string | null {
+  if (value == null) return null;
+  return value.length > max ? value.slice(0, max) + '…[truncated]' : value;
+}
+
+/**
+ * Persists a one-line summary of the most recent test webhook attempt
+ * so the admin coverage page can show "last test: HTTP 200 at 14:32 by
+ * alice" even after the firing toast is dismissed. Stored under its
+ * own AdminSetting key (not the main settings key) to keep the audit
+ * history of real settings changes clean. Best-effort: a write failure
+ * here must not fail the test request itself.
+ */
+export async function recordCoverageDropTestResult(input: {
+  url: string;
+  urlSource: 'request' | 'effective';
+  triggeredBy: string | null;
+  result: WebhookTestResult;
+}): Promise<CoverageDropLastTestRecord | null> {
+  const record: CoverageDropLastTestRecord = {
+    triggeredAt: new Date(),
+    triggeredBy: input.triggeredBy,
+    urlSource: input.urlSource,
+    urlHost: safeUrlHost(input.url),
+    ok: input.result.ok,
+    status: input.result.status,
+    statusText: input.result.statusText,
+    responseBody: truncate(input.result.responseBody, LAST_TEST_RESPONSE_BODY_MAX_CHARS),
+    error: truncate(input.result.error, LAST_TEST_ERROR_MAX_CHARS),
+    durationMs: input.result.durationMs,
+  };
+  try {
+    const now = new Date();
+    await AdminSetting.findOneAndUpdate(
+      { key: COVERAGE_DROP_LAST_TEST_KEY },
+      {
+        $set: {
+          value: record,
+          updatedAt: now,
+          updatedBy: input.triggeredBy,
+        },
+        $setOnInsert: { createdAt: now, key: COVERAGE_DROP_LAST_TEST_KEY },
+      },
+      { upsert: true, new: true },
+    );
+    return record;
+  } catch (err) {
+    logger.warn('⚠️  Failed to persist last coverage-drop test webhook result:', err);
+    return null;
+  }
+}
+
+function sanitizeLastTestRecord(value: unknown): CoverageDropLastTestRecord | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Record<string, unknown>;
+  const triggeredAt =
+    v.triggeredAt instanceof Date
+      ? v.triggeredAt
+      : typeof v.triggeredAt === 'string' || typeof v.triggeredAt === 'number'
+        ? new Date(v.triggeredAt as string | number)
+        : null;
+  if (!triggeredAt || Number.isNaN(triggeredAt.getTime())) return null;
+  return {
+    triggeredAt,
+    triggeredBy: typeof v.triggeredBy === 'string' ? v.triggeredBy : null,
+    urlSource: v.urlSource === 'request' ? 'request' : 'effective',
+    urlHost: typeof v.urlHost === 'string' ? v.urlHost : null,
+    ok: v.ok === true,
+    status: typeof v.status === 'number' ? v.status : null,
+    statusText: typeof v.statusText === 'string' ? v.statusText : null,
+    responseBody: typeof v.responseBody === 'string' ? v.responseBody : null,
+    error: typeof v.error === 'string' ? v.error : null,
+    durationMs: typeof v.durationMs === 'number' ? v.durationMs : 0,
+  };
+}
+
+export async function loadLastCoverageDropTestResult(): Promise<CoverageDropLastTestRecord | null> {
+  try {
+    const doc = await AdminSetting.findOne({ key: COVERAGE_DROP_LAST_TEST_KEY }).lean();
+    return sanitizeLastTestRecord(doc?.value);
+  } catch (err) {
+    logger.warn('⚠️  Failed to load last coverage-drop test webhook result:', err);
+    return null;
+  }
 }
 
 const TEST_RESPONSE_BODY_MAX_CHARS = 4_000;

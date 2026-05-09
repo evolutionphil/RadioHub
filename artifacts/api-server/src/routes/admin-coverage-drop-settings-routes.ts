@@ -8,6 +8,8 @@ import {
   COVERAGE_DROP_SETTINGS_KEY,
   invalidateCoverageDropSettingsCache,
   loadStoredCoverageDropSettings,
+  loadLastCoverageDropTestResult,
+  recordCoverageDropTestResult,
   resolveCoverageDropSettings,
   getDefaultCoverageDropSettings,
   getEnvCoverageDropSettings,
@@ -46,6 +48,7 @@ async function buildResponse() {
   const defaults = getDefaultCoverageDropSettings();
   const resolved = await resolveCoverageDropSettings();
   const doc = await AdminSetting.findOne({ key: COVERAGE_DROP_SETTINGS_KEY }).lean();
+  const lastTest = await loadLastCoverageDropTestResult();
   return {
     stored,
     env: {
@@ -62,6 +65,20 @@ async function buildResponse() {
     },
     updatedAt: doc?.updatedAt ?? null,
     updatedBy: doc?.updatedBy ?? null,
+    lastTest: lastTest
+      ? {
+          triggeredAt: lastTest.triggeredAt,
+          triggeredBy: lastTest.triggeredBy,
+          urlSource: lastTest.urlSource,
+          urlHost: lastTest.urlHost,
+          ok: lastTest.ok,
+          status: lastTest.status,
+          statusText: lastTest.statusText,
+          responseBody: lastTest.responseBody,
+          error: lastTest.error,
+          durationMs: lastTest.durationMs,
+        }
+      : null,
   };
 }
 
@@ -223,9 +240,16 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
         }
         const adminUsername = getAdminUsername(req);
         const result = await sendTestCoverageDropWebhook(url, adminUsername);
+        const lastTest = await recordCoverageDropTestResult({
+          url,
+          urlSource,
+          triggeredBy: adminUsername,
+          result,
+        });
         return void res.json({
           urlSource,
           ...result,
+          lastTest,
         });
       } catch (error: any) {
         logger.error('Error sending coverage drop test webhook:', error);
