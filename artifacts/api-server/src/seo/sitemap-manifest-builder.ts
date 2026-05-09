@@ -354,6 +354,15 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
       const maxUpdatedAt = updatedAts.length > 0
         ? new Date(Math.max(...updatedAts.map((d) => d.getTime())))
         : undefined;
+      // CHUNK NUMBERING CONTRACT (Task #344): station-sitemap chunk numbers
+      // are ALWAYS 1-based. The sitemap-index handler advertises whatever
+      // value lives in `chunk.chunk`, and the per-chunk route rejects
+      // anything outside `[1-9]\d{0,3}` with 410 Gone. If this ever drifts
+      // to 0-based we'd quietly tell Google to fetch
+      // `/sitemap-stations-<lang>-0.xml` and it would 410 immediately,
+      // dropping every station URL in that chunk from the index. The
+      // index-emission path also asserts chunk > 0 as a belt-and-braces
+      // guard against future regressions here.
       chunks.push({
         chunk: chunks.length + 1,
         stationIds: slice.map((s) => s.id),

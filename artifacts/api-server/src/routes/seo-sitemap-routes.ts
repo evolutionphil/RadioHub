@@ -1258,6 +1258,15 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
 
       // 3. Station sitemaps — emit ONLY existing chunks per language (no
       // global Math.ceil). Sparse languages emit 0-3 chunks instead of 50.
+      //
+      // Task #344 guard: chunk numbers MUST be 1-based positive integers ≤ 9999
+      // because the per-chunk route's `:chunk` regex (`[1-9]\d{0,3}`) responds
+      // with 410 Gone for anything outside that range. If a manifest writer
+      // ever regresses to 0-based numbering (or stores a negative / 5-digit
+      // value), advertising it here would tell Google to fetch a URL that
+      // immediately 410s, silently dropping the entire chunk's stations from
+      // the index. Skip-and-warn instead so the index stays consistent with
+      // what the per-chunk route can actually serve.
       let totalChildSitemaps = 0;
       let indexMaxLastmod: Date | null = null;
       for (const lang of qualifiedLanguages) {
@@ -1265,6 +1274,17 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         if (!m || !Array.isArray(m.chunks) || m.chunks.length === 0) continue;
         for (const chunk of m.chunks) {
           if (!chunk || chunk.urlCount === 0) continue;
+          if (
+            !Number.isInteger(chunk.chunk) ||
+            chunk.chunk < 1 ||
+            chunk.chunk > 9999
+          ) {
+            logger.error(
+              `🔴 sitemap-index: refusing to advertise station chunk lang=${lang} chunk=${chunk.chunk} ` +
+              `(must be 1..9999 to match the per-chunk route regex; would otherwise serve 410 Gone)`,
+            );
+            continue;
+          }
           const chunkLastmod = formatLastmod(chunk.maxUpdatedAt);
           if (chunk.maxUpdatedAt instanceof Date && (!indexMaxLastmod || chunk.maxUpdatedAt > indexMaxLastmod)) {
             indexMaxLastmod = chunk.maxUpdatedAt;

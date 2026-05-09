@@ -828,6 +828,74 @@ test('/sitemap-stations-en-99.xml returns 503 when no manifest exists yet (cold-
   }
 });
 
+test('Task #344: every station-chunk URL the sitemap-index advertises resolves to 200 (not 410)', async () => {
+  // Regression guard: the per-chunk route's `:chunk` regex `[1-9]\d{0,3}`
+  // 410 Gones anything outside 1..9999. If a manifest writer ever drifts to
+  // 0-based numbering (or stores a >4-digit value) the index would happily
+  // tell Google to fetch a URL that immediately 410s — silently dropping
+  // every station in that chunk from the index. Walk the live sitemap-index
+  // and assert each advertised station-chunk URL fetches with a 200.
+  fakeCacheStore.clear();
+  const indexRes = await fetch(`${baseUrl}/sitemap-index.xml`);
+  assert.equal(indexRes.status, 200);
+  const indexBody = await indexRes.text();
+  const parsed = assertValidXml(indexBody, '/sitemap-index.xml chunk-resolves') as {
+    sitemapindex?: { sitemap?: Array<{ loc?: string }> };
+  };
+  const stationLocs = (parsed.sitemapindex?.sitemap ?? [])
+    .map((s) => s.loc ?? '')
+    .filter((l) => /\/sitemap-stations-[a-z]+-\d+\.xml$/.test(l));
+  assert.ok(stationLocs.length > 0, 'index must advertise at least one station chunk');
+  for (const loc of stationLocs) {
+    const url = new URL(loc);
+    const childRes = await fetch(`${baseUrl}${url.pathname}`);
+    assert.notEqual(
+      childRes.status,
+      410,
+      `index advertises ${url.pathname} but the route returned 410 — chunk numbering drifted`,
+    );
+    assert.equal(
+      childRes.status,
+      200,
+      `index advertises ${url.pathname} but the route returned ${childRes.status}`,
+    );
+  }
+});
+
+test('Task #344: sitemap-index defensively skips a station chunk numbered 0 (would 410)', async () => {
+  // Simulate a manifest-writer regression: a chunk lands with chunk=0. The
+  // index must NOT emit `/sitemap-stations-en-0.xml` because that URL would
+  // immediately 410 Gone and Google would drop the chunk's stations. The
+  // index handler reads SitemapManifest.find directly, so mutate the en
+  // stations manifest in FAKE_INDEX_MANIFESTS for the duration of the test.
+  const enStations = FAKE_INDEX_MANIFESTS.find(
+    (m) => m.type === 'stations' && m.language === 'en',
+  );
+  assert.ok(enStations, 'fixture must include an en stations manifest');
+  const originalChunks = enStations.chunks;
+  enStations.chunks = [
+    { chunk: 0, urlCount: 50, maxUpdatedAt: NOW, stationIds: ['s1'] },
+    { chunk: 1, urlCount: 50, maxUpdatedAt: NOW, stationIds: ['s2'] },
+  ];
+  fakeCacheStore.clear();
+  try {
+    const res = await fetch(`${baseUrl}/sitemap-index.xml`);
+    assert.equal(res.status, 200);
+    const body = await res.text();
+    assert.ok(
+      !body.includes('/sitemap-stations-en-0.xml'),
+      'index must not advertise a chunk-0 URL (would 410 Gone)',
+    );
+    assert.ok(
+      body.includes('/sitemap-stations-en-1.xml'),
+      'index must still advertise the valid sibling chunk',
+    );
+  } finally {
+    enStations.chunks = originalChunks;
+    fakeCacheStore.clear();
+  }
+});
+
 test('A clearly-unmatched path DOES fall through to the SPA catch-all (negative control)', async () => {
   // Sanity check that the SPA tracer is actually wired and would catch a
   // regression — without this, an always-true assertion above would lie.
