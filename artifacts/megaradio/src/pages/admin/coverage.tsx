@@ -381,6 +381,138 @@ export default function AdminCoverage() {
   const alertHistory = dropAlertHistoryData?.history ?? [];
   const alertHistoryHasMore = !!dropAlertHistoryData?.hasMore;
 
+  // Tracks an in-flight CSV export of the full alert history. The
+  // download paginates through the same `/api/admin/coverage/drop-alerts`
+  // endpoint the section already uses (history=1) following the
+  // `nextBefore` cursor until the server reports no more rows, with a
+  // safety cap so a runaway loop can't lock the browser.
+  const [downloadingAlertHistoryCsv, setDownloadingAlertHistoryCsv] =
+    useState(false);
+  const handleDownloadAlertHistoryCsv = async () => {
+    setDownloadingAlertHistoryCsv(true);
+    try {
+      const collected: CoverageDropAlert[] = [];
+      let before: string | null = null;
+      // 50 alerts per page × 40 pages = 2000 alerts max — well past
+      // anything we'd realistically retain, but still bounded so a
+      // server bug returning the same cursor forever can't lock the
+      // browser. We also detect cursor repetition explicitly below.
+      const MAX_PAGES = 40;
+      let truncated = false;
+      const seenCursors = new Set<string>();
+      for (let page = 0; page < MAX_PAGES; page++) {
+        const qs = new URLSearchParams({ history: '1', limit: '50' });
+        if (before) qs.set('before', before);
+        const res = await apiRequest(
+          'GET',
+          `/api/admin/coverage/drop-alerts?${qs.toString()}`,
+        );
+        if (!res.ok) {
+          toast({
+            title: 'Could not load alert history',
+            description: `Server returned ${res.status}. Please try again.`,
+            variant: 'destructive',
+          });
+          return;
+        }
+        const payload =
+          (await res.json()) as CoverageDropAlertHistoryResponse;
+        const pageRows = payload.history ?? [];
+        collected.push(...pageRows);
+        if (!payload.hasMore || !payload.nextBefore) break;
+        // Defensive: bail out if the server hands back a cursor we've
+        // already followed (would otherwise spin until MAX_PAGES).
+        if (seenCursors.has(payload.nextBefore)) {
+          truncated = true;
+          break;
+        }
+        seenCursors.add(payload.nextBefore);
+        before = payload.nextBefore;
+        if (page === MAX_PAGES - 1 && payload.hasMore) {
+          truncated = true;
+        }
+      }
+      if (truncated) {
+        // Tell the admin we stopped early so the CSV isn't silently
+        // truncated. The downloaded file still contains everything we
+        // managed to fetch — they just need to re-run with a tighter
+        // window (or page back manually) to see older alerts.
+        toast({
+          title: 'Alert history export was truncated',
+          description: `Exported the most recent ${collected.length.toLocaleString()} alerts. Older alerts were skipped to keep the download bounded.`,
+        });
+      }
+      if (collected.length === 0) {
+        toast({
+          title: 'No alert history to download',
+          description:
+            'No coverage drop alerts have been recorded yet.',
+        });
+        return;
+      }
+      const header = [
+        'snapshotDate',
+        'thresholdPp',
+        'countryCode',
+        'metric',
+        'todayPct',
+        'weekAgoPct',
+        'deltaPp',
+        'total',
+      ];
+      const escape = (v: string): string =>
+        /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+      const rows: string[][] = [];
+      for (const alert of collected) {
+        const snapshot =
+          alert.snapshotDate ?? alert.createdAt.slice(0, 10);
+        const threshold =
+          alert.thresholdPp != null ? String(alert.thresholdPp) : '';
+        for (const drop of alert.drops) {
+          rows.push([
+            snapshot,
+            threshold,
+            drop.countryCode,
+            drop.metric,
+            drop.todayPct.toFixed(2),
+            drop.weekAgoPct.toFixed(2),
+            drop.deltaPp.toFixed(2),
+            String(drop.total),
+          ]);
+        }
+      }
+      if (rows.length === 0) {
+        toast({
+          title: 'No alert history to download',
+          description: 'Recorded alerts had no per-country drops.',
+        });
+        return;
+      }
+      const csv =
+        [header, ...rows]
+          .map((r) => r.map(escape).join(','))
+          .join('\n') + '\n';
+      const today = new Date().toISOString().slice(0, 10);
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `coverage-drop-alerts-${today}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      toast({
+        title: 'Failed to download alert history',
+        description: err?.message || String(err),
+        variant: 'destructive',
+      });
+    } finally {
+      setDownloadingAlertHistoryCsv(false);
+    }
+  };
+
   // Index the latest alert's drops by country code so each row can show a
   // badge — and remember which metrics dropped so we can colour the badge
   // distinctly. A single country may show up twice (logo + tag); merge them.
@@ -1192,6 +1324,8 @@ export default function AdminCoverage() {
         isFetching={historyFetching}
         onLoadMore={() => setHistoryLimit((n) => n + 10)}
         latestSnapshotDate={latestAlert?.snapshotDate ?? null}
+        onDownloadCsv={handleDownloadAlertHistoryCsv}
+        downloadingCsv={downloadingAlertHistoryCsv}
       />
 
 
@@ -3386,6 +3520,8 @@ function CoverageDropAlertHistorySection(props: {
   // when the topmost history row matches it so admins aren't surprised
   // to see it again.
   latestSnapshotDate: string | null;
+  onDownloadCsv: () => void;
+  downloadingCsv: boolean;
 }) {
   const {
     open,
@@ -3395,36 +3531,62 @@ function CoverageDropAlertHistorySection(props: {
     isFetching,
     onLoadMore,
     latestSnapshotDate,
+    onDownloadCsv,
+    downloadingCsv,
   } = props;
 
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <Card data-testid="card-coverage-drop-history">
-        <CollapsibleTrigger asChild>
-          <button
-            type="button"
-            className="w-full text-left"
-            data-testid="button-coverage-drop-history-toggle"
+        <div className="relative">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="w-full text-left"
+              data-testid="button-coverage-drop-history-toggle"
+            >
+              <CardHeader className="flex-row items-center gap-2 space-y-0 pr-40">
+                <History className="w-4 h-4 text-muted-foreground" />
+                <div className="flex-1">
+                  <CardTitle className="text-base">
+                    Recent coverage drop alerts
+                  </CardTitle>
+                  <CardDescription>
+                    History of nightly alerts so you can spot chronically
+                    flaky countries at a glance.
+                  </CardDescription>
+                </div>
+                {open ? (
+                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                )}
+              </CardHeader>
+            </button>
+          </CollapsibleTrigger>
+          {/* Sibling of the trigger button so we don't nest a button
+              inside another button. Click is stopped from bubbling so
+              starting a download doesn't also toggle the panel. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDownloadCsv();
+            }}
+            disabled={downloadingCsv}
+            className="absolute right-4 top-1/2 -translate-y-1/2"
+            title="Download the full alert history (one row per country/metric drop) as CSV"
+            data-testid="button-download-coverage-drop-history-csv"
           >
-            <CardHeader className="flex-row items-center gap-2 space-y-0">
-              <History className="w-4 h-4 text-muted-foreground" />
-              <div className="flex-1">
-                <CardTitle className="text-base">
-                  Recent coverage drop alerts
-                </CardTitle>
-                <CardDescription>
-                  History of nightly alerts so you can spot chronically flaky
-                  countries at a glance.
-                </CardDescription>
-              </div>
-              {open ? (
-                <ChevronDown className="w-4 h-4 text-muted-foreground" />
-              ) : (
-                <ChevronRight className="w-4 h-4 text-muted-foreground" />
-              )}
-            </CardHeader>
-          </button>
-        </CollapsibleTrigger>
+            {downloadingCsv ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4 mr-2" />
+            )}
+            Download CSV
+          </Button>
+        </div>
         <CollapsibleContent>
           <CardContent
             className="space-y-2"
