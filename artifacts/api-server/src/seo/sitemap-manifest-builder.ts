@@ -360,12 +360,19 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
   // `writeBuildingManifest` then commits a STALE id set into the manifest while
   // bumping `generatedAt` — admins see "lastmod updated" but the URL list
   // inside is the same as before. Reading from primary closes that race.
+  // FRESHNESS BUG FIX (2026-05-09): `.allowDiskUse(true)` is REQUIRED here.
+  // The catalog has ~60K active stations and the `votes:-1, _id:1` sort
+  // exceeds Mongo Atlas' default 32MB in-memory sort budget, throwing
+  // `QueryExceededMemoryLimitNoDiskUseAllowed` and crashing the entire
+  // boot-time `buildAllSitemapManifests` call. Without this, every sitemap
+  // rebuild silently returned 0 manifests and the served XML went stale.
   const cursor = Station.find({
     slug: { $exists: true, $ne: '' },
     $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
   })
     .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon descriptions')
     .sort({ votes: -1, _id: 1 })
+    .allowDiskUse(true)
     .read('primary')
     .lean()
     .cursor({ batchSize: 500 });
@@ -438,6 +445,7 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
   const cursor = Genre.find({ slug: { $exists: true, $ne: '' } })
     .select('_id slug stationCount updatedAt')
     .sort({ stationCount: -1, _id: 1 })
+    .allowDiskUse(true)
     .lean()
     .cursor({ batchSize: 500 });
 
