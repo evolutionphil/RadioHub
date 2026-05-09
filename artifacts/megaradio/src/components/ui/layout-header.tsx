@@ -50,6 +50,8 @@ export default function LayoutHeader() {
                     className="h-16 w-auto md:h-20" 
                     height="68" 
                     width="64" 
+                    loading="lazy"
+                    decoding="async"
                     src="/logo-icon.webp"
                     alt="Megaradio" 
                   />
@@ -80,10 +82,14 @@ export default function LayoutHeader() {
                     {/* Country Selector */}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="rounded-[10px] bg-[#1D1D1D] p-2.5 text-[15px] font-bold">
+                        <Button variant="ghost" className="rounded-[10px] bg-[#1D1D1D] p-2.5 text-[15px] font-bold min-h-[48px] min-w-[48px]" aria-label="Country selector">
                           <img 
                             src="https://flagcdn.com/24x18/us.png"
                             alt="Country"
+                            width={24}
+                            height={18}
+                            loading="lazy"
+                            decoding="async"
                             className="w-6 h-4 rounded object-cover mr-2"
                           />
                           <ChevronDown className="w-4 h-4" />
@@ -127,10 +133,14 @@ export default function LayoutHeader() {
                 {/* Mobile Country Selector */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="lg:hidden p-2">
+                    <Button variant="ghost" className="lg:hidden p-3 -m-3 min-h-[48px] min-w-[48px]" aria-label="Country selector">
                       <img 
                         src="https://flagcdn.com/24x18/us.png"
                         alt="Country"
+                        width={24}
+                        height={18}
+                        loading="lazy"
+                        decoding="async"
                         className="w-6 h-4 rounded object-cover"
                       />
                     </Button>

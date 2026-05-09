@@ -107,6 +107,9 @@ export default function BottomPlayer() {
                     {currentStation.countrycode && (
                       <img
                         loading="lazy"
+                        decoding="async"
+                        width={20}
+                        height={20}
                         src={getCountryImage(currentStation.countrycode.toLowerCase())}
                         className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full object-cover border-2 border-[#393939]"
                         alt={`${currentStation.country || currentStation.countrycode} flag`}

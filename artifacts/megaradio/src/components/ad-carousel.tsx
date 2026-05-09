@@ -113,6 +113,7 @@ export function AdCarousel({
               setFailedImages(prev => new Set(prev).add(currentAd._id));
             }}
             loading="lazy"
+            decoding="async"
             crossOrigin="anonymous"
           />
         ) : (

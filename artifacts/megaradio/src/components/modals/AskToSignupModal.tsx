@@ -49,6 +49,9 @@ export default function AskToSignupModal({ isOpen, onClose }: AskToSignupModalPr
               alt="Signup invitation illustration - person with headphones enjoying music" 
               className="w-full h-auto object-cover"
               loading="eager"
+              decoding="async"
+              width={600}
+              height={400}
             />
           </div>
           

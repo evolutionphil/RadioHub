@@ -210,24 +210,24 @@ export default function Footer() {
                       {t('footer_company', 'Company')}
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/about")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors py-1.5">
+                      <Link to={getLocalizedUrl("/about")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_about_us', 'About Us')}
                       </Link>
-                      <Link to={getLocalizedUrl("/applications")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/applications")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_applications', 'Applications')}
                       </Link>
-                      <Link to={getLocalizedUrl("/contact")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/contact")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_contact', 'Contact')}
                       </Link>
-                      <Link to={getLocalizedUrl("/pages/terms-and-conditions")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/pages/terms-and-conditions")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_terms', 'Terms and Co.')}
                       </Link>
-                      <Link to={getLocalizedUrl("/pages/privacy-policy")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/pages/privacy-policy")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_privacy', 'Privacy')}
                       </Link>
                       <button
                         type="button"
-                        className="text-left bg-transparent border-0 p-0 m-0 cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
+                        className="inline-flex items-center min-h-[44px] text-left bg-transparent border-0 p-0 m-0 cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
                         onClick={() => setShowAddStationModal(true)}
                       >
                         {t('footer_add_station', 'Add Your Station')}
@@ -254,25 +254,25 @@ export default function Footer() {
                       {t('footer_regions', 'Regions')}
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/regions")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_all_regions', 'All Regions')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/north-america/united-states")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/north-america/united-states")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_united_states', 'United States')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/germany")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/germany")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_germany', 'Germany')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/turkey")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/turkey")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         Türkiye
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/austria")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/austria")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_austria', 'Austria')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/united-kingdom")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/united-kingdom")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_united_kingdom', 'United Kingdom')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/france")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/france")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_france', 'France')}
                       </Link>
                     </div>
@@ -297,10 +297,10 @@ export default function Footer() {
                       &nbsp;
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/regions/europe/spain")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/spain")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_spain', 'Spain')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/italy")} className="text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/italy")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_italy', 'Italy')}
                       </Link>
                     </div>
