@@ -310,6 +310,7 @@ export default function AdminGenres() {
       });
       setMergePickerGenre(null);
       setMergePickerSearch('');
+      setMergeWinnerGenre(null);
     },
     onError: (error: any) => {
       toast({
@@ -320,19 +321,17 @@ export default function AdminGenres() {
     },
   });
 
+  // Task #378: open a confirm dialog with the same merge preview the manual
+  // picker shows, instead of a bare confirm() that gives no station count.
+  const [mergeWinnerGenre, setMergeWinnerGenre] = useState<Genre | null>(null);
+
   const handleMergeIntoWinner = (genre: Genre) => {
-    const winnerLabel =
-      genre.cleanupDemotion?.collisionWinnerName ||
-      genre.cleanupDemotion?.collisionWinnerSlug ||
-      'the winner';
-    if (
-      !confirm(
-        `Re-tag every station currently attached to "${genre.name}" onto "${winnerLabel}", then delete the demoted row? This cannot be undone.`,
-      )
-    ) {
-      return;
-    }
-    mergeIntoWinnerMutation.mutate({ id: genre._id });
+    setMergeWinnerGenre(genre);
+  };
+
+  const handleConfirmMergeIntoWinner = () => {
+    if (!mergeWinnerGenre) return;
+    mergeIntoWinnerMutation.mutate({ id: mergeWinnerGenre._id });
   };
 
   // Task #214: manual merge picker — admin chooses any live genre as the
@@ -427,12 +426,14 @@ export default function AdminGenres() {
   } = useQuery<MergePreviewResponse>({
     queryKey: [
       '/api/admin/genres/merge-preview',
-      mergePickerGenre?._id ?? null,
+      (mergePickerGenre ?? mergeWinnerGenre)?._id ?? null,
     ],
-    enabled: !!mergePickerGenre,
+    enabled: !!(mergePickerGenre || mergeWinnerGenre),
     queryFn: async () => {
+      const targetId =
+        (mergePickerGenre ?? mergeWinnerGenre)!._id;
       const response = await fetch(
-        `/api/admin/genres/${mergePickerGenre!._id}/merge-preview?limit=25`,
+        `/api/admin/genres/${targetId}/merge-preview?limit=25`,
       );
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -1228,6 +1229,152 @@ export default function AdminGenres() {
               disabled={mergeIntoWinnerMutation.isPending}
             >
               Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Task #378: confirm dialog for the auto-pick "Merge stations into
+          winner" button — shows the same merge preview the manual picker uses
+          so admins can see how many stations will be re-tagged before
+          committing. */}
+      <Dialog
+        open={!!mergeWinnerGenre}
+        onOpenChange={(open) => {
+          if (!open && !mergeIntoWinnerMutation.isPending) {
+            setMergeWinnerGenre(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="max-w-md bg-white border border-gray-200 shadow-lg text-gray-900"
+          data-testid="dialog-merge-into-winner-confirm"
+        >
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">
+              Merge "{mergeWinnerGenre?.name}" into "
+              {mergeWinnerGenre?.cleanupDemotion?.collisionWinnerName ||
+                mergeWinnerGenre?.cleanupDemotion?.collisionWinnerSlug ||
+                'the winner'}
+              "?
+            </DialogTitle>
+            <DialogDescription className="text-gray-600">
+              Re-tag every station currently attached to "
+              {mergeWinnerGenre?.name}" onto "
+              {mergeWinnerGenre?.cleanupDemotion?.collisionWinnerName ||
+                mergeWinnerGenre?.cleanupDemotion?.collisionWinnerSlug ||
+                'the winner'}
+              ", then delete the demoted row. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div
+            className="rounded border border-amber-200 bg-amber-50 p-3 text-sm"
+            data-testid="merge-winner-preview-panel"
+          >
+            {mergePreviewLoading ? (
+              <div
+                className="text-amber-900"
+                data-testid="merge-winner-preview-loading"
+              >
+                Loading preview…
+              </div>
+            ) : mergePreviewError ? (
+              <div
+                className="text-red-700"
+                data-testid="merge-winner-preview-error"
+              >
+                {(mergePreviewError as Error).message ||
+                  'Failed to load merge preview.'}
+              </div>
+            ) : mergePreview ? (
+              mergePreview.stationsMatched === 0 ? (
+                <div
+                  className="text-amber-900"
+                  data-testid="merge-winner-preview-empty"
+                >
+                  No stations are currently tagged with{' '}
+                  <span className="font-medium">
+                    "{mergePreview.demotedGenreName}"
+                  </span>
+                  . The merge will only delete the demoted row.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div
+                    className="font-medium text-amber-900"
+                    data-testid="merge-winner-preview-count"
+                  >
+                    {mergePreview.stationsMatched} station
+                    {mergePreview.stationsMatched === 1 ? '' : 's'} will be
+                    re-tagged.
+                    {mergePreview.stationsMatched >
+                      mergePreview.sampleStations.length && (
+                      <span className="font-normal text-amber-800">
+                        {' '}Showing first {mergePreview.sampleStations.length}.
+                      </span>
+                    )}
+                  </div>
+                  <ul
+                    className="max-h-40 overflow-y-auto divide-y divide-amber-100 rounded border border-amber-100 bg-white text-xs"
+                    data-testid="merge-winner-preview-list"
+                  >
+                    {mergePreview.sampleStations.map((st) => (
+                      <li
+                        key={st._id}
+                        className="p-2"
+                        data-testid={`merge-winner-preview-station-${st._id}`}
+                      >
+                        <div className="font-medium text-gray-900 truncate">
+                          {st.name}
+                        </div>
+                        <div className="text-gray-600 truncate">
+                          <code className="bg-gray-100 px-1 rounded">
+                            {st.slug}
+                          </code>
+                          {st.country ? <span> · {st.country}</span> : null}
+                          {st.genre ? (
+                            <span> · genre: {st.genre}</span>
+                          ) : null}
+                        </div>
+                        {st.tags ? (
+                          <div className="text-gray-500 truncate">
+                            tags: {st.tags}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setMergeWinnerGenre(null)}
+              disabled={mergeIntoWinnerMutation.isPending}
+              data-testid="button-merge-into-winner-cancel"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmMergeIntoWinner}
+              disabled={
+                mergeIntoWinnerMutation.isPending ||
+                mergePreviewLoading ||
+                !!mergePreviewError ||
+                !mergePreview
+              }
+              title={
+                mergePreviewLoading
+                  ? 'Loading preview…'
+                  : mergePreviewError
+                    ? 'Preview failed to load — cannot safely merge'
+                    : undefined
+              }
+              data-testid="button-merge-into-winner-confirm"
+            >
+              {mergeIntoWinnerMutation.isPending ? 'Merging…' : 'Merge'}
             </Button>
           </DialogFooter>
         </DialogContent>
