@@ -862,6 +862,108 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     },
   );
 
+  // Task #319: dry-run that reports how many BackfillRun rows would be
+  // pruned under proposed thresholds — without actually deleting
+  // anything. Lets the UI prompt for explicit confirmation when an
+  // admin's typo (e.g. 9 instead of 90) would wipe out most of the
+  // history on the next sweep. Empty/null inputs fall back to the same
+  // env/default resolution chain `pruneOldBackfillRuns` uses, so the
+  // preview matches what would actually happen at sweep time. The
+  // arithmetic mirrors `pruneOldBackfillRuns`: kept rows = the newest
+  // `maxRows` documents whose `startedAt` is within the cutoff window.
+  app.post(
+    "/api/admin/settings/backfill-retention/preview",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const body = (req.body ?? {}) as { days?: unknown; maxRows?: unknown };
+
+        const parseField = (
+          raw: unknown,
+          min: number,
+          max: number,
+          field: string,
+        ): number | null | { error: string } => {
+          if (raw === undefined || raw === null || raw === "") return null;
+          const n = Number(raw);
+          if (!Number.isFinite(n) || n < min || n > max) {
+            return {
+              error: `${field} must be an integer between ${min} and ${max}`,
+            };
+          }
+          return Math.floor(n);
+        };
+
+        const daysParsed = parseField(
+          body.days,
+          BACKFILL_RETENTION_DAYS_MIN,
+          BACKFILL_RETENTION_DAYS_MAX,
+          "days",
+        );
+        if (daysParsed && typeof daysParsed === "object" && "error" in daysParsed) {
+          return void res.status(400).json({ error: daysParsed.error });
+        }
+        const maxRowsParsed = parseField(
+          body.maxRows,
+          BACKFILL_RETENTION_MAX_ROWS_MIN,
+          BACKFILL_RETENTION_MAX_ROWS_MAX,
+          "maxRows",
+        );
+        if (
+          maxRowsParsed &&
+          typeof maxRowsParsed === "object" &&
+          "error" in maxRowsParsed
+        ) {
+          return void res.status(400).json({ error: maxRowsParsed.error });
+        }
+
+        // Resolve the effective values that would actually be enforced
+        // — proposed override > current DB-stored override > env >
+        // default — so a partial form (only one field changed) still
+        // previews accurately for any caller, not just the SEO
+        // maintenance page that always sends both fields. Mirrors the
+        // chain `resolveBackfillRetentionSettings()` uses at sweep
+        // time.
+        const resolved = await resolveBackfillRetentionSettings();
+        const effectiveDays = (daysParsed as number | null) ?? resolved.days;
+        const effectiveMaxRows =
+          (maxRowsParsed as number | null) ?? resolved.maxRows;
+
+        const cutoff = new Date(
+          Date.now() - effectiveDays * 24 * 60 * 60 * 1000,
+        );
+        const [total, withinCutoff] = await Promise.all([
+          BackfillRun.countDocuments({}),
+          BackfillRun.countDocuments({ startedAt: { $gte: cutoff } }),
+        ]);
+        const kept = Math.min(withinCutoff, effectiveMaxRows);
+        const removed = Math.max(0, total - kept);
+        const percent = total > 0 ? removed / total : 0;
+
+        res.json({
+          proposed: {
+            days: (daysParsed as number | null) ?? null,
+            maxRows: (maxRowsParsed as number | null) ?? null,
+          },
+          effective: {
+            days: effectiveDays,
+            maxRows: effectiveMaxRows,
+          },
+          total,
+          kept,
+          removed,
+          percent,
+        });
+      } catch (err: any) {
+        logger.error(
+          "[backfill-retention preview] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: "Failed to preview retention" });
+      }
+    },
+  );
+
   app.put(
     "/api/admin/settings/backfill-retention",
     requireAdmin,

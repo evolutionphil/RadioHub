@@ -372,6 +372,12 @@ export default function SeoMaintenancePage() {
       data.stored.maxRows != null ? String(data.stored.maxRows) : "",
     );
   }, [retentionQuery.data]);
+  // Task #319: warn before a sharp shrink. We preview how many rows
+  // the new thresholds would prune on the next sweep and require
+  // explicit confirmation if that's a sizable chunk of the existing
+  // history. Plain saves below the threshold continue to work without
+  // an extra click.
+  const PRUNE_CONFIRM_PCT = 0.1;
   const saveRetention = useMutation({
     mutationFn: async () => {
       const body: { days?: number | null; maxRows?: number | null } = {
@@ -379,6 +385,34 @@ export default function SeoMaintenancePage() {
         maxRows:
           retentionMaxRows.trim() === "" ? null : Number(retentionMaxRows),
       };
+      const previewRes = await apiRequest(
+        "POST",
+        "/api/admin/settings/backfill-retention/preview",
+        { body },
+      );
+      const preview = (await previewRes.json()) as {
+        total: number;
+        removed: number;
+        kept: number;
+        percent: number;
+        effective: { days: number; maxRows: number };
+      };
+      if (
+        preview.removed > 0 &&
+        preview.percent > PRUNE_CONFIRM_PCT &&
+        typeof window !== "undefined"
+      ) {
+        const pct = Math.round(preview.percent * 100);
+        const ok = window.confirm(
+          `Bu eşikler bir sonraki temizlikte ${preview.removed} / ${preview.total} ` +
+            `geçmiş satırını silecek (~%${pct}). Etkin eşikler: ` +
+            `${preview.effective.days}g / ${preview.effective.maxRows} satır.\n\n` +
+            `Devam etmek istiyor musunuz?`,
+        );
+        if (!ok) {
+          throw new Error("cancelled");
+        }
+      }
       return apiRequest(
         "PUT",
         "/api/admin/settings/backfill-retention",
@@ -398,6 +432,7 @@ export default function SeoMaintenancePage() {
       });
     },
     onError: (e: any) => {
+      if (e?.message === "cancelled") return;
       toast({
         title: "Kaydedilemedi",
         description: e?.message || "",
