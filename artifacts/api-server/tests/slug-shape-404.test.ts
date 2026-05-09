@@ -28,6 +28,8 @@ const stubState = {
   ready: false,
   stationSlugs: new Set<string>(),
   genreSlugs: new Set<string>(),
+  countrySlugs: new Set<string>(),
+  citySlugsByCountry: new Map<string, Set<string>>(),
 };
 
 mock.module(new URL('../src/seo/slug-existence.ts', import.meta.url).href, {
@@ -35,6 +37,13 @@ mock.module(new URL('../src/seo/slug-existence.ts', import.meta.url).href, {
     isSlugExistenceReady: () => stubState.ready,
     hasStationSlug: (s: string) => stubState.stationSlugs.has(s),
     hasGenreSlug: (s: string) => stubState.genreSlugs.has(s),
+    hasCountrySlug: (s: string) => stubState.countrySlugs.has(s),
+    hasCitySlug: (country: string, city: string) =>
+      stubState.citySlugsByCountry.get(country)?.has(city) ?? false,
+    hasCityDataForCountry: (country: string) => {
+      const set = stubState.citySlugsByCountry.get(country);
+      return !!set && set.size > 0;
+    },
     loadSlugExistence: async () => {},
     startSlugExistenceRefresh: () => undefined,
   },
@@ -308,8 +317,9 @@ test('regions: malformed country slug → 404', () => {
   assert.equal(out.status, 404);
 });
 
-test('country: malformed slug → 404, well-formed slug falls through', () => {
+test('country: malformed slug → 404, well-formed known slug falls through', () => {
   stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
 
   const bad = run(middleware, makeReq({ path: "/country/regio's" }));
   assert.equal(bad.fellThrough, false);
@@ -317,6 +327,120 @@ test('country: malformed slug → 404, well-formed slug falls through', () => {
 
   const good = run(middleware, makeReq({ path: '/country/germany' }));
   assert.equal(good.fellThrough, true);
+});
+
+// ---------------------------------------------------------------------------
+// Task #357: city slug existence gate.
+// Mirrors the genre/station gates — shape-valid but DB-unknown city slugs
+// under `/country/<country>/<city>` and `/regions/<continent>/<country>/<city>`
+// must 404 once the existence set is loaded, while a known city or any city
+// in a country we don't precompute cities for must still fall through.
+// ---------------------------------------------------------------------------
+
+test('cold-start grace period: unknown city slug falls through when existence set is not ready', () => {
+  stubState.ready = false;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin'])],
+  ]);
+
+  for (const path of [
+    '/country/germany/who-dis',
+    '/regions/europe/germany/who-dis',
+  ]) {
+    const out = run(middleware, makeReq({ path }));
+    assert.equal(out.fellThrough, true, `${path} must fall through during cold start`);
+  }
+});
+
+test('country: unknown city slug → 404 once existence set is loaded', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin', 'munich'])],
+  ]);
+
+  const out = run(middleware, makeReq({ path: '/country/germany/who-dis' }));
+  assert.equal(out.fellThrough, false, 'unknown city slug must be 404');
+  assert.equal(out.status, 404);
+  assert.equal(out.headers['X-Robots-Tag'], 'noindex, follow');
+});
+
+test('country: known city slug falls through to the SPA', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin'])],
+  ]);
+
+  const out = run(middleware, makeReq({ path: '/country/germany/berlin' }));
+  assert.equal(out.fellThrough, true);
+});
+
+test('country: /<country>/stations sentinel still falls through (not treated as city)', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin'])],
+  ]);
+
+  const out = run(middleware, makeReq({ path: '/country/germany/stations' }));
+  assert.equal(out.fellThrough, true);
+});
+
+test('country: city slug in a country with no precomputed city data falls through', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany', 'tuvalu']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin'])],
+    // tuvalu intentionally omitted — no precomputed cities for it.
+  ]);
+
+  const out = run(middleware, makeReq({ path: '/country/tuvalu/anywhere' }));
+  assert.equal(out.fellThrough, true, 'cities in countries we do not list must not false-404');
+});
+
+test('regions: unknown city slug under known country → 404 once existence set is loaded', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin'])],
+  ]);
+
+  const out = run(
+    middleware,
+    makeReq({ path: '/regions/europe/germany/who-dis' }),
+  );
+  assert.equal(out.fellThrough, false);
+  assert.equal(out.status, 404);
+});
+
+test('regions: known city slug falls through to the SPA', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin'])],
+  ]);
+
+  const out = run(
+    middleware,
+    makeReq({ path: '/regions/europe/germany/berlin' }),
+  );
+  assert.equal(out.fellThrough, true);
+});
+
+test('regions: /<continent>/<country>/stations sentinel still falls through', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin'])],
+  ]);
+
+  const out = run(
+    middleware,
+    makeReq({ path: '/regions/europe/germany/stations' }),
+  );
+  assert.equal(out.fellThrough, true);
 });
 
 test('root path falls through', () => {
