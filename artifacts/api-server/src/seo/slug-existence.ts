@@ -18,6 +18,17 @@
  * City slugs are computed per-country via PrecomputedCitiesService —
  * the same source of truth used to render the country → cities listing
  * pages, so a city URL is "valid" iff the cities page actually shows it.
+ *
+ * Task #363: countries outside the ~20 hardcoded in `COUNTRY_CITIES`
+ * (e.g. Albania, Egypt, Argentina) have no precomputed city set, which
+ * meant `hasCityDataForCountry` returned false for them and the
+ * shape-404 gate skipped city existence checks entirely — so unknown
+ * city URLs in those countries still served HTTP 200. We now backfill
+ * those countries from a single aggregation over distinct
+ * (station.country, station.state) pairs so any state value attached
+ * to ≥1 station counts as a "known" city for that country. This stays
+ * O(1) per request (the aggregation runs in the existing 6h refresh,
+ * not on the hot path).
  */
 
 import { Station, Genre, Country } from '@workspace/db-shared/mongo-schemas';
@@ -28,6 +39,20 @@ import {
 } from '@workspace/seo-shared/country-regions';
 import { PrecomputedCitiesService } from '../services/precomputed-cities';
 import { logger } from '../utils/logger';
+
+/**
+ * Mirrors the `generateSlug()` used in PrecomputedCitiesService and the
+ * region/country/city route handlers (lowercase, non-alnum → `-`,
+ * collapse runs, trim leading/trailing `-`). Keeping this byte-identical
+ * is what lets the fallback set match the URL slug a visitor types.
+ */
+function slugifyCity(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
 let stationSlugs: Set<string> = new Set();
 let genreSlugs: Set<string> = new Set();
@@ -156,6 +181,57 @@ export async function loadSlugExistence(): Promise<void> {
       }
     }
 
+    // Task #363: backfill city sets for countries outside the
+    // hardcoded `COUNTRY_CITIES` list using distinct station.state
+    // values. One aggregation, runs on the existing 6h refresh — no
+    // per-request DB cost. Only fills in country slugs we haven't
+    // already populated above so the tighter precomputed sets win
+    // for the supported countries.
+    let fallbackCountries = 0;
+    let fallbackCities = 0;
+    const fallbackSets = new Map<string, Set<string>>();
+    try {
+      const stateRows = (await Station.aggregate([
+        {
+          $match: {
+            country: { $type: 'string', $ne: '' },
+            state: { $type: 'string', $ne: '' },
+          },
+        },
+        { $group: { _id: { country: '$country', state: '$state' } } },
+      ])
+        .option({ maxTimeMS: 30000 })
+        .exec()) as Array<{ _id: { country: string; state: string } }>;
+
+      for (const row of stateRows) {
+        const cSlug = countrySlug(canonicalizeCountry(row._id.country));
+        if (!cSlug) continue;
+        // Don't override the precomputed (tight) set for supported
+        // countries — those already cover the URLs we render.
+        if (nextCities.has(cSlug)) continue;
+        const stateSlug = slugifyCity(row._id.state);
+        if (!stateSlug) continue;
+        let set = fallbackSets.get(cSlug);
+        if (!set) {
+          set = new Set<string>();
+          fallbackSets.set(cSlug, set);
+        }
+        if (!set.has(stateSlug)) {
+          set.add(stateSlug);
+          fallbackCities++;
+        }
+      }
+      for (const [cSlug, set] of fallbackSets) {
+        if (set.size === 0) continue;
+        nextCities.set(cSlug, set);
+        fallbackCountries++;
+      }
+    } catch (fallbackErr: any) {
+      logger.log(
+        `⚠️ SLUG-EXISTENCE: city fallback aggregation failed (${fallbackErr?.message || fallbackErr})`,
+      );
+    }
+
     stationSlugs = nextStations;
     genreSlugs = nextGenres;
     countrySlugs = nextCountries;
@@ -163,7 +239,7 @@ export async function loadSlugExistence(): Promise<void> {
     ready = true;
     const cityTotal = Array.from(nextCities.values()).reduce((n, s) => n + s.size, 0);
     logger.log(
-      `🗂️ SLUG-EXISTENCE: loaded ${nextStations.size} station slugs, ${nextGenres.size} genre slugs, ${nextCountries.size} country slugs, ${cityTotal} city slugs across ${nextCities.size} countries`,
+      `🗂️ SLUG-EXISTENCE: loaded ${nextStations.size} station slugs, ${nextGenres.size} genre slugs, ${nextCountries.size} country slugs, ${cityTotal} city slugs across ${nextCities.size} countries (incl. ${fallbackCities} fallback cities across ${fallbackCountries} countries from station.state)`,
     );
   } catch (err: any) {
     logger.log(`⚠️ SLUG-EXISTENCE: load failed (${err?.message || err}) — keeping previous sets`);
