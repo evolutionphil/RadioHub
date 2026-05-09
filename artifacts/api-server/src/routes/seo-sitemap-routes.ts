@@ -503,6 +503,18 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   app.post("/api/admin/sitemap/rebuild", requireAdmin, async (_req, res) => {
     try {
       const result = await buildAllSitemapManifests({ force: true });
+      // FRESHNESS BUG FIX (2026-05-09): nuke the per-XML response cache so
+      // the admin rebuild button takes effect immediately. Without this,
+      // the in-process / Redis cache (1h TTL) keeps serving the previous
+      // XML body — admins click rebuild, manifest gets fresh
+      // chunks[].maxUpdatedAt, but the served XML still shows old per-URL
+      // <lastmod> values until cache TTL expires. clearByPattern is safe:
+      // worst case all sitemap URLs see one cache miss in the next minute.
+      try {
+        await CacheManager.clearByPattern('sitemap:');
+      } catch (err: any) {
+        logger.warn(`admin/sitemap/rebuild: cache clear failed (non-fatal): ${err?.message ?? err}`);
+      }
       // Task #201: ping IndexNow with the sitemap index so Google/Bing pick
       // up the freshly-rebuilt sitemap immediately (matches the
       // genre-whitelist admin routes' triggerSearchEnginePush pattern).
@@ -739,7 +751,14 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
-      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}`;
+      // FRESHNESS BUG FIX (2026-05-09): include manifest.maxUpdatedAt in
+      // the cache key. Otherwise URL set stays identical → version is stable
+      // → cache key is stable → stale XML body (with stale per-URL <lastmod>
+      // values from when the manifest was first cached) is served forever.
+      // Including maxUpdatedAt means: when manifest-builder bumps the
+      // chunk's maxUpdatedAt (every 6h tick), the cache key rotates and
+      // the next request regenerates XML from fresh Mongo data.
+      const cacheKey = `sitemap:main:${lang}:${state.hash}:${manifest.version}:${manifest.maxUpdatedAt instanceof Date ? manifest.maxUpdatedAt.getTime() : 0}`;
       const cached = await CacheManager.get<string>(cacheKey);
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');
@@ -889,7 +908,12 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       if (send304IfNotModifiedSince(req, res, chunkInfo.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
-      const cacheKey = `sitemap:stations:${lang}:${chunk}:${state.hash}:${chunkInfo.version}`;
+      // FRESHNESS BUG FIX (2026-05-09): see /sitemap-main route for the full
+      // explanation. tl;dr — including chunkInfo.maxUpdatedAt invalidates the
+      // cached XML body whenever manifest-builder bumps the chunk's freshness
+      // timestamp, so per-URL <lastmod> values reflect current Station.updatedAt
+      // values from Mongo instead of being frozen at first-cache time.
+      const cacheKey = `sitemap:stations:${lang}:${chunk}:${state.hash}:${chunkInfo.version}:${chunkInfo.maxUpdatedAt instanceof Date ? chunkInfo.maxUpdatedAt.getTime() : 0}`;
       const cached = await CacheManager.get<string>(cacheKey);
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');
@@ -1019,7 +1043,8 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       if (send304IfNotModifiedSince(req, res, manifest.maxUpdatedAt as any, etag, childCacheControl)) return;
       if (send304IfMatch(req, res, etag, childCacheControl)) return;
 
-      const cacheKey = `sitemap:genres:${lang}:${state.hash}:${manifest.version}`;
+      // FRESHNESS BUG FIX (2026-05-09): see /sitemap-main route comment.
+      const cacheKey = `sitemap:genres:${lang}:${state.hash}:${manifest.version}:${manifest.maxUpdatedAt instanceof Date ? manifest.maxUpdatedAt.getTime() : 0}`;
       const cached = await CacheManager.get<string>(cacheKey);
       if (cached) {
         res.setHeader('Content-Type', 'application/xml');
