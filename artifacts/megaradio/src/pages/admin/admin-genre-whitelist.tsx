@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trash2, Plus, Search, AlertCircle, Wrench, CheckCircle2, XCircle, Loader2, MinusCircle, RefreshCw } from "lucide-react";
+import { Trash2, Plus, Search, AlertCircle, Wrench, CheckCircle2, XCircle, Loader2, MinusCircle, RefreshCw, Beaker } from "lucide-react";
 
 interface AliasEntry {
   source: string;
@@ -74,6 +74,24 @@ interface LastNightlyRun {
   errorMessage: string | null;
 }
 
+interface PushAlertLastTest {
+  triggeredAt: string;
+  triggeredBy: string | null;
+  urlHost: string | null;
+  notifiedAdmins: number;
+  ok: boolean;
+  status: number | null;
+  statusText: string | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number;
+}
+
+interface PushAlertSummary {
+  webhookConfigured: boolean;
+  lastTest: PushAlertLastTest | null;
+}
+
 interface WhitelistResponse {
   slugs: string[];
   slugStationCounts?: Record<string, number>;
@@ -91,6 +109,7 @@ interface WhitelistResponse {
   lastNightlyRun?: LastNightlyRun | null;
   lastPush: PushStatus | null;
   pushHistory?: PushStatus[];
+  pushAlert?: PushAlertSummary;
 }
 
 function formatDurationMs(ms: number | null): string {
@@ -139,6 +158,138 @@ function StepBadge({ label, step }: { label: string; step: PushStep }) {
         ? ` (${step.urlCount} URL${step.urlCount === 1 ? '' : 's'})`
         : ''}
     </Badge>
+  );
+}
+
+// Task #341: "Send test push-failure alert" controls rendered inside
+// the Last Push card. Lets admins fire a clearly-marked synthetic
+// failure through the configured webhook (and optionally write a test
+// in-app notification) so they can verify Slack/Discord wiring without
+// waiting for a real failure. Mirrors the "Send test" affordance on
+// the coverage-drop settings page.
+function PushFailureTestAlertControls({
+  pushAlert,
+  isPending,
+  onSendTest,
+}: {
+  pushAlert: PushAlertSummary | undefined;
+  isPending: boolean;
+  onSendTest: (notifyAdmins: boolean) => void;
+}) {
+  const [alsoNotifyAdmins, setAlsoNotifyAdmins] = useState(false);
+  const webhookConfigured = pushAlert?.webhookConfigured ?? false;
+  const lastTest = pushAlert?.lastTest ?? null;
+  return (
+    <div
+      className="mt-3 border-t pt-3 space-y-2"
+      data-testid="panel-push-test-alert"
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onSendTest(alsoNotifyAdmins)}
+          disabled={isPending || !webhookConfigured}
+          title={
+            webhookConfigured
+              ? 'POST a synthetic "push failure" payload to the configured webhook to verify the channel.'
+              : 'Set BACKFILL_ALERT_WEBHOOK_URL to enable test alerts.'
+          }
+          data-testid="button-send-test-push-alert"
+        >
+          {isPending ? (
+            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+          ) : (
+            <Beaker className="w-4 h-4 mr-1" />
+          )}
+          Send test push-failure alert
+        </Button>
+        <label
+          className="flex items-center gap-1.5 text-xs text-gray-600"
+          title="Also write a test in-app notification to every admin user."
+        >
+          <input
+            type="checkbox"
+            className="h-3.5 w-3.5"
+            checked={alsoNotifyAdmins}
+            onChange={(e) => setAlsoNotifyAdmins(e.target.checked)}
+            disabled={isPending || !webhookConfigured}
+            data-testid="checkbox-test-push-alert-notify-admins"
+          />
+          Also send in-app notification
+        </label>
+      </div>
+      {!webhookConfigured && (
+        <p
+          className="text-xs text-gray-500"
+          data-testid="text-push-alert-webhook-missing"
+        >
+          No webhook configured. Set <code>BACKFILL_ALERT_WEBHOOK_URL</code> on
+          the api-server to enable test alerts.
+        </p>
+      )}
+      {lastTest ? (
+        <div
+          className={`rounded border px-2 py-1.5 text-[11px] ${
+            lastTest.ok
+              ? 'border-green-300 bg-green-50 text-green-800'
+              : 'border-red-300 bg-red-50 text-red-800'
+          }`}
+          data-testid="push-alert-last-test"
+        >
+          <div className="font-medium">
+            Last test:{' '}
+            {lastTest.status != null
+              ? `HTTP ${lastTest.status}${
+                  lastTest.statusText ? ` ${lastTest.statusText}` : ''
+                }`
+              : lastTest.error
+                ? 'no HTTP response'
+                : 'unknown'}
+            {' · '}
+            {lastTest.ok ? 'ok' : 'failed'}
+            {' · '}
+            {lastTest.durationMs}ms
+          </div>
+          <div className="opacity-80">
+            {new Date(lastTest.triggeredAt).toLocaleString()}
+            {lastTest.triggeredBy ? ` by ${lastTest.triggeredBy}` : ''}
+            {lastTest.urlHost ? ` → ${lastTest.urlHost}` : ''}
+            {lastTest.notifiedAdmins > 0
+              ? ` · in-app to ${lastTest.notifiedAdmins} admin${
+                  lastTest.notifiedAdmins === 1 ? '' : 's'
+                }`
+              : ''}
+          </div>
+          {lastTest.error ? (
+            <div
+              className="mt-1 break-all opacity-90"
+              data-testid="push-alert-last-test-error"
+            >
+              Error: {lastTest.error}
+            </div>
+          ) : null}
+          {lastTest.responseBody ? (
+            <div
+              className="mt-1 break-all opacity-80"
+              data-testid="push-alert-last-test-body"
+            >
+              Response:{' '}
+              {lastTest.responseBody.length > 200
+                ? lastTest.responseBody.slice(0, 200) + '…'
+                : lastTest.responseBody}
+            </div>
+          ) : null}
+        </div>
+      ) : webhookConfigured ? (
+        <p
+          className="text-[11px] italic text-gray-500"
+          data-testid="push-alert-last-test-empty"
+        >
+          No test alert has been sent yet.
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -314,6 +465,81 @@ export default function AdminGenreWhitelist() {
     },
     onError: (err: Error) => {
       toast({ title: "Failed to remove alias", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Task #341: fire a synthetic "push failure" through the configured
+  // webhook (and optionally the in-app channel) so admins can verify
+  // their Slack/Discord wiring without waiting for a real failure. We
+  // surface the response shape inline (status / body / error) and
+  // refresh the whitelist query so the persisted "Last test" line
+  // updates without a manual reload.
+  const testPushAlert = useMutation({
+    mutationFn: async (notifyAdmins: boolean) => {
+      const res = await apiRequest(
+        'POST',
+        '/api/admin/genre-whitelist/test-push-failure-alert',
+        { body: { notifyAdmins } },
+      );
+      const json = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        status?: number | null;
+        statusText?: string | null;
+        responseBody?: string | null;
+        error?: string | null;
+        durationMs?: number;
+        notifiedAdmins?: number;
+        inAppError?: string | null;
+        lastTest?: PushAlertLastTest | null;
+      };
+      if (!res.ok) {
+        throw new Error(
+          json?.error || `Request failed (${res.status} ${res.statusText})`,
+        );
+      }
+      return json;
+    },
+    onSuccess: (result) => {
+      const httpLine =
+        result.status != null
+          ? `HTTP ${result.status}${result.statusText ? ` ${result.statusText}` : ''}`
+          : 'No HTTP response';
+      const bodyPreview = (result.responseBody ?? '').trim();
+      const bodyLine = bodyPreview
+        ? `Response: ${bodyPreview.length > 240 ? bodyPreview.slice(0, 240) + '…' : bodyPreview}`
+        : 'Response body: (empty)';
+      const errLine = result.error ? `Error: ${result.error}` : null;
+      const inAppLine =
+        result.notifiedAdmins && result.notifiedAdmins > 0
+          ? `In-app: notified ${result.notifiedAdmins} admin(s)`
+          : result.inAppError
+            ? `In-app failed: ${result.inAppError}`
+            : null;
+      const description = [
+        `${httpLine} · ${result.durationMs ?? 0}ms`,
+        bodyLine,
+        errLine,
+        inAppLine,
+      ]
+        .filter(Boolean)
+        .join('\n');
+      toast({
+        title: result.ok
+          ? 'Test push-failure alert delivered'
+          : 'Test alert returned a non-2xx response',
+        description,
+        variant: result.ok ? undefined : 'destructive',
+        duration: result.ok ? 6000 : 12000,
+      });
+      invalidate();
+    },
+    onError: (err: Error) => {
+      toast({
+        title: 'Failed to send test alert',
+        description: err.message,
+        variant: 'destructive',
+        duration: 12000,
+      });
     },
   });
 
@@ -634,6 +860,14 @@ export default function AdminGenreWhitelist() {
       {/* === LAST PUSH STATUS === */}
       {(() => {
         const lp = data.lastPush;
+        const pushAlert = data.pushAlert;
+        const renderTestAlertControls = () => (
+          <PushFailureTestAlertControls
+            pushAlert={pushAlert}
+            isPending={testPushAlert.isPending}
+            onSendTest={(notifyAdmins) => testPushAlert.mutate(notifyAdmins)}
+          />
+        );
         if (!lp) {
           return (
             <Card data-testid="card-push-status">
@@ -644,7 +878,7 @@ export default function AdminGenreWhitelist() {
                   rebuild on its normal 6h cycle.
                 </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <Button
                   variant="outline"
                   size="sm"
@@ -655,6 +889,7 @@ export default function AdminGenreWhitelist() {
                   <RefreshCw className={`w-4 h-4 mr-1 ${repush.isPending ? 'animate-spin' : ''}`} />
                   Push now
                 </Button>
+                {renderTestAlertControls()}
               </CardContent>
             </Card>
           );
@@ -748,6 +983,7 @@ export default function AdminGenreWhitelist() {
                   </span>
                 )}
               </div>
+              {renderTestAlertControls()}
             </CardContent>
           </Card>
         );

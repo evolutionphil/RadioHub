@@ -1,5 +1,9 @@
 import { logger } from '../utils/logger';
-import { User, UserNotification } from '@workspace/db-shared/mongo-schemas';
+import {
+  AdminSetting,
+  User,
+  UserNotification,
+} from '@workspace/db-shared/mongo-schemas';
 import type {
   GenreWhitelistPushStatus,
   PushStepResult,
@@ -228,6 +232,303 @@ async function notifyAdminsInApp(
 
   await UserNotification.insertMany(docs, { ordered: false });
   return admins.length;
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// Test-alert support (task #341)
+// ──────────────────────────────────────────────────────────────────────
+//
+// Mirrors `sendTestCoverageDropWebhook` in coverage-drop-notifier so
+// admins can verify their Slack/Discord webhook from the UI without
+// waiting for a real push to fail. The test path is deliberately
+// out-of-band:
+//   - It does NOT touch the dedupe cache (real failures keep their
+//     suppression window intact).
+//   - It does NOT call the active notifier (no risk of reusing a
+//     test-stub installed via setGenreWhitelistPushNotifier).
+//   - It does NOT persist a `GenreWhitelistPushLog` row (the push
+//     history table stays a record of real pushes only).
+//   - In-app admin notifications are opt-in (off by default) so the
+//     "verify the channel" action doesn't spam the bell icon.
+// The persisted "last test" summary lives under its own AdminSetting
+// key so the admin Genre Whitelist page can show "last test: HTTP 200
+// at 14:32 by alice" even after the firing toast is dismissed.
+
+export const GENRE_WHITELIST_PUSH_LAST_TEST_KEY =
+  'genre-whitelist-push-alert-last-test';
+const TEST_RESPONSE_BODY_MAX_CHARS = 4_000;
+const LAST_TEST_RESPONSE_BODY_MAX_CHARS = 500;
+const LAST_TEST_ERROR_MAX_CHARS = 500;
+
+export interface WhitelistPushWebhookTestResult {
+  ok: boolean;
+  status: number | null;
+  statusText: string | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number;
+}
+
+export interface WhitelistPushLastTestRecord {
+  triggeredAt: Date;
+  triggeredBy: string | null;
+  urlHost: string | null;
+  notifiedAdmins: number;
+  ok: boolean;
+  status: number | null;
+  statusText: string | null;
+  responseBody: string | null;
+  error: string | null;
+  durationMs: number;
+}
+
+function safeUrlHost(url: string): string | null {
+  try {
+    return new URL(url).host || null;
+  } catch {
+    return null;
+  }
+}
+
+function truncate(value: string | null, max: number): string | null {
+  if (value == null) return null;
+  return value.length > max ? value.slice(0, max) + '…[truncated]' : value;
+}
+
+function buildSyntheticTestStatus(
+  triggeredBy: string | null,
+): { status: GenreWhitelistPushStatus; failed: FailedPushStep[] } {
+  const now = new Date().toISOString();
+  const status: GenreWhitelistPushStatus = {
+    triggeredAt: now,
+    completedAt: now,
+    triggeredBy,
+    trigger: 'admin-test-alert',
+    affectedSlugs: ['__test-alert__'],
+    sitemapRebuild: { status: 'success' },
+    indexnowSitemap: { status: 'success' },
+    indexnowGenreUrls: {
+      status: 'failed',
+      error:
+        'Synthetic test failure — no real IndexNow request was made. Triggered from the admin UI to verify the alert channel.',
+    },
+  };
+  const failed: FailedPushStep[] = [
+    {
+      step: 'indexnowGenreUrls',
+      error: status.indexnowGenreUrls.error ?? 'synthetic test failure',
+    },
+  ];
+  return { status, failed };
+}
+
+/**
+ * POST a clearly-marked synthetic "push failure" payload to the given
+ * webhook URL. Mirrors the real notifier's body shape (`{ text, push }`)
+ * so a working test alert and a working real alert render identically
+ * in the receiving channel. Adds an `x-megaradio-test-alert: 1` header
+ * and a `test: true` field for downstream filtering.
+ */
+export async function sendTestWhitelistPushFailureWebhook(
+  url: string,
+  triggeredBy: string | null,
+): Promise<WhitelistPushWebhookTestResult> {
+  const { status, failed } = buildSyntheticTestStatus(triggeredBy);
+  const message = [
+    '🧪 MegaRadio genre whitelist push failure — TEST MESSAGE (no real push failed).',
+    triggeredBy
+      ? `Triggered manually from the admin UI by ${triggeredBy}.`
+      : 'Triggered manually from the admin UI.',
+    'If you can see this in your channel, the webhook is wired up correctly.',
+  ].join('\n');
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+  const startedAt = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-megaradio-test-alert': '1',
+      },
+      body: JSON.stringify({
+        text: message,
+        push: {
+          trigger: status.trigger,
+          triggeredBy: status.triggeredBy,
+          triggeredAt: status.triggeredAt,
+          completedAt: status.completedAt,
+          affectedSlugs: status.affectedSlugs,
+          failedSteps: failed,
+        },
+        test: true,
+      }),
+      signal: controller.signal,
+    });
+    let body: string | null = null;
+    try {
+      const text = await res.text();
+      body =
+        text.length > TEST_RESPONSE_BODY_MAX_CHARS
+          ? text.slice(0, TEST_RESPONSE_BODY_MAX_CHARS) + '…[truncated]'
+          : text;
+    } catch {
+      body = null;
+    }
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText || null,
+      responseBody: body,
+      error: null,
+      durationMs: Date.now() - startedAt,
+    };
+  } catch (err: any) {
+    const message =
+      err?.name === 'AbortError'
+        ? `Request timed out after ${WEBHOOK_TIMEOUT_MS}ms`
+        : err?.message || String(err);
+    return {
+      ok: false,
+      status: null,
+      statusText: null,
+      responseBody: null,
+      error: message,
+      durationMs: Date.now() - startedAt,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Write one synthetic in-app notification per admin user, clearly
+ * marked as a test. Returns the recipient count (0 when there are no
+ * admin users). Best-effort: failures bubble up so the route can
+ * include them in the response.
+ */
+export async function sendTestWhitelistPushFailureInAppNotification(
+  triggeredBy: string | null,
+): Promise<number> {
+  const admins = await User.find({ role: 'admin' }, { _id: 1 }).lean();
+  if (admins.length === 0) return 0;
+  const now = new Date().toISOString();
+  const message = triggeredBy
+    ? `Test alert triggered by ${triggeredBy} from the admin UI — no real push failed.`
+    : 'Test alert triggered from the admin UI — no real push failed.';
+  const docs = admins.map((a) => ({
+    userId: a._id,
+    type: 'system' as const,
+    title: '🧪 Genre whitelist push failure (TEST)',
+    message,
+    data: {
+      kind: 'genre_whitelist_push_failure_test',
+      test: true,
+      trigger: 'admin-test-alert',
+      triggeredBy,
+      triggeredAt: now,
+    },
+  }));
+  await UserNotification.insertMany(docs, { ordered: false });
+  return admins.length;
+}
+
+/**
+ * Persist a one-line summary of the most recent test attempt under its
+ * own AdminSetting key (separate from the real push log). Best-effort:
+ * a write failure here must not fail the test request itself.
+ */
+export async function recordWhitelistPushTestResult(input: {
+  url: string;
+  triggeredBy: string | null;
+  notifiedAdmins: number;
+  result: WhitelistPushWebhookTestResult;
+}): Promise<WhitelistPushLastTestRecord | null> {
+  const record: WhitelistPushLastTestRecord = {
+    triggeredAt: new Date(),
+    triggeredBy: input.triggeredBy,
+    urlHost: safeUrlHost(input.url),
+    notifiedAdmins: input.notifiedAdmins,
+    ok: input.result.ok,
+    status: input.result.status,
+    statusText: input.result.statusText,
+    responseBody: truncate(input.result.responseBody, LAST_TEST_RESPONSE_BODY_MAX_CHARS),
+    error: truncate(input.result.error, LAST_TEST_ERROR_MAX_CHARS),
+    durationMs: input.result.durationMs,
+  };
+  try {
+    const now = new Date();
+    await AdminSetting.findOneAndUpdate(
+      { key: GENRE_WHITELIST_PUSH_LAST_TEST_KEY },
+      {
+        $set: {
+          value: record,
+          updatedAt: now,
+          updatedBy: input.triggeredBy,
+        },
+        $setOnInsert: {
+          createdAt: now,
+          key: GENRE_WHITELIST_PUSH_LAST_TEST_KEY,
+        },
+      },
+      { upsert: true, new: true },
+    );
+    return record;
+  } catch (err) {
+    logger.warn(
+      '⚠️  Failed to persist last genre-whitelist push test webhook result:',
+      err,
+    );
+    return null;
+  }
+}
+
+function sanitizeLastTestRecord(value: unknown): WhitelistPushLastTestRecord | null {
+  if (!value || typeof value !== 'object') return null;
+  const v = value as Record<string, unknown>;
+  const triggeredAt =
+    v.triggeredAt instanceof Date
+      ? v.triggeredAt
+      : typeof v.triggeredAt === 'string' || typeof v.triggeredAt === 'number'
+        ? new Date(v.triggeredAt as string | number)
+        : null;
+  if (!triggeredAt || Number.isNaN(triggeredAt.getTime())) return null;
+  return {
+    triggeredAt,
+    triggeredBy: typeof v.triggeredBy === 'string' ? v.triggeredBy : null,
+    urlHost: typeof v.urlHost === 'string' ? v.urlHost : null,
+    notifiedAdmins:
+      typeof v.notifiedAdmins === 'number' && Number.isFinite(v.notifiedAdmins)
+        ? v.notifiedAdmins
+        : 0,
+    ok: v.ok === true,
+    status: typeof v.status === 'number' ? v.status : null,
+    statusText: typeof v.statusText === 'string' ? v.statusText : null,
+    responseBody: typeof v.responseBody === 'string' ? v.responseBody : null,
+    error: typeof v.error === 'string' ? v.error : null,
+    durationMs: typeof v.durationMs === 'number' ? v.durationMs : 0,
+  };
+}
+
+export async function loadLastWhitelistPushTestResult(): Promise<WhitelistPushLastTestRecord | null> {
+  try {
+    const doc = await AdminSetting.findOne({
+      key: GENRE_WHITELIST_PUSH_LAST_TEST_KEY,
+    }).lean();
+    return sanitizeLastTestRecord(doc?.value);
+  } catch (err) {
+    logger.warn(
+      '⚠️  Failed to load last genre-whitelist push test webhook result:',
+      err,
+    );
+    return null;
+  }
+}
+
+/** Returns the webhook URL the real notifier would use, or null. */
+export function getConfiguredWhitelistPushWebhookUrl(): string | null {
+  const raw = process.env.BACKFILL_ALERT_WEBHOOK_URL;
+  return raw && raw.trim().length > 0 ? raw.trim() : null;
 }
 
 export type GenreWhitelistPushNotifier = (

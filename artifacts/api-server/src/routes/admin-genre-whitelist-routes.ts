@@ -59,7 +59,14 @@ import {
   getLastPushStatus,
   getRecentPushHistory,
 } from '../seo/genre-whitelist-push-status';
-import { notifyWhitelistPushResult } from '../services/genre-whitelist-push-notifier';
+import {
+  getConfiguredWhitelistPushWebhookUrl,
+  loadLastWhitelistPushTestResult,
+  notifyWhitelistPushResult,
+  recordWhitelistPushTestResult,
+  sendTestWhitelistPushFailureInAppNotification,
+  sendTestWhitelistPushFailureWebhook,
+} from '../services/genre-whitelist-push-notifier';
 
 const PUSH_HISTORY_LIMIT = 20;
 
@@ -306,6 +313,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           stationCountsRuns,
           stationCountsTotal,
           lastNightlyRunRow,
+          lastTest,
         ] = await Promise.all([
           GenreWhitelistOverride.find({}).sort({ kind: 1, slug: 1 }).lean(),
           getRecentPushHistory(PUSH_HISTORY_LIMIT),
@@ -332,6 +340,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           })
             .sort({ startedAt: -1 })
             .lean<GenreStationCountsRunLean | null>(),
+          // Task #341: persisted summary of the most recent admin
+          // "send test push-failure alert" attempt so the UI keeps
+          // showing "last test: HTTP 200 at 14:32 by alice" after the
+          // toast is dismissed.
+          loadLastWhitelistPushTestResult(),
         ]);
 
         const merged = getMergedWhitelist();
@@ -432,6 +445,27 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           // spot a flapping IndexNow endpoint or a slug that keeps
           // failing across multiple attempts.
           pushHistory,
+          // Task #341: alert-channel test surface. `webhookConfigured`
+          // tells the UI whether the "Send test alert" button can run
+          // (i.e. BACKFILL_ALERT_WEBHOOK_URL is set); `lastTest` is the
+          // persisted summary of the most recent attempt.
+          pushAlert: {
+            webhookConfigured: getConfiguredWhitelistPushWebhookUrl() != null,
+            lastTest: lastTest
+              ? {
+                  triggeredAt: lastTest.triggeredAt,
+                  triggeredBy: lastTest.triggeredBy,
+                  urlHost: lastTest.urlHost,
+                  notifiedAdmins: lastTest.notifiedAdmins,
+                  ok: lastTest.ok,
+                  status: lastTest.status,
+                  statusText: lastTest.statusText,
+                  responseBody: lastTest.responseBody,
+                  error: lastTest.error,
+                  durationMs: lastTest.durationMs,
+                }
+              : null,
+          },
         });
       } catch (error: any) {
         logger.error('Error reading genre whitelist:', error);
@@ -977,6 +1011,66 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       } catch (error: any) {
         logger.error('Error queuing manual re-push:', error);
         return void res.status(500).json({ error: 'Failed to queue re-push' });
+      }
+    },
+  );
+
+  // POST /test-push-failure-alert — task #341. Fire a clearly-marked
+  // synthetic "push failure" through the same outbound webhook the real
+  // notifier uses (BACKFILL_ALERT_WEBHOOK_URL) so admins can verify
+  // their Slack/Discord wiring without waiting for a real push to fail.
+  // Mirrors `sendTestCoverageDropWebhook`. The test path deliberately
+  // bypasses the dedupe cache, never persists a GenreWhitelistPushLog
+  // row, and skips the in-app notification by default — pass
+  // `notifyAdmins: true` to also send one synthetic in-app notification
+  // to every admin (useful when verifying the bell-icon channel too).
+  app.post(
+    '/api/admin/genre-whitelist/test-push-failure-alert',
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const url = getConfiguredWhitelistPushWebhookUrl();
+        if (!url) {
+          return void res.status(400).json({
+            error:
+              'No webhook URL is configured. Set BACKFILL_ALERT_WEBHOOK_URL before sending a test alert.',
+          });
+        }
+        const triggeredBy = getAdminUsername(req);
+        const body = (req.body ?? {}) as { notifyAdmins?: unknown };
+        const notifyAdminsRequested = body.notifyAdmins === true;
+        const result = await sendTestWhitelistPushFailureWebhook(url, triggeredBy);
+        let notifiedAdmins = 0;
+        let inAppError: string | null = null;
+        if (notifyAdminsRequested) {
+          try {
+            notifiedAdmins =
+              await sendTestWhitelistPushFailureInAppNotification(triggeredBy);
+          } catch (err: any) {
+            inAppError = err?.message ?? String(err);
+            logger.warn(
+              '⚠️  Failed to write test genre-whitelist push in-app notifications:',
+              err,
+            );
+          }
+        }
+        const lastTest = await recordWhitelistPushTestResult({
+          url,
+          triggeredBy,
+          notifiedAdmins,
+          result,
+        });
+        return void res.json({
+          ...result,
+          notifiedAdmins,
+          inAppError,
+          lastTest,
+        });
+      } catch (error: any) {
+        logger.error('Error sending genre whitelist push test alert:', error);
+        return void res
+          .status(500)
+          .json({ error: 'Failed to send test alert' });
       }
     },
   );
