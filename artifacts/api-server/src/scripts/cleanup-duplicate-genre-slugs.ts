@@ -278,6 +278,14 @@ export async function runDuplicateGenreSlugCleanup(
 }
 
 const isDirectRun = (() => {
+  // After esbuild bundles this file into the api-server entry,
+  // `import.meta.url` collapses to the bundle path and matches
+  // `process.argv[1]` for every bundled script — so the CLI auto-run
+  // below would fire on every server boot, racing the main
+  // mongoose.connect() and tearing the shared connection down with its
+  // own connect/disconnect. Require the source filename to be present in
+  // `import.meta.url` so this only triggers when run directly via tsx.
+  if (!import.meta.url.includes('cleanup-duplicate-genre-slugs')) return false;
   try {
     const invoked = process.argv[1] ? new URL(`file://${process.argv[1]}`).href : '';
     return invoked === import.meta.url;

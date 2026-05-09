@@ -72,6 +72,12 @@ async function main(): Promise<void> {
 }
 
 const isDirectRun = (() => {
+  // After esbuild bundles this file into the api-server entry,
+  // `import.meta.url` collapses to the bundle path and matches
+  // `process.argv[1]` for every bundled script — so the CLI auto-run
+  // below would fire on every server boot. Require the source filename
+  // to be present in `import.meta.url` so this only triggers under tsx.
+  if (!import.meta.url.includes('backfill-coverage-snapshots')) return false;
   try {
     const invoked = process.argv[1] ? new URL(`file://${process.argv[1]}`).href : '';
     return invoked === import.meta.url;

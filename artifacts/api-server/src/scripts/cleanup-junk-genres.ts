@@ -112,6 +112,12 @@ export async function cleanupJunkGenres(opts: { dryRun?: boolean } = {}): Promis
 
 // CLI entrypoint — only run when invoked directly, not when imported.
 const isDirectRun = (() => {
+  // After esbuild bundles this file into the api-server entry,
+  // `import.meta.url` collapses to the bundle path and matches
+  // `process.argv[1]` for every bundled script — so the CLI auto-run
+  // below would fire on every server boot. Require the source filename
+  // to be present in `import.meta.url` so this only triggers under tsx.
+  if (!import.meta.url.includes('cleanup-junk-genres')) return false;
   try {
     const entry = process.argv[1] ? new URL(`file://${process.argv[1]}`).href : '';
     return entry === import.meta.url;
