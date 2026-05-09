@@ -700,7 +700,16 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         );
         const trigger = (req.query.trigger as string | undefined)?.trim();
         const filter: any = {};
-        if (trigger) filter.trigger = trigger;
+        if (trigger) {
+          // Task #347: match the trigger as a "namespace" prefix so that
+          // e.g. `?trigger=admin:manual` also captures any future
+          // `admin:manual:<suffix>` variants (mirrors the prefix match the
+          // scheduled-backfill/runs endpoint already uses). The boundary
+          // anchor `(:|$)` keeps `admin:manual` from matching unrelated
+          // siblings like `admin:manual-other`.
+          const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          filter.trigger = { $regex: `^${escaped}(:|$)` };
+        }
         const [runs, total, oldest] = await Promise.all([
           GenreSlugCleanupRun.find(filter)
             .sort({ startedAt: -1 })
