@@ -733,33 +733,47 @@ export async function getActiveStationChunk(language: string, chunk: number): Pr
   };
 }
 
+/**
+ * One tick of the scheduled refresh loop, extracted so tests can exercise the
+ * post-build IndexNow ping decision without a live MongoDB. Always resolves;
+ * IndexNow failures are logged but never bubble out (Task #272 + #362).
+ *
+ * @param builder Optional override for the manifest builder (test seam).
+ *                Defaults to the real `buildAllSitemapManifests`.
+ */
+export async function runScheduledManifestRefreshTick(
+  builder: () => ReturnType<typeof buildAllSitemapManifests> = buildAllSitemapManifests,
+): Promise<void> {
+  let result: Awaited<ReturnType<typeof buildAllSitemapManifests>>;
+  try {
+    result = await builder();
+  } catch (err) {
+    logger.error('❌ manifest-builder: scheduled rebuild failed', err);
+    return;
+  }
+  // Task #272: ping IndexNow after the scheduled rebuild too — but only
+  // when at least one (type, lang) manifest got swapped to a new active
+  // version. Skipping the ping on no-op rebuilds avoids spamming
+  // IndexNow every 6h with an unchanged sitemap (which would burn the
+  // daily submission quota and look like spam to Bing).
+  // Mirrors the manual /api/admin/sitemap/rebuild path's IndexNow ping
+  // (added in task #201). Failures are logged but never fail the cron.
+  if (result.built && (result.activatedCount ?? 0) > 0) {
+    try {
+      await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
+      logger.log(`📣 manifest-builder: IndexNow sitemap ping fired after scheduled rebuild (activated=${result.activatedCount})`);
+    } catch (err: any) {
+      logger.error('manifest-builder: IndexNow sitemap ping failed after scheduled rebuild:', err?.message ?? err);
+    }
+  }
+}
+
 /** Background refresh trigger — call after server boot + periodic interval. */
 let refreshTimer: NodeJS.Timeout | null = null;
 export function startManifestRefreshLoop(intervalMs: number = 6 * 60 * 60 * 1000): void {
   if (refreshTimer) return;
   refreshTimer = setInterval(() => {
-    buildAllSitemapManifests().then((result) => {
-      // Task #272: ping IndexNow after the scheduled rebuild too — but only
-      // when at least one (type, lang) manifest got swapped to a new active
-      // version. Skipping the ping on no-op rebuilds avoids spamming
-      // IndexNow every 6h with an unchanged sitemap (which would burn the
-      // daily submission quota and look like spam to Bing).
-      // Mirrors the manual /api/admin/sitemap/rebuild path's IndexNow ping
-      // (added in task #201). Fire-and-forget; failures are logged but
-      // never fail the cron.
-      if (result.built && (result.activatedCount ?? 0) > 0) {
-        void (async () => {
-          try {
-            await IndexNowService.submitSitemaps(undefined, 'sitemap-regen');
-            logger.log(`📣 manifest-builder: IndexNow sitemap ping fired after scheduled rebuild (activated=${result.activatedCount})`);
-          } catch (err: any) {
-            logger.error('manifest-builder: IndexNow sitemap ping failed after scheduled rebuild:', err?.message ?? err);
-          }
-        })();
-      }
-    }).catch((err) => {
-      logger.error('❌ manifest-builder: scheduled rebuild failed', err);
-    });
+    void runScheduledManifestRefreshTick();
   }, intervalMs);
   logger.log(`⏰ manifest-builder: refresh loop started (every ${Math.round(intervalMs / 60000)}min)`);
 }
