@@ -25,7 +25,10 @@ export function Applications() {
         sizes="(max-width: 768px) 400px, (max-width: 1200px) 800px, 1200px"
         alt="Mega Radio TV app interface - Stream 60,000+ radio stations on your smart TV" 
         className="m-auto w-full max-w-5xl h-auto" 
+        width={1200}
+        height={750}
         loading="lazy"
+        decoding="async"
       />
       
       <div className="flex flex-col justify-between items-center px-5 md:px-0 py-10 gap-5 md:gap-8 bg-[#1B1B1B]">
@@ -46,7 +49,10 @@ export function Applications() {
           sizes="(max-width: 768px) 300px, (max-width: 1200px) 600px, 900px"
           alt="Mega Radio mobile app on smartphone - Listen to live radio stations on iOS and Android" 
           className="m-auto w-3/5 md:w-[600px] max-w-2xl h-auto" 
+          width={900}
+          height={900}
           loading="lazy"
+          decoding="async"
         />
         <img 
           src="/assets/images/app-on-watch.webp" 
@@ -54,7 +60,10 @@ export function Applications() {
           sizes="(max-width: 768px) 200px, (max-width: 1200px) 380px, 500px"
           alt="Mega Radio app on Apple Watch - Control your favorite radio stations from your wrist" 
           className="absolute bottom-12 md:bottom-[120px] left-1/2 -translate-x-1/4 m-auto w-2/5 md:w-[380px] max-w-md h-auto" 
+          width={500}
+          height={500}
           loading="lazy"
+          decoding="async"
         />
       </div>
       
@@ -76,7 +85,10 @@ export function Applications() {
           sizes="(max-width: 768px) 600px, (max-width: 1200px) 1000px, 1400px"
           alt="Mega Radio desktop app for Mac - Stream radio stations on macOS with high-quality audio" 
           className="w-4/5 md:w-4/5 lg:w-2/3 m-auto max-w-6xl h-auto" 
+          width={1400}
+          height={875}
           loading="lazy"
+          decoding="async"
         />
       </div>
       

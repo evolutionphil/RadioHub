@@ -1082,10 +1082,16 @@ export default function StationDetails() {
                             >
                               <img 
                                 src={`https://flagcdn.com/w80/${station.countryCode.toLowerCase()}.png`}
+                                srcSet={`https://flagcdn.com/w40/${station.countryCode.toLowerCase()}.png 1x, https://flagcdn.com/w80/${station.countryCode.toLowerCase()}.png 2x`}
                                 alt={station.country || 'Country'}
+                                width={20}
+                                height={20}
+                                loading="lazy"
+                                decoding="async"
                                 style={{ 
                                   width: '100%', 
                                   height: '100%', 
+                                  maxWidth: '100%',
                                   objectFit: 'cover',
                                   display: 'block'
                                 }}

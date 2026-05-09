@@ -257,7 +257,8 @@ export default function PublicHeader() {
                 setIsMobileMenuOpen(!isMobileMenuOpen);
                 if (isCountryDropdownOpen) setIsCountryDropdownOpen(false);
               }}
-              className="md:hidden text-white p-2"
+              className="md:hidden text-white p-3 -m-1 min-h-[48px] min-w-[48px] flex items-center justify-center"
+              aria-label={isMobileMenuOpen ? 'Close menu' : 'Open menu'}
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={isMobileMenuOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} />
@@ -271,42 +272,42 @@ export default function PublicHeader() {
               <div className="px-4 py-2 space-y-2">
                 <Link 
                   href="/" 
-                  className={`block py-2 text-white hover:text-[#FF4199] transition-colors ${isActive('/') ? 'text-[#FF4199]' : ''}`}
+                  className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {t('nav_home')}
                 </Link>
                 <Link 
                   href="/genres" 
-                  className={`block py-2 text-white hover:text-[#FF4199] transition-colors ${isActive('/genres') ? 'text-[#FF4199]' : ''}`}
+                  className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/genres') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {t('nav_genres')}
                 </Link>
                 <Link 
                   href={getLocalizedUrl("/about")} 
-                  className={`block py-2 text-white hover:text-[#FF4199] transition-colors ${isActive('/about') ? 'text-[#FF4199]' : ''}`}
+                  className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/about') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {t('nav_about')}
                 </Link>
                 <Link 
                   href={getLocalizedPath("/contact")} 
-                  className={`block py-2 text-white hover:text-[#FF4199] transition-colors ${isActive('/contact') ? 'text-[#FF4199]' : ''}`}
+                  className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/contact') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {t('nav_contact')}
                 </Link>
                 <Link 
                   href={getLocalizedUrl("/applications")} 
-                  className={`block py-2 text-white hover:text-[#FF4199] transition-colors ${isActive('/applications') ? 'text-[#FF4199]' : ''}`}
+                  className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/applications') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {t('nav_apps')}
                 </Link>
                 <Link 
                   href={getLocalizedUrl("/feedback")} 
-                  className={`block py-2 text-white hover:text-[#FF4199] transition-colors ${isActive('/feedback') ? 'text-[#FF4199]' : ''}`}
+                  className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/feedback') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Feedback
@@ -316,7 +317,7 @@ export default function PublicHeader() {
                 <div className="border-t border-[#1D1D1D] pt-2 mt-2">
                   <button 
                     onClick={() => setIsCountryDropdownOpen(!isCountryDropdownOpen)}
-                    className="flex items-center justify-between w-full py-2 text-white hover:text-[#FF4199] transition-colors"
+                    className="flex items-center justify-between w-full min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors"
                   >
                     <span className="flex items-center gap-2">
                       <span>Country</span>
@@ -328,8 +329,13 @@ export default function PublicHeader() {
                         countries.find(c => c.name === selectedCountry)?.code && (
                           <img
                             src={`https://flagcdn.com/w20/${countries.find(c => c.name === selectedCountry)?.code?.toLowerCase()}.png`}
+                            srcSet={`https://flagcdn.com/w20/${countries.find(c => c.name === selectedCountry)?.code?.toLowerCase()}.png 1x, https://flagcdn.com/w40/${countries.find(c => c.name === selectedCountry)?.code?.toLowerCase()}.png 2x`}
                             alt={selectedCountry}
-                            className="w-5 h-4 object-cover rounded-sm border border-gray-600"
+                            width={20}
+                            height={16}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-5 h-4 max-w-full object-cover rounded-sm border border-gray-600"
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';
                             }}
@@ -353,7 +359,7 @@ export default function PublicHeader() {
                       />
                       <div className="max-h-32 overflow-y-auto">
                         <div 
-                          className={`p-2 rounded text-sm cursor-pointer hover:bg-gray-800/50 flex items-center gap-2 ${selectedCountry === "all" ? "bg-[#FF4199]/20" : ""}`}
+                          className={`min-h-[48px] py-3 px-2 rounded text-sm cursor-pointer hover:bg-gray-800/50 flex items-center gap-2 ${selectedCountry === "all" ? "bg-[#FF4199]/20" : ""}`}
                           onClick={() => {
                             setSelectedCountry("all"); 
                             setIsCountryDropdownOpen(false);
@@ -366,7 +372,7 @@ export default function PublicHeader() {
                         {filteredCountries.slice(0, 15).map((country: any, index: number) => (
                           <div 
                             key={country._id || index}
-                            className={`p-2 rounded text-sm cursor-pointer hover:bg-gray-800/50 flex items-center gap-2 ${selectedCountry === country.name ? "bg-[#FF4199]/20" : ""}`}
+                            className={`min-h-[48px] py-3 px-2 rounded text-sm cursor-pointer hover:bg-gray-800/50 flex items-center gap-2 ${selectedCountry === country.name ? "bg-[#FF4199]/20" : ""}`}
                             onClick={() => {
                               setSelectedCountry(country.name); 
                               setIsCountryDropdownOpen(false);
@@ -376,8 +382,13 @@ export default function PublicHeader() {
                             {country.code && (
                               <img
                                 src={`https://flagcdn.com/w20/${country.code?.toLowerCase()}.png`}
+                                srcSet={`https://flagcdn.com/w20/${country.code?.toLowerCase()}.png 1x, https://flagcdn.com/w40/${country.code?.toLowerCase()}.png 2x`}
                                 alt={country.name}
-                                className="w-5 h-4 object-cover rounded-sm border border-gray-600 flex-shrink-0"
+                                width={20}
+                                height={16}
+                                loading="lazy"
+                                decoding="async"
+                                className="w-5 h-4 max-w-full object-cover rounded-sm border border-gray-600 flex-shrink-0"
                                 onError={(e) => {
                                   (e.target as HTMLImageElement).style.display = 'none';
                                 }}
@@ -392,7 +403,7 @@ export default function PublicHeader() {
                 </div>
                 <Link 
                   href="/request-station" 
-                  className="block py-2 bg-[#FF4199] text-white px-4 rounded-lg hover:bg-[#FF097B] transition-colors text-center mt-4"
+                  className="flex items-center justify-center min-h-[48px] py-3 bg-[#FF4199] text-white px-4 rounded-lg hover:bg-[#FF097B] transition-colors text-center mt-4"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   Add Station
@@ -415,7 +426,8 @@ export default function PublicHeader() {
                     setIsSearchOpen(false);
                     setSearchQuery("");
                   }}
-                  className="text-gray-400 hover:text-white"
+                  className="text-gray-400 hover:text-white p-3 -m-3 rounded-md min-h-[48px] min-w-[48px] flex items-center justify-center"
+                  aria-label="Close search"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -490,7 +502,11 @@ export default function PublicHeader() {
                           <img
                             src={getImageUrl(station.favicon)}
                             alt={station.name}
-                            className="w-14 h-14 rounded-lg object-cover border border-[#2F2F2F] group-hover:border-[#FF4199]/30 transition-colors"
+                            width={56}
+                            height={56}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-14 h-14 max-w-full rounded-lg object-cover border border-[#2F2F2F] group-hover:border-[#FF4199]/30 transition-colors"
                             onError={(e) => (e.currentTarget.src = '/images/no-image.webp')}
                           />
                           {/* Online indicator */}

@@ -227,8 +227,11 @@ export default function GlobalPlayer() {
                   {currentStation.countryCode && (
                     <img
                       loading="lazy"
+                      decoding="async"
+                      width={15}
+                      height={15}
                       src={getCountryImage(currentStation.countryCode.toLowerCase())}
-                      className="absolute object-cover"
+                      className="absolute object-cover max-w-full"
                       style={{ 
                         width: '15px', 
                         height: '15px', 
@@ -309,8 +312,11 @@ export default function GlobalPlayer() {
                 {currentStation.countryCode && (
                   <img
                     loading="lazy"
+                    decoding="async"
+                    width={24}
+                    height={24}
                     src={getCountryImage(currentStation.countryCode.toLowerCase())}
-                    className="absolute object-cover"
+                    className="absolute object-cover max-w-full"
                     style={{ 
                       width: '24px', 
                       height: '24px', 
@@ -457,8 +463,11 @@ export default function GlobalPlayer() {
                 {currentStation.countryCode && (
                   <img
                     loading="lazy"
+                    decoding="async"
+                    width={14}
+                    height={14}
                     src={getCountryImage(currentStation.countryCode.toLowerCase())}
-                    className="absolute object-cover"
+                    className="absolute object-cover max-w-full"
                     style={{ 
                       width: '14px', 
                       height: '14px', 
@@ -495,8 +504,9 @@ export default function GlobalPlayer() {
                   e.stopPropagation();
                   togglePlayerView();
                 }}
-                className="bg-[#393939] rounded-full p-1.5 flex justify-center items-center hover:bg-[#4a4a4a] transition-colors flex-shrink-0"
+                className="bg-[#393939] rounded-full p-3 -m-1.5 flex justify-center items-center hover:bg-[#4a4a4a] transition-colors flex-shrink-0 min-h-[48px] min-w-[48px]"
                 data-testid="mobile-player-expand"
+                aria-label="Expand player"
               >
                 <ChevronUp className="stroke-white size-3.5" />
               </button>
@@ -513,8 +523,9 @@ export default function GlobalPlayer() {
                   e.stopPropagation();
                   togglePlayerView();
                 }}
-                className="absolute top-2 right-2 bg-[#393939] rounded-full p-1 flex justify-center items-center z-50 hover:bg-[#4a4a4a] transition-colors"
+                className="absolute top-2 right-2 bg-[#393939] rounded-full p-3 flex justify-center items-center z-50 hover:bg-[#4a4a4a] transition-colors min-h-[48px] min-w-[48px]"
                 data-testid="mobile-player-collapse"
+                aria-label="Collapse player"
               >
                 <ChevronDown className="stroke-white size-4" />
               </button>
@@ -536,8 +547,11 @@ export default function GlobalPlayer() {
                   {currentStation.countryCode && (
                     <img
                       loading="lazy"
+                      decoding="async"
+                      width={18}
+                      height={18}
                       src={getCountryImage(currentStation.countryCode.toLowerCase())}
-                      className="absolute -bottom-1 -right-1 h-[18px] w-[18px] rounded-full object-cover"
+                      className="absolute -bottom-1 -right-1 h-[18px] w-[18px] max-w-full rounded-full object-cover"
                       alt={`${currentStation.country || 'Country'} flag`}
                       onError={(e) => {
                         e.currentTarget.style.display = 'none';

@@ -1477,7 +1477,10 @@ export default function RadioFrontend({
                     </div>
                   </div>
 
-                  <img loading="lazy" 
+                  <img loading="lazy"
+                    decoding="async"
+                    width={1200}
+                    height={750}
                     className="hidden sm:block h-[420px] sm:h-[350px] md:h-[450px] lg:h-[600px] xl:h-[550px] 2xl:h-[630px] absolute top-[-40px] lg:top-[-90px] 2xl:top-[-130px] right-0 lg:right-[50px] 2xl:right-[120px] pointer-events-none"
                     src="/images/devices.png"
                     srcSet="/images/devices-400w.webp 400w, /images/devices-600w.webp 600w, /images/devices-800w.webp 800w, /images/devices.png 1200w"
@@ -1516,7 +1519,10 @@ export default function RadioFrontend({
                 </Link>
 
                 <img 
-                  loading="lazy" 
+                  loading="lazy"
+                  decoding="async"
+                  width={400}
+                  height={288}
                   className="absolute -right-10 top-0 h-full sm:right-0 pointer-events-none" 
                   src="/images/headphone.webp" 
                   alt="Person wearing headphones enjoying music"

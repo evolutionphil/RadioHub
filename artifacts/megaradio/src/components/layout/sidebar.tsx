@@ -134,7 +134,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
           <button
             onClick={() => toggleExpanded(item.name)}
             className={cn(
-              'w-full group flex items-center px-2 py-2 text-sm font-medium rounded-md text-left',
+              'w-full group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md text-left',
               isExpanded || hasActiveChild
                 ? 'bg-gray-100 text-gray-900'
                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -155,7 +155,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
                 <Link key={child.name} href={child.href!}>
                   <span
                     className={cn(
-                      'group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer',
+                      'group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md cursor-pointer',
                       isActiveLink(child.href)
                         ? 'bg-primary text-white'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -175,7 +175,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
       <Link key={item.name} href={item.href!}>
         <span
           className={cn(
-            'group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer',
+            'group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md cursor-pointer',
             isActive
               ? 'bg-primary text-white'
               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -206,7 +206,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
           <button
             onClick={() => toggleExpanded(item.name)}
             className={cn(
-              'w-full group flex items-center px-2 py-2 text-sm font-medium rounded-md text-left',
+              'w-full group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md text-left',
               isExpanded || hasActiveChild
                 ? 'bg-gray-100 text-gray-900'
                 : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -228,7 +228,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
                   <span
                     onClick={handleLinkClick}
                     className={cn(
-                      'group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer',
+                      'group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md cursor-pointer',
                       isActiveLink(child.href)
                         ? 'bg-primary text-white'
                         : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
@@ -249,7 +249,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
         <span
           onClick={handleLinkClick}
           className={cn(
-            'group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer',
+            'group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md cursor-pointer',
             isActive
               ? 'bg-primary text-white'
               : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'

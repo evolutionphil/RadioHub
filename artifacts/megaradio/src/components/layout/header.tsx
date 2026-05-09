@@ -37,7 +37,8 @@ export default function Header({ onMobileMenuToggle }: HeaderProps) {
               variant="ghost"
               size="sm"
               onClick={onMobileMenuToggle}
-              className="md:hidden inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+              className="md:hidden inline-flex items-center justify-center p-3 -m-1 min-h-[48px] min-w-[48px] rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100"
+              aria-label="Open menu"
             >
               <Menu className="w-5 h-5" />
             </Button>

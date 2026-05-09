@@ -76,9 +76,10 @@ export function AdminUserMenuDropdown() {
       {/* Menu Button - Mobile responsive */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center text-sm rounded-full bg-gray-200 p-1.5 sm:p-2 hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+        className="flex items-center justify-center text-sm rounded-full bg-gray-200 p-3 sm:p-3 min-h-[48px] min-w-[48px] hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         aria-expanded={isOpen}
         aria-haspopup="true"
+        aria-label="User menu"
       >
         {user.avatar ? (
           <img

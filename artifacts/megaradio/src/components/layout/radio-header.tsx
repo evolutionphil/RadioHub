@@ -787,7 +787,7 @@ export default function RadioHeader({
               {/* Mobile Menu Toggle - hidden on desktop (xl+) */}
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="xl:hidden flex items-center text-white flex-shrink-0 w-5 h-5"
+                className="xl:hidden flex items-center justify-center text-white flex-shrink-0 p-3 -m-3 min-h-[48px] min-w-[48px]"
                 aria-label="Toggle menu"
               >
                 {isMobileMenuOpen ? (
@@ -1174,21 +1174,21 @@ export default function RadioHeader({
               <div className="space-y-1">
                 <Link 
                   href={getLocalizedUrl("/genres")} 
-                  className="nav-item block px-4 py-2 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
+                  className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {t('nav_genres', 'Genres')}
                 </Link>
                 <Link 
                   href={getLocalizedUrl("/recommendations")} 
-                  className="nav-item block px-4 py-2 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
+                  className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
                   {t('nav_for_you', 'For You')}
                 </Link>
 
                 <button 
-                  className="nav-item block px-4 py-2 text-base font-medium text-white hover:text-[#FF4199] transition-colors text-left w-full"
+                  className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors text-left w-full"
                   onClick={() => {
                     // console.log(' Mobile Add Station button clicked!', { setShowAddStationModal });
                     setIsMobileMenuOpen(false);
@@ -1210,7 +1210,7 @@ export default function RadioHeader({
                     <>
                       <Link 
                         href={getLocalizedUrl("/profile/favorites")} 
-                        className="nav-item block px-4 py-2 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
+                        className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
                         onClick={() => setIsMobileMenuOpen(false)}
                       >
                         {t('nav_your_favorites', 'Your Favorites')}
@@ -1220,14 +1220,14 @@ export default function RadioHeader({
                       <>
                         <Link 
                           href={getLocalizedUrl("/login")} 
-                          className="nav-item block px-4 py-2 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
+                          className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           {t('nav_login', 'Login') || 'Login'}
                         </Link>
                         <Link 
                           href={getLocalizedUrl("/signup")} 
-                          className="nav-item block px-4 py-2 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
+                          className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
                           {t('nav_signup', 'Sign up') || 'Sign up'}
@@ -1253,7 +1253,8 @@ export default function RadioHeader({
                     setIsSearchOpen(false);
                     setSearchQuery("");
                   }}
-                  className="text-gray-400 hover:text-white"
+                  className="text-gray-400 hover:text-white p-3 -m-3 rounded-md min-h-[48px] min-w-[48px] flex items-center justify-center"
+                  aria-label="Close search"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
