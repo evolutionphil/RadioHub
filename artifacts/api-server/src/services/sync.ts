@@ -340,7 +340,7 @@ export class SyncService {
 
         const bulkOps = existingStationsToUpdate.map(apiStation => {
           const existing = existingByUuid.get(apiStation.stationuuid) || {};
-          const fields = this.getWhitelistedUpdateFields(apiStation);
+          const fields = this.getWhitelistedUpdateFields(apiStation, existing);
           // Re-evaluate junk for the merged view: incoming feed values plus
           // the persisted slug (which is what the sitemap actually emits).
           const verdict = evaluateJunkStation({
@@ -399,10 +399,23 @@ export class SyncService {
   }
 
   /**
-   * Get ONLY whitelisted fields for updating existing stations
-   * PRESERVES: AI descriptions, favicons, manual edits, slugs, ratings, etc.
+   * Get ONLY whitelisted fields for updating existing stations.
+   *
+   * EXPLICITLY PRESERVED — never touched by sync:
+   *   • description / descriptions[lang] (AI translations + manual edits)
+   *   • slug, name overrides, noIndex (admin decisions)
+   *   • averageRating, totalRatings, ratingBreakdown (user ratings)
+   *   • logoAssets, hasLogo, faviconLocal (S3-uploaded logos & local cache)
+   *   • favicon — preserved if station already has a logo on S3 (logoAssets/
+   *     hasLogo) OR a non-empty favicon URL. Only filled when the station
+   *     has no logo at all (see 2026-05-09 change below).
+   *
+   * UPDATED FROM RADIO-BROWSER (per user spec 2026-05-09):
+   *   url, urlResolved, votes, clickCount, country, countryCode, state/iso31662,
+   *   codec, bitrate, tags, homepage, favicon (only if currently missing),
+   *   plus technical health fields (lastCheckOk, lastChangeTime, hls, sslError).
    */
-  private getWhitelistedUpdateFields(apiStation: any): any {
+  private getWhitelistedUpdateFields(apiStation: any, existing: any = {}): any {
     const update: any = {};
 
     // Radio-Browser metadata fields (safe to update)
@@ -442,12 +455,30 @@ export class SyncService {
     if (apiStation.lastlocalchecktime) update.lastLocalCheckTime = new Date(apiStation.lastlocalchecktime);
     if (apiStation.lastchangetime) update.lastChangeTime = new Date(apiStation.lastchangetime);
     
-    // NEVER update favicon during sync - preserve custom/downloaded favicons
-    // Favicon is only set for:
-    // 1. New stations (during initial insert)
-    // 2. Manual admin edits
-    // 3. Background favicon download process
-    
+    // FAVICON / LOGO POLICY (2026-05-09 user spec):
+    //   "logo url misal s3 deyse zaten veya logosu s3 de ekliyse elemesin
+    //    sadece logosu olmayanlarda uygulansin"
+    //
+    // Translation: never overwrite a station's favicon if it already has
+    // ANY logo presence — be it an S3-uploaded asset (`logoAssets`/`hasLogo`),
+    // a downloaded local copy (`faviconLocal`), or simply a non-empty favicon
+    // URL set previously. Only fill `favicon` from Radio-Browser when the
+    // station currently has nothing at all to display.
+    //
+    // `logoAssets`/`hasLogo`/`faviconLocal` themselves are NEVER updated
+    // here — they are managed by `logoProcessor` / `imageManager` /
+    // background download jobs only.
+    const hasS3Logo =
+      existing?.hasLogo === true ||
+      (existing?.logoAssets && Object.keys(existing.logoAssets).length > 0);
+    const hasLocalFavicon = !!existing?.faviconLocal;
+    const hasFaviconUrl = typeof existing?.favicon === 'string' && existing.favicon.trim().length > 0;
+    const stationHasAnyLogo = hasS3Logo || hasLocalFavicon || hasFaviconUrl;
+
+    if (!stationHasAnyLogo && apiStation.favicon && typeof apiStation.favicon === 'string' && apiStation.favicon.trim().length > 0) {
+      update.favicon = apiStation.favicon;
+    }
+
     update.updatedAt = new Date();
 
     return update;

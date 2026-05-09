@@ -25,7 +25,7 @@ const ALLOWED_HOSTS = ['themegaradio.com', 'www.themegaradio.com'];
 const PRIMARY_HOST = 'themegaradio.com'; // Default for helper methods
 const MAX_URLS_PER_REQUEST = 10000;
 
-type IndexNowTrigger = 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete' | 'sitemap-diff';
+type IndexNowTrigger = 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete' | 'sitemap-diff' | 'sitemap-touch-stations' | 'nightly-station-sync';
 
 /**
  * Task #336 — persist the FULL list of URLs we just submitted into a
@@ -49,7 +49,7 @@ async function persistFullSubmissionUrls(
       logId: logDoc._id as import('mongoose').Types.ObjectId,
       timestamp: now,
       host,
-      trigger,
+      trigger: trigger as any,
       urls,
       urlCount: urls.length,
       expiresAt,
@@ -138,7 +138,7 @@ export class IndexNowService {
           urlCount: urls.length,
           status: (statusCode === 200 || statusCode === 202) ? 'success' : 'failed',
           statusCode,
-          trigger,
+          trigger: trigger as any,
           errorMessage: (statusCode !== 200 && statusCode !== 202) ? (response.data ? JSON.stringify(response.data) : 'Unknown error') : undefined,
           sampleUrls: urls.slice(0, 5),
           retryAttempt: retryCount,
@@ -183,7 +183,7 @@ export class IndexNowService {
           host: host || 'unknown',
           urlCount: urls.length,
           status: 'failed',
-          trigger,
+          trigger: trigger as any,
           errorMessage: error.message || 'Unknown error occurred',
           sampleUrls: urls.slice(0, 5),
           retryAttempt: retryCount,

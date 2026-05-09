@@ -2702,7 +2702,7 @@ const IndexNowLogSchema = new Schema<IIndexNowLog>({
   urlCount: { type: Number, required: true },
   status: { type: String, enum: ['success', 'failed'], required: true },
   statusCode: Number,
-  trigger: { type: String, enum: ['manual', 'station-update', 'sitemap-regen', 'sync-complete', 'sitemap-diff'], required: true },
+  trigger: { type: String, enum: ['manual', 'station-update', 'sitemap-regen', 'sync-complete', 'sitemap-diff', 'sitemap-touch-stations', 'nightly-station-sync'], required: true },
   errorMessage: String,
   sampleUrls: [String],
   retryAttempt: { type: Number, default: 0 },
@@ -2808,7 +2808,7 @@ const IndexNowSubmissionUrlsSchema = new Schema<IIndexNowSubmissionUrls>({
   host: { type: String, required: true },
   trigger: {
     type: String,
-    enum: ['manual', 'station-update', 'sitemap-regen', 'sync-complete', 'sitemap-diff'],
+    enum: ['manual', 'station-update', 'sitemap-regen', 'sync-complete', 'sitemap-diff', 'sitemap-touch-stations', 'nightly-station-sync'],
     required: true,
   },
   urls: { type: [String], default: [] },

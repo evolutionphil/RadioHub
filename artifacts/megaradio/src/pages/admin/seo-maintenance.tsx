@@ -554,6 +554,35 @@ export default function SeoMaintenancePage() {
     refetchInterval: 60000,
   });
 
+  // ONE-SHOT BACKFILL (2026-05-09): bumps every Station.updatedAt to NOW so
+  // Google sees fresh <lastmod> on every URL in /sitemap-stations-*.xml.
+  // Use case: catalog imported before Mongoose timestamps:true was enabled
+  // (Feb 2025), so most rows carry a 2025 updatedAt that never moves. After
+  // running this, vote/click/rating $inc operations bump updatedAt
+  // automatically (timestamps:true is on), so this should only be needed
+  // ONCE. Calls POST /api/admin/sitemap/touch-stations which also force-
+  // rebuilds the manifests + purges caches + fires IndexNow ping.
+  const touchStations = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin/sitemap/touch-stations", {}),
+    onSuccess: (data: any) => {
+      const modified = data?.modifiedStations ?? 0;
+      const matched = data?.matchedStations ?? 0;
+      const langs = data?.rebuild?.qualifiedLanguages ?? 0;
+      toast({
+        title: "İstasyon lastmod'u taze",
+        description: `${modified.toLocaleString()}/${matched.toLocaleString()} istasyonun updatedAt'i bugüne taşındı. Sitemap ${langs} dil için yeniden derlendi, IndexNow ping fırlatıldı.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/sitemap/manifest-stats"] });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "İstasyon lastmod taşıma başarısız",
+        description: e?.message || "Bilinmeyen hata",
+        variant: "destructive",
+      });
+    },
+  });
+
   const rebuildSitemap = useMutation({
     mutationFn: async () => apiRequest("POST", "/api/admin/sitemap/rebuild", {}),
     onSuccess: (data: any) => {
@@ -657,6 +686,46 @@ export default function SeoMaintenancePage() {
               {typeof (rebuildSitemap.data as any)?.retiredZombies === "number" && (rebuildSitemap.data as any).retiredZombies > 0 && (
                 <> — 🧟 {(rebuildSitemap.data as any).retiredZombies} zombi temizlendi</>
               )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Tek seferlik: tüm istasyonların lastmod'unu bugüne taşı */}
+      <Card className="bg-white border-rose-200">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            🕐 İstasyon lastmod'unu bugüne taşı (tek seferlik)
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Tüm istasyonların <code>updatedAt</code> alanını <strong>bugünün tarihine</strong> set eder
+            ve sitemap'i yeniden derler. Sonuç: <code>/sitemap-stations-*.xml</code> içindeki her URL
+            için <code>&lt;lastmod&gt;</code> bugün olur — Google bir sonraki taramada tüm sayfaları taze görür.
+          </p>
+          <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded p-3 space-y-1">
+            <div><strong>Neden gerekli:</strong> Şubat 2025'ten önceki bulk import'lar Mongoose timestamps açılmadan yapıldı, bu yüzden eski radyoların updatedAt'i 2025'te donuk. Google bu URL'leri "ancient" sayıp atlıyor.</div>
+            <div><strong>Sonrası otomatik:</strong> Vote/click/rating güncellemeleri artık updatedAt'i otomatik bump ediyor (timestamps:true aktif), dolayısıyla bu butonu <strong>sadece bir kez</strong> basman yeterli.</div>
+            <div><strong>Etki:</strong> ~60.000 istasyon × 14+ dil chunk'ı = 1-2 dakika sürebilir. Site açık kalır, kullanıcı etkilenmez.</div>
+          </div>
+          <Button
+            onClick={() => {
+              if (window.confirm("Tüm istasyonların updatedAt değerini bugüne taşımak istediğinden emin misin? Bu sadece bir kez gereken işlemdir.")) {
+                touchStations.mutate();
+              }
+            }}
+            disabled={touchStations.isPending}
+            className="bg-rose-600 hover:bg-rose-700 text-white"
+          >
+            {touchStations.isPending ? "Taşınıyor (1-2 dk)..." : "🕐 Tüm İstasyonları Bugüne Taşı"}
+          </Button>
+          {touchStations.data && (
+            <div className="text-xs text-slate-700 bg-emerald-50 border border-emerald-200 rounded p-2">
+              ✅ Tamam:{" "}
+              {(touchStations.data as any)?.modifiedStations?.toLocaleString() ?? 0} istasyon güncellendi,{" "}
+              sitemap {(touchStations.data as any)?.rebuild?.qualifiedLanguages ?? 0} dil için derlendi,{" "}
+              {(touchStations.data as any)?.elapsedMs ?? 0}ms.
             </div>
           )}
         </CardContent>

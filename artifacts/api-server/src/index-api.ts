@@ -828,6 +828,18 @@ app.use(session(sessionConfig));
           logger.warn('⚠️ Failed to initialize scheduled backfill:', error.message);
         }
 
+        // 2026-05-09: nightly Radio-Browser delta sync. Bumps every touched
+        // station's updatedAt → keeps sitemap-stations-*.xml <lastmod>
+        // current → Google keeps re-crawling. Set
+        // ENABLE_NIGHTLY_SYNC_CRON=false on replicas to avoid double-runs.
+        try {
+          const { scheduledStationSync } = await import('./services/scheduled-station-sync');
+          scheduledStationSync.initialize();
+          logger.log('✅ BACKGROUND: Nightly station sync initialized (daily 03:00 Europe/Berlin)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize nightly station sync:', error.message);
+        }
+
         try {
           const { scheduledCoverageSnapshot } = await import('./services/scheduled-coverage-snapshot');
           scheduledCoverageSnapshot.initialize();

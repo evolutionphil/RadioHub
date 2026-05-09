@@ -632,6 +632,101 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
     }
   });
 
+  // ADMIN ONE-SHOT (2026-05-09): bump every Station's `updatedAt` to NOW so
+  // Google sees a fresh `<lastmod>` on every URL in /sitemap-stations-*.xml.
+  // Use case: the catalog was bulk-imported BEFORE Mongoose `timestamps:true`
+  // was enabled (~Feb 2025), so most stations carry a 2025 updatedAt that
+  // never moves unless an admin re-saves the doc. Even after enabling
+  // timestamps, those old rows stay frozen — Google then ignores the URL
+  // because <lastmod> looks ancient. This route writes a fresh updatedAt to
+  // every station in one bulk update, then forces a manifest rebuild so the
+  // new timestamps propagate into the manifests immediately. Vote/click/
+  // rating updates already use $inc which Mongoose's timestamps:true
+  // intercepts, so going forward updatedAt moves automatically — this is a
+  // ONE-TIME backfill for the legacy frozen rows.
+  app.post("/api/admin/sitemap/touch-stations", requireAdmin, async (_req, res) => {
+    const t0 = Date.now();
+    try {
+      // Concurrency guard (architect 2026-05-09): if the nightly sync is
+      // already running, the bulk updateMany would race with its bulkWrite
+      // batch and could overwrite the carefully-bumped per-station updatedAt
+      // values mid-flight. Bail out with 409 Conflict so the admin retries
+      // after the sync finishes (~5-10 min).
+      try {
+        const { scheduledStationSync } = await import('../services/scheduled-station-sync');
+        const status = scheduledStationSync.getStatus();
+        if (status.isRunning) {
+          return void res.status(409).json({
+            ok: false,
+            error: 'sync_in_progress',
+            message: 'Nightly station sync is currently running — please retry in a few minutes.',
+            sinceMs: status.lastRunAt ? Date.now() - status.lastRunAt.getTime() : null,
+          });
+        }
+      } catch {
+        // If the module fails to import for any reason, don't block the
+        // touch — the architect guard is best-effort.
+      }
+      const now = new Date();
+      // Use `timestamps: false` to prevent Mongoose from overwriting our
+      // explicit value via the auto-timestamp middleware; we want exactly
+      // `now` on every doc, not whatever Mongo's clock returns later.
+      const updateRes = await Station.updateMany(
+        { slug: { $exists: true, $ne: '' } },
+        { $set: { updatedAt: now } },
+        { timestamps: false } as any,
+      );
+      const matched = (updateRes as any).matchedCount ?? (updateRes as any).n ?? 0;
+      const modified = (updateRes as any).modifiedCount ?? (updateRes as any).nModified ?? 0;
+      logger.warn(`🕐 admin/sitemap/touch-stations: bumped updatedAt on ${modified}/${matched} stations to ${now.toISOString()}`);
+
+      // Now force a rebuild so the manifest's chunks[].maxUpdatedAt picks up
+      // the new timestamps. We run the same cache-flush chain as
+      // /api/admin/sitemap/rebuild so the served XML refreshes immediately.
+      performanceCache.clearTranslations();
+      performanceCache.clearUrlTranslations();
+      performanceCache.clearCountryLanguageMappings();
+      try {
+        await invalidateQualifiedLanguages({ resetLkg: true });
+      } catch (err: any) {
+        logger.error('admin/sitemap/touch-stations: LKG reset failed:', err);
+      }
+      const result = await buildAllSitemapManifests({ force: true });
+      try {
+        await CacheManager.clearByPattern('sitemap:');
+        await CacheManager.clearByPattern('precomputed_');
+      } catch (err: any) {
+        logger.warn(`admin/sitemap/touch-stations: cache clear failed: ${err?.message ?? err}`);
+      }
+
+      // Async: IndexNow ping (non-blocking) — same path as /rebuild
+      (async () => {
+        try {
+          await IndexNowService.submitSitemaps(undefined, 'sitemap-touch-stations');
+        } catch (err: any) {
+          logger.error('admin/sitemap/touch-stations: IndexNow ping failed:', err?.message ?? err);
+        }
+      })();
+
+      res.json({
+        ok: true,
+        touchedAt: now.toISOString(),
+        matchedStations: matched,
+        modifiedStations: modified,
+        rebuild: {
+          built: result.built,
+          qualifiedLanguages: result.qualifiedLanguages.length,
+          activatedCount: result.activatedCount ?? 0,
+          retiredZombies: result.retiredZombies ?? 0,
+        },
+        elapsedMs: Date.now() - t0,
+      });
+    } catch (err: any) {
+      logger.error('admin/sitemap/touch-stations failed:', err);
+      res.status(500).json({ ok: false, error: err?.message ?? 'touch_failed' });
+    }
+  });
+
   // ADMIN OBSERVABILITY (2026-05-09): live snapshot of every active
   // SitemapManifest doc — admins need this to verify that "Sitemap'i Yenile"
   // actually refreshed content (not just bumped lastmod). Returns one row per
