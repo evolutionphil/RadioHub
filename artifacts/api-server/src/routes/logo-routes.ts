@@ -132,7 +132,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
   // Start bulk logo processing job
   app.post("/api/admin/logos/process-all", requireAdmin, async (req, res) => {
     try {
-      const { limit = 500 } = req.body;
+      const { limit = 500 } = (req.body ?? {}) as { limit?: number };
       
       // Check for existing running job
       for (const [id, job] of logoProcessingJobs.entries()) {
