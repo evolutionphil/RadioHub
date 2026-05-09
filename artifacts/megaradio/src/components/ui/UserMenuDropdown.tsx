@@ -5,6 +5,10 @@ import { Link } from 'wouter';
 import { useNotificationService } from '@/services/NotificationService';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getAvatarUrl } from '@/lib/utils';
+import {
+  buildDropdownKeyHandler,
+  focusFirstInside,
+} from '@/lib/dropdown-keyboard';
 
 interface User {
   _id: string;
@@ -33,6 +37,8 @@ interface User {
 export function UserMenuDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerButtonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const queryClient = useQueryClient();
   const notificationService = useNotificationService();
   const { t } = useTranslation();
@@ -76,8 +82,26 @@ export function UserMenuDropdown() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Move focus to the first menu item when the dropdown opens.
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = window.requestAnimationFrame(() => {
+      focusFirstInside(menuRef.current);
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [isOpen]);
+
   // Don't render if not authenticated or loading
   if (isLoading || !user) return null;
+
+  const closeAndRestoreFocus = () => {
+    setIsOpen(false);
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        triggerButtonRef.current?.focus();
+      });
+    }
+  };
 
   const handleLogout = () => {
     logoutMutation.mutate();
@@ -90,10 +114,11 @@ export function UserMenuDropdown() {
       <div>
         <div className="flex items-center">
           <button
+            ref={triggerButtonRef}
             onClick={() => setIsOpen(!isOpen)}
             className="flex items-center focus:outline-none"
             aria-expanded={isOpen}
-            aria-haspopup="true"
+            aria-haspopup="menu"
           >
             {/* User name - hidden on mobile, shown on desktop - EXACT from original */}
             <div className="hidden xl:flex items-center pr-4">
@@ -126,7 +151,14 @@ export function UserMenuDropdown() {
 
       {/* Dropdown Menu - EXACT from original LayoutHeader.vue */}
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-56 origin-top-right divide-y divide-[#2F2F2F] rounded-md bg-[#1D1D1D] border border-[#2F2F2F] text-white shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50">
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={t('user_menu_label', 'User menu')}
+          tabIndex={-1}
+          onKeyDown={buildDropdownKeyHandler(menuRef, closeAndRestoreFocus)}
+          className="absolute right-0 mt-2 w-56 origin-top-right divide-y divide-[#2F2F2F] rounded-md bg-[#1D1D1D] border border-[#2F2F2F] text-white shadow-2xl ring-1 ring-black ring-opacity-5 focus:outline-none z-50"
+        >
           {/* User Info Section */}
           <div className="px-4 py-3">
             <p className="text-sm text-gray-300">{t('user_menu_signed_in_as')}</p>

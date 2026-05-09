@@ -20,6 +20,10 @@ import {
   getRegionSlugForCountry,
 } from "@workspace/seo-shared/country-regions";
 import { Music, Globe } from "lucide-react";
+import {
+  buildDropdownKeyHandler as buildSharedDropdownKeyHandler,
+  focusFirstInside as focusFirstInsideShared,
+} from "@/lib/dropdown-keyboard";
 
 interface RadioHeaderProps {
   showSearch?: boolean;
@@ -144,15 +148,7 @@ export default function RadioHeader({
   // there is nothing focusable, fall back to focusing the root container so
   // Escape and the Tab trap still work.
   const focusFirstInside = useCallback((root: HTMLElement | null) => {
-    if (!root) return;
-    const focusable = root.querySelector<HTMLElement>(
-      'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-    );
-    if (focusable) {
-      focusable.focus();
-    } else {
-      root.focus();
-    }
+    focusFirstInsideShared(root);
   }, []);
 
   useEffect(() => {
@@ -175,42 +171,7 @@ export default function RadioHeader({
   // dropdown and closes it (with focus restore) on Escape.
   const buildDropdownKeyHandler = useCallback(
     (rootRef: React.RefObject<HTMLDivElement | null>, close: () => void) =>
-      (e: React.KeyboardEvent<HTMLDivElement>) => {
-        if (e.key === 'Escape') {
-          if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-          e.preventDefault();
-          e.stopPropagation();
-          close();
-          return;
-        }
-        if (e.key !== 'Tab') return;
-        const root = rootRef.current;
-        if (!root) return;
-        const focusables = Array.from(
-          root.querySelectorAll<HTMLElement>(
-            'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-          )
-        ).filter((el) => !el.hasAttribute('disabled'));
-        if (focusables.length === 0) {
-          e.preventDefault();
-          root.focus();
-          return;
-        }
-        const first = focusables[0];
-        const last = focusables[focusables.length - 1];
-        const active = document.activeElement as HTMLElement | null;
-        if (e.shiftKey) {
-          if (active === first || !root.contains(active)) {
-            e.preventDefault();
-            last.focus();
-          }
-        } else {
-          if (active === last || !root.contains(active)) {
-            e.preventDefault();
-            first.focus();
-          }
-        }
-      },
+      buildSharedDropdownKeyHandler<HTMLDivElement>(rootRef, close),
     []
   );
 
