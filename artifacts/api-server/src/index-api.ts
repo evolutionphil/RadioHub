@@ -837,6 +837,22 @@ app.use(session(sessionConfig));
           logger.warn('⚠️ Failed to initialize scheduled genre-slug cleanup:', error.message);
         }
 
+        // Task #368: scrub duplicate Genre.slug values on every boot so a
+        // future code path or manual DB edit that reintroduces a
+        // duplicate doesn't silently block the partial unique index
+        // build. Cheap no-op when no duplicates are found.
+        try {
+          const { maybeRunDuplicateGenreSlugCleanupOnBoot } = await import(
+            './services/duplicate-genre-slug-cleanup-on-boot'
+          );
+          await maybeRunDuplicateGenreSlugCleanupOnBoot();
+        } catch (error: any) {
+          logger.warn(
+            '⚠️ Failed to run boot duplicate-genre-slug cleanup:',
+            error.message,
+          );
+        }
+
         try {
           const { scheduledGenreStationCounts } = await import('./services/scheduled-genre-station-counts');
           scheduledGenreStationCounts.initialize();
