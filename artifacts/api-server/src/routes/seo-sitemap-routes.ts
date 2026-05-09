@@ -592,7 +592,6 @@ Disallow: /*?*utm_
 Allow: /
 
 User-agent: Baiduspider
-Crawl-delay: 10
 Allow: /api/
 Disallow: /api/admin/
 Disallow: /api/auth/
@@ -623,7 +622,6 @@ Disallow: /*/profile
 Allow: /
 
 User-agent: Sogou
-Crawl-delay: 30
 Allow: /api/
 Disallow: /api/admin/
 Disallow: /api/auth/
