@@ -312,7 +312,8 @@ const ALL_MONGO_MODEL_NAMES = [
   'CastCommand', 'CastNowPlaying', 'CastSession', 'Country',
   'CoverageSnapshot', 'DemoUsage', 'DirectMessage', 'Feedback',
   'FooterSocialMedia', 'Genre', 'GenreSlugCleanupRun', 'GenreWhitelistOverride',
-  'IapEvent', 'IndexNowLog', 'Language', 'ListeningSession', 'Notification',
+  'IapEvent', 'IndexNowLog', 'IndexNowSubmissionUrls',
+  'Language', 'ListeningSession', 'Notification',
   'PublicUserProfile', 'PushToken', 'Recommendation', 'SeoMetadata',
   'SeoQualifiedLanguagesLkg', 'SitemapManifest', 'Station', 'StationComment',
   'StationDebugLog', 'StationRating', 'StationSimilarity', 'SyncLog',
@@ -331,6 +332,11 @@ mongoMockExports.Station = FAKE_STATION_MODEL;
 mongoMockExports.Genre = FAKE_GENRE_MODEL;
 // Constants & types re-exported as runtime values must also be present.
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
+// Task #365: `services/indexnow.ts` (transitively imported via the sitemap
+// routes module) pulls this retention-days constant at module load time.
+// Without it the test bundle fails with "does not provide an export named
+// INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS" before any sitemap test can run.
+mongoMockExports.INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = 30;
 
 mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: mongoMockExports,
