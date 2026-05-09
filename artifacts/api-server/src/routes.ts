@@ -44,6 +44,7 @@ import { registerTranslationAdminRoutes } from './routes/translation-admin-route
 import { registerUserAuthRoutes } from './routes/user-auth-routes';
 import { registerMobileTvRoutes } from './routes/mobile-tv-routes';
 import { registerTranslationKeyRoutes, seedSeoTranslationKeys } from './routes/translation-keys-routes';
+import { seedSearchPageTranslations } from './seo/search-page-translations-seed';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
@@ -634,6 +635,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.use('/api/api-keys', apiKeysRouter);
   seedDemoApiKey();
   seedSeoTranslationKeys();
+  // Backfill in-page search_* translations for every SEO_LANGUAGES code.
+  // Guarded by tests/search-translations-db-coverage.test.ts (task #298).
+  void seedSearchPageTranslations();
   app.use('/api', apiKeyMiddleware);
   app.use('/api/admin/url-translations', urlTranslationsRouter);
   // Admin-only — performance routes include destructive ops (rebuild_indexes,

@@ -16,6 +16,7 @@
     "backfill:verify-cron": "tsx src/scripts/verify-cron.mts",
     "backfill:sample-cohort": "tsx src/scripts/sample-process-cohort.mts",
     "backfill:coverage-snapshots": "tsx src/scripts/backfill-coverage-snapshots.ts",
+    "backfill:search-translations": "tsx src/scripts/run-search-translations-seed.ts",
     "cleanup:genre-slugs": "tsx src/scripts/cleanup-malformed-genre-slugs.ts",
     "cleanup:junk-genres": "tsx src/scripts/cleanup-junk-genres.ts",
     "indexnow:task-152": "tsx src/scripts/indexnow-resubmit-task-152.ts",
