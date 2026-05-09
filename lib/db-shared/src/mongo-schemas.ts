@@ -999,8 +999,12 @@ export interface IIndexNowLog extends Document {
 }
 
 export interface ISitemapUrlSnapshot extends Document {
-  type: 'main' | 'genres';
+  // 'stations' added in task #339 — per-language station chunks. For
+  // 'stations' rows `chunk` is required and the unique key is
+  // (type, language, chunk); for 'main'/'genres' `chunk` is absent.
+  type: 'main' | 'genres' | 'stations';
   language: string;
+  chunk?: number;
   urls: string[];
   urlCount: number;
   generatedAt: Date;
@@ -2798,14 +2802,21 @@ export const IndexNowSubmissionUrls = mongoose.model<IIndexNowSubmissionUrls>(
 export const INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = INDEXNOW_SUBMISSION_URLS_TTL_DAYS;
 
 const SitemapUrlSnapshotSchema = new Schema<ISitemapUrlSnapshot>({
-  type: { type: String, enum: ['main', 'genres'], required: true },
+  type: { type: String, enum: ['main', 'genres', 'stations'], required: true },
   language: { type: String, required: true },
+  // chunk is set only for type='stations'. Absent for main/genres so the
+  // composite (type, language, chunk) unique index treats them as a single
+  // row per (type, language) (chunk is missing field → indexed as null).
+  chunk: { type: Number, required: false },
   urls: { type: [String], default: [] },
   urlCount: { type: Number, required: true },
   generatedAt: { type: Date, default: Date.now, required: true },
   updatedAt: { type: Date, default: Date.now },
 });
-SitemapUrlSnapshotSchema.index({ type: 1, language: 1 }, { unique: true });
+// Task #339: composite unique includes `chunk` so 'stations' rows can have
+// many entries per (type, language). The legacy {type:1,language:1} unique
+// index from before this task is dropped at server boot in routes.ts.
+SitemapUrlSnapshotSchema.index({ type: 1, language: 1, chunk: 1 }, { unique: true });
 export const SitemapUrlSnapshot = mongoose.model<ISitemapUrlSnapshot>('SitemapUrlSnapshot', SitemapUrlSnapshotSchema);
 export const GscUrlInspection = mongoose.model<IGscUrlInspection>('GscUrlInspection', GscUrlInspectionSchema);
 export const GscIndexingSnapshot = mongoose.model<IGscIndexingSnapshot>('GscIndexingSnapshot', GscIndexingSnapshotSchema);

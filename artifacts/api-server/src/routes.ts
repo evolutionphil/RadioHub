@@ -243,6 +243,40 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
         { name: 'text', country: 'text', tags: 'text' },
         { name: 'station_text_search', weights: { name: 10, tags: 3, country: 1 }, textIndexVersion: 3, default_language: 'english' }
       );
+      // Task #339: drop the legacy SitemapUrlSnapshot {type,language} unique
+      // index so the new composite {type,language,chunk} index (created by
+      // mongoose autoIndex) can coexist without colliding for 'stations'
+      // rows that share (type, language) but differ by chunk.
+      try {
+        const { SitemapUrlSnapshot } = await import('@workspace/db-shared/mongo-schemas');
+        await SitemapUrlSnapshot.collection.dropIndex('type_1_language_1');
+        logger.log('✅ Dropped legacy SitemapUrlSnapshot.{type,language} unique index');
+      } catch (err: any) {
+        // IndexNotFound (code 27 / "ns not found") is the steady-state happy
+        // path: the legacy index has already been dropped (or the collection
+        // doesn't exist yet on a fresh deploy). Anything else is unexpected
+        // and means stations rows could fail to upsert under the old unique
+        // constraint — surface it loudly so it's visible in boot logs.
+        const code = err?.code;
+        const msg = err?.message ?? String(err);
+        if (code === 27 || /index not found/i.test(msg) || /ns not found/i.test(msg)) {
+          logger.log('ℹ️ SitemapUrlSnapshot.{type,language} legacy index already absent — nothing to drop');
+        } else {
+          logger.warn(`⚠️ Failed to drop legacy SitemapUrlSnapshot.{type,language} unique index (code=${code}): ${msg} — per-chunk station snapshot upserts may collide`);
+        }
+      }
+      // Belt-and-braces: ensure the new composite unique index is present
+      // even if mongoose autoIndex is off in this environment, so the
+      // nightly sitemap-diff stations branch can rely on it.
+      try {
+        const { SitemapUrlSnapshot } = await import('@workspace/db-shared/mongo-schemas');
+        await SitemapUrlSnapshot.collection.createIndex(
+          { type: 1, language: 1, chunk: 1 },
+          { unique: true, name: 'type_1_language_1_chunk_1' },
+        );
+      } catch (err: any) {
+        logger.warn(`⚠️ Failed to ensure SitemapUrlSnapshot composite unique index: ${err?.message ?? err}`);
+      }
       await Genre.collection.createIndex({ name: 1 });
       await Genre.collection.createIndex({ slug: 1 });
       await Genre.collection.createIndex({ isDiscoverable: 1, stationCount: -1 });

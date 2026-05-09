@@ -19,6 +19,7 @@ import {
   SitemapUrlSnapshot,
   SitemapManifest,
   Genre,
+  Station,
 } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { performanceCache } from '../performance-cache';
@@ -30,6 +31,7 @@ import {
 } from '../seo/sitemap-manifest-builder';
 import { IndexNowService } from './indexnow';
 import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from '../seo/qualified-languages';
+import { getIndexableLanguagesForStation } from '../seo/junk-station-rules';
 
 // Mirror the route's MAIN_STATIC_PAGES list (kept in sync with
 // `MAIN_STATIC_PAGES` in `seo/sitemap-manifest-builder.ts` and the
@@ -58,11 +60,14 @@ const BASE_URL = `https://${HOST}`;
 // IndexNow hard cap is 10k URLs/request; chunk well under it.
 const SUBMIT_CHUNK_SIZE = 1000;
 
-export type SitemapDiffType = 'main' | 'genres';
+export type SitemapDiffType = 'main' | 'genres' | 'stations';
 
 export interface SitemapDiffPerLangResult {
   type: SitemapDiffType;
   language: string;
+  /** Set only for type='stations'; identifies which manifest chunk
+   * (and therefore which `/sitemap-stations-{lang}-{chunk}.xml` file). */
+  chunk?: number;
   todayCount: number;
   previousCount: number;
   additions: string[];
@@ -149,6 +154,62 @@ export function computeGenresSitemapUrls(args: {
     seen.add(slug);
     const path = buildLocalizedUrl(`/genres/${slug}`, language, undefined, translations);
     out.push(`${baseUrl}${path}`);
+  }
+  out.sort();
+  return out;
+}
+
+/** Minimal Station shape needed to compute sitemap URLs for one chunk.
+ * Mirrors the fields the live `/sitemap-stations-{lang}-{chunk}.xml` route
+ * pulls (see routes/seo-sitemap-routes.ts) — slug for URL shape, the
+ * indexability fields (`noIndex`, `tags`, `bitrate`, `lastCheckOk*`,
+ * `country`, `countryCode`, `language`, `languageCodes`) so we can re-run
+ * `getIndexableLanguagesForStation` and skip junk/noIndex stations. */
+export interface StationSitemapDoc {
+  _id: mongoose.Types.ObjectId | string;
+  slug?: string;
+  name?: string;
+  url?: string;
+  homepage?: string;
+  tags?: string;
+  bitrate?: number;
+  lastCheckOk?: boolean;
+  lastCheckOkTime?: Date | string | null;
+  country?: string;
+  countryCode?: string;
+  language?: string;
+  languageCodes?: string;
+  noIndex?: boolean;
+}
+
+/** Build the canonical URL set that the live `/sitemap-stations-{lang}-{chunk}.xml`
+ * route would emit for ONE manifest chunk. Mirrors the route's filter:
+ * skips stations missing a slug and re-runs `getIndexableLanguagesForStation`
+ * so freshly-flagged junk/noIndex rows are excluded from the diff (matches
+ * the route's defensive double-check at serve time). Sorted for
+ * deterministic snapshots. Pure helper — caller resolves station ids. */
+export function computeStationsSitemapUrlsForChunk(args: {
+  language: string;
+  qualifiedLanguages: ReadonlyArray<string>;
+  stationIds: ReadonlyArray<mongoose.Types.ObjectId | string>;
+  stationsById: ReadonlyMap<string, StationSitemapDoc>;
+  translations: Map<string, string>;
+  baseUrl?: string;
+}): string[] {
+  const { language, qualifiedLanguages, stationIds, stationsById, translations } = args;
+  const baseUrl = args.baseUrl ?? BASE_URL;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const id of stationIds) {
+    const s = stationsById.get(String(id));
+    if (!s || !s.slug) continue;
+    const indexable = getIndexableLanguagesForStation(s, qualifiedLanguages as string[]);
+    if (!indexable.includes(language)) continue;
+    const path = buildLocalizedUrl(`/station/${s.slug}`, language, undefined, translations);
+    const url = `${baseUrl}${path}`;
+    if (seen.has(url)) continue;
+    seen.add(url);
+    out.push(url);
   }
   out.sort();
   return out;
@@ -264,6 +325,57 @@ export async function runSitemapDiffSubmission(opts: {
       totalAdditions += result.additions.length;
       perLanguage.push(result);
     }
+
+    // ---- stations (task #339) — per-chunk diff against snapshot rows
+    // keyed by (type='stations', language, chunk). One bulk Station fetch
+    // per language amortizes across all chunks (chunks are bounded at 1000
+    // ids each by the manifest builder). ----
+    const stationsManifest = await SitemapManifest.findOne({ type: 'stations', language, status: 'active' })
+      .sort({ generatedAt: -1 })
+      .lean();
+    if (!stationsManifest) {
+      logger.log(`⏭️ sitemap-diff: no active stations manifest for lang=${language}, skipping stations`);
+    } else if (stationsManifest.chunks.length === 0) {
+      logger.log(`⏭️ sitemap-diff: stations manifest for lang=${language} has zero chunks, skipping`);
+    } else {
+      const allIds: Array<mongoose.Types.ObjectId | string> = [];
+      const seenId = new Set<string>();
+      for (const c of stationsManifest.chunks) {
+        for (const id of c.stationIds) {
+          const k = String(id);
+          if (seenId.has(k)) continue;
+          seenId.add(k);
+          allIds.push(id);
+        }
+      }
+      const stationDocs = await Station.find({ _id: { $in: allIds } })
+        .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime country countryCode language languageCodes noIndex')
+        .lean<StationSitemapDoc[]>();
+      const stationsById = new Map<string, StationSitemapDoc>();
+      for (const s of stationDocs) stationsById.set(String(s._id), s);
+
+      // Sort chunks by index for deterministic per-language ordering in the
+      // returned summary (purely cosmetic; snapshot rows are independent).
+      const sortedChunks = [...stationsManifest.chunks].sort((a, b) => a.chunk - b.chunk);
+      for (const c of sortedChunks) {
+        const todayUrls = computeStationsSitemapUrlsForChunk({
+          language,
+          qualifiedLanguages,
+          stationIds: c.stationIds,
+          stationsById,
+          translations,
+        });
+        const result = await processLanguageDiff({
+          type: 'stations',
+          language,
+          chunk: c.chunk,
+          todayUrls,
+          dryRun,
+        });
+        totalAdditions += result.additions.length;
+        perLanguage.push(result);
+      }
+    }
   }
 
   const finishedAt = new Date();
@@ -280,18 +392,36 @@ export async function runSitemapDiffSubmission(opts: {
 async function processLanguageDiff(args: {
   type: SitemapDiffType;
   language: string;
+  /** Required for type='stations' (one snapshot row per chunk); must be
+   * undefined for 'main'/'genres' (one snapshot row per language). */
+  chunk?: number;
   todayUrls: string[];
   dryRun: boolean;
 }): Promise<SitemapDiffPerLangResult> {
-  const { type, language, todayUrls, dryRun } = args;
+  const { type, language, chunk: chunkIdx, todayUrls, dryRun } = args;
 
-  const snapshot = await SitemapUrlSnapshot.findOne({ type, language }).lean();
+  // Snapshot key — for stations rows we MUST include `chunk` so two chunks
+  // in the same language don't collide on the (type, language, chunk)
+  // unique index. For main/genres we explicitly query `chunk: { $exists:
+  // false }` so we can never accidentally read a stations row's snapshot.
+  const snapshotKey: Record<string, unknown> = { type, language };
+  if (type === 'stations') {
+    if (typeof chunkIdx !== 'number') {
+      throw new Error(`processLanguageDiff: 'stations' requires a numeric chunk (got ${chunkIdx})`);
+    }
+    snapshotKey.chunk = chunkIdx;
+  } else {
+    snapshotKey.chunk = { $exists: false };
+  }
+  const snapshot = await SitemapUrlSnapshot.findOne(snapshotKey).lean();
   const previousUrls = snapshot?.urls ?? [];
   const additions = diffUrlSets(previousUrls, todayUrls);
 
+  const labelSuffix = type === 'stations' ? ` chunk=${chunkIdx}` : '';
   const result: SitemapDiffPerLangResult = {
     type,
     language,
+    ...(type === 'stations' ? { chunk: chunkIdx } : {}),
     todayCount: todayUrls.length,
     previousCount: previousUrls.length,
     additions,
@@ -301,11 +431,11 @@ async function processLanguageDiff(args: {
   const successfullySubmitted: string[] = [];
 
   if (additions.length === 0) {
-    logger.log(`✅ sitemap-diff: type=${type} lang=${language} no new URLs (today=${todayUrls.length}, prev=${previousUrls.length})`);
+    logger.log(`✅ sitemap-diff: type=${type} lang=${language}${labelSuffix} no new URLs (today=${todayUrls.length}, prev=${previousUrls.length})`);
   } else if (dryRun) {
-    logger.log(`🟡 sitemap-diff: type=${type} lang=${language} DRY_RUN — ${additions.length} new URL(s) would be submitted`);
+    logger.log(`🟡 sitemap-diff: type=${type} lang=${language}${labelSuffix} DRY_RUN — ${additions.length} new URL(s) would be submitted`);
   } else {
-    logger.log(`📡 sitemap-diff: type=${type} lang=${language} submitting ${additions.length} new URL(s) to IndexNow…`);
+    logger.log(`📡 sitemap-diff: type=${type} lang=${language}${labelSuffix} submitting ${additions.length} new URL(s) to IndexNow…`);
     const batches = chunk(additions, SUBMIT_CHUNK_SIZE);
     let allOk = true;
     let lastError: string | undefined;
@@ -317,7 +447,7 @@ async function processLanguageDiff(args: {
       } else {
         allOk = false;
         lastError = submit.error ?? 'unknown error';
-        logger.warn(`⚠️ sitemap-diff: type=${type} lang=${language} batch ${i + 1}/${batches.length} failed: ${lastError}`);
+        logger.warn(`⚠️ sitemap-diff: type=${type} lang=${language}${labelSuffix} batch ${i + 1}/${batches.length} failed: ${lastError}`);
       }
     }
     result.submitted = true;
@@ -329,8 +459,20 @@ async function processLanguageDiff(args: {
     const todaySet = new Set(todayUrls);
     const carriedOver = previousUrls.filter((u) => todaySet.has(u));
     const nextSnapshot = Array.from(new Set([...carriedOver, ...successfullySubmitted])).sort();
+    // For stations we need `chunk` in BOTH the filter and the
+    // $setOnInsert payload so the unique-index entry materializes on
+    // insert. For main/genres we keep the filter free of `chunk` to
+    // match the historical row shape (chunk field absent).
+    const filter: Record<string, unknown> = { type, language };
+    const setOnInsert: Record<string, unknown> = { type, language };
+    if (type === 'stations') {
+      filter.chunk = chunkIdx;
+      setOnInsert.chunk = chunkIdx;
+    } else {
+      filter.chunk = { $exists: false };
+    }
     await SitemapUrlSnapshot.updateOne(
-      { type, language },
+      filter,
       {
         $set: {
           urls: nextSnapshot,
@@ -338,7 +480,7 @@ async function processLanguageDiff(args: {
           generatedAt: new Date(),
           updatedAt: new Date(),
         },
-        $setOnInsert: { type, language },
+        $setOnInsert: setOnInsert,
       },
       { upsert: true },
     );
