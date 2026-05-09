@@ -58,16 +58,28 @@ export default function AdminGenres() {
     displayOrder: 0
   });
 
+  // Task #353: allow other admin pages (e.g. the genre-slug cleanup
+  // demotions drill-down) to deep-link straight into a pre-filtered view
+  // by passing ?search=<name>&demoted=1 in the URL.
+  const initialUrlParams =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search)
+      : new URLSearchParams();
+  const initialSearch = initialUrlParams.get('search') ?? '';
+  const initialDemotedOnly =
+    initialUrlParams.get('demoted') === '1' ||
+    initialUrlParams.get('demoted') === 'true';
+
   // State for filters and pagination
   const [filters, setFilters] = useState({
     showDiscoverableOnly: false,
-    showDemotedOnly: false,
+    showDemotedOnly: initialDemotedOnly,
     sortBy: 'stationCount',
-    searchQuery: ''
+    searchQuery: initialSearch
   });
   
   // Debounced search input - separate from actual filter to avoid API call on every keystroke
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState(initialSearch);
   
   const [pagination, setPagination] = useState({
     page: 1,

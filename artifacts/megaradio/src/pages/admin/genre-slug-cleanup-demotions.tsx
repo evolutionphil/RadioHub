@@ -120,10 +120,24 @@ export function GenreCleanupRunDemotions({ runId }: { runId: string }) {
                     : "—"}
                 </td>
                 <td className="py-1 pr-3">
-                  <div className="font-medium text-slate-800">{d.name}</div>
-                  <code className="text-[10px] text-slate-500">
-                    {d.currentSlug}
-                  </code>
+                  {/* Task #353: deep-link straight into the existing genre
+                      admin list, pre-filtered to this genre's name and the
+                      "demoted only" view, so admins can jump from the
+                      cleanup history to a remediation flow in one click. */}
+                  <a
+                    href={`/admin/genres?search=${encodeURIComponent(d.name)}&demoted=1`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium text-blue-600 hover:underline"
+                    data-testid={`link-demoted-genre-${d._id}`}
+                  >
+                    {d.name}
+                  </a>
+                  <div>
+                    <code className="text-[10px] text-slate-500">
+                      {d.currentSlug}
+                    </code>
+                  </div>
                 </td>
                 <td className="py-1 pr-3">
                   {d.reason ? (
@@ -160,13 +174,24 @@ export function GenreCleanupRunDemotions({ runId }: { runId: string }) {
                 <td className="py-1 pr-3">
                   {d.reason === "collision" && d.collisionWinnerName ? (
                     <div>
-                      <div className="text-slate-800">
+                      {/* Task #353: link the winning genre to the same
+                          admin view (no demoted filter — the winner is the
+                          live row admins want to inspect/edit). */}
+                      <a
+                        href={`/admin/genres?search=${encodeURIComponent(d.collisionWinnerName)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 hover:underline"
+                        data-testid={`link-collision-winner-${d._id}`}
+                      >
                         {d.collisionWinnerName}
-                      </div>
+                      </a>
                       {d.collisionWinnerSlug && (
-                        <code className="text-[10px] text-slate-500">
-                          {d.collisionWinnerSlug}
-                        </code>
+                        <div>
+                          <code className="text-[10px] text-slate-500">
+                            {d.collisionWinnerSlug}
+                          </code>
+                        </div>
                       )}
                     </div>
                   ) : (
