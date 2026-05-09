@@ -327,9 +327,23 @@ export async function connectToMongoDB() {
     logger.log(`🔗 Mongo identity host=${mongoose.connection.host} port=${(mongoose.connection as any).port} db=${mongoose.connection.name}`);
     await seedDefaultLanguages();
   } catch (error: any) {
-    console.error('❌ MongoDB connection error:', error?.message || error);
-    logger.log('💡 MongoDB: Scheduling reconnect…');
+    // FAIL-FAST: with bufferCommands=false, the warmup tasks downstream of
+    // connectToMongoDB() will throw on every query if we let boot continue
+    // here. That triggered a silent 2s container restart loop on Railway
+    // when Atlas was unreachable (IP allowlist / paused cluster / wrong
+    // URI) — the real reason was buried under hundreds of "before initial
+    // connection is complete" errors. Re-throw so the operator sees the
+    // actual connection failure on the very first log line.
+    const msg = error?.message || String(error);
+    console.error('❌ FATAL: MongoDB initial connection failed:', msg);
+    console.error('💡 Check on Railway / Atlas:');
+    console.error('   1. Env var MONGODB_URI is set and correct');
+    console.error('   2. Atlas Network Access allowlist includes the deploy host (or 0.0.0.0/0 for testing)');
+    console.error('   3. Atlas cluster is not paused (M0 free tier auto-pauses after 60 idle days)');
+    // Still schedule background reconnect for the (unlikely) case the
+    // process is kept alive by an orchestrator that ignores exit codes.
     scheduleReconnect('initial-connect-failed');
+    throw new Error(`MongoDB initial connection failed: ${msg}`);
   }
 }
 
