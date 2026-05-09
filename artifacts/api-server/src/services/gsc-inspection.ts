@@ -89,6 +89,17 @@ const RESUBMIT_BATCH_LIMIT = parseInt(
   process.env.GSC_RESUBMIT_BATCH_LIMIT || '200',
   10,
 );
+// Task #360 — retention window for the daily aggregate snapshot rows.
+// The collection grows by ~(languages × groups + 1) rows every day, so
+// without a prune it would balloon to tens of thousands of documents
+// over a few years. Default keeps ~2 years of history (matches the
+// retention model used by the cleanup-history collection elsewhere).
+// Override via `GSC_SNAPSHOT_RETENTION_DAYS`; set to `0` to disable
+// pruning entirely (useful for tests or one-off historical analysis).
+const SNAPSHOT_RETENTION_DAYS = Math.max(
+  0,
+  parseInt(process.env.GSC_SNAPSHOT_RETENTION_DAYS || '730', 10),
+);
 const NON_INDEXED_STATES: IGscUrlInspection['state'][] = [
   'discovered-not-indexed',
   'crawled-not-indexed',
@@ -459,6 +470,12 @@ class GscInspectionService {
   private snapshotRunning = false;
   private lastSnapshotAt: Date | null = null;
   private lastSnapshotStats: { rows: number; date: string } | null = null;
+  private snapshotPruneRunning = false;
+  private lastSnapshotPruneAt: Date | null = null;
+  private lastSnapshotPruneStats: {
+    deleted: number;
+    olderThan: string;
+  } | null = null;
 
   static getInstance(): GscInspectionService {
     if (!GscInspectionService.instance) {
@@ -526,8 +543,24 @@ class GscInspectionService {
       { timezone: 'Europe/Berlin' },
     );
 
+    // Task #360 — prune snapshots older than the retention window once a
+    // day, just after the daily roll-up at 23:55. Cheap (single
+    // deleteMany on an indexed `date` field) and idempotent. Skipped
+    // entirely when retention is disabled (`SNAPSHOT_RETENTION_DAYS=0`).
+    if (SNAPSHOT_RETENTION_DAYS > 0) {
+      cron.schedule(
+        '5 0 * * *',
+        () => {
+          this.pruneOldSnapshots('cron').catch((err) =>
+            logger.error('❌ GSC snapshot prune cron crashed:', err),
+          );
+        },
+        { timezone: 'Europe/Berlin' },
+      );
+    }
+
     logger.log(
-      `🔍 GSC inspection cron initialized (discovery 03:15+15:15, inspection hourly :07, resubmit 04:30, snapshot 23:55, batch=${DEFAULT_BATCH_SIZE}/run, stuck>${RESUBMIT_STUCK_DAYS}d)`,
+      `🔍 GSC inspection cron initialized (discovery 03:15+15:15, inspection hourly :07, resubmit 04:30, snapshot 23:55, prune 00:05 keep=${SNAPSHOT_RETENTION_DAYS}d, batch=${DEFAULT_BATCH_SIZE}/run, stuck>${RESUBMIT_STUCK_DAYS}d)`,
     );
 
     // Cold-start: kick off a discovery shortly after boot so a freshly
@@ -594,12 +627,63 @@ class GscInspectionService {
       lastResubmitStats: this.lastResubmitStats,
       lastSnapshotAt: this.lastSnapshotAt,
       lastSnapshotStats: this.lastSnapshotStats,
+      lastSnapshotPruneAt: this.lastSnapshotPruneAt,
+      lastSnapshotPruneStats: this.lastSnapshotPruneStats,
       defaultBatchSize: DEFAULT_BATCH_SIZE,
       stationDiscoveryCapPerLanguage: STATION_DISCOVERY_CAP_PER_LANG,
       resubmitStuckDays: RESUBMIT_STUCK_DAYS,
       resubmitCooldownDays: RESUBMIT_COOLDOWN_DAYS,
       resubmitBatchLimit: RESUBMIT_BATCH_LIMIT,
+      snapshotRetentionDays: SNAPSHOT_RETENTION_DAYS,
     };
+  }
+
+  /**
+   * Task #360 — drop snapshot rows older than the retention window so
+   * the `GscIndexingSnapshot` collection doesn't grow unbounded. Safe
+   * to call concurrently (guarded) and idempotent: re-running deletes
+   * nothing once everything in-window has already been pruned.
+   * Returns `null` when retention is disabled or a prune is already in
+   * progress.
+   */
+  async pruneOldSnapshots(
+    trigger: string = 'manual',
+  ): Promise<{ deleted: number; olderThan: string } | null> {
+    if (SNAPSHOT_RETENTION_DAYS <= 0) {
+      logger.log(
+        `🧹 GSC snapshot prune: skip (${trigger}) — retention disabled`,
+      );
+      return null;
+    }
+    if (this.snapshotPruneRunning) {
+      logger.log(
+        `⏭️  GSC snapshot prune: skip (${trigger}) — previous run in progress`,
+      );
+      return null;
+    }
+    this.snapshotPruneRunning = true;
+    try {
+      const cutoff = new Date(
+        Date.now() - SNAPSHOT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
+      );
+      const res = await GscIndexingSnapshot.deleteMany({
+        date: { $lt: cutoff },
+      });
+      const stats = {
+        deleted: res.deletedCount ?? 0,
+        olderThan: cutoff.toISOString(),
+      };
+      this.lastSnapshotPruneAt = new Date();
+      this.lastSnapshotPruneStats = stats;
+      if (stats.deleted > 0) {
+        logger.log(
+          `🧹 GSC snapshot prune (${trigger}): removed ${stats.deleted} rows older than ${stats.olderThan} (retention=${SNAPSHOT_RETENTION_DAYS}d)`,
+        );
+      }
+      return stats;
+    } finally {
+      this.snapshotPruneRunning = false;
+    }
   }
 
   /**

@@ -421,6 +421,22 @@ router.post('/digest', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * Task #360 — Manually prune snapshots older than the retention window.
+ * The cron also fires nightly at 00:05 Berlin time; this endpoint exists
+ * so admins can sanity-check the prune (or recover disk after lowering
+ * `GSC_SNAPSHOT_RETENTION_DAYS`) without waiting for the next tick.
+ */
+router.post('/snapshot/prune', async (_req: Request, res: Response) => {
+  try {
+    const stats = await gscInspectionService.pruneOldSnapshots('admin-manual');
+    return res.json({ ok: true, stats });
+  } catch (err: any) {
+    logger.error('GSC inspection /snapshot/prune failed:', err?.message ?? err);
+    return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
+  }
+});
+
 router.post('/discover', async (_req: Request, res: Response) => {
   try {
     const stats = await gscInspectionService.runDiscoveryOnce('admin-manual');
