@@ -10,13 +10,12 @@
  * traffic drop weeks later.
  *
  * These tests exercise the middleware end-to-end with the slug-existence
- * module mocked so we can flip the "ready" flag and the known-slug sets
- * deterministically.
- *
- * Runner: requires `--experimental-test-module-mocks` (wired up in
- * artifacts/api-server/package.json#scripts.test).
+ * lookups injected via the `deps` parameter so we can flip the "ready"
+ * flag and the known-slug sets deterministically. This avoids depending
+ * on `--experimental-test-module-mocks`, which means the tests run under
+ * a plain `tsx --test` invocation.
  */
-import { test, mock, before } from 'node:test';
+import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Request, Response, NextFunction } from 'express';
 
@@ -32,22 +31,18 @@ const stubState = {
   citySlugsByCountry: new Map<string, Set<string>>(),
 };
 
-mock.module(new URL('../src/seo/slug-existence.ts', import.meta.url).href, {
-  namedExports: {
-    isSlugExistenceReady: () => stubState.ready,
-    hasStationSlug: (s: string) => stubState.stationSlugs.has(s),
-    hasGenreSlug: (s: string) => stubState.genreSlugs.has(s),
-    hasCountrySlug: (s: string) => stubState.countrySlugs.has(s),
-    hasCitySlug: (country: string, city: string) =>
-      stubState.citySlugsByCountry.get(country)?.has(city) ?? false,
-    hasCityDataForCountry: (country: string) => {
-      const set = stubState.citySlugsByCountry.get(country);
-      return !!set && set.size > 0;
-    },
-    loadSlugExistence: async () => {},
-    startSlugExistenceRefresh: () => undefined,
+const stubDeps = {
+  isSlugExistenceReady: () => stubState.ready,
+  hasStationSlug: (s: string) => stubState.stationSlugs.has(s),
+  hasGenreSlug: (s: string) => stubState.genreSlugs.has(s),
+  hasCountrySlug: (s: string) => stubState.countrySlugs.has(s),
+  hasCitySlug: (country: string, city: string) =>
+    stubState.citySlugsByCountry.get(country)?.has(city) ?? false,
+  hasCityDataForCountry: (country: string) => {
+    const set = stubState.citySlugsByCountry.get(country);
+    return !!set && set.size > 0;
   },
-});
+};
 
 // ---------------------------------------------------------------------------
 // Helpers — drive the middleware with a synthetic req/res/next.
@@ -117,12 +112,15 @@ let middleware: Middleware;
 
 before(async () => {
   const mod = await import('../src/middleware/slug-shape-404.ts');
-  middleware = mod.createSlugShape404Middleware({
-    regionsAlts: ['regions', 'regionen', "regio's"],
-    genresAlts: ['genres', 'genres-de'],
-    stationSingularAlts: ['station', 'sender'],
-    stationsPluralAlts: ['stations', 'sendern'],
-  });
+  middleware = mod.createSlugShape404Middleware(
+    {
+      regionsAlts: ['regions', 'regionen', "regio's"],
+      genresAlts: ['genres', 'genres-de'],
+      stationSingularAlts: ['station', 'sender'],
+      stationsPluralAlts: ['stations', 'sendern'],
+    },
+    stubDeps,
+  );
 });
 
 // ---------------------------------------------------------------------------

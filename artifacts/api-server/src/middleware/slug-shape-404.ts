@@ -25,13 +25,29 @@ import {
 } from '../seo/url-helpers';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import {
-  isSlugExistenceReady,
-  hasStationSlug,
-  hasGenreSlug,
-  hasCountrySlug,
-  hasCitySlug,
-  hasCityDataForCountry,
+  isSlugExistenceReady as defaultIsSlugExistenceReady,
+  hasStationSlug as defaultHasStationSlug,
+  hasGenreSlug as defaultHasGenreSlug,
+  hasCountrySlug as defaultHasCountrySlug,
+  hasCitySlug as defaultHasCitySlug,
+  hasCityDataForCountry as defaultHasCityDataForCountry,
 } from '../seo/slug-existence';
+
+/**
+ * Dependency-injection seam for the slug-existence lookups. Production
+ * code leaves this undefined and the middleware uses the live in-memory
+ * sets from `../seo/slug-existence`. Tests pass an object pointing at
+ * controllable stubs so they can flip the "ready" flag and the known-slug
+ * sets deterministically without needing `--experimental-test-module-mocks`.
+ */
+export interface SlugExistenceDeps {
+  isSlugExistenceReady: () => boolean;
+  hasStationSlug: (slug: string) => boolean;
+  hasGenreSlug: (slug: string) => boolean;
+  hasCountrySlug: (slug: string) => boolean;
+  hasCitySlug: (country: string, city: string) => boolean;
+  hasCityDataForCountry: (country: string) => boolean;
+}
 
 const BOT_RE = /bot|crawl|spider|slurp|baidu|yandex|duckduck|bingpreview|facebookexternalhit|twitterbot|linkedinbot|whatsapp|telegram|googlebot|google-inspectiontool|chrome-lighthouse|pingdom|uptimerobot|gptbot|chatgpt|ccbot|anthropic|bytespider|perplexitybot|cohere/i;
 
@@ -100,11 +116,21 @@ function buildExactMatchRe(alts: string[]): RegExp {
   return new RegExp(`^(?:${escaped})$`, 'iu');
 }
 
-export function createSlugShape404Middleware(opts: SlugShape404Options) {
+export function createSlugShape404Middleware(
+  opts: SlugShape404Options,
+  deps?: Partial<SlugExistenceDeps>,
+) {
   const regionsRe = buildExactMatchRe(opts.regionsAlts);
   const genresRe = buildExactMatchRe(opts.genresAlts);
   const stationSingularRe = buildExactMatchRe(opts.stationSingularAlts);
   const stationPluralRe = buildExactMatchRe(opts.stationsPluralAlts);
+
+  const isSlugExistenceReady = deps?.isSlugExistenceReady ?? defaultIsSlugExistenceReady;
+  const hasStationSlug = deps?.hasStationSlug ?? defaultHasStationSlug;
+  const hasGenreSlug = deps?.hasGenreSlug ?? defaultHasGenreSlug;
+  const hasCountrySlug = deps?.hasCountrySlug ?? defaultHasCountrySlug;
+  const hasCitySlug = deps?.hasCitySlug ?? defaultHasCitySlug;
+  const hasCityDataForCountry = deps?.hasCityDataForCountry ?? defaultHasCityDataForCountry;
 
   return function slugShape404Middleware(
     req: Request,
