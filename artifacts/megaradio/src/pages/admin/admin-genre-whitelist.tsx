@@ -153,6 +153,9 @@ export default function AdminGenreWhitelist() {
   const [slugFilter, setSlugFilter] = useState("");
   const [slugStatusFilter, setSlugStatusFilter] = useState<SlugStatusFilter>("all");
   const [aliasFilter, setAliasFilter] = useState("");
+  const [pushHistoryStatusFilter, setPushHistoryStatusFilter] = useState<'all' | 'succeeded' | 'failed'>('all');
+  const [pushHistorySlugFilter, setPushHistorySlugFilter] = useState("");
+  const [pushHistoryTriggerFilter, setPushHistoryTriggerFilter] = useState<string>("all");
 
   const { data, isLoading, error } = useQuery<WhitelistResponse>({
     queryKey: ['/api/admin/genre-whitelist'],
@@ -729,18 +732,103 @@ export default function AdminGenreWhitelist() {
             </Card>
           );
         }
+        const triggerOptions = Array.from(new Set(history.map((p) => p.trigger))).sort();
+        const slugNeedle = pushHistorySlugFilter.trim().toLowerCase();
+        const filteredHistory = history.filter((p) => {
+          const failed =
+            p.sitemapRebuild.status === 'failed' ||
+            p.indexnowSitemap.status === 'failed' ||
+            p.indexnowGenreUrls.status === 'failed';
+          if (pushHistoryStatusFilter === 'succeeded' && failed) return false;
+          if (pushHistoryStatusFilter === 'failed' && !failed) return false;
+          if (pushHistoryTriggerFilter !== 'all' && p.trigger !== pushHistoryTriggerFilter) {
+            return false;
+          }
+          if (slugNeedle) {
+            const hasMatch = p.affectedSlugs.some((s) => s.toLowerCase().includes(slugNeedle));
+            if (!hasMatch) return false;
+          }
+          return true;
+        });
+        const filtersActive =
+          pushHistoryStatusFilter !== 'all' ||
+          pushHistoryTriggerFilter !== 'all' ||
+          slugNeedle.length > 0;
         return (
           <Card data-testid="card-push-history">
             <CardHeader>
-              <CardTitle className="text-base">Recent push history ({history.length})</CardTitle>
+              <CardTitle className="text-base">
+                Recent push history ({filtersActive
+                  ? `Showing ${filteredHistory.length} of ${history.length}`
+                  : history.length})
+              </CardTitle>
               <CardDescription>
                 Last {history.length} completed push{history.length === 1 ? '' : 'es'} — newest
                 first. Survives api-server restarts (90-day retention).
               </CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-3">
+              <div className="flex gap-2 flex-wrap">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="absolute left-2 top-2.5 w-4 h-4 text-gray-400" />
+                  <Input
+                    className="pl-8"
+                    placeholder="Filter by slug substring…"
+                    value={pushHistorySlugFilter}
+                    onChange={(e) => setPushHistorySlugFilter(e.target.value)}
+                    data-testid="input-push-history-slug-filter"
+                  />
+                </div>
+                <select
+                  className="border rounded px-2 text-sm bg-white"
+                  value={pushHistoryStatusFilter}
+                  onChange={(e) =>
+                    setPushHistoryStatusFilter(e.target.value as 'all' | 'succeeded' | 'failed')
+                  }
+                  data-testid="select-push-history-status-filter"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="succeeded">Succeeded</option>
+                  <option value="failed">Failed</option>
+                </select>
+                <select
+                  className="border rounded px-2 text-sm bg-white"
+                  value={pushHistoryTriggerFilter}
+                  onChange={(e) => setPushHistoryTriggerFilter(e.target.value)}
+                  data-testid="select-push-history-trigger-filter"
+                >
+                  <option value="all">All triggers</option>
+                  {triggerOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+                {filtersActive && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setPushHistoryStatusFilter('all');
+                      setPushHistorySlugFilter('');
+                      setPushHistoryTriggerFilter('all');
+                    }}
+                    data-testid="button-push-history-clear-filters"
+                  >
+                    Clear filters
+                  </Button>
+                )}
+              </div>
+              {filteredHistory.length === 0 ? (
+                <div
+                  className="text-xs text-gray-500 border rounded p-3"
+                  data-testid="text-push-history-empty-filtered"
+                >
+                  No pushes match the current filters.
+                </div>
+              ) : (
               <div className="border rounded divide-y max-h-[480px] overflow-y-auto">
-                {history.map((p, idx) => {
+                {filteredHistory.map((p, idx) => {
                   const failed =
                     p.sitemapRebuild.status === 'failed' ||
                     p.indexnowSitemap.status === 'failed' ||
@@ -806,6 +894,7 @@ export default function AdminGenreWhitelist() {
                   );
                 })}
               </div>
+              )}
             </CardContent>
           </Card>
         );
