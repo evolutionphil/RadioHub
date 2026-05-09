@@ -72,13 +72,19 @@ const DRIFT_FLAP_THRESHOLD = 3;               // 3+ changes/hour = flap alert
 
 /** Emergency seed used ONLY by `seedQualifiedLanguagesLkg()` when the DB has
  * never been populated. Never used at runtime as a silent fallback. */
-// 14 AI-translated languages (admin Station Management — AI Translation Languages):
-// en, es, fr, de, pt, it, ru, ar, zh, tr, ja, ko, hi, he. Bu liste değişirse
-// junk-station-rules.ts UNIVERSAL_LANGUAGES ile senkron tutulmalı.
-export const EMERGENCY_SEED_QUALIFIED_LANGUAGES: readonly string[] = [
-  'ar', 'de', 'en', 'es', 'fr', 'he', 'hi', 'it',
-  'ja', 'ko', 'pt', 'ru', 'tr', 'zh',
-];
+// CORRECTION (2026-05-09): the previous "14 AI-translated languages" seed
+// confused two different layers:
+//   • UI/page translations (REQUIRED_*_SEO_KEYS) live across all 57 enabled
+//     SEO_LANGUAGES — driven by `Translation` collection in Mongo.
+//   • Station-level meta (title/description/full per radio) is AI-translated
+//     into 14 languages — that lives in `junk-station-rules.UNIVERSAL_LANGUAGES`
+//     and gates per-station hreflang variants, NOT the qualified-languages set.
+// Qualified languages should track UI completeness (whatever subset of the 57
+// has full UI translations in Mongo). The seed here only fires when the DB
+// is COMPLETELY empty — using the full enabled list maximises safety so a
+// fresh boot does not accidentally trim sitemap coverage.
+export const EMERGENCY_SEED_QUALIFIED_LANGUAGES: readonly string[] =
+  Object.freeze([...(ACTIVE_SITEMAP_LANGUAGES as unknown as string[])].sort());
 
 // ---------------------------------------------------------------------------
 // In-memory state

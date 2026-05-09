@@ -258,14 +258,22 @@ export function frequencyPrefixBaseSlug(slug: string): string | null {
  * Major-diaspora / lingua-franca languages that are reasonable for any
  * station regardless of country. English is always included.
  */
-// AI Translation Languages (admin/stations.tsx — Station Management):
-// 14 dilde meta title + meta description + full description için AI çeviri
-// aktif. Her radyonun bu 14 dilin TAMAMINDA Mongo `descriptions[lang]`
-// alanları doluyor. Bu yüzden bu 14 dil "universal" — countryCode farkı
-// gözetmeksizin her station bu dillerin sitemap'inde indexlenebilir.
-// Liste değişirse `EMERGENCY_SEED_QUALIFIED_LANGUAGES` (qualified-languages.ts)
-// ile senkron tutulmalı; sitemap-index, sitemap-{type}-{lang}.xml ve
-// hreflang alternate setinin tamamı buradan türeyen kümeyle çalışır.
+// AI Translation Languages — STATION-LEVEL META (admin/stations.tsx):
+// 14 dilde her radyonun meta title + meta description + full description için
+// AI çevirisi var ve Mongo `descriptions[lang]` alanları dolu. Bu 14 dil
+// "universal" — yani station'ın countryCode'una bakılmaksızın bu dillerin
+// hepsinde indexable.
+//
+// ÖNEMLİ AYRIM: Bu liste yalnızca per-station indexability'yi belirler.
+// **Sitemap-index'te kaç dil yayınlanacağı** ayrı bir karardır:
+//   `qualified-languages.ts` → `computeFromTranslations()` → tüm 57 enabled
+//   SEO_LANGUAGES içinden UI çeviri (REQUIRED_*_SEO_KEYS) tam olan dilleri
+//   seçer. Yani UI tarafı 25 dilde tam ise sitemap 25 dilde yayın yapar; bu
+//   14 ile karıştırılmamalı.
+//
+// Bu liste DEĞİŞİRSE: kullanıcının admin paneldeki "AI Translation Languages"
+// listesi ile sync tutulmalı. Önceki ('en' tek dil) sürüm 13 yeni dilde
+// stationların sitemap'ten düşmesine yol açıyordu.
 const UNIVERSAL_LANGUAGES = [
   'en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar',
   'zh', 'tr', 'ja', 'ko', 'hi', 'he',
