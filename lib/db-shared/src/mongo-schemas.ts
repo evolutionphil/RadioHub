@@ -834,6 +834,22 @@ export interface IGenreSlugCleanupRun extends Document {
   errorMessage?: string;
 }
 
+// Task #330: nightly Genre.stationCount recompute audit log. Mirrors
+// the GenreSlugCleanupRun shape so admins can see "scanned 1284
+// genres, updated 3" without grepping logs and confirm the cron has
+// been firing reliably. See `services/genre-station-counts.ts` and
+// `services/scheduled-genre-station-counts.ts`.
+export interface IGenreStationCountsRun extends Document {
+  trigger: string; // 'cron:nightly' | 'admin-manual' | bulk-op trigger labels
+  status: 'running' | 'completed' | 'failed';
+  startedAt: Date;
+  finishedAt?: Date;
+  durationMs?: number;
+  totalGenres: number;
+  updatedSlugs: number;
+  errorMessage?: string;
+}
+
 // Blacklisted Station Interface - prevents re-syncing deleted stations
 export interface IBlacklistedStation extends Document {
   stationUuid?: string; // Original Radio Browser UUID
@@ -1434,6 +1450,19 @@ const GenreSlugCleanupRunSchema = new Schema<IGenreSlugCleanupRun>({
   errorMessage: String,
 });
 GenreSlugCleanupRunSchema.index({ startedAt: -1 });
+
+// Task #330: audit log for nightly + ad-hoc Genre.stationCount recomputes.
+const GenreStationCountsRunSchema = new Schema<IGenreStationCountsRun>({
+  trigger: { type: String, required: true, index: true },
+  status: { type: String, enum: ['running', 'completed', 'failed'], required: true, index: true },
+  startedAt: { type: Date, required: true },
+  finishedAt: Date,
+  durationMs: Number,
+  totalGenres: { type: Number, default: 0 },
+  updatedSlugs: { type: Number, default: 0 },
+  errorMessage: String,
+});
+GenreStationCountsRunSchema.index({ startedAt: -1 });
 
 const SyncLogSchema = new Schema<ISyncLog>({
   syncType: { type: String, enum: ['full', 'incremental'], required: true },
@@ -2133,6 +2162,10 @@ export const CoverageBackfillRun = mongoose.model<ICoverageBackfillRun>(
 export const GenreSlugCleanupRun = mongoose.model<IGenreSlugCleanupRun>(
   'GenreSlugCleanupRun',
   GenreSlugCleanupRunSchema,
+);
+export const GenreStationCountsRun = mongoose.model<IGenreStationCountsRun>(
+  'GenreStationCountsRun',
+  GenreStationCountsRunSchema,
 );
 UserSchema.index({ slug: 1 }, { sparse: true }); // Used in profile lookups
 UserSchema.index({ isPublicProfile: 1 }); // Used in community listings

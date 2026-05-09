@@ -2,10 +2,27 @@ import type { Express, Request, Response } from 'express';
 import {
   Genre,
   GenreWhitelistOverride,
+  GenreStationCountsRun,
+  type IGenreStationCountsRun,
   SAFE_GENRE_SLUG_RE,
   Station,
   normalizeGenreSlug,
 } from '@workspace/db-shared/mongo-schemas';
+
+// Lean projection of GenreStationCountsRun rows used to render the
+// admin Genre Whitelist history table. Keeps the route serializer
+// strictly typed instead of leaning on `any` (task #330).
+type GenreStationCountsRunLean = Pick<
+  IGenreStationCountsRun,
+  | 'trigger'
+  | 'status'
+  | 'startedAt'
+  | 'finishedAt'
+  | 'durationMs'
+  | 'totalGenres'
+  | 'updatedSlugs'
+  | 'errorMessage'
+> & { _id: unknown };
 import {
   GENRE_WHITELIST,
   GENRE_ALIASES,
@@ -27,8 +44,14 @@ import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { performanceCache } from '../performance-cache';
 import {
   getGenreStationCountsStatus,
+  getGenreStationCountsRetentionMaxRows,
   recomputeGenreStationCounts,
 } from '../services/genre-station-counts';
+
+// How many recent GenreStationCountsRun rows to surface on the admin
+// Genre Whitelist page (task #330). Bounded so the GET payload stays
+// small even when retention is bumped.
+const STATION_COUNTS_HISTORY_LIMIT = 20;
 import {
   startPushStatus,
   updatePushStep,
@@ -277,10 +300,20 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // before we hand it back to the dashboard.
         await refreshGenreWhitelistFromDb();
 
-        const [overrides, pushHistory] = await Promise.all([
-          GenreWhitelistOverride.find({}).sort({ kind: 1, slug: 1 }).lean(),
-          getRecentPushHistory(PUSH_HISTORY_LIMIT),
-        ]);
+        const [overrides, pushHistory, stationCountsRuns, stationCountsTotal] =
+          await Promise.all([
+            GenreWhitelistOverride.find({}).sort({ kind: 1, slug: 1 }).lean(),
+            getRecentPushHistory(PUSH_HISTORY_LIMIT),
+            // Task #330: persisted history of recent Genre.stationCount
+            // recomputes (newest first) so admins can confirm the
+            // nightly cron has been firing reliably and spot a night
+            // where 0 slugs were updated unexpectedly.
+            GenreStationCountsRun.find({})
+              .sort({ startedAt: -1 })
+              .limit(STATION_COUNTS_HISTORY_LIMIT)
+              .lean<GenreStationCountsRunLean[]>(),
+            GenreStationCountsRun.estimatedDocumentCount(),
+          ]);
 
         const merged = getMergedWhitelist();
         const aliases = getMergedAliases();
@@ -342,6 +375,22 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           // so admins can tell whether the per-slug counts above are fresh
           // (e.g. after a bulk import or country backfill).
           stationCountsStatus: getGenreStationCountsStatus(),
+          // Task #330: persisted history of recent recomputes (newest
+          // first) so admins can confirm the nightly cron has been
+          // firing reliably without grepping logs.
+          stationCountsRuns: stationCountsRuns.map((r) => ({
+            _id: String(r._id),
+            trigger: r.trigger,
+            status: r.status,
+            startedAt: r.startedAt,
+            finishedAt: r.finishedAt ?? null,
+            durationMs: r.durationMs ?? null,
+            totalGenres: r.totalGenres ?? 0,
+            updatedSlugs: r.updatedSlugs ?? 0,
+            errorMessage: r.errorMessage ?? null,
+          })),
+          stationCountsRunsTotal: stationCountsTotal,
+          stationCountsRetentionMaxRows: getGenreStationCountsRetentionMaxRows(),
           lastPush: getLastPushStatus(),
           // Task #255: persisted history of recent completed pushes
           // (newest first). Survives api-server restarts so admins can

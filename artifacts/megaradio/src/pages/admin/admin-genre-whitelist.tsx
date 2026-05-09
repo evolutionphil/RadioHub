@@ -51,6 +51,18 @@ interface PushStatus {
   indexnowGenreUrls: PushStep;
 }
 
+interface StationCountsRun {
+  _id: string;
+  trigger: string;
+  status: 'running' | 'completed' | 'failed';
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  totalGenres: number;
+  updatedSlugs: number;
+  errorMessage: string | null;
+}
+
 interface WhitelistResponse {
   slugs: string[];
   slugStationCounts?: Record<string, number>;
@@ -62,8 +74,21 @@ interface WhitelistResponse {
   overrides: OverrideEntry[];
   lastRefreshAt: string | null;
   stationCountsStatus?: StationCountsStatus;
+  stationCountsRuns?: StationCountsRun[];
+  stationCountsRunsTotal?: number;
+  stationCountsRetentionMaxRows?: number;
   lastPush: PushStatus | null;
   pushHistory?: PushStatus[];
+}
+
+function formatDurationMs(ms: number | null): string {
+  if (typeof ms !== 'number' || !isFinite(ms) || ms < 0) return '—';
+  if (ms < 1000) return `${ms}ms`;
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  return `${m}m ${rs}s`;
 }
 
 function formatRelativeTime(iso: string): string {
@@ -432,6 +457,135 @@ export default function AdminGenreWhitelist() {
           </p>
         </div>
       </div>
+
+      {/* === STATION COUNT RECOMPUTE HISTORY (task #330) === */}
+      {/* Surfaces the last N persisted GenreStationCountsRun rows so admins
+          can confirm the nightly 02:30 Europe/Berlin cron has been firing
+          reliably and spot a night where 0 slugs were updated unexpectedly.
+          Triggered manual / bulk-op runs show up in the same table. */}
+      {(() => {
+        const runs = data.stationCountsRuns ?? [];
+        const total = data.stationCountsRunsTotal ?? runs.length;
+        const retentionMaxRows = data.stationCountsRetentionMaxRows;
+        return (
+          <Card data-testid="card-station-counts-history">
+            <CardHeader>
+              <CardTitle className="text-base">
+                Station-count recompute history
+              </CardTitle>
+              <CardDescription>
+                Persisted history of recent <code>Genre.stationCount</code>{' '}
+                recomputes (newest first). The nightly cron fires at{' '}
+                <strong>02:30 Europe/Berlin</strong>; bulk imports, backfills,
+                and admin clicks also show up here.
+                {typeof retentionMaxRows === 'number' && (
+                  <>
+                    {' '}Retention: newest{' '}
+                    <code className="text-xs">{retentionMaxRows}</code> rows.
+                  </>
+                )}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {runs.length === 0 ? (
+                <div className="text-sm text-gray-500">
+                  No recompute runs recorded yet. The first row will appear
+                  after the next nightly cron tick or admin-triggered refresh.
+                </div>
+              ) : (
+                <>
+                  <div
+                    className="text-xs text-gray-500 mb-2"
+                    data-testid="text-station-counts-runs-totals"
+                  >
+                    Showing: {runs.length} / {total} runs
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table
+                      className="w-full text-sm"
+                      data-testid="table-station-counts-runs"
+                    >
+                      <thead>
+                        <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500">
+                          <th className="py-2 pr-3">Started</th>
+                          <th className="py-2 pr-3">Trigger</th>
+                          <th className="py-2 pr-3">Status</th>
+                          <th className="py-2 pr-3">Duration</th>
+                          <th className="py-2 pr-3 text-right">Updated</th>
+                          <th className="py-2 pr-3 text-right">Total</th>
+                          <th className="py-2 pr-3">Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {runs.map((run) => {
+                          const failed = run.status === 'failed';
+                          const running = run.status === 'running';
+                          return (
+                            <tr
+                              key={run._id}
+                              className={`border-b border-gray-100 ${
+                                failed ? 'bg-red-50' : 'hover:bg-gray-50'
+                              }`}
+                              data-testid={`row-station-counts-run-${run._id}`}
+                            >
+                              <td className="py-2 pr-3 whitespace-nowrap">
+                                {new Date(run.startedAt).toLocaleString()}
+                              </td>
+                              <td className="py-2 pr-3">
+                                <code className="text-xs">{run.trigger}</code>
+                              </td>
+                              <td className="py-2 pr-3">
+                                <Badge
+                                  variant={
+                                    running
+                                      ? 'default'
+                                      : failed
+                                        ? 'destructive'
+                                        : 'secondary'
+                                  }
+                                  data-testid={`badge-station-counts-status-${run._id}`}
+                                >
+                                  {run.status.toUpperCase()}
+                                </Badge>
+                              </td>
+                              <td className="py-2 pr-3">
+                                {formatDurationMs(run.durationMs)}
+                              </td>
+                              <td
+                                className={`py-2 pr-3 text-right tabular-nums ${
+                                  run.updatedSlugs > 0 ? 'font-semibold' : ''
+                                }`}
+                              >
+                                {run.updatedSlugs.toLocaleString()}
+                              </td>
+                              <td className="py-2 pr-3 text-right tabular-nums text-gray-600">
+                                {run.totalGenres.toLocaleString()}
+                              </td>
+                              <td className="py-2 pr-3 text-xs">
+                                {run.errorMessage ? (
+                                  <span
+                                    className="text-red-600 break-words"
+                                    title={run.errorMessage}
+                                    data-testid={`text-station-counts-error-${run._id}`}
+                                  >
+                                    {run.errorMessage}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* === LAST PUSH STATUS === */}
       {(() => {
