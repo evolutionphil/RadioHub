@@ -66,7 +66,9 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         stationsWithSlug,
         stationsWithLogoAssets,
         stationsFailed,
-        stationsNotProcessed
+        stationsNotProcessed,
+        stationsWithoutLogo,
+        stationsNoFavicon,
       ] = await Promise.all([
         Station.countDocuments(),
         Station.countDocuments({ favicon: { $exists: true, $nin: ['', null, 'null'] } }),
@@ -81,9 +83,27 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
             { 'logoAssets.status': 'pending' },
             { 'logoAssets.status': 'processing' },
           ]
-        })
+        }),
+        // ANY station that does not currently serve from S3 ("logo eksik").
+        // Includes failed processing, not-yet-processed, and stations without
+        // a favicon URL at all. The frontend modal lets admin filter further.
+        Station.countDocuments({
+          $or: [
+            { logoAssets: { $exists: false } },
+            { 'logoAssets.status': { $exists: false } },
+            { 'logoAssets.status': { $ne: 'completed' } },
+          ]
+        }),
+        // Subset: stations that have NO favicon URL — backfill cannot help
+        // these without manually entering a logo URL.
+        Station.countDocuments({
+          $or: [
+            { favicon: { $exists: false } },
+            { favicon: { $in: ['', null, 'null'] } },
+          ]
+        }),
       ]);
-      
+
       res.json({
         totalStations,
         stationsWithFavicon,
@@ -91,11 +111,89 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         stationsWithLogoAssets,
         stationsFailed,
         stationsNeedingProcessing: stationsNotProcessed,
+        stationsWithoutLogo,
+        stationsNoFavicon,
         processingComplete: stationsNotProcessed === 0
       });
     } catch (error: any) {
       console.error('Error getting logo stats:', error);
       res.status(500).json({ error: 'Failed to get logo statistics' });
+    }
+  });
+
+  // List stations WITHOUT an S3-optimized logo (for SEO/QA review). Supports
+  // pagination + status filter (any | failed | pending | no_favicon) +
+  // optional ISO country filter. Used by the admin "Logo eksik istasyonlar"
+  // modal so SEO ops can spot-check + decide whether to fix favicon URLs by
+  // hand or blacklist the station.
+  app.get("/api/admin/logos/missing", requireAdmin, async (req, res) => {
+    try {
+      const page = Math.max(1, parseInt((req.query.page as string) || '1', 10));
+      const limit = Math.min(200, Math.max(1, parseInt((req.query.limit as string) || '50', 10)));
+      const skip = (page - 1) * limit;
+      const status = String(req.query.status || 'any').toLowerCase();
+      const countryCode = typeof req.query.countryCode === 'string'
+        ? req.query.countryCode.trim().toUpperCase()
+        : '';
+
+      const filter: any = {};
+      if (status === 'failed') {
+        filter['logoAssets.status'] = 'failed';
+      } else if (status === 'pending') {
+        filter.$or = [
+          { logoAssets: { $exists: false } },
+          { 'logoAssets.status': { $exists: false } },
+          { 'logoAssets.status': 'pending' },
+          { 'logoAssets.status': 'processing' },
+        ];
+        filter.favicon = { $exists: true, $nin: ['', null, 'null'] };
+      } else if (status === 'no_favicon') {
+        filter.$or = [
+          { favicon: { $exists: false } },
+          { favicon: { $in: ['', null, 'null'] } },
+        ];
+      } else {
+        filter.$or = [
+          { logoAssets: { $exists: false } },
+          { 'logoAssets.status': { $exists: false } },
+          { 'logoAssets.status': { $ne: 'completed' } },
+        ];
+      }
+
+      if (countryCode && /^[A-Z]{2}$/.test(countryCode)) {
+        filter.countryCode = countryCode;
+      }
+
+      const [stations, total] = await Promise.all([
+        Station.find(filter)
+          .select('_id name slug favicon country countryCode logoAssets updatedAt')
+          .sort({ updatedAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        Station.countDocuments(filter),
+      ]);
+
+      res.json({
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+        stations: stations.map((s: any) => ({
+          _id: String(s._id),
+          name: s.name,
+          slug: s.slug,
+          favicon: s.favicon || null,
+          country: s.country || null,
+          countryCode: s.countryCode || null,
+          logoStatus: s.logoAssets?.status || (s.favicon ? 'pending' : 'no_favicon'),
+          logoError: s.logoAssets?.error || null,
+          updatedAt: s.updatedAt,
+        })),
+      });
+    } catch (error: any) {
+      console.error('Error listing missing-logo stations:', error);
+      res.status(500).json({ error: 'Failed to list missing-logo stations' });
     }
   });
 

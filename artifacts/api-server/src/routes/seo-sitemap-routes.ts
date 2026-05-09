@@ -85,8 +85,14 @@ function isVerifiedImageHost(url: string): boolean {
 }
 
 /** Pick best image URL for a station — only verified hosts allowed.
- * Returns null if no acceptable image is available. */
-function pickStationImage(station: any): string | null {
+ * When `fallbackBaseUrl` is provided AND no verified S3/themegaradio image
+ * exists, returns the static fallback `${fallbackBaseUrl}/images/no-image.webp`.
+ * This guarantees every station <url> entry can carry an <image:image> child
+ * so Google Image Search has *something* to attach (the page itself is still
+ * indexed regardless — `image:image` is purely a discovery hint). Without
+ * a fallback, stations that haven't run through the S3 backfill yet would
+ * have no image entry at all. */
+function pickStationImage(station: any, fallbackBaseUrl?: string): string | null {
   const candidates = [
     station?.logoAssets?.webp256,
     station?.logoAssets?.webp96,
@@ -96,6 +102,9 @@ function pickStationImage(station: any): string | null {
     if (typeof candidate === 'string' && isVerifiedImageHost(candidate.trim())) {
       return candidate.trim();
     }
+  }
+  if (fallbackBaseUrl) {
+    return `${fallbackBaseUrl}/images/no-image.webp`;
   }
   return null;
 }
@@ -933,8 +942,10 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`);
 
-        // A4: image:image ONLY for verified hosts (S3 / themegaradio.com).
-        const stationImg = pickStationImage(station);
+        // A4: image:image — verified hosts (S3 / themegaradio.com) preferred,
+        // otherwise fall back to /images/no-image.webp on our own domain so
+        // every station still gets a discoverable image entry.
+        const stationImg = pickStationImage(station, baseUrl);
         if (stationImg) {
           const imgTitle = station.name ? `${station.name} logo` : 'Radio station logo';
           const imgCaption = station.name && station.country

@@ -6,7 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Image, RefreshCw, Play, Square, CheckCircle, XCircle, Clock, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Image, RefreshCw, Play, Square, CheckCircle, XCircle, Clock, Loader2, ChevronLeft, ChevronRight, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 
@@ -17,8 +17,24 @@ interface LogoStats {
   stationsWithLogoAssets: number;
   stationsFailed: number;
   stationsNeedingProcessing: number;
+  stationsWithoutLogo: number;
+  stationsNoFavicon: number;
   processingComplete: boolean;
 }
+
+interface MissingLogoStation {
+  _id: string;
+  name: string;
+  slug: string;
+  favicon: string | null;
+  country: string | null;
+  countryCode: string | null;
+  logoStatus: 'completed' | 'pending' | 'processing' | 'failed' | 'no_favicon';
+  logoError: string | null;
+  updatedAt: string;
+}
+
+type MissingFilter = 'any' | 'failed' | 'pending' | 'no_favicon';
 
 interface StationResult {
   stationId: string;
@@ -60,6 +76,10 @@ export default function LogoManagement() {
   const [showFailedModal, setShowFailedModal] = useState(false);
   const [showOptimizedModal, setShowOptimizedModal] = useState(false);
   const [optimizedPage, setOptimizedPage] = useState(1);
+  const [showMissingModal, setShowMissingModal] = useState(false);
+  const [missingPage, setMissingPage] = useState(1);
+  const [missingFilter, setMissingFilter] = useState<MissingFilter>('any');
+  const [missingCountry, setMissingCountry] = useState('');
 
   const { data: activeJobData } = useQuery<{ hasActiveJob: boolean; job?: LogoJob }>({
     queryKey: ['/api/admin/logos/active-job'],
@@ -88,6 +108,32 @@ export default function LogoManagement() {
     enabled: showOptimizedModal,
     staleTime: 30000,
     refetchOnWindowFocus: false
+  });
+
+  const missingQueryString = (() => {
+    const params = new URLSearchParams({
+      page: String(missingPage),
+      limit: '50',
+      status: missingFilter,
+    });
+    if (missingCountry.trim()) params.set('countryCode', missingCountry.trim().toUpperCase());
+    return params.toString();
+  })();
+
+  const { data: missingStations, isLoading: missingLoading, isFetching: missingFetching } = useQuery<{
+    stations: MissingLogoStation[];
+    total: number;
+    totalPages: number;
+    page: number;
+  }>({
+    queryKey: ['/api/admin/logos/missing', missingQueryString],
+    queryFn: async () => {
+      const r = await apiRequest('GET', `/api/admin/logos/missing?${missingQueryString}`);
+      return r.json();
+    },
+    enabled: showMissingModal,
+    staleTime: 30000,
+    refetchOnWindowFocus: false,
   });
 
   const [showReprocessConfirm, setShowReprocessConfirm] = useState(false);
@@ -215,7 +261,7 @@ export default function LogoManagement() {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Stations</CardDescription>
@@ -282,6 +328,27 @@ export default function LogoManagement() {
           <CardContent>
             <p className="text-2xl font-bold text-red-600">
               {stats?.stationsFailed?.toLocaleString() ?? '-'}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="cursor-pointer hover:shadow-lg hover:border-amber-500 transition-all"
+          onClick={() => { setShowMissingModal(true); setMissingPage(1); }}
+          data-testid="card-missing-logos"
+        >
+          <CardHeader className="pb-2">
+            <CardDescription className="flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" />
+              Logo Eksik
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold text-amber-600" data-testid="text-missing-logo">
+              {stats?.stationsWithoutLogo?.toLocaleString() ?? '-'}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {stats?.stationsNoFavicon?.toLocaleString() ?? 0} favicon yok
             </p>
           </CardContent>
         </Card>
@@ -528,6 +595,173 @@ export default function LogoManagement() {
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={showMissingModal} onOpenChange={(open) => {
+        setShowMissingModal(open);
+        if (!open) { setMissingPage(1); setMissingFilter('any'); setMissingCountry(''); }
+      }}>
+        <DialogContent className="max-w-4xl max-h-screen bg-white text-black">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              Logosu Eksik İstasyonlar
+            </DialogTitle>
+            <DialogDescription>
+              Bu istasyonlar Google'a indekslenmeye devam ediyor (her URL sitemap'te + fallback logo
+              ile <code>image:image</code> entry'si var). Ancak optimize logo bekliyorlar — backfill
+              ile düzeltilebilir veya manuel favicon URL girilmesi gerekir.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap gap-2 items-end pb-2 border-b">
+            <div className="flex flex-col">
+              <label className="text-xs text-muted-foreground mb-1">Durum filtresi</label>
+              <div className="flex gap-1">
+                {(['any', 'pending', 'failed', 'no_favicon'] as MissingFilter[]).map(f => (
+                  <Button
+                    key={f}
+                    type="button"
+                    size="sm"
+                    variant={missingFilter === f ? 'default' : 'outline'}
+                    onClick={() => { setMissingFilter(f); setMissingPage(1); }}
+                    data-testid={`button-filter-${f}`}
+                  >
+                    {f === 'any' && 'Tümü'}
+                    {f === 'pending' && 'Beklemede'}
+                    {f === 'failed' && 'Başarısız'}
+                    {f === 'no_favicon' && 'Favicon Yok'}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-col">
+              <label className="text-xs text-muted-foreground mb-1">Ülke kodu (ISO-2)</label>
+              <input
+                type="text"
+                maxLength={2}
+                value={missingCountry}
+                onChange={(e) => { setMissingCountry(e.target.value.toUpperCase()); setMissingPage(1); }}
+                placeholder="TR, US, DE..."
+                className="border rounded px-2 py-1 text-sm uppercase w-32"
+                data-testid="input-country-filter"
+              />
+            </div>
+            <div className="ml-auto text-sm text-muted-foreground">
+              {missingStations?.total?.toLocaleString() ?? '-'} istasyon
+            </div>
+          </div>
+
+          <ScrollArea className="h-96 w-full rounded-md border p-4">
+            {(missingLoading || missingFetching) ? (
+              <div className="flex items-center justify-center h-48">
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : missingStations?.stations && missingStations.stations.length > 0 ? (
+              <div className="space-y-2">
+                {missingStations.stations.map((station) => (
+                  <div key={station._id} className="flex items-start gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="w-12 h-12 flex-shrink-0 bg-muted rounded flex items-center justify-center">
+                      {station.favicon ? (
+                        <img
+                          src={station.favicon}
+                          alt={station.name}
+                          width={48}
+                          height={48}
+                          loading="lazy"
+                          decoding="async"
+                          className="w-12 h-12 object-cover rounded"
+                          onError={(e) => {
+                            e.currentTarget.src = '/images/no-image.webp';
+                          }}
+                        />
+                      ) : (
+                        <Image className="w-6 h-6 text-muted-foreground" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-semibold text-sm break-words">{station.name}</p>
+                        <a
+                          href={`/station/${station.slug}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
+                          data-testid={`link-station-${station._id}`}
+                        >
+                          /station/{station.slug}
+                          <ExternalLink className="w-3 h-3" />
+                        </a>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {station.country || '—'} ({station.countryCode || '??'})
+                      </p>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge
+                          variant="outline"
+                          className={
+                            station.logoStatus === 'failed' ? 'text-red-600 border-red-600' :
+                            station.logoStatus === 'no_favicon' ? 'text-gray-600 border-gray-600' :
+                            'text-amber-600 border-amber-600'
+                          }
+                        >
+                          {station.logoStatus === 'failed' && <XCircle className="w-3 h-3 mr-1" />}
+                          {station.logoStatus === 'pending' && <Clock className="w-3 h-3 mr-1" />}
+                          {station.logoStatus === 'processing' && <Loader2 className="w-3 h-3 mr-1 animate-spin" />}
+                          {station.logoStatus === 'no_favicon' && <AlertTriangle className="w-3 h-3 mr-1" />}
+                          {station.logoStatus}
+                        </Badge>
+                        {station.favicon && (
+                          <a
+                            href={station.favicon}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1 break-all"
+                          >
+                            favicon <ExternalLink className="w-3 h-3" />
+                          </a>
+                        )}
+                      </div>
+                      {station.logoError && (
+                        <p className="text-xs text-red-600 mt-1 break-words">{station.logoError}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">
+                Bu filtreyle eşleşen istasyon yok.
+              </p>
+            )}
+          </ScrollArea>
+
+          <div className="flex items-center justify-between pt-4 border-t">
+            <div className="text-sm text-muted-foreground">
+              Sayfa {missingPage} / {missingStations?.totalPages ?? 1}
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMissingPage(p => Math.max(1, p - 1))}
+                disabled={missingPage === 1 || missingLoading}
+                data-testid="button-missing-prev"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setMissingPage(p => p + 1)}
+                disabled={!missingStations || missingPage >= (missingStations.totalPages ?? 1) || missingLoading}
+                data-testid="button-missing-next"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showReprocessConfirm} onOpenChange={setShowReprocessConfirm}>
         <DialogContent className="max-w-md bg-white text-black">
           <DialogHeader>
