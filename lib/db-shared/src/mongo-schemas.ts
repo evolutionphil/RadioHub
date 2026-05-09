@@ -3478,7 +3478,20 @@ export const AdminSetting = mongoose.model<IAdminSetting>(
 // digging through database backups. We persist both the previous and
 // next value so the UI can offer a one-click revert without recomputing
 // state from a sequence of diffs.
+//
+// Retention policy (Task #329): the collection is otherwise unbounded
+// and a runaway script that hammers PUT /api/admin/settings/* could
+// balloon it without limit. A nightly prune job
+// (`scheduled-admin-setting-history-prune.ts` in `api-server`) keeps the
+// most recent `ADMIN_SETTING_HISTORY_RETENTION_PER_KEY` entries per key
+// and trims everything older. This is a per-key cap (rather than a flat
+// TTL) so a quiet setting that genuinely only changes once a year keeps
+// its full audit trail, while a hot/abused key cannot grow without
+// bound. The cap is comfortably above the admin UI's max page size
+// (currently 100) so the "Recent changes" panel is never affected.
 // =====================================================================
+export const ADMIN_SETTING_HISTORY_RETENTION_PER_KEY = 500;
+
 export type AdminSettingHistoryAction = 'update' | 'clear';
 
 export interface IAdminSettingHistory extends Document {

@@ -788,6 +788,21 @@ app.use(session(sessionConfig));
         }
 
         try {
+          const { scheduledAdminSettingHistoryPrune } = await import(
+            './services/scheduled-admin-setting-history-prune'
+          );
+          scheduledAdminSettingHistoryPrune.initialize();
+          logger.log(
+            '✅ BACKGROUND: Scheduled admin-setting-history prune initialized (nightly 04:15)',
+          );
+        } catch (error: any) {
+          logger.warn(
+            '⚠️ Failed to initialize scheduled admin-setting-history prune:',
+            error.message,
+          );
+        }
+
+        try {
           const { scheduledBackfill } = await import('./services/scheduled-backfill');
           scheduledBackfill.initialize();
           logger.log('✅ BACKGROUND: Scheduled logo+tag backfill initialized (Sun 04:00, top-5 countries)');
