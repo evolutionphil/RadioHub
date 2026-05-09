@@ -106,6 +106,7 @@ const LazyProfileLayout = ({ children }: { children: React.ReactNode }) => (
 );
 
 import { SeoPageWrapper } from "@/components/SeoPageWrapper";
+import { BreadcrumbOverrideProvider, RouteBreadcrumbs } from "@/components/RouteBreadcrumbs";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useTranslation } from "@/hooks/useTranslation";
 import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, COUNTRY_TO_CODE, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
@@ -462,6 +463,7 @@ function PlayerWrapper() {
 
   return (
     <SeoPageWrapper pageType={getPageType()}>
+      <BreadcrumbOverrideProvider>
       <div className="min-h-screen bg-[#0E0E0E] radio-theme flex flex-col w-full overflow-x-hidden">
         {/* Header with centered content - header itself is full-width for background */}
         <Suspense fallback={<RadioHeaderFallback />}>
@@ -474,6 +476,11 @@ function PlayerWrapper() {
         </Suspense>
         {/* Main content area - pages handle their own max-width for full-bleed hero support */}
         <main className="pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px] flex-1 w-full">
+          {/* Task #371: visible breadcrumb trail on every non-home page —
+              client-side counterpart to the SSR breadcrumb in
+              api-server/seo-renderer.ts so the BreadcrumbList JSON-LD always
+              has matching visible links post-hydration. */}
+          <RouteBreadcrumbs />
           <PublicRouter selectedCountry={selectedCountry} onCountryChange={handleCountryChange} />
         </main>
         {/* Footer - hidden on profile pages per reference (user.vue has no footer) */}
@@ -496,6 +503,7 @@ function PlayerWrapper() {
         {/* Notification System */}
         <NotificationContainer position="top-right" />
       </div>
+      </BreadcrumbOverrideProvider>
     </SeoPageWrapper>
   );
 }
@@ -546,6 +554,7 @@ function ApplicationsWrapper() {
 
   return (
     <SeoPageWrapper>
+      <BreadcrumbOverrideProvider>
       <div className="min-h-screen bg-[#0E0E0E] radio-theme flex flex-col w-full overflow-x-hidden">
         {/* Header with centered content */}
         <Suspense fallback={<RadioHeaderFallback />}>
@@ -558,6 +567,8 @@ function ApplicationsWrapper() {
         </Suspense>
         {/* Main content area */}
         <main className="pt-[70px] md:pt-[80px] lg:pt-[90px] xl:pt-[105px] flex-1 w-full">
+          {/* Task #371: same SSR-matching breadcrumb as the main public layout. */}
+          <RouteBreadcrumbs />
           <Suspense fallback={<div className="min-h-screen bg-[#0E0E0E]" />}>
             <LazyRoutes.Applications />
           </Suspense>
@@ -580,6 +591,7 @@ function ApplicationsWrapper() {
         {/* Notification System */}
         <NotificationContainer position="top-right" />
       </div>
+      </BreadcrumbOverrideProvider>
     </SeoPageWrapper>
   );
 }

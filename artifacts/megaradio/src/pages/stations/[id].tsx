@@ -9,6 +9,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import FavoriteButton from "@/components/ui/favorite-button";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { SeoHead } from "@/components/SeoHead";
+import { useBreadcrumbLastItemName } from "@/components/RouteBreadcrumbs";
 import { getStationUrl } from "@/utils/slugs";
 import StationControlButtonGroup from "@/components/ui/station-control-button-group";
 import youtubeIcon from "@assets/youtube-logo.png";
@@ -213,6 +214,11 @@ export default function StationDetails() {
     queryKey: [`/api/station/${identifier}`],
     enabled: !!identifier,
   });
+
+  // Task #371: publish the station name into the layout breadcrumb so the
+  // last crumb shows the real name (matches SSR's stationData.name) instead
+  // of the title-cased URL slug.
+  useBreadcrumbLastItemName(station?.name);
   
 
   // Fetch linked stations (Media Group Radios) - use station._id if available
@@ -624,26 +630,10 @@ export default function StationDetails() {
       
       {station && (
         <>
-          {/* Breadcrumb Navigation - visible to users and Google (matches BreadcrumbList JSON-LD schema) */}
-          <nav aria-label="breadcrumb" className="bg-[#101010] px-4 pt-3 pb-0">
-            <ol className="flex items-center gap-1 text-xs text-gray-500 flex-wrap">
-              <li>
-                <Link to={getLocalizedUrl('/')} className="hover:text-gray-300 transition-colors">
-                  {t('nav_home', 'Home')}
-                </Link>
-              </li>
-              <li aria-hidden="true" className="text-gray-600">›</li>
-              <li>
-                <Link to={getLocalizedUrl('/stations')} className="hover:text-gray-300 transition-colors">
-                  {t('nav_stations', 'Stations')}
-                </Link>
-              </li>
-              <li aria-hidden="true" className="text-gray-600">›</li>
-              <li className="text-gray-400 truncate max-w-[160px] sm:max-w-xs" aria-current="page">
-                {station.name}
-              </li>
-            </ol>
-          </nav>
+          {/* Task #371: legacy inline breadcrumb removed. The shared
+              <RouteBreadcrumbs /> mounted in the layout (App.tsx) now
+              renders the SSR-equivalent trail with the real station name
+              fed in via useBreadcrumbLastItemName(station?.name) above. */}
 
           {/* Radio Playing Section - Mobile First Responsive */}
           <div className="relative bg-[#101010] md:bg-[#1D1D1D] py-4 overflow-hidden">
