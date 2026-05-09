@@ -3534,6 +3534,16 @@ function CoverageDropAlertHistorySection(props: {
     onDownloadCsv,
     downloadingCsv,
   } = props;
+  const [countryFilter, setCountryFilter] = useState('');
+  const normalizedFilter = countryFilter.trim().toUpperCase();
+  const filteredHistory = useMemo(() => {
+    if (!normalizedFilter) return history;
+    return history.filter((alert) =>
+      alert.drops.some((d) =>
+        d.countryCode.toUpperCase().includes(normalizedFilter),
+      ),
+    );
+  }, [history, normalizedFilter]);
 
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
@@ -3606,23 +3616,54 @@ function CoverageDropAlertHistorySection(props: {
               </div>
             ) : (
               <>
-                <ul className="space-y-2">
-                  {history.map((alert, idx) => (
-                    <CoverageDropAlertHistoryRow
-                      key={`${alert.snapshotDate ?? alert.createdAt}:${idx}`}
-                      alert={alert}
-                      isLatest={
-                        !!latestSnapshotDate &&
-                        alert.snapshotDate === latestSnapshotDate &&
-                        idx === 0
-                      }
-                    />
-                  ))}
-                </ul>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="text"
+                    value={countryFilter}
+                    onChange={(e) => setCountryFilter(e.target.value)}
+                    placeholder="Filter by country code (e.g. US)"
+                    className="max-w-[240px] h-8 text-sm"
+                    data-testid="input-coverage-drop-history-country-filter"
+                  />
+                  {normalizedFilter ? (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setCountryFilter('')}
+                      data-testid="button-coverage-drop-history-clear-filter"
+                    >
+                      Clear
+                    </Button>
+                  ) : null}
+                </div>
+                {filteredHistory.length === 0 ? (
+                  <div
+                    className="py-6 text-center text-sm text-muted-foreground"
+                    data-testid="empty-coverage-drop-history-filtered"
+                  >
+                    No alerts match country code “{normalizedFilter}”.
+                  </div>
+                ) : (
+                  <ul className="space-y-2">
+                    {filteredHistory.map((alert, idx) => (
+                      <CoverageDropAlertHistoryRow
+                        key={`${alert.snapshotDate ?? alert.createdAt}:${idx}`}
+                        alert={alert}
+                        isLatest={
+                          !normalizedFilter &&
+                          !!latestSnapshotDate &&
+                          alert.snapshotDate === latestSnapshotDate &&
+                          idx === 0
+                        }
+                      />
+                    ))}
+                  </ul>
+                )}
                 <div className="flex items-center justify-between pt-2 text-xs text-muted-foreground">
                   <span>
-                    Showing {history.length} alert
-                    {history.length === 1 ? '' : 's'}
+                    {normalizedFilter
+                      ? `Showing ${filteredHistory.length} of ${history.length} loaded alert${history.length === 1 ? '' : 's'} matching “${normalizedFilter}”`
+                      : `Showing ${history.length} alert${history.length === 1 ? '' : 's'}`}
                     {hasMore ? ' (more available)' : ''}.
                   </span>
                   {hasMore ? (
