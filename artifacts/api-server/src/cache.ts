@@ -199,11 +199,35 @@ export class CacheManager {
         }
       });
 
-      // Clear Redis cache
+      // Clear Redis cache.
+      // SEO AUDIT FIX (2026-05-09): switched from `redisClient.keys()` to
+      // SCAN. `KEYS *pattern*` is O(N) over the entire keyspace and blocks
+      // Redis's single-threaded event loop until it finishes — under
+      // production load (tens of thousands of cached station/genre/sitemap
+      // entries) this can stall every other tenant on the Redis instance
+      // for hundreds of ms or more, and is explicitly flagged as a
+      // production hazard by Redis docs. SCAN is cursor-based and
+      // non-blocking; it yields control back between batches.
+      // Batched DEL (chunks of 500) avoids sending one giant DEL command
+      // for very large pattern matches.
       if (redisClient && redisClient.isOpen) {
-        const redisKeys = await redisClient.keys(`*${pattern}*`);
-        if (redisKeys.length > 0) {
-          await redisClient.del(redisKeys);
+        const matchPattern = `*${pattern}*`;
+        const toDelete: string[] = [];
+        // node-redis v4 exposes scanIterator; iterate in batches of 500.
+        for await (const key of redisClient.scanIterator({ MATCH: matchPattern, COUNT: 500 } as any)) {
+          // The iterator yields either a single key or a batch (string[])
+          // depending on driver version — normalize both.
+          if (Array.isArray(key)) {
+            toDelete.push(...key);
+          } else {
+            toDelete.push(key as string);
+          }
+          if (toDelete.length >= 500) {
+            await redisClient.del(toDelete.splice(0, toDelete.length));
+          }
+        }
+        if (toDelete.length > 0) {
+          await redisClient.del(toDelete);
         }
       }
     } catch (error) {

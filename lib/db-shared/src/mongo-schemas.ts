@@ -1195,9 +1195,25 @@ const StationSchema = new Schema<IStation>({
   aiDescriptionSkipped: { type: Boolean, default: false, index: true }, // Station was checked for AI description but had no info from OpenAI - don't recheck to save tokens
   tagsCheckedAt: { type: Date }, // Last time we re-queried Radio-Browser for this station's tags (whether upstream returned tags or was empty) - used to skip re-querying empty-upstream stations for a cooldown window
   hasLogo: { type: Boolean, default: false }, // Pre-computed flag: true if station has a valid favicon/logo - used for fast sorting in precomputed cache
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now }
-});
+  // SEO FRESHNESS BUG FIX (2026-05-09): switched from manual `createdAt` /
+  // `updatedAt` defaults (which only set on insert) to Mongoose's auto
+  // `timestamps: true`. Root cause discovered during sitemap audit: 9938 of
+  // 9988 stations carried <lastmod>2025-11-24 in /sitemap-stations-en-*.xml
+  // even though the user reported routinely updating stations in 2026.
+  // Reason: vote, rating, AI description, logo processing, slug auto-fill
+  // and many other write call-sites use `Station.updateOne(...)` /
+  // `findByIdAndUpdate(...)` / `bulkWrite(...)` and NEVER manually set
+  // `updatedAt: new Date()`. With auto timestamps OFF, those operations
+  // bypass the field entirely → updatedAt is frozen at the original insert
+  // date forever. Mongoose's `timestamps: true` automatically injects
+  // `$set: { updatedAt: <now> }` into every update, findOneAndUpdate,
+  // updateMany, replaceOne, AND every bulkWrite updateOne/updateMany op
+  // (since Mongoose v6+) — which is exactly what the sitemap freshness
+  // signal requires.
+  //
+  // Fields above intentionally omit explicit createdAt/updatedAt — Mongoose
+  // adds them via the schema option below.
+}, { timestamps: true });
 
 const CountrySchema = new Schema<ICountry>({
   code: { type: String, required: true, unique: true },

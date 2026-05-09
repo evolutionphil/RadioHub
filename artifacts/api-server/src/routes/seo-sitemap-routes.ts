@@ -515,6 +515,60 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       } catch (err: any) {
         logger.warn(`admin/sitemap/rebuild: cache clear failed (non-fatal): ${err?.message ?? err}`);
       }
+      // SEO AUDIT FIX (2026-05-09): also purge Cloudflare's edge cache for
+      // every published sitemap URL. Even after the in-process cache is
+      // cleared (above), Cloudflare keeps serving the stale XML body for up
+      // to its s-maxage window (1h for child sitemaps, 10min for the index)
+      // — which means an admin clicks "rebuild" but sees no change in the
+      // public XML for an hour. The Cloudflare API caps each purge call at
+      // 30 URLs, so we batch (index + main per lang + genres per lang +
+      // stations per lang/chunk all together is roughly 35-40 URLs for the
+      // current 10-lang setup; 2 batches comfortably covers it).
+      // Fire-and-forget: failures (missing CF credentials, transient API
+      // errors, etc.) must NOT fail the rebuild response.
+      void (async () => {
+        try {
+          const { scheduledCacheClearService } = await import('../services/scheduled-cache-clear');
+          // Pull the actual published sitemap URL list straight from the
+          // freshly-rebuilt manifest set so we never hard-code which langs
+          // / chunks exist (the qualifiedLanguages set changes over time).
+          const baseUrl = process.env.PUBLIC_BASE_URL || 'https://themegaradio.com';
+          const urls: string[] = [`${baseUrl}/sitemap-index.xml`, `${baseUrl}/sitemap.xml`, `${baseUrl}/robots.txt`];
+          const langs: string[] = Array.isArray((result as any)?.qualifiedLanguages) ? (result as any).qualifiedLanguages : [];
+          for (const lang of langs) {
+            urls.push(`${baseUrl}/sitemap-main-${lang}.xml`);
+            urls.push(`${baseUrl}/sitemap-genres-${lang}.xml`);
+          }
+          // Stations chunks vary per language. Probe the manifest builder's
+          // active manifests for chunk counts (best-effort — if the lookup
+          // fails we still purge index + main + genres which is the
+          // highest-value set for crawler freshness).
+          try {
+            const { getActiveManifest } = await import('../seo/sitemap-manifest-builder');
+            for (const lang of langs) {
+              const m: any = await getActiveManifest('stations', lang);
+              const chunkCount: number = m?.chunkCount ?? 0;
+              for (let c = 1; c <= chunkCount; c++) {
+                urls.push(`${baseUrl}/sitemap-stations-${lang}-${c}.xml`);
+              }
+            }
+          } catch (probeErr: any) {
+            logger.warn(`admin/sitemap/rebuild: stations-chunk probe failed (purging index + main + genres only): ${probeErr?.message ?? probeErr}`);
+          }
+          // Cloudflare API hard-caps at 30 URLs per purge call — batch.
+          const BATCH = 30;
+          for (let i = 0; i < urls.length; i += BATCH) {
+            const slice = urls.slice(i, i + BATCH);
+            const resp = await scheduledCacheClearService.purgeCloudflareUrls(slice);
+            if (!resp.success) {
+              logger.warn(`admin/sitemap/rebuild: CF purge batch ${i / BATCH + 1} failed: ${resp.message}`);
+            }
+          }
+          logger.log(`☁️ admin/sitemap/rebuild: requested Cloudflare purge for ${urls.length} sitemap URLs`);
+        } catch (err: any) {
+          logger.error(`admin/sitemap/rebuild: Cloudflare purge orchestration failed (non-fatal): ${err?.message ?? err}`);
+        }
+      })();
       // Task #201: ping IndexNow with the sitemap index so Google/Bing pick
       // up the freshly-rebuilt sitemap immediately (matches the
       // genre-whitelist admin routes' triggerSearchEnginePush pattern).
