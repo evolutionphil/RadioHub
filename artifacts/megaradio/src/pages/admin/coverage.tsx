@@ -1,4 +1,11 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
@@ -1818,13 +1825,17 @@ function CoverageJobProgressRow({
     processed: number,
     total: number,
     extra?: string,
+    badge?: ReactNode,
   ) => {
     const pct =
       total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
     return (
       <div className="flex-1 min-w-[220px]">
         <div className="flex items-center justify-between text-xs mb-1">
-          <span className="font-medium">{label}</span>
+          <span className="font-medium flex items-center gap-1.5">
+            {label}
+            {badge}
+          </span>
           <span className="tabular-nums text-muted-foreground">
             {total > 0
               ? `${processed.toLocaleString()} / ${total.toLocaleString()} (${pct}%)`
@@ -1836,6 +1847,29 @@ function CoverageJobProgressRow({
       </div>
     );
   };
+
+  // Task #337: when the active tag re-fetch was seeded from a recently
+  // cancelled run, surface a "resumed from X/Y (✅Z already hydrated)"
+  // badge so admins can tell at a glance the bar isn't starting from
+  // scratch. Hide it once the resumed run completes (the carryover is
+  // no longer informative once the bar shows the final totals) — a
+  // brand-new run won't have `resumedFrom` set, so the badge naturally
+  // disappears for fresh backfills too.
+  const tagsResumedFrom = job.tags?.resumedFrom;
+  const showResumedBadge =
+    !!tagsResumedFrom && job.status !== 'completed';
+  const resumedBadge = showResumedBadge ? (
+    <Badge
+      variant="outline"
+      className="border-amber-300 bg-amber-50 text-amber-800 text-[10px] px-1.5 py-0 font-normal"
+      data-testid={`badge-tags-resumed-${job.countryCode}`}
+      title={`Picked up from a cancelled run: ${tagsResumedFrom!.processed.toLocaleString()}/${tagsResumedFrom!.total.toLocaleString()} processed · ✅${tagsResumedFrom!.hydrated.toLocaleString()} hydrated · ∅${tagsResumedFrom!.emptyUpstream.toLocaleString()} empty · ❌${tagsResumedFrom!.failed.toLocaleString()} failed`}
+    >
+      resumed from {tagsResumedFrom!.processed.toLocaleString()}/
+      {tagsResumedFrom!.total.toLocaleString()} (✅
+      {tagsResumedFrom!.hydrated.toLocaleString()} already hydrated)
+    </Badge>
+  ) : null;
 
   return (
     <div
@@ -1942,6 +1976,7 @@ function CoverageJobProgressRow({
               job.tags.processed,
               job.tags.total,
               `✅${job.tags.hydrated} ∅${job.tags.emptyUpstream} ❌${job.tags.failed}`,
+              resumedBadge,
             )
           : null}
       </div>
