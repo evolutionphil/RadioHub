@@ -73,7 +73,7 @@ export default function LoginPage() {
 
       {/* Main Content */}
       <div className="container mx-auto pb-10 text-white">
-        <div className="mx-auto w-[345px]">
+        <div className="mx-auto w-full max-w-[345px]">
           {/* Social Login Buttons */}
           <SocialLoginButtonGroup />
 
@@ -84,7 +84,7 @@ export default function LoginPage() {
           </div>
 
           {/* Login Form */}
-          <div className="mx-auto flex w-[310px] flex-col justify-center">
+          <div className="mx-auto flex w-full max-w-[310px] flex-col justify-center">
             <form onSubmit={submitForm} className="space-y-5">
               {error && (
                 <p className="text-center font-bold text-[#FF4199]">

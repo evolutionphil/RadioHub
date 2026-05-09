@@ -27,6 +27,13 @@ export default {
       serif: ['Ubuntu', 'serif'],
     },
     extend: {
+      fontSize: {
+        // Mobile readability: bump default `text-xs` from 12px → 14px so
+        // existing `text-xs` usages clear Google Mobile-Friendly Test's
+        // legibility threshold without redesign. `text-[10px]`/`text-[11px]`
+        // arbitrary values are unaffected (they remain explicit opt-ins).
+        xs: ['0.875rem', { lineHeight: '1.25rem' }],
+      },
       fontFamily: {
         custom: ['Ubuntu'],
       },

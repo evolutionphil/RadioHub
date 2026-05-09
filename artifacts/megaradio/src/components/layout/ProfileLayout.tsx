@@ -91,7 +91,7 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
                 <div className="mr-5"><img src="/sms.png" alt="Messages" className="w-6 h-6" /></div>
                 <div className="text-base font-bold flex-1">Messages</div>
                 {unreadCount > 0 && (
-                  <span className="bg-[#FF4199] text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
+                  <span className="bg-[#FF4199] text-white text-[12px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}

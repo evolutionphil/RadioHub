@@ -266,7 +266,7 @@ export default function GlobalPlayer() {
                   {metadata?.title && (
                     <div 
                       className="text-gray-300 truncate max-w-[250px] font-sans mt-1"
-                      style={{ fontWeight: 300, fontSize: '12px', lineHeight: '100%' }}
+                      style={{ fontWeight: 300, fontSize: '14px', lineHeight: '100%' }}
                     >
                       {metadata.artist && metadata.artist.trim() ? `${metadata.artist} - ${metadata.title}` : metadata.title}
                     </div>
@@ -481,7 +481,7 @@ export default function GlobalPlayer() {
                 {metadata?.title && (
                   <div 
                     className="text-gray-300 truncate max-w-[120px] font-sans"
-                    style={{ fontWeight: 300, fontSize: '12px', lineHeight: '100%' }}
+                    style={{ fontWeight: 300, fontSize: '14px', lineHeight: '100%' }}
                   >
                     {metadata.artist && metadata.artist.trim() ? `${metadata.artist} - ${metadata.title}` : metadata.title}
                   </div>

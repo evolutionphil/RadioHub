@@ -590,6 +590,24 @@ app.use(session(sessionConfig));
     logger.log(`🔗 CORS allowed origins: ${CORS_ALLOWED_ORIGINS.join(', ')}`);
     logger.log(`🔗 Frontend URL: ${FRONTEND_URL}`);
 
+    // Sitemap subsystem (manifest-driven). Mirrors the same init block in
+    // index-web.ts so the api-server keeps sitemap manifests fresh in
+    // production deployments where only this entrypoint runs. Without this
+    // the SitemapManifest docs in Mongo are never rebuilt and `/sitemap.xml`
+    // serves stale `<lastmod>` values for months.
+    void (async () => {
+      try {
+        const { initializeQualifiedLanguages } = await import('./seo/qualified-languages');
+        await initializeQualifiedLanguages();
+        const { buildAllSitemapManifests, startManifestRefreshLoop } = await import('./seo/sitemap-manifest-builder');
+        await buildAllSitemapManifests();
+        startManifestRefreshLoop();
+        logger.log('✅ BACKEND-API: Sitemap manifest subsystem initialized');
+      } catch (err) {
+        console.error('❌ BACKEND-API: Sitemap manifest init failed:', err);
+      }
+    })();
+
     let watchdogFailures = 0;
     let mongoDownSince: number | null = null;
     const WATCHDOG_MAX_FAILURES = 3;

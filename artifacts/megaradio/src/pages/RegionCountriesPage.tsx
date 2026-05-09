@@ -68,7 +68,7 @@ export default function RegionCountriesPage() {
           </div>
           
           {/* Search skeleton */}
-          <div className="w-96 h-12 bg-slate-700 rounded-lg mb-8 animate-pulse"></div>
+          <div className="w-full max-w-96 h-12 bg-slate-700 rounded-lg mb-8 animate-pulse"></div>
           
           {/* Grid skeleton */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">

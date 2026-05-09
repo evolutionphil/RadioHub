@@ -1868,7 +1868,7 @@ export default function RadioHeader({
                           ? `${fromUser.fullName || fromUser.username || 'Someone'} size mesaj yazdı`
                           : notification.title || t('notifications_new_station', 'New notification')}
                     </div>
-                    <div className="font-ubuntu font-normal mt-1" style={{ fontSize: '12px', lineHeight: '100%', color: '#777777' }}>
+                    <div className="font-ubuntu font-normal mt-1" style={{ fontSize: '14px', lineHeight: '100%', color: '#777777' }}>
                       {notification.createdAt ? (
                         (() => {
                           const date = new Date(notification.createdAt);

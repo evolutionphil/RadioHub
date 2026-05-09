@@ -37,8 +37,8 @@ export default function RegionsPage() {
         <div className="container mx-auto px-4 py-8">
           {/* Header skeleton */}
           <div className="text-center mb-12">
-            <div className="w-96 h-12 bg-slate-700 rounded-lg mx-auto mb-4 animate-pulse"></div>
-            <div className="w-[500px] h-6 bg-slate-700 rounded-lg mx-auto animate-pulse"></div>
+            <div className="w-full max-w-96 h-12 bg-slate-700 rounded-lg mx-auto mb-4 animate-pulse"></div>
+            <div className="w-full max-w-[500px] h-6 bg-slate-700 rounded-lg mx-auto animate-pulse"></div>
           </div>
           
           {/* Grid skeleton */}

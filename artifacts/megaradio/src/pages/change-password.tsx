@@ -65,12 +65,12 @@ export default function ChangePassword() {
       </div>
 
       <div className="container mx-auto pb-10 text-white">
-        <div className="mx-auto w-[345px]">
+        <div className="mx-auto w-full max-w-[345px]">
           <div className="py-8 text-center text-xl font-bold sm:text-2xl">
             Update your password
           </div>
 
-          <div className="mx-auto flex w-[310px] flex-col justify-center">
+          <div className="mx-auto flex w-full max-w-[310px] flex-col justify-center">
             <form onSubmit={submitForm} className="space-y-5">
               {message && (
                 <p className={`text-center font-bold ${status ? 'text-green-400' : 'text-red-400'}`}>

@@ -358,10 +358,10 @@ export default function RadiosPage({ selectedCountry = 'all', onCountryChange }:
                       >
                         <span className="text-white">{city.name}</span>
                         {city.stationCount > 1 && (
-                          <span className="text-[12px] text-[#838383]">{city.stationCount}</span>
+                          <span className="text-[14px] text-[#838383]">{city.stationCount}</span>
                         )}
                         {city.country && selectedCountry === 'all' && (
-                          <span className="text-[12px] text-[#838383]">({city.country})</span>
+                          <span className="text-[14px] text-[#838383]">({city.country})</span>
                         )}
                       </button>
                     </SwiperSlide>
@@ -424,7 +424,7 @@ export default function RadiosPage({ selectedCountry = 'all', onCountryChange }:
                 className={`h-[32px] px-3 flex items-center gap-1 flex-shrink-0 rounded-[8px] whitespace-nowrap ${
                   !selectedCity ? 'bg-[#FF4199]' : 'bg-[#2F2F2F]'
                 }`}
-                style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 500, fontSize: '13px' }}
+                style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 500, fontSize: '14px' }}
               >
                 <span className="text-white">{t('all')}</span>
               </button>
@@ -435,7 +435,7 @@ export default function RadiosPage({ selectedCountry = 'all', onCountryChange }:
                   className={`h-[32px] px-3 flex items-center gap-1 flex-shrink-0 rounded-[8px] whitespace-nowrap ${
                     selectedCity === city.name ? 'bg-[#FF4199]' : 'bg-[#2F2F2F]'
                   }`}
-                  style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 500, fontSize: '13px' }}
+                  style={{ fontFamily: "'Ubuntu', sans-serif", fontWeight: 500, fontSize: '14px' }}
                 >
                   <span className="text-white">{city.name}</span>
                 </button>
