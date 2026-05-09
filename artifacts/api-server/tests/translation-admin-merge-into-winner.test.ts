@@ -57,6 +57,7 @@ interface FakeStationRow {
 let genres: FakeGenreRow[] = [];
 let stations: FakeStationRow[] = [];
 const invalidatedStationCacheSlugs: string[] = [];
+let auditLogEntries: Array<Record<string, unknown>> = [];
 let precomputedRefreshCalls = 0;
 let sitemapRebuildCalls = 0;
 
@@ -150,6 +151,21 @@ mock.module('@workspace/db-shared/mongo-schemas', {
     StationRating: {},
     SyncLog: {},
     BlacklistedStation: {},
+    GenreMergeAuditLog: {
+      create: async (entry: Record<string, unknown>) => {
+        auditLogEntries.push(entry);
+        return entry;
+      },
+      estimatedDocumentCount: async () => auditLogEntries.length,
+      find: () => ({
+        sort: () => ({
+          limit: () => ({
+            lean: async () => [],
+          }),
+        }),
+      }),
+      deleteMany: async () => ({ deletedCount: 0 }),
+    },
     SAFE_GENRE_SLUG_RE: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
     normalizeGenreSlug: (s: string) => String(s ?? '').toLowerCase(),
   },
@@ -252,6 +268,7 @@ beforeEach(() => {
   genres = [];
   stations = [];
   invalidatedStationCacheSlugs.length = 0;
+  auditLogEntries = [];
   precomputedRefreshCalls = 0;
   sitemapRebuildCalls = 0;
 });
