@@ -112,6 +112,11 @@ type CoverageBackfillJob = {
   error?: string;
   cancelRequested?: boolean;
   cancellable?: boolean;
+  // Task #342: when this job was kicked off as a Resume of a previous
+  // cancelled run for the same country, this is that cancelled run's
+  // jobId. Lets the UI history panel draw a "resumed from …" link
+  // between the two rows.
+  resumedFromJobId?: string;
   logos?: {
     matched: number;
     enqueuedIds: string[];
@@ -141,6 +146,84 @@ type CoverageBackfillJob = {
 };
 const coverageBackfillJobs = new Map<string, CoverageBackfillJob>();
 const COVERAGE_BACKFILL_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
+
+// Task #342: capped per-country ring buffer of finished backfill runs so
+// admins can see which countries repeatedly stall (cancel → resume → cancel
+// loops) instead of only the last toast. Kept in-process — same lifetime
+// as `coverageBackfillJobs`. A fresh server boot starts with an empty
+// history, which is fine: the page only needs short-term context to
+// surface "this country keeps cancelling".
+type CoverageBackfillRunRecord = {
+  jobId: string;
+  countryCode: string;
+  scope: 'logos' | 'tags' | 'both';
+  status: 'completed' | 'failed' | 'cancelled';
+  startedAt: number;
+  finishedAt: number;
+  error?: string;
+  // Same shape as the public job-status payload (no internal id arrays).
+  logos?: {
+    matched: number;
+    enqueued: number;
+    completed: number;
+    remaining: number;
+  };
+  tags?: {
+    total: number;
+    processed: number;
+    hydrated: number;
+    emptyUpstream: number;
+    failed: number;
+  };
+  // jobId of the cancelled run this one continued from (when applicable).
+  resumedFromJobId?: string;
+};
+const COVERAGE_BACKFILL_HISTORY_MAX = 10;
+const coverageBackfillHistory = new Map<string, CoverageBackfillRunRecord[]>();
+
+function recordCoverageBackfillHistory(job: CoverageBackfillJob): void {
+  if (
+    job.status !== 'completed' &&
+    job.status !== 'cancelled' &&
+    job.status !== 'failed'
+  ) {
+    return;
+  }
+  const key = job.countryCode.toUpperCase();
+  const existing = coverageBackfillHistory.get(key) ?? [];
+  // Idempotent on repeated terminal recordings (e.g. logo poll +
+  // maybeFinishCoverageJob both calling in).
+  if (existing.some((r) => r.jobId === job.jobId)) return;
+  const entry: CoverageBackfillRunRecord = {
+    jobId: job.jobId,
+    countryCode: key,
+    scope: job.scope,
+    status: job.status,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt ?? Date.now(),
+    error: job.error,
+    logos: job.logos
+      ? {
+          matched: job.logos.matched,
+          enqueued: job.logos.enqueuedIds.length,
+          completed: job.logos.completed,
+          remaining: job.logos.remaining,
+        }
+      : undefined,
+    tags: job.tags
+      ? {
+          total: job.tags.total,
+          processed: job.tags.processed,
+          hydrated: job.tags.hydrated,
+          emptyUpstream: job.tags.emptyUpstream,
+          failed: job.tags.failed,
+        }
+      : undefined,
+    resumedFromJobId: job.resumedFromJobId,
+  };
+  const next = [entry, ...existing].slice(0, COVERAGE_BACKFILL_HISTORY_MAX);
+  coverageBackfillHistory.set(key, next);
+}
 
 // Task #318: in-process tracker for the "Reconstruct sparkline history"
 // runs. The seeder used to execute synchronously inside the HTTP request
@@ -195,6 +278,10 @@ type CoverageTagsResumeHint = {
   hydrated: number;
   emptyUpstream: number;
   failed: number;
+  // Task #342: jobId of the cancelled run this hint was stashed from, so
+  // a resumed run can record `resumedFromJobId` and the history panel
+  // can chain rows together.
+  cancelledJobId?: string;
 };
 const COVERAGE_TAGS_RESUME_TTL_MS = 5 * 60 * 1000;
 const coverageTagsResumeHints = new Map<string, CoverageTagsResumeHint>();
@@ -208,6 +295,7 @@ function stashCoverageTagsResumeHint(
     emptyUpstream: number;
     failed: number;
   },
+  cancelledJobId?: string,
 ) {
   // Nothing to resume from if the cancelled run hadn't actually moved
   // the needle yet.
@@ -219,6 +307,7 @@ function stashCoverageTagsResumeHint(
     hydrated: tags.hydrated ?? 0,
     emptyUpstream: tags.emptyUpstream ?? 0,
     failed: tags.failed ?? 0,
+    cancelledJobId,
   });
 }
 
@@ -257,6 +346,10 @@ function maybeFinishCoverageJob(job: CoverageBackfillJob) {
         ? 'failed'
         : 'completed';
     job.finishedAt = Date.now();
+    // Task #342: snapshot the terminal run into the per-country history
+    // ring buffer so the coverage page can show a short audit trail of
+    // recent backfills (cancel → resume → cancel patterns, etc.).
+    recordCoverageBackfillHistory(job);
   }
 }
 
@@ -2808,6 +2901,11 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
                 }
               : undefined,
           };
+          // Task #342: thread the cancelled jobId we just resumed from
+          // onto the job itself so the history snapshot can chain rows.
+          if (resumeHint?.cancelledJobId) {
+            job.resumedFromJobId = resumeHint.cancelledJobId;
+          }
           void syncService
             .hydrateMissingTagsInBackground({
               countryCode: rawCode,
@@ -2861,7 +2959,11 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               // resume hint so a follow-up Undo can keep chaining instead
               // of losing the carried-forward progress on every cancel.
               if (result.cancelled || current.cancelRequested) {
-                stashCoverageTagsResumeHint(current.countryCode, current.tags);
+                stashCoverageTagsResumeHint(
+                  current.countryCode,
+                  current.tags,
+                  current.jobId,
+                );
               }
               maybeFinishCoverageJob(current);
               coverageBackfillJobs.set(jobId, current);
@@ -3027,7 +3129,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       // the post-final-batch numbers if it gets there first; either way
       // the next enqueue for this country picks up the freshest values.
       if (job.tags && (job.tags.processed > 0 || job.tags.hydrated > 0)) {
-        stashCoverageTagsResumeHint(job.countryCode, job.tags);
+        stashCoverageTagsResumeHint(job.countryCode, job.tags, job.jobId);
       }
       // Logo processing happens in the out-of-process scheduled sweeper —
       // we can't pull stations back off its queue, so the most we can do
@@ -3045,6 +3147,39 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         `🛑 Coverage backfill ${jobId} (${job.countryCode}) cancellation requested`,
       );
       return void res.json({ success: true });
+    },
+  );
+
+  // Task #342: short audit trail of recent backfill runs for one country
+  // so admins can spot countries that repeatedly cancel / resume / stall.
+  // Newest-first, capped at COVERAGE_BACKFILL_HISTORY_MAX entries. Lives
+  // alongside the in-process job map; a server restart starts the buffer
+  // empty (acceptable for short-term operational triage).
+  app.get(
+    '/api/admin/coverage/backfill-history/:countryCode',
+    requireAdmin,
+    async (req, res) => {
+      const rawCode = String(req.params.countryCode || '')
+        .trim()
+        .toUpperCase();
+      if (!rawCode) {
+        return void res
+          .status(400)
+          .json({ success: false, error: 'countryCode is required' });
+      }
+      const runs = coverageBackfillHistory.get(rawCode) ?? [];
+      const resumedCount = runs.filter((r) => !!r.resumedFromJobId).length;
+      const cancelledCount = runs.filter((r) => r.status === 'cancelled').length;
+      return void res.json({
+        success: true,
+        countryCode: rawCode,
+        runs,
+        summary: {
+          total: runs.length,
+          cancelled: cancelledCount,
+          resumed: resumedCount,
+        },
+      });
     },
   );
 

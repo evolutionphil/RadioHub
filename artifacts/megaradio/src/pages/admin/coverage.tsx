@@ -320,6 +320,11 @@ export default function AdminCoverage() {
   const [search, setSearch] = useState('');
   const [minStations, setMinStations] = useState(10);
   const [enqueuing, setEnqueuing] = useState<string | null>(null);
+  // Task #342: per-country expand toggle for the recent-runs history
+  // panel. Lazy-loaded so we don't fetch a buffer for every visible row.
+  const [expandedHistoryCode, setExpandedHistoryCode] = useState<string | null>(
+    null,
+  );
   // Window (in days) used by the "Download all (CSV)" export. Defaults to
   // 30 to match the on-page sparkline window so the button keeps behaving
   // the same out of the box; admins can flip to 7/90 for weekly/quarterly
@@ -1698,6 +1703,24 @@ export default function AdminCoverage() {
                               )}
                               <span className="ml-1">Both</span>
                             </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() =>
+                                setExpandedHistoryCode((prev) =>
+                                  prev === row.countryCode
+                                    ? null
+                                    : row.countryCode,
+                                )
+                              }
+                              data-testid={`button-toggle-history-${row.countryCode}`}
+                              aria-expanded={
+                                expandedHistoryCode === row.countryCode
+                              }
+                              title="Show recent backfill runs"
+                            >
+                              <History className="w-3 h-3" />
+                            </Button>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1731,6 +1754,19 @@ export default function AdminCoverage() {
                               onDismiss={() =>
                                 dismissJob(job.countryCode, job.jobId)
                               }
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                      {expandedHistoryCode === row.countryCode ? (
+                        <TableRow
+                          data-testid={`row-coverage-history-${row.countryCode}`}
+                          className="bg-muted/20"
+                        >
+                          <TableCell colSpan={7} className="py-3">
+                            <CoverageBackfillHistoryPanel
+                              countryCode={row.countryCode}
+                              activeJobId={job?.jobId ?? null}
                             />
                           </TableCell>
                         </TableRow>
@@ -1909,6 +1945,235 @@ function CoverageJobProgressRow({
             )
           : null}
       </div>
+    </div>
+  );
+}
+
+// Task #342: a single finished backfill run, as returned by
+// /api/admin/coverage/backfill-history/:countryCode. Mirrors the server
+// `CoverageBackfillRunRecord` shape.
+interface CoverageBackfillRunRecord {
+  jobId: string;
+  countryCode: string;
+  scope: 'logos' | 'tags' | 'both';
+  status: 'completed' | 'failed' | 'cancelled';
+  startedAt: number;
+  finishedAt: number;
+  error?: string;
+  logos?: {
+    matched: number;
+    enqueued: number;
+    completed: number;
+    remaining: number;
+  };
+  tags?: {
+    total: number;
+    processed: number;
+    hydrated: number;
+    emptyUpstream: number;
+    failed: number;
+  };
+  resumedFromJobId?: string;
+}
+
+interface CoverageBackfillHistoryResponse {
+  success: boolean;
+  countryCode: string;
+  runs: CoverageBackfillRunRecord[];
+  summary: {
+    total: number;
+    cancelled: number;
+    resumed: number;
+  };
+}
+
+function formatRunDuration(startedAt: number, finishedAt: number): string {
+  const ms = Math.max(0, finishedAt - startedAt);
+  if (ms < 1000) return `${ms}ms`;
+  const sec = Math.round(ms / 1000);
+  if (sec < 60) return `${sec}s`;
+  const min = Math.floor(sec / 60);
+  const rem = sec % 60;
+  return rem === 0 ? `${min}m` : `${min}m ${rem}s`;
+}
+
+function formatRunTimestamp(ms: number): string {
+  try {
+    return new Date(ms).toLocaleString();
+  } catch {
+    return new Date(ms).toISOString();
+  }
+}
+
+function CoverageBackfillHistoryPanel({
+  countryCode,
+  activeJobId,
+}: {
+  countryCode: string;
+  activeJobId: string | null;
+}) {
+  // Refetch when the active job id changes so finishing a run pushes a
+  // fresh entry into the panel without a page reload.
+  const { data, isLoading, isFetching, refetch, error } =
+    useQuery<CoverageBackfillHistoryResponse>({
+      queryKey: [
+        '/api/admin/coverage/backfill-history',
+        countryCode,
+        activeJobId ?? 'idle',
+      ],
+      queryFn: async () => {
+        const res = await apiRequest(
+          'GET',
+          `/api/admin/coverage/backfill-history/${encodeURIComponent(
+            countryCode,
+          )}`,
+        );
+        return (await res.json()) as CoverageBackfillHistoryResponse;
+      },
+      staleTime: 15_000,
+      refetchOnWindowFocus: false,
+    });
+
+  const runs = data?.runs ?? [];
+  const summary = data?.summary;
+
+  return (
+    <div
+      className="flex flex-col gap-2"
+      data-testid={`coverage-history-${countryCode}`}
+    >
+      <div className="flex items-center justify-between gap-2 text-xs">
+        <div className="font-medium flex items-center gap-2">
+          <History className="w-3 h-3" />
+          Recent backfill runs
+          {summary && summary.total > 0 ? (
+            <span
+              className="text-muted-foreground font-normal"
+              data-testid={`coverage-history-summary-${countryCode}`}
+            >
+              · {summary.total} shown · {summary.cancelled} cancelled ·{' '}
+              {summary.resumed} resumed
+            </span>
+          ) : null}
+        </div>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-6 px-2 text-xs"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          data-testid={`button-refresh-history-${countryCode}`}
+        >
+          {isFetching ? (
+            <Loader2 className="w-3 h-3 animate-spin" />
+          ) : (
+            <RefreshCw className="w-3 h-3" />
+          )}
+          <span className="ml-1">Refresh</span>
+        </Button>
+      </div>
+      {isLoading ? (
+        <div
+          className="text-xs text-muted-foreground"
+          data-testid={`coverage-history-loading-${countryCode}`}
+        >
+          Loading recent runs…
+        </div>
+      ) : error ? (
+        <div
+          className="text-xs text-red-600"
+          data-testid={`coverage-history-error-${countryCode}`}
+        >
+          Failed to load history.
+        </div>
+      ) : runs.length === 0 ? (
+        <div
+          className="text-xs text-muted-foreground"
+          data-testid={`coverage-history-empty-${countryCode}`}
+        >
+          No completed backfill runs recorded yet for this country.
+          History is in-process and resets on server restart.
+        </div>
+      ) : (
+        <ol className="flex flex-col gap-1.5 text-xs">
+          {runs.map((run) => {
+            const resumedFromIndex = run.resumedFromJobId
+              ? runs.findIndex((r) => r.jobId === run.resumedFromJobId)
+              : -1;
+            const resumedFromLabel =
+              resumedFromIndex >= 0
+                ? `run #${runs.length - resumedFromIndex}`
+                : run.resumedFromJobId
+                  ? 'an older cancelled run'
+                  : null;
+            const statusClass =
+              run.status === 'completed'
+                ? 'text-green-700'
+                : run.status === 'cancelled'
+                  ? 'text-amber-700'
+                  : 'text-red-600';
+            const bits: string[] = [];
+            if (run.tags) {
+              bits.push(
+                `tags ${run.tags.processed.toLocaleString()}/${run.tags.total.toLocaleString()} · ✅${run.tags.hydrated.toLocaleString()} ∅${run.tags.emptyUpstream.toLocaleString()} ❌${run.tags.failed.toLocaleString()}`,
+              );
+            }
+            if (run.logos) {
+              bits.push(
+                `logos ${run.logos.completed.toLocaleString()}/${run.logos.enqueued.toLocaleString()}`,
+              );
+            }
+            return (
+              <li
+                key={run.jobId}
+                className="rounded border bg-white px-2 py-1.5 flex flex-col gap-0.5"
+                data-testid={`coverage-history-run-${countryCode}-${run.jobId}`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`font-medium uppercase ${statusClass}`}
+                      data-testid={`coverage-history-run-status-${countryCode}-${run.jobId}`}
+                    >
+                      {run.status}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {run.scope}
+                    </span>
+                    {resumedFromLabel ? (
+                      <span
+                        className="text-amber-700"
+                        data-testid={`coverage-history-run-resumed-${countryCode}-${run.jobId}`}
+                        title={`Continued from cancelled job ${run.resumedFromJobId}`}
+                      >
+                        ↻ resumed from {resumedFromLabel}
+                      </span>
+                    ) : null}
+                  </div>
+                  <span
+                    className="text-muted-foreground tabular-nums"
+                    title={`Started ${formatRunTimestamp(run.startedAt)} · Finished ${formatRunTimestamp(run.finishedAt)}`}
+                  >
+                    {formatRunTimestamp(run.finishedAt)} ·{' '}
+                    {formatRunDuration(run.startedAt, run.finishedAt)}
+                  </span>
+                </div>
+                {bits.length > 0 ? (
+                  <div
+                    className="text-muted-foreground tabular-nums"
+                    data-testid={`coverage-history-run-counts-${countryCode}-${run.jobId}`}
+                  >
+                    {bits.join(' · ')}
+                  </div>
+                ) : null}
+                {run.error ? (
+                  <div className="text-red-600">— {run.error}</div>
+                ) : null}
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }
