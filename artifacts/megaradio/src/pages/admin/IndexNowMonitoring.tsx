@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Activity, CheckCircle, XCircle, Clock, TrendingUp, ChevronDown, ChevronRight, Calendar } from 'lucide-react';
+import { Activity, CheckCircle, XCircle, Clock, TrendingUp, ChevronDown, ChevronRight, Calendar, Download, List } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface SitemapDiffSubmission {
@@ -60,10 +61,70 @@ interface IndexNowLog {
   responseTime?: number;
 }
 
+interface SubmissionFullUrls {
+  logId: string;
+  timestamp: string;
+  host: string;
+  trigger: string;
+  urls: string[];
+  urlCount: number;
+  expiresAt?: string;
+  retentionDays?: number;
+}
+
+interface SubmissionFullUrlsError {
+  error: string;
+  reason?: string;
+  sampleUrls?: string[];
+  urlCount?: number;
+  retentionDays?: number;
+}
+
+type FullUrlsState =
+  | { status: 'loading' }
+  | { status: 'ready'; data: SubmissionFullUrls }
+  | { status: 'unavailable'; data: SubmissionFullUrlsError }
+  | { status: 'error'; message: string };
+
 export default function IndexNowMonitoring() {
   const [hostFilter, setHostFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [expandedRuns, setExpandedRuns] = useState<Record<string, boolean>>({});
+  const [fullUrls, setFullUrls] = useState<Record<string, FullUrlsState>>({});
+
+  const fetchFullUrls = async (submissionId: string) => {
+    setFullUrls((prev) => ({ ...prev, [submissionId]: { status: 'loading' } }));
+    try {
+      const resp = await fetch(`/api/admin/indexnow/submissions/${submissionId}/urls`);
+      if (resp.status === 404) {
+        const body = (await resp.json()) as SubmissionFullUrlsError;
+        setFullUrls((prev) => ({ ...prev, [submissionId]: { status: 'unavailable', data: body } }));
+        return;
+      }
+      if (!resp.ok) {
+        throw new Error(`HTTP ${resp.status}`);
+      }
+      const body = (await resp.json()) as SubmissionFullUrls;
+      setFullUrls((prev) => ({ ...prev, [submissionId]: { status: 'ready', data: body } }));
+    } catch (err) {
+      setFullUrls((prev) => ({
+        ...prev,
+        [submissionId]: { status: 'error', message: err instanceof Error ? err.message : 'Failed to load URLs' },
+      }));
+    }
+  };
+
+  const downloadFullUrls = (submissionId: string, urls: string[]) => {
+    const blob = new Blob([urls.join('\n') + '\n'], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `indexnow-submission-${submissionId}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
 
   const { data: diffRunsResp, isLoading: diffRunsLoading } = useQuery<SitemapDiffRunsResponse>({
     queryKey: ['/api/admin/indexnow/sitemap-diff-runs'],
@@ -299,60 +360,108 @@ export default function IndexNowMonitoring() {
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                  {run.submissions.map((sub) => (
-                                    <TableRow
-                                      key={sub._id}
-                                      className="border-gray-800 hover:bg-[#0E0E0E] align-top"
-                                      data-testid={`row-submission-${sub._id}`}
-                                    >
-                                      <TableCell className="text-white whitespace-nowrap">
-                                        {format(new Date(sub.timestamp), 'HH:mm:ss')}
-                                      </TableCell>
-                                      <TableCell className="text-gray-300">{sub.language}</TableCell>
-                                      <TableCell className="text-gray-300">{sub.urlCount}</TableCell>
-                                      <TableCell>
-                                        <Badge
-                                          variant={sub.status === 'success' ? 'default' : 'destructive'}
-                                          className={sub.status === 'success'
-                                            ? 'bg-green-600 hover:bg-green-700'
-                                            : 'bg-red-600 hover:bg-red-700'}
-                                        >
-                                          {sub.status}
-                                          {sub.statusCode ? ` (${sub.statusCode})` : ''}
-                                        </Badge>
-                                        {sub.errorMessage && (
-                                          <div className="text-xs text-red-400 mt-1 max-w-xs truncate" title={sub.errorMessage}>
-                                            {sub.errorMessage}
-                                          </div>
-                                        )}
-                                      </TableCell>
-                                      <TableCell className="text-gray-300">
-                                        {sub.sampleUrls.length === 0 ? (
-                                          <span className="text-gray-600 italic">none recorded</span>
-                                        ) : (
-                                          <ul className="space-y-1 text-xs">
-                                            {sub.sampleUrls.map((u, i) => (
-                                              <li key={i} className="break-all">
-                                                <a
-                                                  href={u}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className="text-blue-400 hover:underline"
+                                  {run.submissions.map((sub) => {
+                                    const fullState = fullUrls[sub._id];
+                                    const isReady = fullState?.status === 'ready';
+                                    const displayUrls = isReady ? fullState.data.urls : sub.sampleUrls;
+                                    const isComplete = isReady && fullState.data.urls.length >= sub.urlCount;
+                                    return (
+                                      <TableRow
+                                        key={sub._id}
+                                        className="border-gray-800 hover:bg-[#0E0E0E] align-top"
+                                        data-testid={`row-submission-${sub._id}`}
+                                      >
+                                        <TableCell className="text-white whitespace-nowrap">
+                                          {format(new Date(sub.timestamp), 'HH:mm:ss')}
+                                        </TableCell>
+                                        <TableCell className="text-gray-300">{sub.language}</TableCell>
+                                        <TableCell className="text-gray-300">{sub.urlCount}</TableCell>
+                                        <TableCell>
+                                          <Badge
+                                            variant={sub.status === 'success' ? 'default' : 'destructive'}
+                                            className={sub.status === 'success'
+                                              ? 'bg-green-600 hover:bg-green-700'
+                                              : 'bg-red-600 hover:bg-red-700'}
+                                          >
+                                            {sub.status}
+                                            {sub.statusCode ? ` (${sub.statusCode})` : ''}
+                                          </Badge>
+                                          {sub.errorMessage && (
+                                            <div className="text-xs text-red-400 mt-1 max-w-xs truncate" title={sub.errorMessage}>
+                                              {sub.errorMessage}
+                                            </div>
+                                          )}
+                                        </TableCell>
+                                        <TableCell className="text-gray-300">
+                                          {displayUrls.length === 0 && !isReady ? (
+                                            <span className="text-gray-600 italic">none recorded</span>
+                                          ) : (
+                                            <ul className="space-y-1 text-xs max-h-64 overflow-y-auto pr-2">
+                                              {displayUrls.map((u, i) => (
+                                                <li key={i} className="break-all">
+                                                  <a
+                                                    href={u}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-blue-400 hover:underline"
+                                                  >
+                                                    {u}
+                                                  </a>
+                                                </li>
+                                              ))}
+                                              {!isComplete && sub.urlCount > displayUrls.length && (
+                                                <li className="text-gray-500 italic">
+                                                  + {(sub.urlCount - displayUrls.length).toLocaleString()} more
+                                                  {isReady ? '' : ' (sample only)'}
+                                                </li>
+                                              )}
+                                            </ul>
+                                          )}
+                                          {sub.urlCount > sub.sampleUrls.length && (
+                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                              {!fullState && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="h-7 px-2 text-xs border-gray-700 text-gray-200 hover:bg-gray-800"
+                                                  onClick={() => fetchFullUrls(sub._id)}
+                                                  data-testid={`button-show-all-urls-${sub._id}`}
                                                 >
-                                                  {u}
-                                                </a>
-                                              </li>
-                                            ))}
-                                            {sub.urlCount > sub.sampleUrls.length && (
-                                              <li className="text-gray-500 italic">
-                                                + {(sub.urlCount - sub.sampleUrls.length).toLocaleString()} more (sample only)
-                                              </li>
-                                            )}
-                                          </ul>
-                                        )}
-                                      </TableCell>
-                                    </TableRow>
-                                  ))}
+                                                  <List className="w-3 h-3 mr-1" />
+                                                  Show all {sub.urlCount.toLocaleString()} URLs
+                                                </Button>
+                                              )}
+                                              {fullState?.status === 'loading' && (
+                                                <span className="text-xs text-gray-500 italic">Loading…</span>
+                                              )}
+                                              {isReady && (
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="h-7 px-2 text-xs border-gray-700 text-gray-200 hover:bg-gray-800"
+                                                  onClick={() => downloadFullUrls(sub._id, fullState.data.urls)}
+                                                  data-testid={`button-download-urls-${sub._id}`}
+                                                >
+                                                  <Download className="w-3 h-3 mr-1" />
+                                                  Download .txt
+                                                </Button>
+                                              )}
+                                              {fullState?.status === 'unavailable' && (
+                                                <div className="text-xs text-yellow-400 max-w-xs" data-testid={`text-urls-unavailable-${sub._id}`}>
+                                                  {fullState.data.reason || 'Full URL list unavailable for this submission.'}
+                                                </div>
+                                              )}
+                                              {fullState?.status === 'error' && (
+                                                <div className="text-xs text-red-400">
+                                                  Failed to load: {fullState.message}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                        </TableCell>
+                                      </TableRow>
+                                    );
+                                  })}
                                 </TableBody>
                               </Table>
                             </div>

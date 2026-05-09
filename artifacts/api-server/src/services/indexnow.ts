@@ -1,6 +1,10 @@
 import { logger } from '../utils/logger';
 import axios from 'axios';
-import { IndexNowLog } from '@workspace/db-shared/mongo-schemas';
+import {
+  IndexNowLog,
+  IndexNowSubmissionUrls,
+  INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
+} from '@workspace/db-shared/mongo-schemas';
 import { validateOutboundUrl } from '../utils/safe-fetch';
 
 const INDEXNOW_ENDPOINT = 'https://api.indexnow.org/indexnow';
@@ -22,6 +26,38 @@ const PRIMARY_HOST = 'themegaradio.com'; // Default for helper methods
 const MAX_URLS_PER_REQUEST = 10000;
 
 type IndexNowTrigger = 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete' | 'sitemap-diff';
+
+/**
+ * Task #336 — persist the FULL list of URLs we just submitted into a
+ * separate collection. The lightweight `IndexNowLog` row only retains 5
+ * `sampleUrls` (so the per-row payload stays small forever); this side
+ * collection has a 30-day TTL so admins can browse the entire submission
+ * for any night within the retention window. Failures here are logged
+ * but never surface to the caller — losing the audit trail is not worth
+ * failing an actual IndexNow submission over.
+ */
+async function persistFullSubmissionUrls(
+  logDoc: { _id: unknown },
+  host: string,
+  trigger: IndexNowTrigger,
+  urls: string[],
+): Promise<void> {
+  try {
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    await IndexNowSubmissionUrls.create({
+      logId: logDoc._id as import('mongoose').Types.ObjectId,
+      timestamp: now,
+      host,
+      trigger,
+      urls,
+      urlCount: urls.length,
+      expiresAt,
+    });
+  } catch (err: any) {
+    logger.log(`⚠️ IndexNow: Failed to persist full submitted-URL list:`, err?.message || err);
+  }
+}
 
 interface IndexNowResponse {
   success: boolean;
@@ -96,7 +132,7 @@ export class IndexNowService {
 
       // Log to database AFTER getting response
       try {
-        await IndexNowLog.create({
+        const logDoc = await IndexNowLog.create({
           timestamp: new Date(),
           host,
           urlCount: urls.length,
@@ -108,6 +144,7 @@ export class IndexNowService {
           retryAttempt: retryCount,
           responseTime
         });
+        await persistFullSubmissionUrls(logDoc, host, trigger, urls);
       } catch (dbError: any) {
         logger.log(`⚠️ IndexNow: Failed to log to database:`, dbError.message);
       }
@@ -140,7 +177,7 @@ export class IndexNowService {
       
       // Log error to database
       try {
-        await IndexNowLog.create({
+        const logDoc = await IndexNowLog.create({
           timestamp: new Date(),
           host: host || 'unknown',
           urlCount: urls.length,
@@ -151,6 +188,7 @@ export class IndexNowService {
           retryAttempt: retryCount,
           responseTime
         });
+        await persistFullSubmissionUrls(logDoc, host || 'unknown', trigger, urls);
       } catch (dbError: any) {
         logger.log(`⚠️ IndexNow: Failed to log to database:`, dbError.message);
       }

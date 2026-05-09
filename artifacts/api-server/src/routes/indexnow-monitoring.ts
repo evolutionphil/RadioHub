@@ -1,5 +1,10 @@
 import { Router, Request, Response } from 'express';
-import { IndexNowLog } from '@workspace/db-shared/mongo-schemas';
+import {
+  IndexNowLog,
+  IndexNowSubmissionUrls,
+  INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
+} from '@workspace/db-shared/mongo-schemas';
+import mongoose from 'mongoose';
 
 const router = Router();
 
@@ -290,6 +295,55 @@ router.get('/sitemap-diff-runs', async (req: Request, res: Response) => {
   } catch (error) {
     console.error('Error fetching sitemap-diff runs:', error);
     res.status(500).json({ error: 'Failed to fetch sitemap-diff runs' });
+  }
+});
+
+// GET /api/admin/indexnow/submissions/:id/urls — Task #336.
+//
+// Returns the FULL list of URLs submitted in one IndexNow request. The log
+// row itself only retains 5 `sampleUrls`; the full list lives in
+// `IndexNowSubmissionUrls` with a 30-day TTL so admins can audit an entire
+// night's additions without unbounded growth on the log collection.
+router.get('/submissions/:id/urls', async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id || '');
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      res.status(400).json({ error: 'Invalid submission id' });
+      return;
+    }
+    const logId = new mongoose.Types.ObjectId(id);
+    const doc = await IndexNowSubmissionUrls.findOne({ logId }).lean();
+    if (!doc) {
+      // Either the submission predates Task #336 (no full list captured),
+      // its 30-day retention window already expired, or the id is unknown.
+      // Surface the distinction so the UI can explain it to admins.
+      const log = await IndexNowLog.findById(logId).lean();
+      if (!log) {
+        res.status(404).json({ error: 'Submission not found' });
+        return;
+      }
+      res.status(404).json({
+        error: 'Full URL list unavailable',
+        reason: 'No full URL list was retained for this submission. Either it was submitted before full-URL retention was enabled, or the 30-day retention window has elapsed.',
+        sampleUrls: log.sampleUrls ?? [],
+        urlCount: log.urlCount,
+        retentionDays: INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
+      });
+      return;
+    }
+    res.json({
+      logId: String(doc.logId),
+      timestamp: doc.timestamp,
+      host: doc.host,
+      trigger: doc.trigger,
+      urls: doc.urls ?? [],
+      urlCount: doc.urlCount,
+      expiresAt: doc.expiresAt,
+      retentionDays: INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
+    });
+  } catch (error) {
+    console.error('Error fetching IndexNow submission URLs:', error);
+    res.status(500).json({ error: 'Failed to fetch submission URLs' });
   }
 });
 

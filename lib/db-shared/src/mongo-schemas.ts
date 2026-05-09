@@ -1007,6 +1007,21 @@ export interface ISitemapUrlSnapshot extends Document {
   updatedAt: Date;
 }
 
+// Task #336 — full submitted-URL list for an IndexNow submission. Stored
+// separately from `IndexNowLog` so the log row stays small (it only keeps a
+// 5-URL `sampleUrls` preview) and so we can put a TTL on the heavy payload
+// independently of the lightweight log retention. Each row corresponds 1:1
+// with one `IndexNowLog` row via `logId`.
+export interface IIndexNowSubmissionUrls extends Document {
+  logId: mongoose.Types.ObjectId;
+  timestamp: Date;
+  host: string;
+  trigger: 'manual' | 'station-update' | 'sitemap-regen' | 'sync-complete' | 'sitemap-diff';
+  urls: string[];
+  urlCount: number;
+  expiresAt: Date;
+}
+
 export interface IAdvertisement extends Document {
   title: string;
   imageUrl: string;
@@ -2755,6 +2770,32 @@ export const CountryLanguageMapping = mongoose.model<ICountryLanguageMapping>('C
 export const UrlTranslation = mongoose.model<IUrlTranslation>('UrlTranslation', UrlTranslationSchema);
 export const MediaGroup = mongoose.model<IMediaGroup>('MediaGroup', MediaGroupSchema);
 export const IndexNowLog = mongoose.model<IIndexNowLog>('IndexNowLog', IndexNowLogSchema);
+
+// Task #336 — full submitted-URL list per IndexNow submission. 30-day TTL
+// keeps growth bounded; admins can still browse the last month of nightly
+// sitemap-diff additions in their entirety.
+const INDEXNOW_SUBMISSION_URLS_TTL_DAYS = 30;
+const IndexNowSubmissionUrlsSchema = new Schema<IIndexNowSubmissionUrls>({
+  logId: { type: Schema.Types.ObjectId, required: true, ref: 'IndexNowLog' },
+  timestamp: { type: Date, required: true },
+  host: { type: String, required: true },
+  trigger: {
+    type: String,
+    enum: ['manual', 'station-update', 'sitemap-regen', 'sync-complete', 'sitemap-diff'],
+    required: true,
+  },
+  urls: { type: [String], default: [] },
+  urlCount: { type: Number, required: true },
+  expiresAt: { type: Date, required: true },
+});
+IndexNowSubmissionUrlsSchema.index({ logId: 1 }, { unique: true });
+IndexNowSubmissionUrlsSchema.index({ trigger: 1, timestamp: -1 });
+IndexNowSubmissionUrlsSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+export const IndexNowSubmissionUrls = mongoose.model<IIndexNowSubmissionUrls>(
+  'IndexNowSubmissionUrls',
+  IndexNowSubmissionUrlsSchema,
+);
+export const INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = INDEXNOW_SUBMISSION_URLS_TTL_DAYS;
 
 const SitemapUrlSnapshotSchema = new Schema<ISitemapUrlSnapshot>({
   type: { type: String, enum: ['main', 'genres'], required: true },
