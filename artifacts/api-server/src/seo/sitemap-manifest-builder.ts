@@ -134,6 +134,23 @@ async function writeBuildingManifest(args: {
   // the active doc directly without writing a new building doc. This
   // prevents Cloudflare cache stampede when chunks haven't changed but the
   // 6h refresh loop fired.
+  //
+  // FRESHNESS BUG FIX (2026-05-09): even though `version` (ETag) intentionally
+  // excludes `maxUpdatedAt` to avoid cache stampedes from uptime-probe churn,
+  // the OLD code returned the existing-active doc untouched — so its
+  // `chunks[].maxUpdatedAt` (which DRIVES the sitemap <lastmod> and the
+  // Last-Modified HTTP header) was frozen at whatever value the manifest had
+  // when it was first written. Result observed in production: sitemap.xml
+  // lastmod was 3+ months stale (2026-02-10) and per-chunk lastmods were
+  // 9 months stale (2025-08-22), so Googlebot/Bingbot saw "no change" and
+  // skipped re-crawls indefinitely → SEO ranking decay.
+  //
+  // Fix: when the URL set hasn't changed (version match), do an in-place
+  // $set update of `chunks` (carries fresh maxUpdatedAt), `generatedAt`,
+  // and `expiresAt`. The `version` field stays identical → the sitemap-index
+  // ETag does NOT change → no cache stampede. But Last-Modified/<lastmod>
+  // now reflect today's freshest station updatedAt → search engines see
+  // proper freshness signals again.
   const existingActive = await SitemapManifest.findOne({
     type,
     language,
@@ -141,8 +158,31 @@ async function writeBuildingManifest(args: {
     version,
   }).lean();
   if (existingActive) {
-    logger.debug(`✅ manifest no-op: type=${type} lang=${language} version=${version} already active`);
-    return existingActive;
+    await SitemapManifest.updateOne(
+      { _id: existingActive._id },
+      {
+        $set: {
+          chunks,
+          totalUrls,
+          chunkCount: chunks.length,
+          generatedAt: now,
+          expiresAt: new Date(now.getTime() + MANIFEST_TTL_ACTIVE_MS),
+          qualifiedLanguages,
+          qualifiedLanguagesHash,
+        },
+      },
+    );
+    logger.debug(`✅ manifest freshness-bump: type=${type} lang=${language} version=${version} (chunks/lastmod refreshed in place)`);
+    // Return updated view so callers see the new chunks/generatedAt.
+    return {
+      ...existingActive,
+      chunks,
+      totalUrls,
+      chunkCount: chunks.length,
+      generatedAt: now,
+      qualifiedLanguages,
+      qualifiedLanguagesHash,
+    };
   }
 
   // Reclaim stuck building docs (process crashed mid-build).
