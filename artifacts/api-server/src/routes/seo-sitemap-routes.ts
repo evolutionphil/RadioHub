@@ -13,6 +13,30 @@ function toHreflangTag(code: string): string {
   const lang = SEO_LANGUAGES.find((l) => l.code === code);
   return lang?.iso || code;
 }
+
+// Task #349: every <url> entry must carry a self-referential alternate that
+// uses the bare SEO code (`it`, `tr`, …) in addition to the BCP47 tag
+// (`it-IT`, `tr-TR`). The bare code is what Google's hreflang validator
+// surfaces as the canonical "this page targets language X" signal — without
+// it the sitemap fails the contract that "every URL must list itself among
+// the alternates" for the SEO language code, even if the BCP47 form is
+// present. Returns the unique list of hreflang attribute values to emit
+// for a single language alternate (preserves order: bare code first, then
+// regional/script subtag if it differs).
+function hreflangTagsForCode(code: string): string[] {
+  const iso = toHreflangTag(code);
+  return iso === code ? [code] : [code, iso];
+}
+
+// Emit one or two <xhtml:link rel="alternate"> entries for a single
+// alternate language, sharing the same href. Centralised so the main /
+// genres / stations sitemap handlers stay in lockstep.
+function buildHreflangLinks(code: string, href: string): string {
+  return hreflangTagsForCode(code)
+    .map((tag) => `
+    <xhtml:link rel="alternate" hreflang="${tag}" href="${escapeXml(href)}"/>`)
+    .join('');
+}
 import { performanceCache } from "../performance-cache";
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import CacheManager, { CacheKeys } from "../cache";
@@ -761,7 +785,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         for (const altLang of qualifiedLanguages) {
           const altPath = buildLocalizedUrl(page, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
+${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         }
         const enPath = buildLocalizedUrl(page, 'en', undefined, urlTranslations);
         parts.push(`
@@ -782,7 +806,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         for (const altLang of qualifiedLanguages) {
           const altPath = buildLocalizedUrl(enginePath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
+${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         }
         const enPath = buildLocalizedUrl(enginePath, 'en', undefined, urlTranslations);
         parts.push(`
@@ -929,7 +953,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         for (const altLang of indexable) {
           const altPath = buildLocalizedUrl(stationPath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
+${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         }
         const enPath = buildLocalizedUrl(stationPath, 'en', undefined, urlTranslations);
         parts.push(`
@@ -1045,7 +1069,7 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
         for (const altLang of qualifiedLanguages) {
           const altPath = buildLocalizedUrl(genrePath, altLang, undefined, urlTranslations);
           parts.push(`
-    <xhtml:link rel="alternate" hreflang="${toHreflangTag(altLang)}" href="${escapeXml(baseUrl + altPath)}"/>`);
+${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         }
         const enPath = buildLocalizedUrl(genrePath, 'en', undefined, urlTranslations);
         parts.push(`
