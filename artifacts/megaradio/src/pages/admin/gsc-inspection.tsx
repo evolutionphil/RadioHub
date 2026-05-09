@@ -103,6 +103,8 @@ interface TrendsResponse {
   days: number;
   language: string;
   group: string;
+  missingDates: string[];
+  todayMissing: boolean;
   rows: TrendRow[];
 }
 
@@ -668,6 +670,51 @@ export default function GscInspectionPage() {
             )}
           </CardHeader>
           <CardContent>
+            {trends && (trends.missingDates.length > 0 || trends.todayMissing) && (
+              <div
+                className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-amber-700/60 bg-amber-950/30 px-3 py-2 text-sm"
+                data-testid="gsc-missing-days-banner"
+              >
+                <AlertCircle className="h-4 w-4 text-amber-300" />
+                <div className="flex-1 min-w-[200px] text-amber-100">
+                  {trends.missingDates.length > 0 ? (
+                    <>
+                      <span className="font-semibold">
+                        {trends.missingDates.length} day
+                        {trends.missingDates.length === 1 ? '' : 's'} missing a
+                        snapshot
+                      </span>{' '}
+                      in the last {trends.days} days. Flat segments on those
+                      dates mean "no data", not "no change".
+                      <span
+                        className="ml-2 cursor-help underline decoration-dotted text-amber-200"
+                        title={trends.missingDates.join(', ')}
+                      >
+                        (hover to see dates)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Today has no snapshot yet. The cron normally writes it at
+                      23:55 Berlin time — click backfill to capture the current
+                      numbers now.
+                    </>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-amber-600 text-amber-100 hover:bg-amber-900/40"
+                  disabled={recordSnapshot.isPending}
+                  onClick={() => recordSnapshot.mutate()}
+                  data-testid="gsc-backfill-today-button"
+                  title="Runs recordDailySnapshot for today's UTC date. Past gaps cannot be backfilled because the per-URL state has already moved on."
+                >
+                  <RefreshCcw className="mr-2 h-4 w-4" />
+                  {recordSnapshot.isPending ? 'Backfilling…' : 'Backfill today'}
+                </Button>
+              </div>
+            )}
             {trendsLoading ? (
               <div className="text-center text-gray-400 py-12">
                 Loading trend…

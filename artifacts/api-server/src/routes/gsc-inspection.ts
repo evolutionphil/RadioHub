@@ -246,10 +246,47 @@ router.get('/trends', async (req: Request, res: Response) => {
       .sort({ date: 1, language: 1, group: 1 })
       .lean();
 
+    // Compute which UTC days inside the requested window have no
+    // snapshot row at all. The snapshot job always writes the
+    // `language=all`/`group=all` overall row alongside every per-(lang,
+    // group) row, so we count a day as "covered" iff at least one row
+    // exists for it (regardless of the language/group filter the admin
+    // picked — gaps mean the cron didn't run, not that the filter is
+    // empty). We always check against an unfiltered query so a
+    // language/group filter doesn't manufacture phantom gaps.
+    const coveredDates = new Set<string>();
+    if (language !== 'any' && group !== 'any' && (language !== 'all' || group !== 'all')) {
+      const unfiltered = await GscIndexingSnapshot.find(
+        { date: { $gte: since } },
+        { date: 1 },
+      ).lean();
+      for (const r of unfiltered as any[]) {
+        coveredDates.add(new Date(r.date).toISOString().slice(0, 10));
+      }
+    } else {
+      for (const r of rows as any[]) {
+        coveredDates.add(new Date(r.date).toISOString().slice(0, 10));
+      }
+    }
+    // Today's snapshot is normally written by the 23:55 Berlin cron, so
+    // until that runs we don't yet consider today "missing" — otherwise
+    // every dashboard view before 23:55 would show today as a gap.
+    const todayKey = new Date().toISOString().slice(0, 10);
+    const missingDates: string[] = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since);
+      d.setUTCDate(d.getUTCDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      if (key === todayKey) continue;
+      if (!coveredDates.has(key)) missingDates.push(key);
+    }
+
     res.json({
       days,
       language,
       group,
+      missingDates,
+      todayMissing: !coveredDates.has(todayKey),
       rows: rows.map((r: any) => ({
         date: r.date,
         language: r.language,
