@@ -501,6 +501,34 @@ export default function SeoMaintenancePage() {
     },
   });
 
+  // Sitemap manifest force-rebuild. Triggers POST /api/admin/sitemap/rebuild
+  // which calls buildAllSitemapManifests({ force: true }) — bypasses the 6h
+  // freshness check, refreshes chunks[].maxUpdatedAt + generatedAt for every
+  // (type, lang) manifest, and fires an IndexNow ping. Use this after bulk
+  // station imports/deletions or when sitemap <lastmod> looks stale in
+  // Google Search Console.
+  const rebuildSitemap = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin/sitemap/rebuild", {}),
+    onSuccess: (data: any) => {
+      const built = data?.built;
+      const langs = Array.isArray(data?.qualifiedLanguages) ? data.qualifiedLanguages.length : 0;
+      const activated = data?.activatedCount ?? 0;
+      toast({
+        title: built ? "Sitemap yenilendi" : "Sitemap zaten taze",
+        description: built
+          ? `${langs} dil işlendi, ${activated} manifest yeni sürüme geçti. IndexNow ping fırlatıldı.`
+          : "Yenileme gerekmedi (manifest 6 saatten kısa süre önce güncellenmiş).",
+      });
+    },
+    onError: (e: any) => {
+      toast({
+        title: "Sitemap yenileme başarısız",
+        description: e?.message || "Bilinmeyen hata",
+        variant: "destructive",
+      });
+    },
+  });
+
   const stats = statsQuery.data;
   const job = tagsJobQuery.data?.job;
   const scheduled = scheduledStatusQuery.data;
@@ -541,6 +569,43 @@ export default function SeoMaintenancePage() {
           <Button variant="outline" onClick={() => statsQuery.refetch()} disabled={statsQuery.isFetching}>
             {statsQuery.isFetching ? "Yükleniyor..." : "Yenile"}
           </Button>
+        </CardContent>
+      </Card>
+
+      {/* Sitemap manuel yenileme */}
+      <Card className="bg-white border-amber-200">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            🗺️ Sitemap'i Yenile
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Tüm sitemap manifestlerini (stations + genres + main, her dil için)
+            zorla yeniden derler ve Google/Bing'e IndexNow ping fırlatır.
+            <code>&lt;lastmod&gt;</code> tarihleri anında güncellenir, ETag'ler
+            (URL listesi değişmediyse) korunur — Cloudflare cache stampede yok.
+          </p>
+          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-3 space-y-1">
+            <div><strong>Otomatik:</strong> sunucu açılışında bir kez çalışır + her 6 saatte bir tekrar.</div>
+            <div><strong>Ne zaman manuel basmalısın:</strong> bulk station import/silme sonrası, ya da Google Search Console'da sitemap "stale" görünüyorsa.</div>
+            <div><strong>Süre:</strong> ~10-30 saniye (10 dil × 43K istasyon).</div>
+          </div>
+          <Button
+            onClick={() => rebuildSitemap.mutate()}
+            disabled={rebuildSitemap.isPending}
+            className="bg-amber-600 hover:bg-amber-700 text-white"
+          >
+            {rebuildSitemap.isPending ? "Yenileniyor..." : "🚀 Sitemap'i Şimdi Yenile"}
+          </Button>
+          {rebuildSitemap.data && (
+            <div className="text-xs text-slate-700 bg-emerald-50 border border-emerald-200 rounded p-2">
+              Son sonuç: {(rebuildSitemap.data as any)?.built ? "✅ yeniden derlendi" : "⏭️ zaten taze"}
+              {typeof (rebuildSitemap.data as any)?.activatedCount === "number" && (
+                <> — activated={(rebuildSitemap.data as any).activatedCount}</>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
