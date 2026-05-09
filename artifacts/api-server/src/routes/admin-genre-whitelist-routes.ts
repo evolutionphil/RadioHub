@@ -387,7 +387,11 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           .limit(fetchCap)
           .lean<Array<{ slug?: string; stationCount?: number }>>();
 
-        const suggestions: Array<{ slug: string; stationCount: number }> = [];
+        const suggestions: Array<{
+          slug: string;
+          stationCount: number;
+          topCountries: Array<{ countryCode: string; stationCount: number }>;
+        }> = [];
         for (const g of genres) {
           if (typeof g.slug !== 'string' || !g.slug) continue;
           const slug = g.slug;
@@ -395,8 +399,100 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           if (aliases.has(slug)) continue;
           if (isReservedGenreSlug(slug)) continue;
           if (!SAFE_GENRE_SLUG_RE.test(slug)) continue;
-          suggestions.push({ slug, stationCount: g.stationCount ?? 0 });
+          suggestions.push({ slug, stationCount: g.stationCount ?? 0, topCountries: [] });
           if (suggestions.length >= limit) break;
+        }
+
+        // Task #331: per-suggestion country breakdown so admins can tell at
+        // a glance whether a candidate tag is concentrated in one
+        // country/region (a real local genre worth whitelisting) or
+        // sprinkled thinly across many countries (often mistagging). We
+        // mirror the lowercased tag/genre union from
+        // `recomputeGenreStationCounts` so the per-country numbers add up
+        // to the overall stationCount the UI already shows. Country code
+        // is upper-cased for display (e.g. "DE", "US"). We return the
+        // FULL per-country distribution sorted desc by stationCount so
+        // the UI's expand/hover can show the complete spread (admins
+        // need to see "concentrated in 1 country" vs "sprinkled across
+        // 40+" to make the whitelist call). There are at most ~250 ISO
+        // country codes, multiplied by `limit` (≤200) suggestions, so
+        // even the worst case stays well under 50k group buckets.
+        if (suggestions.length > 0) {
+          const slugList = suggestions.map((s) => s.slug);
+          try {
+            const perCountry = await Station.aggregate([
+              {
+                $addFields: {
+                  allTags: {
+                    $setUnion: [
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
+                          [{ $toLower: '$genre' }],
+                          [],
+                        ],
+                      },
+                      {
+                        $cond: [
+                          { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
+                          {
+                            $map: {
+                              input: { $split: ['$tags', ','] },
+                              as: 'tag',
+                              in: { $toLower: { $trim: { input: '$$tag' } } },
+                            },
+                          },
+                          [],
+                        ],
+                      },
+                    ],
+                  },
+                },
+              },
+              { $unwind: '$allTags' },
+              {
+                $match: {
+                  allTags: { $in: slugList },
+                  countryCode: { $nin: [null, ''] },
+                },
+              },
+              {
+                $group: {
+                  _id: { tag: '$allTags', cc: { $toUpper: '$countryCode' } },
+                  count: { $sum: 1 },
+                },
+              },
+              { $sort: { count: -1 } },
+            ]).option({ maxTimeMS: 30_000, allowDiskUse: true });
+
+            const byTag = new Map<string, Array<{ countryCode: string; stationCount: number }>>();
+            for (const row of perCountry as Array<{
+              _id: { tag: string; cc: string };
+              count: number;
+            }>) {
+              const tag = row._id.tag;
+              const cc = row._id.cc;
+              if (!tag || !cc) continue;
+              let arr = byTag.get(tag);
+              if (!arr) {
+                arr = [];
+                byTag.set(tag, arr);
+              }
+              arr.push({ countryCode: cc, stationCount: row.count });
+            }
+            for (const s of suggestions) {
+              const arr = byTag.get(s.slug) ?? [];
+              arr.sort((a, b) => b.stationCount - a.stationCount);
+              s.topCountries = arr;
+            }
+          } catch (countryErr: any) {
+            // Non-fatal — degrade to the overall counts the UI was
+            // already showing. Per-country breakdown is a nice-to-have.
+            logger.error(
+              'genre-whitelist suggestions: per-country aggregation failed:',
+              countryErr?.message ?? countryErr,
+            );
+          }
         }
 
         return void res.json({ suggestions, limit });

@@ -149,10 +149,17 @@ export default function AdminGenreWhitelist() {
   // powers the "add slug" autocomplete so admins pick existing station
   // tags instead of guessing the normalized slug form.
   const { data: suggestionsData } = useQuery<{
-    suggestions: Array<{ slug: string; stationCount: number }>;
+    suggestions: Array<{
+      slug: string;
+      stationCount: number;
+      topCountries?: Array<{ countryCode: string; stationCount: number }>;
+    }>;
   }>({
     queryKey: ['/api/admin/genre-whitelist/suggestions'],
   });
+  const [expandedSuggestionCountries, setExpandedSuggestionCountries] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ['/api/admin/genre-whitelist'] });
@@ -706,38 +713,91 @@ export default function AdminGenreWhitelist() {
               <div className="border rounded divide-y">
                 {suggestionsData.suggestions.map((s) => {
                   const isReserved = reservedSet.has(s.slug);
+                  const countries = s.topCountries ?? [];
+                  const isExpanded = expandedSuggestionCountries.has(s.slug);
+                  const hasMoreCountries = countries.length > 3;
+                  const inlineSummary = countries
+                    .slice(0, 3)
+                    .map((c) => `${c.countryCode} ${c.stationCount}`)
+                    .join(' · ');
+                  const fullSummary = countries
+                    .map((c) => `${c.countryCode} ${c.stationCount}`)
+                    .join(' · ');
                   return (
                     <div
                       key={s.slug}
-                      className="flex items-center justify-between px-3 py-2 hover:bg-gray-50"
+                      className="px-3 py-2 hover:bg-gray-50 space-y-1"
                       data-testid={`row-slug-suggestion-${s.slug}`}
                     >
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <code className="text-sm">{s.slug}</code>
-                        <span
-                          className="text-xs text-gray-500 tabular-nums"
-                          data-testid={`text-slug-suggestion-count-${s.slug}`}
-                        >
-                          {s.stationCount} {s.stationCount === 1 ? 'station' : 'stations'}
-                        </span>
-                        {isReserved && (
-                          <Badge
-                            variant="outline"
-                            className="text-xs border-red-300 text-red-700 bg-red-50"
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <code className="text-sm">{s.slug}</code>
+                          <span
+                            className="text-xs text-gray-500 tabular-nums"
+                            data-testid={`text-slug-suggestion-count-${s.slug}`}
                           >
-                            reserved
-                          </Badge>
-                        )}
+                            {s.stationCount} {s.stationCount === 1 ? 'station' : 'stations'}
+                          </span>
+                          {isReserved && (
+                            <Badge
+                              variant="outline"
+                              className="text-xs border-red-300 text-red-700 bg-red-50"
+                            >
+                              reserved
+                            </Badge>
+                          )}
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={addSlug.isPending || isReserved}
+                          onClick={() => addSlug.mutate(s.slug)}
+                          data-testid={`button-add-slug-suggestion-${s.slug}`}
+                        >
+                          <Plus className="w-4 h-4 mr-1" /> Add
+                        </Button>
                       </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        disabled={addSlug.isPending || isReserved}
-                        onClick={() => addSlug.mutate(s.slug)}
-                        data-testid={`button-add-slug-suggestion-${s.slug}`}
-                      >
-                        <Plus className="w-4 h-4 mr-1" /> Add
-                      </Button>
+                      {countries.length > 0 ? (
+                        <div
+                          className="flex items-center gap-2 flex-wrap text-xs text-gray-600"
+                          title={countries
+                            .map((c) => `${c.countryCode}: ${c.stationCount}`)
+                            .join(', ')}
+                          data-testid={`text-slug-suggestion-countries-${s.slug}`}
+                        >
+                          <span className="text-gray-400">Top:</span>
+                          <span className="tabular-nums">
+                            {isExpanded ? fullSummary : inlineSummary}
+                          </span>
+                          {hasMoreCountries && (
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline"
+                              onClick={() => {
+                                setExpandedSuggestionCountries((prev) => {
+                                  const next = new Set(prev);
+                                  if (next.has(s.slug)) {
+                                    next.delete(s.slug);
+                                  } else {
+                                    next.add(s.slug);
+                                  }
+                                  return next;
+                                });
+                              }}
+                              data-testid={`button-toggle-suggestion-countries-${s.slug}`}
+                            >
+                              {isExpanded ? 'Show less' : `+${countries.length - 3} more`}
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div
+                          className="text-xs text-gray-400"
+                          data-testid={`text-slug-suggestion-countries-${s.slug}`}
+                        >
+                          No country data
+                        </div>
+                      )}
                     </div>
                   );
                 })}
