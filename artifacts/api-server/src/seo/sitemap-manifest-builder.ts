@@ -353,12 +353,20 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
   const buckets = new Map<string, Array<{ id: mongoose.Types.ObjectId; votes: number; updatedAt?: Date }>>();
   for (const lang of qualifiedLanguages) buckets.set(lang, []);
 
+  // FRESHNESS FIX (2026-05-09): force PRIMARY read preference for the manifest
+  // builder cursor. Without this, large catalog scans (60k+ stations) can be
+  // routed to a secondary that hasn't yet replicated the latest writes from
+  // the admin "Save station" / bulk import path. The freshness-bump branch in
+  // `writeBuildingManifest` then commits a STALE id set into the manifest while
+  // bumping `generatedAt` — admins see "lastmod updated" but the URL list
+  // inside is the same as before. Reading from primary closes that race.
   const cursor = Station.find({
     slug: { $exists: true, $ne: '' },
     $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
   })
-    .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon')
+    .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon descriptions')
     .sort({ votes: -1, _id: 1 })
+    .read('primary')
     .lean()
     .cursor({ batchSize: 500 });
 
@@ -614,6 +622,11 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
    * whether to ping IndexNow — we only want to notify search engines when
    * the URL set actually changed, not every 6h on identical content. */
   activatedCount?: number;
+  /** Number of `status: 'active'` manifest docs whose language was no longer
+   * in the qualified set and thus moved to `status: 'retired'`. Reflects
+   * leftover state from a previous (larger) qualified-languages list — should
+   * be 0 after the first rebuild post-shrink. */
+  retiredZombies?: number;
 }> {
   if (buildLock) {
     logger.warn('⏭️ manifest-builder: build already in progress, skipping');
@@ -700,9 +713,32 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
       }
     }
 
+    // ZOMBIE CLEANUP (2026-05-09): retire any active SitemapManifest doc
+    // whose language is no longer in the qualified set. Symptom this fixes:
+    // an earlier deploy ran with 30+ qualified languages (pl, no, bg, lv, lt,
+    // vi, te, mr, pa, af, bs, ...). After the AI-translation list was cut to
+    // 14, those manifests stayed `status: 'active'` in Mongo and the
+    // sitemap-index route kept emitting them — Bing/Google fetched them and
+    // logged them as 0-URL or stale entries. Set them to 'retired' so the
+    // index handler's `language: { $in: qualifiedLanguages }` filter no longer
+    // surfaces them, and so getActiveManifest() can never return them.
+    let retiredZombies = 0;
+    try {
+      const zombieRes = await SitemapManifest.updateMany(
+        { status: 'active', language: { $nin: languages } },
+        { $set: { status: 'retired', retiredAt: new Date() } },
+      );
+      retiredZombies = zombieRes.modifiedCount ?? 0;
+      if (retiredZombies > 0) {
+        logger.warn(`🧟 manifest-builder: retired ${retiredZombies} zombie manifest(s) for non-qualified languages`);
+      }
+    } catch (err) {
+      logger.error('❌ manifest-builder: zombie cleanup failed (non-fatal)', err);
+    }
+
     const elapsed = Date.now() - t0;
-    logger.log(`✅ manifest-builder: built+activated all manifests in ${elapsed}ms (activated=${activatedCount})`);
-    return { built: true, qualifiedLanguagesHash: hash, qualifiedLanguages: languages, perLangCounts, activatedCount };
+    logger.log(`✅ manifest-builder: built+activated all manifests in ${elapsed}ms (activated=${activatedCount}, retiredZombies=${retiredZombies})`);
+    return { built: true, qualifiedLanguagesHash: hash, qualifiedLanguages: languages, perLangCounts, activatedCount, retiredZombies };
 
   } catch (err) {
     logger.error('❌ manifest-builder: build failed', err);

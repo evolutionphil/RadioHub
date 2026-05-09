@@ -258,7 +258,18 @@ export function frequencyPrefixBaseSlug(slug: string): string | null {
  * Major-diaspora / lingua-franca languages that are reasonable for any
  * station regardless of country. English is always included.
  */
-const UNIVERSAL_LANGUAGES = ['en'];
+// AI Translation Languages (admin/stations.tsx — Station Management):
+// 14 dilde meta title + meta description + full description için AI çeviri
+// aktif. Her radyonun bu 14 dilin TAMAMINDA Mongo `descriptions[lang]`
+// alanları doluyor. Bu yüzden bu 14 dil "universal" — countryCode farkı
+// gözetmeksizin her station bu dillerin sitemap'inde indexlenebilir.
+// Liste değişirse `EMERGENCY_SEED_QUALIFIED_LANGUAGES` (qualified-languages.ts)
+// ile senkron tutulmalı; sitemap-index, sitemap-{type}-{lang}.xml ve
+// hreflang alternate setinin tamamı buradan türeyen kümeyle çalışır.
+const UNIVERSAL_LANGUAGES = [
+  'en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar',
+  'zh', 'tr', 'ja', 'ko', 'hi', 'he',
+];
 
 /**
  * Map of country code → extra languages spoken by sizable communities in that

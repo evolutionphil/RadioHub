@@ -47,6 +47,7 @@ import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from "@work
 import {
   getCachedQualifiedLanguages,
   getQualifiedLanguagesState,
+  invalidateQualifiedLanguages,
   QualifiedLanguagesUnavailableError,
 } from "../seo/qualified-languages";
 import {
@@ -55,6 +56,11 @@ import {
   getActiveStationChunk,
   extractTopCountriesFromChunk,
 } from "../seo/sitemap-manifest-builder";
+import { SitemapManifest } from '@workspace/db-shared/mongo-schemas';
+import {
+  loadDatabaseUrlTranslations,
+  loadDatabaseCountryLanguageMappings,
+} from "../seo/load-database-mappings";
 import { IndexNowService } from "../services/indexnow";
 
 // Centralized XML escape helper (Architect B P0)
@@ -502,6 +508,43 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // country list embedded in /sitemap-main-{lang}.xml.
   app.post("/api/admin/sitemap/rebuild", requireAdmin, async (_req, res) => {
     try {
+      // FRESHNESS FIX (2026-05-09): full cache-invalidation chain BEFORE the
+      // rebuild. Without this, buildAllSitemapManifests({ force: true }) reads
+      // stale data from three independent layers and commits it back into the
+      // manifest with a fresh `generatedAt` — admin sees "lastmod updated" in
+      // /sitemap-index.xml but the URL list inside is unchanged.
+      //
+      //  1. performanceCache.translationsCache (1h TTL) — feeds
+      //     hasCompleteSeoTranslations → drives qualifiedLanguages.
+      //  2. qualified-languages memoryCache (10min TTL) + LKG document —
+      //     LKG resetLkg=true is REQUIRED to defeat shrink-protection
+      //     (the 50% guard locks us into the previous 30-language list).
+      //  3. URL/country mapping caches — drive sitemap URL slug generation.
+      // Best-effort: in-memory cache clears can never fail.
+      performanceCache.clearTranslations();
+      performanceCache.clearUrlTranslations();
+      performanceCache.clearCountryLanguageMappings();
+      // CRITICAL: LKG reset MUST succeed — without it the shrink-protection
+      // guard (qualified-languages.ts ~L206) will keep serving the stale
+      // 30-language LKG, defeating the whole point of "Sitemap'i Yenile".
+      // Surface the failure to the admin instead of silently completing.
+      try {
+        await invalidateQualifiedLanguages({ resetLkg: true });
+      } catch (err: any) {
+        logger.error('admin/sitemap/rebuild: LKG reset FAILED — aborting (would keep zombie languages):', err);
+        res.status(500).json({
+          ok: false,
+          error: 'lkg_reset_failed',
+          message: `Yenileme iptal edildi: shrink-protection kilidi açılamadı (${err?.message ?? err}). Lütfen tekrar deneyin.`,
+        });
+        return;
+      }
+      // Mapping reloads are best-effort — empty maps just mean fewer slugs,
+      // not stale ones, so allSettled is fine here.
+      await Promise.allSettled([
+        loadDatabaseUrlTranslations(),
+        loadDatabaseCountryLanguageMappings(),
+      ]);
       const result = await buildAllSitemapManifests({ force: true });
       // FRESHNESS BUG FIX (2026-05-09): nuke the per-XML response cache so
       // the admin rebuild button takes effect immediately. Without this,
@@ -512,6 +555,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       // worst case all sitemap URLs see one cache miss in the next minute.
       try {
         await CacheManager.clearByPattern('sitemap:');
+        await CacheManager.clearByPattern('precomputed_');
       } catch (err: any) {
         logger.warn(`admin/sitemap/rebuild: cache clear failed (non-fatal): ${err?.message ?? err}`);
       }
@@ -582,9 +626,77 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         }
       })();
       res.json({ ok: true, ...result });
+    } catch (error: any) {
+      logger.error('admin/sitemap/rebuild failed:', error);
+      res.status(500).json({ ok: false, error: error?.message || 'rebuild_failed' });
+    }
+  });
+
+  // ADMIN OBSERVABILITY (2026-05-09): live snapshot of every active
+  // SitemapManifest doc — admins need this to verify that "Sitemap'i Yenile"
+  // actually refreshed content (not just bumped lastmod). Returns one row per
+  // (type, language) so the frontend can colour-code freshness and surface
+  // chunkCount / totalUrls / maxUpdatedAt without having to curl the live XML.
+  app.get("/api/admin/sitemap/manifest-stats", requireAdmin, async (_req, res) => {
+    try {
+      let qualifiedLanguages: string[] = [];
+      let qualifiedLanguagesHash = '';
+      try {
+        const state = await getQualifiedLanguagesState();
+        qualifiedLanguages = [...state.languages];
+        qualifiedLanguagesHash = state.hash;
+      } catch (err) {
+        if (!(err instanceof QualifiedLanguagesUnavailableError)) throw err;
+      }
+
+      const docs = await SitemapManifest.find({ status: 'active' })
+        .select('type language version qualifiedLanguagesHash chunks chunkCount totalUrls generatedAt')
+        .lean();
+
+      const stats = docs.map((d: any) => {
+        const dates: number[] = (d.chunks || [])
+          .map((c: any) => c?.maxUpdatedAt instanceof Date ? c.maxUpdatedAt.getTime() : (c?.maxUpdatedAt ? new Date(c.maxUpdatedAt).getTime() : NaN))
+          .filter((t: number) => Number.isFinite(t));
+        const maxUpdatedAt = dates.length > 0 ? new Date(Math.max(...dates)).toISOString() : null;
+        return {
+          type: d.type,
+          language: d.language,
+          version: typeof d.version === 'string' ? d.version.slice(0, 12) : '',
+          qualifiedLanguagesHash: typeof d.qualifiedLanguagesHash === 'string' ? d.qualifiedLanguagesHash.slice(0, 12) : '',
+          chunkCount: d.chunkCount ?? (Array.isArray(d.chunks) ? d.chunks.length : 0),
+          totalUrls: d.totalUrls ?? 0,
+          generatedAt: d.generatedAt ? new Date(d.generatedAt).toISOString() : null,
+          maxUpdatedAt,
+          isQualified: qualifiedLanguages.length === 0 ? null : qualifiedLanguages.includes(d.language),
+        };
+      });
+
+      const generatedAtList = stats
+        .map((s) => s.generatedAt ? new Date(s.generatedAt).getTime() : NaN)
+        .filter((t) => Number.isFinite(t));
+      const oldestGeneratedAt = generatedAtList.length > 0
+        ? new Date(Math.min(...generatedAtList)).toISOString()
+        : null;
+      const newestGeneratedAt = generatedAtList.length > 0
+        ? new Date(Math.max(...generatedAtList)).toISOString()
+        : null;
+
+      const zombieLanguages = qualifiedLanguages.length > 0
+        ? Array.from(new Set(stats.filter((s) => s.isQualified === false).map((s) => s.language))).sort()
+        : [];
+
+      res.json({
+        qualifiedLanguages,
+        qualifiedLanguagesHash,
+        stats,
+        oldestGeneratedAt,
+        newestGeneratedAt,
+        zombieLanguages,
+        totalActive: stats.length,
+      });
     } catch (err: any) {
-      logger.error('admin/sitemap/rebuild failed:', err?.message ?? err);
-      res.status(500).json({ ok: false, error: err?.message ?? 'rebuild failed' });
+      logger.error('admin/sitemap/manifest-stats failed:', err?.message ?? err);
+      res.status(500).json({ ok: false, error: err?.message ?? 'manifest_stats_failed' });
     }
   });
 

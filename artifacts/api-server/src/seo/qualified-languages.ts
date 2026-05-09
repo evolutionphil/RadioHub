@@ -72,8 +72,12 @@ const DRIFT_FLAP_THRESHOLD = 3;               // 3+ changes/hour = flap alert
 
 /** Emergency seed used ONLY by `seedQualifiedLanguagesLkg()` when the DB has
  * never been populated. Never used at runtime as a silent fallback. */
+// 14 AI-translated languages (admin Station Management — AI Translation Languages):
+// en, es, fr, de, pt, it, ru, ar, zh, tr, ja, ko, hi, he. Bu liste değişirse
+// junk-station-rules.ts UNIVERSAL_LANGUAGES ile senkron tutulmalı.
 export const EMERGENCY_SEED_QUALIFIED_LANGUAGES: readonly string[] = [
-  'ar', 'de', 'en', 'es', 'fr', 'it', 'nl', 'pt', 'ru', 'tr',
+  'ar', 'de', 'en', 'es', 'fr', 'he', 'hi', 'it',
+  'ja', 'ko', 'pt', 'ru', 'tr', 'zh',
 ];
 
 // ---------------------------------------------------------------------------
@@ -272,9 +276,27 @@ export function getCachedQualifiedLanguagesSync(): string[] | null {
   return null;
 }
 
-/** Force-invalidate the in-memory cache. Useful after admin translation edits. */
-export function invalidateQualifiedLanguages(): void {
+/** Force-invalidate the in-memory cache. Useful after admin translation edits.
+ *
+ * When `resetLkg=true` is passed, the persisted Last-Known-Good document is
+ * also deleted. Use this from the admin "Sitemap Yenile" path: otherwise the
+ * shrink-protection in `getQualifiedLanguagesState` (line ~206) keeps serving
+ * the OLD LKG (e.g. 30 stale languages from a previous deploy) when the live
+ * compute returns fewer than 50% of the LKG count — exactly the scenario after
+ * cutting the AI-translation list down to the 14 supported languages.
+ */
+export async function invalidateQualifiedLanguages(opts: { resetLkg?: boolean } = {}): Promise<void> {
   memoryCache = null;
+  lastHash = null;
+  driftHistory = [];
+  if (opts.resetLkg) {
+    // Throw on failure: callers (admin rebuild path) MUST know if this fails,
+    // otherwise the shrink-protection in `getQualifiedLanguagesState` will
+    // happily keep serving the stale 30-language LKG and the rebuild will
+    // appear "successful" while still publishing zombie languages.
+    await SeoQualifiedLanguagesLkg.deleteOne({ key: LKG_KEY });
+    logger.warn('🧹 qualified-languages: LKG document deleted (admin force-rebuild)');
+  }
 }
 
 /**

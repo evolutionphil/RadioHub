@@ -10,6 +10,43 @@ import { useToast } from "@/hooks/use-toast";
 import { RetryTrendSparkline } from "@/components/admin/RetryTrendSparkline";
 import { RetryCauseBreakdown } from "@/components/admin/RetryCauseBreakdown";
 
+interface SitemapStatRow {
+  type: "stations" | "main" | "genres";
+  language: string;
+  version: string;
+  qualifiedLanguagesHash: string;
+  chunkCount: number;
+  totalUrls: number;
+  generatedAt: string | null;
+  maxUpdatedAt: string | null;
+  isQualified: boolean | null;
+}
+interface SitemapStatsResponse {
+  qualifiedLanguages: string[];
+  qualifiedLanguagesHash: string;
+  stats: SitemapStatRow[];
+  oldestGeneratedAt: string | null;
+  newestGeneratedAt: string | null;
+  zombieLanguages: string[];
+  totalActive: number;
+}
+
+function freshnessBadge(generatedAt: string | null): { label: string; cls: string } {
+  if (!generatedAt) return { label: "—", cls: "bg-slate-200 text-slate-700" };
+  const ageMs = Date.now() - new Date(generatedAt).getTime();
+  const h = ageMs / 3_600_000;
+  if (h < 6) return { label: `${h.toFixed(1)}s`, cls: "bg-emerald-100 text-emerald-800 border border-emerald-200" };
+  if (h < 24) return { label: `${h.toFixed(1)}s`, cls: "bg-amber-100 text-amber-800 border border-amber-200" };
+  if (h < 168) return { label: `${(h / 24).toFixed(1)}g`, cls: "bg-rose-100 text-rose-800 border border-rose-200" };
+  return { label: `${(h / 24).toFixed(0)}g`, cls: "bg-rose-200 text-rose-900 border border-rose-300 font-semibold" };
+}
+
+function formatTs(ts: string | null): string {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  return `${d.toLocaleDateString("tr-TR")} ${d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`;
+}
+
 interface HealthStats {
   country: string | null;
   total: number;
@@ -507,18 +544,31 @@ export default function SeoMaintenancePage() {
   // (type, lang) manifest, and fires an IndexNow ping. Use this after bulk
   // station imports/deletions or when sitemap <lastmod> looks stale in
   // Google Search Console.
+  const sitemapStatsQuery = useQuery<SitemapStatsResponse>({
+    queryKey: ["/api/admin/sitemap/manifest-stats"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/sitemap/manifest-stats", { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+    refetchInterval: 60000,
+  });
+
   const rebuildSitemap = useMutation({
     mutationFn: async () => apiRequest("POST", "/api/admin/sitemap/rebuild", {}),
     onSuccess: (data: any) => {
       const built = data?.built;
       const langs = Array.isArray(data?.qualifiedLanguages) ? data.qualifiedLanguages.length : 0;
       const activated = data?.activatedCount ?? 0;
+      const retiredZombies = data?.retiredZombies ?? 0;
+      const zombieMsg = retiredZombies > 0 ? ` ${retiredZombies} zombi manifest temizlendi.` : "";
       toast({
         title: built ? "Sitemap yenilendi" : "Sitemap zaten taze",
         description: built
-          ? `${langs} dil işlendi, ${activated} manifest yeni sürüme geçti. IndexNow ping fırlatıldı.`
+          ? `${langs} dil işlendi, ${activated} manifest yeni sürüme geçti.${zombieMsg} Cloudflare + IndexNow tetiklendi.`
           : "Yenileme gerekmedi (manifest 6 saatten kısa süre önce güncellenmiş).",
       });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/sitemap/manifest-stats"] });
     },
     onError: (e: any) => {
       toast({
@@ -604,8 +654,111 @@ export default function SeoMaintenancePage() {
               {typeof (rebuildSitemap.data as any)?.activatedCount === "number" && (
                 <> — activated={(rebuildSitemap.data as any).activatedCount}</>
               )}
+              {typeof (rebuildSitemap.data as any)?.retiredZombies === "number" && (rebuildSitemap.data as any).retiredZombies > 0 && (
+                <> — 🧟 {(rebuildSitemap.data as any).retiredZombies} zombi temizlendi</>
+              )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Sitemap Sağlık Tablosu */}
+      <Card className="bg-white">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            📊 Sitemap Sağlık Tablosu
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => sitemapStatsQuery.refetch()}
+              disabled={sitemapStatsQuery.isFetching}
+              className="ml-auto"
+            >
+              {sitemapStatsQuery.isFetching ? "Yükleniyor..." : "Yenile"}
+            </Button>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {sitemapStatsQuery.isLoading && <div className="text-sm text-slate-500">Yükleniyor...</div>}
+          {sitemapStatsQuery.error && <div className="text-sm text-rose-600">Manifest istatistikleri alınamadı.</div>}
+          {sitemapStatsQuery.data && (() => {
+            const data = sitemapStatsQuery.data;
+            const langs = Array.from(new Set([...data.qualifiedLanguages, ...data.zombieLanguages])).sort();
+            const byKey = new Map<string, SitemapStatRow>();
+            for (const s of data.stats) byKey.set(`${s.type}|${s.language}`, s);
+            const types: Array<SitemapStatRow["type"]> = ["stations", "main", "genres"];
+            const totalUrls = data.stats.reduce((a, s) => a + (s.totalUrls || 0), 0);
+            return (
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-3 text-xs text-slate-700">
+                  <span className="bg-slate-100 px-2 py-1 rounded"><strong>Aktif manifest:</strong> {data.totalActive}</span>
+                  <span className="bg-slate-100 px-2 py-1 rounded"><strong>Toplam URL:</strong> {totalUrls.toLocaleString()}</span>
+                  <span className="bg-slate-100 px-2 py-1 rounded"><strong>Diller:</strong> {data.qualifiedLanguages.length}</span>
+                  <span className="bg-slate-100 px-2 py-1 rounded"><strong>Hash:</strong> <code className="text-[10px]">{data.qualifiedLanguagesHash.slice(0, 8)}</code></span>
+                  <span className="bg-slate-100 px-2 py-1 rounded"><strong>En eski:</strong> {formatTs(data.oldestGeneratedAt)}</span>
+                  <span className="bg-slate-100 px-2 py-1 rounded"><strong>En yeni:</strong> {formatTs(data.newestGeneratedAt)}</span>
+                </div>
+                {data.zombieLanguages.length > 0 && (
+                  <div className="text-xs bg-rose-50 border border-rose-200 rounded p-2 text-rose-800">
+                    🧟 <strong>{data.zombieLanguages.length} zombi dil tespit edildi:</strong> {data.zombieLanguages.join(", ")}.
+                    Bu manifestler qualifiedLanguages dışı — bir sonraki "Sitemap'i Şimdi Yenile" tıkında otomatik retire edilecek.
+                  </div>
+                )}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50">
+                        <th className="text-left px-2 py-2 border-b border-slate-200">Dil</th>
+                        {types.map((t) => (
+                          <th key={t} className="text-left px-2 py-2 border-b border-slate-200 capitalize">{t}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {langs.map((lang) => {
+                        const isQ = data.qualifiedLanguages.includes(lang);
+                        return (
+                          <tr key={lang} className={isQ ? "" : "bg-rose-50/40"}>
+                            <td className="px-2 py-2 border-b border-slate-100">
+                              <code className="font-mono">{lang}</code>
+                              {!isQ && <span className="ml-1 text-rose-700">🧟</span>}
+                            </td>
+                            {types.map((t) => {
+                              const row = byKey.get(`${t}|${lang}`);
+                              if (!row) {
+                                return <td key={t} className="px-2 py-2 border-b border-slate-100 text-slate-400">—</td>;
+                              }
+                              const fresh = freshnessBadge(row.generatedAt);
+                              return (
+                                <td key={t} className="px-2 py-2 border-b border-slate-100">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] ${fresh.cls}`} title={`generatedAt: ${formatTs(row.generatedAt)}`}>
+                                      {fresh.label}
+                                    </span>
+                                    <span className="text-slate-700">{row.totalUrls.toLocaleString()}u</span>
+                                    <span className="text-slate-500">{row.chunkCount}c</span>
+                                  </div>
+                                  {row.maxUpdatedAt && (
+                                    <div className="text-[10px] text-slate-400 mt-0.5">içerik: {formatTs(row.maxUpdatedAt)}</div>
+                                  )}
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-[10px] text-slate-500">
+                  Renk: <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-1 rounded">&lt;6s taze</span> ·
+                  <span className="bg-amber-100 text-amber-800 border border-amber-200 px-1 rounded ml-1">6-24s</span> ·
+                  <span className="bg-rose-100 text-rose-800 border border-rose-200 px-1 rounded ml-1">&gt;24s stale</span> ·
+                  <span className="ml-1">u=URL, c=chunk</span>
+                </div>
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
