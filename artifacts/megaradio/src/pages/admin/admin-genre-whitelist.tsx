@@ -63,6 +63,17 @@ interface StationCountsRun {
   errorMessage: string | null;
 }
 
+interface LastNightlyRun {
+  trigger: string;
+  status: 'running' | 'completed' | 'failed';
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  totalGenres: number;
+  updatedSlugs: number;
+  errorMessage: string | null;
+}
+
 interface WhitelistResponse {
   slugs: string[];
   slugStationCounts?: Record<string, number>;
@@ -77,6 +88,7 @@ interface WhitelistResponse {
   stationCountsRuns?: StationCountsRun[];
   stationCountsRunsTotal?: number;
   stationCountsRetentionMaxRows?: number;
+  lastNightlyRun?: LastNightlyRun | null;
   lastPush: PushStatus | null;
   pushHistory?: PushStatus[];
 }
@@ -433,6 +445,35 @@ export default function AdminGenreWhitelist() {
           {data.stationCountsStatus?.inFlight && (
             <Badge variant="secondary" data-testid="badge-counts-recomputing">
               Recomputing counts…
+            </Badge>
+          )}
+          {/* Task #334: separate "last nightly refresh" badge sourced
+              from the persisted audit collection. The "Counts updated"
+              badge above reflects the most recent recompute regardless
+              of trigger (a manual click or post-bulk-op hook overwrites
+              the in-process snapshot), so this badge tells admins
+              whether the 02:30 cron itself has actually been firing. */}
+          {data.lastNightlyRun ? (
+            <Badge
+              variant="outline"
+              className={
+                data.lastNightlyRun.status === 'failed'
+                  ? 'border-red-300 text-red-700 bg-red-50'
+                  : undefined
+              }
+              data-testid="badge-last-nightly-refresh"
+              title={
+                data.lastNightlyRun.errorMessage ??
+                `Trigger: ${data.lastNightlyRun.trigger}`
+              }
+            >
+              Last nightly refresh:{' '}
+              {formatRelativeTime(data.lastNightlyRun.startedAt)}
+              {data.lastNightlyRun.status === 'failed' ? ' (failed)' : ''}
+            </Badge>
+          ) : (
+            <Badge variant="outline" data-testid="badge-last-nightly-refresh">
+              Last nightly refresh: never
             </Badge>
           )}
         </div>

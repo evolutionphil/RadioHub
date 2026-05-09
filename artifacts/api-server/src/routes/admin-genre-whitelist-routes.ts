@@ -300,20 +300,39 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // before we hand it back to the dashboard.
         await refreshGenreWhitelistFromDb();
 
-        const [overrides, pushHistory, stationCountsRuns, stationCountsTotal] =
-          await Promise.all([
-            GenreWhitelistOverride.find({}).sort({ kind: 1, slug: 1 }).lean(),
-            getRecentPushHistory(PUSH_HISTORY_LIMIT),
-            // Task #330: persisted history of recent Genre.stationCount
-            // recomputes (newest first) so admins can confirm the
-            // nightly cron has been firing reliably and spot a night
-            // where 0 slugs were updated unexpectedly.
-            GenreStationCountsRun.find({})
-              .sort({ startedAt: -1 })
-              .limit(STATION_COUNTS_HISTORY_LIMIT)
-              .lean<GenreStationCountsRunLean[]>(),
-            GenreStationCountsRun.estimatedDocumentCount(),
-          ]);
+        const [
+          overrides,
+          pushHistory,
+          stationCountsRuns,
+          stationCountsTotal,
+          lastNightlyRunRow,
+        ] = await Promise.all([
+          GenreWhitelistOverride.find({}).sort({ kind: 1, slug: 1 }).lean(),
+          getRecentPushHistory(PUSH_HISTORY_LIMIT),
+          // Task #330: persisted history of recent Genre.stationCount
+          // recomputes (newest first) so admins can confirm the
+          // nightly cron has been firing reliably and spot a night
+          // where 0 slugs were updated unexpectedly.
+          GenreStationCountsRun.find({})
+            .sort({ startedAt: -1 })
+            .limit(STATION_COUNTS_HISTORY_LIMIT)
+            .lean<GenreStationCountsRunLean[]>(),
+          GenreStationCountsRun.estimatedDocumentCount(),
+          // Task #334: most-recent finished nightly cron run (success
+          // or failure). The `stationCountsStatus` in-process snapshot
+          // reflects the last recompute regardless of trigger (a manual
+          // admin click or post-bulk-op hook will overwrite it), so we
+          // surface a separate "last nightly refresh" badge sourced from
+          // the persisted audit collection. Filter to triggers starting
+          // with `cron:nightly` so future cron variants (e.g.
+          // `cron:nightly-retry`) still count.
+          GenreStationCountsRun.findOne({
+            trigger: { $regex: '^cron:nightly' },
+            status: { $in: ['completed', 'failed'] },
+          })
+            .sort({ startedAt: -1 })
+            .lean<GenreStationCountsRunLean | null>(),
+        ]);
 
         const merged = getMergedWhitelist();
         const aliases = getMergedAliases();
@@ -391,6 +410,22 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           })),
           stationCountsRunsTotal: stationCountsTotal,
           stationCountsRetentionMaxRows: getGenreStationCountsRetentionMaxRows(),
+          // Task #334: most-recent finished nightly cron run, sourced
+          // from the persisted audit collection so it survives api-server
+          // restarts and isn't overwritten by manual / bulk-op recomputes
+          // (which clobber the in-process `stationCountsStatus` snapshot).
+          lastNightlyRun: lastNightlyRunRow
+            ? {
+                trigger: lastNightlyRunRow.trigger,
+                status: lastNightlyRunRow.status,
+                startedAt: lastNightlyRunRow.startedAt,
+                finishedAt: lastNightlyRunRow.finishedAt ?? null,
+                durationMs: lastNightlyRunRow.durationMs ?? null,
+                totalGenres: lastNightlyRunRow.totalGenres ?? 0,
+                updatedSlugs: lastNightlyRunRow.updatedSlugs ?? 0,
+                errorMessage: lastNightlyRunRow.errorMessage ?? null,
+              }
+            : null,
           lastPush: getLastPushStatus(),
           // Task #255: persisted history of recent completed pushes
           // (newest first). Survives api-server restarts so admins can
