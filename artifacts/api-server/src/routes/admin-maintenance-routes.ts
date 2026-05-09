@@ -21,7 +21,13 @@ import {
 } from "../services/scheduled-backfill";
 import { radioBrowserService } from "../services/radio-browser";
 import { scheduledBackfill } from "../services/scheduled-backfill";
-import { AdminSetting, AdminSettingHistory } from "@workspace/db-shared/mongo-schemas";
+import { AdminSetting } from "@workspace/db-shared/mongo-schemas";
+import {
+  clearAdminSettingWithHistory,
+  listAdminSettingHistory,
+  parseHistoryLimit,
+  upsertAdminSettingWithHistory,
+} from "../services/admin-setting-audit";
 import {
   getGenreSlugCleanupRetention,
   scheduledGenreSlugCleanup,
@@ -1012,41 +1018,12 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           typeof adminAuth?.username === "string" && adminAuth.username.length > 0
             ? adminAuth.username
             : null;
-        const now = new Date();
-        // Snapshot the previous value BEFORE the upsert so the audit row
-        // captures the actual transition (Task #320). Mirrors the pattern
-        // used by the coverage-drop alert route in
-        // `admin-coverage-drop-settings-routes.ts`.
-        const previousDoc = await AdminSetting.findOne({
+        const { changedAt: now } = await upsertAdminSettingWithHistory({
           key: BACKFILL_RETENTION_SETTINGS_KEY,
-        }).lean();
-        await AdminSetting.findOneAndUpdate(
-          { key: BACKFILL_RETENTION_SETTINGS_KEY },
-          {
-            $set: { value: next, updatedAt: now, updatedBy },
-            $setOnInsert: {
-              createdAt: now,
-              key: BACKFILL_RETENTION_SETTINGS_KEY,
-            },
-          },
-          { upsert: true, new: true },
-        );
-
-        try {
-          await AdminSettingHistory.create({
-            key: BACKFILL_RETENTION_SETTINGS_KEY,
-            action: "update",
-            previousValue: previousDoc?.value ?? null,
-            newValue: next,
-            changedBy: updatedBy,
-            changedAt: now,
-          });
-        } catch (historyErr: any) {
-          logger.error(
-            "[backfill-retention] failed to write history row:",
-            historyErr?.message || historyErr,
-          );
-        }
+          value: next,
+          changedBy: updatedBy,
+          logTag: "backfill-retention",
+        });
 
         invalidateBackfillRetentionCache();
 
@@ -1095,27 +1072,11 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           typeof adminAuth?.username === "string" && adminAuth.username.length > 0
             ? adminAuth.username
             : null;
-        const now = new Date();
-        const previousDoc = await AdminSetting.findOne({
+        await clearAdminSettingWithHistory({
           key: BACKFILL_RETENTION_SETTINGS_KEY,
-        }).lean();
-        await AdminSetting.deleteOne({ key: BACKFILL_RETENTION_SETTINGS_KEY });
-
-        try {
-          await AdminSettingHistory.create({
-            key: BACKFILL_RETENTION_SETTINGS_KEY,
-            action: "clear",
-            previousValue: previousDoc?.value ?? null,
-            newValue: null,
-            changedBy,
-            changedAt: now,
-          });
-        } catch (historyErr: any) {
-          logger.error(
-            "[backfill-retention] failed to write history row:",
-            historyErr?.message || historyErr,
-          );
-        }
+          changedBy,
+          logTag: "backfill-retention",
+        });
 
         invalidateBackfillRetentionCache();
 
@@ -1160,27 +1121,11 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const limitParam = Number(req.query.limit);
-        const limit =
-          Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
-            ? Math.floor(limitParam)
-            : 20;
-        const rows = await AdminSettingHistory.find({
-          key: BACKFILL_RETENTION_SETTINGS_KEY,
-        })
-          .sort({ changedAt: -1 })
-          .limit(limit)
-          .lean();
-        res.json({
-          entries: rows.map((r) => ({
-            id: String(r._id),
-            action: r.action,
-            previousValue: r.previousValue ?? null,
-            newValue: r.newValue ?? null,
-            changedBy: r.changedBy ?? null,
-            changedAt: r.changedAt,
-          })),
-        });
+        const entries = await listAdminSettingHistory(
+          BACKFILL_RETENTION_SETTINGS_KEY,
+          parseHistoryLimit(req.query.limit),
+        );
+        res.json({ entries });
       } catch (err: any) {
         logger.error(
           "[backfill-retention] history read error:",

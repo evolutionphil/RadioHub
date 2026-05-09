@@ -20,6 +20,12 @@ import {
   type RunCoverageBackfillProgress,
 } from "../services/coverage-snapshot-backfill";
 import { runCoverageBackfillNow } from "../services/coverage-backfill-on-boot";
+import {
+  clearAdminSettingWithHistory,
+  listAdminSettingHistory,
+  parseHistoryLimit,
+  upsertAdminSettingWithHistory,
+} from "../services/admin-setting-audit";
 
 // AdminSetting key used to record the most recent coverage drop alert
 // acknowledgement (Task #238). The stored value is keyed by snapshotDate
@@ -2559,23 +2565,20 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         const adminUsername =
           ((req.session as any)?.adminAuth?.username as string | undefined) ?? null;
         const acknowledgedAt = new Date().toISOString();
-        const now = new Date();
-        await AdminSetting.findOneAndUpdate(
-          { key: COVERAGE_DROP_ACK_KEY },
-          {
-            $set: {
-              value: {
-                snapshotDate,
-                acknowledgedAt,
-                acknowledgedBy: adminUsername,
-              },
-              updatedAt: now,
-              updatedBy: adminUsername,
-            },
-            $setOnInsert: { createdAt: now, key: COVERAGE_DROP_ACK_KEY },
+        // Task #327: route the upsert through the shared audit helper so
+        // the ack also leaves a row in `AdminSettingHistory`. Lets the
+        // coverage page show "who silenced this alert, when" the same
+        // way it already does for the alert thresholds themselves.
+        await upsertAdminSettingWithHistory({
+          key: COVERAGE_DROP_ACK_KEY,
+          value: {
+            snapshotDate,
+            acknowledgedAt,
+            acknowledgedBy: adminUsername,
           },
-          { upsert: true, new: true },
-        );
+          changedBy: adminUsername,
+          logTag: 'coverage-drop-ack',
+        });
 
         return void res.json({
           acknowledged: true,
@@ -2602,18 +2605,51 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     requireAdmin,
     async (req, res) => {
       try {
-        const result = await AdminSetting.deleteOne({
+        // Task #327: route the delete through the shared audit helper so
+        // the un-acknowledge also leaves a `clear` row in
+        // `AdminSettingHistory`. Skip the history write when no ack was
+        // present so the audit log doesn't fill with no-op DELETEs.
+        const adminUsername =
+          ((req.session as any)?.adminAuth?.username as string | undefined) ?? null;
+        const { existed } = await clearAdminSettingWithHistory({
           key: COVERAGE_DROP_ACK_KEY,
+          changedBy: adminUsername,
+          logTag: 'coverage-drop-ack',
+          skipHistoryWhenAbsent: true,
         });
         return void res.json({
           acknowledged: false,
-          cleared: (result?.deletedCount ?? 0) > 0,
+          cleared: existed,
         });
       } catch (error: any) {
         logger.error('coverage drop-alerts un-acknowledge failed', error);
         return void res.status(500).json({
           error:
             error?.message || 'Failed to un-acknowledge coverage drop alert',
+        });
+      }
+    },
+  );
+
+  // Task #327: append-only audit trail of every acknowledge / reopen of
+  // the coverage drop banner. Mirrors the response shape of the other
+  // `AdminSettingHistory`-backed endpoints so the frontend can render
+  // the entries with the same row layout (collapsible "Recent
+  // acknowledgements" panel on the Coverage page).
+  app.get(
+    '/api/admin/coverage/drop-alerts/acknowledge/history',
+    requireAdmin,
+    async (req, res) => {
+      try {
+        const entries = await listAdminSettingHistory(
+          COVERAGE_DROP_ACK_KEY,
+          parseHistoryLimit(req.query.limit),
+        );
+        return void res.json({ entries });
+      } catch (error: any) {
+        logger.error('coverage drop-alerts ack history failed', error);
+        return void res.status(500).json({
+          error: error?.message || 'Failed to read acknowledgement history',
         });
       }
     },

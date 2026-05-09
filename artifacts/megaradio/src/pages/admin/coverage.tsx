@@ -549,6 +549,9 @@ export default function AdminCoverage() {
       void queryClient.invalidateQueries({
         queryKey: ['/api/admin/coverage/drop-alerts'],
       });
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/drop-alerts/acknowledge/history'],
+      });
       toast({
         title: 'Coverage drop alert reopened',
         description:
@@ -581,6 +584,9 @@ export default function AdminCoverage() {
     onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: ['/api/admin/coverage/drop-alerts'],
+      });
+      void queryClient.invalidateQueries({
+        queryKey: ['/api/admin/coverage/drop-alerts/acknowledge/history'],
       });
       const t = toast({
         title: 'Coverage drop alert acknowledged',
@@ -1146,6 +1152,8 @@ export default function AdminCoverage() {
       <CoverageBackfillBootStatusCard />
 
       <CoverageDropAlertSettingsCard />
+
+      <CoverageDropAckHistoryPanel />
 
       {latestAlert && latestAlert.drops.length > 0 && isAlertAcknowledged ? (
         <div
@@ -1995,6 +2003,120 @@ function describeSettingValue(
   );
   parts.push(`webhook ${value.webhookUrl ? 'set' : 'none'}`);
   return parts.join(', ');
+}
+
+interface CoverageDropAckHistoryEntry {
+  id: string;
+  action: 'update' | 'clear';
+  previousValue: {
+    snapshotDate?: string;
+    acknowledgedAt?: string;
+    acknowledgedBy?: string | null;
+  } | null;
+  newValue: {
+    snapshotDate?: string;
+    acknowledgedAt?: string;
+    acknowledgedBy?: string | null;
+  } | null;
+  changedBy: string | null;
+  changedAt: string;
+}
+
+interface CoverageDropAckHistoryResponse {
+  entries: CoverageDropAckHistoryEntry[];
+}
+
+// Task #327: collapsible "Recent acknowledgements" panel — same pattern
+// as the audit panels on the alert thresholds and backfill retention
+// cards. Reads from the new
+// `/api/admin/coverage/drop-alerts/acknowledge/history` endpoint, which
+// is backed by the shared `AdminSettingHistory` collection.
+function CoverageDropAckHistoryPanel() {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, refetch, isFetching } =
+    useQuery<CoverageDropAckHistoryResponse>({
+      queryKey: ['/api/admin/coverage/drop-alerts/acknowledge/history'],
+      enabled: open,
+      staleTime: 30_000,
+      refetchOnWindowFocus: false,
+    });
+
+  return (
+    <div className="rounded-md border bg-white px-3 py-2">
+      <button
+        type="button"
+        onClick={() => {
+          const next = !open;
+          setOpen(next);
+          if (next) void refetch();
+        }}
+        className="flex w-full items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+        aria-expanded={open}
+        data-testid="button-coverage-drop-ack-history-toggle"
+      >
+        {open ? (
+          <ChevronDown className="w-3.5 h-3.5" />
+        ) : (
+          <ChevronRight className="w-3.5 h-3.5" />
+        )}
+        Recent acknowledgements
+        {data?.entries?.length ? ` (${data.entries.length})` : ''}
+        {open && isFetching ? (
+          <Loader2 className="w-3 h-3 ml-1 animate-spin" />
+        ) : null}
+      </button>
+
+      {open ? (
+        <div className="mt-3" data-testid="panel-coverage-drop-ack-history">
+          {isLoading ? (
+            <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              Loading history…
+            </div>
+          ) : !data || data.entries.length === 0 ? (
+            <p className="py-3 text-xs text-muted-foreground">
+              No acknowledgements recorded yet. Dismissing or reopening a
+              coverage drop banner will start the audit log.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {data.entries.map((entry) => {
+                const when = new Date(entry.changedAt);
+                const who = entry.changedBy ?? 'unknown admin';
+                const ackedSnapshot =
+                  entry.action === 'update'
+                    ? entry.newValue?.snapshotDate ?? null
+                    : entry.previousValue?.snapshotDate ?? null;
+                const actionLabel =
+                  entry.action === 'clear'
+                    ? 'Reopened alert'
+                    : 'Acknowledged alert';
+                return (
+                  <li
+                    key={entry.id}
+                    className="rounded-md border bg-muted/30 px-3 py-2 text-xs"
+                    data-testid={`ack-history-row-${entry.id}`}
+                  >
+                    <div>
+                      <strong>{actionLabel}</strong> by {who} ·{' '}
+                      <span title={when.toISOString()}>
+                        {when.toLocaleString()}
+                      </span>
+                    </div>
+                    {ackedSnapshot ? (
+                      <div className="text-muted-foreground">
+                        Snapshot: {ackedSnapshot}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function CoverageDropAlertSettingsCard() {

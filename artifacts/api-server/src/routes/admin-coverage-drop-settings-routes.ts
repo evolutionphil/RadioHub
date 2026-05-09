@@ -1,9 +1,12 @@
 import type { Express, Request, Response } from 'express';
-import {
-  AdminSetting,
-  AdminSettingHistory,
-} from '@workspace/db-shared/mongo-schemas';
+import { AdminSetting } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import {
+  clearAdminSettingWithHistory,
+  listAdminSettingHistory,
+  parseHistoryLimit,
+  upsertAdminSettingWithHistory,
+} from '../services/admin-setting-audit';
 import {
   COVERAGE_DROP_SETTINGS_KEY,
   invalidateCoverageDropSettingsCache,
@@ -154,38 +157,12 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
         }
 
         const adminUsername = getAdminUsername(req);
-        const now = new Date();
-        const previousDoc = await AdminSetting.findOne({
+        await upsertAdminSettingWithHistory({
           key: COVERAGE_DROP_SETTINGS_KEY,
-        }).lean();
-        await AdminSetting.findOneAndUpdate(
-          { key: COVERAGE_DROP_SETTINGS_KEY },
-          {
-            $set: {
-              value: next,
-              updatedAt: now,
-              updatedBy: adminUsername,
-            },
-            $setOnInsert: { createdAt: now, key: COVERAGE_DROP_SETTINGS_KEY },
-          },
-          { upsert: true, new: true },
-        );
-
-        try {
-          await AdminSettingHistory.create({
-            key: COVERAGE_DROP_SETTINGS_KEY,
-            action: 'update',
-            previousValue: previousDoc?.value ?? null,
-            newValue: next,
-            changedBy: adminUsername,
-            changedAt: now,
-          });
-        } catch (historyErr: any) {
-          logger.error(
-            'Failed to write coverage drop settings history:',
-            historyErr,
-          );
-        }
+          value: next,
+          changedBy: adminUsername,
+          logTag: 'coverage-drop',
+        });
 
         invalidateCoverageDropSettingsCache();
         const payload = await buildResponse();
@@ -266,29 +243,11 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
     async (req: Request, res: Response) => {
       try {
         const adminUsername = getAdminUsername(req);
-        const now = new Date();
-        const previousDoc = await AdminSetting.findOne({
+        await clearAdminSettingWithHistory({
           key: COVERAGE_DROP_SETTINGS_KEY,
-        }).lean();
-        await AdminSetting.deleteOne({
-          key: COVERAGE_DROP_SETTINGS_KEY,
+          changedBy: adminUsername,
+          logTag: 'coverage-drop',
         });
-
-        try {
-          await AdminSettingHistory.create({
-            key: COVERAGE_DROP_SETTINGS_KEY,
-            action: 'clear',
-            previousValue: previousDoc?.value ?? null,
-            newValue: null,
-            changedBy: adminUsername,
-            changedAt: now,
-          });
-        } catch (historyErr: any) {
-          logger.error(
-            'Failed to write coverage drop settings history:',
-            historyErr,
-          );
-        }
 
         invalidateCoverageDropSettingsCache();
         const payload = await buildResponse();
@@ -305,27 +264,11 @@ export function registerAdminCoverageDropSettingsRoutes(app: Express, deps: any)
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const limitParam = Number(req.query.limit);
-        const limit =
-          Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
-            ? Math.floor(limitParam)
-            : 20;
-        const rows = await AdminSettingHistory.find({
-          key: COVERAGE_DROP_SETTINGS_KEY,
-        })
-          .sort({ changedAt: -1 })
-          .limit(limit)
-          .lean();
-        return void res.json({
-          entries: rows.map((r) => ({
-            id: String(r._id),
-            action: r.action,
-            previousValue: r.previousValue ?? null,
-            newValue: r.newValue ?? null,
-            changedBy: r.changedBy ?? null,
-            changedAt: r.changedAt,
-          })),
-        });
+        const entries = await listAdminSettingHistory(
+          COVERAGE_DROP_SETTINGS_KEY,
+          parseHistoryLimit(req.query.limit),
+        );
+        return void res.json({ entries });
       } catch (error: any) {
         logger.error('Error reading coverage drop settings history:', error);
         return void res.status(500).json({ error: 'Failed to read history' });

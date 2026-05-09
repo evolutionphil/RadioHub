@@ -1,9 +1,12 @@
 import type { Express, Request, Response } from 'express';
-import {
-  AdminSetting,
-  AdminSettingHistory,
-} from '@workspace/db-shared/mongo-schemas';
+import { AdminSetting } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import {
+  clearAdminSettingWithHistory,
+  listAdminSettingHistory,
+  parseHistoryLimit,
+  upsertAdminSettingWithHistory,
+} from '../services/admin-setting-audit';
 import {
   MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
   invalidateMappingAuditDigestSettingsCache,
@@ -83,41 +86,12 @@ export function registerAdminMappingAuditDigestSettingsRoutes(
         const next = { cadence: body.cadence };
 
         const adminUsername = getAdminUsername(req);
-        const now = new Date();
-        const previousDoc = await AdminSetting.findOne({
+        await upsertAdminSettingWithHistory({
           key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-        }).lean();
-        await AdminSetting.findOneAndUpdate(
-          { key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY },
-          {
-            $set: {
-              value: next,
-              updatedAt: now,
-              updatedBy: adminUsername,
-            },
-            $setOnInsert: {
-              createdAt: now,
-              key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-            },
-          },
-          { upsert: true, new: true },
-        );
-
-        try {
-          await AdminSettingHistory.create({
-            key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-            action: 'update',
-            previousValue: previousDoc?.value ?? null,
-            newValue: next,
-            changedBy: adminUsername,
-            changedAt: now,
-          });
-        } catch (historyErr: any) {
-          logger.error(
-            'Failed to write mapping-audit digest settings history:',
-            historyErr,
-          );
-        }
+          value: next,
+          changedBy: adminUsername,
+          logTag: 'mapping-audit-digest',
+        });
 
         invalidateMappingAuditDigestSettingsCache();
         const payload = await buildResponse();
@@ -135,29 +109,11 @@ export function registerAdminMappingAuditDigestSettingsRoutes(
     async (req: Request, res: Response) => {
       try {
         const adminUsername = getAdminUsername(req);
-        const now = new Date();
-        const previousDoc = await AdminSetting.findOne({
+        await clearAdminSettingWithHistory({
           key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-        }).lean();
-        await AdminSetting.deleteOne({
-          key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
+          changedBy: adminUsername,
+          logTag: 'mapping-audit-digest',
         });
-
-        try {
-          await AdminSettingHistory.create({
-            key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-            action: 'clear',
-            previousValue: previousDoc?.value ?? null,
-            newValue: null,
-            changedBy: adminUsername,
-            changedAt: now,
-          });
-        } catch (historyErr: any) {
-          logger.error(
-            'Failed to write mapping-audit digest settings history:',
-            historyErr,
-          );
-        }
 
         invalidateMappingAuditDigestSettingsCache();
         const payload = await buildResponse();
@@ -174,27 +130,11 @@ export function registerAdminMappingAuditDigestSettingsRoutes(
     requireAdmin,
     async (req: Request, res: Response) => {
       try {
-        const limitParam = Number(req.query.limit);
-        const limit =
-          Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
-            ? Math.floor(limitParam)
-            : 20;
-        const rows = await AdminSettingHistory.find({
-          key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-        })
-          .sort({ changedAt: -1 })
-          .limit(limit)
-          .lean();
-        return void res.json({
-          entries: rows.map((r) => ({
-            id: String(r._id),
-            action: r.action,
-            previousValue: r.previousValue ?? null,
-            newValue: r.newValue ?? null,
-            changedBy: r.changedBy ?? null,
-            changedAt: r.changedAt,
-          })),
-        });
+        const entries = await listAdminSettingHistory(
+          MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
+          parseHistoryLimit(req.query.limit),
+        );
+        return void res.json({ entries });
       } catch (error: any) {
         logger.error(
           'Error reading mapping-audit digest settings history:',
