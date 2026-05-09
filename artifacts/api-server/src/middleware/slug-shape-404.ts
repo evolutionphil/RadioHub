@@ -177,14 +177,20 @@ export function createSlugShape404Middleware(opts: SlugShape404Options) {
         ) {
           invalid = true;
         } else if (
-          // Task #269: country/city existence gate — mirror the SSR's
-          // `/regions/<continent>/<country>` empty-country promotion to
-          // bot-traffic for non-bot visitors too. Only applies to the
-          // canonical English `regions` family because country/city
-          // slugs in URLs are English-style (e.g. `germany`, not
-          // `deutschland`); applying it to localized aliases would
-          // false-404 valid `/regionen/europa/deutschland` style URLs.
-          family === 'regions' &&
+          // Task #269 + Task #364: country/city existence gate — mirror
+          // the SSR's `/regions/<continent>/<country>` empty-country
+          // promotion to bot-traffic for non-bot visitors too. Applies
+          // to every localized alias of `regions` (e.g. `regionen`,
+          // `manatiq`) as well as the canonical English form: country
+          // and city slugs in URLs are English-style across every
+          // language (URL_TRANSLATIONS only translates the family
+          // segment, not country/city names — see the example
+          // `/de/regionen/europa/germany` in the task brief), so the
+          // English-only existence sets in slug-existence.ts apply
+          // verbatim. Only the continent slug differs across locales
+          // (e.g. `europa` instead of `europe`), which is why the
+          // VALID_CONTINENT_SLUGS whitelist above is still gated to
+          // `family === 'regions'`.
           slug3 !== undefined &&
           slug3 !== 'stations' &&
           isSlugExistenceReady() &&
@@ -192,7 +198,6 @@ export function createSlugShape404Middleware(opts: SlugShape404Options) {
         ) {
           invalid = true;
         } else if (
-          family === 'regions' &&
           slug3 !== undefined &&
           slug3 !== 'stations' &&
           slug4 !== undefined &&

@@ -320,6 +320,7 @@ test('regions: malformed country slug → 404', () => {
 test('country: malformed slug → 404, well-formed known slug falls through', () => {
   stubState.ready = true;
   stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map();
 
   const bad = run(middleware, makeReq({ path: "/country/regio's" }));
   assert.equal(bad.fellThrough, false);
@@ -446,5 +447,97 @@ test('regions: /<continent>/<country>/stations sentinel still falls through', ()
 test('root path falls through', () => {
   stubState.ready = true;
   const out = run(middleware, makeReq({ path: '/' }));
+  assert.equal(out.fellThrough, true);
+});
+
+// ---------------------------------------------------------------------------
+// Task #364: country/city existence gate fires for localized regions aliases
+// too — `/de/regionen/europa/<unknown>` and `/nl/regio's/europe/<unknown>`
+// must 404 the same way `/regions/europe/<unknown>` does.
+// ---------------------------------------------------------------------------
+
+test('regions: unknown country slug → 404 once existence set is loaded', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map();
+
+  const out = run(middleware, makeReq({ path: '/regions/europe/atlantis' }));
+  assert.equal(out.fellThrough, false);
+  assert.equal(out.status, 404);
+});
+
+test('regions: known country slug falls through', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map();
+
+  const out = run(middleware, makeReq({ path: '/regions/europe/germany' }));
+  assert.equal(out.fellThrough, true);
+});
+
+test('localized regions alias: unknown country slug → 404 (German /regionen)', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map();
+
+  const out = run(
+    middleware,
+    makeReq({ path: '/de/regionen/europa/atlantis' }),
+  );
+  assert.equal(out.fellThrough, false, 'unknown country under /regionen must 404');
+  assert.equal(out.status, 404);
+});
+
+test("localized regions alias: unknown country slug → 404 (Dutch /regio's)", () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map();
+
+  const out = run(
+    middleware,
+    makeReq({ path: "/nl/regio's/europa/atlantis" }),
+  );
+  assert.equal(out.fellThrough, false);
+  assert.equal(out.status, 404);
+});
+
+test('localized regions alias: valid country slug falls through (German /regionen)', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map();
+
+  const out = run(
+    middleware,
+    makeReq({ path: '/de/regionen/europa/germany' }),
+  );
+  assert.equal(out.fellThrough, true, 'valid country under /regionen must fall through');
+});
+
+test('localized regions alias: unknown city slug → 404 when country has city data', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin', 'munich'])],
+  ]);
+
+  const out = run(
+    middleware,
+    makeReq({ path: '/de/regionen/europa/germany/atlantis-city' }),
+  );
+  assert.equal(out.fellThrough, false);
+  assert.equal(out.status, 404);
+});
+
+test('localized regions alias: known city slug falls through', () => {
+  stubState.ready = true;
+  stubState.countrySlugs = new Set(['germany']);
+  stubState.citySlugsByCountry = new Map([
+    ['germany', new Set(['berlin', 'munich'])],
+  ]);
+
+  const out = run(
+    middleware,
+    makeReq({ path: '/de/regionen/europa/germany/berlin' }),
+  );
   assert.equal(out.fellThrough, true);
 });
