@@ -702,6 +702,317 @@ export async function emailMappingAuditDigest(params: {
   }
 }
 
+// =====================================================================
+// Stuck + auto-resubmit weekly digest (Task #355)
+// =====================================================================
+//
+// Companion email to the Task #266 auto-resubmit cron. Tells admins how
+// many URLs are stuck, how many got re-pinged in the last 7 days, how
+// many actually recovered after a re-ping, and which group (station vs
+// genre vs country vs static) is worst affected. Includes deep links
+// straight into the GSC inspection dashboard with the relevant filter
+// applied so admins can drill in without hunting through filters.
+// =====================================================================
+
+export interface StuckResubmitGroupRow {
+  group: string;
+  currentlyStuck: number;
+  resubmittedInWindow: number;
+  recoveredAfterResubmit: number;
+  newlyStuckInWindow: number;
+}
+
+export interface StuckResubmitDigestStats {
+  currentlyStuck: number;
+  resubmittedInWindow: number;
+  recoveredAfterResubmit: number;
+  newlyStuckInWindow: number;
+  stuckDays: number;
+  byGroup: StuckResubmitGroupRow[];
+}
+
+const GSC_DASHBOARD_PATH = '/admin/gsc-inspection';
+
+function getDashboardBaseUrl(): string {
+  // Prefer an explicit env override so staging/preview deploys can point
+  // the digest at their own host. Fall back to the production domain
+  // (mirrors getBaseUrl() in services/gsc-inspection.ts).
+  return (
+    process.env.ADMIN_DASHBOARD_BASE_URL?.replace(/\/$/, '') ||
+    'https://themegaradio.com'
+  );
+}
+
+/**
+ * Build a deep link into the admin GSC dashboard with the given filters
+ * applied as URL search params. The dashboard reads these on mount so
+ * the table is pre-filtered when the email link opens.
+ */
+export function buildGscDashboardLink(filters: {
+  state?: string;
+  group?: string;
+  language?: string;
+}): string {
+  const base = getDashboardBaseUrl();
+  const params = new URLSearchParams();
+  if (filters.state) params.set('state', filters.state);
+  if (filters.group) params.set('group', filters.group);
+  if (filters.language) params.set('language', filters.language);
+  const qs = params.toString();
+  return `${base}${GSC_DASHBOARD_PATH}${qs ? `?${qs}` : ''}`;
+}
+
+const GROUP_LABELS: Record<string, string> = {
+  station: 'Stations',
+  genre: 'Genres',
+  country: 'Countries',
+  static: 'Static pages',
+  unknown: 'Unknown',
+};
+
+function labelGroup(group: string): string {
+  return GROUP_LABELS[group] ?? group;
+}
+
+export function buildStuckResubmitDigestCsv(
+  stats: StuckResubmitDigestStats,
+): string {
+  const header = [
+    'Group',
+    'Currently Stuck',
+    `Newly Stuck (>${stats.stuckDays}d) in window`,
+    'Resubmitted in window',
+    'Recovered after resubmit',
+  ];
+  const body: string[][] = stats.byGroup.map((g) => [
+    labelGroup(g.group),
+    String(g.currentlyStuck),
+    String(g.newlyStuckInWindow),
+    String(g.resubmittedInWindow),
+    String(g.recoveredAfterResubmit),
+  ]);
+  body.push([
+    'Total',
+    String(stats.currentlyStuck),
+    String(stats.newlyStuckInWindow),
+    String(stats.resubmittedInWindow),
+    String(stats.recoveredAfterResubmit),
+  ]);
+  return rowsToCsv(header, body);
+}
+
+function buildStuckResubmitHtmlTable(
+  stats: StuckResubmitDigestStats,
+): string {
+  const cell = 'padding:6px 10px;border:1px solid #ddd;';
+  const numCell = `${cell}text-align:right;`;
+  const rows = stats.byGroup
+    .map((g) => {
+      const stuckLink = buildGscDashboardLink({
+        state: 'discovered-not-indexed',
+        group: g.group,
+      });
+      return `
+        <tr>
+          <td style="${cell}">${escapeHtml(labelGroup(g.group))}</td>
+          <td style="${numCell}">
+            <a href="${escapeHtml(stuckLink)}">${g.currentlyStuck}</a>
+          </td>
+          <td style="${numCell}">${g.newlyStuckInWindow}</td>
+          <td style="${numCell}">${g.resubmittedInWindow}</td>
+          <td style="${numCell}">${g.recoveredAfterResubmit}</td>
+        </tr>`;
+    })
+    .join('');
+  return `
+    <table style="border-collapse:collapse;border:1px solid #ddd;font-size:14px;">
+      <thead>
+        <tr style="background:#f4f4f4;">
+          <th style="${cell}text-align:left;">Group</th>
+          <th style="${cell}text-align:right;">Currently stuck</th>
+          <th style="${cell}text-align:right;">Newly stuck (&gt;${stats.stuckDays}d)</th>
+          <th style="${cell}text-align:right;">Resubmitted in window</th>
+          <th style="${cell}text-align:right;">Recovered after resubmit</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows}
+        <tr style="background:#fafafa;font-weight:bold;">
+          <td style="${cell}">Total</td>
+          <td style="${numCell}">${stats.currentlyStuck}</td>
+          <td style="${numCell}">${stats.newlyStuckInWindow}</td>
+          <td style="${numCell}">${stats.resubmittedInWindow}</td>
+          <td style="${numCell}">${stats.recoveredAfterResubmit}</td>
+        </tr>
+      </tbody>
+    </table>`;
+}
+
+/**
+ * Send the weekly stuck/auto-resubmit digest. Mirrors
+ * `emailMappingAuditDigest` in cadence + opt-in semantics. Returns
+ * `{ skipped: true, reason }` for any reason the email could not go out
+ * (no recipients, no api key, send error) so the scheduler can record
+ * it. The caller is responsible for the "nothing to report" check.
+ */
+export async function emailStuckResubmitDigest(params: {
+  windowStart: Date;
+  windowEnd: Date;
+  stats: StuckResubmitDigestStats;
+}): Promise<{ skipped: boolean; reason?: string }> {
+  const { windowStart, windowEnd, stats } = params;
+
+  const recipients = getRecipients();
+  if (recipients.length === 0) {
+    logger.info(
+      { stuck: stats.currentlyStuck },
+      'ADMIN_AUDIT_EMAIL_RECIPIENTS not set - skipping stuck/resubmit digest email',
+    );
+    return { skipped: true, reason: 'no-recipients' };
+  }
+
+  const apiKey = process.env.SENDGRID_API_KEY;
+  if (!apiKey) {
+    logger.warn(
+      { stuck: stats.currentlyStuck },
+      'SENDGRID_API_KEY not set - cannot send stuck/resubmit digest email',
+    );
+    return { skipped: true, reason: 'no-api-key' };
+  }
+
+  try {
+    const yyyy = windowEnd.getFullYear();
+    const mm = String(windowEnd.getMonth() + 1).padStart(2, '0');
+    const dd = String(windowEnd.getDate()).padStart(2, '0');
+    const filename = `stuck-resubmit-digest-${yyyy}-${mm}-${dd}.csv`;
+    const csv = buildStuckResubmitDigestCsv(stats);
+    const csvWithBom = '\ufeff' + csv;
+    const base64 = Buffer.from(csvWithBom, 'utf8').toString('base64');
+
+    const sgMail = (await import('@sendgrid/mail')).default;
+    sgMail.setApiKey(apiKey);
+
+    const from = process.env.ADMIN_AUDIT_EMAIL_FROM || 'noreply@themegaradio.com';
+    const env = process.env.NODE_ENV || 'development';
+    const subjectSummary =
+      `GSC stuck/resubmit weekly digest — ${stats.currentlyStuck} stuck, ` +
+      `${stats.resubmittedInWindow} resubmitted, ${stats.recoveredAfterResubmit} recovered`;
+
+    const stuckDashboardLink = buildGscDashboardLink({
+      state: 'discovered-not-indexed',
+    });
+    const crawledDashboardLink = buildGscDashboardLink({
+      state: 'crawled-not-indexed',
+    });
+    const worst = stats.byGroup[0];
+    const worstLink = worst
+      ? buildGscDashboardLink({
+          state: 'discovered-not-indexed',
+          group: worst.group,
+        })
+      : null;
+
+    const summary =
+      `Between ${windowStart.toISOString()} and ${windowEnd.toISOString()}: ` +
+      `${stats.currentlyStuck} URL${stats.currentlyStuck === 1 ? ' is' : 's are'} ` +
+      `currently stuck (>${stats.stuckDays}d in a non-indexed bucket), ` +
+      `${stats.resubmittedInWindow} got re-pinged via IndexNow, and ` +
+      `${stats.recoveredAfterResubmit} have flipped to "indexed" since their last resubmit ` +
+      `(30d lookback). ${stats.newlyStuckInWindow} URL${stats.newlyStuckInWindow === 1 ? ' newly crossed' : 's newly crossed'} ` +
+      `the stuck threshold this week.`;
+
+    const textGroups = stats.byGroup
+      .map(
+        (g) =>
+          `  • ${labelGroup(g.group)}: stuck=${g.currentlyStuck}, ` +
+          `newly stuck=${g.newlyStuckInWindow}, ` +
+          `resubmitted=${g.resubmittedInWindow}, ` +
+          `recovered=${g.recoveredAfterResubmit}`,
+      )
+      .join('\n');
+
+    await sgMail.send({
+      to: recipients,
+      from,
+      subject: `[MegaRadio][${env}] ${subjectSummary}`,
+      text: [
+        summary,
+        '',
+        'Per group:',
+        textGroups || '  (no per-group rows)',
+        '',
+        `Dashboard — discovered, not indexed: ${stuckDashboardLink}`,
+        `Dashboard — crawled, not indexed:    ${crawledDashboardLink}`,
+        worst
+          ? `Worst-affected group (${labelGroup(worst.group)}): ${worstLink}`
+          : '',
+        '',
+        'See attached CSV for the full breakdown.',
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+          <h2>GSC stuck / auto-resubmit weekly digest</h2>
+          <p>${escapeHtml(summary)}</p>
+          ${buildStuckResubmitHtmlTable(stats)}
+          <p style="margin-top:16px;">
+            Jump into the dashboard:
+            <ul>
+              <li>
+                <a href="${escapeHtml(stuckDashboardLink)}">
+                  All "discovered, not indexed" URLs
+                </a>
+              </li>
+              <li>
+                <a href="${escapeHtml(crawledDashboardLink)}">
+                  All "crawled, not indexed" URLs
+                </a>
+              </li>
+              ${
+                worst && worstLink
+                  ? `<li>
+                       <a href="${escapeHtml(worstLink)}">
+                         Worst-affected group: ${escapeHtml(labelGroup(worst.group))}
+                         (${worst.currentlyStuck} stuck)
+                       </a>
+                     </li>`
+                  : ''
+              }
+            </ul>
+          </p>
+          <p style="color:#666;font-size:12px;">Environment: ${escapeHtml(env)}</p>
+        </div>
+      `,
+      attachments: [
+        {
+          content: base64,
+          filename,
+          type: 'text/csv',
+          disposition: 'attachment',
+        },
+      ],
+    });
+
+    logger.info(
+      {
+        recipients: recipients.length,
+        stuck: stats.currentlyStuck,
+        resubmitted: stats.resubmittedInWindow,
+        recovered: stats.recoveredAfterResubmit,
+      },
+      'Sent stuck/resubmit digest email',
+    );
+    return { skipped: false };
+  } catch (err) {
+    logger.error(
+      { err, stuck: stats.currentlyStuck },
+      'Failed to send stuck/resubmit digest email',
+    );
+    return { skipped: true, reason: 'send-error' };
+  }
+}
+
 export async function emailRemovedStreamsCsv(params: {
   /** Short slug used in the CSV filename, e.g. "playlist-streams-removed" */
   filenamePrefix: string;

@@ -361,6 +361,29 @@ router.post('/snapshot', async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * Task #355 — manually trigger the weekly stuck/resubmit digest email.
+ * Useful for verifying the email channel without waiting for Monday.
+ */
+router.post('/digest', async (_req: Request, res: Response) => {
+  try {
+    const { scheduledStuckResubmitDigest } = await import(
+      '../services/scheduled-stuck-resubmit-digest'
+    );
+    const result = await scheduledStuckResubmitDigest.runOnce(
+      'manual:admin-api',
+    );
+    return res.json({
+      ok: true,
+      result,
+      status: scheduledStuckResubmitDigest.getStatus(),
+    });
+  } catch (err: any) {
+    logger.error('GSC inspection /digest failed:', err?.message ?? err);
+    return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
+  }
+});
+
 router.post('/discover', async (_req: Request, res: Response) => {
   try {
     const stats = await gscInspectionService.runDiscoveryOnce('admin-manual');

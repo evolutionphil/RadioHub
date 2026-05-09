@@ -202,12 +202,37 @@ function fmt(ts?: string | null): string {
   }
 }
 
+/**
+ * Read the initial filter values from the current URL search params so
+ * deep-links from emails (e.g. the Task #355 weekly stuck/resubmit
+ * digest) pre-filter the table on mount. Falls back to "all" for any
+ * param that isn't present.
+ */
+function readInitialFiltersFromUrl(): {
+  language: string;
+  group: string;
+  state: string;
+  search: string;
+} {
+  if (typeof window === 'undefined') {
+    return { language: 'all', group: 'all', state: 'all', search: '' };
+  }
+  const params = new URLSearchParams(window.location.search);
+  return {
+    language: params.get('language') ?? 'all',
+    group: params.get('group') ?? 'all',
+    state: params.get('state') ?? 'all',
+    search: params.get('search') ?? '',
+  };
+}
+
 export default function GscInspectionPage() {
   const queryClient = useQueryClient();
-  const [language, setLanguage] = useState('all');
-  const [group, setGroup] = useState('all');
-  const [state, setState] = useState('all');
-  const [search, setSearch] = useState('');
+  const initialFilters = readInitialFiltersFromUrl();
+  const [language, setLanguage] = useState(initialFilters.language);
+  const [group, setGroup] = useState(initialFilters.group);
+  const [state, setState] = useState(initialFilters.state);
+  const [search, setSearch] = useState(initialFilters.search);
   const [page, setPage] = useState(1);
   const [trendDays, setTrendDays] = useState<'30' | '90'>('30');
   const [trendLanguage, setTrendLanguage] = useState('all');

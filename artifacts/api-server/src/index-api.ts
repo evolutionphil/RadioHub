@@ -869,6 +869,17 @@ app.use(session(sessionConfig));
         } catch (error: any) {
           logger.warn('⚠️ Failed to initialize scheduled mapping-audit digest:', error.message);
         }
+
+        // Task #355 — weekly stuck/resubmit digest. Companion email to
+        // the Task #266 auto-resubmit cron so trends surface without
+        // anyone polling the GSC dashboard.
+        try {
+          const { scheduledStuckResubmitDigest } = await import('./services/scheduled-stuck-resubmit-digest');
+          scheduledStuckResubmitDigest.initialize();
+          logger.log('✅ BACKGROUND: Scheduled stuck/resubmit digest initialized (Mon 06:30 Europe/Berlin)');
+        } catch (error: any) {
+          logger.warn('⚠️ Failed to initialize scheduled stuck/resubmit digest:', error.message);
+        }
       }
 
       if (process.env.NODE_ENV !== 'development') {
