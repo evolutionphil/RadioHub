@@ -366,12 +366,23 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
   // `QueryExceededMemoryLimitNoDiskUseAllowed` and crashing the entire
   // boot-time `buildAllSitemapManifests` call. Without this, every sitemap
   // rebuild silently returned 0 manifests and the served XML went stale.
+  // ARCHITECT FIX (2026-05-10): force the {votes:-1} index via .hint() to
+  // BYPASS the multiplanner. Without the hint, Mongo evaluates several
+  // candidate plans during plan selection and one of them performs an
+  // in-memory sort over the full 48k+ result set — blowing the 32MB
+  // multiplanner budget with `QueryExceededMemoryLimitNoDiskUseAllowed`
+  // (code 292). `.allowDiskUse(true)` does NOT help here because that
+  // budget applies to the EXECUTION phase, not the plan-selection phase.
+  // With `.hint({votes:-1})` Mongo skips multiplanner entirely and uses
+  // the index immediately → no in-memory sort, no crash, and boot-time
+  // `buildAllSitemapManifests` succeeds.
   const cursor = Station.find({
     slug: { $exists: true, $ne: '' },
     $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
   })
     .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon descriptions')
     .sort({ votes: -1, _id: 1 })
+    .hint({ votes: -1 })
     .allowDiskUse(true)
     .read('primary')
     .lean()
@@ -442,9 +453,13 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
   // from raw station tags — ~80% of which were FM frequencies, city names,
   // station/brand names, or random noise. Those URLs are now dropped from
   // sitemaps; the SSR layer (seo-renderer.ts) noindex'es or 301's them.
+  // ARCHITECT FIX (2026-05-10): same multiplanner-bypass as the Station
+  // cursor — force the {stationCount:-1} index via .hint() so plan-eval
+  // never tries an in-memory sort.
   const cursor = Genre.find({ slug: { $exists: true, $ne: '' } })
     .select('_id slug stationCount updatedAt')
     .sort({ stationCount: -1, _id: 1 })
+    .hint({ stationCount: -1 })
     .allowDiskUse(true)
     .lean()
     .cursor({ batchSize: 500 });

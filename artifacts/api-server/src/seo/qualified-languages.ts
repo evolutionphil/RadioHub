@@ -296,12 +296,34 @@ export async function invalidateQualifiedLanguages(opts: { resetLkg?: boolean } 
   lastHash = null;
   driftHistory = [];
   if (opts.resetLkg) {
-    // Throw on failure: callers (admin rebuild path) MUST know if this fails,
-    // otherwise the shrink-protection in `getQualifiedLanguagesState` will
-    // happily keep serving the stale 30-language LKG and the rebuild will
-    // appear "successful" while still publishing zombie languages.
-    await SeoQualifiedLanguagesLkg.deleteOne({ key: LKG_KEY });
-    logger.warn('🧹 qualified-languages: LKG document deleted (admin force-rebuild)');
+    // ARCHITECT FIX (2026-05-10): SAFE LKG RESET. The previous behaviour
+    // unconditionally `deleteOne()`'d the LKG BEFORE recomputing. If the
+    // subsequent `computeFromTranslations()` returned 0 (cold translation
+    // cache, transient Mongo error, etc.), `getQualifiedLanguagesState()`
+    // would throw `QualifiedLanguagesUnavailableError` → manifest-builder
+    // ABORTS → /sitemap-stations-*.xml stays frozen forever (observed in
+    // 2026-05-10 prod logs after the admin clicked "Sitemap'i Yenile").
+    //
+    // New behaviour: compute fresh languages FIRST, and only overwrite the
+    // LKG when the compute succeeds. If compute returns 0, leave the
+    // existing LKG intact so the shrink-protection guard can still serve it
+    // and the manifest rebuild can keep working. The shrink-protection
+    // bypass (the original purpose of resetLkg) still works because the
+    // freshly persisted LKG REPLACES the old one in-place — the old large
+    // list never gets a chance to win the shrink-comparison.
+    const fresh = await computeFromTranslations();
+    if (fresh.length > 0) {
+      const hash = hashLanguages(fresh);
+      await persistLkg(fresh, hash);
+      logger.warn(
+        `🧹 qualified-languages: LKG REPLACED with ${fresh.length} freshly-computed langs (admin force-rebuild, hash=${hash})`,
+      );
+    } else {
+      // Refuse to nuke the existing LKG when we can't replace it.
+      logger.error(
+        '🛑 qualified-languages: refusing to delete LKG — fresh compute returned 0 langs (translation cache cold or DB issue). Keeping existing LKG so the sitemap pipeline keeps working.',
+      );
+    }
   }
 }
 

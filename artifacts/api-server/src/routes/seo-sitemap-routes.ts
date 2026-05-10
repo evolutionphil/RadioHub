@@ -705,10 +705,17 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       performanceCache.clearTranslations();
       performanceCache.clearUrlTranslations();
       performanceCache.clearCountryLanguageMappings();
+      // ARCHITECT FIX (2026-05-10): touch-stations only bumps station
+      // `updatedAt` timestamps — it does NOT change which LANGUAGES qualify
+      // for sitemap inclusion. Calling `resetLkg: true` here was wrong: it
+      // wiped the LKG document, then if the live recompute hit a transient
+      // miss (translation cache cold, Mongo Sort error, etc.) the manifest
+      // builder would abort with `qualified-languages unavailable`. We now
+      // just invalidate the in-memory cache and keep the LKG intact.
       try {
-        await invalidateQualifiedLanguages({ resetLkg: true });
+        await invalidateQualifiedLanguages();
       } catch (err: any) {
-        logger.error('admin/sitemap/touch-stations: LKG reset failed:', err);
+        logger.error('admin/sitemap/touch-stations: cache invalidate failed:', err);
       }
       const result = await buildAllSitemapManifests({ force: true });
       try {

@@ -589,6 +589,12 @@ class GscInspectionService {
    * waiting for the slow inspection rotation to revisit each one.
    */
   private async backfillNotIndexedSince(): Promise<void> {
+    // ARCHITECT FIX (2026-05-10): Mongoose ≥8 refuses array (aggregation
+    // pipeline) updates unless `updatePipeline: true` is set explicitly,
+    // throwing `MongooseError: Cannot pass an array to query updates unless
+    // the updatePipeline option is set.` Adding the flag re-enables the
+    // legacy pipeline form so this one-shot backfill stops crashing on
+    // every cold boot in production.
     const res = await GscUrlInspection.updateMany(
       {
         state: { $in: NON_INDEXED_STATES },
@@ -602,7 +608,8 @@ class GscInspectionService {
             },
           },
         },
-      ],
+      ] as any,
+      { updatePipeline: true } as any,
     );
     if ((res.modifiedCount ?? 0) > 0) {
       logger.log(
