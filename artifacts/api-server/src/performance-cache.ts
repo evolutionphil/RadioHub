@@ -449,11 +449,18 @@ export class PerformanceCache {
       
       for (let i = 0; i < topCountries.length; i++) {
         const country = topCountries[i];
+        // ARCHITECT FIX (2026-05-10): drop `clickCount` tie-breaker so the
+        // compound `{country:1, lastCheckOk:1, votes:-1}` index fully
+        // satisfies the sort with no blocking SORT stage. Without this,
+        // Atlas shared/serverless tiers (no allowDiskUse) crash boot when
+        // any country has enough stations to make the TopK heap+filter
+        // path overflow the 33MB sort budget.
         const stations = await StationModel.find({ 
           country, 
           lastCheckOk: true 
         })
-        .sort({ votes: -1, clickCount: -1 })
+        .sort({ votes: -1 })
+        .hint({ country: 1, lastCheckOk: 1, votes: -1 })
         .limit(30)
         .select(selectFields)
         .lean();
@@ -462,8 +469,11 @@ export class PerformanceCache {
         if (i < topCountries.length - 1) await sleep(100);
       }
       
+      // Global pool — same pattern, use the {lastCheckOk:1, votes:-1}
+      // compound index to skip any in-memory SORT.
       const globalStations = await StationModel.find({ lastCheckOk: true })
-        .sort({ votes: -1, clickCount: -1 })
+        .sort({ votes: -1 })
+        .hint({ lastCheckOk: 1, votes: -1 })
         .limit(50)
         .select(selectFields)
         .lean();

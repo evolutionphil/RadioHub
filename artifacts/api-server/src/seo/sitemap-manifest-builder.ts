@@ -381,9 +381,21 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
     $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
   })
     .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon descriptions')
-    .sort({ votes: -1, _id: 1 })
+    // ARCHITECT FIX (2026-05-10, take 2): the FIRST hint-fix only stopped
+    // the multiplanner crash. Logs then revealed a SECOND in-memory sort
+    // crash during EXECUTION (`Executor error during find command :: Sort
+    // exceeded memory limit`). Root cause: the index is `{votes:-1}`
+    // (single-field) but the sort spec was `{votes:-1, _id:1}` —
+    // two-field. Mongo can satisfy the votes order from the index but
+    // adds a blocking SORT stage to break ties on `_id`, which buffers
+    // all 48k+ candidates in memory and blows the 33MB limit. Atlas
+    // shared/serverless tiers REJECT `allowDiskUse(true)` so we can't
+    // spill. Solution: drop `_id` from the sort spec — the index alone
+    // fully satisfies the order, no SORT stage is added, and ties are
+    // broken by natural index/RecordId order (deterministic enough for
+    // sitemap chunking; per-chunk JS already controls the slice).
+    .sort({ votes: -1 })
     .hint({ votes: -1 })
-    .allowDiskUse(true)
     .read('primary')
     .lean()
     .cursor({ batchSize: 500 });
@@ -410,7 +422,8 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
   const totalUrls = new Map<string, number>();
 
   for (const [lang, bucket] of buckets.entries()) {
-    // Already sorted by cursor(votes desc, _id asc) so order is stable.
+    // Already sorted by cursor(votes desc; ties broken by natural index
+    // RecordId order) so chunk slicing is deterministic per process.
     const chunks: ISitemapManifestChunk[] = [];
     for (let i = 0; i < bucket.length; i += STATIONS_PER_CHUNK) {
       const slice = bucket.slice(i, i + STATIONS_PER_CHUNK);
@@ -456,11 +469,13 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
   // ARCHITECT FIX (2026-05-10): same multiplanner-bypass as the Station
   // cursor — force the {stationCount:-1} index via .hint() so plan-eval
   // never tries an in-memory sort.
+  // ARCHITECT FIX (2026-05-10, take 2): same blocking-SORT bug as the
+  // Station cursor — drop `_id` tie-breaker so the {stationCount:-1}
+  // index fully satisfies the sort with no in-memory SORT stage.
   const cursor = Genre.find({ slug: { $exists: true, $ne: '' } })
     .select('_id slug stationCount updatedAt')
-    .sort({ stationCount: -1, _id: 1 })
+    .sort({ stationCount: -1 })
     .hint({ stationCount: -1 })
-    .allowDiskUse(true)
     .lean()
     .cursor({ batchSize: 500 });
 
