@@ -597,6 +597,23 @@ app.use(session(sessionConfig));
     // serves stale `<lastmod>` values for months.
     void (async () => {
       try {
+        // ARCHITECT FIX (2026-05-10): WARM TRANSLATIONS FIRST. Previously
+        // `initializeQualifiedLanguages()` ran before the translation
+        // cache was populated (warmupCaches() lives in a separate async
+        // block that fires later), so live compute always returned 0
+        // qualified langs at cold start and the system silently fell
+        // back to the LKG. The LKG path works, but the misleading
+        // `live compute returned 0` warning made the system look broken.
+        // Pre-warming translations here means qualified-languages init
+        // sees the populated cache and computes the real number directly.
+        if (process.env.NODE_ENV !== 'development') {
+          try {
+            await performanceCache.warmupCaches();
+            logger.log('🔥 SITEMAP-INIT: pre-warmed translation cache');
+          } catch (warmErr) {
+            logger.warn('⚠️ SITEMAP-INIT: translation pre-warm failed (will fall back to LKG):', (warmErr as Error)?.message);
+          }
+        }
         const { initializeQualifiedLanguages } = await import('./seo/qualified-languages');
         await initializeQualifiedLanguages();
         const { buildAllSitemapManifests, startManifestRefreshLoop } = await import('./seo/sitemap-manifest-builder');

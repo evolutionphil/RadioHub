@@ -1004,6 +1004,19 @@ app.use('/api/stream', streamServiceProxy);
       // Done in background so server starts accepting requests immediately;
       // sitemap routes return 503 + Retry-After until manifests are ready.
       try {
+        // ARCHITECT FIX (2026-05-10): pre-warm translations BEFORE qualified-
+        // languages init so live compute sees a populated cache instead of
+        // returning 0 and silently falling back to LKG. See index-api.ts for
+        // full rationale. warmupCaches() is memoized so the parallel
+        // background-tasks block above won't re-run it.
+        if (process.env.NODE_ENV !== 'development') {
+          try {
+            await performanceCache.warmupCaches();
+            logger.log('🔥 SITEMAP-INIT: pre-warmed translation cache');
+          } catch (warmErr) {
+            logger.warn('⚠️ SITEMAP-INIT: translation pre-warm failed (will fall back to LKG):', (warmErr as Error)?.message);
+          }
+        }
         const { initializeQualifiedLanguages } = await import('./seo/qualified-languages');
         await initializeQualifiedLanguages();
         const { buildAllSitemapManifests, startManifestRefreshLoop } = await import('./seo/sitemap-manifest-builder');

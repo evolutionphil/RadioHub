@@ -399,33 +399,45 @@ export class PerformanceCache {
   }
   
   // Warm up critical caches on startup
+  // ARCHITECT FIX (2026-05-10): memoized — both index-api.ts/index-web.ts
+  // sitemap-init blocks AND the parallel background-tasks block now call
+  // this; the in-flight promise is shared so the heavy Translation.find +
+  // populate fans out only once per process.
+  private warmupPromise: Promise<void> | null = null;
   async warmupCaches(): Promise<void> {
-    return trackOperation('warmup-translations', async () => {
-    logger.log('🔥 CACHE: Starting lightweight cache warmup (top 10 languages only)...');
-    
-    const criticalLanguages = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
-    
-    try {
-      
-      
-      for (const language of criticalLanguages) {
-        const translations = await Translation.find({ language }).populate('keyId').lean();
-        const translationMap: Record<string, string> = {};
-        
-        translations.forEach((t: any) => {
-          if (t.keyId?.key && t.value) {
-            translationMap[t.keyId.key] = t.value;
-          }
-        });
-        
-        this.setTranslations(language, translationMap);
+    if (this.warmupPromise) return this.warmupPromise;
+    this.warmupPromise = trackOperation('warmup-translations', async () => {
+      logger.log('🔥 CACHE: Starting lightweight cache warmup (top 10 languages only)...');
+
+      const criticalLanguages = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
+
+      try {
+        let totalKeys = 0;
+        let langsWithData = 0;
+        for (const language of criticalLanguages) {
+          const translations = await Translation.find({ language }).populate('keyId').lean();
+          const translationMap: Record<string, string> = {};
+
+          translations.forEach((t: any) => {
+            if (t.keyId?.key && t.value) {
+              translationMap[t.keyId.key] = t.value;
+            }
+          });
+
+          this.setTranslations(language, translationMap);
+          const k = Object.keys(translationMap).length;
+          totalKeys += k;
+          if (k > 0) langsWithData += 1;
+        }
+
+        logger.log(`🔥 CACHE: Warmed up translations for ${criticalLanguages.length} languages (${langsWithData} non-empty, ${totalKeys} keys total; others loaded on-demand)`);
+      } catch (error) {
+        // Reset memo so a failed warmup can be retried.
+        this.warmupPromise = null;
+        console.error('❌ CACHE: Warmup failed:', error);
       }
-      
-      logger.log(`🔥 CACHE: Warmed up translations for ${criticalLanguages.length} languages (others loaded on-demand)`);
-    } catch (error) {
-      console.error('❌ CACHE: Warmup failed:', error);
-    }
     });
+    return this.warmupPromise;
   }
   
   // Warm up similar stations pools for all countries (called in background after boot)
