@@ -718,6 +718,48 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         logger.warn(`admin/sitemap/touch-stations: cache clear failed: ${err?.message ?? err}`);
       }
 
+      // ARCHITECT FIX (2026-05-10): purge Cloudflare edge cache for every
+      // sitemap URL. Without this, even a successful rebuild leaves CF
+      // serving the stale XML body (and stale Last-Modified header) for up
+      // to its s-maxage window — admin clicks the button, manifest rebuilds,
+      // but Googlebot still sees the old `<lastmod>` for ~1 hour.
+      // Mirrors the same logic block already in /api/admin/sitemap/rebuild.
+      void (async () => {
+        try {
+          const { scheduledCacheClearService } = await import('../services/scheduled-cache-clear');
+          const baseUrl = process.env.PUBLIC_BASE_URL || 'https://themegaradio.com';
+          const urls: string[] = [`${baseUrl}/sitemap-index.xml`, `${baseUrl}/sitemap.xml`, `${baseUrl}/robots.txt`];
+          const langs: string[] = Array.isArray((result as any)?.qualifiedLanguages) ? (result as any).qualifiedLanguages : [];
+          for (const lang of langs) {
+            urls.push(`${baseUrl}/sitemap-main-${lang}.xml`);
+            urls.push(`${baseUrl}/sitemap-genres-${lang}.xml`);
+          }
+          try {
+            const { getActiveManifest } = await import('../seo/sitemap-manifest-builder');
+            for (const lang of langs) {
+              const m: any = await getActiveManifest('stations', lang);
+              const chunkCount: number = m?.chunkCount ?? 0;
+              for (let c = 1; c <= chunkCount; c++) {
+                urls.push(`${baseUrl}/sitemap-stations-${lang}-${c}.xml`);
+              }
+            }
+          } catch (probeErr: any) {
+            logger.warn(`admin/sitemap/touch-stations: stations-chunk probe failed: ${probeErr?.message ?? probeErr}`);
+          }
+          const BATCH = 30;
+          for (let i = 0; i < urls.length; i += BATCH) {
+            const slice = urls.slice(i, i + BATCH);
+            const resp = await scheduledCacheClearService.purgeCloudflareUrls(slice);
+            if (!resp.success) {
+              logger.warn(`admin/sitemap/touch-stations: CF purge batch ${i / BATCH + 1} failed: ${resp.message}`);
+            }
+          }
+          logger.log(`☁️ admin/sitemap/touch-stations: requested Cloudflare purge for ${urls.length} sitemap URLs`);
+        } catch (err: any) {
+          logger.error(`admin/sitemap/touch-stations: Cloudflare purge orchestration failed (non-fatal): ${err?.message ?? err}`);
+        }
+      })();
+
       // Async: IndexNow ping (non-blocking) — same path as /rebuild
       (async () => {
         try {
