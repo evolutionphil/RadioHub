@@ -192,8 +192,12 @@ describe("Admin dashboard → SEO Maintenance run deep link", () => {
       },
       brokenStream: { indexableTotal: 0, deadOver30Days: 0 },
     });
+    // SUT query key in seo-maintenance.tsx is 3 elements:
+    // ["/api/admin/maintenance/scheduled-backfill/runs", runsTrigger, runsCountry]
+    // where both default to "". Must match exactly or TanStack Query
+    // ignores the seed and runs queryFn (which fails in jsdom).
     qc.setQueryData(
-      ["/api/admin/maintenance/scheduled-backfill/runs", ""],
+      ["/api/admin/maintenance/scheduled-backfill/runs", "", ""],
       {
         runs: [makeRun()],
         total: 1,
