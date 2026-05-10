@@ -858,6 +858,46 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         ? Array.from(new Set(stats.filter((s) => s.isQualified === false).map((s) => s.language))).sort()
         : [];
 
+      // ARCHITECT FIX (2026-05-10): expose Station collection diagnostics so
+      // admin can see WHY touch-stations might match 0 (wrong DB? empty
+      // collection? all slugs blank?) without needing shell access.
+      let stationDiag: Record<string, unknown> = {};
+      try {
+        const coll = Station.collection;
+        const [total, withSlug, withSlugNonEmpty, sample] = await Promise.all([
+          coll.countDocuments({}),
+          coll.countDocuments({ slug: { $exists: true } }),
+          coll.countDocuments({ slug: { $exists: true, $ne: '' } }),
+          coll.find({ slug: { $exists: true, $ne: '' } })
+            .project({ _id: 1, slug: 1, updatedAt: 1, name: 1, countryCode: 1 })
+            .sort({ updatedAt: -1 })
+            .limit(1)
+            .toArray(),
+        ]);
+        const conn: any = (Station as any).db ?? (Station.collection as any).conn;
+        const dbName: string | undefined = conn?.name ?? conn?.databaseName;
+        stationDiag = {
+          collectionName: coll.collectionName,
+          dbName: dbName ?? null,
+          totalDocs: total,
+          withSlugField: withSlug,
+          withSlugNonEmpty,
+          mostRecentSample: sample?.[0]
+            ? {
+                _id: String(sample[0]._id),
+                slug: (sample[0] as any).slug ?? null,
+                name: (sample[0] as any).name ?? null,
+                countryCode: (sample[0] as any).countryCode ?? null,
+                updatedAt: (sample[0] as any).updatedAt
+                  ? new Date((sample[0] as any).updatedAt).toISOString()
+                  : null,
+              }
+            : null,
+        };
+      } catch (diagErr: any) {
+        stationDiag = { error: diagErr?.message ?? 'station_diag_failed' };
+      }
+
       res.json({
         qualifiedLanguages,
         qualifiedLanguagesHash,
@@ -866,6 +906,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         newestGeneratedAt,
         zombieLanguages,
         totalActive: stats.length,
+        stationDiag,
       });
     } catch (err: any) {
       logger.error('admin/sitemap/manifest-stats failed:', err?.message ?? err);

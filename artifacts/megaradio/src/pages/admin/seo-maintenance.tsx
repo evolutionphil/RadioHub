@@ -21,6 +21,21 @@ interface SitemapStatRow {
   maxUpdatedAt: string | null;
   isQualified: boolean | null;
 }
+interface StationDiag {
+  collectionName?: string;
+  dbName?: string | null;
+  totalDocs?: number;
+  withSlugField?: number;
+  withSlugNonEmpty?: number;
+  mostRecentSample?: {
+    _id: string;
+    slug: string | null;
+    name: string | null;
+    countryCode: string | null;
+    updatedAt: string | null;
+  } | null;
+  error?: string;
+}
 interface SitemapStatsResponse {
   qualifiedLanguages: string[];
   qualifiedLanguagesHash: string;
@@ -29,6 +44,7 @@ interface SitemapStatsResponse {
   newestGeneratedAt: string | null;
   zombieLanguages: string[];
   totalActive: number;
+  stationDiag?: StationDiag;
 }
 
 function freshnessBadge(generatedAt: string | null): { label: string; cls: string } {
@@ -780,6 +796,38 @@ export default function SeoMaintenancePage() {
                   <div className="text-xs bg-rose-50 border border-rose-200 rounded p-2 text-rose-800">
                     🧟 <strong>{data.zombieLanguages.length} zombi dil tespit edildi:</strong> {data.zombieLanguages.join(", ")}.
                     Bu manifestler qualifiedLanguages dışı — bir sonraki "Sitemap'i Şimdi Yenile" tıkında otomatik retire edilecek.
+                  </div>
+                )}
+                {data.stationDiag && (
+                  <div className={`text-xs border rounded p-2 ${
+                    data.stationDiag.error || (data.stationDiag.withSlugNonEmpty ?? 0) === 0
+                      ? "bg-rose-50 border-rose-300 text-rose-900"
+                      : "bg-emerald-50 border-emerald-200 text-emerald-900"
+                  }`}>
+                    <div className="font-semibold mb-1">📦 Station koleksiyon teşhisi (canlı DB)</div>
+                    {data.stationDiag.error ? (
+                      <div>Hata: <code>{data.stationDiag.error}</code></div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 font-mono">
+                        <div>DB adı: <strong>{data.stationDiag.dbName ?? "(bilinmiyor)"}</strong></div>
+                        <div>Koleksiyon: <strong>{data.stationDiag.collectionName}</strong></div>
+                        <div>Toplam doküman: <strong>{(data.stationDiag.totalDocs ?? 0).toLocaleString()}</strong></div>
+                        <div>slug alanı olan: <strong>{(data.stationDiag.withSlugField ?? 0).toLocaleString()}</strong></div>
+                        <div className="col-span-2">
+                          slug dolu (filtreyle eşleşen): <strong>{(data.stationDiag.withSlugNonEmpty ?? 0).toLocaleString()}</strong>
+                          {(data.stationDiag.withSlugNonEmpty ?? 0) === 0 && (
+                            <span className="ml-2 text-rose-700 font-semibold">⚠️ TOUCH-STATIONS BURADAN 0 DÖNÜYOR</span>
+                          )}
+                        </div>
+                        {data.stationDiag.mostRecentSample && (
+                          <div className="col-span-2 mt-1 pt-1 border-t border-current/20">
+                            En son güncellenen örnek: <code>{data.stationDiag.mostRecentSample.name ?? "?"}</code>
+                            {" • "}slug=<code>{data.stationDiag.mostRecentSample.slug ?? "?"}</code>
+                            {" • "}updatedAt=<strong>{formatTs(data.stationDiag.mostRecentSample.updatedAt)}</strong>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="overflow-x-auto">
