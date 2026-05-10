@@ -568,10 +568,19 @@ export default function SeoMaintenancePage() {
       const modified = data?.modifiedStations ?? 0;
       const matched = data?.matchedStations ?? 0;
       const langs = data?.rebuild?.qualifiedLanguages ?? 0;
-      toast({
-        title: "İstasyon lastmod'u taze",
-        description: `${modified.toLocaleString()}/${matched.toLocaleString()} istasyonun updatedAt'i bugüne taşındı. Sitemap ${langs} dil için yeniden derlendi, IndexNow ping fırlatıldı.`,
-      });
+      const warnings: string[] = Array.isArray(data?.warnings) ? data.warnings : [];
+      if (warnings.length > 0) {
+        toast({
+          title: "İstasyon lastmod taşıma — UYARI",
+          description: warnings.join(' • '),
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "İstasyon lastmod'u taze",
+          description: `${modified.toLocaleString()}/${matched.toLocaleString()} istasyonun updatedAt'i bugüne taşındı. Sitemap ${langs} dil için yeniden derlendi, IndexNow ping fırlatıldı.`,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ["/api/admin/sitemap/manifest-stats"] });
     },
     onError: (e: any) => {

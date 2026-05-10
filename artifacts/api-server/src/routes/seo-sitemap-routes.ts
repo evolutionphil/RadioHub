@@ -668,17 +668,36 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         // touch — the architect guard is best-effort.
       }
       const now = new Date();
-      // Use `timestamps: false` to prevent Mongoose from overwriting our
-      // explicit value via the auto-timestamp middleware; we want exactly
-      // `now` on every doc, not whatever Mongo's clock returns later.
-      const updateRes = await Station.updateMany(
+      // ARCHITECT BUG FIX (2026-05-10): switched from
+      //   Station.updateMany(filter, { $set: { updatedAt: now } }, { timestamps: false })
+      // to the raw MongoDB driver via `Station.collection.updateMany(...)`.
+      //
+      // Why: the Station schema declares `{ timestamps: true }` (mongo-schemas.ts
+      // line 1216). When Mongoose's auto-timestamp middleware sees an updateMany
+      // with `{ timestamps: false }` option, it conflicts with the schema-level
+      // setting and was silently no-op'ing on production — admin saw
+      // "0/0 istasyon güncellendi" forever, sitemap manifests stayed frozen at
+      // chunkInfo.maxUpdatedAt = 2025-12-11, Googlebot got 304 Not Modified on
+      // every IMS poll, and Search Console showed "0 keşfedilen sayfa".
+      //
+      // Bypassing Mongoose entirely (Station.collection is the raw driver
+      // collection) sidesteps every middleware/option conflict — the update
+      // is sent to MongoDB exactly as written, no auto-timestamps interfere.
+      const updateRes = await Station.collection.updateMany(
         { slug: { $exists: true, $ne: '' } },
         { $set: { updatedAt: now } },
-        { timestamps: false } as any,
       );
-      const matched = (updateRes as any).matchedCount ?? (updateRes as any).n ?? 0;
-      const modified = (updateRes as any).modifiedCount ?? (updateRes as any).nModified ?? 0;
+      const matched = (updateRes as any).matchedCount ?? 0;
+      const modified = (updateRes as any).modifiedCount ?? 0;
       logger.warn(`🕐 admin/sitemap/touch-stations: bumped updatedAt on ${modified}/${matched} stations to ${now.toISOString()}`);
+      if (matched === 0) {
+        logger.error(
+          `🔴 admin/sitemap/touch-stations: matchedCount=0 — Station.collection has no docs with slug. ` +
+          `Verify (a) MONGODB_URI points to the same DB as the rest of the app, ` +
+          `(b) the Station collection is named '${Station.collection.collectionName}', and ` +
+          `(c) docs actually carry a non-empty slug field.`,
+        );
+      }
 
       // Now force a rebuild so the manifest's chunks[].maxUpdatedAt picks up
       // the new timestamps. We run the same cache-flush chain as
@@ -708,17 +727,34 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         }
       })();
 
+      // ARCHITECT FIX (2026-05-10): surface "why nothing happened" reasons
+      // explicitly so admin doesn't silently see "0/0, 0 langs" without a clue.
+      const warnings: string[] = [];
+      if (matched === 0) {
+        warnings.push(
+          `Station.collection.updateMany matched 0 docs (collection='${Station.collection.collectionName}'). ` +
+          `DB connection may point to wrong cluster/db, OR no station has a non-empty slug.`,
+        );
+      }
+      if (result.qualifiedLanguages.length === 0) {
+        warnings.push(
+          'qualifiedLanguages computed to 0 — manifest builder early-exited without writing any new manifests. ' +
+          'Translation cache may be cold; check api-server logs for "qualified-languages" lines.',
+        );
+      }
       res.json({
-        ok: true,
+        ok: warnings.length === 0,
         touchedAt: now.toISOString(),
         matchedStations: matched,
         modifiedStations: modified,
+        collectionName: Station.collection.collectionName,
         rebuild: {
           built: result.built,
           qualifiedLanguages: result.qualifiedLanguages.length,
           activatedCount: result.activatedCount ?? 0,
           retiredZombies: result.retiredZombies ?? 0,
         },
+        warnings,
         elapsedMs: Date.now() - t0,
       });
     } catch (err: any) {
