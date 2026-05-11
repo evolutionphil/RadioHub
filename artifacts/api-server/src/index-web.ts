@@ -350,6 +350,30 @@ app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 
 app.use((req, res, next) => {
   const url = req.url;
+  const path = url.split('?')[0]; // strip query string for matching
+
+  // 🚨 CRITICAL: Service worker, web app manifest, and the firebase messaging
+  // worker MUST NEVER be long-cached. Browsers cap SW caching to ~24h
+  // automatically, but Cloudflare/CDNs honour whatever max-age we send. A long
+  // max-age here means SW updates won't reach users for that duration even
+  // after a fresh deploy. Always serve these with no-cache so the browser
+  // re-validates on every load.
+  if (
+    path === '/sw.js' ||
+    path === '/firebase-messaging-sw.js' ||
+    path === '/service-worker.js' ||
+    path === '/manifest.json' ||
+    path === '/manifest.webmanifest'
+  ) {
+    res.set({
+      'Cache-Control': 'no-cache, no-store, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return next();
+  }
+
   const ext = url.split('.').pop()?.toLowerCase();
   if (ext && ['js', 'css', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'ico', 'woff', 'woff2', 'ttf', 'eot', 'otf', 'json', 'xml'].includes(ext)) {
     if (url.includes('/assets/') || url.includes('-') || url.includes('.min.')) {
