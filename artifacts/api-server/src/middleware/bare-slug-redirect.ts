@@ -31,6 +31,26 @@ import {
   hasCountrySlug,
   hasGenreSlug,
 } from '../seo/slug-existence';
+import { ALIAS_TO_DB } from '../utils/normalize-country';
+
+/**
+ * Resolve a bare URL slug (lowercase, ASCII) to the canonical country slug
+ * we actually generate region URLs for. Lets non-English country names like
+ * `turkiye` (TR), `turkei` (DE), `turquia` (ES), `holland` (NL) etc. land on
+ * the same canonical SSR page (`/{lang}/regions/{region}/{canonical-slug}`).
+ *
+ * Without this, the genre matcher below would steal slugs that double as a
+ * Turkish/Spanish/etc. genre alias (e.g. "turkiye" is also an alias for the
+ * Turkish music genre), and Türkiye-the-country would 301 to the genre page.
+ * Country always wins because it's the higher-SEO-value page.
+ */
+function resolveCountryAliasToCanonicalSlug(slug: string): string | null {
+  const dbName = ALIAS_TO_DB[slug];
+  if (!dbName) return null;
+  const canonical = countrySlug(dbName);
+  if (!canonical) return null;
+  return canonical;
+}
 
 const SAFE_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,63}$/i;
 const ASSET_RE = /\.(?:js|mjs|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|eot|otf|map|json|xml|txt)$/i;
@@ -156,12 +176,18 @@ export function bareSlugRedirectMiddleware(
   if (RESERVED_TOP_LEVEL.has(slug)) return next();
 
   // Country match takes priority over genre — country pages have the
-  // higher SEO value and the slug-existence sets are mutually exclusive
-  // in practice (no genre is named after a country).
-  if (hasCountrySlug(slug)) {
-    const regionSlug = getCountrySlugToRegion().get(slug);
+  // higher SEO value, and any localized country alias (turkiye, holland,
+  // usa, etc.) must beat a same-spelled genre alias.
+  // First try the slug directly, then resolve through the country-name
+  // alias map so non-English spellings hit the canonical region URL.
+  const directCountry = hasCountrySlug(slug) ? slug : null;
+  const aliasedCountry = directCountry ? null : resolveCountryAliasToCanonicalSlug(slug);
+  const canonicalCountrySlug = directCountry ?? aliasedCountry;
+
+  if (canonicalCountrySlug && hasCountrySlug(canonicalCountrySlug)) {
+    const regionSlug = getCountrySlugToRegion().get(canonicalCountrySlug);
     if (!regionSlug) return next();
-    const target = `/${lang}/regions/${regionSlug}/${slug}`;
+    const target = `/${lang}/regions/${regionSlug}/${canonicalCountrySlug}`;
     return send301(req, res, target);
   }
 

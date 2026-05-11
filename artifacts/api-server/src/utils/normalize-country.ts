@@ -74,7 +74,7 @@ const ISO_TO_DB: Record<string, string> = {
   'XK': 'Kosovo', 'BQ': 'Bonaire', 'AX': 'Aland Islands',
 };
 
-const ALIAS_TO_DB: Record<string, string> = {
+export const ALIAS_TO_DB: Record<string, string> = {
   'turkey': 'Türkiye',
   'turkei': 'Türkiye',
   'türkei': 'Türkiye',
