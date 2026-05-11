@@ -61,8 +61,8 @@ import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { decodeHtmlEntities } from "@/lib/utils";
 import { Swiper, SwiperSlide } from 'swiper/react';
 import { FreeMode, Navigation } from 'swiper/modules';
-import AddYourStationModal from "@/components/modals/AddYourStationModal";
-import RequestStationModal from "@/components/modals/RequestStationModal";
+// AddYourStationModal/RequestStationModal eager imports were dead code on
+// this page (state was declared but no JSX rendered them) — removed entirely.
 import ListStructuredData from "@/components/seo/ListStructuredData";
 import RecentlyPlayedSection from "@/components/RecentlyPlayedSection";
 
@@ -292,9 +292,9 @@ export default function RadioFrontend({
   const [isSearching, setIsSearching] = useState(false);
 
   
-  // Modal states for Request Station and Add Your Station
-  const [showRequestStationModal, setShowRequestStationModal] = useState(false);
-  const [showAddStationModal, setShowAddStationModal] = useState(false);
+  // Modal state cleanup: AddYourStationModal/RequestStationModal are owned by
+  // the layout shell (App.tsx + RadioHeader + Footer). Local state here was
+  // dead — removed during the lazy-modal refactor.
   
 
   

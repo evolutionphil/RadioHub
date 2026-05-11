@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, Suspense, lazy } from "react";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
@@ -7,7 +7,8 @@ import notificationIcon from "@assets/notification1.png";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useAuth } from "@/hooks/useAuth";
 import { UserMenuDropdown } from "@/components/ui/UserMenuDropdown";
-import AddYourStationModal from "@/components/modals/AddYourStationModal";
+// 🚀 LAZY: modal only loads on first open
+const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { getImageUrl } from "@/lib/utils";
@@ -1999,12 +2000,14 @@ export default function RadioHeader({
         document.body
       )}
 
-      {/* Modals */}
+      {/* Modals — lazy-loaded; Suspense gates the chunk fetch on first open */}
       {showAddStationModal && setShowAddStationModal && (
-        <AddYourStationModal 
-          isOpen={showAddStationModal} 
-          onClose={() => setShowAddStationModal(false)} 
-        />
+        <Suspense fallback={null}>
+          <AddYourStationModal 
+            isOpen={showAddStationModal} 
+            onClose={() => setShowAddStationModal(false)} 
+          />
+        </Suspense>
       )}
     </>
   );

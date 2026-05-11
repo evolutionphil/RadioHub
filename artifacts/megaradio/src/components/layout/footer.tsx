@@ -5,8 +5,10 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery } from "@tanstack/react-query";
 import { SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
-import AddYourStationModal from "@/components/modals/AddYourStationModal";
-import RequestStationModal from "@/components/modals/RequestStationModal";
+// 🚀 LAZY: modals only load on first open — keeps Radix Select/Input
+// out of the footer chunk until the user clicks the action.
+const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
+const RequestStationModal = lazy(() => import("@/components/modals/RequestStationModal"));
 import { Globe } from "lucide-react";
 import AdSenseUnit from "@/components/ads/AdSenseUnit";
 
@@ -423,15 +425,23 @@ export default function Footer() {
         <AdSenseUnit adSlot="9151849981" adFormat="auto" fullWidthResponsive={true} />
       </div>
 
-      {/* Modals */}
-      <AddYourStationModal 
-        isOpen={showAddStationModal} 
-        onClose={() => setShowAddStationModal(false)} 
-      />
-      <RequestStationModal 
-        isOpen={showRequestStationModal} 
-        onClose={() => setShowRequestStationModal(false)} 
-      />
+      {/* Modals — gated on isOpen so the lazy chunk only requests on first open */}
+      {showAddStationModal && (
+        <Suspense fallback={null}>
+          <AddYourStationModal 
+            isOpen={showAddStationModal} 
+            onClose={() => setShowAddStationModal(false)} 
+          />
+        </Suspense>
+      )}
+      {showRequestStationModal && (
+        <Suspense fallback={null}>
+          <RequestStationModal 
+            isOpen={showRequestStationModal} 
+            onClose={() => setShowRequestStationModal(false)} 
+          />
+        </Suspense>
+      )}
     </footer>
   );
 }

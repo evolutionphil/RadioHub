@@ -31,7 +31,8 @@ class PageErrorBoundary extends Component<
 }
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
+// Toaster moved to a `lazy(() => ...)` declaration further below so the
+// Radix toast primitives don't land in the entry chunk.
 import NotificationContainer from "@/components/ui/NotificationContainer";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
@@ -113,8 +114,14 @@ import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE, COUNTRY_TO_CODE, getLanguageForCoun
 
 import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 
-import AddYourStationModal from "@/components/modals/AddYourStationModal";
+// 🚀 LAZY: Modal only loads when user clicks "Add your station" — saves
+// ~120 KB raw + Radix Select/Input deps from the entry chunk.
+const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 import StructuredData from "@/components/seo/StructuredData";
+
+// 🚀 LAZY: Toaster only renders when a toast is triggered. The Radix toast
+// primitives stay out of the entry until first toast.
+const Toaster = lazy(() => import("@/components/ui/toaster").then((m) => ({ default: m.Toaster })));
 import { initializeBackgroundPlayback } from "@/lib/backgroundAudio";
 
 // Module-level constant (outside any component) — prevents useEffect from firing on every render
@@ -494,11 +501,15 @@ function PlayerWrapper() {
         {/* 🚀 INTERACTION-GATED: Player chunk only loads after first play */}
         <InteractionGatedGlobalPlayer />
         
-        {/* Modal Components */}
-        <AddYourStationModal 
-          isOpen={showAddStationModal} 
-          onClose={() => setShowAddStationModal(false)} 
-        />
+        {/* Modal Components — lazy-loaded so the chunk only fetches on first open */}
+        {showAddStationModal && (
+          <Suspense fallback={null}>
+            <AddYourStationModal 
+              isOpen={showAddStationModal} 
+              onClose={() => setShowAddStationModal(false)} 
+            />
+          </Suspense>
+        )}
         
         {/* Notification System */}
         <NotificationContainer position="top-right" />
@@ -582,11 +593,15 @@ function ApplicationsWrapper() {
         {/* 🚀 INTERACTION-GATED: Player chunk only loads after first play */}
         <InteractionGatedGlobalPlayer />
         
-        {/* Modal Components */}
-        <AddYourStationModal 
-          isOpen={showAddStationModal} 
-          onClose={() => setShowAddStationModal(false)} 
-        />
+        {/* Modal Components — lazy-loaded so the chunk only fetches on first open */}
+        {showAddStationModal && (
+          <Suspense fallback={null}>
+            <AddYourStationModal 
+              isOpen={showAddStationModal} 
+              onClose={() => setShowAddStationModal(false)} 
+            />
+          </Suspense>
+        )}
         
         {/* Notification System */}
         <NotificationContainer position="top-right" />
@@ -1264,7 +1279,7 @@ function App() {
         <ThemeProvider defaultTheme="system" storageKey="radio-ui-theme">
           <LazyGlobalPlayerProvider>
             <TooltipProvider>
-              <Toaster />
+              <Suspense fallback={null}><Toaster /></Suspense>
               <StructuredData />
               <Router />
             </TooltipProvider>
