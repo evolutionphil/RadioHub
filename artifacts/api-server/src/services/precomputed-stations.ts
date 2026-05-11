@@ -217,7 +217,7 @@ export class PrecomputedStationsService {
           logoAssets: { webp96: 1, webp256: 1, folder: 1 }
         }
       }
-    ]).option({ maxTimeMS: 15000 }).exec();
+    ]).hint({ country: 1, lastCheckOk: 1, votes: -1 }).option({ maxTimeMS: 15000 }).exec();
 
     if (stations.length === 0) {
       const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -416,47 +416,102 @@ export class PrecomputedStationsService {
    * Stores top stations for pagination (limit: GLOBAL_STATIONS_LIMIT)
    */
   static async computeGlobalStations(): Promise<PrecomputedCountryData> {
-    logger.log('🌍 Computing global stations cache...');
+    logger.log('🌍 Computing global stations cache (batched per-country)...');
     const startTime = Date.now();
 
-    const stations = await Station.aggregate([
-      {
-        $match: {
-          lastCheckOk: true
-        }
-      },
-      {
-        $sort: {
-          hasLogo: -1,
-          votes: -1
-        }
-      },
-      {
-        $limit: GLOBAL_STATIONS_LIMIT
-      },
-      {
-        $project: {
-          _id: 1,
-          slug: 1,
-          name: 1,
-          url: 1,
-          url_resolved: 1,
-          favicon: 1,
-          logo: 1,
-          country: 1,
-          state: 1,
-          votes: 1,
-          hasLogo: 1,
-          tags: 1,
-          codec: 1,
-          bitrate: 1,
-          logoAssets: 1
-        }
+    // BATCH STRATEGY (2026-05-11): the previous single-pipeline aggregation
+    //   { $match: { lastCheckOk: true } } → $sort { hasLogo:-1, votes:-1 } → $limit 2000
+    // routinely tripped Mongo's 32MB in-memory sort cap on prod
+    // (`QueryExceededMemoryLimitNoDiskUseAllowed`, code 292) because the
+    // multi-planner sometimes picked an in-memory sort plan over the
+    // available `{ lastCheckOk:1, hasLogo:-1, votes:-1 }` index.
+    //
+    // Instead of opting into disk-spill (which the user explicitly rejected),
+    // we now collect the global top list COUNTRY BY COUNTRY: each per-country
+    // sort runs against the `{ country:1, lastCheckOk:1, votes:-1 }` index
+    // and processes ~hundreds-to-low-thousands of docs — well under the cap.
+    // We periodically trim the running candidate pool to keep its memory
+    // footprint bounded too.
+    const PER_COUNTRY_LIMIT = 200;             // top stations to take per country
+    const TRIM_THRESHOLD = GLOBAL_STATIONS_LIMIT * 4; // start trimming when pool grows
+
+    const PROJECT = {
+      _id: 1,
+      slug: 1,
+      name: 1,
+      url: 1,
+      url_resolved: 1,
+      favicon: 1,
+      logo: 1,
+      country: 1,
+      state: 1,
+      votes: 1,
+      hasLogo: 1,
+      tags: 1,
+      codec: 1,
+      bitrate: 1,
+      logoAssets: 1,
+    } as const;
+
+    const trimPool = (pool: any[]): any[] => {
+      pool.sort((a, b) => {
+        const logoDiff = (b.hasLogo ? 1 : 0) - (a.hasLogo ? 1 : 0);
+        if (logoDiff !== 0) return logoDiff;
+        return (b.votes ?? 0) - (a.votes ?? 0);
+      });
+      if (pool.length > GLOBAL_STATIONS_LIMIT) {
+        pool.length = GLOBAL_STATIONS_LIMIT;
       }
-    ]).option({ maxTimeMS: 30000 }).exec();
+      return pool;
+    };
+
+    const countries = await Station.distinct('country', { lastCheckOk: true });
+    const validCountries = countries
+      .filter((c: any) => c && typeof c === 'string' && c.trim().length > 0)
+      .map((c: any) => c.trim());
+
+    let pool: any[] = [];
+    let processed = 0;
+    let perCountryFailures = 0;
+
+    for (const country of validCountries) {
+      try {
+        const batch = await Station.aggregate([
+          { $match: { country, lastCheckOk: true } },
+          { $sort: { hasLogo: -1, votes: -1 } },
+          { $limit: PER_COUNTRY_LIMIT },
+          { $project: PROJECT },
+        ])
+          .hint({ country: 1, lastCheckOk: 1, votes: -1 })
+          .option({ maxTimeMS: 10000 })
+          .exec();
+        if (batch.length > 0) pool.push(...batch);
+      } catch (err) {
+        perCountryFailures++;
+        logger.warn(`⚠️ global-batch: ${country} failed — ${(err as Error).message}`);
+      }
+
+      processed++;
+      if (pool.length > TRIM_THRESHOLD) {
+        pool = trimPool(pool);
+      }
+
+      // tiny yield to avoid hogging the event loop on large country lists
+      if (processed % 25 === 0) {
+        await sleep(20);
+      }
+    }
+
+    pool = trimPool(pool);
+    const stations = pool;
 
     // Get total count for pagination info
     const totalCount = await Station.countDocuments({ lastCheckOk: true });
+    if (perCountryFailures > 0) {
+      logger.warn(
+        `⚠️ global-batch: ${perCountryFailures}/${validCountries.length} per-country batches failed — using best-effort merged top ${stations.length}`,
+      );
+    }
 
     const data: PrecomputedCountryData = {
       stations: stations as PrecomputedStation[],

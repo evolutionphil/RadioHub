@@ -65,10 +65,17 @@ export interface QualifiedLanguagesState {
 // Constants
 // ---------------------------------------------------------------------------
 const LKG_KEY = 'qualified_languages';
-const CACHE_TTL_MS = 10 * 60 * 1000;          // 10 minutes
+const CACHE_TTL_MS = 60 * 60 * 1000;          // 60 minutes (was 10 — recompute storms caused FLAP false-positives)
 const LKG_TTL_MS = 30 * 24 * 60 * 60 * 1000;  // 30 days
 const DRIFT_WINDOW_MS = 60 * 60 * 1000;       // 1 hour
-const DRIFT_FLAP_THRESHOLD = 3;               // 3+ changes/hour = flap alert
+const DRIFT_FLAP_THRESHOLD = 3;               // 3+ SIGNIFICANT changes/hour = flap alert
+// A real flap means the qualified set lost or gained MORE than this fraction
+// of languages between recomputes. Single-language flips during translation
+// cache warm-up are noise and MUST NOT increment the drift counter; otherwise
+// every TTL expiry triggers a "FLAP DETECTED" log even though the sitemap is
+// effectively stable. (Observed in 2026-05-11 prod: 6 flaps/hour, exactly
+// matching the old 10-min TTL.)
+const DRIFT_SIGNIFICANT_DELTA_RATIO = 0.05;   // 5% of total active langs
 
 /** Emergency seed used ONLY by `seedQualifiedLanguagesLkg()` when the DB has
  * never been populated. Never used at runtime as a silent fallback. */
@@ -91,7 +98,8 @@ export const EMERGENCY_SEED_QUALIFIED_LANGUAGES: readonly string[] =
 // ---------------------------------------------------------------------------
 let memoryCache: { state: QualifiedLanguagesState; expiresAt: number } | null = null;
 let lastHash: string | null = null;
-let driftHistory: number[] = []; // timestamps of hash changes within DRIFT_WINDOW_MS
+let lastLanguages: readonly string[] | null = null;
+let driftHistory: number[] = []; // timestamps of SIGNIFICANT hash changes within DRIFT_WINDOW_MS
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -101,22 +109,50 @@ function hashLanguages(langs: readonly string[]): string {
   return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 16);
 }
 
-function recordDrift(newHash: string): void {
+function symmetricDifferenceCount(a: readonly string[], b: readonly string[]): number {
+  const aSet = new Set(a);
+  const bSet = new Set(b);
+  let diff = 0;
+  for (const x of aSet) if (!bSet.has(x)) diff++;
+  for (const x of bSet) if (!aSet.has(x)) diff++;
+  return diff;
+}
+
+function recordDrift(newHash: string, newLanguages: readonly string[]): void {
   if (lastHash !== null && lastHash !== newHash) {
-    const now = Date.now();
-    driftHistory = driftHistory.filter((t) => now - t < DRIFT_WINDOW_MS);
-    driftHistory.push(now);
-    if (driftHistory.length >= DRIFT_FLAP_THRESHOLD) {
-      logger.error(
-        `🚨 qualified-languages FLAP DETECTED: ${driftHistory.length} hash changes in last hour. Last: ${lastHash} → ${newHash}`,
+    // Only count as "drift" when the language set differs by MORE than the
+    // significance threshold. A single lang flipping in/out during translation
+    // cache warm-up generates a new hash but is operationally identical for
+    // the sitemap pipeline — counting it as drift produced 6 false-positive
+    // FLAP alerts per hour on prod (one per cache TTL expiry).
+    const totalActive = (ACTIVE_SITEMAP_LANGUAGES as unknown as string[]).length || 1;
+    const diff = lastLanguages
+      ? symmetricDifferenceCount(lastLanguages, newLanguages)
+      : Math.abs(newLanguages.length - 0);
+    const significantThreshold = Math.max(2, Math.ceil(totalActive * DRIFT_SIGNIFICANT_DELTA_RATIO));
+
+    if (diff < significantThreshold) {
+      // Quiet noise — log at debug level only, do NOT increment drift history.
+      logger.log(
+        `ℹ️ qualified-languages: hash ${lastHash} → ${newHash} (Δ=${diff} langs, below significance ${significantThreshold} — not counted as drift)`,
       );
     } else {
-      logger.warn(
-        `⚠️ qualified-languages drift: hash ${lastHash} → ${newHash} (count this hour: ${driftHistory.length})`,
-      );
+      const now = Date.now();
+      driftHistory = driftHistory.filter((t) => now - t < DRIFT_WINDOW_MS);
+      driftHistory.push(now);
+      if (driftHistory.length >= DRIFT_FLAP_THRESHOLD) {
+        logger.error(
+          `🚨 qualified-languages FLAP DETECTED: ${driftHistory.length} significant changes in last hour. Last: ${lastHash} → ${newHash} (Δ=${diff} langs)`,
+        );
+      } else {
+        logger.warn(
+          `⚠️ qualified-languages drift: hash ${lastHash} → ${newHash} (Δ=${diff} langs, count this hour: ${driftHistory.length})`,
+        );
+      }
     }
   }
   lastHash = newHash;
+  lastLanguages = [...newLanguages];
 }
 
 async function computeFromTranslations(): Promise<string[]> {
@@ -227,7 +263,7 @@ export async function getQualifiedLanguagesState(): Promise<QualifiedLanguagesSt
     }
 
     const hash = hashLanguages(computed);
-    recordDrift(hash);
+    recordDrift(hash, computed);
     const state: QualifiedLanguagesState = {
       languages: computed,
       hash,
@@ -246,7 +282,7 @@ export async function getQualifiedLanguagesState(): Promise<QualifiedLanguagesSt
 
   // Live compute returned zero — fall back to LKG (fail-closed except for valid LKG).
   if (lkg && lkg.languages.length > 0) {
-    recordDrift(lkg.hash);
+    recordDrift(lkg.hash, lkg.languages);
     logger.warn(
       `⚠️ qualified-languages: live compute returned 0; serving LKG (${lkg.languages.length} langs, hash=${lkg.hash}, source=${lkg.source})`,
     );
@@ -294,6 +330,7 @@ export function getCachedQualifiedLanguagesSync(): string[] | null {
 export async function invalidateQualifiedLanguages(opts: { resetLkg?: boolean } = {}): Promise<void> {
   memoryCache = null;
   lastHash = null;
+  lastLanguages = null;
   driftHistory = [];
   if (opts.resetLkg) {
     // ARCHITECT FIX (2026-05-10): SAFE LKG RESET. The previous behaviour
