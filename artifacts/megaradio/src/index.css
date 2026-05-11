@@ -707,12 +707,15 @@ img[loading="lazy"] {
     z-index: 5;
   }
 
+  /* Decorative wave overlay removed — `/images/wave.png` was lost during the
+     monorepo migration and the 404 caused a broken-image flash on the
+     header. The hero already has bg-gradient-blue.svg + heroleft pattern
+     for visual depth, so dropping this rule is safe. */
   .hero-container::before {
     content: '';
     position: absolute;
     height: 100%;
     width: 100%;
-    background-image: url('/images/wave.png');
     background-repeat: no-repeat;
     background-position: left;
     pointer-events: none;

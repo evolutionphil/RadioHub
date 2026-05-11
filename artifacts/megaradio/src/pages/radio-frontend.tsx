@@ -911,7 +911,10 @@ export default function RadioFrontend({
             loading="lazy"
           />
           
-          {/* Hero Left Decorative Pattern - Pink dot halftone pattern */}
+          {/* Hero Left Decorative Pattern - Pink dot halftone pattern.
+              The /images/heroleft-*.webp files were lost during the
+              monorepo migration, so the <img> hides itself on 404 to
+              avoid a broken-image icon in the hero. */}
           <picture>
             <source srcSet="/images/heroleft-300w.webp" media="(max-width: 640px)" type="image/webp" />
             <source srcSet="/images/heroleft-500w.webp" media="(min-width: 641px)" type="image/webp" />
@@ -924,6 +927,7 @@ export default function RadioFrontend({
               style={{ opacity: 0.6, zIndex: 5 }}
               aria-hidden="true"
               loading="lazy"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
             />
           </picture>
           
@@ -1477,14 +1481,16 @@ export default function RadioFrontend({
                     </div>
                   </div>
 
+                  {/* /images/devices-{400,600,800}w.webp variants were lost
+                      during the monorepo migration; only devices.png exists.
+                      Drop the broken srcSet so the browser falls back to the
+                      single PNG instead of 404'ing. */}
                   <img loading="lazy"
                     decoding="async"
                     width={1200}
                     height={750}
                     className="hidden sm:block h-[420px] sm:h-[350px] md:h-[450px] lg:h-[600px] xl:h-[550px] 2xl:h-[630px] absolute top-[-40px] lg:top-[-90px] 2xl:top-[-130px] right-0 lg:right-[50px] 2xl:right-[120px] pointer-events-none"
                     src="/images/devices.png"
-                    srcSet="/images/devices-400w.webp 400w, /images/devices-600w.webp 600w, /images/devices-800w.webp 800w, /images/devices.png 1200w"
-                    sizes="(max-width: 640px) 400px, (max-width: 1024px) 600px, (max-width: 1536px) 800px, 1200px"
                     alt="Radio streaming on multiple devices - phone, tablet, and desktop" />
                 </div>
                 <img loading="lazy" className="pointer-events-none absolute left-[-15%] top-[-50%]" src="/images/bg-gradient-blue.svg" alt="" role="presentation" />
@@ -1518,6 +1524,9 @@ export default function RadioFrontend({
                   {t('sign_up', 'Sign Up')}
                 </Link>
 
+                {/* /images/headphone.webp was lost during the monorepo
+                    migration; hide gracefully on 404 instead of showing a
+                    broken-image icon in the Sign Up banner. */}
                 <img 
                   loading="lazy"
                   decoding="async"
@@ -1526,6 +1535,7 @@ export default function RadioFrontend({
                   className="absolute -right-10 top-0 h-full sm:right-0 pointer-events-none" 
                   src="/images/headphone.webp" 
                   alt="Person wearing headphones enjoying music"
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
               </div>
             </div>

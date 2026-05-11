@@ -57,9 +57,13 @@ export default function PublicHeader() {
   // Ensures defined comparator even when normalization fails or hook initializing
   const isActive = (path: string) => (englishPath ?? reverseTranslate(cleanPath) ?? cleanPath) === path;
 
-  // Fetch countries for dropdown
+  // Fetch countries for dropdown — `format=rich` returns objects with
+  // {name, code, count} so we can render flagcdn flags. Default endpoint
+  // returns just an array of country-name strings, which broke flag
+  // rendering everywhere `countries.find(c => c.name === ...)?.code` was
+  // used.
   const { data: countries = [] } = useQuery<any[]>({
-    queryKey: ['/api/countries'],
+    queryKey: ['/api/countries?format=rich'],
   });
 
   // Filter countries based on search query

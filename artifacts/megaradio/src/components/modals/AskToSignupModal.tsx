@@ -44,12 +44,16 @@ export default function AskToSignupModal({ isOpen, onClose }: AskToSignupModalPr
 
         <div className="bg-white rounded-[20px] overflow-hidden shadow-2xl">
           <div className="w-full">
+            {/* /images/ask-signup-modal-image.png was lost during the
+                monorepo migration; hide on 404 so the modal still looks
+                clean instead of showing a broken-image placeholder. */}
             <img 
               src="/images/ask-signup-modal-image.png"
               alt="Signup invitation illustration - person with headphones enjoying music" 
               className="w-full h-auto object-cover"
               loading="eager"
               decoding="async"
+              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
               width={600}
               height={400}
             />

@@ -391,11 +391,13 @@ export default function GlobalPlayer() {
                   gap: '14px'
                 }}
               >
-                {/* Volume Icon - Figma: 30x30 */}
+                {/* Volume Icon - Figma: 30x30. /images/volume.png was lost
+                    during the monorepo migration; hide gracefully on 404. */}
                 <img 
                   src="/images/volume.png"
                   alt="Volume"
                   style={{ width: '30px', height: '30px', flexShrink: 0 }}
+                  onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
                 />
                 
                 {/* Volume Slider Track - Figma: 168x10, border-radius 20px */}
