@@ -178,16 +178,30 @@ export function bareSlugRedirectMiddleware(
   // Country match takes priority over genre — country pages have the
   // higher SEO value, and any localized country alias (turkiye, holland,
   // usa, etc.) must beat a same-spelled genre alias.
-  // First try the slug directly, then resolve through the country-name
-  // alias map so non-English spellings hit the canonical region URL.
-  const directCountry = hasCountrySlug(slug) ? slug : null;
-  const aliasedCountry = directCountry ? null : resolveCountryAliasToCanonicalSlug(slug);
-  const canonicalCountrySlug = directCountry ?? aliasedCountry;
-
-  if (canonicalCountrySlug && hasCountrySlug(canonicalCountrySlug)) {
-    const regionSlug = getCountrySlugToRegion().get(canonicalCountrySlug);
-    if (!regionSlug) return next();
-    const target = `/${lang}/regions/${regionSlug}/${canonicalCountrySlug}`;
+  //
+  // We try alias resolution FIRST so localized spellings get rewritten to
+  // the English canonical slug that `getCountrySlugToRegion()` actually
+  // knows about. Without this, a slug like `turkiye` may live in
+  // `countrySlugs` (because some `station.country` values are stored as
+  // `Türkiye` and slug-existence indexes them as `turkiye`), but the
+  // region map only contains the canonical `turkey → asia` entry, so the
+  // redirect would fall through to the genre branch.
+  //
+  // Order:
+  //   1. ALIAS_TO_DB → canonical English slug (turkiye → turkey, usa →
+  //      united-states, holland → netherlands, ...).
+  //   2. Otherwise use the slug as-is (already canonical English).
+  //   3. Bail back to the genre check only when neither yields a real
+  //      region URL.
+  const aliasedCanonical = resolveCountryAliasToCanonicalSlug(slug);
+  const candidates = aliasedCanonical && aliasedCanonical !== slug
+    ? [aliasedCanonical, slug]
+    : [slug];
+  for (const candidate of candidates) {
+    if (!hasCountrySlug(candidate)) continue;
+    const regionSlug = getCountrySlugToRegion().get(candidate);
+    if (!regionSlug) continue;
+    const target = `/${lang}/regions/${regionSlug}/${candidate}`;
     return send301(req, res, target);
   }
 
