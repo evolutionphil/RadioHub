@@ -831,6 +831,16 @@ app.use('/api/stream', streamServiceProxy);
 
   app.use(htmlLangMiddleware);
 
+  // Bare top-level country/genre slug → 301 to canonical SEO URL.
+  // Mounted BEFORE slug-shape-404 so requests like `/en/turkey` or
+  // `/tr/pop` (which the SPA serves as a blank shell with no canonical
+  // tag and would otherwise be dropped by Google as soft-404 duplicates)
+  // get redirected to `/en/regions/asia/turkey` / `/tr/genres/pop`. The
+  // SSR layer at the target then emits the proper localized canonical
+  // and hreflang, so Googlebot consolidates ranking on the right URL.
+  const { bareSlugRedirectMiddleware } = await import('./middleware/bare-slug-redirect');
+  app.use(bareSlugRedirectMiddleware);
+
   // Task #158: lightweight slug-shape 404 for non-bot visitors. Bots
   // already get a proper 404 from the SSR catch-all above; this fills
   // the gap for browser users who hit junk URLs like
