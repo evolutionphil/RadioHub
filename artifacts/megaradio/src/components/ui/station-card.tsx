@@ -281,11 +281,13 @@ const StationCard = memo(function StationCard({
       </Link>
 
       <div className="ml-auto flex items-center gap-[10px]">
-        {/* Favorite Button - Mobile Only - Figma: 40x40, border 1.6px solid #000000, border-radius 32.22px, transparent bg, icon 22.4x22.4 */}
+        {/* Favorite Button - Mobile Only - 44x44 mobile tap target (was 40x40
+            in Figma; bumped to meet WCAG 2.5.5 / Apple HIG 44px minimum
+            without disturbing the existing visual border-radius look). */}
         <div className="md:hidden">
           <FavoriteButton 
             stationId={station._id} 
-            className="!w-10 !h-10 !rounded-[32.22px] !border-[1.6px] !border-black !bg-transparent"
+            className="!w-11 !h-11 !rounded-[32.22px] !border-[1.6px] !border-black !bg-transparent"
             iconSizeOverride="22.4px"
             borderWidth="1.6px"
           />

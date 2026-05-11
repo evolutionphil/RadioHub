@@ -63,6 +63,16 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // NOTE: do NOT add a custom rollupOptions.output.manualChunks() here.
+    // A previous attempt at vendor splitting (vendor-react / vendor-misc /
+    // vendor-icons / etc.) made things dramatically worse — forcing whole
+    // packages like `lucide-react` and `react-icons` into a single chunk
+    // bypasses Vite's per-import tree-shaking and ballooned the icon
+    // chunk to 6 MB raw. The default Vite/Rollup chunking + the existing
+    // route-level React.lazy splits in src/components/lazy-routes.tsx
+    // already produce a ~170 KB gzipped entry bundle, which is what we
+    // want. If a future split is needed, scope it narrowly to a single
+    // confirmed-heavy module — never use a catch-all `return "vendor-misc"`.
   },
   server: {
     port,

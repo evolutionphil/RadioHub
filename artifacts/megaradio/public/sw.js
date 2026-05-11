@@ -1,5 +1,19 @@
-// Service Worker for Push Notifications
-const CACHE_NAME = 'megaradio-v1';
+// Service Worker for Push Notifications + static asset caching.
+//
+// Cache strategy:
+//  - /assets/*.js, /assets/*.css, /fonts/*  → cache-first, populated on miss.
+//    These files are content-hashed by Vite so we never have to invalidate
+//    them — the HTML simply points at a new filename when content changes.
+//  - everything else → network (no caching). Critically: HTML, /api/*, /ws/*,
+//    /sitemap*, /robots.txt, /station-images/*, /station-logos/* must NEVER
+//    be cached here, otherwise updates / SSR responses go stale.
+//
+// Bump CACHE_NAME whenever the cacheable URL set changes so old caches are
+// purged on activate.
+const CACHE_NAME = 'megaradio-v2';
+const ASSET_CACHE = 'megaradio-assets-v1';
+
+const CACHEABLE_PATH_RE = /^\/(?:assets|fonts)\//;
 
 // Install event
 self.addEventListener('install', (event) => {
@@ -7,10 +21,54 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate event
+// Activate event — purge any old caches not in our current set so users on
+// the previous SW don't keep stale responses.
 self.addEventListener('activate', (event) => {
   console.log('✅ Service Worker activated');
-  event.waitUntil(self.clients.claim());
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(
+      keys
+        .filter((k) => k !== CACHE_NAME && k !== ASSET_CACHE)
+        .map((k) => caches.delete(k)),
+    );
+    await self.clients.claim();
+  })());
+});
+
+// Fetch handler — cache-first for static hashed assets, network for the rest.
+// Wrapped in try/catch so any unexpected error falls through to the network
+// instead of breaking the page.
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  let url;
+  try {
+    url = new URL(req.url);
+  } catch {
+    return;
+  }
+  if (url.origin !== self.location.origin) return;
+  if (!CACHEABLE_PATH_RE.test(url.pathname)) return;
+
+  event.respondWith((async () => {
+    try {
+      const cache = await caches.open(ASSET_CACHE);
+      const cached = await cache.match(req);
+      if (cached) return cached;
+      const res = await fetch(req);
+      // Only cache successful, basic (same-origin) responses.
+      if (res && res.status === 200 && res.type === 'basic') {
+        cache.put(req, res.clone()).catch(() => {});
+      }
+      return res;
+    } catch (err) {
+      // Network failed and nothing in cache — let the browser surface its
+      // own offline error rather than synthesizing one here.
+      return fetch(req);
+    }
+  })());
 });
 
 // Push notification event

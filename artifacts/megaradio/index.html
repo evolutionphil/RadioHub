@@ -182,11 +182,34 @@
     }
     </script>
 
-    <!-- Google AdSense -->
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434" crossorigin="anonymous"></script>
-    
-    <!-- Google Cast SDK for Chromecast - async to avoid render blocking -->
-    <script async src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+    <!-- 🚀 PERF: Defer Google AdSense + Cast SDK to requestIdleCallback so
+         Lighthouse / PageSpeed Insights can reach "network idle" within its
+         60s budget. Without this defer, PSI was returning DEADLINE_EXCEEDED
+         for themegaradio.com because Adsense + Cast SDK keep opening new
+         requests for >60s after page load, preventing the audit from
+         finishing. Both scripts still load on real browsers — just after
+         FCP/LCP/TTI are measured. -->
+    <script>
+      (function () {
+        function loadDeferredScripts() {
+          var ads = document.createElement('script');
+          ads.async = true;
+          ads.crossOrigin = 'anonymous';
+          ads.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434';
+          document.head.appendChild(ads);
+
+          var cast = document.createElement('script');
+          cast.async = true;
+          cast.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+          document.head.appendChild(cast);
+        }
+        if ('requestIdleCallback' in window) {
+          requestIdleCallback(loadDeferredScripts, { timeout: 4000 });
+        } else {
+          setTimeout(loadDeferredScripts, 3000);
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

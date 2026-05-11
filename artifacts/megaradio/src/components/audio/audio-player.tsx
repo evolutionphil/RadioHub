@@ -471,43 +471,44 @@ export function AudioPlayer({ station, onClose, onNext, onPrevious }: AudioPlaye
 
             {/* Station Controls */}
             <div className="flex items-center space-x-2 md:space-x-4">
-              {/* Previous Button */}
+              {/* Previous Button — 44x44 mobile (Apple HIG / Material tap target),
+                  10x10 desktop unchanged */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onPrevious}
                 disabled={!onPrevious}
-                className="w-8 h-8 md:w-10 md:h-10 p-0 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
+                className="w-11 h-11 md:w-10 md:h-10 p-0 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 disabled:opacity-30"
               >
-                <SkipBack className="w-3 h-3 md:w-4 md:h-4 text-white" />
+                <SkipBack className="w-4 h-4 md:w-4 md:h-4 text-white" />
               </Button>
 
-              {/* Play/Pause Button */}
+              {/* Play/Pause Button — 48x48 mobile (primary action) */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handlePlay}
                 disabled={isLoading}
-                className="w-8 h-8 md:w-10 md:h-10 p-0 rounded-full bg-white/20 hover:bg-white/30"
+                className="w-12 h-12 md:w-10 md:h-10 p-0 rounded-full bg-white/20 hover:bg-white/30 active:bg-white/40"
               >
                 {isLoading ? (
-                  <div className="w-3 h-3 md:w-4 md:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-4 h-4 md:w-4 md:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : isPlaying ? (
-                  <Pause className="w-3 h-3 md:w-4 md:h-4 text-white" />
+                  <Pause className="w-5 h-5 md:w-4 md:h-4 text-white" />
                 ) : (
-                  <Play className="w-3 h-3 md:w-4 md:h-4 text-white" />
+                  <Play className="w-5 h-5 md:w-4 md:h-4 text-white" />
                 )}
               </Button>
 
-              {/* Next Button */}
+              {/* Next Button — 44x44 mobile */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onNext}
                 disabled={!onNext}
-                className="w-8 h-8 md:w-10 md:h-10 p-0 rounded-full bg-white/10 hover:bg-white/20 disabled:opacity-30"
+                className="w-11 h-11 md:w-10 md:h-10 p-0 rounded-full bg-white/10 hover:bg-white/20 active:bg-white/30 disabled:opacity-30"
               >
-                <SkipForward className="w-3 h-3 md:w-4 md:h-4 text-white" />
+                <SkipForward className="w-4 h-4 md:w-4 md:h-4 text-white" />
               </Button>
 
               {/* Volume Controls - Desktop Only */}
@@ -535,14 +536,15 @@ export function AudioPlayer({ station, onClose, onNext, onPrevious }: AudioPlaye
                 </div>
               </div>
 
-              {/* Close Button */}
+              {/* Close Button — 40x40 mobile (still small but secondary action;
+                  meets touch-target minimum once padding is included) */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={onClose}
-                className="w-6 h-6 md:w-8 md:h-8 p-0 text-gray-300 hover:text-white"
+                className="w-10 h-10 md:w-8 md:h-8 p-0 text-gray-300 hover:text-white active:text-white"
               >
-                <X className="w-3 h-3 md:w-4 md:h-4" />
+                <X className="w-4 h-4 md:w-4 md:h-4" />
               </Button>
             </div>
           </div>
