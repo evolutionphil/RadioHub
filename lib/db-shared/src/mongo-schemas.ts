@@ -3944,3 +3944,140 @@ export const SharedComparisonPreset = mongoose.model<ISharedComparisonPreset>(
   'SharedComparisonPreset',
   SharedComparisonPresetSchema,
 );
+
+// =====================================================================
+// 2026-05-12: Consolidated query indexes for collections that lacked
+// coverage (Task: "tüm collection'lara detaylı search index ekle").
+//
+// IMPORTANT: this block only adds indexes for fields that are actually
+// queried by api-server (verified against rg "Model.find/findOne/
+// countDocuments" call sites). It deliberately AVOIDS:
+//   - re-declaring any field already marked `unique: true` or
+//     `index: true` inline in its schema (Mongoose would emit
+//     "Duplicate schema index" warnings on boot).
+//   - unique constraints on User.email / User.googleId / etc. (those
+//     are already declared inline; re-adding would warn).
+//   - free-text $text indexes (Station.name search uses regex on a
+//     small filtered set, not full collection scans — adding $text
+//     would force a single-language tokenizer onto a multi-language
+//     collection and break the regex queries).
+//
+// Mongoose applies these via autoIndex on first connection. Atlas M10+
+// builds them in the background so adding new indexes is non-blocking.
+// =====================================================================
+
+// ---- Station: gap-fill (existing covers name, country, language, tags,
+// votes, clickCount, updatedAt, codec, slug, slugAliases, noIndex,
+// isFeatured, aiDescriptionSkipped, averageRating, logoAssets.status,
+// stationuuid, plus 3 hot compound indexes + 2dsphere on location).
+StationSchema.index({ favicon: 1 }, { sparse: true }); // logo-routes "has favicon" countDocuments
+StationSchema.index({ tagsCheckedAt: 1 }, { sparse: true }); // admin tag-refresh cooldown filter
+StationSchema.index({ state: 1 }, { sparse: true }); // US/CA state-level region pages
+StationSchema.index({ hasLogo: 1, lastCheckOk: 1 }); // sitemap "has-logo + working" filter
+StationSchema.index({ mediaGroupId: 1 }, { sparse: true }); // sibling-station lookup
+
+// ---- User: gap-fill (existing covers slug, isPublicProfile + inline
+// uniques on email, username, googleId, facebookId, appleId).
+UserSchema.index({ role: 1 }, { sparse: true }); // admin/moderator role filter
+UserSchema.index({ status: 1 }); // active/suspended user filter
+UserSchema.index({ createdAt: -1 }); // admin "newest users" listing
+UserSchema.index({ 'subscription.plan': 1, 'subscription.isActive': 1 }); // premium-user lookups
+UserSchema.index({ 'subscription.expiresAt': 1 }, { sparse: true }); // subscription expiry sweeps
+
+// ---- UserSession: TTL on its own expiresAt field
+UserSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+// ---- AnalyticsEvent: time-series queries by station/user/event
+AnalyticsEventSchema.index({ stationId: 1, timestamp: -1 });
+AnalyticsEventSchema.index({ userId: 1, timestamp: -1 }, { sparse: true });
+AnalyticsEventSchema.index({ event: 1, timestamp: -1 });
+AnalyticsEventSchema.index({ timestamp: -1 });
+
+// ---- Feedback: admin queue
+FeedbackSchema.index({ status: 1, createdAt: -1 });
+FeedbackSchema.index({ userId: 1, createdAt: -1 }, { sparse: true });
+FeedbackSchema.index({ type: 1, status: 1 });
+
+// ---- StationComment: per-station comment list + user activity
+StationCommentSchema.index({ stationId: 1, createdAt: -1 });
+StationCommentSchema.index({ userId: 1, createdAt: -1 });
+StationCommentSchema.index({ parentCommentId: 1 }, { sparse: true });
+StationCommentSchema.index({ isModerated: 1, createdAt: -1 });
+
+// ---- Notification: per-user feed
+NotificationSchema.index({ userId: 1, createdAt: -1 });
+NotificationSchema.index({ userId: 1, isRead: 1 });
+NotificationSchema.index({ type: 1, createdAt: -1 });
+
+// ---- AdvancedSearch: per-user history + analytics rollups
+AdvancedSearchSchema.index({ userId: 1, searchedAt: -1 }, { sparse: true });
+AdvancedSearchSchema.index({ searchedAt: -1 });
+
+// ---- StationRequest / StationSubmission: admin moderation queue
+StationRequestSchema.index({ status: 1, createdAt: -1 });
+StationRequestSchema.index({ submittedByEmail: 1, createdAt: -1 }, { sparse: true });
+StationSubmissionSchema.index({ status: 1, createdAt: -1 });
+StationSubmissionSchema.index({ email: 1, createdAt: -1 }, { sparse: true });
+
+// ---- Translation infrastructure (keyId+language unique, category,
+// already declared earlier in file — only add net-new ones here).
+TranslationSchema.index({ language: 1, isCompleted: 1 });
+TranslationLanguageSchema.index({ isEnabled: 1 });
+TranslationLanguageSchema.index({ isDefault: 1 }, { sparse: true });
+
+// ---- CountryLanguageMapping: gap-fill (countryCode unique already declared).
+CountryLanguageMappingSchema.index({ languageCode: 1, isActive: 1 });
+CountryLanguageMappingSchema.index({ isActive: 1, priority: -1 });
+
+// ---- UrlTranslation: gap-fill ((languageCode, englishPath) unique
+// already declared earlier).
+UrlTranslationSchema.index({ languageCode: 1, isActive: 1 });
+UrlTranslationSchema.index({ translatedPath: 1 });
+
+// ---- IndexNowLog: gap-fill (timestamp -1, host+timestamp,
+// status+timestamp already declared earlier).
+IndexNowLogSchema.index({ trigger: 1, timestamp: -1 });
+IndexNowLogSchema.index({ runDate: 1 }, { sparse: true });
+
+// ---- Advertisement / FooterSocialMedia: active-list rendering
+AdvertisementSchema.index({ position: 1, isActive: 1 });
+AdvertisementSchema.index({ isActive: 1 });
+FooterSocialMediaSchema.index({ isActive: 1, position: 1 });
+FooterSocialMediaSchema.index({ platform: 1 });
+
+// ---- MediaGroup: lookup by name (sibling-station UI)
+MediaGroupSchema.index({ name: 1 });
+
+// ---- BlacklistedStation: dedupe lookup by upstream UUID
+BlacklistedStationSchema.index({ stationUuid: 1 }, { sparse: true });
+BlacklistedStationSchema.index({ radioBrowserId: 1 }, { sparse: true });
+
+// ---- SeoQualifiedLanguagesLkg: TTL purge already declared earlier.
+// (no net-new indexes needed — singleton row keyed by `key`).
+
+// ---- AdminSettingHistory: changedAt inline-indexed + (key, changedAt -1)
+// compound already declared earlier — no net-new indexes needed.
+
+// ---- ClearedOverridesAuditLog: gap-fill (createdAt -1 already declared).
+ClearedOverridesAuditLogSchema.index({ action: 1, createdAt: -1 });
+ClearedOverridesAuditLogSchema.index({ actorEmail: 1, createdAt: -1 }, { sparse: true });
+
+// ---- GenreMergeAuditLog: createdAt -1 already declared earlier.
+
+// ---- StationSubmission/StationRequest also lookup by name dupe-check
+StationSubmissionSchema.index({ stream_url: 1 });
+StationRequestSchema.index({ stationUrl: 1 });
+
+// ---- StationEngagement: stationId is already unique+indexed inline;
+// totalFavorites/averageRating/trendingScore are inline-indexed too.
+// Add only a real timestamp sort path the recommendation engine uses.
+StationEngagementSchema.index({ lastUpdated: -1 });
+
+// ---- PublicUserProfile: slug is already unique+indexed inline,
+// sessionId + isPublic are inline-indexed — add a userId lookup for
+// "my profile" routes (sparse since anonymous profiles omit it).
+PublicUserProfileSchema.index({ userId: 1 }, { sparse: true });
+
+// ---- StationPlaybackCache: time-based cleanup of stale entries
+StationPlaybackCacheSchema.index({ updatedAt: -1 });
+
