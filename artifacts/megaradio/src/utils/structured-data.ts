@@ -41,21 +41,34 @@ export interface WebSiteData {
   };
 }
 
+// 2026-05-12 SEO audit: switched from RadioStation (LocalBusiness subtype
+// — invalid for our broadcast* fields) to RadioBroadcastService. See
+// lib/seo-shared/src/structured-data.ts for the full rationale. This
+// frontend helper is currently dead code (StationStructuredData.tsx is
+// not imported anywhere) but kept consistent so future use is safe.
 export interface RadioStationData {
   "@context": string;
-  "@type": "RadioStation";
+  "@type": "RadioBroadcastService";
   name: string;
   url: string;
   description?: string;
-  genre?: string;
-  broadcastFrequency?: string;
-  broadcastServiceTier?: string;
-  address?: {
-    "@type": "PostalAddress";
-    addressCountry: string;
-  };
-  parentOrganization?: {
+  keywords?: string[];
+  inLanguage?: string;
+  isAccessibleForFree?: boolean;
+  broadcaster?: {
     "@type": "Organization";
+    name: string;
+    address?: {
+      "@type": "PostalAddress";
+      addressCountry: string;
+    };
+  };
+  broadcastAffiliateOf?: {
+    "@type": "Organization";
+    name: string;
+  };
+  area?: {
+    "@type": "Country";
     name: string;
   };
   aggregateRating?: {
@@ -184,23 +197,31 @@ export const generateRadioStationData = (station: Station, currentUrl: string): 
     };
   }
   
+  const keywords: string[] = (station.tags && station.tags.length > 0)
+    ? station.tags.slice(0, 8)
+    : ["Music"];
   return {
     "@context": "https://schema.org",
-    "@type": "RadioStation",
+    "@type": "RadioBroadcastService",
     name: station.name,
     url: currentUrl,
     description: station.name + (station.tags ? ` - ${station.tags.join(', ')}` : ''),
-    genre: station.tags?.[0] || 'Music',
-    broadcastFrequency: station.bitrate ? `${station.bitrate} kbps` : undefined,
-    broadcastServiceTier: station.codec?.toUpperCase() || 'MP3',
-    address: station.country ? {
-      "@type": "PostalAddress",
-      addressCountry: station.country
-    } : undefined,
-    parentOrganization: {
+    keywords,
+    isAccessibleForFree: true,
+    broadcaster: {
+      "@type": "Organization",
+      name: station.name,
+      ...(station.country && {
+        address: { "@type": "PostalAddress" as const, addressCountry: station.country }
+      })
+    },
+    broadcastAffiliateOf: {
       "@type": "Organization",
       name: "Mega Radio"
     },
+    ...(station.country && {
+      area: { "@type": "Country" as const, name: station.country }
+    }),
     aggregateRating
   };
 };

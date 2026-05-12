@@ -1898,6 +1898,16 @@ export class SeoRenderer {
         "height": 80
       },
       "description": getLocalizedText('faq_seo_intro', 'Free online radio platform featuring 60,000+ radio stations from 120+ countries worldwide'),
+      // 2026-05-12 SEO audit: real PostalAddress so the Knowledge Graph
+      // + LocalBusiness validator stop flagging "missing address" on the
+      // Organization node (was the last remaining Org-level invalid).
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bäckerstraße 7",
+        "addressLocality": "Vienna",
+        "postalCode": "1010",
+        "addressCountry": "AT"
+      },
       // 2026-05-12 SEO audit: `inLanguage` is NOT a valid Organization
       // property in schema.org — it belongs to CreativeWork / Thing. Google
       // (and Semrush's validator) flag it as "1 field: inLanguage". The
@@ -1999,25 +2009,36 @@ export class SeoRenderer {
         const stationCountryForAddress =
           (station.countryCode && String(station.countryCode).toUpperCase())
           || station.country;
+        // 2026-05-12 SEO audit: each ItemList child also flipped from
+        // RadioStation → RadioBroadcastService for the same reason as the
+        // top-level station schema. `address` removed (not on Service);
+        // `genre` replaced with `keywords` (default ["Music"]) so the
+        // taxonomy field is always populated.
+        const childKeywords: string[] = stationGenres.length > 0 ? stationGenres : ["Music"];
         return {
           "@type": "ListItem",
           "position": index + 1,
           "item": {
-            "@type": "RadioStation",
+            "@type": "RadioBroadcastService",
             "@id": stationUrl,
             "name": station.name,
             "url": stationUrl,
             "image": stationLogo,
             ...(stationCountryForAddress && {
-              "address": {
-                "@type": "PostalAddress",
-                "addressCountry": stationCountryForAddress,
+              "broadcaster": {
+                "@type": "Organization",
+                "name": station.name,
+                "address": {
+                  "@type": "PostalAddress",
+                  "addressCountry": stationCountryForAddress,
+                },
               },
             }),
             ...(station.country && {
+              "area": { "@type": "Country", "name": getLocalizedCountryName(station.country, language) },
               "areaServed": getLocalizedCountryName(station.country, language),
             }),
-            ...(stationGenres.length > 0 && { "genre": stationGenres }),
+            "keywords": childKeywords,
             "isAccessibleForFree": true,
           },
         };
@@ -2095,9 +2116,56 @@ export class SeoRenderer {
         return candidate || `Listen to ${stationData.name} live online. Free radio streaming on Mega Radio.`;
       })();
 
+      // 2026-05-12 SEO audit (138 invalid items): switched primary type
+      // from RadioStation → RadioBroadcastService. RadioStation extends
+      // LocalBusiness > Organization, and validators reject every
+      // BroadcastService-only field on it (broadcaster, broadcast*,
+      // inLanguage). RadioBroadcastService extends BroadcastService and
+      // legitimizes them all. Removed: broadcastFormat (NOT in schema.org),
+      // broadcastLanguage (NOT in schema.org), genre (NOT on Service).
+      // Tags now ship as `keywords` (Thing-level, valid anywhere) with
+      // ["Music"] default so we never ship empty/missing taxonomy.
+      // Physical address moved off Service onto broadcaster Organization
+      // (Service has no `address` property — only `area`).
+      const stationTagsForKeywords: string[] = (() => {
+        const raw = Array.isArray(stationData.tags)
+          ? stationData.tags
+          : (typeof stationData.tags === 'string'
+              ? String(stationData.tags).split(',')
+              : []);
+        return raw.map((t: any) => String(t).trim()).filter(Boolean);
+      })();
+      const stationKeywords: string[] = stationTagsForKeywords.length > 0
+        ? stationTagsForKeywords.slice(0, 8)
+        : ["Music"];
+
+      const stationBroadcaster: any = {
+        "@type": "Organization",
+        "@id": `${stationUrl}#broadcaster`,
+        "name": stationData.name,
+        ...(stationData.homepage && { "url": stationData.homepage }),
+      };
+      if (stationData.country) {
+        stationBroadcaster.address = {
+          "@type": "PostalAddress",
+          "addressCountry":
+            (stationData.countryCode && String(stationData.countryCode).toUpperCase())
+            || stationData.country,
+          ...(stationData.state && { "addressLocality": stationData.state }),
+        };
+      }
+
+      const stationAdditionalProps: any[] = [];
+      if (stationData.bitrate) {
+        stationAdditionalProps.push({ "@type": "PropertyValue", "name": "bitrate", "value": `${stationData.bitrate} kbps` });
+      }
+      if (stationData.codec) {
+        stationAdditionalProps.push({ "@type": "PropertyValue", "name": "codec", "value": String(stationData.codec).toUpperCase() });
+      }
+
       radioStationSchema = {
         "@context": "https://schema.org",
-        "@type": "RadioStation",
+        "@type": "RadioBroadcastService",
         "@id": `${stationUrl}#radiostation`,
         "name": stationData.name,
         "broadcastDisplayName": stationData.name,
@@ -2105,37 +2173,21 @@ export class SeoRenderer {
         "url": stationUrl,
         "logo": stationLogo,
         "image": stationLogo,
-        "sameAs": stationData.homepage || undefined,
+        ...(stationData.homepage && { "sameAs": stationData.homepage }),
         ...(stationData.country && {
-          // 2026-05-12 SEO audit: emit `address` (LocalBusiness required
-          // field) alongside the existing `areaServed`. `addressCountry`
-          // accepts an ISO 3166-1 alpha-2 code (preferred) or a country
-          // name; `addressLocality` only ships when we actually have a
-          // state/city so we don't fabricate empty fields that Google
-          // would flag as `address` again.
-          "address": {
-            "@type": "PostalAddress",
-            "addressCountry":
-              (stationData.countryCode && String(stationData.countryCode).toUpperCase())
-              || stationData.country,
-            ...(stationData.state && { "addressLocality": stationData.state }),
+          "area": {
+            "@type": "Country",
+            "name": getLocalizedCountryName(stationData.country, language),
           },
           "areaServed": getLocalizedCountryName(stationData.country, language),
         }),
-        ...(stationData.language && { "broadcastLanguage": stationData.language }),
-        ...(stationData.codec && { "broadcastFormat": stationData.codec }),
         ...(parsedBroadcastFrequency && { "broadcastFrequency": parsedBroadcastFrequency }),
-        ...(stationData.bitrate && { "additionalProperty": { "@type": "PropertyValue", "name": "bitrate", "value": `${stationData.bitrate} kbps` } }),
+        ...(stationAdditionalProps.length > 0 && { "additionalProperty": stationAdditionalProps }),
+        "broadcaster": stationBroadcaster,
         "broadcastAffiliateOf": {
           "@type": "Organization",
           "@id": `${baseDomain}/#organization`,
           "name": "Mega Radio"
-        },
-        "broadcaster": {
-          "@type": "Organization",
-          "@id": `${stationUrl}#broadcaster`,
-          "name": stationData.name,
-          ...(stationData.homepage && { "url": stationData.homepage })
         },
         "potentialAction": {
           "@type": "ListenAction",
@@ -2150,18 +2202,7 @@ export class SeoRenderer {
             ]
           }
         },
-        // 2026-05-12 SEO audit: omit `genre` entirely when the station
-        // has no tags rather than shipping `[]` (Google treats an empty
-        // array as a missing-required-field signal for LocalBusiness).
-        ...((() => {
-          const tags = Array.isArray(stationData.tags)
-            ? stationData.tags
-            : (typeof stationData.tags === 'string'
-                ? String(stationData.tags).split(',')
-                : []);
-          const cleaned = tags.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 5);
-          return cleaned.length > 0 ? { "genre": cleaned } : {};
-        })()),
+        "keywords": stationKeywords,
         "isAccessibleForFree": true,
         "inLanguage": stationData.language || language
       };

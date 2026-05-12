@@ -1,6 +1,8 @@
 // Utility functions for generating and handling station slugs
 // RESTORED: Simple version without localStorage country detection (working version from 10+ days ago)
 
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+
 export function generateSlug(stationName: string): string {
   return stationName
     .toLowerCase()
@@ -53,14 +55,46 @@ export function getUserUrl(user: { _id?: string; slug?: string; fullName?: strin
 
 // Universal function to add country code to any path
 // CRITICAL: Only uses country code from CURRENT URL - never from localStorage
+//
+// 2026-05-12 SEO audit: previously this prepended /<lang> WITHOUT
+// translating the URL segments — so callers like
+// `getLocalizedPath('/regions/europe/germany')` produced
+// `/tr/regions/europe/germany`, which 404s because the per-language route
+// expects `/tr/bolgeler/europe/germany`. We now look up each segment in
+// URL_TRANSLATIONS for the current language and translate matching keys
+// (regions → bolgeler, genres → türler, …). Slugs that aren't translation
+// keys (country/region/city slugs, IDs) pass through unchanged.
 export function getLocalizedPath(path: string): string {
   // Don't add country code to admin paths
   if (path.startsWith('/admin')) return path;
-  
+
   const currentLang = getCurrentLanguage();
   if (!currentLang) return path;
-  
-  return `/${currentLang}${path}`;
+
+  // Guard: if the caller already passed a /<lang>/... prefixed path,
+  // don't double-prefix it (e.g. getLocalizedPath('/tr/regions/x') stays
+  // /tr/regions/x rather than becoming /tr/tr/regions/x).
+  if (path === `/${currentLang}` || path.startsWith(`/${currentLang}/`)) {
+    return path;
+  }
+
+  // Preserve trailing query/hash if present
+  const [pathOnly, ...tail] = path.split(/(?=[?#])/);
+  const suffix = tail.join('');
+
+  const translations = URL_TRANSLATIONS[currentLang];
+  if (!translations) return `/${currentLang}${pathOnly}${suffix}`;
+
+  const segments = pathOnly.split('/').filter(Boolean);
+  const translated = segments.map(seg => {
+    // Only translate exact matches against the URL_TRANSLATIONS dictionary
+    // for this language. Country / region / station slugs are not in the
+    // dictionary, so they pass through unchanged.
+    const t = translations[seg];
+    return (typeof t === 'string' && t) ? t : seg;
+  });
+
+  return `/${currentLang}/${translated.join('/')}${suffix}`;
 }
 
 export function navigateToStation(station: { _id?: string; slug?: string; name: string }) {

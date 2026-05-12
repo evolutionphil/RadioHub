@@ -62,6 +62,17 @@ export function generateOrganizationSchema(
       "width": 212,
       "height": 212
     },
+    // 2026-05-12 SEO audit: Organization needs a real PostalAddress so
+    // Google's Knowledge Graph + Semrush LocalBusiness validator stop
+    // flagging "missing address". Mega Radio HQ is Bäckerstraße 7,
+    // Vienna 1010, Austria.
+    "address": {
+      "@type": "PostalAddress",
+      "streetAddress": "Bäckerstraße 7",
+      "addressLocality": "Vienna",
+      "postalCode": "1010",
+      "addressCountry": "AT"
+    },
     "contactPoint": {
       "@type": "ContactPoint",
       "contactType": "Customer Service",
@@ -111,39 +122,69 @@ export function generateRadioStationSchema(
     stationUrl = `https://${domain}/${language === 'en' ? '' : language + '/'}stations/${station.slug || station._id}`;
   }
   
-  // D-A1 FIX (2026-05-08): emit broadcastDisplayName so Google's Radio
-  // Station rich-result extractor accepts the entity. broadcastAffiliateOf
-  // alone is not enough — broadcastDisplayName is the user-visible label
-  // tied to the station identity.
-  // 2026-05-12 SEO audit: omit `genre` entirely when the station has no
-  // usable tags rather than shipping `[]` — Google's LocalBusiness
-  // validator treats an empty array as a missing-required-field signal
-  // and reports it as "Missing field 'genre'". Same change applied in
-  // artifacts/api-server/src/seo-renderer.ts.
-  const cleanedGenres: string[] = (() => {
+  // 2026-05-12 SEO audit (138 invalid items): the previous schema used
+  // @type:"RadioStation" but shipped properties that schema.org defines
+  // ONLY on BroadcastService (broadcaster, broadcastFrequency,
+  // broadcastAffiliateOf, broadcastDisplayName, inLanguage). Validators
+  // walk the RadioStation > LocalBusiness > Organization ancestor chain
+  // and reject every one of those as "not in vocabulary".
+  // The semantically correct type for a streaming radio service is
+  // RadioBroadcastService (extends BroadcastService extends Service),
+  // which legitimizes ALL the broadcast* + inLanguage fields. genre /
+  // broadcastFormat / broadcastLanguage are NOT in any Service-side
+  // vocabulary, so we move tags to `keywords` (Thing-level, valid
+  // anywhere) and default to ["Music"] when a station ships no tags so
+  // we never emit an empty list. Physical address belongs on the
+  // broadcaster Organization, not on the Service — Service uses `area`
+  // (which we already cover via broadcaster.areaServed at SSR layer).
+  const rawTagList: string[] = (() => {
     if (!station.tags) return [];
     const raw = Array.isArray(station.tags)
       ? station.tags
       : String(station.tags).split(',');
     return raw.map((t: any) => String(t).trim()).filter(Boolean);
   })();
+  const keywords: string[] = rawTagList.length > 0 ? rawTagList.slice(0, 8) : ["Music"];
+
+  const broadcaster: StructuredDataConfig = {
+    "@type": "Organization",
+    "@id": `${stationUrl}#broadcaster`,
+    "name": station.name,
+    ...(station.homepage && { "url": station.homepage }),
+  };
+  if (station.country) {
+    broadcaster.address = {
+      "@type": "PostalAddress",
+      "addressCountry": station.countryCode || station.country,
+      ...(station.state && { "addressLocality": station.state }),
+    };
+  }
+  if (station.geoLat && station.geoLong) {
+    broadcaster.geo = {
+      "@type": "GeoCoordinates",
+      "latitude": parseFloat(station.geoLat),
+      "longitude": parseFloat(station.geoLong),
+    };
+  }
 
   const schema: StructuredDataConfig = {
     "@context": "https://schema.org",
-    "@type": "RadioStation",
+    "@type": "RadioBroadcastService",
     "@id": `${stationUrl}#radiostation`,
     "name": station.name,
     "broadcastDisplayName": station.name,
     "description": stationDescription,
     "url": stationUrl,
     "image": station.favicon || `https://${domain}/images/no-image.webp`,
+    "broadcaster": broadcaster,
     "broadcastAffiliateOf": {
       "@type": "Organization",
       "@id": `https://${domain}/#organization`,
       "name": "Mega Radio"
     },
-    ...(cleanedGenres.length > 0 && { "genre": cleanedGenres }),
-    "inLanguage": language, // Use page language instead of station language for SEO
+    "keywords": keywords,
+    "inLanguage": language, // BCP-47 page language (en, tr, …)
+    "isAccessibleForFree": true,
     "potentialAction": {
       "@type": "ListenAction",
       "target": {
@@ -154,20 +195,11 @@ export function generateRadioStationSchema(
     }
   };
 
-  // Enhanced radio-specific properties
+  // Service-level area served (Place) when we know the country
   if (station.country) {
-    schema.address = {
-      "@type": "PostalAddress",
-      "addressCountry": station.countryCode || station.country,
-      "addressLocality": station.state || undefined
-    };
-  }
-
-  if (station.geoLat && station.geoLong) {
-    schema.geo = {
-      "@type": "GeoCoordinates",
-      "latitude": parseFloat(station.geoLat),
-      "longitude": parseFloat(station.geoLong)
+    schema.area = {
+      "@type": "Country",
+      "name": station.country,
     };
   }
 
@@ -210,13 +242,27 @@ export function generateRadioStationSchema(
     };
   }
 
-  // Add broadcasting details if available
+  // 2026-05-12: bitrate/codec info goes into `additionalProperty` so we
+  // don't pollute the Service node with encodingFormat (CreativeWork-only)
+  // or broadcastChannelId (BroadcastChannel-only). Both were tripping
+  // Semrush's "property not in vocabulary" check.
+  const additionalProps: any[] = [];
   if (station.bitrate) {
-    schema.encodingFormat = `audio/mpeg; bitrate=${station.bitrate}`;
+    additionalProps.push({
+      "@type": "PropertyValue",
+      "name": "bitrate",
+      "value": `${station.bitrate} kbps`,
+    });
   }
-
-  if (station.language) {
-    schema.broadcastChannelId = station.language.toUpperCase();
+  if (station.codec) {
+    additionalProps.push({
+      "@type": "PropertyValue",
+      "name": "codec",
+      "value": String(station.codec).toUpperCase(),
+    });
+  }
+  if (additionalProps.length > 0) {
+    schema.additionalProperty = additionalProps;
   }
 
   // D-A1 FIX (2026-05-08): emit broadcastFrequency as a structured

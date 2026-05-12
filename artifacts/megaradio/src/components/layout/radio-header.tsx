@@ -11,6 +11,7 @@ import { UserMenuDropdown } from "@/components/ui/UserMenuDropdown";
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
+import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 import { getImageUrl } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
 import { HighlightMatch } from "@/components/HighlightMatch";
@@ -52,6 +53,12 @@ export default function RadioHeader({
   const { t, setLanguage } = useTranslation();
   const { getLocalizedUrl, cleanPath, navigateTranslated, currentLanguage } = useSeoRouting();
   const langPrefix = currentLanguage === "en" ? "" : `/${currentLanguage}`;
+  // 2026-05-12 SEO audit: header search dropdown was emitting hardcoded
+  // /<lang>/regions/... links, but per-language routes expect the
+  // translated segment (e.g. /tr/bolgeler/...). Resolve from the shared
+  // URL_TRANSLATIONS map; falls back to "regions" for English / unknown.
+  const getLocalizedRegionsSegment = (): string =>
+    URL_TRANSLATIONS[currentLanguage]?.['regions'] || 'regions';
   const [location, setLocation] = useLocation();
   
   // Use getLanguageForCountry helper from @shared/seo-config (single source of truth)
@@ -475,7 +482,12 @@ export default function RadioHeader({
       items.push({
         kind: 'country',
         id: `country-${c.canonical}`,
-        href: `${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`,
+        // 2026-05-12 SEO audit: was hardcoded `regions` which produced
+        // /tr/regions/... 404s when the matched route expects the
+        // language-translated segment (e.g. /tr/bolgeler/...). Use the
+        // shared URL_TRANSLATIONS lookup so every language gets the
+        // correct localized prefix.
+        href: `${langPrefix}/${getLocalizedRegionsSegment()}/${c.regionSlug}/${countrySlug(c.canonical)}`,
       });
     }
     visibleStations.forEach((station: any, idx: number) => {
@@ -1358,7 +1370,7 @@ export default function RadioHeader({
                             return (
                             <Link
                               key={id}
-                              href={`${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`}
+                              href={`${langPrefix}/${getLocalizedRegionsSegment()}/${c.regionSlug}/${countrySlug(c.canonical)}`}
                               ref={setSearchItemRef(id)}
                               id={id}
                               role="option"

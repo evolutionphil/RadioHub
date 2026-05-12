@@ -167,16 +167,30 @@ export default function RegionStationsPage() {
         "name": `Radio Stations in ${data.country.name}${data.city ? ` - ${data.city.name}` : ''}`,
         "numberOfItems": data.pagination.total,
         "itemListElement": filteredStations.slice(0, 10).map((station, index) => ({
-          "@type": "RadioStation",
+          // 2026-05-12 SEO audit: switched RadioStation → RadioBroadcastService
+          // (LocalBusiness subtype was rejecting broadcast*/inLanguage props).
+          // Tags now ship as `keywords` with default ["Music"] — never empty.
+          "@type": "RadioBroadcastService",
           "position": index + 1,
           "name": station.name,
           "description": `Listen to ${station.name} live from ${station.country}`,
           "url": `${baseUrl}/stations/${station._id}`,
+          "broadcaster": {
+            "@type": "Organization",
+            "name": station.name,
+            ...(station.country && {
+              "address": { "@type": "PostalAddress", "addressCountry": station.country }
+            })
+          },
           "broadcastAffiliateOf": {
             "@type": "Organization",
             "name": "MegaRadio"
           },
-          "genre": station.tags ? station.tags.split(',').map(tag => tag.trim()) : [],
+          "isAccessibleForFree": true,
+          "keywords": (() => {
+            const t = station.tags ? station.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
+            return t.length > 0 ? t : ["Music"];
+          })(),
           "inLanguage": station.language || "en"
         }))
       }
@@ -258,16 +272,30 @@ export default function RegionStationsPage() {
         "name": `Radio Stations in ${data.country.name}${data.city ? ` - ${data.city.name}` : ''}`,
         "numberOfItems": data.pagination.total,
         "itemListElement": filteredStations.slice(0, 10).map((station, index) => ({
-          "@type": "RadioStation",
+          // 2026-05-12 SEO audit: switched RadioStation → RadioBroadcastService
+          // (LocalBusiness subtype was rejecting broadcast*/inLanguage props).
+          // Tags now ship as `keywords` with default ["Music"] — never empty.
+          "@type": "RadioBroadcastService",
           "position": index + 1,
           "name": station.name,
           "description": `Listen to ${station.name} live from ${station.country}`,
           "url": `${baseUrl}/stations/${station._id}`,
+          "broadcaster": {
+            "@type": "Organization",
+            "name": station.name,
+            ...(station.country && {
+              "address": { "@type": "PostalAddress", "addressCountry": station.country }
+            })
+          },
           "broadcastAffiliateOf": {
             "@type": "Organization",
             "name": "MegaRadio"
           },
-          "genre": station.tags ? station.tags.split(',').map(tag => tag.trim()) : [],
+          "isAccessibleForFree": true,
+          "keywords": (() => {
+            const t = station.tags ? station.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
+            return t.length > 0 ? t : ["Music"];
+          })(),
           "inLanguage": station.language || "en"
         }))
       },

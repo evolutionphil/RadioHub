@@ -1,0 +1,518 @@
+Performance
+Values are estimated and may vary. The performance score is calculated directly from these metrics.See calculator.
+0–49
+50–89
+90–100
+Final Screenshot
+
+Metrics
+Expand view
+First Contentful Paint
+0.6 s
+Largest Contentful Paint
+1.8 s
+Total Blocking Time
+1,120 ms
+Cumulative Layout Shift
+0.019
+Speed Index
+2.1 s
+Captured at May 12, 2026, 3:22 AM UTC
+Emulated Desktop with Lighthouse 13.0.1
+Single page session
+Initial page load
+Custom throttling
+Using HeadlessChromium 146.0.7680.177 with lr
+View Treemap
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Screenshot
+Show audits relevant to:
+
+All
+
+FCP
+
+LCP
+
+TBT
+
+CLS
+Insights
+Render blocking requests Est savings of 270 ms
+Requests are blocking the page's initial render, which may delay LCP. Deferring or inlining can move these network requests out of the critical path.LCPFCPUnscored
+URL
+Transfer Size
+Duration
+themegaradio.com 1st party
+37.5 KiB	100 ms
+/assets/index-C9toVRxK.css(themegaradio.com)
+37.5 KiB
+100 ms
+Forced reflow
+A forced reflow occurs when JavaScript queries geometric properties (such as offsetWidth) after styles have been invalidated by a change to the DOM state. This can result in poor performance. Learn more about forced reflows and possible mitigations.Unscored
+Top function call
+Total reflow time
+/assets/index-D1_uS5J2.js:10:114353(themegaradio.com)
+15 ms
+Source
+Total reflow time
+[unattributed]
+18 ms
+/assets/free-mode-CmUhVb_x.js:1:4979(themegaradio.com)
+5 ms
+/assets/free-mode-CmUhVb_x.js:1:10876(themegaradio.com)
+3 ms
+/assets/radio-fro….js:44:8425(themegaradio.com)
+6 ms
+LCP request discovery
+Optimize LCP by making the LCP image discoverable from the HTML immediately, and avoiding lazy-loadingLCPUnscored
+lazy load not applied
+fetchpriority=high applied
+Request is discoverable in initial document
+Network dependency tree
+Avoid chaining critical requests by reducing the length of chains, reducing the download size of resources, or deferring the download of unnecessary resources to improve page load.LCPUnscored
+Maximum critical path latency: 4,315 ms
+Initial Navigation
+/nl(themegaradio.com) - 167 ms, 9.59 KiB
+/assets/index-C9toVRxK.css(themegaradio.com) - 209 ms, 37.47 KiB
+/fonts/ubuntu-400.woff2(themegaradio.com) - 298 ms, 111.36 KiB
+/fonts/ubuntu-500.woff2(themegaradio.com) - 339 ms, 102.48 KiB
+/fonts/ubuntu-600.woff2(themegaradio.com) - 664 ms, 97.26 KiB
+/fonts/ubuntu-700.woff2(themegaradio.com) - 299 ms, 97.20 KiB
+/assets/index-D1_uS5J2.js(themegaradio.com) - 297 ms, 151.44 KiB
+/assets/_id_-iw0BI3Nb.js(themegaradio.com) - 1,228 ms, 12.16 KiB
+/assets/animated-….js(themegaradio.com) - 1,255 ms, 8.13 KiB
+/assets/skeleton-BdRkgeVa.js(themegaradio.com) - 1,223 ms, 2.60 KiB
+/assets/TrendingStations-BDA_dY_s.js(themegaradio.com) - 1,056 ms, 44.97 KiB
+/assets/badge-CR0Vvwpm.js(themegaradio.com) - 1,057 ms, 2.82 KiB
+/assets/select-DTsWFUli.js(themegaradio.com) - 1,239 ms, 9.71 KiB
+/assets/index-BdQq_4o_.js(themegaradio.com) - 1,058 ms, 2.53 KiB
+/assets/index-C2zhF8V4.js(themegaradio.com) - 1,229 ms, 2.61 KiB
+/assets/chevron-d….js(themegaradio.com) - 1,243 ms, 2.57 KiB
+/assets/check-C2A9yzNK.js(themegaradio.com) - 1,062 ms, 2.58 KiB
+/assets/chevron-u….js(themegaradio.com) - 1,244 ms, 2.57 KiB
+/assets/trending-up-DgPxfBP-.js(themegaradio.com) - 1,059 ms, 2.61 KiB
+/assets/users-CeqSmIzO.js(themegaradio.com) - 1,059 ms, 2.67 KiB
+/assets/not-found-qvl9gmQI.js(themegaradio.com) - 1,248 ms, 6.49 KiB
+/assets/wifi-off-Cpu2QBPk.js(themegaradio.com) - 1,230 ms, 2.71 KiB
+/assets/search-bkOO5BhY.js(themegaradio.com) - 1,241 ms, 2.60 KiB
+/assets/radio-1P4uo72u.js(themegaradio.com) - 1,256 ms, 2.68 KiB
+/assets/arrow-rig….js(themegaradio.com) - 1,225 ms, 2.61 KiB
+/assets/wifi-DVhQTFuv.js(themegaradio.com) - 1,233 ms, 2.65 KiB
+/assets/messages-DUa6kgzQ.js(themegaradio.com) - 1,061 ms, 9.21 KiB
+/assets/circle-BqRW0n8A.js(themegaradio.com) - 1,241 ms, 2.58 KiB
+/assets/message-c….js(themegaradio.com) - 1,232 ms, 2.65 KiB
+/assets/arrow-lef….js(themegaradio.com) - 1,233 ms, 2.60 KiB
+/assets/favorites-BHoxVIaK.js(themegaradio.com) - 1,246 ms, 5.18 KiB
+/assets/profile-d….js(themegaradio.com) - 1,064 ms, 6.08 KiB
+/assets/profile-settings-CcnmWWJJ.js(themegaradio.com) - 1,066 ms, 7.03 KiB
+/assets/switch-ClDKWss0.js(themegaradio.com) - 1,063 ms, 3.69 KiB
+/assets/test-tube-CZd9RTsa.js(themegaradio.com) - 1,062 ms, 2.79 KiB
+/assets/bell-C5sNmxe7.js(themegaradio.com) - 1,072 ms, 2.68 KiB
+/assets/settings-CqJ4mdpy.js(themegaradio.com) - 1,251 ms, 2.69 KiB
+/assets/notificat….js(themegaradio.com) - 1,242 ms, 5.03 KiB
+/assets/message-square-CNoib_jW.js(themegaradio.com) - 1,252 ms, 2.63 KiB
+/assets/profile-aEVukwWW.js(themegaradio.com) - 1,071 ms, 7.08 KiB
+/assets/index-DWUB_yU7.js(themegaradio.com) - 1,073 ms, 3.02 KiB
+/assets/mail-WwOoo7tr.js(themegaradio.com) - 1,251 ms, 2.64 KiB
+/assets/map-pin-DXaJCIBC.js(themegaradio.com) - 1,252 ms, 2.67 KiB
+/assets/calendar-B_YDjYi9.js(themegaradio.com) - 1,240 ms, 2.63 KiB
+/assets/clock-NKpkeKv7.js(themegaradio.com) - 1,250 ms, 2.61 KiB
+/assets/activity-h_Y3wOJ9.js(themegaradio.com) - 1,247 ms, 2.63 KiB
+/assets/star-DJk_-Ub0.js(themegaradio.com) - 1,234 ms, 2.72 KiB
+/assets/user-minus-BkauPMaA.js(themegaradio.com) - 1,234 ms, 2.66 KiB
+/assets/user-plus-BMfLGzZ9.js(themegaradio.com) - 1,247 ms, 2.68 KiB
+/assets/login-8oFef7dJ.js(themegaradio.com) - 1,249 ms, 4.92 KiB
+/assets/signup-DyxLWmse.js(themegaradio.com) - 1,250 ms, 5.49 KiB
+/assets/form-lx0Bpf_s.js(themegaradio.com) - 1,254 ms, 3.20 KiB
+/assets/ProfileLa….js(themegaradio.com) - 1,229 ms, 4.57 KiB
+/assets/login-BVk5D69p.js(themegaradio.com) - 1,243 ms, 4.34 KiB
+/assets/toaster-PoLU4M4i.js(themegaradio.com) - 461 ms, 2.75 KiB
+/assets/toast-BYf8o7Kq.js(themegaradio.com) - 428 ms, 7.11 KiB
+/assets/index-qA4yci4Y.js(themegaradio.com) - 424 ms, 3.06 KiB
+/assets/index-CoqlyvGJ.js(themegaradio.com) - 425 ms, 2.71 KiB
+/styles/desktop.css(themegaradio.com) - 3,733 ms, 0.00 KiB
+/assets/radio-hea….js(themegaradio.com) - 475 ms, 13.98 KiB
+/assets/slugs-OTPv6NvP.js(themegaradio.com) - 473 ms, 2.73 KiB
+/assets/country-regions-BPSierNN.js(themegaradio.com) - 426 ms, 4.31 KiB
+/assets/user-Bmhb5udA.js(themegaradio.com) - 429 ms, 2.64 KiB
+/assets/music-CWxxKE_e.js(themegaradio.com) - 469 ms, 2.63 KiB
+/assets/globe-CJimLG4h.js(themegaradio.com) - 482 ms, 2.63 KiB
+/styles/non-critical.css(themegaradio.com) - 4,122 ms, 0.00 KiB
+/assets/radio-fro….js(themegaradio.com) - 495 ms, 17.76 KiB
+…stations/precomputed?countryName=Belgium&page=1&limit=18(themegaradio.com) - 1,281 ms, 4.76 KiB
+…genres/precomputed?country=Belgium(themegaradio.com) - 4,315 ms, 3.48 KiB
+/api/countries(themegaradio.com) - 4,239 ms, 4.22 KiB
+/assets/station-c….js(themegaradio.com) - 496 ms, 5.08 KiB
+/assets/station-l….js(themegaradio.com) - 483 ms, 8.70 KiB
+/assets/useMutati….js(themegaradio.com) - 497 ms, 3.39 KiB
+/assets/Notificat….js(themegaradio.com) - 429 ms, 3.86 KiB
+/assets/types-Bfv25oJO.js(themegaradio.com) - 526 ms, 25.20 KiB
+/assets/dialog-Dscj2f5T.js(themegaradio.com) - 488 ms, 3.30 KiB
+/assets/index-C7qXQjBR.js(themegaradio.com) - 490 ms, 4.40 KiB
+/assets/index-CpcrHStY.js(themegaradio.com) - 472 ms, 8.72 KiB
+/assets/input-DCEHxQJ2.js(themegaradio.com) - 489 ms, 2.79 KiB
+/assets/label-DtI4nPfJ.js(themegaradio.com) - 491 ms, 2.81 KiB
+/assets/index-DuQh_7YB.js(themegaradio.com) - 498 ms, 2.76 KiB
+/assets/tabs-BqxvBzJF.js(themegaradio.com) - 464 ms, 3.79 KiB
+/assets/index-CeDuNLsy.js(themegaradio.com) - 454 ms, 4.06 KiB
+/assets/index-bjtCms_I.js(themegaradio.com) - 486 ms, 2.57 KiB
+/assets/separator-DmZrG9vl.js(themegaradio.com) - 492 ms, 2.85 KiB
+/assets/eye-off-BkOxtdqj.js(themegaradio.com) - 489 ms, 2.71 KiB
+/assets/eye-CC0-3Fk3.js(themegaradio.com) - 464 ms, 2.64 KiB
+/assets/usePushNotifications-DoywMPKD.js(themegaradio.com) - 496 ms, 4.52 KiB
+…genres/discoverable(themegaradio.com) - 1,949 ms, 3.23 KiB
+…stations/precomputed?countryName=Belgium&page=1&limit=36(themegaradio.com) - 2,594 ms, 6.10 KiB
+…stations/nearby?country=Belgium&limit=12(themegaradio.com) - 2,015 ms, 4.85 KiB
+…stations/precomputed?countryName=Belgium&page=1&limit=12(themegaradio.com) - 1,998 ms, 4.22 KiB
+/assets/thumbs-up-BpTXvaeR.js(themegaradio.com) - 470 ms, 2.68 KiB
+/assets/optimized….js(themegaradio.com) - 460 ms, 3.60 KiB
+/assets/free-mode-CmUhVb_x.js(themegaradio.com) - 469 ms, 28.85 KiB
+/api/location(themegaradio.com) - 858 ms, 3.06 KiB
+…translations/nl(themegaradio.com) - 859 ms, 21.54 KiB
+…stations/precomputed?countryName=global&page=1&limit=18(themegaradio.com) - 1,253 ms, 6.37 KiB
+/assets/free-mode-CeRWHq--.css(themegaradio.com) - 453 ms, 3.57 KiB
+/assets/navigation-DEVDveDg.js(themegaradio.com) - 499 ms, 4.20 KiB
+/assets/navigatio….css(themegaradio.com) - 452 ms, 3.08 KiB
+/assets/SeoHead-DhgDynC2.js(themegaradio.com) - 481 ms, 54.79 KiB
+/assets/chevron-left-BilsoOsh.js(themegaradio.com) - 499 ms, 2.57 KiB
+/assets/chevron-r….js(themegaradio.com) - 486 ms, 2.58 KiB
+/assets/heart-B3j74_Ys.js(themegaradio.com) - 462 ms, 2.66 KiB
+/assets/radio-frontend-BSlPwyae.css(themegaradio.com) - 597 ms, 3.33 KiB
+/assets/footer-XfsfYykv.js(themegaradio.com) - 463 ms, 8.50 KiB
+/assets/useGlobal….js(themegaradio.com) - 1,263 ms, 9.82 KiB
+…filters/countries(themegaradio.com) - 846 ms, 4.23 KiB
+/api/countries?format=rich(themegaradio.com) - 857 ms, 7.76 KiB
+/api/footer-social-media(themegaradio.com) - 847 ms, 3.04 KiB
+/assets/AdSenseUn….js(themegaradio.com) - 492 ms, 3.08 KiB
+…nl/critical(themegaradio.com) - 641 ms, 3.31 KiB
+…translations/en(themegaradio.com) - 549 ms, 17.29 KiB
+…auth/me(themegaradio.com) - 546 ms, 3.00 KiB
+…seo/page-data?url=%2Fnl(themegaradio.com) - 548 ms, 23.17 KiB
+Preconnected origins
+preconnect hints help the browser establish a connection earlier in the page load, saving time when the first request for that origin is made. The following are the origins that the page preconnected to.
+Origin
+Source
+https://unpkg.com/
+head > link
+<link rel="preconnect" href="https://unpkg.com" crossorigin="">
+Unused preconnect. Only use preconnect for origins that the page is likely to request.
+Preconnect candidates
+Add preconnect hints to your most important origins, but try to use no more than 4.
+No additional origins are good candidates for preconnecting
+Use efficient cache lifetimes Est savings of 37 KiB
+A long cache lifetime can speed up repeat visits to your page. Learn more about caching.LCPFCPUnscored
+Request
+Cache TTL
+Transfer Size
+themegaradio.com 1st party
+5 KiB
+…zaraz/s.js?z=JTdCJTIyZ…(themegaradio.com)
+None
+5 KiB
+Cloudflare utility 
+11 KiB
+/beacon.min.js/v8c78df7…(static.cloudflareinsights.com)
+1d
+11 KiB
+vrt.be
+19 KiB
+…v2/color.svg(www.vrt.be)
+12h
+8 KiB
+…v2/color.svg(www.vrt.be)
+12h
+8 KiB
+…v3/color.svg(www.vrt.be)
+12h
+2 KiB
+…v3/color.svg(www.vrt.be)
+12h
+2 KiB
+mynoise.net
+19 KiB
+/apple-touch-icon.png(mynoise.net)
+1d
+9 KiB
+/apple-touch-icon.png(mynoise.net)
+1d
+9 KiB
+wikimedia.org
+10 KiB
+…02/MNM_logo_2024.svg(upload.wikimedia.org)
+None
+3 KiB
+…02/MNM_logo_2024.svg(upload.wikimedia.org)
+None
+3 KiB
+…08/VRT_Radio_1_logo.svg(upload.wikimedia.org)
+None
+2 KiB
+…08/VRT_Radio_1_logo.svg(upload.wikimedia.org)
+None
+2 KiB
+rtbf.be
+3 KiB
+…ico/favicon-info-32x32.png(www.static.rtbf.be)
+7d
+2 KiB
+…ico/favicon-info-32x32.png(www.static.rtbf.be)
+7d
+2 KiB
+Improve image delivery Est savings of 216 KiB
+Reducing the download time of images can improve the perceived load time of the page and LCP. Learn more about optimizing image sizeLCPFCPUnscored
+URL
+Resource Size
+Est Savings
+nostalgie.be
+79.8 KiB	77.2 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c482bd66579311ab2c68" src="https://nl.nostalgie.be/icons/icon-144x144.png?v=f2b073e495322d52deec159c8…" data-optimized="true">
+/icons/icon-144x144.png?v=f2b073e…(nl.nostalgie.be)
+39.9 KiB
+38.6 KiB
+Using a modern image format (WebP, AVIF) or increasing the image compression could improve this image's download size.
+36.5 KiB
+This image file is larger than it needs to be (144x144) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+24.3 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c482bd66579311ab2c68" src="https://nl.nostalgie.be/icons/icon-144x144.png?v=f2b073e495322d52deec159c8…" data-optimized="true">
+/icons/icon-144x144.png?v=f2b073e…(nl.nostalgie.be)
+39.9 KiB
+38.6 KiB
+Using a modern image format (WebP, AVIF) or increasing the image compression could improve this image's download size.
+36.5 KiB
+This image file is larger than it needs to be (144x144) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+24.3 KiB
+themegaradio.com 1st party
+67.9 KiB	64.8 KiB
+Mega Radio music streaming logo
+<img loading="lazy" width="97" height="97" class="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h…" alt="Mega Radio music streaming logo" src="/images/logo-icon.webp" data-optimized="true">
+/images/logo-icon.webp(themegaradio.com)
+33.9 KiB
+32.4 KiB
+Increasing the image compression factor could improve this image's download size.
+18.3 KiB
+This image file is larger than it needs to be (322x299) for its displayed dimensions (97x97). Use responsive images to reduce the image download size.
+30.6 KiB
+Mega Radio music streaming logo
+<img loading="lazy" width="97" height="97" class="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 lg:w-20 lg:h-20 xl:w-[97px] xl:h…" alt="Mega Radio music streaming logo" src="/images/logo-icon.webp" data-optimized="true">
+/images/logo-icon.webp(themegaradio.com)
+33.9 KiB
+32.4 KiB
+Increasing the image compression factor could improve this image's download size.
+18.3 KiB
+This image file is larger than it needs to be (322x299) for its displayed dimensions (97x97). Use responsive images to reduce the image download size.
+30.6 KiB
+Amazon Web Services other 
+36.1 KiB	32.3 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c48bbd66579311ab4546" src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" data-optimized="true">
+…radio-eurodance-classic_11ab4546/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+15.6 KiB
+14.2 KiB
+Increasing the image compression factor could improve this image's download size.
+4.9 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+13.6 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c498bd66579311ab667a" src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" data-optimized="true">
+…rtbf-la-premire-2_11ab667a/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+7.5 KiB
+6.6 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.6 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c498bd66579311ab6664" src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" data-optimized="true">
+…rtbf-classic-21-2_11ab6664/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+7.5 KiB
+6.6 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.6 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c49ebd66579311ab769b" src="https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos/…" data-optimized="true">
+…tomorrowland-one-world-radio_11ab769b/logo-256.webp(megaradio-station-logos.s3.eu-north-1.amazonaws.com)
+5.6 KiB
+4.9 KiB
+This image file is larger than it needs to be (256x256) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+4.9 KiB
+mynoise.net
+17.9 KiB	15.3 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c480bd66579311ab2931" src="https://mynoise.net/apple-touch-icon.png" data-optimized="true">
+/apple-touch-icon.png(mynoise.net)
+9.0 KiB
+7.6 KiB
+This image file is larger than it needs to be (180x180) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.7 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c480bd66579311ab2931" src="https://mynoise.net/apple-touch-icon.png" data-optimized="true">
+/apple-touch-icon.png(mynoise.net)
+9.0 KiB
+7.6 KiB
+This image file is larger than it needs to be (180x180) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.7 KiB
+topradio.be
+16.4 KiB	13.8 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c49fbd66579311ab76fa" src="https://www.topradio.be/favicons/favicon-96x96.png" data-optimized="true">
+/favicons/favicon-96x96.png(www.topradio.be)
+8.2 KiB
+6.9 KiB
+Using a modern image format (WebP, AVIF) or increasing the image compression could improve this image's download size.
+6.7 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c49fbd66579311ab76fa" src="https://www.topradio.be/favicons/favicon-96x96.png" data-optimized="true">
+/favicons/favicon-96x96.png(www.topradio.be)
+8.2 KiB
+6.9 KiB
+Using a modern image format (WebP, AVIF) or increasing the image compression could improve this image's download size.
+6.7 KiB
+tomorrowland.com
+15.6 KiB	13.0 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c49ebd66579311ab769b" src="https://www.tomorrowland.com/home/apple-touch-icon.png" data-optimized="true">
+/apple-touch-icon.png(www.tomorrowland.com)
+7.8 KiB
+6.5 KiB
+This image file is larger than it needs to be (192x192) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.1 KiB
+Luister naar ${station.name} live vanuit ${station.country} - ${station.genre ||
+<img alt="Luister naar ${station.name} live vanuit ${station.country} - ${station.ge…" width="90" height="90" loading="lazy" decoding="async" class="w-full h-full object-cover object-center absolute inset-0 rounded-[9px]" data-testid="station-logo-68a8c49ebd66579311ab769b" src="https://www.tomorrowland.com/home/apple-touch-icon.png" data-optimized="true">
+/apple-touch-icon.png(www.tomorrowland.com)
+7.8 KiB
+6.5 KiB
+This image file is larger than it needs to be (192x192) for its displayed dimensions (90x90). Use responsive images to reduce the image download size.
+6.1 KiB
+Layout shift culprits
+LCP breakdown
+3rd parties
+These insights are also available in the Chrome DevTools Performance Panel - record a trace to view more detailed information.
+Diagnostics
+Reduce JavaScript execution time 3.1 s
+Consider reducing the time spent parsing, compiling, and executing JS. You may find delivering smaller JS payloads helps with this. Learn how to reduce Javascript execution time.TBTUnscored
+URL
+Total CPU Time
+Script Evaluation
+Script Parse
+themegaradio.com 1st party
+3,722 ms	3,024 ms	25 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+3,448 ms
+3,010 ms
+24 ms
+/nl(themegaradio.com)
+274 ms
+14 ms
+1 ms
+Unattributable
+212 ms	18 ms	0 ms
+Unattributable
+212 ms
+18 ms
+0 ms
+Minimize main-thread work 4.1 s
+Consider reducing the time spent parsing, compiling and executing JS. You may find delivering smaller JS payloads helps with this. Learn how to minimize main-thread workTBTUnscored
+Category
+Time Spent
+Script Evaluation
+3,062 ms
+Other
+434 ms
+Garbage Collection
+268 ms
+Style & Layout
+181 ms
+Script Parsing & Compilation
+91 ms
+Rendering
+64 ms
+Parse HTML & CSS
+8 ms
+Reduce unused JavaScript Est savings of 85 KiB
+Reduce unused JavaScript and defer loading scripts until they are required to decrease bytes consumed by network activity. Learn how to reduce unused JavaScript.LCPFCPUnscored
+URL
+Transfer Size
+Est Savings
+themegaradio.com 1st party
+189.5 KiB	85.4 KiB
+/assets/index-D1_uS5J2.js(themegaradio.com)
+147.0 KiB
+47.3 KiB
+/assets/TrendingStations-BDA_dY_s.js(themegaradio.com)
+42.4 KiB
+38.1 KiB
+Reduce unused CSS Est savings of 31 KiB
+Reduce unused rules from stylesheets and defer CSS not used for above-the-fold content to decrease bytes consumed by network activity. Learn how to reduce unused CSS.LCPFCPUnscored
+URL
+Transfer Size
+Est Savings
+themegaradio.com 1st party
+34.9 KiB	30.6 KiB
+/assets/index-C9toVRxK.css(themegaradio.com)
+34.9 KiB
+30.6 KiB
+Avoid long main-thread tasks 9 long tasks found
+Lists the longest tasks on the main thread, useful for identifying worst contributors to input delay. Learn how to avoid long main-thread tasksTBTUnscored
+URL
+Start Time
+Duration
+themegaradio.com 1st party
+1,931 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+2,030 ms
+457 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+3,403 ms
+359 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+3,838 ms
+325 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+2,739 ms
+320 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+3,077 ms
+170 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+3,279 ms
+88 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+2,598 ms
+72 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+1,653 ms
+71 ms
+/assets/index-D1_uS5J2.js(themegaradio.com)
+2,529 ms
+69 ms
+User Timing marks and measures 2 user timings
+Consider instrumenting your app with the User Timing API to measure your app's real-world performance during key user experiences. Learn more about User Timing marks.Unscored
+Name
+Type
+Start Time
+Duration
+body-start
+Mark
+213.50 ms
+critical-content-loaded
+Mark
+488.29 ms
+More information about the performance of your application. These numbers don't directly affect the Performance score.
+Passed audits (12)
+Show
+96
+Accessibility
+These checks highlight opportunities to improve the accessibility of your web app. Automatic detection can only detect a subset of issues and does not guarantee the accessibility of your web app, so manual testing is also encouraged.
+Contrast
+Background and foreground colors do not have a sufficient contrast ratio.
+Low-contrast text is difficult or impossible for many users to read. Learn how to provide sufficient color contrast.
+Failing Elements
+Inloggen
+<a href="/nl/login" class="flex items-center justify-center text-white font-semibold transition-color…">
