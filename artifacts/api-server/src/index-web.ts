@@ -843,14 +843,9 @@ app.use('/api/stream', streamServiceProxy);
     <meta name="application-name" content="Mega Radio">
     <meta name="msapplication-TileColor" content="#1a1a2e">
     <meta name="msapplication-TileImage" content="/apple-touch-icon.png">
-    <!-- 2026-05-12 perf (PageSpeed mobile=43): removed two dead preloads:
-         (1) `/fonts/ubuntu-400.ttf` + `/fonts/ubuntu-700.ttf` — these
-         files never existed in `public/fonts/` (we ship .woff2 only via
-         the @font-face rules in src/index.css), so each preload was a
-         404 that wasted a TCP connection on the critical chain.
-         (2) `preconnect href="https://unpkg.com"` — Lighthouse flagged
-         this as an "Unused preconnect" because no code on the page ever
-         requests anything from unpkg. -->
+    <!-- 2026-05-12 perf (PageSpeed mobile=43): removed dead preloads
+         (ubuntu-400.ttf, ubuntu-700.ttf — files do not exist, were 404s)
+         and an unused preconnect to unpkg.com (Lighthouse flagged it). -->
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://api.ipify.org">
     ${prodTags.styles}
