@@ -234,15 +234,29 @@
           window.performance.mark && window.performance.mark('critical-content-loaded');
         }, 100);
         
-        // Preload next page resources on hover
-        document.addEventListener('mouseover', function(e) {
-          if (e.target.tagName === 'A' && e.target.href) {
+        // 🚀 PERF (2026-05-12): Preload next page resources on hover —
+        // ONLY on devices with a fine pointer (mouse). On mobile/touch
+        // devices `mouseover` fires synthetically on tap, which would
+        // waste bandwidth and slow the actual click. The previous
+        // unconditional `{ once: true }` listener also only prefetched
+        // ONE link per page and could fire on a non-navigation element;
+        // restricting via media query + early-out keeps desktop wins
+        // without mobile cost.
+        if (window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) {
+          document.addEventListener('mouseover', function(e) {
+            var a = e.target.closest && e.target.closest('a[href]');
+            if (!a || !a.href || a.target === '_blank') return;
+            // Only prefetch same-origin pages
+            try {
+              var u = new URL(a.href, location.href);
+              if (u.origin !== location.origin) return;
+            } catch (_) { return; }
             var link = document.createElement('link');
             link.rel = 'prefetch';
-            link.href = e.target.href;
+            link.href = a.href;
             document.head.appendChild(link);
-          }
-        }, { once: true, passive: true });
+          }, { once: true, passive: true });
+        }
       });
       
       // Critical Web Vitals measurement

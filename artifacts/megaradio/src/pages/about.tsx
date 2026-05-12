@@ -8,7 +8,7 @@ export function About() {
     <div>
       <SeoHead pageType="about" />
       
-      <div className="relative flex h-[200px] items-center bg-[url('/assets/images/about-bg.png')] bg-cover bg-center sm:h-[300px]">
+      <div className="relative flex h-[200px] items-center bg-[url('/assets/images/about-bg.webp')] bg-cover bg-center sm:h-[300px]">
         <div className="container mx-auto">
           <h2 className="text-[26px] font-bold text-white sm:text-[36px]">{t('about_page_title')}</h2>
         </div>

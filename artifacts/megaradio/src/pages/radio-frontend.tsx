@@ -1490,7 +1490,7 @@ export default function RadioFrontend({
                     width={1200}
                     height={750}
                     className="hidden sm:block h-[420px] sm:h-[350px] md:h-[450px] lg:h-[600px] xl:h-[550px] 2xl:h-[630px] absolute top-[-40px] lg:top-[-90px] 2xl:top-[-130px] right-0 lg:right-[50px] 2xl:right-[120px] pointer-events-none"
-                    src="/images/devices.png"
+                    src="/images/devices.webp"
                     alt="Radio streaming on multiple devices - phone, tablet, and desktop" />
                 </div>
                 <img loading="lazy" className="pointer-events-none absolute left-[-15%] top-[-50%]" src="/images/bg-gradient-blue.svg" alt="" role="presentation" />
