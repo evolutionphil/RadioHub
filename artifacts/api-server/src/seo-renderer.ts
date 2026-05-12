@@ -644,8 +644,25 @@ export class SeoRenderer {
 
       if (pathParts.length > 2) {
         additionalData.region = pathParts[2];
-        // Set regionName for title generation (capitalize properly)
-        additionalData.regionName = pathParts[pathParts.length - 1]
+        // SEO audit fix (2026-05-12): the previous logic always took the
+        // LAST path segment as regionName, which broke terminal listing
+        // paths like `/regions/asia/turkey/stations` and
+        // `/regions/asia/turkey/istanbul/stations` — the resulting H1/title
+        // came out as "Stations Radio Stations — Listen Live Online" with
+        // "Stations" as the country name. Now we strip the terminal listing
+        // segment (`stations`, `cities`) before deriving regionName, so the
+        // page correctly resolves to the parent geography (Turkey, Istanbul).
+        // Note: `cleanPath` is already URL-translated to English by the
+        // upstream pipeline, so checking the literal English segment is
+        // sufficient (TR `/tr/bolgeler/asia/turkey/istasyonlar` becomes
+        // `/regions/asia/turkey/stations` here).
+        const TERMINAL_LISTING_SEGMENTS = new Set(['stations', 'cities']);
+        const lastSegment = pathParts[pathParts.length - 1];
+        const segmentForName =
+          TERMINAL_LISTING_SEGMENTS.has(lastSegment.toLowerCase()) && pathParts.length > 3
+            ? pathParts[pathParts.length - 2]
+            : lastSegment;
+        additionalData.regionName = segmentForName
           .split('-')
           .map(word => word.charAt(0).toUpperCase() + word.slice(1))
           .join(' ');
