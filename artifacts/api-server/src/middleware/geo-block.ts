@@ -99,11 +99,17 @@ function maybeFlushLog(): void {
 // verification is too slow for the request hot path and the worst-case
 // downside (an attacker spoofing Googlebot to bypass a country block)
 // is acceptable: they still hit our normal app surface.
-// Note: GPTBot, ChatGPT-User, CCBot, anthropic-ai, claudebot, perplexitybot
-// and friends are intentionally NOT on this bypass list because they're
-// explicitly Disallow:'d in robots.txt — letting them tunnel past the geo
-// block would just burn bandwidth on traffic we've already opted out of.
-const SEARCH_BOT_BYPASS_RE = /\b(googlebot|google-inspectiontool|bingbot|yandexbot|slurp|duckduckbot|baiduspider|applebot|sogou|petalbot|seznambot|naverbot|facebookexternalhit|twitterbot|linkedinbot)\b/i;
+// 2026-05-12 update: AI crawlers (GPTBot, ChatGPT-User, OAI-SearchBot,
+// CCBot, anthropic-ai, ClaudeBot/Claude-Web, PerplexityBot/Perplexity-User,
+// Bytespider, cohere-ai, Google-Extended, Meta-ExternalAgent, Amazonbot,
+// DuckAssistBot, YouBot, Diffbot, Applebot-Extended) are now ADDED to the
+// bypass list — they were previously omitted because robots.txt Disallow:/'d
+// them, but per the 30/04/2026 SEO audit and user direction we want full AI
+// presence (ChatGPT/Claude/Perplexity citations + Google AI Overviews +
+// Apple Intelligence). Letting them through geo-block ensures crawls from
+// any datacenter region succeed, mirroring the rate-limiter exemption in
+// index-web.ts and the Allow:/ stanzas in /robots.txt.
+const SEARCH_BOT_BYPASS_RE = /\b(googlebot|google-inspectiontool|google-extended|bingbot|yandexbot|slurp|duckduckbot|baiduspider|applebot|applebot-extended|sogou|petalbot|seznambot|naverbot|facebookexternalhit|twitterbot|linkedinbot|gptbot|chatgpt-user|oai-searchbot|ccbot|anthropic-ai|claude-web|claudebot|bytespider|perplexitybot|perplexity-user|cohere-ai|meta-externalagent|amazonbot|duckassistbot|youbot|diffbot)\b/i;
 
 export function geoBlockMiddleware(req: Request, res: Response, next: NextFunction): void {
   const cc = String(

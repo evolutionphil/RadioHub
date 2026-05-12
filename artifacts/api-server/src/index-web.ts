@@ -618,9 +618,22 @@ app.use('/api/stream', streamServiceProxy);
   const botRateLimitMap = new Map<string, { count: number; resetAt: number }>();
   const BOT_RATE_LIMIT_WINDOW = 60_000;
   const BOT_RATE_LIMIT_MAX_MINOR = 60;
-  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|apis-google|adsbot-google|mediapartners-google|storebot-google|bingbot|bingpreview|yandexbot|slurp|duckduckbot|baiduspider|applebot)\b/i;
-  const AI_SCRAPER_RE = /\b(gptbot|chatgpt-user|ccbot|anthropic-ai|claude-web|bytespider|perplexitybot|cohere-ai)\b/i;
-
+  // MAJOR bots are exempt from the 60 req/min/IP rate limit applied below.
+  // 2026-05-12: Added the AI crawler family (GPTBot, ChatGPT-User,
+  // OAI-SearchBot, ClaudeBot/Claude-Web/anthropic-ai, PerplexityBot/
+  // Perplexity-User, CCBot, Bytespider, cohere-ai, Google-Extended,
+  // Meta-ExternalAgent, Amazonbot, DuckAssistBot, YouBot, Diffbot,
+  // Applebot-Extended) so they can crawl the whole site without getting
+  // 429'd mid-crawl — paired with the robots.txt Allow stanzas this
+  // makes the site fully open to AI search/LLM training surfaces.
+  const MAJOR_SEARCH_BOT_RE = /\b(googlebot|google-inspectiontool|apis-google|adsbot-google|mediapartners-google|storebot-google|google-extended|bingbot|bingpreview|yandexbot|slurp|duckduckbot|baiduspider|applebot|applebot-extended|gptbot|chatgpt-user|oai-searchbot|ccbot|anthropic-ai|claude-web|claudebot|bytespider|perplexitybot|perplexity-user|cohere-ai|meta-externalagent|amazonbot|duckassistbot|youbot|diffbot)\b/i;
+  // AI_SCRAPER_RE removed (2026-05-12) — previously this list was used to
+  // hard-403 GPTBot, ChatGPT-User, CCBot, anthropic-ai, claude-web,
+  // bytespider, perplexitybot, cohere-ai. The SEO audit (30/04/2026) flagged
+  // these 403s as "Crawler and Bot Blocking — Active Access Denial" causing
+  // AI invisibility (no presence in ChatGPT/Claude/Perplexity answers). Per
+  // user direction (2026-05-12), AI crawlers are now ALLOWED. Same change
+  // also stripped the AI bot Disallow stanzas from /robots.txt.
 
   setInterval(() => {
     const now = Date.now();
@@ -632,11 +645,6 @@ app.use('/api/stream', streamServiceProxy);
   app.use(async (req, res, next) => {
     const url = req.originalUrl;
     const userAgent = req.get('user-agent') || '';
-
-    if (AI_SCRAPER_RE.test(userAgent)) {
-      res.status(403).set({ 'Cache-Control': 'no-store' }).send('Forbidden');
-      return;
-    }
 
     // P0 fix: decodeURIComponent throws URIError on malformed escapes (e.g.
     // %E0%A4%A) and would crash the entire SSR worker. Trap and fall back to

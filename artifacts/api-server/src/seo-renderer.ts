@@ -51,6 +51,56 @@ import {
 } from './seo/genre-whitelist';
 import { FAQ_PAGE_ITEMS } from '@workspace/seo-shared/faq-schema';
 
+// SEO audit fix (2026-05-12) — per-language fallback labels used by the
+// regions/country page <title>+<h1> when the corresponding DB translation
+// keys (`seo_radio_stations`, `seo_listen_live_online`) are missing. Without
+// these, non-English pages fell back to English and produced half-translated
+// titles like "Turkey Radio Stations — Canlı Dinle | Mega Radio" (the audit's
+// "Multilingual URL Structure and Language Mismatch" finding). Keys cover the
+// SEO_LANGUAGES set; anything outside falls back to English.
+const LOCALIZED_RADIO_STATIONS: Record<string, string> = {
+  en: 'Radio Stations', tr: 'Radyo İstasyonları', es: 'Estaciones de Radio',
+  fr: 'Stations de Radio', de: 'Radiosender', it: 'Stazioni Radio',
+  pt: 'Estações de Rádio', nl: 'Radiostations', ru: 'Радиостанции',
+  ar: 'محطات الراديو', ja: 'ラジオ局', ko: '라디오 방송국',
+  zh: '广播电台', hi: 'रेडियो स्टेशन', pl: 'Stacje Radiowe',
+  sv: 'Radiostationer', da: 'Radiostationer', fi: 'Radioasemat',
+  no: 'Radiostasjoner', cs: 'Rozhlasové Stanice', el: 'Ραδιοφωνικοί Σταθμοί',
+  he: 'תחנות רדיו', hu: 'Rádióállomások', id: 'Stasiun Radio',
+  ms: 'Stesen Radio', ro: 'Posturi de Radio', sk: 'Rozhlasové Stanice',
+  th: 'สถานีวิทยุ', uk: 'Радіостанції', vi: 'Đài Phát Thanh',
+  bg: 'Радиостанции', hr: 'Radio Postaje', sr: 'Радио станице',
+  sl: 'Radijske Postaje', et: 'Raadiojaamad', lv: 'Radio Stacijas',
+  lt: 'Radijo Stotys', fa: 'ایستگاه‌های رادیویی', ur: 'ریڈیو سٹیشنز',
+  bn: 'রেডিও স্টেশন', ta: 'வானொலி நிலையங்கள்', tl: 'Mga Istasyon ng Radyo',
+  te: 'రేడియో స్టేషన్లు', mr: 'रेडिओ स्टेशन्स', gu: 'રેડિયો સ્ટેશનો',
+  kn: 'ರೇಡಿಯೋ ಕೇಂದ್ರಗಳು', ml: 'റേഡിയോ സ്റ്റേഷനുകൾ', pa: 'ਰੇਡੀਓ ਸਟੇਸ਼ਨ',
+  sw: 'Vituo vya Redio', am: 'የራዲዮ ጣቢያዎች', zu: 'Iziteshi Zomsakazo',
+  af: 'Radiostasies', sq: 'Stacione Radio', az: 'Radio Stansiyaları',
+  hy: 'Ռադիոկայաններ', so: 'Idaacadaha Raadiyaha', bs: 'Radio Stanice',
+};
+const LOCALIZED_LISTEN_LIVE: Record<string, string> = {
+  en: 'Listen Live Online', tr: 'Canlı Dinle', es: 'Escuchar en Vivo Online',
+  fr: 'Écouter en Direct', de: 'Live Online Hören', it: 'Ascolta in Diretta Online',
+  pt: 'Ouça ao Vivo Online', nl: 'Live Online Luisteren', ru: 'Слушать в Прямом Эфире',
+  ar: 'استمع مباشرة عبر الإنترنت', ja: 'オンラインでライブ視聴', ko: '온라인 실시간 청취',
+  zh: '在线直播收听', hi: 'लाइव ऑनलाइन सुनें', pl: 'Słuchaj na Żywo Online',
+  sv: 'Lyssna Live Online', da: 'Lyt Live Online', fi: 'Kuuntele Suorana Verkossa',
+  no: 'Lytt Live på Nett', cs: 'Poslouchejte Živě Online', el: 'Ακούστε Ζωντανά Online',
+  he: 'האזינו בשידור חי באינטרנט', hu: 'Hallgasd Élőben Online', id: 'Dengarkan Langsung Online',
+  ms: 'Dengar Langsung Dalam Talian', ro: 'Ascultă Live Online', sk: 'Počúvajte Naživo Online',
+  th: 'ฟังสดออนไลน์', uk: 'Слухати в Прямому Ефірі', vi: 'Nghe Trực Tiếp Online',
+  bg: 'Слушайте на Живо Онлайн', hr: 'Slušajte Uživo Online', sr: 'Слушајте Уживо Онлајн',
+  sl: 'Poslušajte v Živo Online', et: 'Kuula Otse Internetis', lv: 'Klausieties Tiešraidē Online',
+  lt: 'Klausykitės Tiesiogiai Internetu', fa: 'پخش زنده آنلاین', ur: 'لائیو آن لائن سنیں',
+  bn: 'লাইভ অনলাইন শুনুন', ta: 'நேரலையில் இணையத்தில் கேளுங்கள்', tl: 'Makinig nang Live Online',
+  te: 'ప్రత్యక్షంగా ఆన్‌లైన్‌లో వినండి', mr: 'थेट ऑनलाइन ऐका', gu: 'લાઇવ ઑનલાઇન સાંભળો',
+  kn: 'ಲೈವ್ ಆನ್‌ಲೈನ್ ಆಲಿಸಿ', ml: 'തത്സമയം ഓൺലൈനിൽ കേൾക്കൂ', pa: 'ਲਾਈਵ ਔਨਲਾਈਨ ਸੁਣੋ',
+  sw: 'Sikiliza Moja kwa Moja Mtandaoni', am: 'በቀጥታ በመስመር ላይ ያዳምጡ', zu: 'Lalela Bukhoma Online',
+  af: 'Luister Regstreeks Aanlyn', sq: 'Dëgjo Live Online', az: 'Canlı Onlayn Dinləyin',
+  hy: 'Ունկնդրեք ուղիղ առցանց', so: 'Ku dhageyso Toos ah Online', bs: 'Slušajte Uživo Online',
+};
+
 // Concurrency raised 5 → 15 → 50 → 200 → 1000 → 2500: paired with MongoDB
 // pool 100, heap 10 GB and RSS warning 7 GB on a 24 GB Railway replica to
 // absorb the largest Googlebot waves without ever returning
@@ -1230,10 +1280,30 @@ export class SeoRenderer {
       
       case 'regions':
         if (additionalData?.regionName) {
-          const regionName = this.escapeHtml(additionalData.regionName);
-          const radioStationsText = translations['seo_radio_stations'] || 'Radio Stations';
-          const listenLiveText = translations['seo_listen_live_online'] || 'Listen Live Online';
-          return `${regionName} ${radioStationsText} — ${listenLiveText} | Mega Radio`;
+          // SEO audit fix (2026-05-12): previously the title interpolated raw
+          // English `regionName` (e.g. "Turkey") with two i18n keys that fell
+          // back to English when the DB translation was missing. Result on a
+          // TR page was the half-translated "Turkey Radio Stations — Canlı
+          // Dinle | Mega Radio" — exactly the "language mismatch" issue the
+          // audit flagged. Now we (a) localize the country name itself via
+          // `getLocalizedCountryName` so "Turkey" → "Türkiye" / "Almanya" /
+          // "Italia", and (b) fall back to LOCALIZED_LABELS (per-language
+          // hand-curated copy) when the DB key is missing instead of dumping
+          // English into a non-English page.
+          const localizedRegion = this.escapeHtml(
+            getLocalizedCountryName(additionalData.regionName, language)
+          );
+          const radioStationsText = this.escapeHtml(
+            translations['seo_radio_stations']?.trim()
+              || LOCALIZED_RADIO_STATIONS[language]
+              || 'Radio Stations'
+          );
+          const listenLiveText = this.escapeHtml(
+            translations['seo_listen_live_online']?.trim()
+              || LOCALIZED_LISTEN_LIVE[language]
+              || 'Listen Live Online'
+          );
+          return `${localizedRegion} ${radioStationsText} — ${listenLiveText} | Mega Radio`;
         }
         return getLocalizedText('regions_page_title');
       
