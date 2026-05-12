@@ -82,12 +82,18 @@ The following retrofits were investigated on 2026-05-12 and intentionally
   absolutely must, only `injectManifest` mode wrapping the existing
   `sw.js` is acceptable; `generateSW` would silently drop the custom
   handlers above.
-- **Custom `rollupOptions.output.manualChunks()`**: see the warning comment
-  inside `artifacts/megaradio/vite.config.ts`. Forcing whole packages like
-  `lucide-react` or `react-icons` into a single chunk previously ballooned
-  the icon chunk to 6 MB raw. Vite's default per-import tree-shaking + the
-  route-level lazy splits in `src/components/lazy-routes.tsx` already give
-  a healthy ~170 KB gzipped entry bundle.
+- **Custom `rollupOptions.output.manualChunks()`**: PARTIALLY IN USE as of
+  2026-05-12. The ARRAY form (`manualChunks: { icons: ['lucide-react'] }`)
+  is still forbidden — it bypasses tree-shaking and ballooned the icon
+  chunk to 6 MB raw. The FUNCTION form (`manualChunks(id) { if
+  (id.includes('lucide-react/dist/esm/icons/')) return 'icons-lucide' }`)
+  IS now in `vite.config.ts` because it runs AFTER Rollup tree-shaking
+  and only groups icons that are actually imported. This was added to
+  cut PageSpeed mobile TBT (we previously shipped 50+ per-icon chunks
+  of 2.5 KiB each that were eagerly modulepreloaded with the entry,
+  costing 50+ HTTP round-trips on the critical chain). Do NOT extend
+  the function to swallow general vendor packages — keep it scoped to
+  confirmed-heavy split-victims like the lucide icon directory.
 - **AdSense in Partytown**: AdSense (`pagead2.googlesyndication.com`) does
   NOT survive being moved into a Web Worker — it relies on synchronous DOM
   measuring, iframe creation, and anti-fraud signals that Partytown can't

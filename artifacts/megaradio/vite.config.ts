@@ -76,16 +76,40 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
-    // NOTE: do NOT add a custom rollupOptions.output.manualChunks() here.
-    // A previous attempt at vendor splitting (vendor-react / vendor-misc /
-    // vendor-icons / etc.) made things dramatically worse — forcing whole
-    // packages like `lucide-react` and `react-icons` into a single chunk
-    // bypasses Vite's per-import tree-shaking and ballooned the icon
-    // chunk to 6 MB raw. The default Vite/Rollup chunking + the existing
-    // route-level React.lazy splits in src/components/lazy-routes.tsx
-    // already produce a ~170 KB gzipped entry bundle, which is what we
-    // want. If a future split is needed, scope it narrowly to a single
-    // confirmed-heavy module — never use a catch-all `return "vendor-misc"`.
+    rollupOptions: {
+      output: {
+        // 2026-05-12 perf (PageSpeed mobile=43, TBT=1,120ms): the prior
+        // setup produced 50+ tiny per-icon chunks (each 2.5–3 KiB) for
+        // lucide-react. They were eagerly modulepreloaded with the entry,
+        // adding 50+ HTTP request round-trips on the critical chain — by
+        // far the largest TBT contributor in the network waterfall.
+        //
+        // SAFETY: this is a `manualChunks(id)` FUNCTION, not the array
+        // form. It is evaluated AFTER Rollup's tree-shaking, so only
+        // icons that are actually imported somewhere in the app end up
+        // in the `icons` chunk. The 6 MB ballooning warning in the
+        // earlier comment was caused by `manualChunks: { icons:
+        // ['lucide-react'] }` (array form, which forces the whole
+        // package's barrel index in). The function form below is the
+        // safe pattern documented for this exact use-case.
+        //
+        // Result expected on rebuild:
+        //   ~50 chunks × 2.5 KiB → 1 chunk × ~80 KiB gzipped (~40 KiB).
+        //   PageSpeed mobile target: TBT < 600ms, score > 70.
+        manualChunks(id: string) {
+          // Group ALL used lucide-react icon modules into a single chunk.
+          // Each icon ships as `lucide-react/dist/esm/icons/<name>.js` —
+          // this matches both ESM and the rare CJS fallback paths.
+          if (
+            id.includes('node_modules/lucide-react/dist/esm/icons/') ||
+            id.includes('node_modules/lucide-react/dist/cjs/icons/')
+          ) {
+            return 'icons-lucide';
+          }
+          return undefined;
+        },
+      },
+    },
   },
   server: {
     port,
