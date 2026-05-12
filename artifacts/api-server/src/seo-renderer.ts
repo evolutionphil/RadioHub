@@ -641,36 +641,28 @@ export class SeoRenderer {
               additionalData.countryCode = cc.toLowerCase();
             }
 
-            // Task #127: empty-country soft-404 promotion. ONLY applies to the
-            // EXACT country page — `isExactCountryPagePath()` enforces this so
-            // deeper sub-pages stay 200 even when stations are sparse:
-            //   /regions/:continent/:country/stations
-            //   /regions/:continent/:country/:city[/stations]
-            //   /country/:country/stations
-            // (those paths derive `regionName` from a non-country last segment
-            // so the country-name DB lookup would falsely 404 valid content).
-            if (isExactCountryPagePath(cleanPath) && indexableStations.length === 0) {
-              try {
-                const { Country } = await import('@workspace/db-shared/mongo-schemas');
-                const escapedCountrySlug = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                const countryDoc = await withSignal(
-                  Country.findOne({
-                    name: { $regex: `^${escapedCountrySlug}$`, $options: 'i' },
-                  })
-                    .select('_id')
-                    .lean(),
-                  signal,
-                );
-                if (!countryDoc) {
-                  stationNotFound = true;
-                  additionalData.notFound = true;
-                }
-              } catch (countryErr: any) {
-                if (countryErr?.name === 'AbortError' || signal?.aborted) throw countryErr;
-                // DB failure is transient — leave the page as a 200 thin
-                // page rather than a false 404.
-              }
-            }
+            // SOFT-404 PROMOTION DISABLED (2026-05-12):
+            // Previously this block ran a second Station.find with a
+            // case-insensitive regex on `country: /^${regionName}$/i` and,
+            // if zero indexable stations matched, did a Country.findOne with
+            // the same regex; if BOTH came back empty we promoted the page
+            // to HTTP 404. In practice this false-404'd every country page
+            // whose DB row used a localized/diacritic name (e.g. slug
+            // `turkey` vs DB `country: "Türkiye"`) — the regex `/^Turkey$/i`
+            // never matches `Türkiye`, so popular countries were getting
+            // de-indexed by Google despite having thousands of indexable
+            // stations. Now that SSR is served to ALL visitors (not just
+            // bots), this regression became immediately visible.
+            //
+            // The route-shape validator above (`validateRegionRouteShape`)
+            // already enforces continent whitelist + safe slug shape, so
+            // garbage URLs like `/regions/foo/bar` still 404. Real country
+            // pages with sparse content render as 200 thin pages — Google
+            // handles those gracefully via the canonical/hreflang signals
+            // and the SSR popular-stations grid above. If we ever need to
+            // re-introduce empty-country detection, do it via a slug→ISO
+            // country-code mapping (not a name regex) so it's robust to
+            // diacritics and language-specific spellings.
           } catch (error: any) {
             if (error?.name === 'AbortError' || signal?.aborted) throw error;
           }
