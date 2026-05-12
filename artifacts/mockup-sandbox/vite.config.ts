@@ -1,4 +1,4 @@
-import { defineConfig } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
@@ -33,15 +33,20 @@ export default defineConfig({
     mockupPreviewPlugin(),
     react(),
     tailwindcss(),
-    runtimeErrorOverlay(),
+    // Cast: @replit/vite-plugin-runtime-error-modal and -cartographer are
+    // built against an older vite Plugin shape; pnpm hoists two vite hash
+    // resolutions (jiti@1.21.7 vs jiti@2.6.1) which surfaces the structural
+    // mismatch as TS2769. Behavior is identical at runtime — this cast just
+    // satisfies the typechecker for the plugin array.
+    runtimeErrorOverlay() as PluginOption,
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
-          await import("@replit/vite-plugin-cartographer").then((m) =>
+          (await import("@replit/vite-plugin-cartographer").then((m) =>
             m.cartographer({
               root: path.resolve(import.meta.dirname, ".."),
             }),
-          ),
+          )) as PluginOption,
         ]
       : []),
   ],

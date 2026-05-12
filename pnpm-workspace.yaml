@@ -158,3 +158,10 @@ overrides:
   # drizzle-kit uses esbuild internally on an older version that's vulnerable, this overrides it
   "@esbuild-kit/esm-loader": "npm:tsx@^4.21.0"
   esbuild: "0.27.3"
+  # 2026-05-12: pin zod to a single version across the workspace.
+  # Some transitive dep was pulling zod@4.x while the catalog stayed on
+  # 3.x, which caused @hookform/resolvers/zod to surface zod v4 type
+  # internals (`$ZodTypeInternals`) into our zod v3 callsites and break
+  # typecheck across megaradio's auth/profile/station forms. Forcing a
+  # single resolution restores type compatibility.
+  zod: "^3.25.76"

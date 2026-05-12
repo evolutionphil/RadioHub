@@ -80,6 +80,7 @@
     "lucide-react": "catalog:",
     "next-themes": "^0.4.6",
     "papaparse": "^5.5.3",
+    "plyr": "^3.8.4",
     "postcss": "^8.5.13",
     "qrcode.react": "^4.2.0",
     "react": "catalog:",
