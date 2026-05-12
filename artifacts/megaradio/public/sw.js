@@ -21,15 +21,22 @@ self.addEventListener('install', (event) => {
   self.skipWaiting();
 });
 
-// Activate event — purge any old caches not in our current set so users on
-// the previous SW don't keep stale responses.
+// Activate event — purge any old MEGARADIO caches not in our current set so
+// users on the previous SW don't keep stale responses.
+//
+// 2026-05-12 hardening: previous version deleted EVERY CacheStorage entry
+// not in our current set. Because CacheStorage is origin-wide, that was
+// silently evicting caches owned by other workers (notably Partytown's
+// `~partytown` cache when we add it, plus any future browser/extension
+// caches). Now we only touch caches whose names start with our own
+// `megaradio-` prefix.
 self.addEventListener('activate', (event) => {
   console.log('✅ Service Worker activated');
   event.waitUntil((async () => {
     const keys = await caches.keys();
     await Promise.all(
       keys
-        .filter((k) => k !== CACHE_NAME && k !== ASSET_CACHE)
+        .filter((k) => k.startsWith('megaradio-') && k !== CACHE_NAME && k !== ASSET_CACHE)
         .map((k) => caches.delete(k)),
     );
     await self.clients.claim();

@@ -83,7 +83,14 @@ if (typeof window !== 'undefined') {
   
   // 🚀 PWA Service Worker registration for offline support and caching
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/service-worker.js').catch(() => {
+    // 2026-05-12 fix: was registering '/service-worker.js' which does NOT
+    // exist in public/ — only '/sw.js' does (also registered by
+    // PushNotificationManager). The mismatch meant users who never opened
+    // notification settings never had an active SW controller, so the
+    // KEEP_ALIVE pathway in useGlobalPlayer.tsx silently no-op'd and iOS
+    // Safari background audio could be killed by the OS. Standardising on
+    // '/sw.js' here makes registration deterministic on first load.
+    navigator.serviceWorker.register('/sw.js').catch(() => {
       // Service worker registration failed - app still works without it
     });
   }

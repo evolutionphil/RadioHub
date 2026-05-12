@@ -1,16 +1,20 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState } from 'react';
 import { Share2, Copy } from "lucide-react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { cn } from "@/lib/utils";
-
-// Lazy load social icons - only imported when component renders
-const SiFacebook = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiFacebook {...props} /> })));
-const SiX = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiX {...props} /> })));
-const SiWhatsapp = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiWhatsapp {...props} /> })));
-const SiLinkedin = lazy(() => import('react-icons/fa').then(m => ({ default: (props: any) => <m.FaLinkedin {...props} /> })));
-const SiPinterest = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiPinterest {...props} /> })));
-const SiTelegram = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiTelegram {...props} /> })));
-const SiReddit = lazy(() => import('react-icons/si').then(m => ({ default: (props: any) => <m.SiReddit {...props} /> })));
+// 2026-05-12 perf: replaced `lazy(() => import('react-icons/si'))` for the
+// 7 brand icons with inline SVG components (./brand-icons). Each lazy
+// react-icons import was pulling the entire react-icons/si barrel
+// (~4.8 MB raw chunk) — see brand-icons.tsx for the full rationale.
+import {
+  SiFacebook,
+  SiX,
+  SiWhatsapp,
+  FaLinkedin as SiLinkedin,
+  SiPinterest,
+  SiTelegram,
+  SiReddit,
+} from './brand-icons';
 
 interface PageSocialShareProps {
   title?: string;
@@ -28,53 +32,47 @@ interface SocialPlatform {
   shareUrl: (url: string, text: string) => string;
 }
 
-// Icon wrapper component for lazy-loaded icons
-const LazyIconWrapper = ({ IconComponent, className }: { IconComponent: any; className: string }) => (
-  <Suspense fallback={<div className={className} />}>
-    <IconComponent className={className} />
-  </Suspense>
-);
-
+// Inline SVG brand icons render synchronously — no Suspense wrapper needed.
 const getSocialPlatforms = (): Record<string, SocialPlatform> => ({
   facebook: {
     name: 'Facebook',
-    icon: <LazyIconWrapper IconComponent={SiFacebook} className="w-5 h-5" />,
+    icon: <SiFacebook className="w-5 h-5" />,
     color: 'bg-[#1877F2] hover:bg-[#166fe5] text-white',
     shareUrl: (url, text) => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}&quote=${encodeURIComponent(text)}`,
   },
   twitter: {
     name: 'Twitter',
-    icon: <LazyIconWrapper IconComponent={SiX} className="w-5 h-5" />,
+    icon: <SiX className="w-5 h-5" />,
     color: 'bg-black hover:bg-gray-800 text-white',
     shareUrl: (url, text) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}&hashtags=radio,music,streaming`,
   },
   linkedin: {
     name: 'LinkedIn',
-    icon: <LazyIconWrapper IconComponent={SiLinkedin} className="w-5 h-5" />,
+    icon: <SiLinkedin className="w-5 h-5" />,
     color: 'bg-[#0A66C2] hover:bg-[#004182] text-white',
     shareUrl: (url, text) => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(url)}&summary=${encodeURIComponent(text)}`,
   },
   whatsapp: {
     name: 'WhatsApp',
-    icon: <LazyIconWrapper IconComponent={SiWhatsapp} className="w-5 h-5" />,
+    icon: <SiWhatsapp className="w-5 h-5" />,
     color: 'bg-[#25D366] hover:bg-[#1da851] text-white',
     shareUrl: (url, text) => `https://api.whatsapp.com/send?text=${encodeURIComponent(`${text} ${url}`)}`,
   },
   telegram: {
     name: 'Telegram',
-    icon: <LazyIconWrapper IconComponent={SiTelegram} className="w-5 h-5" />,
+    icon: <SiTelegram className="w-5 h-5" />,
     color: 'bg-[#0088CC] hover:bg-[#006699] text-white',
     shareUrl: (url, text) => `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
   },
   reddit: {
     name: 'Reddit',
-    icon: <LazyIconWrapper IconComponent={SiReddit} className="w-5 h-5" />,
+    icon: <SiReddit className="w-5 h-5" />,
     color: 'bg-[#FF4500] hover:bg-[#E63E00] text-white',
     shareUrl: (url, text) => `https://reddit.com/submit?url=${encodeURIComponent(url)}&title=${encodeURIComponent(text)}`,
   },
   pinterest: {
     name: 'Pinterest',
-    icon: <LazyIconWrapper IconComponent={SiPinterest} className="w-5 h-5" />,
+    icon: <SiPinterest className="w-5 h-5" />,
     color: 'bg-[#E60023] hover:bg-[#AD081B] text-white',
     shareUrl: (url, text) => `https://pinterest.com/pin/create/button/?url=${encodeURIComponent(url)}&description=${encodeURIComponent(text)}`,
   },

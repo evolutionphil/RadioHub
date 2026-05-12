@@ -31,10 +31,17 @@ export const initGA = () => {
     window.gtag('js', new Date());
     window.gtag('config', measurementId);
     
-    // Load GA script asynchronously and non-blocking
+    // 2026-05-12 perf: load Google Analytics inside Partytown's Web
+    // Worker (type='text/partytown') so the ~140 KB gtag.js bundle no
+    // longer steals main-thread time. window.dataLayer.push and
+    // window.gtag are forwarded by the Partytown bootstrap in
+    // index.html, so trackPageView/trackEvent below keep working as a
+    // synchronous main-thread API while the actual network + execution
+    // happens off-thread.
     const script = document.createElement('script');
+    script.type = 'text/partytown';
     script.async = true;
-    script.defer = true; // Important: defer attribute prevents blocking
+    script.defer = true;
     script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
     script.onload = () => {
       // Script loaded, gtag is now ready
