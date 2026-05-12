@@ -200,7 +200,7 @@ export async function loadSlugExistence(): Promise<void> {
         },
         { $group: { _id: { country: '$country', state: '$state' } } },
       ])
-        .option({ maxTimeMS: 30000 })
+        .option({ maxTimeMS: 30000, allowDiskUse: true })
         .exec()) as Array<{ _id: { country: string; state: string } }>;
 
       for (const row of stateRows) {

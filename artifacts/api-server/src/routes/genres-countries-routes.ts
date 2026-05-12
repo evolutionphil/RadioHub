@@ -153,7 +153,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
           { $match: { country: { $nin: [null, ''] } } },
           { $group: { _id: '$country', count: { $sum: 1 } } },
           { $sort: { _id: 1 } }
-        ]);
+        ]).option({ maxTimeMS: 20000, allowDiskUse: true });
         const countries = getAllCountryInfoFromDb(
           countryCounts.map((c: any) => ({ name: c._id, count: c.count }))
         );
@@ -255,7 +255,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         { $unwind: '$allTags' },
         { $match: { allTags: { $ne: '' } } },
         { $group: { _id: '$allTags', count: { $sum: 1 } } }
-      ]);
+      ]).option({ maxTimeMS: 30000, allowDiskUse: true });
 
       const tagCounts = new Map();
       for (const entry of genreCounts) {

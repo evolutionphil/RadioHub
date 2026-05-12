@@ -63,6 +63,25 @@ A shared reverse proxy routes by path:
 - After a bulk import/cleanup, force an immediate refresh with:
   `POST /api/admin/sitemap/rebuild` (admin-only).
 
+## MongoDB aggregation memory limits (read before adding new aggregations)
+
+Atlas enforces a **32MB sort memory limit per aggregation stage** at every
+tier (M10 included). When a `$sort` / `$group` / `$facet` stage on the
+Station collection exceeds it, Mongo throws code 292
+(`QueryExceededMemoryLimitNoDiskUseAllowed`) and the request fails.
+
+**Rule**: every `Station.aggregate(...)` (and any aggregation that sorts or
+groups a multi-MB result) MUST chain `.allowDiskUse(true)` (or pass
+`{ allowDiskUse: true }` in `.option({...})` alongside `maxTimeMS`).
+The `precomputed-stations`, `precomputed-cities`, `station-public-routes`,
+`regions-recommendations-routes`, and `recommendation-engine` aggregations
+were all retrofitted on 2026-05-12 — DO NOT remove the option. Atlas M10+
+allows disk spill so this is safe; the prior shared/serverless tier ban is
+no longer applicable.
+
+If you add a new `Station.aggregate(...)` call, copy this pattern:
+`.option({ maxTimeMS: 15000, allowDiskUse: true })`.
+
 ## Performance optimization landmines (DO NOT touch without re-reading this)
 
 The following retrofits were investigated on 2026-05-12 and intentionally

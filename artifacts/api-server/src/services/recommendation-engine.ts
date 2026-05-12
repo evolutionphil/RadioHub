@@ -188,7 +188,7 @@ export class RecommendationEngine {
       { $match: { $expr: { $gte: [{ $size: '$commonStations' }, 2] } } },
       { $sort: { totalListenDuration: -1 } },
       { $limit: 50 }
-    ]).option({ maxTimeMS: 5000 });
+    ]).option({ maxTimeMS: 5000, allowDiskUse: true });
 
     if (similarUsers.length === 0) return [];
 
@@ -213,7 +213,7 @@ export class RecommendationEngine {
       { $match: { listenerCount: { $gte: 2 } } },
       { $sort: { score: -1, listenerCount: -1 } },
       { $limit: 20 }
-    ]).option({ maxTimeMS: 5000 });
+    ]).option({ maxTimeMS: 5000, allowDiskUse: true });
 
     return recommendations.map(rec => ({
       stationId: rec._id,

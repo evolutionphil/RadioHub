@@ -217,7 +217,7 @@ export class PrecomputedStationsService {
           logoAssets: { webp96: 1, webp256: 1, folder: 1 }
         }
       }
-    ]).hint({ country: 1, lastCheckOk: 1, votes: -1 }).option({ maxTimeMS: 15000 }).exec();
+    ]).hint({ country: 1, lastCheckOk: 1, votes: -1 }).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
 
     if (stations.length === 0) {
       const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -226,7 +226,7 @@ export class PrecomputedStationsService {
         { $sort: { hasLogo: -1, votes: -1 } },
         { $limit: 1500 },
         { $project: { _id: 1, slug: 1, name: 1, url: 1, url_resolved: 1, favicon: 1, country: 1, state: 1, votes: 1, hasLogo: 1, tags: 1, codec: 1, bitrate: 1, logoAssets: { webp96: 1, webp256: 1, folder: 1 } } }
-      ]).option({ maxTimeMS: 15000 }).exec();
+      ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
     }
 
     const data: PrecomputedCountryData = {
@@ -483,7 +483,7 @@ export class PrecomputedStationsService {
           { $project: PROJECT },
         ])
           .hint({ country: 1, lastCheckOk: 1, votes: -1 })
-          .option({ maxTimeMS: 10000 })
+          .option({ maxTimeMS: 10000, allowDiskUse: true })
           .exec();
         if (batch.length > 0) pool.push(...batch);
       } catch (err) {

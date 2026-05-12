@@ -168,7 +168,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
               }
             },
             { $count: "stationCount" }
-          ]);
+          ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
           
           const stationCount = aggregationResults.length > 0 ? aggregationResults[0].stationCount : 0;
           
@@ -396,7 +396,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           {
             $count: "totalStations"
           }
-        ]);
+        ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
         
         const totalCount = aggregationResults[0]?.totalStations || 0;
         
@@ -425,7 +425,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         {
           $count: "totalStations"
         }
-      ]);
+      ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
       
       const totalCountryStations = allCountryStationsResult[0]?.totalStations || 0;
       const stationsInCities = citiesWithCounts.reduce((sum, city) => sum + city.stationCount, 0);
@@ -634,7 +634,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           { $match: filter },
           { $sample: { size: perGenre } },
           { $project: { name: 1, slug: 1, favicon: 1, url: 1, country: 1, language: 1, genre: 1, tags: 1, votes: 1, codec: 1, bitrate: 1 } }
-        ]);
+        ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
       });
 
       const genreResults = await Promise.all(stationPromises);

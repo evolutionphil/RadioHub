@@ -114,7 +114,7 @@ export class PrecomputedCitiesService {
     ];
 
     try {
-      const result = await Station.aggregate(pipeline).option({ maxTimeMS: 15000 }).exec();
+      const result = await Station.aggregate(pipeline).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
       const totalCountryStations = result[0]?.totalCount[0]?.count || 0;
       const cityCountsRaw = result[0]?.cityCounts || [];
 

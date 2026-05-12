@@ -455,7 +455,7 @@ export class PerformanceCache {
         { $group: { _id: '$country', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 10 }
-      ]);
+      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
       
       const topCountries = countryStationCounts.map((c: any) => c._id).filter(Boolean);
       

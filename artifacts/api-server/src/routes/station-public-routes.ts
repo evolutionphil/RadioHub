@@ -216,13 +216,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint({ lastCheckOk: 1, votes: -1 }),
+        ]).hint({ lastCheckOk: 1, votes: -1 }).allowDiskUse(true),
         Station.aggregate([
           { $match: { ...countryFilter, isFeatured: { $ne: true } } },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint({ lastCheckOk: 1, votes: -1 })
+        ]).hint({ lastCheckOk: 1, votes: -1 }).allowDiskUse(true)
       ]);
       
       const allCandidates = [...featuredStations, ...regularStations];
@@ -535,7 +535,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
             ]
           }
         }
-      ]);
+      ]).allowDiskUse(true).option({ maxTimeMS: 20000 });
       
       const result = {
         total: stats[0].total[0]?.count || 0,
@@ -952,7 +952,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       pipeline.push({ $skip: (Number(page) - 1) * Number(limit) });
       pipeline.push({ $limit: Number(limit) });
 
-      const stations = await Station.aggregate(pipeline);
+      const stations = await Station.aggregate(pipeline).allowDiskUse(true).option({ maxTimeMS: 20000 });
 
       const response = {
         stations,
