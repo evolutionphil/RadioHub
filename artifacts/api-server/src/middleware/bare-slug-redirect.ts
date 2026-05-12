@@ -32,6 +32,7 @@ import {
   hasGenreSlug,
 } from '../seo/slug-existence';
 import { ALIAS_TO_DB } from '../utils/normalize-country';
+import { translateUrlSegment } from '@workspace/seo-shared/url-translations';
 
 /**
  * Resolve a bare URL slug (lowercase, ASCII) to the canonical country slug
@@ -201,7 +202,13 @@ export function bareSlugRedirectMiddleware(
     if (!hasCountrySlug(candidate)) continue;
     const regionSlug = getCountrySlugToRegion().get(candidate);
     if (!regionSlug) continue;
-    const target = `/${lang}/regions/${regionSlug}/${candidate}`;
+    // Use the language-localized "regions" segment so we 301 straight to
+    // the canonical URL in ONE hop. Without this we'd send users to the
+    // English /{lang}/regions/... path which then immediately 301s again
+    // to /{lang}/{translated-regions}/... (e.g. /tr/bolgeler/...). A
+    // redirect chain costs SEO link equity, so collapse it here.
+    const regionsSegment = translateUrlSegment('regions', lang);
+    const target = `/${lang}/${regionsSegment}/${regionSlug}/${candidate}`;
     return send301(req, res, target);
   }
 
