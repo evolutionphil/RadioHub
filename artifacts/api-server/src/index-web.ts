@@ -18,6 +18,7 @@ import { stationCountryValidator } from './station-country-validator';
 import { serveStatic, log } from "./serve-static";
 import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
+import { getBaseUrl } from './routes/shared-utils';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
 import { COUNTRY_TO_LANGUAGE, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
@@ -84,6 +85,44 @@ const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000';
 const STREAM_PROXY_URL = process.env.STREAM_PROXY_URL || process.env.VITE_STREAM_PROXY_URL || 'https://stream.themegaradio.com';
 
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+
+// 2026-05-12 Semrush audit: `/llms.txt` was returning the SPA HTML shell
+// (Multiple-H1 notice) on production even though `routes/seo-sitemap-routes.ts`
+// registers the proper text/plain handler. The root cause was middleware
+// ordering — geo-block / language redirects / SSR catch-alls were running
+// before `registerSeoSitemapRoutes(app)` (line ~496) and one of them was
+// emitting an HTML response. Mounting the handler here, immediately after
+// `/healthz`, guarantees nothing else can shadow it. Body intentionally
+// kept identical to the canonical handler so the contract doesn't drift.
+app.get('/llms.txt', (req, res) => {
+  // Use the same canonical baseUrl helper as the shadowed handler in
+  // routes/seo-sitemap-routes.ts so the body is byte-identical regardless
+  // of which route ultimately serves the request (avoids host-header
+  // driven divergence flagged in code review).
+  const baseUrl = getBaseUrl(req);
+  const body = `# MegaRadio
+# https://llmstxt.org/
+${baseUrl}/
+
+## Sitemaps
+${baseUrl}/sitemap-index.xml
+${baseUrl}/robots.txt
+
+## Key sections
+${baseUrl}/en/stations
+${baseUrl}/en/genres
+${baseUrl}/en/regions
+${baseUrl}/en/about
+${baseUrl}/en/faq
+${baseUrl}/en/contact
+${baseUrl}/en/privacy-policy
+${baseUrl}/en/terms-and-conditions
+`;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.status(200).send(body);
+});
 
 app.get('/health', async (_req, res) => {
   const mem = process.memoryUsage();

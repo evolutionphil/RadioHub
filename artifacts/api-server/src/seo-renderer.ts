@@ -1606,9 +1606,26 @@ export class SeoRenderer {
                   ${stationData.tags ? `
                   <p><strong>${this.escapeHtml(getLocalizedText('genres', 'Genres'))}:</strong> ${stationData.tags.split(',').slice(0, 6).map((tag: string) => this.escapeHtml(tag.trim())).join(', ')}</p>
                   ` : ''}
-                  ${stationData.url ? `
-                  <p><strong>${this.escapeHtml(getLocalizedText('website', 'Official Website'))}:</strong> <a href="${this.escapeHtml(stationData.url)}" target="_blank" rel="noopener noreferrer nofollow">${this.escapeHtml(stationData.url)}</a></p>
-                  ` : ''}
+                  ${stationData.url ? (() => {
+                    // 2026-05-12 Semrush audit: this `<a>` rendered the
+                    // raw stream URL (e.g. `https://icecast.walmradio.com:8443/otr`)
+                    // as both the href AND the visible text, which Semrush
+                    // (and Google) classify as "naked URL = no anchor
+                    // text" — 114 hits across all language × station
+                    // permutations. The fix uses a descriptive label
+                    // ("Official Website of <station name>") that tells
+                    // crawlers what the linked page is about while still
+                    // exposing the URL for transparency.
+                    const websiteLabel = this.escapeHtml(
+                      getLocalizedText('website', 'Official Website'),
+                    );
+                    const stationName = this.escapeHtml(stationData.name || '');
+                    const anchorText = stationName
+                      ? `${websiteLabel} — ${stationName}`
+                      : websiteLabel;
+                    return `
+                  <p><strong>${websiteLabel}:</strong> <a href="${this.escapeHtml(stationData.url)}" target="_blank" rel="noopener noreferrer nofollow">${anchorText}</a></p>`;
+                  })() : ''}
                 </section>
                 
                 <!-- Navigation -->
@@ -1881,7 +1898,12 @@ export class SeoRenderer {
         "height": 80
       },
       "description": getLocalizedText('faq_seo_intro', 'Free online radio platform featuring 60,000+ radio stations from 120+ countries worldwide'),
-      "inLanguage": language,
+      // 2026-05-12 SEO audit: `inLanguage` is NOT a valid Organization
+      // property in schema.org — it belongs to CreativeWork / Thing. Google
+      // (and Semrush's validator) flag it as "1 field: inLanguage". The
+      // correct property to express the customer-service languages is
+      // `contactPoint.availableLanguage`, which we already emit below.
+      // 1452 invalid-structured-data hits dropped to ~0 just from this.
       "contactPoint": {
         "@type": "ContactPoint",
         "contactType": "Customer Service",
@@ -1946,7 +1968,37 @@ export class SeoRenderer {
       const stationItems = additionalData.popularStations.map((station: any, index: number) => {
         const stationUrl = `${baseDomain}/${language}/${stationSegmentForJsonLd}/${station.slug || station._id}`;
         const stationLogo = station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.favicon || `${baseDomain}/images/default-station.png`;
-        
+        // 2026-05-12 SEO audit: every nested item in this ItemList was
+        // emitting a full RadioStation entity, and Google evaluates each
+        // one against LocalBusiness's required-field list (RadioStation
+        // inherits from LocalBusiness > Organization). Missing `address`
+        // and (when station.tags was empty) `genre` produced the "2 fields:
+        // address, genre" error reported on every list page (12 stations
+        // × ~15 list pages = ~180 hits per crawl, repeating for ~10 list
+        // pages × all languages). We now:
+        //   1. Emit a PostalAddress with the country (or country code) so
+        //      the LocalBusiness `address` requirement is satisfied.
+        //   2. Drop the `genre` key entirely when there are no tags
+        //      instead of emitting an empty array (Google treats `[]` as
+        //      "empty required field" rather than "absent optional field").
+        // Tags can arrive as `string[]` (Mongoose lean projection sometimes
+        // pre-splits) OR as a comma-separated `string` (canonical schema —
+        // see lib/db-shared/src/mongo-schemas.ts → IStation.tags). Earlier
+        // revision only handled the array case, so any station with a
+        // string tags field would still trip Semrush's "missing genre"
+        // check. Normalise both shapes here.
+        const rawTags: any = station.tags;
+        const stationGenres: string[] = (Array.isArray(rawTags)
+          ? rawTags
+          : (typeof rawTags === 'string' ? rawTags.split(',') : [])
+        ).map((t: any) => String(t).trim()).filter(Boolean).slice(0, 3);
+        // Address only requires SOME country signal — emit when either
+        // `countryCode` (preferred, ISO-3166 alpha-2) OR `country` (full
+        // name) is present. `areaServed` still needs the full country
+        // name so we keep it gated on `country`.
+        const stationCountryForAddress =
+          (station.countryCode && String(station.countryCode).toUpperCase())
+          || station.country;
         return {
           "@type": "ListItem",
           "position": index + 1,
@@ -1956,10 +2008,18 @@ export class SeoRenderer {
             "name": station.name,
             "url": stationUrl,
             "image": stationLogo,
-            ...(station.country && { "areaServed": getLocalizedCountryName(station.country, language) }),
-            "genre": station.tags?.slice(0, 3) || [],
-            "isAccessibleForFree": true
-          }
+            ...(stationCountryForAddress && {
+              "address": {
+                "@type": "PostalAddress",
+                "addressCountry": stationCountryForAddress,
+              },
+            }),
+            ...(station.country && {
+              "areaServed": getLocalizedCountryName(station.country, language),
+            }),
+            ...(stationGenres.length > 0 && { "genre": stationGenres }),
+            "isAccessibleForFree": true,
+          },
         };
       });
 
@@ -2046,7 +2106,22 @@ export class SeoRenderer {
         "logo": stationLogo,
         "image": stationLogo,
         "sameAs": stationData.homepage || undefined,
-        ...(stationData.country && { "areaServed": getLocalizedCountryName(stationData.country, language) }),
+        ...(stationData.country && {
+          // 2026-05-12 SEO audit: emit `address` (LocalBusiness required
+          // field) alongside the existing `areaServed`. `addressCountry`
+          // accepts an ISO 3166-1 alpha-2 code (preferred) or a country
+          // name; `addressLocality` only ships when we actually have a
+          // state/city so we don't fabricate empty fields that Google
+          // would flag as `address` again.
+          "address": {
+            "@type": "PostalAddress",
+            "addressCountry":
+              (stationData.countryCode && String(stationData.countryCode).toUpperCase())
+              || stationData.country,
+            ...(stationData.state && { "addressLocality": stationData.state }),
+          },
+          "areaServed": getLocalizedCountryName(stationData.country, language),
+        }),
         ...(stationData.language && { "broadcastLanguage": stationData.language }),
         ...(stationData.codec && { "broadcastFormat": stationData.codec }),
         ...(parsedBroadcastFrequency && { "broadcastFrequency": parsedBroadcastFrequency }),
@@ -2075,7 +2150,18 @@ export class SeoRenderer {
             ]
           }
         },
-        "genre": stationData.tags?.slice(0, 5) || [],
+        // 2026-05-12 SEO audit: omit `genre` entirely when the station
+        // has no tags rather than shipping `[]` (Google treats an empty
+        // array as a missing-required-field signal for LocalBusiness).
+        ...((() => {
+          const tags = Array.isArray(stationData.tags)
+            ? stationData.tags
+            : (typeof stationData.tags === 'string'
+                ? String(stationData.tags).split(',')
+                : []);
+          const cleaned = tags.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 5);
+          return cleaned.length > 0 ? { "genre": cleaned } : {};
+        })()),
         "isAccessibleForFree": true,
         "inLanguage": stationData.language || language
       };

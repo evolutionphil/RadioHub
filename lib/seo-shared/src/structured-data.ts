@@ -115,6 +115,19 @@ export function generateRadioStationSchema(
   // Station rich-result extractor accepts the entity. broadcastAffiliateOf
   // alone is not enough — broadcastDisplayName is the user-visible label
   // tied to the station identity.
+  // 2026-05-12 SEO audit: omit `genre` entirely when the station has no
+  // usable tags rather than shipping `[]` — Google's LocalBusiness
+  // validator treats an empty array as a missing-required-field signal
+  // and reports it as "Missing field 'genre'". Same change applied in
+  // artifacts/api-server/src/seo-renderer.ts.
+  const cleanedGenres: string[] = (() => {
+    if (!station.tags) return [];
+    const raw = Array.isArray(station.tags)
+      ? station.tags
+      : String(station.tags).split(',');
+    return raw.map((t: any) => String(t).trim()).filter(Boolean);
+  })();
+
   const schema: StructuredDataConfig = {
     "@context": "https://schema.org",
     "@type": "RadioStation",
@@ -129,7 +142,7 @@ export function generateRadioStationSchema(
       "@id": `https://${domain}/#organization`,
       "name": "Mega Radio"
     },
-    "genre": station.tags ? station.tags.split(',').map((tag: string) => tag.trim()) : [],
+    ...(cleanedGenres.length > 0 && { "genre": cleanedGenres }),
     "inLanguage": language, // Use page language instead of station language for SEO
     "potentialAction": {
       "@type": "ListenAction",
