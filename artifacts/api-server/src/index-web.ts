@@ -4,6 +4,7 @@ if (!process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_FILE === '/dev/null')
 
 import express, { type Request, Response, NextFunction } from "express";
 import compression from "compression";
+import fs from "fs";
 import path from "path";
 import { createServer } from "http";
 import { createProxyMiddleware } from 'http-proxy-middleware';
@@ -528,6 +529,47 @@ app.use('/api/stream', streamServiceProxy);
 
   const seoRenderer = new SeoRenderer();
 
+  // ── Universal SSR template loader ────────────────────────────────────────
+  // Read the production Vite index.html ONCE at startup so we can inject the
+  // real hashed asset tags (`/assets/index-XXXXX.js` + `.css` + modulepreload
+  // hints) into every SSR response. Without this the SSR template hard-coded
+  // `<script src="/src/main.tsx">`, which only works in Vite dev — in
+  // production that path falls through to the SPA index.html (text/html, not
+  // JS) so React never mounts. Previously we hid this bug by only serving
+  // SSR HTML to bots; now that we serve SSR HTML to *every* visitor we MUST
+  // emit the correct asset URLs or the page would be a dead static snapshot
+  // for real users.
+  //
+  // Returns empty strings in dev / when the build isn't present, in which
+  // case the SSR template falls back to its original `/src/main.tsx` tag —
+  // safe because dev only runs the SSR path against the Vite dev server
+  // anyway (which DOES serve `/src/main.tsx`).
+  interface ProdAssetTags { scripts: string; styles: string; preloads: string; }
+  let prodAssetTagsCache: ProdAssetTags | null = null;
+  function getProdAssetTags(): ProdAssetTags {
+    if (prodAssetTagsCache !== null) return prodAssetTagsCache;
+    try {
+      const indexPath = path.resolve(import.meta.dirname, 'public', 'index.html');
+      if (!fs.existsSync(indexPath)) {
+        prodAssetTagsCache = { scripts: '', styles: '', preloads: '' };
+        logger.log(`📦 SSR template: prod index.html not found at ${indexPath} (dev mode — using /src/main.tsx fallback)`);
+        return prodAssetTagsCache;
+      }
+      const html = fs.readFileSync(indexPath, 'utf8');
+      const scripts = Array.from(html.matchAll(/<script\b[^>]*\bsrc="\/assets\/[^"]+\.js"[^>]*><\/script>/g)).map(m => m[0]).join('\n    ');
+      const styles = Array.from(html.matchAll(/<link\b[^>]*\brel="stylesheet"[^>]*\bhref="\/assets\/[^"]+\.css"[^>]*>/g)).map(m => m[0]).join('\n    ');
+      const preloads = Array.from(html.matchAll(/<link\b[^>]*\brel="modulepreload"[^>]*>/g)).map(m => m[0]).join('\n    ');
+      prodAssetTagsCache = { scripts, styles, preloads };
+      logger.log(`📦 SSR template loaded: ${scripts.split('<script').length - 1} scripts, ${styles.split('<link').length - 1} styles, ${preloads.split('<link').length - 1} modulepreloads`);
+    } catch (e: any) {
+      logger.log(`⚠️ SSR template load failed: ${e?.message || e} — falling back to dev tag`);
+      prodAssetTagsCache = { scripts: '', styles: '', preloads: '' };
+    }
+    return prodAssetTagsCache;
+  }
+  // Warm the cache at startup so the first SSR request doesn't pay the IO.
+  getProdAssetTags();
+
   const { URL_TRANSLATIONS: seoUrlTranslations } = await import('@workspace/seo-shared/url-translations');
   function collectSeoTranslations(englishKey: string): string[] {
     const vals = new Set<string>();
@@ -623,23 +665,41 @@ app.use('/api/stream', streamServiceProxy);
     const isSeoEligiblePage = isStationPage || isHomepage || isRegionsPage || isGenresPage || isAboutPage || isContactPage || isPrivacyPage || isCountryPage || isStationsPage || isSearchPage || isFaqPage || isTermsPage || isApplicationsPage;
     const isBot = SEO_PRECOMPILED_REGEX.botDetect.test(userAgent);
 
-    if (!isSeoEligiblePage || !isBot) return next();
+    // CLOAKING FIX (2026-05-12): SSR is now served to ALL visitors on SEO
+    // eligible pages, not just bots. Previously the `!isBot` short-circuit
+    // here meant bots got a fully-rendered HTML with localized title/meta/
+    // hreflang/JSON-LD while real users got a generic SPA shell with the
+    // default English title — textbook Dynamic Rendering, which Google
+    // deprecated in 2022 and treats as a cloaking signal under the spam
+    // algorithm. Now everyone gets the same HTML, eliminating the risk.
+    //
+    // Performance: the cache-HIT and cache-MISS branches both already emit
+    // `Cache-Control: public, max-age=3600, s-maxage=86400, stale-while-
+    // revalidate=3600`, so Cloudflare absorbs the extra traffic at the edge
+    // and Railway sees no measurable load increase. Login/profile/settings
+    // are filtered out by `isSeoEligiblePage === false` and still hit the
+    // SPA fallback as before.
+    if (!isSeoEligiblePage) return next();
 
-    const isMajorBot = MAJOR_SEARCH_BOT_RE.test(userAgent);
-    if (isMajorBot) {
-      // Google/Bing/major search bots are never rate limited
-    } else {
-      const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
-      const now = Date.now();
-      let botEntry = botRateLimitMap.get(clientIp);
-      if (!botEntry || now > botEntry.resetAt) {
-        botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
-        botRateLimitMap.set(clientIp, botEntry);
-      }
-      botEntry.count++;
-      if (botEntry.count > BOT_RATE_LIMIT_MAX_MINOR) {
-        res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
-        return;
+    // Bot rate limiting only applies to actual bots — real users go straight
+    // to the SSR pipeline below.
+    if (isBot) {
+      const isMajorBot = MAJOR_SEARCH_BOT_RE.test(userAgent);
+      if (isMajorBot) {
+        // Google/Bing/major search bots are never rate limited
+      } else {
+        const clientIp = req.ip || req.socket.remoteAddress || 'unknown';
+        const now = Date.now();
+        let botEntry = botRateLimitMap.get(clientIp);
+        if (!botEntry || now > botEntry.resetAt) {
+          botEntry = { count: 0, resetAt: now + BOT_RATE_LIMIT_WINDOW };
+          botRateLimitMap.set(clientIp, botEntry);
+        }
+        botEntry.count++;
+        if (botEntry.count > BOT_RATE_LIMIT_MAX_MINOR) {
+          res.status(429).set({ 'Retry-After': '60' }).send('Too Many Requests');
+          return;
+        }
       }
     }
 
@@ -715,6 +775,10 @@ app.use('/api/stream', streamServiceProxy);
       // mixed-direction content vs the language attribute.
       const RTL_LANGS = new Set(['ar', 'he', 'fa', 'ur']);
       const htmlDir = RTL_LANGS.has((seoData.language || '').toLowerCase().split('-')[0]) ? 'rtl' : 'ltr';
+      // Inject the production Vite asset tags (real hashed JS/CSS bundles +
+      // modulepreload hints) so the browser can actually mount React on top
+      // of this SSR HTML. See `getProdAssetTags()` for the rationale.
+      const prodTags = getProdAssetTags();
       const htmlContent = `<!DOCTYPE html>
 <html lang="${seoData.language}" dir="${htmlDir}">
   <head>
@@ -737,6 +801,8 @@ app.use('/api/stream', streamServiceProxy);
     <link rel="preconnect" href="https://unpkg.com" crossorigin>
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://api.ipify.org">
+    ${prodTags.styles}
+    ${prodTags.preloads}
     <style>
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; margin: 0; padding: 0; background-color: #0a0a0a; color: #ffffff; line-height: 1.5; font-display: swap; }
       *, *::before, *::after { box-sizing: border-box; }
@@ -773,7 +839,7 @@ app.use('/api/stream', streamServiceProxy);
         })}
       </div>
     </div>
-    <script type="module" src="/src/main.tsx"></script>
+    ${prodTags.scripts || '<script type="module" src="/src/main.tsx"></script>'}
     <script>
       window.performance = window.performance || {};
       window.performance.mark && window.performance.mark('body-start');
