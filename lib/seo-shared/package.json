@@ -12,6 +12,7 @@
     "./search-seo-templates": "./src/search-seo-templates.ts",
     "./legal-seo-templates": "./src/legal-seo-templates.ts",
     "./static-page-seo-templates": "./src/static-page-seo-templates.ts",
+    "./community-page-seo-templates": "./src/community-page-seo-templates.ts",
     "./url-translations": "./src/url-translations.ts",
     "./country-name-translations": "./src/country-name-translations.ts",
     "./country-regions": "./src/country-regions.ts",

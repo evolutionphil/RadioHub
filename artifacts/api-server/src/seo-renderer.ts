@@ -44,6 +44,7 @@ import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-se
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
+import { buildCommunityPageSeo } from '@workspace/seo-shared/community-page-seo-templates';
 import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
 import {
   getCanonicalGenreSlug,
@@ -627,6 +628,32 @@ export class SeoRenderer {
       }
     } else if (cleanPath.startsWith('/stations')) {
       pageType = 'stations';
+    } else if (
+      cleanPath === '/feedback' || cleanPath.startsWith('/feedback/') ||
+      cleanPath === '/llms' || cleanPath.startsWith('/llms/') ||
+      cleanPath === '/notifications' || cleanPath.startsWith('/notifications/') ||
+      cleanPath === '/profile' || cleanPath.startsWith('/profile/')
+    ) {
+      // 2026-05-12 SEO audit: utility/account pages have no unique
+      // public SEO content. Without an explicit branch they fell
+      // through to pageType='home' and reused meta_title — creating
+      // duplicate-meta audit errors per locale. Mark them noindex at
+      // the renderer level (not just in robots.txt) so any crawler
+      // that hits them sees a clear directive and they never enter
+      // the duplicate-meta bucket. The branch is placed BEFORE
+      // /users/ so the more general utility match wins for the
+      // non-public surfaces.
+      pageType = 'utility';
+    } else if (cleanPath === '/users' || cleanPath.startsWith('/users/') || cleanPath === '/users') {
+      // 2026-05-12 SEO audit: previously /users had no pageType branch
+      // and fell through to the home bucket, producing duplicate-title
+      // audit errors (every locale's /users page reused meta_title).
+      pageType = 'users';
+    } else if (cleanPath === '/recommendations' || cleanPath.startsWith('/recommendations/')) {
+      // 2026-05-12 SEO audit: same root cause as /users — TR
+      // /tr/tavsiyeler was inheriting the home meta_title, which
+      // Semrush flagged as a duplicate-title error.
+      pageType = 'recommendations';
     } else if (cleanPath.startsWith('/regions') || cleanPath.startsWith('/country')) {
       pageType = 'regions';
       // Extract region/country information for more specific SEO
@@ -1060,6 +1087,36 @@ export class SeoRenderer {
       baseSeoTags.keywords = genreSeo.keywords;
     }
     
+    if (pageType === 'utility') {
+      // 2026-05-12 SEO audit: see corresponding branch in determinePageType.
+      // Utility surfaces (feedback / llms / notifications / profile) get a
+      // distinct title per URL so they never clash with home, AND get a
+      // hard noindex directive so they're explicitly excluded from search.
+      const utilityLabel = cleanPath.split('/').filter(Boolean)[0] || 'page';
+      const titleLabel = utilityLabel.charAt(0).toUpperCase() + utilityLabel.slice(1);
+      baseSeoTags.title = `${titleLabel} | Mega Radio`;
+      baseSeoTags.description = `Mega Radio ${utilityLabel} page.`;
+      baseSeoTags.robots = 'noindex, follow';
+      (baseSeoTags as any).noIndex = true;
+      baseSeoTags.ogType = 'website';
+    }
+
+    if (pageType === 'users' || pageType === 'recommendations' || pageType === 'stations') {
+      // 2026-05-12 SEO audit fix: every locale must ship a distinct,
+      // localized title + description for these three surfaces.
+      // Without this override, /tr/kullanicilar and /tr/tavsiyeler
+      // reused the home meta_title (duplicate-title audit error) and
+      // /tr/istasyon reused the home meta_description (duplicate-meta
+      // audit error). Mirrors the buildStaticPageSeo / buildLegalSeo
+      // override pattern. DB keys take precedence when present in the
+      // requested language so admins can still override per-locale.
+      const communitySeo = buildCommunityPageSeo(pageType, language, translations);
+      baseSeoTags.title = communitySeo.title;
+      baseSeoTags.description = communitySeo.description;
+      if (communitySeo.keywords) baseSeoTags.keywords = communitySeo.keywords;
+      baseSeoTags.ogType = 'website';
+    }
+
     if (pageType === 'about' || pageType === 'contact' || pageType === 'applications') {
       // Use multilingual SEO templates (lib/seo-shared/static-page-seo-templates.ts).
       // DB translation keys (about_mega_radio/_description, contact_page_title/_description,
