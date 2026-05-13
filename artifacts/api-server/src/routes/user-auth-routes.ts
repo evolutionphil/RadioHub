@@ -800,6 +800,12 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     });
     
     const appleAuthUrl = `https://appleid.apple.com/auth/authorize?${params.toString()}`;
+    // Explicit diagnostic log: when Apple returns "Invalid client id or web
+    // redirect url" the values BELOW must EXACTLY match what's configured in
+    // Apple Developer Console → Identifiers → Services IDs → (your service)
+    // → Web Authentication Configuration. The Service ID must equal client_id,
+    // and Return URLs must contain redirect_uri verbatim (scheme + host + path).
+    logger.log(`🍎 Apple OAuth params — client_id="${clientId}" redirect_uri="${redirectUri}" frontendUrl="${frontendUrl}"`);
     logger.log('🍎 Apple OAuth redirect to:', appleAuthUrl);
     res.redirect(appleAuthUrl);
   });
@@ -2348,5 +2354,42 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       logger.error('auth-events viewer error:', error?.message || error);
       res.status(500).json({ error: 'Failed to load auth events' });
     }
+  });
+
+  // 2026-05-13: admin-only OAuth config inspector. When Apple returns
+  // "Invalid client id or web redirect url" or Google returns "redirect_uri
+  // mismatch", paste the values below into the respective developer console
+  // and confirm they match EXACTLY. Secrets/keys are never returned — only
+  // the public-facing identifiers and URLs that the IdP itself sees.
+  app.get("/api/admin/auth-config", requireAdmin, (_req, res) => {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://themegaradio.com';
+    const appleServiceId = process.env.APPLE_SERVICE_ID || process.env.APPLE_CLIENT_ID || '';
+    const appleRedirect = process.env.APPLE_CALLBACK_URL || `${frontendUrl}/api/auth/apple/callback`;
+    const googleClientId = process.env.GOOGLE_CLIENT_ID || '';
+    const googleRedirect = process.env.GOOGLE_CALLBACK_URL || `${frontendUrl}/api/auth/google/callback`;
+    res.json({
+      frontendUrl,
+      apple: {
+        configured: !!(appleServiceId && process.env.APPLE_TEAM_ID && process.env.APPLE_KEY_ID && process.env.APPLE_PRIVATE_KEY),
+        serviceId: appleServiceId || '(missing — set APPLE_SERVICE_ID)',
+        redirectUri: appleRedirect,
+        teamIdSet: !!process.env.APPLE_TEAM_ID,
+        keyIdSet: !!process.env.APPLE_KEY_ID,
+        privateKeySet: !!process.env.APPLE_PRIVATE_KEY,
+        instructions: [
+          'Open https://developer.apple.com/account/resources/identifiers/list/serviceId',
+          `Click your Service ID — its identifier MUST equal: ${appleServiceId || '(unset)'}`,
+          'Open "Configure" next to "Sign In with Apple"',
+          `Domains and Subdomains MUST contain: ${new URL(frontendUrl).hostname}`,
+          `Return URLs MUST contain (verbatim): ${appleRedirect}`,
+          'Save and try Apple login again.',
+        ],
+      },
+      google: {
+        configured: !!(googleClientId && process.env.GOOGLE_CLIENT_SECRET),
+        clientIdPrefix: googleClientId ? `${googleClientId.slice(0, 16)}…` : '(missing)',
+        redirectUri: googleRedirect,
+      },
+    });
   });
 }

@@ -45,7 +45,7 @@ export const getQueryFn: <T>(options: {
   on401: UnauthorizedBehavior;
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
-  async ({ queryKey }) => {
+  async ({ queryKey, signal }) => {
     // Handle different queryKey formats
     let url: string;
     if (queryKey.length === 1) {
@@ -79,8 +79,13 @@ export const getQueryFn: <T>(options: {
       url = queryKey.join("/") as string;
     }
     
+    // Forward TanStack Query's AbortSignal so queryClient.cancelQueries(...)
+    // actually aborts in-flight fetches. Without this the OAuth token-exchange
+    // race-fix in useAuth.tsx is a no-op for any query that uses this default
+    // queryFn (notably /api/auth/me read by 16+ components via useAuth.ts).
     const res = await fetch(url, {
       credentials: "include",
+      signal,
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

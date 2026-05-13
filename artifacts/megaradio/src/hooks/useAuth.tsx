@@ -66,6 +66,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log('[AUTH] 🧹 Cleaning URL →', cleanUrl);
       window.history.replaceState({}, '', cleanUrl);
 
+      // CRITICAL race-fix: there are 16+ components that fire useQuery(['/api/auth/me'])
+      // synchronously on mount via the legacy `useAuth.ts` hook. Without a cookie they
+      // get back {user:null, authenticated:false} — and if their fetch resolves AFTER
+      // our setQueryData below, it CLOBBERS the freshly-written user object. To stop
+      // that, we (1) immediately seed a placeholder so eager observers see "pending"
+      // instead of "logged out", and (2) cancel any in-flight /me query right before
+      // we write the real user — React Query then drops the late response.
+      console.log('[AUTH] 🛡️ Cancelling in-flight /api/auth/me to prevent clobber, seeding pending state');
+      queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
+      queryClient.setQueryData(['/api/auth/me'], { user: null, authenticated: false, _pendingTokenExchange: true });
+
       console.log('[AUTH] 📤 POST /api/auth/token-session — sending token, credentials:include');
       const t0 = performance.now();
       fetch('/api/auth/token-session', {
@@ -99,6 +110,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // in the browser (some browsers / strict cookie policies drop SameSite=None).
           if (body?.user) {
             console.log('[AUTH] 💾 Writing user directly to cache (cookie-independent path)');
+            // Cancel again right before write — covers any /me request that
+            // started during the token-session round-trip and would otherwise
+            // race-overwrite the user with a {user:null} response.
+            await queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
             queryClient.setQueryData(['/api/auth/me'], { user: body.user, authenticated: true });
           } else {
             console.log('[AUTH] 🔄 No user in response — invalidating /api/auth/me to refetch');
@@ -120,10 +135,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const { data, isLoading } = useQuery({
     queryKey: ['/api/auth/me'],
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       console.log('[AUTH] 📤 GET /api/auth/me — credentials:include, cookie:', document.cookie || '(empty)');
+      // Forward AbortSignal so queryClient.cancelQueries(...) can abort us
+      // if a token-session exchange starts mid-flight (race-fix).
       const response = await fetch('/api/auth/me', {
         credentials: 'include',
+        signal,
       });
       console.log(`[AUTH] 📥 /me response — status:${response.status} ok:${response.ok}`);
       if (!response.ok) {
