@@ -3,6 +3,7 @@ import { URL_TRANSLATIONS, normalizeUrlForLanguage, GLOBAL_REVERSE_URL_TRANSLATI
 import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from '@workspace/seo-shared/seo-config';
 import { logger } from './utils/logger';
 import { performanceCache } from './performance-cache';
+import { getCanonicalStationSlug, isSlugExistenceReady } from './seo/slug-existence';
 
 /**
  * 301 Redirect Middleware for Translated URL Patterns (single-hop edition)
@@ -335,6 +336,55 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
     }
   }
 
+  // ---- Step 8: slug-alias collapse (folds the SSR slug-alias 301
+  //              into this same hop so old-slug URLs no longer chain
+  //              middleware-301 → seo-renderer-301). ----
+  // Only applies to 3-segment station-detail paths AFTER step 6 has
+  // canonicalized segments[1] to the language's "station" form. The
+  // alias map is populated by `loadSlugExistence` from the same
+  // Station collection scan that powers the slug-shape 404 gate, so
+  // there is no extra DB cost on the request path.
+  //
+  // Architect-fix notes (2026-05-13):
+  //   • Language is RECOMPUTED from the post-Step-4 segments[0] so a
+  //     bare `/station/<alias>` (which Step 4 just rewrote to
+  //     `/en/station/<alias>`) also gets the alias collapse — without
+  //     this it stayed a 2-hop chain.
+  //   • `getCanonicalStationSlug` returns null when the canonical
+  //     target is junk (`isJunkStation()` or `noIndex:true`). For
+  //     those aliases we DELIBERATELY do not 301 — the SSR alias
+  //     branch will serve 410 Gone for the original URL instead, so
+  //     ranking is not consolidated onto a deindexed canonical.
+  //   • A short-lived `Cache-Control` header (5 min) is set on this
+  //     class of 301 to mirror the SSR alias-301 in `index-web.ts`.
+  //     Default browser/CDN heuristic for permanent redirects with no
+  //     cache header can pin them indefinitely; if an alias is later
+  //     removed or its canonical re-mapped, that pin would route
+  //     visitors to the wrong URL until the cache evicts.
+  let aliasRedirectApplied = false;
+  if (segments.length === 3 && isSlugExistenceReady()) {
+    const currentFirst = segments[0];
+    const currentIsLanguageCode = SEO_LANGUAGES.some((l) => l.code === currentFirst);
+    const currentIsCountryCode =
+      currentFirst.length === 2 && !!COUNTRY_TO_LANGUAGE[currentFirst];
+    const lang = currentIsLanguageCode
+      ? currentFirst
+      : (currentIsCountryCode ? COUNTRY_TO_LANGUAGE[currentFirst] : null);
+    if (lang) {
+      const canonicalDetailSeg =
+        STATION_DETAIL_ALIASES.get(lang)?.canonical
+        || URL_TRANSLATIONS[lang]?.station
+        || (lang === 'en' ? 'station' : null);
+      if (canonicalDetailSeg && segments[1] === canonicalDetailSeg) {
+        const canonicalSlug = getCanonicalStationSlug(segments[2]);
+        if (canonicalSlug) {
+          segments[2] = canonicalSlug;
+          aliasRedirectApplied = true;
+        }
+      }
+    }
+  }
+
   // ---- Final: compare and emit ONE 301 if anything changed ----
   const newPath = '/' + segments.join('/');
   if (newPath === urlPath && queryString === originalQueryString) {
@@ -342,6 +392,9 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
   }
 
   const target = newPath + queryString;
-  logger.log(`🔀 SEO 301: ${originalUrl} → ${target} (single-hop canonicalization)`);
+  if (aliasRedirectApplied) {
+    res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+  }
+  logger.log(`🔀 SEO 301: ${originalUrl} → ${target} (single-hop canonicalization${aliasRedirectApplied ? ' + slug-alias' : ''})`);
   res.redirect(301, target);
 }

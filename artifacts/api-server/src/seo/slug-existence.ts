@@ -39,6 +39,7 @@ import {
 } from '@workspace/seo-shared/country-regions';
 import { PrecomputedCitiesService } from '../services/precomputed-cities';
 import { logger } from '../utils/logger';
+import { isJunkStation } from './junk-station-rules';
 
 /**
  * Mirrors the `generateSlug()` used in PrecomputedCitiesService and the
@@ -58,6 +59,22 @@ let stationSlugs: Set<string> = new Set();
 let genreSlugs: Set<string> = new Set();
 let countrySlugs: Set<string> = new Set();
 let citySlugsByCountry: Map<string, Set<string>> = new Map();
+// Alias slug → { canonical slug, junk bit }. Populated by
+// `loadSlugExistence` from the same `Station.find(... slugAliases ...)`
+// query that fills `stationSlugs`. Used by `urlRedirectMiddleware` to
+// collapse the slug-alias 301 INTO the existing single canonicalization
+// hop — without this map, an old-slug request would 301 once in the
+// middleware (lang/segment fixes) and then 301 a second time in the SSR
+// `seo-renderer` after a per-request `Station.findOne({slugAliases})`
+// lookup.
+//
+// `junk` is precomputed via `isJunkStation()` (or the doc's `noIndex`
+// flag) so the middleware can SKIP the alias-301 when the canonical
+// target is junk — those URLs must serve 410 Gone via the SSR alias
+// branch, not 301. Without this gate the middleware would silently
+// reverse the SSR's deindex strategy. All slugs lowercased.
+interface AliasInfo { canonical: string; junk: boolean; }
+let stationAliasToCanonical: Map<string, AliasInfo> = new Map();
 let ready = false;
 
 export function isSlugExistenceReady(): boolean {
@@ -66,6 +83,26 @@ export function isSlugExistenceReady(): boolean {
 
 export function hasStationSlug(slug: string): boolean {
   return stationSlugs.has(slug);
+}
+
+/**
+ * Returns the canonical station slug for a given alias slug, or `null`
+ * when:
+ *   - `aliasSlug` is not a known alias (or IS already the canonical), OR
+ *   - the canonical target is junk / `noIndex:true`. In the junk case
+ *     the caller must NOT 301 to the canonical (which would consolidate
+ *     ranking onto a deindexed URL). Falling through to the SSR
+ *     `seo-renderer` alias branch is the correct behavior — that branch
+ *     serves 410 Gone for the original alias URL.
+ * Lookup is O(1) and runs entirely in-memory.
+ */
+export function getCanonicalStationSlug(aliasSlug: string): string | null {
+  if (!aliasSlug) return null;
+  const info = stationAliasToCanonical.get(aliasSlug.toLowerCase());
+  if (!info) return null;
+  if (info.canonical === aliasSlug.toLowerCase()) return null;
+  if (info.junk) return null;
+  return info.canonical;
 }
 
 export function hasGenreSlug(slug: string): boolean {
@@ -109,7 +146,15 @@ export async function loadSlugExistence(): Promise<void> {
     const [stationDocs, genreDocs, countryDocs, distinctStationCountries] = await Promise.all([
       Station.find(
         { slug: { $exists: true, $ne: null } },
-        { slug: 1, slugAliases: 1, _id: 0 },
+        // Extra fields (name/url/noIndex/lastCheck*) are needed to
+        // precompute `isJunkStation()` per station so the alias map's
+        // junk bit is correct. Footprint stays small (~100B per doc on
+        // average) compared to the typical 1-2 KB full station record.
+        {
+          slug: 1, slugAliases: 1, noIndex: 1, name: 1, url: 1,
+          lastCheckOk: 1, lastCheckOkTime: 1, lastCheckTime: 1,
+          _id: 0,
+        },
       ).lean(),
       Genre.find(
         { slug: { $exists: true, $ne: null } },
@@ -124,9 +169,37 @@ export async function loadSlugExistence(): Promise<void> {
     ]);
 
     const nextStations = new Set<string>();
-    for (const doc of stationDocs as Array<{ slug?: string; slugAliases?: string[] }>) {
-      if (doc.slug) nextStations.add(doc.slug.toLowerCase());
-      if (Array.isArray(doc.slugAliases)) {
+    const nextAliasMap = new Map<string, AliasInfo>();
+    let junkAliasCount = 0;
+    type StationLite = {
+      slug?: string;
+      slugAliases?: string[];
+      noIndex?: boolean;
+      name?: string;
+      url?: string;
+      lastCheckOk?: boolean;
+      lastCheckOkTime?: Date | string | null;
+      lastCheckTime?: Date | string | null;
+    };
+    for (const doc of stationDocs as StationLite[]) {
+      const canonical = doc.slug ? doc.slug.toLowerCase() : '';
+      if (canonical) nextStations.add(canonical);
+      if (Array.isArray(doc.slugAliases) && canonical) {
+        // Compute junk ONCE per station, not per alias — same canonical
+        // target is shared across all of its aliases.
+        const isJunk = doc.noIndex === true || isJunkStation(doc);
+        for (const a of doc.slugAliases) {
+          if (!a) continue;
+          const aliasLower = a.toLowerCase();
+          nextStations.add(aliasLower);
+          // Only store entries where the alias actually differs from the
+          // canonical — saves memory and short-circuits the no-op case.
+          if (aliasLower !== canonical) {
+            nextAliasMap.set(aliasLower, { canonical, junk: isJunk });
+            if (isJunk) junkAliasCount++;
+          }
+        }
+      } else if (Array.isArray(doc.slugAliases)) {
         for (const a of doc.slugAliases) {
           if (a) nextStations.add(a.toLowerCase());
         }
@@ -233,13 +306,14 @@ export async function loadSlugExistence(): Promise<void> {
     }
 
     stationSlugs = nextStations;
+    stationAliasToCanonical = nextAliasMap;
     genreSlugs = nextGenres;
     countrySlugs = nextCountries;
     citySlugsByCountry = nextCities;
     ready = true;
     const cityTotal = Array.from(nextCities.values()).reduce((n, s) => n + s.size, 0);
     logger.log(
-      `🗂️ SLUG-EXISTENCE: loaded ${nextStations.size} station slugs, ${nextGenres.size} genre slugs, ${nextCountries.size} country slugs, ${cityTotal} city slugs across ${nextCities.size} countries (incl. ${fallbackCities} fallback cities across ${fallbackCountries} countries from station.state)`,
+      `🗂️ SLUG-EXISTENCE: loaded ${nextStations.size} station slugs (${nextAliasMap.size} aliases incl. ${junkAliasCount} junk-canonical), ${nextGenres.size} genre slugs, ${nextCountries.size} country slugs, ${cityTotal} city slugs across ${nextCities.size} countries (incl. ${fallbackCities} fallback cities across ${fallbackCountries} countries from station.state)`,
     );
   } catch (err: any) {
     logger.log(`⚠️ SLUG-EXISTENCE: load failed (${err?.message || err}) — keeping previous sets`);

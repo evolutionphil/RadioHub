@@ -2345,6 +2345,17 @@ export class SeoRenderer {
     // break the head markup (HTML attribute boundaries) and constitute an
     // SSR XSS vector if user-controlled. Architect Semrush review 2026-05-13.
     const esc = (s: any) => this.escapeHtml(String(s ?? ''));
+    // JSON-LD safe-stringify: escape `</` so a station name or description
+    // containing the literal string "</script>" cannot break out of the
+    // `<script type="application/ld+json">` element. Also escapes the
+    // U+2028 / U+2029 line separators which are valid in JSON but invalid
+    // bare in JavaScript source — defensive only, JSON-LD is parsed as
+    // JSON not JS, but cheap to keep. See OWASP "JSON in HTML script
+    // blocks" cheat sheet.
+    const jsonLd = (v: any) => JSON.stringify(v, null, 2)
+      .replace(/<\/(script)/gi, '<\\/$1')
+      .replace(/\u2028/g, '\\u2028')
+      .replace(/\u2029/g, '\\u2029');
     const safeTitle = esc(ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK));
     const safeDescription = esc(ensureDescriptionLength(seoTags.description));
     const safeOgTitle = esc(ensureTitleLength(seoTags.ogTitle, ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK)));
@@ -2393,27 +2404,27 @@ export class SeoRenderer {
     
     <!-- JSON-LD Structured Data for Rich Snippets -->
     <script type="application/ld+json">
-    ${JSON.stringify(websiteSchema, null, 2)}
+    ${jsonLd(websiteSchema)}
     </script>
     
     <script type="application/ld+json">
-    ${JSON.stringify(organizationSchema, null, 2)}
+    ${jsonLd(organizationSchema)}
     </script>
     ${breadcrumbSchema ? `
     <script type="application/ld+json">
-    ${JSON.stringify(breadcrumbSchema, null, 2)}
+    ${jsonLd(breadcrumbSchema)}
     </script>` : ''}
     ${faqPageSchema ? `
     <script type="application/ld+json">
-    ${JSON.stringify(faqPageSchema, null, 2)}
+    ${jsonLd(faqPageSchema)}
     </script>` : ''}
     ${radioStationSchema ? `
     <script type="application/ld+json">
-    ${JSON.stringify(radioStationSchema, null, 2)}
+    ${jsonLd(radioStationSchema)}
     </script>` : ''}
     ${popularStationsSchema ? `
     <script type="application/ld+json">
-    ${JSON.stringify(popularStationsSchema, null, 2)}
+    ${jsonLd(popularStationsSchema)}
     </script>` : ''}`;
   }
 }

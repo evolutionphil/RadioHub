@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
@@ -45,18 +45,15 @@ export default function RecommendationsPage({
   // ML Recommendations Hook
   const { userProfile, profileLoading } = useMLRecommendations();
   
-  // Pre-loaded mood stations cache - FORCE RELOAD with tags parameter
-  const [moodStationsCache, setMoodStationsCache] = useState<{ [key: string]: any[] }>({});
-  
-  // Helper function to get mood-based genres - MUST be defined before useEffect that uses it
+  // Helper function to get mood-based genres
   const getMoodGenres = (mood: string): string[] => {
     const moodGenreMap: { [key: string]: string[] } = {
-      'energetic': ['rock', 'classic rock', 'hard rock'], // Rock-focused for energetic
-      'party': ['dance', 'pop', 'hits', 'disco'], // Party-specific genres
-      'relaxed': ['country', 'adult contemporary', 'soft rock'], // Relaxed-specific genres  
-      'chill': ['jazz', 'ambient', 'new age', 'world music'], // Chill-specific genres
-      'focused': ['classical', 'instrumental', 'meditation'], // Focus-specific genres
-      'nostalgic': ['oldies', 'classic hits', '80s', '90s'] // Retro-specific genres
+      'energetic': ['rock', 'classic rock', 'hard rock', 'metal', 'punk', 'alternative'],
+      'party': ['dance', 'pop', 'hits', 'disco', 'edm', 'house', 'electronic', 'top 40'],
+      'relaxed': ['country', 'adult contemporary', 'soft rock', 'easy listening', 'acoustic', 'folk'],
+      'chill': ['jazz', 'ambient', 'new age', 'world music', 'lounge', 'chillout', 'smooth jazz'],
+      'focused': ['classical', 'instrumental', 'meditation', 'piano', 'orchestral', 'baroque'],
+      'nostalgic': ['oldies', 'classic hits', '80s', '90s', '70s', '60s', 'retro', 'vintage']
     };
     return moodGenreMap[mood] || [];
   };
@@ -66,47 +63,58 @@ export default function RecommendationsPage({
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  // Preload all mood-based stations from 7-day precomputed cache (single API call)
-  useEffect(() => {
-    setMoodStationsCache({});
-    const preloadMoodStations = async () => {
-      try {
-        // Single API call to get all global stations from 7-day cache
-        const response = await fetch('/api/stations/precomputed?countryName=global&page=1&limit=500');
-        if (!response.ok) throw new Error('Failed to fetch precomputed stations');
-        const result = await response.json();
-        const allStations = result.data || [];
-        
-        const moods = ['energetic', 'relaxed', 'focused', 'nostalgic', 'party', 'chill'];
-        const cache: { [key: string]: any[] } = {};
-        const globalUsedIds = new Set<string>();
-        
-        for (const mood of moods) {
-          const moodGenres = getMoodGenres(mood);
-          
-          // Filter stations by mood genres (client-side filtering from cached data)
-          const moodStations = allStations.filter((station: any) => {
-            if (globalUsedIds.has(station._id)) return false;
-            const tags = (station.tags || '').toLowerCase();
-            return moodGenres.some(genre => tags.includes(genre.toLowerCase()));
-          });
-          
-          // Sort by votes and take top 30
-          moodStations.sort((a: any, b: any) => (b.votes || 0) - (a.votes || 0));
-          const uniqueStations = moodStations.slice(0, 30);
-          
-          uniqueStations.forEach((station: any) => globalUsedIds.add(station._id));
-          cache[mood] = uniqueStations;
-        }
-        
-        setMoodStationsCache(cache);
-      } catch (error) {
-        console.warn('Failed to preload mood stations from cache:', error);
-      }
-    };
-    
-    preloadMoodStations();
-  }, [selectedCountry]);
+  // PERF (2026-05-13): mood selection used to be painfully slow because:
+  //   1. The preload was a useEffect that re-ran on every mount (no cache)
+  //      and pulled 500 stations from /api/stations/precomputed.
+  //   2. Three other queries (personalized, trending, discovery) all had
+  //      `selectedMood` in their queryKey, so clicking a mood button
+  //      triggered three additional network round-trips even though the
+  //      mood filter is 100% client-side.
+  //   3. The trending/discovery filter only used `slice(0, 2)` /
+  //      `slice(-2)` of the mood genre list, so most moods produced 0
+  //      matches and the UI sat empty until the user gave up.
+  // Fix: useQuery with 7-day staleTime for the preload (shared cross-mount
+  // cache), drop selectedMood from the other queryKeys, do mood filtering
+  // in useMemo, and broaden the genre lists.
+  const { data: allGlobalStationsForMoods = [] } = useQuery<any[]>({
+    queryKey: ['/api/stations/precomputed', 'global', 200, 'mood-pool'],
+    queryFn: async () => {
+      const response = await fetch('/api/stations/precomputed?countryName=global&page=1&limit=200');
+      if (!response.ok) throw new Error('Failed to fetch mood pool');
+      const result = await response.json();
+      return result.data || [];
+    },
+    staleTime: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  const moodStationsCache = useMemo(() => {
+    const allStations = Array.isArray(allGlobalStationsForMoods) ? allGlobalStationsForMoods : [];
+    if (allStations.length === 0) return {} as { [key: string]: any[] };
+
+    const moods = ['energetic', 'relaxed', 'focused', 'nostalgic', 'party', 'chill'];
+    const cache: { [key: string]: any[] } = {};
+    const globalUsedIds = new Set<string>();
+
+    for (const mood of moods) {
+      const moodGenres = getMoodGenres(mood).map((g) => g.toLowerCase());
+      const moodStations = allStations.filter((station: any) => {
+        if (globalUsedIds.has(station._id)) return false;
+        const tagsRaw = station.tags;
+        const tags = (typeof tagsRaw === 'string'
+          ? tagsRaw
+          : Array.isArray(tagsRaw) ? tagsRaw.join(',') : ''
+        ).toLowerCase();
+        const genre = (station.genre || '').toLowerCase();
+        return moodGenres.some((g) => tags.includes(g) || genre.includes(g));
+      });
+      moodStations.sort((a: any, b: any) => (b.votes || 0) - (a.votes || 0));
+      const top = moodStations.slice(0, 30);
+      top.forEach((s: any) => globalUsedIds.add(s._id));
+      cache[mood] = top;
+    }
+
+    return cache;
+  }, [allGlobalStationsForMoods]);
 
   // Handler functions for station play/stop
   const handlePlay = async (station: any, playlistName: string) => {
@@ -118,8 +126,10 @@ export default function RecommendationsPage({
   };
 
   // Fetch ML-powered personalized recommendations (PRIORITY 1 - Most specific)
+  // NOTE: selectedMood intentionally NOT in queryKey — mood is a client-side
+  // filter, refetching ML recs on every mood click is pure waste.
   const { data: personalizedStations = [] } = useQuery({
-    queryKey: ['/api/ml/recommendations', userProfile?.totalStationsListened, selectedCountry, selectedMood],
+    queryKey: ['/api/ml/recommendations', userProfile?.totalStationsListened, selectedCountry],
     queryFn: async () => {
       if (userProfile?.totalStationsListened) {
         // Get ML recommendations if available - use totalStationsListened as session identifier
@@ -157,55 +167,58 @@ export default function RecommendationsPage({
     enabled: true
   });
 
-  // Fetch trending stations from 7-day cache (client-side mood filtering)
-  const { data: trendingStations = [] } = useQuery({
-    queryKey: ['/api/stations/trending', selectedCountry, selectedMood],
+  // Fetch trending stations from 7-day cache. Mood filtering moved to a
+  // useMemo below — keeping it out of the queryKey means clicking a mood
+  // button reuses the cached response instead of triggering a refetch.
+  const { data: trendingStationsRaw = [] } = useQuery<any[]>({
+    queryKey: ['/api/stations/trending', selectedCountry],
     queryFn: async () => {
       const countryParam = selectedCountry === 'all' ? 'global' : selectedCountry;
       const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=50`);
       if (!response.ok) throw new Error('Failed to fetch trending stations');
       const result = await response.json();
-      let stations = result.data || [];
-      
-      // Client-side mood filtering
-      if (selectedMood) {
-        const moodGenres = getMoodGenres(selectedMood);
-        stations = stations.filter((s: any) => {
-          const tags = (s.tags || '').toLowerCase();
-          return moodGenres.slice(0, 2).some(genre => tags.includes(genre.toLowerCase()));
-        });
-      }
-      
-      return stations.slice(0, 12);
+      return result.data || [];
     },
     staleTime: 7 * 24 * 60 * 60 * 1000,
   });
 
-  // Fetch discovery stations from 7-day cache (shuffled for variety)
-  const { data: discoveryStations = [] } = useQuery({
-    queryKey: ['/api/stations/discovery', selectedCountry, selectedMood],
+  // Fetch discovery stations from 7-day cache. Same approach as trending.
+  const { data: discoveryStationsRaw = [] } = useQuery<any[]>({
+    queryKey: ['/api/stations/discovery', selectedCountry],
     queryFn: async () => {
       const countryParam = selectedCountry === 'all' ? 'global' : selectedCountry;
       const response = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=100`);
       if (!response.ok) throw new Error('Failed to fetch discovery stations');
       const result = await response.json();
-      let stations = result.data || [];
-      
-      // Client-side mood filtering
-      if (selectedMood) {
-        const moodGenres = getMoodGenres(selectedMood);
-        stations = stations.filter((s: any) => {
-          const tags = (s.tags || '').toLowerCase();
-          return moodGenres.slice(-2).some(genre => tags.includes(genre.toLowerCase()));
-        });
-      }
-      
-      // Shuffle for variety
-      const shuffled = [...stations].sort(() => Math.random() - 0.5);
-      return shuffled.slice(0, 12);
+      return result.data || [];
     },
     staleTime: 7 * 24 * 60 * 60 * 1000,
   });
+
+  // Client-side mood filter helper (no network calls).
+  const filterByMood = useCallback((stations: any[], mood: string): any[] => {
+    if (!mood) return stations;
+    const moodGenres = getMoodGenres(mood).map((g) => g.toLowerCase());
+    return stations.filter((s: any) => {
+      const tagsRaw = s.tags;
+      const tags = (typeof tagsRaw === 'string'
+        ? tagsRaw
+        : Array.isArray(tagsRaw) ? tagsRaw.join(',') : ''
+      ).toLowerCase();
+      const genre = (s.genre || '').toLowerCase();
+      return moodGenres.some((g) => tags.includes(g) || genre.includes(g));
+    });
+  }, []);
+
+  const trendingStations = useMemo(() => {
+    return filterByMood(trendingStationsRaw, selectedMood).slice(0, 12);
+  }, [trendingStationsRaw, selectedMood, filterByMood]);
+
+  const discoveryStations = useMemo(() => {
+    const filtered = filterByMood(discoveryStationsRaw, selectedMood);
+    const shuffled = [...filtered].sort(() => Math.random() - 0.5);
+    return shuffled.slice(0, 12);
+  }, [discoveryStationsRaw, selectedMood, filterByMood]);
 
   // Default stations from 7-day cache (top by votes)
   const { data: defaultStations = [] } = useQuery({
