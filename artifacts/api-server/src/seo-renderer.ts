@@ -2319,16 +2319,30 @@ export class SeoRenderer {
     const FINAL_TITLE_FALLBACK = 'Mega Radio: Free Live Radio from 120+ Countries';
     const FINAL_DESCRIPTION_FALLBACK = 'Mega Radio is your free online radio platform with 60,000+ live stations from 120+ countries.';
     const MAX_DESC_LEN = 160;
+    // Semrush 2026-05-13 audit: 444+ pages had <title> > 70 chars (mostly
+    // station-detail pages whose country part renders as the verbose UN
+    // long-form, e.g. "The United Kingdom Of Great Britain And Northern
+    // Ireland" or "The United States Of America"). Cap every emitted
+    // <title> / og:title / twitter:title at 70 characters with
+    // word-boundary truncation. NOTE: this runs AFTER getH1Text() so
+    // <h1> derivation (which uses the FULL untruncated title) is
+    // unaffected — only the HTML emission is capped.
+    const MAX_TITLE_LEN = 70;
+    const ensureTitleLength = (raw: any, fallback: string): string => {
+      const trimmed = (raw && String(raw).trim()) ? String(raw).trim() : '';
+      if (!trimmed) return truncateAtWordBoundary(fallback, MAX_TITLE_LEN);
+      return truncateAtWordBoundary(trimmed, MAX_TITLE_LEN);
+    };
     const ensureDescriptionLength = (raw: any): string => {
       const trimmed = (raw && String(raw).trim()) ? String(raw).trim() : '';
       if (!trimmed) return truncateAtWordBoundary(FINAL_DESCRIPTION_FALLBACK, MAX_DESC_LEN);
       return truncateAtWordBoundary(trimmed, MAX_DESC_LEN);
     };
-    const safeTitle = (seoTags.title && String(seoTags.title).trim()) ? seoTags.title : FINAL_TITLE_FALLBACK;
+    const safeTitle = ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK);
     const safeDescription = ensureDescriptionLength(seoTags.description);
-    const safeOgTitle = (seoTags.ogTitle && String(seoTags.ogTitle).trim()) ? seoTags.ogTitle : safeTitle;
+    const safeOgTitle = ensureTitleLength(seoTags.ogTitle, safeTitle);
     const safeOgDescription = ensureDescriptionLength(seoTags.ogDescription || safeDescription);
-    const safeTwitterTitle = (seoTags.twitterTitle && String(seoTags.twitterTitle).trim()) ? seoTags.twitterTitle : safeTitle;
+    const safeTwitterTitle = ensureTitleLength(seoTags.twitterTitle, safeTitle);
     const safeTwitterDescription = ensureDescriptionLength(seoTags.twitterDescription || safeDescription);
 
     return `
