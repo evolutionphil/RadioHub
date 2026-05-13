@@ -37,6 +37,7 @@ import NotificationContainer from "@/components/ui/NotificationContainer";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme-provider";
 import { TranslationPreloader } from "@/components/translation/TranslationPreloader";
+import { RecommendationsPrefetcher } from "@/components/recommendations/RecommendationsPrefetcher";
 import { useState, useEffect, useDeferredValue } from "react";
 import { useLocation } from "wouter";
 import { getLanguageFromPath } from "@workspace/seo-shared/seo-config";
@@ -1270,6 +1271,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
         <TranslationPreloader />
+        <RecommendationsPrefetcher />
         <ThemeProvider defaultTheme="system" storageKey="radio-ui-theme">
           <LazyGlobalPlayerProvider>
             <TooltipProvider>
