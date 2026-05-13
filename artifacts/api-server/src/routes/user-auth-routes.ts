@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import mongoose from 'mongoose';
-import { User, UserFollow, AuthToken, UserNotification, UserFavorite, StationRating, StationComment, UserListeningHistory, UserProfile, PublicUserProfile, ListeningSession, Recommendation, UserMusicProfile, PushToken, UserDevice, CastSession, DirectMessage, UserSession, Notification, AdvancedSearch, AnalyticsEvent, CastCommand, CastNowPlaying, TvLoginCode } from '@workspace/db-shared/mongo-schemas';
+import { User, UserFollow, AuthToken, UserNotification, UserFavorite, StationRating, StationComment, UserListeningHistory, UserProfile, PublicUserProfile, ListeningSession, Recommendation, UserMusicProfile, PushToken, UserDevice, CastSession, DirectMessage, UserSession, Notification, AdvancedSearch, AnalyticsEvent, CastCommand, CastNowPlaying, TvLoginCode, AuthEventLog } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 // 2026-05-13 hotfix: `deps` (built in routes.ts) does NOT export CacheKeys
@@ -11,6 +11,7 @@ import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 // 500'd. Import them directly from the cache module instead, mirroring
 // station-public-routes.ts / genres-countries-routes.ts.
 import CacheManager, { CacheKeys } from '../cache';
+import { logAuthEvent } from '../auth/auth-event-logger';
 
 // Build the canonical set of enabled language codes for OAuth referer parsing.
 // Used to distinguish a real language prefix (`/en`, `/tr`) from a route name
@@ -807,22 +808,27 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     const savedLang = (req.session as any)?.oauthReturnLang || '';
     const langPrefix = savedLang ? `/${savedLang}` : '';
     const frontendBase = process.env.FRONTEND_URL || '';
-    
-    passport.authenticate('google', { 
-      failureRedirect: `${frontendBase}${langPrefix}/?error=google_auth_failed` 
+    void logAuthEvent(req, { method: 'google', event: 'callback_received', ok: true, message: `lang=${savedLang || '(none)'} hasState=${!!req.query.state}` });
+
+    passport.authenticate('google', {
+      failureRedirect: `${frontendBase}${langPrefix}/?error=google_auth_failed`
     }, async (err: any, user: any, info: any) => {
       if (err) {
         logger.error('Google OAuth callback error:', err);
+        void logAuthEvent(req, { method: 'google', event: 'passport_error', ok: false, message: err?.message || String(err) });
         return void res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_failed`);
       }
       if (!user) {
+        void logAuthEvent(req, { method: 'google', event: 'no_user_returned', ok: false, message: info?.message || 'cancelled or rejected' });
         return void res.redirect(`${frontendBase}${langPrefix}/?error=google_auth_cancelled`);
       }
-      
+      void logAuthEvent(req, { method: 'google', event: 'profile_resolved', ok: true, email: user.email, userId: user._id?.toString() });
+
       try {
         const token = await generateAuthToken(user._id.toString(), 'web');
         logger.log(`✅ Google OAuth token generated for: ${user.email} userId=${user._id} tokenPrefix=${token.slice(0, 16)}… len=${token.length}`);
-        
+        void logAuthEvent(req, { method: 'google', event: 'token_issued', ok: true, email: user.email, userId: user._id?.toString(), message: `tokenLen=${token.length}` });
+
         // Resolve redirect target: prefer session, fall back to HMAC-signed
         // `state` query param (set in /api/auth/google) so the redirect still
         // lands the user on /tv (or wherever they started) even when the
@@ -866,14 +872,18 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         // Use buildRedirectWithToken so existing query strings or fragments
         // in returnTo are preserved (e.g. `/en/tv?ref=abc#section`).
         if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+          void logAuthEvent(req, { method: 'google', event: 'redirect_with_token', ok: true, email: user.email, userId: user._id?.toString(), message: `to=${returnTo}` });
           return void res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
         }
+        void logAuthEvent(req, { method: 'google', event: 'redirect_with_token', ok: true, email: user.email, userId: user._id?.toString(), message: `to=${langPrefix}/` });
         res.redirect(buildRedirectWithToken(frontendBase, `${langPrefix}/`, token));
-      } catch (tokenErr) {
+      } catch (tokenErr: any) {
         logger.error('Google OAuth token generation error:', tokenErr);
-        
+        void logAuthEvent(req, { method: 'google', event: 'token_generation_error', ok: false, email: user.email, userId: user._id?.toString(), message: tokenErr?.message || String(tokenErr) });
+
         req.login(user, (loginErr: any) => {
           if (loginErr) {
+            void logAuthEvent(req, { method: 'google', event: 'session_login_error', ok: false, email: user.email, userId: user._id?.toString(), message: loginErr?.message || String(loginErr) });
             return void res.redirect(`${frontendBase}${langPrefix}/?error=login_failed`);
           }
           (req.session as any).user = {
@@ -882,6 +892,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             role: user.role
           };
           req.session.save(() => {
+            void logAuthEvent(req, { method: 'google', event: 'session_fallback_redirect', ok: true, email: user.email, userId: user._id?.toString() });
             res.redirect(`${frontendBase}${langPrefix}/?success=google_login`);
           });
         });
@@ -902,19 +913,22 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     const frontendBase = process.env.FRONTEND_URL || '';
     const savedLang = (req.session as any)?.oauthReturnLang || '';
     const langPrefix = savedLang ? `/${savedLang}` : '';
-    
+    void logAuthEvent(req, { method: 'apple', event: 'callback_received', ok: true, message: `lang=${savedLang || '(none)'} hasCode=${!!req.body?.code} hasIdToken=${!!req.body?.id_token}` });
+
     try {
       const { code, id_token, state, user: userDataStr } = req.body;
-      
+
       if (!code && !id_token) {
         logger.error('🍎 Apple callback: No code or id_token received');
+        void logAuthEvent(req, { method: 'apple', event: 'missing_credentials', ok: false, message: 'no code and no id_token in body' });
         return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
       }
-      
+
       const savedState = (req.session as any)?.appleOAuthState;
       delete (req.session as any).appleOAuthState;
       if (!state || !savedState || state !== savedState) {
         logger.error('🍎 Apple OAuth state mismatch or missing', { state: !!state, savedState: !!savedState });
+        void logAuthEvent(req, { method: 'apple', event: 'state_mismatch', ok: false, message: `state=${!!state} savedState=${!!savedState}` });
         return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
       }
       
@@ -930,8 +944,9 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             audience: clientId,
           });
           applePayload = payload;
-        } catch (verifyErr) {
+        } catch (verifyErr: any) {
           logger.error('🍎 Apple id_token verification failed:', verifyErr);
+          void logAuthEvent(req, { method: 'apple', event: 'id_token_verify_failed', ok: false, message: verifyErr?.message || String(verifyErr) });
           return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
         }
       } else if (code) {
@@ -955,6 +970,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
           if (!tokenResponse.ok) {
             const errorText = await tokenResponse.text();
             logger.error('🍎 Apple token exchange failed:', errorText);
+            void logAuthEvent(req, { method: 'apple', event: 'token_exchange_http_error', ok: false, message: `status=${tokenResponse.status}`, detail: { body: errorText.slice(0, 500) } });
             return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
           }
           
@@ -965,16 +981,18 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
             audience: clientId,
           });
           applePayload = payload;
-        } catch (tokenErr) {
+        } catch (tokenErr: any) {
           logger.error('🍎 Apple token exchange error:', tokenErr);
+          void logAuthEvent(req, { method: 'apple', event: 'token_exchange_error', ok: false, message: tokenErr?.message || String(tokenErr) });
           return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
         }
       }
-      
+
       if (!applePayload || !applePayload.sub) {
+        void logAuthEvent(req, { method: 'apple', event: 'invalid_payload', ok: false, message: 'no sub in apple payload' });
         return void res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
       }
-      
+
       const appleId = applePayload.sub;
       const appleEmail = applePayload.email;
       let appleFullName: string | undefined;
@@ -989,7 +1007,8 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       }
       
       logger.log('🍎 Apple OAuth callback for:', appleId, appleEmail);
-      
+      void logAuthEvent(req, { method: 'apple', event: 'profile_resolved', ok: true, email: appleEmail, message: `appleId=${appleId}` });
+
       let user = await User.findOne({ appleId: appleId });
       
       if (user) {
@@ -1044,24 +1063,29 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       try {
         const token = await generateAuthToken((user as any)._id.toString(), 'web');
         logger.log('✅ Apple OAuth token generated for:', (user as any).email);
-        
+        void logAuthEvent(req, { method: 'apple', event: 'token_issued', ok: true, email: (user as any).email, userId: (user as any)._id?.toString(), message: `tokenLen=${token.length}` });
+
         const returnTo = (req.session as any)?.oauthReturnTo;
         delete (req.session as any).oauthReturnTo;
         delete (req.session as any).oauthReturnLang;
-        
+
         // Re-validate returnTo (defence in depth — session could carry an
         // unsanitized value from a legacy cookie). Use buildRedirectWithToken
         // so existing query strings or fragments are preserved correctly.
         if (returnTo && typeof returnTo === 'string' && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+          void logAuthEvent(req, { method: 'apple', event: 'redirect_with_token', ok: true, email: (user as any).email, userId: (user as any)._id?.toString(), message: `to=${returnTo}` });
           return void res.redirect(buildRedirectWithToken(frontendBase, returnTo, token));
         }
+        void logAuthEvent(req, { method: 'apple', event: 'redirect_with_token', ok: true, email: (user as any).email, userId: (user as any)._id?.toString(), message: `to=${langPrefix}/` });
         res.redirect(buildRedirectWithToken(frontendBase, `${langPrefix}/`, token));
-      } catch (tokenErr) {
+      } catch (tokenErr: any) {
         logger.error('🍎 Apple OAuth token generation error:', tokenErr);
+        void logAuthEvent(req, { method: 'apple', event: 'token_generation_error', ok: false, email: (user as any)?.email, userId: (user as any)?._id?.toString(), message: tokenErr?.message || String(tokenErr) });
         res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error('🍎 Apple OAuth callback error:', error);
+      void logAuthEvent(req, { method: 'apple', event: 'unhandled_error', ok: false, message: error?.message || String(error) });
       res.redirect(`${frontendBase}${langPrefix}/?error=apple_auth_failed`);
     }
   });
@@ -1300,25 +1324,31 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
   // MOBILE AUTH: Login with token response
   app.post("/api/auth/mobile/login", async (req, res) => {
+    const emailRaw = req.body?.email;
+    void logAuthEvent(req, { method: 'mobile-email', event: 'request_received', ok: true, email: emailRaw, message: `deviceType=${req.body?.deviceType || 'mobile'}` });
     try {
       const { email, password, deviceType = 'mobile', deviceName } = req.body;
 
       if (!email || !password) {
+        void logAuthEvent(req, { method: 'mobile-email', event: 'missing_credentials', ok: false, email: emailRaw });
         return void res.status(400).json({ error: 'Email and password are required' });
       }
 
       const user = await User.findOne({ email });
       if (!user) {
+        void logAuthEvent(req, { method: 'mobile-email', event: 'user_not_found', ok: false, email });
         return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
       const bcrypt = await import('bcrypt');
       const isValid = await bcrypt.default.compare(password, user.passwordHash);
       if (!isValid) {
+        void logAuthEvent(req, { method: 'mobile-email', event: 'wrong_password', ok: false, email, userId: user._id?.toString() });
         return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
       if (user.status !== 'active') {
+        void logAuthEvent(req, { method: 'mobile-email', event: 'account_inactive', ok: false, email, userId: user._id?.toString(), message: `status=${user.status}` });
         return void res.status(403).json({ error: 'Account is suspended or inactive' });
       }
 
@@ -1327,6 +1357,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       await user.save();
 
       const token = await generateAuthToken(user._id.toString(), deviceType, deviceName);
+      void logAuthEvent(req, { method: 'mobile-email', event: 'token_issued', ok: true, email, userId: user._id?.toString(), message: `device=${deviceType} tokenLen=${token.length}` });
 
       res.json({
         success: true,
@@ -1341,25 +1372,31 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
           avatar: user.avatar,
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Mobile login error:', error);
+      void logAuthEvent(req, { method: 'mobile-email', event: 'unhandled_error', ok: false, email: emailRaw, message: error?.message || String(error) });
       res.status(500).json({ error: 'Login failed' });
     }
   });
 
   // User Signup
   app.post("/api/auth/signup", async (req, res) => {
+    const emailRaw = req.body?.email;
+    void logAuthEvent(req, { method: 'email', event: 'signup_request_received', ok: true, email: emailRaw, message: `username=${req.body?.username}` });
     try {
       const { fullName, username, email, password } = req.body;
 
       if (!fullName || !username || !email || !password) {
+        void logAuthEvent(req, { method: 'email', event: 'signup_missing_fields', ok: false, email: emailRaw });
         return void res.status(400).json({ error: 'All fields are required' });
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
+        void logAuthEvent(req, { method: 'email', event: 'signup_invalid_email', ok: false, email });
         return void res.status(400).json({ error: 'Invalid email format' });
       }
       if (password.length < 8) {
+        void logAuthEvent(req, { method: 'email', event: 'signup_weak_password', ok: false, email, message: `len=${password.length}` });
         return void res.status(400).json({ error: 'Password must be at least 8 characters long' });
       }
       if (username.length < 3 || username.length > 30) {
@@ -1372,6 +1409,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       // Check if user exists
       const existingUser = await User.findOne({ $or: [{ email: email.toLowerCase().trim() }, { username }] });
       if (existingUser) {
+        void logAuthEvent(req, { method: 'email', event: 'signup_duplicate', ok: false, email, message: `username=${username}` });
         return void res.status(400).json({ error: 'User with this email or username already exists' });
       }
 
@@ -1410,6 +1448,7 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
       await newUser.save();
       logger.log(`✅ User created with slug: "${userSlug}" (${email})`);
+      void logAuthEvent(req, { method: 'email', event: 'signup_user_created', ok: true, email: normalizedEmail, userId: newUser._id?.toString(), message: `slug=${userSlug}` });
 
       // Return user data (without sensitive fields)
       const userData = {
@@ -1428,28 +1467,34 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
         user: userData,
         emailVerificationRequired: true
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Signup error:', error);
+      void logAuthEvent(req, { method: 'email', event: 'signup_unhandled_error', ok: false, email: emailRaw, message: error?.message || String(error) });
       res.status(500).json({ error: 'Failed to create account' });
     }
   });
 
   // User login
   app.post("/api/auth/login", async (req, res) => {
+    const emailRaw = req.body?.email;
+    void logAuthEvent(req, { method: 'email', event: 'login_request_received', ok: true, email: emailRaw, message: `rememberMe=${!!req.body?.rememberMe}` });
     try {
       const { email, password, rememberMe } = req.body;
 
       if (!email || !password) {
+        void logAuthEvent(req, { method: 'email', event: 'login_missing_credentials', ok: false, email: emailRaw });
         return void res.status(400).json({ error: 'Email and password are required' });
       }
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
+        void logAuthEvent(req, { method: 'email', event: 'login_invalid_email_format', ok: false, email });
         return void res.status(400).json({ error: 'Invalid email format' });
       }
 
       // Find user by email
       const user = await User.findOne({ email: email.toLowerCase().trim() });
       if (!user) {
+        void logAuthEvent(req, { method: 'email', event: 'login_user_not_found', ok: false, email });
         return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
@@ -1457,13 +1502,16 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const bcrypt = await import('bcrypt');
       const isValidPassword = await bcrypt.default.compare(password, user.passwordHash);
       if (!isValidPassword) {
+        void logAuthEvent(req, { method: 'email', event: 'login_wrong_password', ok: false, email, userId: user._id?.toString() });
         return void res.status(401).json({ error: 'Invalid email or password' });
       }
 
       // Check if account is active
       if (user.status !== 'active') {
+        void logAuthEvent(req, { method: 'email', event: 'login_account_inactive', ok: false, email, userId: user._id?.toString(), message: `status=${user.status}` });
         return void res.status(403).json({ error: 'Account is suspended or inactive' });
       }
+      void logAuthEvent(req, { method: 'email', event: 'login_credentials_ok', ok: true, email, userId: user._id?.toString() });
 
       // Update last login
       user.lastLoginAt = new Date();
@@ -1493,9 +1541,10 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       req.login(user, async (err) => {
         if (err) {
           console.error('Session login error:', err);
+          void logAuthEvent(req, { method: 'email', event: 'login_session_error', ok: false, email, userId: user._id?.toString(), message: err?.message || String(err) });
           return void res.status(500).json({ error: 'Failed to create session' });
         }
-        
+
         // Custom session data
         (req.session as any).user = {
           userId: user._id.toString(),
@@ -1509,22 +1558,25 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
 
         if (deviceType === 'mobile' || deviceType === 'tv') {
           const authToken = await generateAuthToken(user._id.toString(), deviceType, deviceName);
-          res.json({ 
-            message: 'Login successful', 
+          void logAuthEvent(req, { method: 'email', event: 'login_success_with_token', ok: true, email, userId: user._id?.toString(), message: `device=${deviceType} tokenLen=${authToken.length}` });
+          res.json({
+            message: 'Login successful',
             user: userData,
             authenticated: true,
             token: authToken,
             tokenExpiresIn: '90 days'
           });
         } else {
-          res.json({ 
-            message: 'Login successful', 
+          void logAuthEvent(req, { method: 'email', event: 'login_success_session', ok: true, email, userId: user._id?.toString(), message: `sessionId=${req.sessionID?.slice(0, 12) || '?'}` });
+          res.json({
+            message: 'Login successful',
             user: userData,
             authenticated: true
           });
         }
       });
-    } catch (error) {
+    } catch (error: any) {
+      void logAuthEvent(req, { method: 'email', event: 'login_unhandled_error', ok: false, email: emailRaw, message: error?.message || String(error) });
       res.status(500).json({ error: 'Failed to login' });
     }
   });
@@ -2225,6 +2277,76 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     } catch (error: any) {
       logger.error('Account deletion error:', error.message);
       res.status(500).json({ success: false, message: 'Could not delete account' });
+    }
+  });
+
+  // 2026-05-13: minimal listening-history endpoint that returns the last
+  // ~20 stations the logged-in user listened to. Previously the client
+  // (profile-discover.tsx) called this URL and the server had no route, so
+  // every profile load produced an infinite TanStack-Query 404 retry loop.
+  // The route is intentionally tolerant — auth is OPTIONAL and the response
+  // is always a 200 with an array (possibly empty) so the client never has
+  // to special-case 401/404 again.
+  app.get("/api/user/last-played", async (req, res) => {
+    try {
+      const sessionUser = (req.session as any)?.user;
+      const passportUser = (req.user as any);
+      const userId = sessionUser?.userId || passportUser?._id?.toString() || passportUser?.id;
+      if (!userId) {
+        return void res.json([]);
+      }
+      const rows = await UserListeningHistory
+        .find({ userId, interactionType: { $in: ['play', 'favorite'] } })
+        .sort({ listenedAt: -1 })
+        .limit(20)
+        .lean();
+      const seen = new Set<string>();
+      const result = rows
+        .filter((r: any) => {
+          if (!r.stationId || seen.has(r.stationId)) return false;
+          seen.add(r.stationId);
+          return true;
+        })
+        .map((r: any) => ({
+          stationId: r.stationId,
+          name: r.stationName,
+          country: r.country,
+          genre: r.genre,
+          lastPlayedAt: r.listenedAt,
+        }));
+      res.json(result);
+    } catch (error: any) {
+      logger.error('last-played fetch error:', error?.message || error);
+      res.json([]);
+    }
+  });
+
+  // 2026-05-13: admin-only viewer for the persistent auth event log. Lets
+  // the operator inspect the last N login attempts (Google / Apple / Email
+  // — both web and mobile flows) even if Railway has restarted the process
+  // or the user has refreshed the page since the failure happened. Filters
+  // are simple string matches; results are capped at 500 rows.
+  app.get("/api/admin/auth-events", requireAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit || '200'), 10) || 200, 1), 500);
+      const filter: any = {};
+      if (req.query.method) filter.method = String(req.query.method);
+      if (req.query.email) filter.email = String(req.query.email).toLowerCase();
+      if (req.query.ok === 'true') filter.ok = true;
+      if (req.query.ok === 'false') filter.ok = false;
+      if (req.query.event) filter.event = String(req.query.event);
+      const sinceMs = parseInt(String(req.query.sinceMs || ''), 10);
+      if (sinceMs > 0) filter.ts = { $gte: new Date(Date.now() - sinceMs) };
+
+      const rows = await AuthEventLog.find(filter).sort({ ts: -1 }).limit(limit).lean();
+      res.json({
+        count: rows.length,
+        filter: { ...filter, ts: filter.ts ? `>= ${filter.ts.$gte.toISOString()}` : undefined },
+        events: rows,
+      });
+    } catch (error: any) {
+      logger.error('auth-events viewer error:', error?.message || error);
+      res.status(500).json({ error: 'Failed to load auth events' });
     }
   });
 }

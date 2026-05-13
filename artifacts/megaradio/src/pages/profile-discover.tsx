@@ -195,11 +195,27 @@ export default function ProfileDiscover() {
   const genres = (Array.isArray(genresData) ? genresData : (genresData as any)?.genres || []).slice(0, 8);
   const genresLoading = !genres || genres.length === 0;
 
-  // Fetch user's listening history  
+  // Fetch user's listening history. Uses an explicit queryFn so a 404 (which
+  // legitimately means "no history yet") returns [] instead of throwing —
+  // the previous default queryFn rethrew, putting TanStack Query in a retry
+  // loop that flooded the console with hundreds of GET 404 lines on every
+  // freshly-logged-in profile load (2026-05-13 Chrome console report).
   const { data: lastPlayedStations = [], isLoading: lastPlayedLoading } = useQuery<any[]>({
     queryKey: ["/api/user/last-played"],
     enabled: !!user?._id,
     staleTime: 30 * 60 * 1000,
+    retry: false,
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/user/last-played", { credentials: "include" });
+        if (res.status === 404 || res.status === 401) return [];
+        if (!res.ok) return [];
+        const json = await res.json();
+        return Array.isArray(json) ? json : (json?.stations || []);
+      } catch {
+        return [];
+      }
+    },
   });
 
   // Fetch general stations from 7-day cache for "Similar stations you like"

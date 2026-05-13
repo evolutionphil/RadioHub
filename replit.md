@@ -52,6 +52,35 @@ A shared reverse proxy routes by path:
 - `/api/*` → api-server (port 8080)
 - `/` → megaradio Vite dev server (port 22507)
 
+## Auth event logging (login debug trail)
+
+Every Google / Apple / Email (web + mobile) login attempt is funnelled
+through `logAuthEvent()` in
+`artifacts/api-server/src/auth/auth-event-logger.ts`. The helper does
+two things on every checkpoint (callback received, profile resolved,
+token issued, session saved, every error branch, redirect):
+
+1. Prints a single-line structured `✅ AUTH …` / `❌ AUTH …` record to
+   stdout so it shows up in the Railway live tail.
+2. Persists the same record to the `auth_event_logs` MongoDB collection
+   (model: `AuthEventLog` in `lib/db-shared/src/mongo-schemas.ts`) via a
+   `setImmediate` so the auth response is never blocked. The collection
+   has a 30-day TTL on `ts`.
+
+The persisted log survives Railway process restarts AND page refreshes,
+which is the whole point — debug traces no longer disappear when the
+user reloads after a failed login.
+
+To inspect the log, hit `GET /api/admin/auth-events` (admin-only). Query
+params: `limit` (1-500, default 200), `method`
+(`google|apple|email|mobile-email|mobile-apple|mobile-google`),
+`email`, `event`, `ok=true|false`, `sinceMs` (window in ms — e.g.
+`?sinceMs=3600000` for the last hour).
+
+NEVER log raw passwords, tokens, or full JWTs — the helper already
+truncates `message` (500 chars) and free-form `detail` is intended for
+HTTP status codes / Apple error bodies / similar non-secret context.
+
 ## Sitemap operations
 
 - The top-30 country list embedded in `/sitemap-main-{lang}.xml` is computed

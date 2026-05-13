@@ -4081,3 +4081,45 @@ PublicUserProfileSchema.index({ userId: 1 }, { sparse: true });
 // ---- StationPlaybackCache: time-based cleanup of stale entries
 StationPlaybackCacheSchema.index({ updatedAt: -1 });
 
+
+// ==================== Auth Event Log (login debug trail) ====================
+// 2026-05-13: kalıcı login akış logları — Railway prosesi yeniden başlasa
+// veya kullanıcı sayfayı yenilese bile MongoDB'de saklanır. 30 gün TTL.
+// Her Google / Apple / Email login isteğinin tüm aşamaları (callback alındı,
+// profil çözüldü, token üretildi, session yazıldı, hata vb.) buraya
+// kaydedilir; admin /api/admin/auth-events üzerinden son N kaydı okuyabilir.
+
+export interface IAuthEventLog extends Document {
+  ts: Date;
+  method: 'google' | 'apple' | 'facebook' | 'email' | 'mobile-email' | 'mobile-apple' | 'mobile-google';
+  event: string;
+  ok: boolean;
+  email?: string | null;
+  userId?: mongoose.Types.ObjectId | null;
+  ip?: string;
+  userAgent?: string;
+  message?: string;
+  detail?: any;
+}
+
+const AuthEventLogSchema = new Schema<IAuthEventLog>({
+  ts: { type: Date, default: Date.now },
+  method: { type: String, required: true },
+  event: { type: String, required: true },
+  ok: { type: Boolean, required: true },
+  email: { type: String, default: null },
+  userId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  ip: String,
+  userAgent: String,
+  message: String,
+  detail: Schema.Types.Mixed,
+}, { collection: 'auth_event_logs' });
+
+AuthEventLogSchema.index({ ts: -1 });
+AuthEventLogSchema.index({ method: 1, ts: -1 });
+AuthEventLogSchema.index({ email: 1, ts: -1 });
+AuthEventLogSchema.index({ ok: 1, ts: -1 });
+// 30-day TTL keeps debug history without bloating the collection.
+AuthEventLogSchema.index({ ts: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
+
+export const AuthEventLog = mongoose.model<IAuthEventLog>('AuthEventLog', AuthEventLogSchema);
