@@ -4,6 +4,13 @@ import "./index.css";
 import { measureCoreWebVitals } from "./utils/performance";
 import { initImageOptimizations } from "./utils/image-optimization";
 import { initAsyncStyles, loadWebFonts, addResourceHints } from './utils/async-css-loader';
+import { initOAuthTokenExchange } from './lib/oauth-token-exchange';
+
+// CRITICAL: must run BEFORE App renders so the /api/auth/me query cache is
+// pre-seeded (with either {_pendingTokenExchange:true} placeholder OR the
+// hydrated user) before any component subscribes to it. Otherwise the first
+// /me fetch would race with the token-session POST.
+initOAuthTokenExchange();
 
 const VITE_API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 if (VITE_API_BASE) {

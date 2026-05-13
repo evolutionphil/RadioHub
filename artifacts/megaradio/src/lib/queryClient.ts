@@ -81,8 +81,9 @@ export const getQueryFn: <T>(options: {
     
     // Forward TanStack Query's AbortSignal so queryClient.cancelQueries(...)
     // actually aborts in-flight fetches. Without this the OAuth token-exchange
-    // race-fix in useAuth.tsx is a no-op for any query that uses this default
-    // queryFn (notably /api/auth/me read by 16+ components via useAuth.ts).
+    // race-fix in lib/oauth-token-exchange.ts is a no-op for any query that
+    // uses this default queryFn (notably /api/auth/me read by 16+ components
+    // via useAuth.ts).
     const res = await fetch(url, {
       credentials: "include",
       signal,

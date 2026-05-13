@@ -4104,7 +4104,11 @@ export interface IAuthEventLog extends Document {
 
 const AuthEventLogSchema = new Schema<IAuthEventLog>({
   ts: { type: Date, default: Date.now },
-  method: { type: String, required: true },
+  method: {
+    type: String,
+    required: true,
+    enum: ['google', 'apple', 'facebook', 'email', 'mobile-email', 'mobile-apple', 'mobile-google'],
+  },
   event: { type: String, required: true },
   ok: { type: Boolean, required: true },
   email: { type: String, default: null },
