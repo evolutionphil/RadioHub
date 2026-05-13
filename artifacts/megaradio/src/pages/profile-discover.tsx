@@ -134,35 +134,31 @@ export default function ProfileDiscover() {
     };
   }, [favoriteIds]);
 
-  // Fetch popular stations from 7-day cache (hasLogo→votes sorted)
-  const { data: popularStationsData = [], isLoading: popularLoading } = useQuery({
-    queryKey: ["/api/stations/popular-country", countryCode],
+  // PERF: this page used to fire FIVE parallel /api/stations/precomputed
+  // requests (country×30, country×50, global×30 unused, global×100, global×100)
+  // which made first-load very slow. Consolidated to TWO shared queries:
+  //   - countryStationsData: one country fetch (limit 50) feeding both
+  //     "popular stations" (top 30) and "surprise me" (full 50).
+  //   - globalStationsRaw: one global fetch (limit 100) feeding similar +
+  //     hybrid random + surprise me.
+  // The previously-fetched-but-unused popular-global-fallback was deleted.
+  const { data: countryStationsData = [], isLoading: popularLoading } = useQuery({
+    queryKey: ["/api/stations/country", countryCode],
     queryFn: async () => {
       if (!countryCode) return [];
-      const response = await fetch(`/api/stations/precomputed?countryName=${countryCode}&page=1&limit=30`, {
+      const response = await fetch(`/api/stations/precomputed?countryName=${countryCode}&page=1&limit=50`, {
         credentials: "include",
       });
-      if (!response.ok) throw new Error("Failed to fetch popular stations");
+      if (!response.ok) throw new Error("Failed to fetch country stations");
       const result = await response.json();
       return result.data || [];
     },
     enabled: !!countryCode,
     staleTime: 7 * 24 * 60 * 60 * 1000,
   });
-  
-  // Fetch global popular from 7-day cache
-  const { data: globalPopularData = [] } = useQuery({
-    queryKey: ["/api/stations/popular-global-fallback"],
-    queryFn: async () => {
-      const response = await fetch("/api/stations/precomputed?countryName=global&page=1&limit=30", {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Failed to fetch global popular");
-      const result = await response.json();
-      return result.data || [];
-    },
-    staleTime: 7 * 24 * 60 * 60 * 1000,
-  });
+  const popularStationsData = countryStationsData;
+  const localStationsRaw = countryStationsData;
+  const localStationsLoading = popularLoading;
   
   const popularStations = useMemo(() => {
     const rawCountry = Array.isArray(popularStationsData) ? popularStationsData : [];
@@ -218,9 +214,10 @@ export default function ProfileDiscover() {
     },
   });
 
-  // Fetch general stations from 7-day cache for "Similar stations you like"
-  const { data: similarStationsData = [], isLoading: similarLoading } = useQuery<any>({
-    queryKey: ["/api/stations"],
+  // SHARED global query — feeds "Similar stations you like", "Discover Random
+  // Stations", and "Surprise Me". Single 100-station fetch instead of three.
+  const { data: globalStationsRaw = [], isLoading: globalStationsLoading } = useQuery<any[]>({
+    queryKey: ["/api/stations/global-100"],
     queryFn: async () => {
       const response = await fetch("/api/stations/precomputed?countryName=global&page=1&limit=100", {
         credentials: "include",
@@ -231,41 +228,12 @@ export default function ProfileDiscover() {
     },
     staleTime: 7 * 24 * 60 * 60 * 1000,
   });
-  
-  const similarStations = useMemo(() => {
-    const all = (Array.isArray(similarStationsData) ? similarStationsData : (similarStationsData as any)?.stations || []).slice(0, 100);
-    return filterOutFavorites(all).slice(0, 6);
-  }, [similarStationsData, filterOutFavorites]);
+  const similarLoading = globalStationsLoading;
 
-  // Fetch global stations from 7-day cache for random selection
-  const { data: globalStationsRaw = [], isLoading: globalStationsLoading } = useQuery({
-    queryKey: ["/api/stations/global-random"],
-    queryFn: async () => {
-      const response = await fetch("/api/stations/precomputed?countryName=global&page=1&limit=100", {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Failed to fetch stations");
-      const result = await response.json();
-      return result.data || [];
-    },
-    staleTime: 7 * 24 * 60 * 60 * 1000,
-  });
-  
-  // Fetch local country stations from 7-day cache
-  const { data: localStationsRaw = [], isLoading: localStationsLoading } = useQuery({
-    queryKey: ["/api/stations/local-random", countryCode],
-    queryFn: async () => {
-      if (!countryCode) return [];
-      const response = await fetch(`/api/stations/precomputed?countryName=${countryCode}&page=1&limit=50`, {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Failed to fetch local stations");
-      const result = await response.json();
-      return result.data || [];
-    },
-    enabled: !!countryCode,
-    staleTime: 7 * 24 * 60 * 60 * 1000,
-  });
+  const similarStations = useMemo(() => {
+    const all = (Array.isArray(globalStationsRaw) ? globalStationsRaw : []).slice(0, 100);
+    return filterOutFavorites(all).slice(0, 6);
+  }, [globalStationsRaw, filterOutFavorites]);
   
   // Diverse random stations: 6 stations from 6 DIFFERENT countries (no duplicates, REAL logos only)
   const hybridRandomStations = useMemo(() => {

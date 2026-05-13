@@ -89,17 +89,44 @@ export function usePushNotifications(): UsePushNotificationsResult {
       return false;
     }
 
+    // Browsers refuse to re-prompt once the user has hard-denied. Calling
+    // Notification.requestPermission() in that state silently returns
+    // 'denied' without surfacing any UI, so the toast we used to show was
+    // confusing ("I clicked enable and got Denied without seeing a prompt").
+    // Detect this up front and route the user to the per-browser unblock
+    // instructions instead.
+    const currentPerm =
+      typeof window !== 'undefined' && 'Notification' in window
+        ? Notification.permission
+        : 'denied';
+    if (currentPerm === 'denied') {
+      setPermission('denied');
+      const isChromium = /Chrome|Edg|Brave|Opera/.test(navigator.userAgent);
+      const isFirefox = /Firefox/.test(navigator.userAgent);
+      const isSafari = /Safari/.test(navigator.userAgent) && !/Chrome|Edg/.test(navigator.userAgent);
+      const detail = isChromium
+        ? 'In Chrome/Edge: click the lock icon in the address bar → Site settings → Notifications → Allow → reload.'
+        : isFirefox
+          ? 'In Firefox: click the lock icon → Connection secure → More information → Permissions → Send notifications → Allow.'
+          : isSafari
+            ? 'In Safari: Settings → Websites → Notifications → find this site → Allow.'
+            : 'Open your browser settings, find this site under Notifications, set it to Allow, then reload.';
+      error('Notifications Blocked by Browser', detail);
+      return false;
+    }
+
     setIsLoading(true);
     try {
       const granted = await pushManager.requestPermission();
       setPermission(pushManager.getPermissionStatus());
-      
+
       if (granted) {
         success('Permission Granted', 'You can now receive push notifications!');
       } else {
-        error('Permission Denied', 'Push notifications are blocked. Please enable them in your browser settings.');
+        // 'default' here means the user dismissed the prompt without choosing.
+        error('Permission Not Granted', 'You closed the prompt. Click Enable again and choose Allow.');
       }
-      
+
       return granted;
     } catch (err) {
       error('Permission Error', 'Failed to request notification permission.');

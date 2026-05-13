@@ -1976,15 +1976,6 @@ export default function RadioHeader({
             <span className="text-white text-sm font-medium">Messages</span>
           </Link>
           
-          <Link 
-            href={getLocalizedUrl("/profile/records")}
-            onClick={() => setIsMobileProfileMenuOpen(false)}
-            className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
-          >
-            <img src="/rec.png" alt="Records" className="w-5 h-5 mr-3" />
-            <span className="text-white text-sm font-medium">Records</span>
-          </Link>
-          
           <div className="border-t border-[#2D2D2D] my-1"></div>
           
           <Link 

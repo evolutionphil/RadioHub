@@ -187,13 +187,6 @@ export function UserMenuDropdown() {
               {t('user_menu_discover', 'Discover')}
             </Link>
             <Link
-              href="/profile/records"
-              className="block px-4 py-2 text-sm text-gray-200 hover:bg-[#2F2F2F] hover:text-white transition-colors"
-              onClick={() => setIsOpen(false)}
-            >
-              {t('user_menu_records', 'Records')}
-            </Link>
-            <Link
               href="/profile/settings"
               className="block px-4 py-2 text-sm text-gray-200 hover:bg-[#2F2F2F] hover:text-white transition-colors"
               onClick={() => setIsOpen(false)}

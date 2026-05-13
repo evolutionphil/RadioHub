@@ -1,7 +1,7 @@
 import { useAuth } from "@/hooks/useAuth";
 import { useLocation } from "wouter";
 import { useState, useEffect, startTransition } from "react";
-import { Menu, X } from "lucide-react";
+import { Menu, X, Heart, Compass, User as UserIcon, MessageCircle, MessageSquareWarning, LogOut } from "lucide-react";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useQuery } from "@tanstack/react-query";
 
@@ -41,7 +41,6 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
       import("@/pages/profile-discover"),
       import("@/pages/profile-settings"),
       import("@/pages/notifications-view"),
-      import("@/pages/notifications"),
     ]);
   }, []);
 
@@ -73,22 +72,22 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
             {/* Main Navigation Links - Reference: space-y-5 */}
             <div className="space-y-5 pt-10">
               <NavLink href={getLocalizedUrl("/profile/favorites")} isActive={isActive(getLocalizedUrl("/profile/favorites"))}>
-                <div className="mr-5"><img src="/favorites.png" alt="Favorites" className="w-6 h-6" /></div>
+                <div className="mr-5"><Heart className="w-6 h-6 text-[#FF4199]" /></div>
                 <div className="text-base font-bold">Your Favorites</div>
               </NavLink>
 
               <NavLink href={getLocalizedUrl("/profile/discover")} isActive={isActive(getLocalizedUrl("/profile/discover"))}>
-                <div className="mr-5"><img src="/discovery.png" alt="Discover" className="w-6 h-6" /></div>
+                <div className="mr-5"><Compass className="w-6 h-6 text-[#FF4199]" /></div>
                 <div className="text-base font-bold">Discover</div>
               </NavLink>
 
               <NavLink href={getLocalizedUrl("/profile/settings")} isActive={isActive(getLocalizedUrl("/profile/settings"))}>
-                <div className="mr-5"><img src="/profile.png" alt="Profile" className="w-6 h-6" /></div>
+                <div className="mr-5"><UserIcon className="w-6 h-6 text-[#FF4199]" /></div>
                 <div className="text-base font-bold">Profile</div>
               </NavLink>
 
               <NavLink href={getLocalizedUrl("/profile/messages")} isActive={isActive(getLocalizedUrl("/profile/messages"))}>
-                <div className="mr-5"><img src="/sms.png" alt="Messages" className="w-6 h-6" /></div>
+                <div className="mr-5"><MessageCircle className="w-6 h-6 text-[#FF4199]" /></div>
                 <div className="text-base font-bold flex-1">Messages</div>
                 {unreadCount > 0 && (
                   <span className="bg-[#FF4199] text-white text-[12px] font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center">
@@ -96,17 +95,12 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
                   </span>
                 )}
               </NavLink>
-
-              <NavLink href={getLocalizedUrl("/profile/records")} isActive={isActive(getLocalizedUrl("/profile/records"))}>
-                <div className="mr-5"><img src="/rec.png" alt="Records" className="w-6 h-6" /></div>
-                <div className="text-base font-bold">Records</div>
-              </NavLink>
             </div>
 
             {/* Bottom Navigation Links */}
             <div className="mb-4 space-y-5">
               <NavLink href={getLocalizedUrl("/feedback")} isActive={isActive(getLocalizedUrl("/feedback"))}>
-                <div className="mr-5"><img src="/feedback.png" alt="Feedback" className="w-6 h-6" /></div>
+                <div className="mr-5"><MessageSquareWarning className="w-6 h-6 text-[#FF4199]" /></div>
                 <div className="text-base font-bold">Feedback</div>
               </NavLink>
 
@@ -123,7 +117,7 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
                 className="flex cursor-pointer items-center rounded px-5 py-3"
               >
                 <div className="mr-5">
-                  <img src="/logout.png" alt="Logout" className="w-6 h-6" />
+                  <LogOut className="w-6 h-6 text-[#FF4199]" />
                 </div>
                 <div className="text-base font-bold">Logout</div>
               </div>
