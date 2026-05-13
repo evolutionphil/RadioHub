@@ -2338,12 +2338,25 @@ export class SeoRenderer {
       if (!trimmed) return truncateAtWordBoundary(FINAL_DESCRIPTION_FALLBACK, MAX_DESC_LEN);
       return truncateAtWordBoundary(trimmed, MAX_DESC_LEN);
     };
-    const safeTitle = ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK);
-    const safeDescription = ensureDescriptionLength(seoTags.description);
-    const safeOgTitle = ensureTitleLength(seoTags.ogTitle, safeTitle);
-    const safeOgDescription = ensureDescriptionLength(seoTags.ogDescription || safeDescription);
-    const safeTwitterTitle = ensureTitleLength(seoTags.twitterTitle, safeTitle);
-    const safeTwitterDescription = ensureDescriptionLength(seoTags.twitterDescription || safeDescription);
+    // CRITICAL: every dynamic value below MUST go through escapeHtml() before
+    // being interpolated into the HTML head — station names, descriptions,
+    // OG image URLs, canonical/hreflang URLs and any other DB-sourced string
+    // can legitimately contain `"`, `<`, `>` or `&` which would otherwise
+    // break the head markup (HTML attribute boundaries) and constitute an
+    // SSR XSS vector if user-controlled. Architect Semrush review 2026-05-13.
+    const esc = (s: any) => this.escapeHtml(String(s ?? ''));
+    const safeTitle = esc(ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK));
+    const safeDescription = esc(ensureDescriptionLength(seoTags.description));
+    const safeOgTitle = esc(ensureTitleLength(seoTags.ogTitle, ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK)));
+    const safeOgDescription = esc(ensureDescriptionLength(seoTags.ogDescription || seoTags.description));
+    const safeTwitterTitle = esc(ensureTitleLength(seoTags.twitterTitle, ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK)));
+    const safeTwitterDescription = esc(ensureDescriptionLength(seoTags.twitterDescription || seoTags.description));
+    const safeOgType = esc(seoTags.ogType || 'website');
+    const safeCanonical = esc(seoTags.canonical || '');
+    const safeOgImage = esc(ogImage);
+    const safeOgLocale = esc(seoTags.ogLocale || 'en_US');
+    const safeTwitterImage = esc(twitterImage);
+    const safeRobots = esc(seoTags.robots || 'index, follow');
 
     return `
     <title>${safeTitle}</title>
@@ -2353,30 +2366,30 @@ export class SeoRenderer {
     <!-- Enhanced Open Graph tags -->
     <meta property="og:title" content="${safeOgTitle}">
     <meta property="og:description" content="${safeOgDescription}">
-    <meta property="og:type" content="${seoTags.ogType || 'website'}">
-    <meta property="og:url" content="${seoTags.canonical || ''}">
-    <meta property="og:image" content="${ogImage}">
+    <meta property="og:type" content="${safeOgType}">
+    <meta property="og:url" content="${safeCanonical}">
+    <meta property="og:image" content="${safeOgImage}">
     <meta property="og:image:width" content="1200">
     <meta property="og:image:height" content="630">
     <meta property="og:site_name" content="MegaRadio">
-    <meta property="og:locale" content="${seoTags.ogLocale || 'en_US'}">
-    ${(seoTags.ogLocaleAlternates || []).map((locale: string) => `<meta property="og:locale:alternate" content="${locale}">`).join('\n    ')}
+    <meta property="og:locale" content="${safeOgLocale}">
+    ${(seoTags.ogLocaleAlternates || []).map((locale: string) => `<meta property="og:locale:alternate" content="${esc(locale)}">`).join('\n    ')}
     
     <!-- Enhanced Twitter Card tags -->
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="${safeTwitterTitle}">
     <meta name="twitter:description" content="${safeTwitterDescription}">
-    <meta name="twitter:image" content="${twitterImage}">
+    <meta name="twitter:image" content="${safeTwitterImage}">
     <meta name="twitter:site" content="@MegaRadio">
     <meta name="twitter:creator" content="@MegaRadio">
     
     <!-- Additional meta tags -->
-    <meta name="robots" content="${seoTags.robots || 'index, follow'}">
+    <meta name="robots" content="${safeRobots}">
     <meta name="theme-color" content="#1a1a2e">
     <meta name="msapplication-TileColor" content="#1a1a2e">
     
-    ${seoTags.canonical ? `<link rel="canonical" href="${seoTags.canonical}" data-managed="seo-head">` : ''}
-    ${seoTags.hreflangs ? seoTags.hreflangs.map((h: any) => `<link rel="alternate" hreflang="${h.hreflang}" href="${h.url}" data-managed="seo-head">`).join('\n    ') : ''}
+    ${seoTags.canonical ? `<link rel="canonical" href="${safeCanonical}" data-managed="seo-head">` : ''}
+    ${seoTags.hreflangs ? seoTags.hreflangs.map((h: any) => `<link rel="alternate" hreflang="${esc(h.hreflang)}" href="${esc(h.url)}" data-managed="seo-head">`).join('\n    ') : ''}
     
     <!-- JSON-LD Structured Data for Rich Snippets -->
     <script type="application/ld+json">
