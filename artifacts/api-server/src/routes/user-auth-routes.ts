@@ -3,6 +3,14 @@ import mongoose from 'mongoose';
 import { User, UserFollow, AuthToken, UserNotification, UserFavorite, StationRating, StationComment, UserListeningHistory, UserProfile, PublicUserProfile, ListeningSession, Recommendation, UserMusicProfile, PushToken, UserDevice, CastSession, DirectMessage, UserSession, Notification, AdvancedSearch, AnalyticsEvent, CastCommand, CastNowPlaying, TvLoginCode } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
+// 2026-05-13 hotfix: `deps` (built in routes.ts) does NOT export CacheKeys
+// or CacheManager — three sites in this file used to do
+// `const { CacheKeys, CacheManager } = deps;` which threw at runtime
+// (`Cannot read properties of undefined (reading 'userSocial')`),
+// breaking the post-OAuth profile flow because /api/user/social/:email
+// 500'd. Import them directly from the cache module instead, mirroring
+// station-public-routes.ts / genres-countries-routes.ts.
+import CacheManager, { CacheKeys } from '../cache';
 
 // Build the canonical set of enabled language codes for OAuth referer parsing.
 // Used to distinguish a real language prefix (`/en`, `/tr`) from a route name
@@ -549,7 +557,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
     try {
       const { email } = req.params;
       
-      const { CacheKeys, CacheManager } = deps;
       const cacheKey = CacheKeys.userSocial(email);
       const cached = await CacheManager.get(cacheKey);
       if (cached) {
@@ -1979,7 +1986,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const limit = parseInt(req.query.limit as string) || 20;
       const skip = (page - 1) * limit;
 
-      const { CacheKeys, CacheManager } = deps;
       const cacheKey = CacheKeys.userFollowers(userId, page, limit);
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
@@ -2016,7 +2022,6 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
       const limit = parseInt(req.query.limit as string) || 20;
       const skip = (page - 1) * limit;
 
-      const { CacheKeys, CacheManager } = deps;
       const cacheKey = CacheKeys.userFollowing(userId, page, limit);
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);

@@ -9,21 +9,14 @@ export function loadAsyncCSS(href: string, media = 'all'): void {
 }
 
 export function loadResponsiveCSS(): void {
-  // Load device-specific CSS based on screen size
-  const isMobile = window.innerWidth <= 768;
-  const isDesktop = window.innerWidth > 768;
-
-  // Load appropriate device-specific styles
-  if (isMobile) {
-    loadAsyncCSS('/styles/mobile.css', '(max-width: 768px)');
-  } else if (isDesktop) {
-    loadAsyncCSS('/styles/desktop.css', '(min-width: 769px)');
-  }
-
-  // Load non-critical styles after initial render
-  setTimeout(() => {
-    loadAsyncCSS('/styles/non-critical.css');
-  }, 100);
+  // 2026-05-13: previously loaded /styles/{mobile,desktop,non-critical}.css
+  // from /public, but those files were never shipped — every visitor got
+  // a console error ("Refused to apply style ... MIME type 'text/html'")
+  // because the SPA fallback returned the React index page for the
+  // missing CSS URLs. All responsive/non-critical rules are already
+  // bundled into the main Tailwind/index.css build, so this is now
+  // intentionally a no-op. Kept the export so call sites in main.tsx
+  // and any future hooks remain stable.
 }
 
 export function initAsyncStyles(): void {
