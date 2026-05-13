@@ -221,6 +221,20 @@ export default function Footer() {
                       <Link to={getLocalizedUrl("/contact")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_contact', 'Contact')}
                       </Link>
+                      {/* Internal-link boost: Semrush flagged ~60+ localized
+                          URLs (per the May 2026 audit) for /lang/recommendations
+                          and /lang/users as having only one internal link
+                          site-wide. Linking them from the global footer gives
+                          most public pages a discovery edge to both (the
+                          footer is intentionally hidden on profile/admin/
+                          standalone views), which should clear the warning
+                          on the next crawl. */}
+                      <Link to={getLocalizedUrl("/recommendations")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {t('footer_recommendations', 'Recommendations')}
+                      </Link>
+                      <Link to={getLocalizedUrl("/users")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {t('footer_users', 'Listeners')}
+                      </Link>
                       <Link to={getLocalizedUrl("/pages/terms-and-conditions")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_terms', 'Terms and Co.')}
                       </Link>

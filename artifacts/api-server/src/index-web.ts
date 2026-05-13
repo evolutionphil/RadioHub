@@ -100,8 +100,13 @@ app.get('/llms.txt', (req, res) => {
   // of which route ultimately serves the request (avoids host-header
   // driven divergence flagged in code review).
   const baseUrl = getBaseUrl(req);
+  // Format per llmstxt.org: exactly ONE H1 (the project name) at the top.
+  // Earlier versions had a second `# https://llmstxt.org/` line that was
+  // intended as a comment, but markdown has no comment syntax — `#` at the
+  // start of a line is parsed as another H1, which Semrush (and the
+  // llmstxt validator) flag as "Multiple H1". Removed.
   const body = `# MegaRadio
-# https://llmstxt.org/
+
 ${baseUrl}/
 
 ## Sitemaps
@@ -109,7 +114,7 @@ ${baseUrl}/sitemap-index.xml
 ${baseUrl}/robots.txt
 
 ## Key sections
-${baseUrl}/en/stations
+${baseUrl}/en/radios
 ${baseUrl}/en/genres
 ${baseUrl}/en/regions
 ${baseUrl}/en/about

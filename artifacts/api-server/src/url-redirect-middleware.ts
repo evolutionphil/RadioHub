@@ -107,6 +107,46 @@ const STATION_DETAIL_ALIASES = new Map<string, { canonical: string; aliases: Set
   });
 })();
 
+// =====================================================================
+// STATION-LIST CANONICAL ALIAS MAP
+// =====================================================================
+// Listing-page counterpart of the detail-page collapse above.
+// Same three URL synonyms but at the 2-segment listing level
+// (/lang/{seg}, no slug):
+//   /az/stansiya, /az/radio   (singular vs radios)
+//   /hr/stanica,  /hr/radio
+//   /de/sender,   /de/radios
+//   /it/stazione, /it/stazioni, /it/radio
+//   /en/station,  /en/stations, /en/radios
+// Canonical = URL_TRANSLATIONS[lang].radios (or 'radios' for English)
+// because the SPA mounts the listing component at the literal /radios
+// route (artifacts/megaradio/src/App.tsx ~line 255), and the SPA's
+// reverse-translation already maps /lang/{radios-translated} back to
+// the /radios route handler.
+//
+// NOTE: The bare root /lang vs /lang/{radios-translated} duplicate
+// (e.g. /hr vs /hr/radio) is NOT addressed here — redirecting the
+// language root would break the home page UX. That requires either a
+// rel=canonical link from the SPA or a separate strategy.
+// =====================================================================
+const STATION_LIST_ALIASES = new Map<string, { canonical: string; aliases: Set<string> }>();
+(function buildStationListAliases() {
+  for (const [lang, tr] of Object.entries(URL_TRANSLATIONS)) {
+    const canonical = tr.radios;
+    if (!canonical) continue;
+    const aliases = new Set<string>();
+    if (tr.station && tr.station !== canonical) aliases.add(tr.station);
+    if (tr.stations && tr.stations !== canonical) aliases.add(tr.stations);
+    if (aliases.size > 0) {
+      STATION_LIST_ALIASES.set(lang, { canonical, aliases });
+    }
+  }
+  STATION_LIST_ALIASES.set('en', {
+    canonical: 'radios',
+    aliases: new Set(['station', 'stations']),
+  });
+})();
+
 function detectLanguageFromRequest(req: Request): string {
   const cfCountry = (req.headers['cf-ipcountry'] as string || '').toLowerCase();
   if (cfCountry && cfCountry !== 'xx' && cfCountry !== 't1' && COUNTRY_TO_LANGUAGE[cfCountry]) {
@@ -279,6 +319,18 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
       const aliasInfo = STATION_DETAIL_ALIASES.get(lang);
       if (aliasInfo && aliasInfo.aliases.has(segments[1])) {
         segments[1] = aliasInfo.canonical;
+      }
+    }
+
+    // ---- Step 7: station-list synonym collapse ----
+    // 2-segment listing pages: /it/stazione, /it/stazioni → /it/radio
+    // Canonical = URL_TRANSLATIONS[lang].radios because the SPA mounts
+    // the listing component at /radios literal route. Bare root /lang
+    // is intentionally untouched (home page).
+    else if (segments.length === 2) {
+      const listInfo = STATION_LIST_ALIASES.get(lang);
+      if (listInfo && listInfo.aliases.has(segments[1])) {
+        segments[1] = listInfo.canonical;
       }
     }
   }

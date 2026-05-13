@@ -930,8 +930,12 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // shell was served as HTML 200, breaking the contract.
   app.get("/llms.txt", (req, res) => {
     const baseUrl = getBaseUrl(req);
+    // Format per llmstxt.org: exactly ONE H1 (the project name) at the top.
+    // The previous `# https://llmstxt.org/` second line was parsed as a
+    // second H1 (markdown has no `#` comment syntax) and Semrush flagged
+    // it as "Multiple H1". Removed.
     const body = `# MegaRadio
-# https://llmstxt.org/
+
 ${baseUrl}/
 
 ## Sitemaps
@@ -939,7 +943,7 @@ ${baseUrl}/sitemap-index.xml
 ${baseUrl}/robots.txt
 
 ## Key sections
-${baseUrl}/en/stations
+${baseUrl}/en/radios
 ${baseUrl}/en/genres
 ${baseUrl}/en/regions
 ${baseUrl}/en/about
