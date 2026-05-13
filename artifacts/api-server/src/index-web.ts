@@ -94,39 +94,35 @@ app.get('/healthz', (_req, res) => res.status(200).send('ok'));
 // emitting an HTML response. Mounting the handler here, immediately after
 // `/healthz`, guarantees nothing else can shadow it. Body intentionally
 // kept identical to the canonical handler so the contract doesn't drift.
-app.get('/llms.txt', (req, res) => {
+app.get('/llms.txt', async (req, res) => {
   // Use the same canonical baseUrl helper as the shadowed handler in
   // routes/seo-sitemap-routes.ts so the body is byte-identical regardless
   // of which route ultimately serves the request (avoids host-header
   // driven divergence flagged in code review).
   const baseUrl = getBaseUrl(req);
-  // Format per llmstxt.org: exactly ONE H1 (the project name) at the top.
-  // Earlier versions had a second `# https://llmstxt.org/` line that was
-  // intended as a comment, but markdown has no comment syntax — `#` at the
-  // start of a line is parsed as another H1, which Semrush (and the
-  // llmstxt validator) flag as "Multiple H1". Removed.
-  const body = `# MegaRadio
-
-${baseUrl}/
-
-## Sitemaps
-${baseUrl}/sitemap-index.xml
-${baseUrl}/robots.txt
-
-## Key sections
-${baseUrl}/en/radios
-${baseUrl}/en/genres
-${baseUrl}/en/regions
-${baseUrl}/en/about
-${baseUrl}/en/faq
-${baseUrl}/en/contact
-${baseUrl}/en/privacy-policy
-${baseUrl}/en/terms-and-conditions
-`;
-  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-  res.setHeader('Cache-Control', 'public, max-age=86400');
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.status(200).send(body);
+  // 2026-05-13 architect P0 (GEO ingestion expansion): the body is now
+  // assembled by `buildLlmsTxtBody()` which adds an About paragraph,
+  // per-language entry points (qualified langs only), top-30 countries
+  // pulled from the active main sitemap manifest and top-20 genres
+  // computed from a 6h-cached aggregation. Both /llms.txt handlers
+  // (this one and the canonical one in routes/seo-sitemap-routes.ts)
+  // call the SAME helper so the output is byte-identical.
+  try {
+    const { buildLlmsTxtBody } = await import('./seo/llms-txt-builder');
+    const body = await buildLlmsTxtBody(baseUrl);
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=86400');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.status(200).send(body);
+  } catch (err) {
+    // Defensive: if the builder throws (Mongo down, etc.) emit the
+    // historical minimal body so /llms.txt never returns the SPA shell.
+    const fallback = `# MegaRadio\n\n${baseUrl}/\n\n## Sitemaps\n${baseUrl}/sitemap-index.xml\n${baseUrl}/robots.txt\n\n## Key sections\n${baseUrl}/en/radios\n${baseUrl}/en/genres\n${baseUrl}/en/regions\n${baseUrl}/en/about\n${baseUrl}/en/faq\n${baseUrl}/en/contact\n${baseUrl}/en/privacy-policy\n${baseUrl}/en/terms-and-conditions\n`;
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.status(200).send(fallback);
+  }
 });
 
 app.get('/health', async (_req, res) => {

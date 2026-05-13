@@ -928,33 +928,26 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // Task #128: /llms.txt advertises crawl-friendly entry points to AI agents
   // and Google's LLM probes. Must be plain-text — without this route the SPA
   // shell was served as HTML 200, breaking the contract.
-  app.get("/llms.txt", (req, res) => {
+  // 2026-05-13: body is now assembled by `buildLlmsTxtBody()` (adds About,
+  // localized entry points, top countries/genres). Same helper is used by
+  // the early-mounted shadow handler in `index-web.ts` so the bytes are
+  // identical regardless of which route serves the request.
+  app.get("/llms.txt", async (req, res) => {
     const baseUrl = getBaseUrl(req);
-    // Format per llmstxt.org: exactly ONE H1 (the project name) at the top.
-    // The previous `# https://llmstxt.org/` second line was parsed as a
-    // second H1 (markdown has no `#` comment syntax) and Semrush flagged
-    // it as "Multiple H1". Removed.
-    const body = `# MegaRadio
-
-${baseUrl}/
-
-## Sitemaps
-${baseUrl}/sitemap-index.xml
-${baseUrl}/robots.txt
-
-## Key sections
-${baseUrl}/en/radios
-${baseUrl}/en/genres
-${baseUrl}/en/regions
-${baseUrl}/en/about
-${baseUrl}/en/faq
-${baseUrl}/en/contact
-${baseUrl}/en/privacy-policy
-${baseUrl}/en/terms-and-conditions
-`;
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.status(200).send(body);
+    try {
+      const { buildLlmsTxtBody } = await import('../seo/llms-txt-builder');
+      const body = await buildLlmsTxtBody(baseUrl);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.status(200).send(body);
+    } catch {
+      const fallback = `# MegaRadio\n\n${baseUrl}/\n\n## Sitemaps\n${baseUrl}/sitemap-index.xml\n${baseUrl}/robots.txt\n\n## Key sections\n${baseUrl}/en/radios\n${baseUrl}/en/genres\n${baseUrl}/en/regions\n${baseUrl}/en/about\n${baseUrl}/en/faq\n${baseUrl}/en/contact\n${baseUrl}/en/privacy-policy\n${baseUrl}/en/terms-and-conditions\n`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.status(200).send(fallback);
+    }
   });
 
   // Robots.txt generator

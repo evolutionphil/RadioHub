@@ -934,6 +934,130 @@ export class SeoRenderer {
       }
     }
     // -----------------------------------------------------------------------
+    // ---- Station cross-link fetch (architect P0, GEO + crawl) ------------
+    // Server-render up to three "Discover more" sections in the station body
+    // so AI bots / one-shot crawlers / Googlebot's first pass all see crawl
+    // edges to neighbouring entities WITHOUT needing the React app to
+    // hydrate. Sections:
+    //   • Similar in <country>   (8, sorted by votes)
+    //   • More <primary genre>   (8, sorted by votes)
+    //   • Stations in <state>    (6, only when stationData.state present)
+    // Skipped when the station itself is noindex/junk/not-found (avoids
+    // bleeding crawl budget into a page Google is already supposed to drop).
+    // Each list is junk/noIndex-filtered (mirrors the sitemap manifest's
+    // own filter at sitemap-manifest-builder.ts:553 — junk pages must NOT
+    // be advertised anywhere indexable). All three queries run in parallel
+    // with a hard 4s budget so SSR latency cannot regress when Mongo is
+    // slow; partial / empty results just hide the corresponding section.
+    if (
+      pageType === 'station' &&
+      stationData &&
+      !stationNotFound &&
+      seoTags?.noIndex !== true
+    ) {
+      try {
+        const selfId = stationData._id;
+        const country = stationData.country;
+        const primaryTag = (() => {
+          const raw = Array.isArray(stationData.tags)
+            ? stationData.tags
+            : (typeof stationData.tags === 'string'
+                ? String(stationData.tags).split(',')
+                : []);
+          for (const t of raw) {
+            const trimmed = String(t || '').trim();
+            if (trimmed) return trimmed;
+          }
+          return '';
+        })();
+        const stateName: string = (stationData.state || '').toString().trim();
+
+        const baseFilter: any = {
+          $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+          $and: [
+            { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
+            { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
+          ],
+        };
+        if (selfId) baseFilter._id = { $ne: selfId };
+        const projection = 'name slug favicon logoAssets country tags votes';
+
+        const sameCountryQ = country
+          ? withSignal(
+              Station.find({ ...baseFilter, country })
+                .sort({ votes: -1 })
+                .limit(8)
+                .select(projection)
+                .lean()
+                .maxTimeMS(3500),
+              signal,
+            )
+          : Promise.resolve([]);
+
+        const sameGenreQ = primaryTag
+          ? withSignal(
+              Station.find({
+                ...baseFilter,
+                tags: { $regex: new RegExp(`(^|,)\\s*${primaryTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(,|$)`, 'i') },
+              })
+                .sort({ votes: -1 })
+                .limit(8)
+                .select(projection)
+                .lean()
+                .maxTimeMS(3500),
+              signal,
+            )
+          : Promise.resolve([]);
+
+        const sameCityQ = stateName
+          ? withSignal(
+              Station.find({ ...baseFilter, state: stateName })
+                .sort({ votes: -1 })
+                .limit(6)
+                .select(projection)
+                .lean()
+                .maxTimeMS(3500),
+              signal,
+            )
+          : Promise.resolve([]);
+
+        const [sameCountry, sameGenre, sameCity] = await Promise.all([
+          sameCountryQ.catch(() => []),
+          sameGenreQ.catch(() => []),
+          sameCityQ.catch(() => []),
+        ]);
+
+        // Deduplicate across the three lists so the same station never
+        // shows up twice. Country list wins (broadest), then genre, then
+        // city. Final caps: 8/8/6.
+        const seen = new Set<string>();
+        const dedupe = (arr: any[], cap: number) => {
+          const out: any[] = [];
+          for (const s of arr) {
+            const key = String(s?._id || s?.slug || '');
+            if (!key || seen.has(key)) continue;
+            seen.add(key);
+            out.push(s);
+            if (out.length >= cap) break;
+          }
+          return out;
+        };
+
+        additionalData.crossLinks = {
+          sameCountry: dedupe(sameCountry as any[], 8),
+          sameGenre: dedupe(sameGenre as any[], 8),
+          sameCity: dedupe(sameCity as any[], 6),
+          countryName: country || '',
+          genreName: primaryTag,
+          cityName: stateName,
+        };
+      } catch (e: any) {
+        if (e?.name === 'AbortError' || signal?.aborted) throw e;
+        // Non-fatal — render the page without cross-link sections rather
+        // than 500'ing on a Mongo glitch. The base nav still renders.
+      }
+    }
+
     // Map internal pageTypes to database format
     const dbPageTypeMap: Record<string, string> = {
       'home': 'homepage',
@@ -1729,6 +1853,70 @@ export class SeoRenderer {
                   })() : ''}
                 </section>
                 
+                ${(() => {
+                  // ---- Cross-link sections (architect P0: GEO + crawl) ---
+                  // Server-rendered "Discover more" lists so AI bots and a
+                  // crawler's first pass discover neighbouring stations
+                  // without needing the React client to hydrate. Data is
+                  // fetched in parallel up in renderStaticPage and stored
+                  // on additionalData.crossLinks; if the fetch produced
+                  // empty arrays the corresponding section is silently
+                  // skipped (no empty <ul>). Sizes are capped at 8/8/6
+                  // and de-duplicated across lists.
+                  const xl = (additionalData as any)?.crossLinks;
+                  if (!xl) return '';
+                  const stationSegment =
+                    urlTranslations?.get(`${language}:station`) || 'station';
+                  const renderItem = (s: any) => {
+                    const slug = s?.slug || s?._id;
+                    if (!slug) return '';
+                    const url = `/${language}/${stationSegment}/${slug}`;
+                    const name = this.escapeHtml(s?.name || 'Radio Station');
+                    return `<li><a href="${url}">${name}</a></li>`;
+                  };
+                  const sections: string[] = [];
+                  if (xl.sameCountry?.length) {
+                    const localizedCountry = xl.countryName
+                      ? this.escapeHtml(getLocalizedCountryName(xl.countryName, language))
+                      : '';
+                    const heading = localizedCountry
+                      ? `${this.escapeHtml(getLocalizedText('similar_in_country', 'More radio stations from'))} ${localizedCountry}`
+                      : this.escapeHtml(getLocalizedText('similar_stations', 'Similar stations'));
+                    sections.push(`
+                <section class="related-stations related-stations--country">
+                  <h2>${heading}</h2>
+                  <ul>${xl.sameCountry.map(renderItem).join('')}</ul>
+                </section>`);
+                  }
+                  if (xl.sameGenre?.length) {
+                    const genreLabel = xl.genreName
+                      ? this.escapeHtml(String(xl.genreName))
+                      : '';
+                    const heading = genreLabel
+                      ? `${this.escapeHtml(getLocalizedText('more_genre_stations', 'More radio stations in'))} ${genreLabel}`
+                      : this.escapeHtml(getLocalizedText('related_stations', 'Related stations'));
+                    sections.push(`
+                <section class="related-stations related-stations--genre">
+                  <h2>${heading}</h2>
+                  <ul>${xl.sameGenre.map(renderItem).join('')}</ul>
+                </section>`);
+                  }
+                  if (xl.sameCity?.length) {
+                    const cityLabel = xl.cityName
+                      ? this.escapeHtml(String(xl.cityName))
+                      : '';
+                    const heading = cityLabel
+                      ? `${this.escapeHtml(getLocalizedText('stations_in_city', 'Radio stations in'))} ${cityLabel}`
+                      : this.escapeHtml(getLocalizedText('nearby_stations', 'Nearby stations'));
+                    sections.push(`
+                <section class="related-stations related-stations--city">
+                  <h2>${heading}</h2>
+                  <ul>${xl.sameCity.map(renderItem).join('')}</ul>
+                </section>`);
+                  }
+                  return sections.join('\n');
+                })()}
+
                 <!-- Navigation -->
                 <nav class="explore-nav">
                   <ul>
