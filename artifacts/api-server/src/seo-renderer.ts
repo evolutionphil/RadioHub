@@ -1330,27 +1330,74 @@ export class SeoRenderer {
       return val ? val : (FALLBACK_TEXTS[key] || '');
     };
 
+    // Semrush 2026-05-13 audit: 2,039 pages had identical <title> and <h1>
+    // because both used the same template strings (architect's investigation
+    // confirmed). Google explicitly warns this looks "over-optimized". The
+    // strategy below keeps each <title> keyword-rich (best for SERP CTR)
+    // and renders a SHORTER, page-focused <h1> derived from but distinct
+    // from the title.
+    //
+    // `deriveH1FromTitle` covers BOTH layout patterns we use:
+    //   1. "About Mega Radio — Free Online Radio Platform"  → "About Mega Radio"
+    //      (static-page-seo-templates.ts puts the brand in the MIDDLE; first
+    //      em-dash segment is the focused heading.)
+    //   2. "Terms and Conditions — Mega Radio"              → "Terms and Conditions"
+    //      (legal-seo-templates.ts puts brand at the END; same split rule
+    //      still gives the correct heading.)
+    //   3. "Foo Bar | Mega Radio"                           → "Foo Bar"
+    //      (genre / region listing fallbacks; pipe-suffix branch.)
+    //   4. "تواصل مع Mega Radio" (no separator, brand mid-sentence)
+    //      → "تواصل مع" (final fallback strips standalone "Mega Radio"
+    //      anywhere in the string and collapses whitespace).
+    const deriveH1FromTitle = (s: string): string => {
+      const emDashIdx = s.indexOf(' — ');
+      if (emDashIdx > 0) return s.slice(0, emDashIdx).trim();
+      const pipeStripped = s.replace(/\s*\|\s*Mega\s+Radio\s*$/i, '').trim();
+      if (pipeStripped && pipeStripped !== s) return pipeStripped;
+      // Final fallback for single-phrase titles with brand mid-sentence
+      // (e.g. AR contact "تواصل مع Mega Radio"). Strip the standalone
+      // brand token anywhere it appears, collapse whitespace. Returns
+      // input unchanged if removal would leave an empty string.
+      const brandStripped = s
+        .replace(/\s*Mega\s+Radio\s*/gi, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return brandStripped && brandStripped !== s ? brandStripped : s;
+    };
+
     switch (pageType) {
       case 'home':
-        // CRITICAL SEO FIX: H1 MUST match page title for SEO optimization
-        // Use the EXACT same text that appears in <title> tag to guarantee alignment
-        // This ensures "Words from page title are used in H1" requirement is met
-        return seoTags?.title || getLocalizedText('hero_worlds_best_radio');
+        // H1 = bare localized hero phrase. The <title> generated in
+        // seo-config.ts (home case) is augmented with a " | Mega Radio"
+        // brand suffix when it doesn't already contain the brand, so the
+        // two strings always differ even when meta_title is unset.
+        return getLocalizedText('hero_worlds_best_radio');
       
       case 'station':
         if (stationData) {
-          return seoTags?.title || this.escapeHtml(generateLocalizedStationTitle(stationData, language, translations));
+          // H1 = "{station_name} {country_part}" — drop the trailing
+          // " — Listen Live" CTA that the title carries. Keeps the
+          // station + location keywords for SEO while remaining distinct
+          // from <title>.
+          const fullTitle = generateLocalizedStationTitle(stationData, language, translations);
+          // generateLocalizedStationTitle format: `{name}{country_part} — {listen_live}`
+          // Trim everything from the last " — " onward.
+          const dashIdx = fullTitle.lastIndexOf(' — ');
+          const h1Source = dashIdx > 0 ? fullTitle.slice(0, dashIdx) : fullTitle;
+          return this.escapeHtml(h1Source);
         }
-        return getLocalizedText('stations_page_title');
+        return deriveH1FromTitle(getLocalizedText('stations_page_title'));
       
       case 'genres':
         if (additionalData?.genreName) {
           // Use multilingual helper so TR/DE/ES/etc. don't show English "Radio Stations"
           // when the legacy DB keys are missing (which is the current production state).
           const genreSeo = buildGenreSeo(additionalData.genreName, language, translations);
-          return `${this.escapeHtml(genreSeo.h1)} | Mega Radio`;
+          // H1 = bare genreSeo.h1 (no " | Mega Radio" suffix) — title in
+          // genre-seo-templates.ts already carries the brand suffix.
+          return this.escapeHtml(genreSeo.h1);
         }
-        return getLocalizedText('genres_page_title');
+        return deriveH1FromTitle(getLocalizedText('genres_page_title'));
       
       case 'regions':
         if (additionalData?.regionName) {
@@ -1372,32 +1419,29 @@ export class SeoRenderer {
               || LOCALIZED_RADIO_STATIONS[language]
               || 'Radio Stations'
           );
-          const listenLiveText = this.escapeHtml(
-            translations['seo_listen_live_online']?.trim()
-              || LOCALIZED_LISTEN_LIVE[language]
-              || 'Listen Live Online'
-          );
-          return `${localizedRegion} ${radioStationsText} — ${listenLiveText} | Mega Radio`;
+          // H1 = "{region} {radio_stations}" — drop "— Listen Live | Mega
+          // Radio" tail (kept on <title>) so the visible heading differs.
+          return `${localizedRegion} ${radioStationsText}`;
         }
-        return getLocalizedText('regions_page_title');
+        return deriveH1FromTitle(getLocalizedText('regions_page_title'));
       
       case 'stations':
-        return getLocalizedText('stations_page_title');
+        return deriveH1FromTitle(getLocalizedText('stations_page_title'));
       
       case 'about':
-        return buildStaticPageSeo('about', language, translations).title;
+        return deriveH1FromTitle(buildStaticPageSeo('about', language, translations).title);
 
       case 'contact':
-        return buildStaticPageSeo('contact', language, translations).title;
+        return deriveH1FromTitle(buildStaticPageSeo('contact', language, translations).title);
 
       case 'applications':
-        return buildStaticPageSeo('applications', language, translations).title;
+        return deriveH1FromTitle(buildStaticPageSeo('applications', language, translations).title);
       
       case 'terms':
-        return buildLegalSeo('terms', language, translations).title;
+        return deriveH1FromTitle(buildLegalSeo('terms', language, translations).title);
 
       case 'privacy':
-        return buildLegalSeo('privacy', language, translations).title;
+        return deriveH1FromTitle(buildLegalSeo('privacy', language, translations).title);
 
       case 'search':
         return buildSearchSeo(language, translations).h1;

@@ -1971,17 +1971,34 @@ export function generateSeoTags(
     return val ? val : (SEO_FALLBACKS[key] || '');
   };
 
+  // Semrush 2026-05-13 audit: home <title> and <h1> were identical (the
+  // localized hero phrase like "Die beste radio in die wêreld") because
+  // both pulled from `hero_worlds_best_radio`. Append " | Mega Radio"
+  // to <title> unless that exact suffix is ALREADY present at the end of
+  // the title — we deliberately do NOT skip when "Mega Radio" appears
+  // mid-sentence (e.g. EN fallback "Mega Radio: Listen to Free Live
+  // Radio & Music" or AR "ميغا راديو: ..."), because in those cases
+  // skipping would leave <title> === <h1> and the Semrush warning would
+  // persist for the EN home and any language whose hero phrase opens
+  // with the brand. Brand mentioned twice in those titles is acceptable
+  // — Google does not penalize this and the H1/title divergence is
+  // guaranteed unconditionally.
+  const homeRawTitle = getTranslation('meta_title') || getTranslation('hero_worlds_best_radio');
+  const homeBrandedTitle = /\|\s*Mega\s*Radio\s*$/i.test(homeRawTitle)
+    ? homeRawTitle
+    : `${homeRawTitle} | Mega Radio`;
+
   const seoData: Record<string, SeoMetaTags> = {
     home: {
       // Bing SEO: hero_over_100_countries is only ~45 chars (too short for Bing's 150-char floor).
       // Fall through to home_page_description (155 chars) when meta_description is empty.
-      title: getTranslation('meta_title') || getTranslation('hero_worlds_best_radio'),
+      title: homeBrandedTitle,
       description: getTranslation('meta_description') || getTranslation('home_page_description'),
       keywords: getTranslation('meta_keywords') || 'online radio, live radio, free music, radio stations, streaming, AM FM radio, international radio',
-      ogTitle: getTranslation('meta_title') || getTranslation('hero_worlds_best_radio'),
+      ogTitle: homeBrandedTitle,
       ogDescription: getTranslation('meta_description') || getTranslation('home_page_description'),
       ogType: 'website',
-      twitterTitle: getTranslation('meta_title') || getTranslation('hero_worlds_best_radio'),
+      twitterTitle: homeBrandedTitle,
       twitterDescription: getTranslation('meta_description') || getTranslation('home_page_description')
     },
     genres: {
