@@ -69,6 +69,44 @@ const KNOWN_BARE_ROUTES = new Set<string>([
 
 const BOT_UA_RE = /googlebot|bingbot|yandexbot|baiduspider|duckduckbot|applebot/;
 
+// =====================================================================
+// STATION-DETAIL CANONICAL ALIAS MAP
+// =====================================================================
+// Each language has up to 3 URL synonyms for the station-detail segment:
+//   • singular  (station: 'stazione')   ← canonical for /lang/X/slug
+//   • plural    (stations: 'stazioni')
+//   • radios    (radios: 'radio')
+// Without normalization Google sees /it/stazione/X, /it/stazioni/X and
+// /it/radio/X as three distinct URLs serving the same page (Semrush flags
+// these as "duplicate title" entries). We pick the singular form as the
+// canonical detail URL and 301 the other two to it.
+//
+// Only applied to 3-segment paths (/lang/X/slug). 2-segment paths
+// (/lang/X — listing pages) stay as-is because the SPA already routes
+// /lang/{radios-translated} as the dedicated listing page in some
+// languages.
+// =====================================================================
+const STATION_DETAIL_ALIASES = new Map<string, { canonical: string; aliases: Set<string> }>();
+(function buildStationDetailAliases() {
+  for (const [lang, tr] of Object.entries(URL_TRANSLATIONS)) {
+    const canonical = tr.station;
+    if (!canonical) continue;
+    const aliases = new Set<string>();
+    if (tr.stations && tr.stations !== canonical) aliases.add(tr.stations);
+    if (tr.radios && tr.radios !== canonical) aliases.add(tr.radios);
+    if (aliases.size > 0) {
+      STATION_DETAIL_ALIASES.set(lang, { canonical, aliases });
+    }
+  }
+  // English is not in URL_TRANSLATIONS (it is the source language) but
+  // has the same three-way duplicate (/en/station/X, /en/stations/X,
+  // /en/radios/X) — hardcode it.
+  STATION_DETAIL_ALIASES.set('en', {
+    canonical: 'station',
+    aliases: new Set(['stations', 'radios']),
+  });
+})();
+
 function detectLanguageFromRequest(req: Request): string {
   const cfCountry = (req.headers['cf-ipcountry'] as string || '').toLowerCase();
   if (cfCountry && cfCountry !== 'xx' && cfCountry !== 't1' && COUNTRY_TO_LANGUAGE[cfCountry]) {
@@ -227,6 +265,20 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
         || URL_TRANSLATIONS[lang]?.[secondSegment];
       if (translatedPath && translatedPath !== secondSegment) {
         segments[1] = translatedPath;
+      }
+    }
+
+    // ---- Step 6: station-detail synonym collapse ----
+    // After steps 5a/5b have normalized to the language's translation,
+    // some languages still have multiple synonyms for the detail segment
+    // (e.g. Italian stazione/stazioni/radio). Collapse to the canonical
+    // singular so /it/stazioni/X, /it/radio/X, /it/stations/X all reach
+    // /it/stazione/X in this single pass.
+    // Only applies to 3+ segment paths (detail pages with a slug).
+    if (segments.length >= 3) {
+      const aliasInfo = STATION_DETAIL_ALIASES.get(lang);
+      if (aliasInfo && aliasInfo.aliases.has(segments[1])) {
+        segments[1] = aliasInfo.canonical;
       }
     }
   }
