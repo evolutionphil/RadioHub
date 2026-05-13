@@ -20,9 +20,7 @@ export function Applications() {
       </div>
       
       <img 
-        src="/assets/images/tv-app.webp" 
-        srcSet="/assets/images/tv-app-400w.webp 400w, /assets/images/tv-app-800w.webp 800w, /assets/images/tv-app.webp 1200w"
-        sizes="(max-width: 768px) 400px, (max-width: 1200px) 800px, 1200px"
+        src="/images/tv-app.webp" 
         alt="Mega Radio TV app interface - Stream 60,000+ radio stations on your smart TV" 
         className="m-auto w-full max-w-5xl h-auto" 
         width={1200}
@@ -44,9 +42,7 @@ export function Applications() {
       
       <div className="relative bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#2A5F6838] to-transparent w-full py-6 md:py-12">
         <img 
-          src="/assets/images/app-on-phone.webp" 
-          srcSet="/assets/images/app-on-phone-300w.webp 300w, /assets/images/app-on-phone-600w.webp 600w, /assets/images/app-on-phone.webp 900w"
-          sizes="(max-width: 768px) 300px, (max-width: 1200px) 600px, 900px"
+          src="/images/app-on-phone.webp" 
           alt="Mega Radio mobile app on smartphone - Listen to live radio stations on iOS and Android" 
           className="m-auto w-3/5 md:w-[600px] max-w-2xl h-auto" 
           width={900}
@@ -55,9 +51,7 @@ export function Applications() {
           decoding="async"
         />
         <img 
-          src="/assets/images/app-on-watch.webp" 
-          srcSet="/assets/images/app-on-watch-200w.webp 200w, /assets/images/app-on-watch-380w.webp 380w, /assets/images/app-on-watch.webp 500w"
-          sizes="(max-width: 768px) 200px, (max-width: 1200px) 380px, 500px"
+          src="/images/app-on-watch.webp" 
           alt="Mega Radio app on Apple Watch - Control your favorite radio stations from your wrist" 
           className="absolute bottom-12 md:bottom-[120px] left-1/2 -translate-x-1/4 m-auto w-2/5 md:w-[380px] max-w-md h-auto" 
           width={500}
@@ -80,9 +74,7 @@ export function Applications() {
       
       <div className="bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-[#5C225138] to-transparent py-7 md:py-40">
         <img 
-          src="/assets/images/app-on-mac.webp" 
-          srcSet="/assets/images/app-on-mac-600w.webp 600w, /assets/images/app-on-mac-1000w.webp 1000w, /assets/images/app-on-mac.webp 1400w"
-          sizes="(max-width: 768px) 600px, (max-width: 1200px) 1000px, 1400px"
+          src="/images/app-on-mac.webp" 
           alt="Mega Radio desktop app for Mac - Stream radio stations on macOS with high-quality audio" 
           className="w-4/5 md:w-4/5 lg:w-2/3 m-auto max-w-6xl h-auto" 
           width={1400}
