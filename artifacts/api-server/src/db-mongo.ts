@@ -256,18 +256,36 @@ mongoose.set('bufferCommands', false);
 
 async function doConnect() {
   const isProd = process.env.NODE_ENV === 'production';
+  // INCIDENT 2026-05-14 round 8 — failover hardening.
+  // Previous config (maxPoolSize:100, socketTimeoutMS:45s, serverSelectionTimeoutMS:30s,
+  // no readPreference) turned a brief Atlas primary failover at 11:00:22 UTC into a
+  // 10-minute error storm: hundreds of stuck connections (each held 45s),
+  // 30s-per-op selection waits, and ALL reads forced onto a stepping-down primary.
+  // The new config:
+  //   - readPreference: 'primaryPreferred' lets reads fall back to a secondary
+  //     during a primary blip instead of hard-failing.
+  //   - maxPoolSize 30 keeps us well below Atlas M10 pool budget while supporting
+  //     observed peak concurrency (~13). 100 was overkill and made stuck-pool
+  //     amplification possible.
+  //   - socketTimeoutMS 15s + serverSelectionTimeoutMS 8s + waitQueueTimeoutMS 5s
+  //     means a degraded cluster fails fast (5–15s, not 45s), connections free
+  //     up quickly, and the pool never accumulates stuck handles.
+  //   - heartbeatFrequencyMS 5s (was 10s) so the driver notices topology
+  //     changes (failover) twice as fast.
   await mongoose.connect(MONGODB_URI, {
-    maxPoolSize: isProd ? 100 : 10,
+    maxPoolSize: isProd ? 30 : 10,
     minPoolSize: isProd ? 5 : 2,
-    serverSelectionTimeoutMS: isProd ? 30000 : 15000,
-    socketTimeoutMS: isProd ? 45000 : 30000,
-    connectTimeoutMS: isProd ? 30000 : 15000,
+    serverSelectionTimeoutMS: isProd ? 8000 : 15000,
+    socketTimeoutMS: isProd ? 15000 : 30000,
+    connectTimeoutMS: isProd ? 10000 : 15000,
+    waitQueueTimeoutMS: isProd ? 5000 : 10000,
     bufferCommands: false,
     maxIdleTimeMS: 30000,
     family: 4,
-    heartbeatFrequencyMS: 10000,
+    heartbeatFrequencyMS: isProd ? 5000 : 10000,
     retryWrites: true,
     retryReads: true,
+    readPreference: 'primaryPreferred',
     w: 'majority',
   });
 }

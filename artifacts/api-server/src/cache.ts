@@ -4,13 +4,17 @@ import { logger } from './utils/logger';
 import { startOperation, endOperation } from './utils/operation-tracker';
 
 // In-memory cache with TTL
-// CRITICAL: Sitemap XMLs are ~6MB each. maxKeys=200 × 6MB = ~1.2GB worst case.
-// Use maxKeys=200 to prevent OOM on frontend-web (2GB heap limit).
+// INCIDENT 2026-05-14 round 8: post-failover RSS climbed to 745MB and
+// `RSS MEMORY RELIEF` fired repeatedly. NodeCache was holding precomputed
+// station blobs + sitemap XMLs from the warmup loop; with maxKeys=200 ×
+// up-to-6MB each the worst case is ~1.2GB. Cut to 100 (worst case ~600MB)
+// — Redis is the source of truth, this is just a hot tier. Eviction churn
+// is fine because the Redis layer absorbs misses transparently.
 const memoryCache = new NodeCache({ 
   stdTTL: 600,
   checkperiod: 120,
   useClones: false,
-  maxKeys: 200
+  maxKeys: 100
 });
 
 // Redis client for production (optional)

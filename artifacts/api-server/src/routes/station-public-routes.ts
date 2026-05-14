@@ -632,29 +632,53 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const isGlobal = !identifier || identifier === 'global' || identifier === 'all';
 
       // For global requests: check cache readiness; if not ready, use fast MongoDB fallback
+      // INCIDENT 2026-05-14 round 8: this fallback was the smoking gun for the
+      // /api/stations/precomputed?countryName=global timeouts. Previous code did
+      // a full Station.find({}).sort({ hasLogo:-1, votes:-1 }).skip().limit() with
+      // NO maxTimeMS and NO lastCheckOk filter — a 200k-doc in-memory sort that
+      // saturated the primary during the failover. Now we:
+      //   1. Always filter by lastCheckOk:true (matches the cached path),
+      //   2. Cap execution at 8s with maxTimeMS,
+      //   3. Soft-fail with empty list on any timeout/error so the page still
+      //      renders rather than emitting a 500 + ERR stack trace.
       if (isGlobal) {
         const cacheReady = await PrecomputedStationsService.hasGlobalCache();
         if (!cacheReady) {
-          // Fast MongoDB fallback: sorted by votes desc with logo priority
-          const skip = (pageNum - 1) * limitNum;
-          const escG = escapeRegex(genre, 60);
-          const mongoFilter: any = escG ? { $or: [{ genre: { $regex: new RegExp(escG, 'i') } }, { tags: { $regex: new RegExp(escG, 'i') } }] } : {};
-          const escQ = escapeRegex(search, 80);
-          if (escQ) { mongoFilter.name = { $regex: new RegExp(escQ, 'i') }; }
-          const [stations, total] = await Promise.all([
-            Station.find(mongoFilter)
-              .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
-              .sort({ hasLogo: -1, votes: -1 })
-              .skip(skip)
-              .limit(limitNum)
-              .lean(),
-            Station.countDocuments(mongoFilter)
-          ]);
-          return void res.json({
-            success: true, data: stations, stations, total, count: total, page: pageNum,
-            totalPages: Math.ceil(total / limitNum), cached: false,
-            pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) }
-          });
+          try {
+            const skip = (pageNum - 1) * limitNum;
+            const escG = escapeRegex(genre, 60);
+            const mongoFilter: any = { lastCheckOk: true };
+            if (escG) {
+              mongoFilter.$or = [
+                { genre: { $regex: new RegExp(escG, 'i') } },
+                { tags: { $regex: new RegExp(escG, 'i') } },
+              ];
+            }
+            const escQ = escapeRegex(search, 80);
+            if (escQ) { mongoFilter.name = { $regex: new RegExp(escQ, 'i') }; }
+            const [stations, total] = await Promise.all([
+              Station.find(mongoFilter)
+                .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
+                .sort({ hasLogo: -1, votes: -1 })
+                .skip(skip)
+                .limit(limitNum)
+                .maxTimeMS(8000)
+                .lean(),
+              Station.countDocuments(mongoFilter).maxTimeMS(5000).catch(() => 0),
+            ]);
+            return void res.json({
+              success: true, data: stations, stations, total, count: total, page: pageNum,
+              totalPages: Math.ceil(total / limitNum), cached: false,
+              pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) }
+            });
+          } catch (fallbackErr: any) {
+            logger.warn('[/api/stations/precomputed] global cold-fallback failed: ' + (fallbackErr?.message || 'unknown'));
+            return void res.json({
+              success: true, data: [], stations: [], total: 0, count: 0, page: pageNum,
+              totalPages: 0, cached: false,
+              pagination: { page: pageNum, limit: limitNum, total: 0, pages: 0 }
+            });
+          }
         }
       }
 
@@ -691,9 +715,18 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         cached: result.cached,
         pagination: { page: result.page, limit: limitNum, total: result.total, pages: result.totalPages }
       });
-    } catch (error) {
-      logger.error('Error fetching precomputed stations:', error);
-      res.status(500).json({ error: 'Failed to fetch precomputed stations' });
+    } catch (error: any) {
+      // INCIDENT 2026-05-14 round 8: this catch was emitting `logger.error`
+      // (with full stack trace) once per failed request — during the failover
+      // storm it printed 200+ stack traces in 10 minutes. Downgrade to a
+      // single-line warn + return an empty payload so a transient cluster
+      // blip degrades gracefully instead of looking like an outage in logs.
+      logger.warn('[/api/stations/precomputed] failed: ' + (error?.message || 'unknown'));
+      res.json({
+        success: true, data: [], stations: [], total: 0, count: 0,
+        page: 1, totalPages: 0, cached: false,
+        pagination: { page: 1, limit: 0, total: 0, pages: 0 }
+      });
     }
   });
 

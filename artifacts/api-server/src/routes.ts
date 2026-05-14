@@ -431,19 +431,40 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     ];
     const startAll = Date.now();
     let okCount = 0, failCount = 0;
+    // INCIDENT 2026-05-14 round 8: previous warmup ran the full 25-country
+    // loop even when every single request was timing out at 60s — during
+    // the Atlas failover this kept the connection pool slammed for 10+
+    // minutes. Now we abort the rest of the warmup if 3 hits in a row
+    // fail, AND we cap each hit at 10s instead of 60s so a stressed
+    // cluster doesn't tie up sockets for a minute apiece.
+    let consecutiveFails = 0;
+    let aborted = false;
 
     const hit = async (path: string) => {
+      if (aborted) return;
       const t0 = Date.now();
       try {
         const ctrl = new AbortController();
-        const to = setTimeout(() => ctrl.abort(), 60000);
+        const to = setTimeout(() => ctrl.abort(), 10000);
         const r = await fetch(base + path, { signal: ctrl.signal, headers: { 'x-warmup': '1' } });
         clearTimeout(to);
-        if (r.ok) { okCount++; logger.log(`🔥 [warmup] ${path} ${r.status} ${Date.now() - t0}ms`); }
-        else { failCount++; logger.warn(`🔥 [warmup] ${path} ${r.status} ${Date.now() - t0}ms`); }
+        if (r.ok) {
+          okCount++;
+          consecutiveFails = 0;
+          logger.log(`🔥 [warmup] ${path} ${r.status} ${Date.now() - t0}ms`);
+        } else {
+          failCount++;
+          consecutiveFails++;
+          logger.warn(`🔥 [warmup] ${path} ${r.status} ${Date.now() - t0}ms`);
+        }
       } catch (e: any) {
         failCount++;
+        consecutiveFails++;
         logger.warn(`🔥 [warmup] ${path} ERR ${Date.now() - t0}ms ${e?.message || ''}`);
+      }
+      if (consecutiveFails >= 3 && !aborted) {
+        aborted = true;
+        logger.warn(`🔥 [warmup] aborting remaining hits after 3 consecutive failures (cluster appears unhealthy — real traffic will warm cache organically)`);
       }
     };
 
@@ -525,6 +546,23 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       const migrationKey = 'migration:hasLogo:v1';
       const alreadyDone = await CacheManager.get(migrationKey);
       if (alreadyDone) return;
+      // INCIDENT 2026-05-14 round 8: migration emitted `❌ MIGRATION:
+      // hasLogo migration failed: not primary` during the Atlas failover
+      // because it tried to bulkWrite while the primary was stepping down.
+      // Gate on a successful primary ping; if not primary, skip and let
+      // the next periodic warmup retry. The migration is idempotent and
+      // not time-sensitive — running it 50 minutes later is fine.
+      const mongoose = (await import('mongoose')).default;
+      if (mongoose.connection.readyState !== 1) {
+        logger.warn('🔧 MIGRATION: hasLogo skipped — Mongo not connected (readyState=' + mongoose.connection.readyState + '), will retry');
+        return;
+      }
+      try {
+        await mongoose.connection.db?.admin().ping();
+      } catch (pingErr: any) {
+        logger.warn('🔧 MIGRATION: hasLogo skipped — primary ping failed (' + (pingErr?.message || 'unknown') + '), will retry');
+        return;
+      }
       logger.log('🔧 MIGRATION: Populating hasLogo field for all stations...');
       const BATCH = 2000;
       let skip = 0, totalUpdated = 0;
@@ -543,7 +581,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       await CacheManager.set(migrationKey, true, { ttl: 86400 * 365 });
       logger.log(`✅ MIGRATION: hasLogo populated for ${totalUpdated} stations`);
     } catch (err: any) {
-      logger.error(`❌ MIGRATION: hasLogo migration failed: ${err.message}`);
+      // Downgrade to warn — migration is idempotent and retried on the next
+      // boot cycle, so a one-off failure (e.g. failover) is not a 5xx event.
+      logger.warn(`🔧 MIGRATION: hasLogo migration failed (will retry next boot): ${err?.message || 'unknown'}`);
     }
   }, 30000);
 
