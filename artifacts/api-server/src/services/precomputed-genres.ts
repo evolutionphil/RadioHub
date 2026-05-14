@@ -196,23 +196,21 @@ export class PrecomputedGenresService {
   }
 
   static async warmupCache(): Promise<void> {
-    logger.log('🔥 Warming up genres cache...');
-    
-    await this.getGenres('global');
-    await new Promise(resolve => setTimeout(resolve, 200));
-    
-    const topCountries = ['DE', 'US', 'TR', 'FR', 'IT', 'ES', 'GB', 'BR', 'RU', 'JP', 'NL', 'AT', 'CH', 'PL', 'AU', 'CA', 'MX', 'IN', 'KR'];
-    
-    for (const country of topCountries) {
-      try {
-        await this.getGenres(country);
-        await sleep(300);
-      } catch (error) {
-        logger.error(`Failed to warmup genres for ${country}:`, error);
-      }
+    // INCIDENT 2026-05-14 round 6: previously this looped 19 countries
+    // and the country aggregate timed out on EVERY one (8s budget vs
+    // multi-minute cluster planner pressure), filling the log with
+    // [err] lines and adding load with zero benefit (the failed
+    // aggregate never wrote a cache entry). Real user traffic for
+    // top countries fills the per-country cache on demand within
+    // seconds. Keep only the global warmup, which is now cheap
+    // because it skips the aggregate entirely.
+    logger.log('🔥 Warming up genres cache (global only)...');
+    try {
+      await this.getGenres('global');
+      logger.log('✅ Genres cache warmup complete (global)');
+    } catch (error: any) {
+      logger.warn('Failed to warmup global genres: ' + (error?.message || 'unknown'));
     }
-    
-    logger.log('✅ Genres cache warmup complete');
   }
 
   static async refreshAll(): Promise<void> {

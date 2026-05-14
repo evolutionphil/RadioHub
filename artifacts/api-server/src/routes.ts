@@ -447,35 +447,29 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       }
     };
 
-    // Global hot endpoints first (header + homepage)
+    // INCIDENT 2026-05-14 round 6: previously this looped 25 countries
+    // x 8 endpoints sequentially and was itself hammering the cluster
+    // (community-favorites + recommendations/diverse country variants
+    // run heavy aggregates with no cache and timed out every cycle,
+    // re-firing 50 min later). Now that all boot endpoints cache 24h
+    // and per-route caches hold 1h+, real user traffic keeps top-
+    // country keys hot. Warm only the GLOBAL boot keys + light top-3
+    // popular/precomputed.
+    await hit('/api/filters/countries');
+    await hit('/api/filters/languages');
+    await hit('/api/filters/genres');
+    await hit('/api/countries');
+    await hit('/api/countries?format=rich');
+    await hit('/api/genres');
     await hit('/api/stations/popular?limit=12');
     await hit('/api/stations/popular?limit=4');
-    await hit('/api/genres');
-    await hit('/api/countries?format=rich');
-    await hit('/api/community-favorites');
-    await hit('/api/recommendations/diverse?limit=20');
-    await hit('/api/stations?limit=20&page=1');
     await hit('/api/stations/precomputed?countryName=global&page=1&limit=200');
 
-    // Per-country variants — sequential to avoid hammering cluster.
-    // Covers: popular carousels, genres list, all-stations list,
-    // community favorites, diverse recommendations, paginated
-    // station list, and the precomputed station leaderboard used
-    // by the country detail / recommendations pages.
-    for (const country of TOP_COUNTRIES) {
+    const TOP3 = ['Germany', 'Turkey', 'The United States Of America'];
+    for (const country of TOP3) {
       const enc = encodeURIComponent(country);
       await hit(`/api/stations/popular?country=${enc}&limit=12`);
-      await hit(`/api/stations/popular?country=${enc}&limit=4`);
-      await hit(`/api/genres?countrycode=${enc}`);
-      await hit(`/api/community-favorites?country=${enc}`);
-      await hit(`/api/recommendations/diverse?country=${enc}&limit=12`);
-      await hit(`/api/stations?country=${enc}&limit=20&page=1`);
-      await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=12`);
       await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=50`);
-      // INCIDENT 2026-05-14: 250ms gap was overrunning the Atlas
-      // connection pool — warmup was triggering MongoNetworkTimeoutError
-      // on the 33rd-ish concurrent connection. 1500ms gives the pool
-      // and planner room to recover between countries.
       await new Promise(r => setTimeout(r, 1500));
     }
 
