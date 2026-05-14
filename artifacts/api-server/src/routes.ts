@@ -472,7 +472,11 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       await hit(`/api/stations?country=${enc}&limit=20&page=1`);
       await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=12`);
       await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=50`);
-      await new Promise(r => setTimeout(r, 250));
+      // INCIDENT 2026-05-14: 250ms gap was overrunning the Atlas
+      // connection pool — warmup was triggering MongoNetworkTimeoutError
+      // on the 33rd-ish concurrent connection. 1500ms gives the pool
+      // and planner room to recover between countries.
+      await new Promise(r => setTimeout(r, 1500));
     }
 
     logger.log(`🔥 HTTP self-warmup done in ${Date.now() - startAll}ms (ok=${okCount} fail=${failCount})`);
