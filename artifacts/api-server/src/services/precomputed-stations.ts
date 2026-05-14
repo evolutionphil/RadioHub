@@ -217,7 +217,7 @@ export class PrecomputedStationsService {
           logoAssets: { webp96: 1, webp256: 1, folder: 1 }
         }
       }
-    ]).hint({ country: 1, lastCheckOk: 1, votes: -1 }).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
+    ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
 
     if (stations.length === 0) {
       const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -482,7 +482,6 @@ export class PrecomputedStationsService {
           { $limit: PER_COUNTRY_LIMIT },
           { $project: PROJECT },
         ])
-          .hint({ country: 1, lastCheckOk: 1, votes: -1 })
           .option({ maxTimeMS: 10000, allowDiskUse: true })
           .exec();
         if (batch.length > 0) pool.push(...batch);

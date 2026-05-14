@@ -216,13 +216,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint({ lastCheckOk: 1, votes: -1 }).allowDiskUse(true),
+        ]).allowDiskUse(true),
         Station.aggregate([
           { $match: { ...countryFilter, isFeatured: { $ne: true } } },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint({ lastCheckOk: 1, votes: -1 }).allowDiskUse(true)
+        ]).allowDiskUse(true)
       ]);
       
       const allCandidates = [...featuredStations, ...regularStations];

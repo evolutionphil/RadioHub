@@ -472,7 +472,6 @@ export class PerformanceCache {
           lastCheckOk: true 
         })
         .sort({ votes: -1 })
-        .hint({ country: 1, lastCheckOk: 1, votes: -1 })
         .limit(30)
         .select(selectFields)
         .lean();
@@ -485,7 +484,6 @@ export class PerformanceCache {
       // compound index to skip any in-memory SORT.
       const globalStations = await StationModel.find({ lastCheckOk: true })
         .sort({ votes: -1 })
-        .hint({ lastCheckOk: 1, votes: -1 })
         .limit(50)
         .select(selectFields)
         .lean();
