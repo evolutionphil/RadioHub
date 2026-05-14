@@ -144,27 +144,47 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
   });
 
   // COUNTRIES API
+  // INCIDENT 2026-05-14: this endpoint (both modes) was uncached and ran
+  // a full Station collection scan/aggregate on every page load. Add 24h
+  // cache + bounded execution + soft fallback so a slow Atlas response
+  // never blocks the UI.
   app.get("/api/countries", async (req, res) => {
     try {
       const format = req.query.format as string;
+      const isRich = format === 'rich';
+      const cacheKey = isRich ? 'countries:rich:v1' : 'countries:plain:v1';
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        return void res.json(cached);
+      }
 
-      if (format === 'rich') {
+      if (isRich) {
         const countryCounts = await Station.aggregate([
           { $match: { country: { $nin: [null, ''] } } },
           { $group: { _id: '$country', count: { $sum: 1 } } },
           { $sort: { _id: 1 } }
-        ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+        ]).option({ maxTimeMS: 12000, allowDiskUse: true });
         const countries = getAllCountryInfoFromDb(
           countryCounts.map((c: any) => ({ name: c._id, count: c.count }))
         );
+        await CacheManager.set(cacheKey, countries, { ttl: 86400 });
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
         return void res.json(countries);
       }
 
-      const countries = await Station.distinct('country').lean();
-      const filteredCountries = countries.filter(country => country && country.trim() !== '');
-      res.json(filteredCountries.sort());
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch countries' });
+      const countries = await (Station.distinct('country') as any).maxTimeMS(12000);
+      const filteredCountries = (countries as string[])
+        .filter((country: string) => country && country.trim() !== '')
+        .sort();
+      await CacheManager.set(cacheKey, filteredCountries, { ttl: 86400 });
+      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+      res.json(filteredCountries);
+    } catch (error: any) {
+      logger.warn('[countries] failed: ' + (error?.message || 'unknown'));
+      // Soft-fail with empty list rather than 500 so the UI shell renders
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json([]);
     }
   });
 

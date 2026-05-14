@@ -1688,22 +1688,47 @@ ${keysText}`;
   });
 
   // FILTERS COUNTRIES API
+  // INCIDENT 2026-05-14: this endpoint is hit on EVERY page load (header
+  // country picker) and was running an unbounded `Station.distinct('country')`
+  // collection scan with NO cache, taking 60s+ in production and frequently
+  // returning Cloudflare 520 because Atlas could not finish the scan inside
+  // the proxy timeout. Add 24h cache + 12s timeout + soft fallback so a
+  // slow Atlas response never blocks the UI shell.
   app.get("/api/filters/countries", async (req, res) => {
     try {
-      const countries = await Station.distinct('country').lean();
-      const filteredCountries = countries.filter(country => country && country.trim() !== '');
-      res.json(filteredCountries.sort());
-    } catch (error) {
-      // console.error('Error fetching filter countries:', error);
-      res.status(500).json({ error: 'Failed to fetch filter countries' });
+      const cacheKey = 'filters:countries:v1';
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        return void res.json(cached);
+      }
+      const countries = await (Station.distinct('country') as any).maxTimeMS(12000);
+      const filteredCountries = (countries as string[])
+        .filter((country: string) => country && country.trim() !== '')
+        .sort();
+      await CacheManager.set(cacheKey, filteredCountries, { ttl: 86400 });
+      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+      res.json(filteredCountries);
+    } catch (error: any) {
+      logger.warn('[filters/countries] failed: ' + (error?.message || 'unknown'));
+      // Soft-fail with empty list rather than 500 so the header still renders
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json([]);
     }
   });
 
   // FILTERS LANGUAGES API
+  // INCIDENT 2026-05-14: same pattern as /api/filters/countries — heavy
+  // aggregate hit on every page load with no cache. Add 24h cache + bounded
+  // execution + soft fallback.
   app.get("/api/filters/languages", async (req, res) => {
     try {
-      // logger.log('🗣️ Fetching CLEAN languages with station counts...');
-      
+      const cacheKey = 'filters:languages:v1';
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        return void res.json(cached);
+      }
       // Get aggregated language data with counts
       const languageStats = await Station.aggregate([
         {
@@ -1728,7 +1753,7 @@ ${keysText}`;
         {
           $sort: { count: -1 }
         }
-      ]);
+      ]).option({ maxTimeMS: 12000, allowDiskUse: true });
 
       // Clean up the language names - remove malformed data
       const cleanLanguages = languageStats
@@ -1755,26 +1780,34 @@ ${keysText}`;
         .slice(0, 50) // Limit results
         .sort();
 
-      // logger.log(`📊 Clean Languages response: { languageCount: ${cleanLanguages.length} }`);
+      await CacheManager.set('filters:languages:v1', cleanLanguages, { ttl: 86400 });
+      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       res.json(cleanLanguages);
-    } catch (error) {
-      // console.error('Error fetching filter languages:', error);
-      res.status(500).json({ error: 'Failed to fetch filter languages' });
+    } catch (error: any) {
+      logger.warn('[filters/languages] failed: ' + (error?.message || 'unknown'));
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json([]);
     }
   });
 
   // FILTERS GENRES API
+  // INCIDENT 2026-05-14: same pattern — `Station.distinct('tags')` is a full
+  // collection scan with no cache. Add 24h cache + bounded execution.
   app.get("/api/filters/genres", async (req, res) => {
     try {
-      // logger.log('🎵 Fetching genres from tags field...');
-      
+      const cacheKey = 'filters:genres:v1';
+      const cached = await CacheManager.get(cacheKey);
+      if (cached) {
+        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+        return void res.json(cached);
+      }
       // Get all distinct tags from stations
-      const allTags = await Station.distinct('tags').lean();
+      const allTags = await (Station.distinct('tags') as any).maxTimeMS(12000);
       
       // Extract unique genre values from tags (tags are comma-separated)
       const genreSet = new Set();
       
-      allTags.forEach(tagString => {
+      (allTags as string[]).forEach(tagString => {
         if (tagString && typeof tagString === 'string') {
           // Split comma-separated tags and clean them up
           const tags = tagString.split(',').map(tag => tag.trim().toLowerCase());
@@ -1797,11 +1830,13 @@ ${keysText}`;
       // Convert to sorted array
       const genres = Array.from(genreSet).sort();
       
-      // logger.log(`📊 Genres from tags:`, { genreCount: genres.length, sample: genres.slice(0, 10) });
+      await CacheManager.set('filters:genres:v1', genres, { ttl: 86400 });
+      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       res.json(genres);
-    } catch (error) {
-      // console.error('Error fetching filter genres:', error);
-      res.status(500).json({ error: 'Failed to fetch filter genres' });
+    } catch (error: any) {
+      logger.warn('[filters/genres] failed: ' + (error?.message || 'unknown'));
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json([]);
     }
   });
 
