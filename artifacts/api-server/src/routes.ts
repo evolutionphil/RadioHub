@@ -405,12 +405,76 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     }
   }
 
+  // === HTTP SELF-WARMUP (INCIDENT 2026-05-14) ===
+  // The previous warmup wrote cache keys with the OLD shape
+  // (e.g. `popular_stations:Germany:all:20`) while the routes now read the
+  // v2 shape (`popular_stations:Germany:all:12:false:web:v2`). That key
+  // drift made every first user hit a Cache MISS and incurred 8-30s
+  // Mongo aggregates against the live cluster.
+  //
+  // Rather than chase every key shape from the warmup helpers, this
+  // self-warmup hits the *real* HTTP endpoints the browser hits, so the
+  // cache keys are guaranteed to match by construction. It runs after
+  // server startup and re-runs every 50 minutes (just under the 1h TTL)
+  // so users never face a cold cache.
+  async function warmupViaHttp() {
+    const PORT = process.env.PORT || '8080';
+    const base = `http://127.0.0.1:${PORT}`;
+    const TOP_COUNTRIES = [
+      'Germany', 'Turkey', 'The United States Of America',
+      'The United Kingdom Of Great Britain And Northern Ireland',
+      'France', 'Spain', 'Italy', 'Netherlands', 'Austria',
+      'Switzerland', 'Brazil', 'Russia', 'Japan', 'South Korea',
+      'India', 'Mexico', 'Canada', 'Australia', 'Poland',
+      'South Africa', 'Argentina', 'Colombia', 'Indonesia',
+      'Philippines', 'Egypt'
+    ];
+    const startAll = Date.now();
+    let okCount = 0, failCount = 0;
+
+    const hit = async (path: string) => {
+      const t0 = Date.now();
+      try {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 30000);
+        const r = await fetch(base + path, { signal: ctrl.signal, headers: { 'x-warmup': '1' } });
+        clearTimeout(to);
+        if (r.ok) { okCount++; logger.log(`🔥 [warmup] ${path} ${r.status} ${Date.now() - t0}ms`); }
+        else { failCount++; logger.warn(`🔥 [warmup] ${path} ${r.status} ${Date.now() - t0}ms`); }
+      } catch (e: any) {
+        failCount++;
+        logger.warn(`🔥 [warmup] ${path} ERR ${Date.now() - t0}ms ${e?.message || ''}`);
+      }
+    };
+
+    // Global hot endpoints first
+    await hit('/api/stations/popular?limit=12');
+    await hit('/api/stations/popular?limit=4');
+    await hit('/api/genres');
+
+    // Per-country variants — sequential to avoid hammering cluster
+    for (const country of TOP_COUNTRIES) {
+      const enc = encodeURIComponent(country);
+      await hit(`/api/stations/popular?country=${enc}&limit=12`);
+      await hit(`/api/stations/popular?country=${enc}&limit=4`);
+      await hit(`/api/genres?countrycode=${enc}`);
+      await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=12`);
+      await new Promise(r => setTimeout(r, 250));
+    }
+
+    logger.log(`🔥 HTTP self-warmup done in ${Date.now() - startAll}ms (ok=${okCount} fail=${failCount})`);
+  }
+
   if (process.env.NODE_ENV !== 'development') {
     setTimeout(async () => {
       try {
-        logger.log('⚡ Starting staged cache warmup (web first, then TV/Mobile)...');
+        // Run HTTP self-warmup FIRST so the cache keys actual users hit
+        // get hot before we spend minutes on translations/TV/legacy keys.
+        logger.log('⚡ Starting HTTP self-warmup (user-facing keys first)...');
+        await warmupViaHttp();
+        logger.log('✅ HTTP self-warmup done — running legacy warmups in background...');
         await warmupPopularStationsCache();
-        logger.log('⏳ Web warmup done — waiting 10s before TV/Mobile warmup...');
+        logger.log('⏳ Legacy web warmup done — waiting 10s before TV/Mobile warmup...');
         await new Promise(r => setTimeout(r, 10000));
         await warmupTvMobileCache();
         logger.log('✅ All cache warmups completed successfully');
@@ -418,6 +482,12 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
         logger.log('⚠️ Cache warmup error (non-critical):', err);
       }
     }, 5000);
+
+    // Refresh self-warmup every 50 minutes so cached entries (1h TTL)
+    // never expire under live traffic.
+    setInterval(() => {
+      warmupViaHttp().catch(err => logger.warn('⚠️ Periodic self-warmup failed: ' + err?.message));
+    }, 50 * 60 * 1000);
   } else {
     logger.log('⚡ Popular stations & TV/Mobile cache warmup: Skipped in dev mode');
   }

@@ -223,47 +223,70 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       }
 
       const realGenres = await Genre.find({ isDiscoverable: true }).lean();
+      const isCountryScoped = !!(countrycode && countrycode !== 'global' && countrycode !== 'null');
       let stationFilter = {};
-      if (countrycode && countrycode !== 'global' && countrycode !== 'null') {
+      if (isCountryScoped) {
         Object.assign(stationFilter, normalizeCountryFilter(countrycode));
       }
-      
-      const genreCounts = await Station.aggregate([
-        { $match: stationFilter },
-        {
-          $addFields: {
-            allTags: {
-              $setUnion: [
-                { $cond: [
-                  { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
-                  [{ $toLower: '$genre' }],
-                  []
-                ]},
-                { $cond: [
-                  { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
-                  { $map: {
-                    input: { $split: ['$tags', ','] },
-                    as: 'tag',
-                    in: { $toLower: { $trim: { input: '$$tag' } } }
-                  }},
-                  []
-                ]}
-              ]
+
+      // INCIDENT 2026-05-14: when there is NO country filter, the
+      // $unwind/$group over the entire Station collection scans every
+      // doc and routinely takes 25-30s, which is the only path that
+      // still pile-up timed out after the cross-link disable. The
+      // global genre counts are already maintained on the Genre
+      // collection (`stationCount`) by the genre-recompute job, so
+      // skip the aggregate entirely on the global path. Country-
+      // scoped requests still run the aggregate, but they only scan
+      // a single country (much smaller working set) and remain fast.
+      let genreCounts: Array<{ _id: string; count: number }> = [];
+      if (isCountryScoped) {
+        try {
+        genreCounts = await Station.aggregate([
+          { $match: stationFilter },
+          {
+            $addFields: {
+              allTags: {
+                $setUnion: [
+                  { $cond: [
+                    { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
+                    [{ $toLower: '$genre' }],
+                    []
+                  ]},
+                  { $cond: [
+                    { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
+                    { $map: {
+                      input: { $split: ['$tags', ','] },
+                      as: 'tag',
+                      in: { $toLower: { $trim: { input: '$$tag' } } }
+                    }},
+                    []
+                  ]}
+                ]
+              }
             }
-          }
-        },
-        { $unwind: '$allTags' },
-        { $match: { allTags: { $ne: '' } } },
-        { $group: { _id: '$allTags', count: { $sum: 1 } } }
-      ]).option({ maxTimeMS: 30000, allowDiskUse: true });
+          },
+          { $unwind: '$allTags' },
+          { $match: { allTags: { $ne: '' } } },
+          { $group: { _id: '$allTags', count: { $sum: 1 } } }
+        ]).option({ maxTimeMS: 8000, allowDiskUse: true });
+        } catch (aggErr: any) {
+          // INCIDENT 2026-05-14 fallback: if the country-scoped genre
+          // tag aggregate times out, render the page with global
+          // stationCount from the Genre collection rather than a 500.
+          // Counts will be slightly off (global, not country-filtered)
+          // but the page renders. Tracked separately for backfill.
+          logger.warn('[genres] country aggregate failed, falling back to global counts: ' + (aggErr?.message || 'unknown'));
+          genreCounts = [];
+        }
+      }
 
       const tagCounts = new Map();
       for (const entry of genreCounts) {
         tagCounts.set(entry._id, entry.count);
       }
       
-      let dynamicGenres = [];
-      const isCountryFiltered = countrycode && countrycode !== 'global' && countrycode !== 'null';
+      let dynamicGenres: Array<{ name: string; slug: string; stationCount: number; isDynamic: boolean }> = [];
+      const isCountryFiltered = isCountryScoped;
       
       dynamicGenres = Array.from(tagCounts.entries())
         .filter(([tag, count]) => count >= 1 && tag.length > 1)
@@ -321,7 +344,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       }
       
       let allGenres = Array.from(genreMap.values());
-      if (isCountryFiltered) {
+      if (isCountryFiltered && genreCounts.length > 0) {
+        // Only filter out zero-count genres when we actually have
+        // country-scoped counts. If the aggregate fell back, keep
+        // every genre so the page is not empty.
         allGenres = allGenres.filter(genre => (genre.stationCount || 0) > 0);
       }
       
@@ -361,7 +387,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         totalPages: Math.ceil(totalCount / limit)
       };
       
-      await CacheManager.set(cacheKey, response, { ttl: 3600 });
+      await CacheManager.set(cacheKey, response, { ttl: 86400 });
       
       if (isTV) {
         return void res.json({

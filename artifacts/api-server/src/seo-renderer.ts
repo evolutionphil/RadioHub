@@ -633,23 +633,14 @@ export class SeoRenderer {
             const { GENRE_WHITELIST_SEED } = await import('./seo/genre-whitelist-seed');
             const { canonicalizeCountry, countrySlug, getRegionSlugForCountry } =
               await import('@workspace/seo-shared/country-regions');
-            const sample = await withSignal(
-              Station.find({
-                tags: { $regex: escapedTerm, $options: 'i' },
-                $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-                $and: [
-                  { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
-                  { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
-                ],
-                country: { $exists: true, $ne: '' },
-              })
-                .sort({ votes: -1 })
-                .limit(200)
-                .select('country')
-                .lean()
-                .maxTimeMS(3500),
-              signal,
-            );
+            // INCIDENT 2026-05-14: SSR cross-link Station.find disabled —
+            // the unindexable case-insensitive $regex on `tags` was
+            // pile-up timing out under load and choking the cluster.
+            // Renders an empty cross-link block until a covering
+            // tag-prefix index + non-regex match are in place.
+            const sample: any[] = [];
+            void escapedTerm;
+            void signal;
             // Tally counts on the CANONICAL country name so aliases
             // (e.g. "Türkiye" vs "Turkey") collapse onto the same slug.
             // Also resolve the world-region slug now so the rendered
@@ -829,30 +820,14 @@ export class SeoRenderer {
               // a tags+country only projection, capped at maxTimeMS
               // 3500, no impact on the popularStations grid above.
               const countryName = additionalData.regionName as string;
-              let genreSample: Array<{ tags?: any }> = [];
-              if (countryName) {
-                try {
-                  genreSample = await withSignal(
-                    Station.find({
-                      country: countryName,
-                      $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-                      $and: [
-                        { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
-                        { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
-                      ],
-                      tags: { $exists: true, $ne: '' },
-                    })
-                      .sort({ votes: -1 })
-                      .limit(200)
-                      .select('tags')
-                      .lean()
-                      .maxTimeMS(3500),
-                    signal,
-                  );
-                } catch {
-                  genreSample = indexableStations as any[];
-                }
-              }
+              // INCIDENT 2026-05-14: SSR region cross-link Station.find
+              // disabled — same pile-up root cause as the genres branch
+              // above. Falls back to the (already-loaded) indexable
+              // stations slice which keeps cross-links non-empty without
+              // a fresh Mongo round-trip.
+              const genreSample: Array<{ tags?: any }> = countryName
+                ? (indexableStations as any[])
+                : [];
               const tagCounts = new Map<string, number>();
               for (const s of genreSample as any[]) {
                 const raw = Array.isArray(s?.tags)
@@ -1147,44 +1122,20 @@ export class SeoRenderer {
         if (selfId) baseFilter._id = { $ne: selfId };
         const projection = 'name slug favicon logoAssets country tags votes';
 
-        const sameCountryQ = country
-          ? withSignal(
-              Station.find({ ...baseFilter, country })
-                .sort({ votes: -1 })
-                .limit(8)
-                .select(projection)
-                .lean()
-                .maxTimeMS(3500),
-              signal,
-            )
-          : Promise.resolve([]);
-
-        const sameGenreQ = primaryTag
-          ? withSignal(
-              Station.find({
-                ...baseFilter,
-                tags: { $regex: new RegExp(`(^|,)\\s*${primaryTag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*(,|$)`, 'i') },
-              })
-                .sort({ votes: -1 })
-                .limit(8)
-                .select(projection)
-                .lean()
-                .maxTimeMS(3500),
-              signal,
-            )
-          : Promise.resolve([]);
-
-        const sameCityQ = stateName
-          ? withSignal(
-              Station.find({ ...baseFilter, state: stateName })
-                .sort({ votes: -1 })
-                .limit(6)
-                .select(projection)
-                .lean()
-                .maxTimeMS(3500),
-              signal,
-            )
-          : Promise.resolve([]);
+        // INCIDENT 2026-05-14: station-page SSR cross-link Station.find
+        // calls disabled. Three concurrent unindexed/regex queries per
+        // request were stacking under load and pile-up timing out the
+        // entire SSR pipeline (resulting in the "Sender wird geladen…"
+        // hang on /sender/<slug>). Re-enable only after each query has
+        // a confirmed covering index (country path uses the existing
+        // country-popular index, genre path needs a tag-prefix index,
+        // city path needs a state-popular index).
+        void baseFilter;
+        void projection;
+        void signal;
+        const sameCountryQ: Promise<any[]> = Promise.resolve([]);
+        const sameGenreQ: Promise<any[]> = Promise.resolve([]);
+        const sameCityQ: Promise<any[]> = Promise.resolve([]);
 
         const [sameCountry, sameGenre, sameCity] = await Promise.all([
           sameCountryQ.catch(() => []),

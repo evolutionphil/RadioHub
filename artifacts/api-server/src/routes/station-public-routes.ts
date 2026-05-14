@@ -210,19 +210,24 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1
       };
 
+      const popularHasCountry = !!(country && country !== 'all' && country !== 'null');
+      const popularHint = popularHasCountry
+        ? 'lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1'
+        : 'lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1';
+
       const [featuredStations, regularStations] = await Promise.all([
         Station.aggregate([
           { $match: featuredFilter },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).allowDiskUse(true),
+        ]).hint(popularHint).allowDiskUse(true),
         Station.aggregate([
           { $match: { ...countryFilter, isFeatured: { $ne: true } } },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).allowDiskUse(true)
+        ]).hint(popularHint).allowDiskUse(true)
       ]);
       
       const allCandidates = [...featuredStations, ...regularStations];
