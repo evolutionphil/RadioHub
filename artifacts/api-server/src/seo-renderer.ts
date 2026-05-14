@@ -621,6 +621,82 @@ export class SeoRenderer {
           additionalData.popularStations = topStations
             .filter((s) => s.noIndex !== true && !isJunkStation(s))
             .slice(0, 12);
+
+          // ---- Genre cross-link fetch (architect P1: B2) -----------------
+          // "Top countries broadcasting <genre>" + "Related radio genres".
+          // Same intent as the station-page cross-links: server-render
+          // crawl edges so AI bots / first-pass crawlers walk between
+          // genre and country/genre neighbours without needing the
+          // React client. Skipped on noindex'd genre pages (handled
+          // later by the genre safeguard block which sets seoTags.noIndex).
+          try {
+            const { GENRE_WHITELIST_SEED } = await import('./seo/genre-whitelist-seed');
+            const { canonicalizeCountry, countrySlug, getRegionSlugForCountry } =
+              await import('@workspace/seo-shared/country-regions');
+            const sample = await withSignal(
+              Station.find({
+                tags: { $regex: escapedTerm, $options: 'i' },
+                $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+                $and: [
+                  { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
+                  { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
+                ],
+                country: { $exists: true, $ne: '' },
+              })
+                .sort({ votes: -1 })
+                .limit(200)
+                .select('country')
+                .lean()
+                .maxTimeMS(3500),
+              signal,
+            );
+            // Tally counts on the CANONICAL country name so aliases
+            // (e.g. "Türkiye" vs "Turkey") collapse onto the same slug.
+            // Also resolve the world-region slug now so the rendered
+            // links match the actual /regions/<region>/<country> route
+            // shape (architect P1 review fix — earlier inline slugify
+            // produced /regions/<countrySlug> which 404s).
+            const counts = new Map<string, { count: number; canonical: string; region?: string }>();
+            for (const s of sample as any[]) {
+              const raw = String(s?.country || '').trim();
+              if (!raw) continue;
+              const canonical = canonicalizeCountry(raw);
+              const slug = countrySlug(canonical);
+              if (!slug) continue;
+              const cur = counts.get(slug);
+              if (cur) {
+                cur.count += 1;
+              } else {
+                counts.set(slug, {
+                  count: 1,
+                  canonical,
+                  region: getRegionSlugForCountry(canonical),
+                });
+              }
+            }
+            const topCountries = Array.from(counts.entries())
+              .sort((a, b) => b[1].count - a[1].count)
+              .slice(0, 10)
+              .filter(([, v]) => !!v.region)
+              .map(([slug, v]) => ({
+                slug,
+                country: v.canonical,
+                region: v.region!,
+                count: v.count,
+              }));
+
+            const currentGenreSlug = (additionalData.genreSlug || '').toLowerCase();
+            const relatedGenres = Array.from(GENRE_WHITELIST_SEED)
+              .filter((g) => g && g !== currentGenreSlug)
+              .slice(0, 8);
+
+            additionalData.crossLinks = {
+              topCountries,
+              relatedGenres,
+            };
+          } catch (e: any) {
+            if (e?.name === 'AbortError' || signal?.aborted) throw e;
+          }
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
         }
@@ -733,6 +809,95 @@ export class SeoRenderer {
             const cc = topStations[0]?.countryCode;
             if (cc && typeof cc === 'string' && /^[a-z]{2}$/i.test(cc)) {
               additionalData.countryCode = cc.toLowerCase();
+            }
+
+            // ---- Region cross-link fetch (architect P1: B3) --------------
+            // "Popular genres in <country>" + "Neighbouring countries
+            // (same continent)". Server-rendered so crawlers walk between
+            // sibling country pages and from country → genre filter
+            // pages without needing the React client to hydrate.
+            try {
+              const { GENRE_WHITELIST_SEED } = await import('./seo/genre-whitelist-seed');
+              const { COUNTRY_TO_REGION_SLUG, canonicalizeCountry, countrySlug } =
+                await import('@workspace/seo-shared/country-regions');
+
+              // Architect P1 review fix: do not derive "popular genres
+              // in country" from the 12-station popularStations slice —
+              // it's too small and biased. Pull a wider tag-only sample
+              // (200 highest-vote indexable stations from the same
+              // country) so the genre tally is representative. This is
+              // a tags+country only projection, capped at maxTimeMS
+              // 3500, no impact on the popularStations grid above.
+              const countryName = additionalData.regionName as string;
+              let genreSample: Array<{ tags?: any }> = [];
+              if (countryName) {
+                try {
+                  genreSample = await withSignal(
+                    Station.find({
+                      country: countryName,
+                      $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+                      $and: [
+                        { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
+                        { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
+                      ],
+                      tags: { $exists: true, $ne: '' },
+                    })
+                      .sort({ votes: -1 })
+                      .limit(200)
+                      .select('tags')
+                      .lean()
+                      .maxTimeMS(3500),
+                    signal,
+                  );
+                } catch {
+                  genreSample = indexableStations as any[];
+                }
+              }
+              const tagCounts = new Map<string, number>();
+              for (const s of genreSample as any[]) {
+                const raw = Array.isArray(s?.tags)
+                  ? s.tags
+                  : (typeof s?.tags === 'string' ? String(s.tags).split(',') : []);
+                for (const t of raw) {
+                  const slug = String(t || '')
+                    .trim()
+                    .toLowerCase()
+                    .replace(/\s+/g, '-');
+                  if (!slug || !GENRE_WHITELIST_SEED.has(slug)) continue;
+                  tagCounts.set(slug, (tagCounts.get(slug) || 0) + 1);
+                }
+              }
+              const topGenres = Array.from(tagCounts.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([slug, count]) => ({ slug, count }));
+
+              // Neighbour countries: same world-region slug, exclude self.
+              const selfCountryName = additionalData.regionName as string;
+              const selfRegion = selfCountryName
+                ? COUNTRY_TO_REGION_SLUG[canonicalizeCountry(selfCountryName)]
+                : undefined;
+              const selfSlug = selfCountryName ? countrySlug(selfCountryName) : '';
+              const neighbours = selfRegion
+                ? Object.entries(COUNTRY_TO_REGION_SLUG)
+                    .filter(([name, region]) =>
+                      region === selfRegion && countrySlug(name) !== selfSlug,
+                    )
+                    .map(([name]) => ({
+                      name,
+                      slug: countrySlug(name),
+                      region: selfRegion,
+                    }))
+                    .slice(0, 12)
+                : [];
+
+              additionalData.crossLinks = {
+                topGenres,
+                neighbours,
+                regionSlug: selfRegion || '',
+              };
+            } catch (e: any) {
+              if (e?.name === 'AbortError' || signal?.aborted) throw e;
             }
 
             // SOFT-404 PROMOTION DISABLED (2026-05-12):
@@ -1974,6 +2139,61 @@ export class SeoRenderer {
               </ul>
             </section>
             ` : ''}
+            ${(() => {
+              // ---- Cross-link sections (architect P1: B2) ----------------
+              // "Top countries broadcasting <genre>" links to the country
+              // pages so crawlers walk genre → country, and "Related
+              // genres" links to other whitelisted genre slugs. Skipped
+              // entirely on noindex pages (architect P1 review fix —
+              // emitting crawl edges from a noindex page wastes budget).
+              if (seoTags?.noIndex === true) return '';
+              const xl = (additionalData as any)?.crossLinks;
+              if (!xl) return '';
+              const sections: string[] = [];
+              const regionsSegment =
+                urlTranslations?.get(`${language}:regions`) || 'regions';
+              const genresSegment =
+                urlTranslations?.get(`${language}:genres`) || 'genres';
+              if (Array.isArray(xl.topCountries) && xl.topCountries.length > 0) {
+                const heading = this.escapeHtml(
+                  getLocalizedText(
+                    'top_countries_for_genre',
+                    'Top countries broadcasting this genre',
+                  ),
+                );
+                sections.push(`
+            <section class="related-genres related-genres--countries">
+              <h2>${heading}</h2>
+              <ul>${xl.topCountries
+                .map((c: any) => {
+                  const cslug = String(c?.slug || '').trim();
+                  const region = String(c?.region || '').trim();
+                  const cname = String(c?.country || '').trim();
+                  if (!cslug || !region || !cname) return '';
+                  return `<li><a href="${langPrefix}/${regionsSegment}/${this.escapeHtml(region)}/${this.escapeHtml(cslug)}">${this.escapeHtml(getLocalizedCountryName(cname, language))}</a></li>`;
+                })
+                .join('')}</ul>
+            </section>`);
+              }
+              if (Array.isArray(xl.relatedGenres) && xl.relatedGenres.length > 0) {
+                const heading = this.escapeHtml(
+                  getLocalizedText('related_genres', 'Related radio genres'),
+                );
+                sections.push(`
+            <section class="related-genres related-genres--genres">
+              <h2>${heading}</h2>
+              <ul>${xl.relatedGenres
+                .map((g: string) => {
+                  const label = String(g)
+                    .replace(/-/g, ' ')
+                    .replace(/\b\w/g, (l) => l.toUpperCase());
+                  return `<li><a href="${langPrefix}/${genresSegment}/${this.escapeHtml(g)}">${this.escapeHtml(label)}</a></li>`;
+                })
+                .join('')}</ul>
+            </section>`);
+              }
+              return sections.join('\n');
+            })()}
             <nav>
               <ul>
                 <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>
@@ -2040,6 +2260,58 @@ export class SeoRenderer {
               </ul>
             </section>
             ` : ''}
+            ${(() => {
+              // ---- Cross-link sections (architect P1: B3) ----------------
+              // "Popular genres in <country>" links to genre pages so
+              // crawlers walk country → genre, and "Other countries in
+              // <continent>" links to sibling country pages within the
+              // same world region (data from COUNTRY_TO_REGION_SLUG).
+              // Skipped on noindex pages (architect P1 review fix).
+              if (seoTags?.noIndex === true) return '';
+              const xl = (additionalData as any)?.crossLinks;
+              if (!xl) return '';
+              const sections: string[] = [];
+              const regionsSegment =
+                urlTranslations?.get(`${language}:regions`) || 'regions';
+              const genresSegment =
+                urlTranslations?.get(`${language}:genres`) || 'genres';
+              if (Array.isArray(xl.topGenres) && xl.topGenres.length > 0) {
+                const heading = regionName
+                  ? `${this.escapeHtml(getLocalizedText('popular_genres_in', 'Popular radio genres in'))} ${this.escapeHtml(regionName)}`
+                  : this.escapeHtml(getLocalizedText('popular_genres', 'Popular radio genres'));
+                sections.push(`
+            <section class="related-regions related-regions--genres">
+              <h2>${heading}</h2>
+              <ul>${xl.topGenres
+                .map((g: any) => {
+                  const slug = String(g?.slug || '').trim();
+                  if (!slug) return '';
+                  const label = slug.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+                  return `<li><a href="${langPrefix}/${genresSegment}/${this.escapeHtml(slug)}">${this.escapeHtml(label)}</a></li>`;
+                })
+                .join('')}</ul>
+            </section>`);
+              }
+              if (Array.isArray(xl.neighbours) && xl.neighbours.length > 0) {
+                const heading = this.escapeHtml(
+                  getLocalizedText('other_countries_region', 'Other countries in this region'),
+                );
+                sections.push(`
+            <section class="related-regions related-regions--neighbours">
+              <h2>${heading}</h2>
+              <ul>${xl.neighbours
+                .map((n: any) => {
+                  const slug = String(n?.slug || '').trim();
+                  const name = String(n?.name || '').trim();
+                  const region = String(n?.region || xl.regionSlug || '').trim();
+                  if (!slug || !name || !region) return '';
+                  return `<li><a href="${langPrefix}/${regionsSegment}/${this.escapeHtml(region)}/${this.escapeHtml(slug)}">${this.escapeHtml(getLocalizedCountryName(name, language))}</a></li>`;
+                })
+                .join('')}</ul>
+            </section>`);
+              }
+              return sections.join('\n');
+            })()}
             <nav>
               <ul>
                 <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'All Regions'))}</a></li>
@@ -2343,6 +2615,45 @@ export class SeoRenderer {
       };
     }
 
+    // ---- CollectionPage schema (architect P1: A3) ----------------------
+    // For listing-style pages (genres / regions / stations) wrap the
+    // existing ItemList inside a CollectionPage so Google understands
+    // these URLs as curated lists of entities (better surface for
+    // sitelinks + AI overview citations) rather than generic article
+    // pages. Skipped on noindex'd listings — emitting structured data
+    // for a page we tell Google not to index is wasted markup.
+    // Derive pageType from cleanPath (generateHtmlHead doesn't receive it
+    // as a parameter; cleanPath is the canonical post-language strip).
+    const collectionPageType: 'genres' | 'regions' | 'stations' | null =
+      cleanPath === '/genres' || cleanPath.startsWith('/genres/')
+        ? 'genres'
+        : cleanPath === '/regions' || cleanPath.startsWith('/regions/')
+        ? 'regions'
+        : cleanPath === '/stations' || cleanPath.startsWith('/stations/')
+        ? 'stations'
+        : null;
+    let collectionPageSchema: any = null;
+    if (
+      popularStationsSchema &&
+      collectionPageType &&
+      seoTags?.noIndex !== true
+    ) {
+      const canonicalUrl = seoTags?.canonical || `${baseDomain}${cleanPath}`;
+      collectionPageSchema = {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "@id": `${canonicalUrl}#collection`,
+        "url": canonicalUrl,
+        "name": seoTags?.title || 'Mega Radio',
+        "description":
+          seoTags?.description ||
+          getLocalizedText('faq_seo_intro', 'Discover radio stations on Mega Radio'),
+        "inLanguage": language,
+        "isPartOf": { "@id": `${baseDomain}/#website` },
+        "mainEntity": popularStationsSchema,
+      };
+    }
+
     // RadioStation Schema for individual station pages
     // Prefix-all canonical + localized station segment for ALL languages (DALGA 2 W2.3 fix)
     let radioStationSchema: any = null;
@@ -2609,6 +2920,10 @@ export class SeoRenderer {
     ${radioStationSchema ? `
     <script type="application/ld+json">
     ${jsonLd(radioStationSchema)}
+    </script>` : ''}
+    ${collectionPageSchema ? `
+    <script type="application/ld+json">
+    ${jsonLd(collectionPageSchema)}
     </script>` : ''}
     ${popularStationsSchema ? `
     <script type="application/ld+json">
