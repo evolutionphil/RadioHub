@@ -436,7 +436,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       const t0 = Date.now();
       try {
         const ctrl = new AbortController();
-        const to = setTimeout(() => ctrl.abort(), 30000);
+        const to = setTimeout(() => ctrl.abort(), 60000);
         const r = await fetch(base + path, { signal: ctrl.signal, headers: { 'x-warmup': '1' } });
         clearTimeout(to);
         if (r.ok) { okCount++; logger.log(`🔥 [warmup] ${path} ${r.status} ${Date.now() - t0}ms`); }
@@ -447,18 +447,31 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       }
     };
 
-    // Global hot endpoints first
+    // Global hot endpoints first (header + homepage)
     await hit('/api/stations/popular?limit=12');
     await hit('/api/stations/popular?limit=4');
     await hit('/api/genres');
+    await hit('/api/countries?format=rich');
+    await hit('/api/community-favorites');
+    await hit('/api/recommendations/diverse?limit=20');
+    await hit('/api/stations?limit=20&page=1');
+    await hit('/api/stations/precomputed?countryName=global&page=1&limit=200');
 
-    // Per-country variants — sequential to avoid hammering cluster
+    // Per-country variants — sequential to avoid hammering cluster.
+    // Covers: popular carousels, genres list, all-stations list,
+    // community favorites, diverse recommendations, paginated
+    // station list, and the precomputed station leaderboard used
+    // by the country detail / recommendations pages.
     for (const country of TOP_COUNTRIES) {
       const enc = encodeURIComponent(country);
       await hit(`/api/stations/popular?country=${enc}&limit=12`);
       await hit(`/api/stations/popular?country=${enc}&limit=4`);
       await hit(`/api/genres?countrycode=${enc}`);
+      await hit(`/api/community-favorites?country=${enc}`);
+      await hit(`/api/recommendations/diverse?country=${enc}&limit=12`);
+      await hit(`/api/stations?country=${enc}&limit=20&page=1`);
       await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=12`);
+      await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=50`);
       await new Promise(r => setTimeout(r, 250));
     }
 
