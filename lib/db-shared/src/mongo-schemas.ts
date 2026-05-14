@@ -1933,6 +1933,12 @@ StationSchema.index({ codec: 1 }); // Used in dashboard stats distinct/aggregate
 StationSchema.index({ country: 1, lastCheckOk: 1, votes: -1 }); // Country lookup with votes sort
 StationSchema.index({ lastCheckOk: 1, votes: -1 }); // Global popular lookup
 StationSchema.index({ lastCheckOk: 1, hasLogo: -1, votes: -1 }); // Precomputed stations fast sort
+// Created on Atlas 2026-05-14 alongside the three above to fully cover
+// the precomputed-stations country query (`{country, lastCheckOk}` match
+// + `{hasLogo:-1, votes:-1}` sort) with zero blocking SORT stage. Without
+// this 4-field index, Mongo falls back to the 3-field
+// `{country:1, lastCheckOk:1, votes:-1}` and re-sorts in memory.
+StationSchema.index({ country: 1, lastCheckOk: 1, hasLogo: -1, votes: -1 }); // Country + hasLogo+votes sort (covers precomputed-stations)
 
 // Debug log indexes
 StationDebugLogSchema.index({ stationId: 1 });
