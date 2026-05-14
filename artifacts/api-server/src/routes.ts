@@ -447,14 +447,19 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       }
     };
 
-    // INCIDENT 2026-05-14 round 6: previously this looped 25 countries
-    // x 8 endpoints sequentially and was itself hammering the cluster
-    // (community-favorites + recommendations/diverse country variants
-    // run heavy aggregates with no cache and timed out every cycle,
-    // re-firing 50 min later). Now that all boot endpoints cache 24h
-    // and per-route caches hold 1h+, real user traffic keeps top-
-    // country keys hot. Warm only the GLOBAL boot keys + light top-3
-    // popular/precomputed.
+    // INCIDENT 2026-05-14 round 7: per user request, run a slow
+    // sequential warmup. Phase 1 (immediate, ~10-15s): all GLOBAL
+    // boot keys so the site shell is responsive instantly. Phase 2
+    // (background, sequential, one country at a time with a generous
+    // gap): fill the per-country caches for the top 25 countries
+    // using ONLY the safe/cached endpoints — popular + precomputed.
+    // Heavy/uncached endpoints (community-favorites country variant,
+    // recommendations/diverse country variant, /api/genres country
+    // aggregate) are NOT included because they always time out and
+    // emit error logs without writing a cache entry; real user
+    // traffic fills those naturally.
+
+    // === Phase 1: global boot keys (fast, every user needs these) ===
     await hit('/api/filters/countries');
     await hit('/api/filters/languages');
     await hit('/api/filters/genres');
@@ -464,13 +469,24 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     await hit('/api/stations/popular?limit=12');
     await hit('/api/stations/popular?limit=4');
     await hit('/api/stations/precomputed?countryName=global&page=1&limit=200');
+    logger.log(`🔥 [warmup] phase 1 (global boot keys) done in ${Date.now() - startAll}ms`);
 
-    const TOP3 = ['Germany', 'Turkey', 'The United States Of America'];
-    for (const country of TOP3) {
+    // === Phase 2: top 25 countries, one at a time, slow ===
+    // Only popular + precomputed (both cached, both indexed). 4 hits
+    // per country, 3s gap between countries → ~25 countries × ~5s =
+    // ~2 min steady drip. The site is fully usable from phase 1
+    // already; this just pre-warms the per-country leaderboards.
+    for (const country of TOP_COUNTRIES) {
       const enc = encodeURIComponent(country);
+      const tStart = Date.now();
       await hit(`/api/stations/popular?country=${enc}&limit=12`);
+      await hit(`/api/stations/popular?country=${enc}&limit=4`);
       await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=50`);
-      await new Promise(r => setTimeout(r, 1500));
+      await hit(`/api/stations/precomputed?countryName=${enc}&page=1&limit=12`);
+      logger.log(`🔥 [warmup] ${country} done in ${Date.now() - tStart}ms (ok=${okCount} fail=${failCount})`);
+      // Generous gap so the cluster planner / connection pool can
+      // recover before the next country.
+      await new Promise(r => setTimeout(r, 3000));
     }
 
     logger.log(`🔥 HTTP self-warmup done in ${Date.now() - startAll}ms (ok=${okCount} fail=${failCount})`);
