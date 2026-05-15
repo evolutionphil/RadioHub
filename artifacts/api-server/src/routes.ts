@@ -97,38 +97,12 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   const isApiOnly = options?.mode === 'api-only';
   const server = createServer(app);
 
-  // === ADMIN INDEX PROBE ===
-  // INCIDENT 2026-05-15 v10 — quick way to see which Station indexes are
-  // present + visible on Atlas. The May 14 audit hid 17 indexes; hinting
-  // a hidden index throws BadValue and silently 500s public endpoints.
-  // Use: GET /api/admin/db/indexes  (admin-only)
-  // Returns: [{ name, key, hidden, accesses: { ops, since } }, ...]
-  app.get('/api/admin/db/indexes', requireAdmin, async (_req, res) => {
-    try {
-      if (mongoose.connection.readyState !== 1) {
-        return void res.status(503).json({ error: 'Mongo not connected' });
-      }
-      const [indexes, stats] = await Promise.all([
-        Station.collection.indexes(),
-        Station.collection.aggregate([{ $indexStats: {} }]).toArray()
-      ]);
-      const statsByName = new Map(stats.map((s: any) => [s.name, s]));
-      const merged = indexes.map((idx: any) => {
-        const s: any = statsByName.get(idx.name);
-        return {
-          name: idx.name,
-          key: idx.key,
-          hidden: idx.hidden === true,
-          accesses: s?.accesses || null,
-          host: s?.host || null
-        };
-      });
-      const hiddenCount = merged.filter(i => i.hidden).length;
-      res.json({ collection: 'stations', total: merged.length, hidden: hiddenCount, indexes: merged });
-    } catch (err: any) {
-      res.status(500).json({ error: err?.message || 'index probe failed' });
-    }
-  });
+  // INCIDENT 2026-05-15 v10 — the temporary `GET /api/admin/db/indexes`
+  // probe used to verify the Atlas index audit (May 14, hid 17 stations
+  // indexes) has been REMOVED. If you ever need it again, re-add a
+  // local one-off behind requireAdmin and remove it after the audit.
+  // The hint discipline rule (replit.md) keeps us safe without a
+  // permanent admin surface.
 
   // === HEALTH CHECK ===
   app.get('/api/health', (_req, res) => {

@@ -96,53 +96,49 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
   // POPULAR STATIONS API - With duplicate detection and icon-only filtering
   app.get("/api/stations/popular", async (req, res) => {
+    const { country, state, limit = 12, excludeBroken = 'false' } = req.query;
+    const isTV = req.query.tv === '1';
+    const resolvedCountry = resolveToDbName(country as string) || (country as string) || 'all';
+    const normalizedState = (state as string) || 'all';
+    const cacheKey = `popular_stations:${resolvedCountry}:${normalizedState}:${limit}:${excludeBroken}:${isTV ? 'tv' : 'web'}:v2`;
+    const popularRequestStart = Date.now();
     try {
-      const { country, state, limit = 12, excludeBroken = 'false' } = req.query;
-      const isTV = req.query.tv === '1';
-      
-      const resolvedCountry = resolveToDbName(country as string) || (country as string) || 'all';
-      const normalizedState = (state as string) || 'all';
-      const cacheKey = `popular_stations:${resolvedCountry}:${normalizedState}:${limit}:${excludeBroken}:${isTV ? 'tv' : 'web'}:v2`;
-      
-      const popularRequestStart = Date.now();
-      const cachedResult = await CacheManager.get(cacheKey);
-      if (cachedResult) {
-        logger.log(`[Cache HIT] /api/stations/popular country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
-        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-        return void res.json(cachedResult);
-      }
+      // INCIDENT 2026-05-15 v10 — wrapped compute in single-flight so 100
+      // concurrent cold misses (typical SSR fanout when CDN expires the
+      // homepage) coalesce into ONE Mongo aggregate. Previously each
+      // miss spawned its own pair of aggregates, draining the M10 pool.
+      const computed = await CacheManager.getOrSetSingleFlight<any[]>(cacheKey, async () => {
+        if (isTV && Number(limit) <= 10) {
+          let tvFilter: any = { lastCheckOk: true };
+          if (country && country !== 'all' && country !== 'null') {
+            Object.assign(tvFilter, normalizeCountryFilter(country as string));
+          }
+          if (state && state !== 'all') {
+            tvFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
+          }
+          tvFilter['logoAssets.status'] = 'completed';
 
-      if (isTV && Number(limit) <= 10) {
-        let tvFilter: any = { lastCheckOk: true };
-        if (country && country !== 'all' && country !== 'null') {
-          Object.assign(tvFilter, normalizeCountryFilter(country as string));
+          const fastStations = await Station.find(tvFilter)
+            .sort({ votes: -1, clickCount: -1 })
+            .limit(Number(limit) * 2)
+            .select(deps.TV_STATION_PROJECTION || {})
+            .lean();
+
+          const seen = new Set<string>();
+          const unique: any[] = [];
+          for (const s of fastStations) {
+            const key = s.name?.toLowerCase().replace(/\s*(radio|fm|am|online|live)\s*/gi, '').replace(/[^a-z0-9]/gi, '');
+            if (key && seen.has(key)) continue;
+            if (key) seen.add(key);
+            // Cache the FULL station shape — tvSlimStation is applied
+            // once by the response writer outside this closure. Slimming
+            // here would double-slim on cache HIT.
+            unique.push(s);
+            if (unique.length >= Number(limit)) break;
+          }
+          logger.log(`[Cache MISS] /api/stations/popular TV fast-path country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
+          return unique;
         }
-        if (state && state !== 'all') {
-          tvFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
-        }
-        tvFilter['logoAssets.status'] = 'completed';
-
-        const fastStations = await Station.find(tvFilter)
-          .sort({ votes: -1, clickCount: -1 })
-          .limit(Number(limit) * 2)
-          .select(deps.TV_STATION_PROJECTION || {})
-          .lean();
-
-        const seen = new Set<string>();
-        const unique: any[] = [];
-        for (const s of fastStations) {
-          const key = s.name?.toLowerCase().replace(/\s*(radio|fm|am|online|live)\s*/gi, '').replace(/[^a-z0-9]/gi, '');
-          if (key && seen.has(key)) continue;
-          if (key) seen.add(key);
-          unique.push(tvSlimStation(s));
-          if (unique.length >= Number(limit)) break;
-        }
-
-        await CacheManager.set(cacheKey, unique, { ttl: 3600 });
-        logger.log(`[Cache MISS] /api/stations/popular TV fast-path country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
-        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-        return void res.json(unique);
-      }
       
       const normalizeStationName = (name: string): string => {
         if (!name) return '';
@@ -265,30 +261,34 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         stations = [...stationsWithLogo, ...stationsWithoutLogo.slice(0, remaining)];
       }
 
-      const elapsed = Date.now() - popularRequestStart;
-      logger.log(`[Cache MISS] /api/stations/popular country=${resolvedCountry} limit=${requestedLimit} (${elapsed}ms)`);
+        const elapsed = Date.now() - popularRequestStart;
+        logger.log(`[Cache MISS] /api/stations/popular country=${resolvedCountry} limit=${requestedLimit} (${elapsed}ms)`);
 
-      if (isTV) {
-        const slimStations = stations.map(tvSlimStation);
-        await CacheManager.set(cacheKey, slimStations, { ttl: 3600 });
-        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-        return void res.json(slimStations);
-      }
+        // Cache the FULL station shape; the response writer below applies
+        // the TV slim transform / placeholder strip per request.
+        return stations;
+      }, { ttl: 3600 });
 
-      await CacheManager.set(cacheKey, stations, { ttl: 3600 });
       res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-      res.json(stripPlaceholders(stations));
+      if (isTV) {
+        return void res.json(computed.map(tvSlimStation));
+      }
+      res.json(stripPlaceholders(computed));
     } catch (error: any) {
       // SOFT-FAIL (2026-05-15 v10): never 500 a public read endpoint.
-      // Log the real reason (codeName + message) so we can see it in
-      // Railway tail, then serve an empty array. The frontend handles
-      // empty lists gracefully; a 500 breaks the whole homepage SSR.
+      // SWR fallback: try the cache key one last time — a parallel
+      // request may have populated it before we threw. If still empty,
+      // serve []. Use no-store so the failure response is NEVER cached
+      // by the CDN/browser (a stale empty would lock users out for
+      // minutes after the cluster recovers).
       logger.error(
         `❌ /api/stations/popular failed (country=${req.query.country || 'all'}, limit=${req.query.limit || '?'}): ` +
         `code=${error?.code || error?.codeName || 'unknown'} msg=${error?.message || error}`
       );
-      res.set('Cache-Control', 'public, max-age=30');
-      res.json([]);
+      let stale: any = null;
+      try { stale = await CacheManager.get(cacheKey); } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(stale) ? stale : []);
     }
   });
 

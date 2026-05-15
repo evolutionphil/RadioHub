@@ -115,6 +115,12 @@ silent 500. We removed all 3 hints in v10
 (station-public-routes.ts:228/717, precomputed-stations.ts:225) and the
 endpoints serve correctly without them.
 
+The CI guard test at
+`artifacts/api-server/tests/hint-discipline.test.ts` greps the
+api-server source for `.hint(` and fails the build if any usage is
+missing the verification comment. It runs automatically as part of
+`pnpm run test` (which the root build invokes).
+
 ## Lazy cache fill (NO eager boot warmup)
 
 INCIDENT 2026-05-15 v10 — boot warmup is REMOVED. Per user directive
@@ -144,19 +150,32 @@ under multiplanner contention + connection pool exhaustion. DO NOT.
 A 500 from a public read endpoint breaks SSR pages (homepage, country,
 city, genre) and shows an error page to organic users. Every public
 read in `station-public-routes.ts`, `genres-countries-routes.ts`,
-`regions-recommendations-routes.ts` now does:
+`regions-recommendations-routes.ts`, and `translation-admin-routes.ts`
+public filter endpoints now does:
 
 ```ts
 } catch (error: any) {
-  console.error(`❌ /api/... failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-  res.set('Cache-Control', 'public, max-age=30');
-  res.json(<empty-but-shape-correct payload>);
+  logger.error(`❌ /api/... failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+  // SWR fallback: try the cache one more time — a parallel request
+  // may have populated it before we threw.
+  let stale: any = null;
+  try { stale = await CacheManager.get(cacheKey); } catch {}
+  res.set('Cache-Control', 'no-store');
+  res.json(stale ?? <empty-but-shape-correct payload>);
 }
 ```
 
-The 30-second short-cache on the failure response prevents a single
-slow query from stampeding the cluster on retry, and the error log
-includes the Mongo `code`/`codeName` so we can diagnose without a 500.
+`Cache-Control: no-store` on the failure response is critical: a
+30-second cache on `[]` would lock organic users out of the homepage
+for 30 seconds after the cluster recovers. `no-store` lets the next
+request retry immediately while still returning 200 (so SSR doesn't
+crash).
+
+The hot endpoints (`/api/stations/popular`, `/api/filters/languages`,
+the precomputed-cities service) wrap their cache compute in
+`CacheManager.getOrSetSingleFlight(key, loader, opts)` so 100
+concurrent cold misses (typical SSR fanout when CDN expires the
+homepage) coalesce into ONE Mongo aggregate.
 
 ## MongoDB aggregation memory limits (read before adding new aggregations)
 

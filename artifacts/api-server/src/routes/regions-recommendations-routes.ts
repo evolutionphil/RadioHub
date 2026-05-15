@@ -195,7 +195,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error(`❌ /api/cities/global failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: { cities: [] } });
     }
   });
@@ -225,7 +225,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error(`❌ /api/cities/precomputed failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: { cities: [], totalCountryStations: 0, cached: false } });
     }
   });
@@ -245,7 +245,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error(`❌ /api/regions failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: [] });
     }
   });
@@ -329,7 +329,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error(`❌ /api/regions/:slug failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: { region: { name: '', slug: req.params.regionSlug }, countries: [] } });
     }
   });
@@ -452,7 +452,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error(`❌ /api/regions/:slug/:country failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: { cities: [] } });
     }
   });
@@ -568,7 +568,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error(`❌ /api/regions/:slug/:country/:city/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: { stations: [], total: 0, limit: Number(req.query.limit || 50), offset: Number(req.query.offset || 0), countryName: '', cityName: null } });
     }
   });
@@ -586,7 +586,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       res.json(recommendations);
     } catch (error: any) {
       console.error(`❌ /api/recommendations/dedicated failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json([]);
     }
   });
@@ -642,7 +642,7 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       res.json(result);
     } catch (error: any) {
       console.error(`❌ /api/recommendations/diverse failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ stations: [], total: 0 });
     }
   });

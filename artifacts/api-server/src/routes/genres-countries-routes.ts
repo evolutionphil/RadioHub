@@ -183,7 +183,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     } catch (error: any) {
       logger.warn('[countries] failed: ' + (error?.message || 'unknown'));
       // Soft-fail with empty list rather than 500 so the UI shell renders
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json([]);
     }
   });
@@ -423,7 +423,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       res.json(response);
     } catch (error: any) {
       console.error(`❌ /api/genres failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, genres: [], data: [], total: 0, count: 0, page: 1, currentPage: 1, limit: 20, perPage: 20, totalPages: 0 });
     }
   });
@@ -467,7 +467,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       });
     } catch (error: any) {
       console.error(`❌ /api/genres/precomputed failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: [], genres: [], count: 0, total: 0, currentPage: 1, page: 1, perPage: 27, limit: 27, totalPages: 0, computedAt: Date.now(), countryName: 'global' });
     }
   });
@@ -499,7 +499,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       res.json(genres);
     } catch (error: any) {
       console.error(`❌ /api/genres/discoverable failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json([]);
     }
   });
@@ -539,7 +539,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       return void res.status(404).json({ error: 'Genre not found' });
     } catch (error: any) {
       console.error(`❌ /api/genres/slug failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.status(404).json({ error: 'Genre not found' });
     }
   });

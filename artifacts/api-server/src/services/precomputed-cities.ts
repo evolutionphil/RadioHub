@@ -85,18 +85,28 @@ export class PrecomputedCitiesService {
     const searchPatterns = getCountrySearchPatterns(countryName);
     const countryRegex = searchPatterns.map(p => new RegExp(`^${escapeRegex(p)}$`, 'i'));
 
-    try {
-      const docs = await Station.find(
-        {
-          $or: countryRegex.map(regex => ({ country: regex })),
-          lastCheckOk: true
-        },
-        { name: 1, tags: 1, state: 1 }
-      )
-        .lean()
-        .maxTimeMS(8000);
+    // Bounded scan: cap the per-country slice at 5000 docs. Even the
+    // largest countries (USA ~1900, Germany ~1500) sit well below the
+    // cap, but the explicit limit guarantees the planner sees a small
+    // bounded window so a future bulk import can't silently turn this
+    // into a multi-GB scan. The total count is fetched as a parallel
+    // cheap countDocuments (uses the index, not the doc payload) so the
+    // displayed station total stays accurate even when the bucket scan
+    // is capped.
+    const PER_COUNTRY_DOC_CAP = 5000;
+    const filter = {
+      $or: countryRegex.map(regex => ({ country: regex })),
+      lastCheckOk: true
+    };
 
-      const totalCountryStations = docs.length;
+    try {
+      const [docs, totalCountryStations] = await Promise.all([
+        Station.find(filter, { name: 1, tags: 1, state: 1 })
+          .lean()
+          .limit(PER_COUNTRY_DOC_CAP)
+          .maxTimeMS(8000),
+        Station.countDocuments(filter).maxTimeMS(5000).catch(() => 0)
+      ]);
 
       // Pre-build lowercase city patterns once.
       const cityPatterns = cities.map(city => ({

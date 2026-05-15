@@ -1712,7 +1712,7 @@ ${keysText}`;
     } catch (error: any) {
       logger.warn('[filters/countries] failed: ' + (error?.message || 'unknown'));
       // Soft-fail with empty list rather than 500 so the header still renders
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json([]);
     }
   });
@@ -1722,13 +1722,12 @@ ${keysText}`;
   // aggregate hit on every page load with no cache. Add 24h cache + bounded
   // execution + soft fallback.
   app.get("/api/filters/languages", async (req, res) => {
+    const cacheKey = 'filters:languages:v1';
     try {
-      const cacheKey = 'filters:languages:v1';
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) {
-        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-        return void res.json(cached);
-      }
+      // INCIDENT 2026-05-15 v10 — wrap the heavy distinct-language
+      // aggregate in single-flight so concurrent cold misses (homepage
+      // SSR fanout) coalesce to ONE Mongo call.
+      const cleanLanguages = await CacheManager.getOrSetSingleFlight<string[]>(cacheKey, async () => {
       // Get aggregated language data with counts
       const languageStats = await Station.aggregate([
         {
@@ -1780,13 +1779,16 @@ ${keysText}`;
         .slice(0, 50) // Limit results
         .sort();
 
-      await CacheManager.set('filters:languages:v1', cleanLanguages, { ttl: 86400 });
+        return cleanLanguages;
+      }, { ttl: 86400 });
       res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       res.json(cleanLanguages);
     } catch (error: any) {
       logger.warn('[filters/languages] failed: ' + (error?.message || 'unknown'));
-      res.set('Cache-Control', 'public, max-age=30');
-      res.json([]);
+      let stale: any = null;
+      try { stale = await CacheManager.get(cacheKey); } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(Array.isArray(stale) ? stale : []);
     }
   });
 
@@ -1835,7 +1837,7 @@ ${keysText}`;
       res.json(genres);
     } catch (error: any) {
       logger.warn('[filters/genres] failed: ' + (error?.message || 'unknown'));
-      res.set('Cache-Control', 'public, max-age=30');
+      res.set('Cache-Control', 'no-store');
       res.json([]);
     }
   });

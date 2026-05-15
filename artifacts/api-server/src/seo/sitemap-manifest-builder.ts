@@ -395,6 +395,7 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
     // broken by natural index/RecordId order (deterministic enough for
     // sitemap chunking; per-chunk JS already controls the slice).
     .sort({ votes: -1 })
+    // HINT-VERIFIED 2026-05-15 - {votes:-1} (key-spec hint, not name; survives Atlas index renames/hides)
     .hint({ votes: -1 })
     .read('primary')
     .lean()
@@ -475,6 +476,7 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
   const cursor = Genre.find({ slug: { $exists: true, $ne: '' } })
     .select('_id slug stationCount updatedAt')
     .sort({ stationCount: -1 })
+    // HINT-VERIFIED 2026-05-15 - {stationCount:-1} (key-spec hint, not name; survives Atlas index renames/hides)
     .hint({ stationCount: -1 })
     .lean()
     .cursor({ batchSize: 500 });
