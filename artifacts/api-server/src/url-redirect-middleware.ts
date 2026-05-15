@@ -26,6 +26,24 @@ import { getCanonicalStationSlug, isSlugExistenceReady } from './seo/slug-existe
  * cache cannot hang the request.
  */
 
+/**
+ * Normalize a single URL path segment so it is a fixed point under
+ * RFC 3986 §6.2.2.1 ("Percent-Encoding Normalization"):
+ *   • ASCII letters A-Z → a-z (case-insensitive matching for our routes)
+ *   • Percent-encoded triplets `%xx` → uppercase hex `%XX`
+ *
+ * Returning a fixed point is the whole reason this exists. If we lowercase
+ * the entire segment (including the hex inside `%XX`), conformant HTTP
+ * clients re-uppercase the hex on the next request and we 301 forever.
+ * See the comment on Step 2 in the middleware below for the full story.
+ */
+function normalizeSegmentCase(segment: string): string {
+  return segment.replace(
+    /%[0-9a-fA-F]{2}|[A-Z]/g,
+    (m) => (m.length === 1 ? m.toLowerCase() : m.toUpperCase()),
+  );
+}
+
 // Old English path segments that need redirects
 const OLD_ENGLISH_PATHS = [
   'station',
@@ -237,12 +255,28 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
     }
   }
 
-  // ---- Step 2: lowercase every segment ----
+  // ---- Step 2: lowercase ASCII letters per segment, normalize percent-hex to UPPER ----
   // /EN/Stations and /en/Stations both canonicalize to /en/stations.
   // Slug-case mismatches (/tr/istasyon/ABC) are normalized here too.
+  //
+  // 2026-05-15 BUGFIX (Semrush "7,694 redirect loops"):
+  //   Previously this called `segments[i].toLowerCase()` on percent-encoded
+  //   segments such as `pogoji-in-do%C4%8Dila`. That lowercased the
+  //   percent-hex (`%C4%8D` → `%c4%8d`) and emitted a 301. Conformant HTTP
+  //   clients (Semrush, Googlebot, etc.) re-normalize percent-encoded
+  //   triplets to UPPERCASE hex per RFC 3986 §6.2.2.1 before re-requesting,
+  //   producing `%C4%8D` again — the server 301'd back to lowercase, and
+  //   the client uppercased again, ad infinitum. Result: every URL with a
+  //   non-ASCII slug (Cyrillic, Arabic, Thai, Korean, CJK, Slovenian č,
+  //   Czech í, etc.) was a permanent redirect ping-pong = 7+ loop in the
+  //   crawl report and 0 link equity flowing through.
+  //
+  //   Fix: only lowercase ASCII A-Z; uppercase any %xx triplets so we
+  //   match the client's RFC 3986 normalization. The path is now a
+  //   fixed point — no client can produce a different normalized form.
   for (let i = 0; i < segments.length; i++) {
-    const lower = segments[i].toLowerCase();
-    if (lower !== segments[i]) segments[i] = lower;
+    const normalized = normalizeSegmentCase(segments[i]);
+    if (normalized !== segments[i]) segments[i] = normalized;
   }
 
   // ---- Step 3: empty path = root → bot canonical 301 / user geo 302 ----

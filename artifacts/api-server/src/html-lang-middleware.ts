@@ -31,6 +31,28 @@ const HTML_REGEX = {
   title: /<title>[^<]*<\/title>/,
 };
 
+// 2026-05-15 SEO audit fix (Semrush "279 duplicate meta descriptions" / "91
+// duplicate H1+title"): the Vite SPA template ships with these literal English
+// values. seo-renderer overrides them with per-page meta for bot traffic
+// (recommendations / users / stations / regions / genres / etc.); for human
+// traffic the SPA template is served as-is and this middleware injects the
+// localized homepage defaults so the language switcher's first paint is right.
+//
+// Previously the regex replacements ran UNCONDITIONALLY, which meant any
+// per-page meta seo-renderer had baked in (e.g. "Recommendations | Mega Radio"
+// for /af/aanbevelings) was clobbered by the homepage `meta_title` /
+// `meta_description` translation values. Result: 170+ pages across 30+
+// languages all advertised the same homepage meta — Semrush flagged them as
+// duplicates and Google merged them into the homepage's index entry.
+//
+// The fix: only override the title/description when they STILL match the
+// Vite template defaults (i.e. seo-renderer did not customize them). The
+// homepage path keeps its localized defaults; per-page bot SSR keeps its
+// per-page meta. The script + html lang injections still run unconditionally
+// because they are independent of per-page SEO.
+const VITE_TEMPLATE_TITLE_TAG = '<title>Mega Radio - Listen to Free Live Radio Online</title>';
+const VITE_TEMPLATE_META_DESC_TAG = '<meta name="description" content="Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free." />';
+
 interface PrecomputedLangData {
   script: string;
   metaTitle: string;
@@ -163,15 +185,25 @@ export function htmlLangMiddleware(req: Request, res: Response, next: NextFuncti
         buffer = scriptInjected;
       }
       
-      buffer = buffer.replace(
-        HTML_REGEX.metaDesc,
-        `<meta name="description" content="${metaDescription}" />`
-      );
-      
-      buffer = buffer.replace(
-        HTML_REGEX.title,
-        `<title>${metaTitle}</title>`
-      );
+      // Only override when the buffer still has the Vite template defaults.
+      // If seo-renderer wrote a per-page <title> / meta description, leave it
+      // alone — otherwise we'd clobber Recommendations / Users / Stations /
+      // Regions / Genres / etc. with the homepage meta and re-create the
+      // duplicate-meta cluster the SEO audit just flagged. See the comment
+      // on VITE_TEMPLATE_TITLE_TAG above for the full story.
+      if (buffer.includes(VITE_TEMPLATE_META_DESC_TAG)) {
+        buffer = buffer.replace(
+          VITE_TEMPLATE_META_DESC_TAG,
+          `<meta name="description" content="${metaDescription}" />`
+        );
+      }
+
+      if (buffer.includes(VITE_TEMPLATE_TITLE_TAG)) {
+        buffer = buffer.replace(
+          VITE_TEMPLATE_TITLE_TAG,
+          `<title>${metaTitle}</title>`
+        );
+      }
     }
     
     return (originalEnd as any).call(res, buffer);
