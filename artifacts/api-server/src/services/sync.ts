@@ -214,17 +214,64 @@ export class SyncService {
   }
 
   private async fetchAllStations(): Promise<any[]> {
-    const response = await axios.get('https://de1.api.radio-browser.info/json/stations', {
-      timeout: 120000, // 2 minute timeout
-      headers: {
-        'User-Agent': 'RadioApp/1.0'
-      }
-    });
+    // INCIDENT 2026-05-15 v4: every recent force-sync reported the IDENTICAL
+    // 998 processed / 934 updated / 64 skipped / 0 added — i.e. the loop ran
+    // exactly ONE batch of ~1000 stations each time. Root cause: the
+    // de1.api.radio-browser.info `/json/stations` endpoint NO LONGER returns
+    // the full ~60K-station catalog by default — current mirror behaviour is
+    // a hard 1000-row cap when no `limit` is provided, which silently
+    // truncated the entire ingest. Switch to the documented
+    // `/json/stations/search` endpoint with explicit limit + offset
+    // pagination so we always pull the full catalog, regardless of any
+    // future server-side default change. Stop on the first page that comes
+    // back smaller than the requested page size (end of catalog reached).
+    const PAGE_SIZE = 5000;
+    const MAX_PAGES = 100; // hard ceiling — 500K stations is well above the catalog
+    const baseUrl =
+      'https://de1.api.radio-browser.info/json/stations/search';
+    const all: any[] = [];
+    const seen = new Set<string>();
 
-    return response.data.filter((station: any) => {
-      // Only include stations with valid UUID and name
-      return station.stationuuid && station.name && station.name.trim() !== '';
-    });
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const offset = page * PAGE_SIZE;
+      const response = await axios.get(baseUrl, {
+        timeout: 120000,
+        headers: { 'User-Agent': 'RadioApp/1.0' },
+        params: {
+          limit: PAGE_SIZE,
+          offset,
+          hidebroken: false,
+        },
+      });
+      const rows: any[] = Array.isArray(response.data) ? response.data : [];
+      logger.log(
+        `📥 Radio-Browser page ${page + 1}: offset=${offset} received=${rows.length}`,
+      );
+      // Filter + dedupe across pages (mirror occasionally returns dupes near
+      // page boundaries when the underlying sort key isn't strictly unique).
+      let added = 0;
+      for (const station of rows) {
+        if (
+          station?.stationuuid &&
+          station?.name &&
+          typeof station.name === 'string' &&
+          station.name.trim() !== '' &&
+          !seen.has(station.stationuuid)
+        ) {
+          seen.add(station.stationuuid);
+          all.push(station);
+          added++;
+        }
+      }
+      logger.log(
+        `   ↳ kept ${added} new station(s) (total so far: ${all.length})`,
+      );
+      // End of catalog: a short page means there is no next page.
+      if (rows.length < PAGE_SIZE) break;
+    }
+
+    logger.log(`📡 Radio-Browser fetch complete: ${all.length} unique stations`);
+    return all;
   }
 
   /**
