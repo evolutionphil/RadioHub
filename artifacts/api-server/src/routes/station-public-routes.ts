@@ -288,7 +288,14 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       let stale: any = null;
       try { stale = await CacheManager.get(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json(Array.isArray(stale) ? stale : []);
+      // Apply the same response shaping as the success path so the
+      // payload contract is identical on stale fallback (TV gets slim
+      // shape; web strips placeholder logos).
+      const staleArr: any[] = Array.isArray(stale) ? stale : [];
+      if (isTV) {
+        return void res.json(staleArr.map(tvSlimStation));
+      }
+      res.json(stripPlaceholders(staleArr));
     }
   });
 
