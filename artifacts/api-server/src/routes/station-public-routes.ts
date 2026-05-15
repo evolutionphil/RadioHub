@@ -226,19 +226,28 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         ? 'country_1_lastCheckOk_1_votes_-1'
         : 'lastCheckOk_1_votes_-1';
 
+      // INCIDENT 2026-05-15 v8 — add `maxTimeMS: 15000` per replit.md
+      // rule "every Station.aggregate() needs maxTimeMS+allowDiskUse".
+      // Without it these aggregates would run indefinitely server-side
+      // while the boot warmup HTTP client (undici) gave up at its
+      // default 30s headersTimeout and logged "fetch failed", leaving
+      // the server still churning on the query for as long as the
+      // cluster needed. With 15s the server self-terminates, freeing
+      // the connection slot. 15s is well over the typical hot-cache
+      // serving time (<200ms) and below the 30s undici headers budget.
       const [featuredStations, regularStations] = await Promise.all([
         Station.aggregate([
           { $match: featuredFilter },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).allowDiskUse(true),
+        ]).option({ maxTimeMS: 15000, allowDiskUse: true }),
         Station.aggregate([
           { $match: { ...countryFilter, isFeatured: { $ne: true } } },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint(popularRegularHint).allowDiskUse(true)
+        ]).hint(popularRegularHint).option({ maxTimeMS: 15000, allowDiskUse: true })
       ]);
       
       const allCandidates = [...featuredStations, ...regularStations];
@@ -676,6 +685,17 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
             // 32MB sort memory limit on a 200k-doc scan and emits
             // "Executor error during getMore :: operation exceeded time
             // limit" within 5-10s instead of the budgeted 60s.
+            // INCIDENT 2026-05-15 v8 — explicit `.hint()` to bypass the
+            // multiplanner. With v7 we added the supporting compound index
+            // but on cold M10 the multiplanner kept timing out at 60s with
+            // "error while multiplanner was selecting best plan" because
+            // it was evaluating multiple candidate indexes
+            // (lastCheckOk_1_votes_-1, lastCheckOk_-1_votes_-1,
+            //  lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1, etc.)
+            // and could not finish plan selection within budget while the
+            // cluster was busy serving other cold queries. Hinting forces
+            // the executor straight to the optimal pre-sorted index, no
+            // plan evaluation needed.
             const [stations, total] = await Promise.all([
               Station.find(mongoFilter)
                 .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
@@ -684,6 +704,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
                 .limit(limitNum)
                 .maxTimeMS(60000)
                 .allowDiskUse(true)
+                .hint('lastCheckOk_1_hasLogo_-1_votes_-1')
                 .lean(),
               Station.countDocuments(mongoFilter).maxTimeMS(30000).catch(() => 0),
             ]);

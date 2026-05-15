@@ -185,6 +185,10 @@ export class PrecomputedStationsService {
     }
 
     return trackOperation('precompute-country', async () => {
+    // INCIDENT 2026-05-15 v8 — explicit `.hint()` to bypass multiplanner
+    // on cold M10. v7 added the matching compound index but plan selection
+    // itself was timing out under cold-cluster contention; hinting routes
+    // straight to the streaming index path, no plan evaluation.
     let stations = await Station.aggregate([
       {
         $match: {
@@ -217,7 +221,7 @@ export class PrecomputedStationsService {
           logoAssets: { webp96: 1, webp256: 1, folder: 1 }
         }
       }
-    ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
+    ]).hint('country_1_lastCheckOk_1_hasLogo_-1_votes_-1').option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
 
     if (stations.length === 0) {
       const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
