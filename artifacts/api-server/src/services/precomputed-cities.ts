@@ -143,7 +143,10 @@ export class PrecomputedCitiesService {
         countryName
       };
 
-      await CacheManager.set(this.getCacheKey(countryName), data, { ttl: CACHE_TTL });
+      // INCIDENT 2026-05-15 v10.2 round 8 — SWR envelope parity with
+      // other hot paths. Reads via getOrSetSWR (below) consume
+      // `<key>:swr`; refreshAllCaches() also writes via setSWR.
+      await CacheManager.setSWR(this.getCacheKey(countryName), data, { freshTtl: 86400, staleTtl: CACHE_TTL });
       logger.log(`🏙️ Cached cities for ${countryName}: ${citiesWithCounts.length} cities (${totalCountryStations} docs scanned)`);
 
       return data;
@@ -164,19 +167,24 @@ export class PrecomputedCitiesService {
 
   static async getCitiesForCountry(countryName: string): Promise<PrecomputedCitiesData> {
     const cacheKey = this.getCacheKey(countryName);
-    // Singleflight: coalesce concurrent SSR misses on the same country
-    // so the planner only sees ONE compute pass per country at a time.
-    // INCIDENT 2026-05-15 v10.2 round 6 — wrap in try/catch so a
-    // compute throw becomes a per-request empty soft-fail (SSR page
-    // still renders) WITHOUT poisoning the cache with empty data.
+    // INCIDENT 2026-05-15 v10.2 round 8 — switched from plain
+    // singleflight to full SWR envelope. Stale-but-usable cities
+    // (older than 1 day, younger than 7) now serve immediately while
+    // a single coalesced background refresh runs. round-6 cache
+    // poisoning protection still applies: computeCitiesForCountry
+    // rethrows on transient failure, the catch below returns empty
+    // for THIS request without writing the empty fallback into the
+    // SWR envelope.
     try {
-      return await CacheManager.getOrSetSingleFlight<PrecomputedCitiesData>(
+      return await CacheManager.getOrSetSWR<PrecomputedCitiesData>(
         cacheKey,
         () => this.computeCitiesForCountry(countryName),
-        { ttl: CACHE_TTL }
+        { freshTtl: 86400, staleTtl: CACHE_TTL }
       );
     } catch {
-      return { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
+      // SWR loader threw on a cold miss (no envelope at all yet) — soft-fail.
+      const stale = await CacheManager.getSWR<PrecomputedCitiesData>(cacheKey);
+      return stale || { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
     }
   }
 
@@ -195,7 +203,7 @@ export class PrecomputedCitiesService {
     logger.log(`🔄 Refreshing cities caches for ${countries.length} countries (admin-triggered)...`);
     for (const country of countries) {
       try {
-        await CacheManager.del(this.getCacheKey(country));
+        await CacheManager.delSWR(this.getCacheKey(country));
         await this.computeCitiesForCountry(country);
         await new Promise(r => setTimeout(r, 250));
       } catch (err: any) {
