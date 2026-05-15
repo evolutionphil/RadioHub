@@ -193,12 +193,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           cities: topGlobalCities
         }
       });
-    } catch (error) {
-      console.error('Error fetching global cities:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch global cities'
-      });
+    } catch (error: any) {
+      console.error(`❌ /api/cities/global failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, data: { cities: [] } });
     }
   });
 
@@ -225,12 +223,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           cached: data.computedAt < Date.now() - 1000
         }
       });
-    } catch (error) {
-      console.error('Error fetching precomputed cities:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch cities'
-      });
+    } catch (error: any) {
+      console.error(`❌ /api/cities/precomputed failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, data: { cities: [], totalCountryStations: 0, cached: false } });
     }
   });
 
@@ -247,12 +243,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         success: true,
         data: regions
       });
-    } catch (error) {
-      console.error('Error fetching regions:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch regions'
-      });
+    } catch (error: any) {
+      console.error(`❌ /api/regions failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, data: [] });
     }
   });
 
@@ -333,12 +327,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           countries: countriesWithStations
         }
       });
-    } catch (error) {
-      console.error('Error fetching region countries:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch region countries'
-      });
+    } catch (error: any) {
+      console.error(`❌ /api/regions/:slug failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, data: { region: { name: '', slug: req.params.regionSlug }, countries: [] } });
     }
   });
 
@@ -458,12 +450,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           cities: finalCities
         }
       });
-    } catch (error) {
-      console.error('Error fetching country cities:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch country cities'
-      });
+    } catch (error: any) {
+      console.error(`❌ /api/regions/:slug/:country failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, data: { cities: [] } });
     }
   });
 
@@ -576,12 +566,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           cityName
         }
       });
-    } catch (error) {
-      console.error('Error fetching regional stations:', error);
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch stations'
-      });
+    } catch (error: any) {
+      console.error(`❌ /api/regions/:slug/:country/:city/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, data: { stations: [], total: 0, limit: Number(req.query.limit || 50), offset: Number(req.query.offset || 0), countryName: '', cityName: null } });
     }
   });
 
@@ -596,9 +584,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         Number(limit)
       );
       res.json(recommendations);
-    } catch (error) {
-      console.error('Error fetching dedicated recommendations:', error);
-      res.status(500).json({ error: 'Failed to fetch recommendations' });
+    } catch (error: any) {
+      console.error(`❌ /api/recommendations/dedicated failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json([]);
     }
   });
 
@@ -651,9 +640,10 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       const result = { stations: uniqueStations, total: uniqueStations.length };
       await CacheManager.set(cacheKey, result, { ttl: 300 });
       res.json(result);
-    } catch (error) {
-      console.error('Error fetching diverse recommendations:', error);
-      res.status(500).json({ error: 'Failed to fetch diverse recommendations' });
+    } catch (error: any) {
+      console.error(`❌ /api/recommendations/diverse failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ stations: [], total: 0 });
     }
   });
 

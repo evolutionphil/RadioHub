@@ -97,6 +97,39 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   const isApiOnly = options?.mode === 'api-only';
   const server = createServer(app);
 
+  // === ADMIN INDEX PROBE ===
+  // INCIDENT 2026-05-15 v10 — quick way to see which Station indexes are
+  // present + visible on Atlas. The May 14 audit hid 17 indexes; hinting
+  // a hidden index throws BadValue and silently 500s public endpoints.
+  // Use: GET /api/admin/db/indexes  (admin-only)
+  // Returns: [{ name, key, hidden, accesses: { ops, since } }, ...]
+  app.get('/api/admin/db/indexes', requireAdmin, async (_req, res) => {
+    try {
+      if (mongoose.connection.readyState !== 1) {
+        return void res.status(503).json({ error: 'Mongo not connected' });
+      }
+      const [indexes, stats] = await Promise.all([
+        Station.collection.indexes(),
+        Station.collection.aggregate([{ $indexStats: {} }]).toArray()
+      ]);
+      const statsByName = new Map(stats.map((s: any) => [s.name, s]));
+      const merged = indexes.map((idx: any) => {
+        const s: any = statsByName.get(idx.name);
+        return {
+          name: idx.name,
+          key: idx.key,
+          hidden: idx.hidden === true,
+          accesses: s?.accesses || null,
+          host: s?.host || null
+        };
+      });
+      const hiddenCount = merged.filter(i => i.hidden).length;
+      res.json({ collection: 'stations', total: merged.length, hidden: hiddenCount, indexes: merged });
+    } catch (err: any) {
+      res.status(500).json({ error: err?.message || 'index probe failed' });
+    }
+  });
+
   // === HEALTH CHECK ===
   app.get('/api/health', (_req, res) => {
     const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
@@ -563,54 +596,46 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     logger.log(`🔥 HTTP self-warmup done in ${Date.now() - startAll}ms (ok=${okCount} fail=${failCount})`);
   }
 
+  // INCIDENT 2026-05-15 v10 — BOOT WARMUP REMOVED per user directive
+  // ("ilk gelenler olmaya baslayinca yapsin" / "fill caches when first
+  // visitors arrive, not at boot"). All previous warmup paths
+  // (warmupViaHttp, warmupPopularStationsCache, warmupTvMobileCache,
+  // PrecomputedStations.warmupPopularCountries, PrecomputedGenres
+  // boot warmup) hammered the cluster during cold-start and were the
+  // root cause of the recurring multiplanner-timeout / pool-exhaustion
+  // / 500 cascade. Caches are filled lazily by the first organic
+  // visitor via CacheManager.getOrSetSingleFlight (single-flight
+  // coalescing prevents stampedes). Off-peak cron refreshes still run.
   if (process.env.NODE_ENV !== 'development') {
+    // Lightweight Mongo health probe ONLY — one cheap indexed read so
+    // we know the cluster is reachable. No warmup work.
     setTimeout(async () => {
       try {
-        // Run HTTP self-warmup FIRST so the cache keys actual users hit
-        // get hot before we spend minutes on translations/TV/legacy keys.
-        logger.log('⚡ Starting HTTP self-warmup (user-facing keys first)...');
-        await warmupViaHttp();
-        logger.log('✅ HTTP self-warmup done — running legacy warmups in background...');
-        await warmupPopularStationsCache();
-        logger.log('⏳ Legacy web warmup done — waiting 10s before TV/Mobile warmup...');
-        await new Promise(r => setTimeout(r, 10000));
-        await warmupTvMobileCache();
-        logger.log('✅ All cache warmups completed successfully');
-      } catch (err) {
-        logger.log('⚠️ Cache warmup error (non-critical):', err);
+        const t0 = Date.now();
+        await Station.findOne({ lastCheckOk: true })
+          .select('_id')
+          .lean()
+          .maxTimeMS(5000);
+        logger.log(`✅ Boot Mongo probe ok (${Date.now() - t0}ms) — caches will fill on first organic request`);
+      } catch (err: any) {
+        logger.warn('⚠️ Boot Mongo probe failed (cluster cold or unreachable): ' + (err?.message || 'unknown'));
       }
     }, 5000);
 
-    // Refresh self-warmup every 50 minutes so cached entries (1h TTL)
-    // never expire under live traffic.
-    setInterval(() => {
-      warmupViaHttp().catch(err => logger.warn('⚠️ Periodic self-warmup failed: ' + err?.message));
-    }, 50 * 60 * 1000);
+    // Reference the unused warmup helpers so esbuild keeps them around
+    // for the cron jobs below that still call them on a schedule. The
+    // helpers themselves are safe-by-design (per-call try/catch); we
+    // just no longer fire them at boot.
+    void warmupViaHttp; void warmupPopularStationsCache; void warmupTvMobileCache;
 
-    // INCIDENT 2026-05-15 v7 — populate the GLOBAL PrecomputedStations
-    // cache at boot. Previously the boot HTTP warmup hit
-    // `/api/stations/precomputed?countryName=global&page=1&limit=200`
-    // which routed to the cold-fallback `Station.find().sort()` path —
-    // that path SERVES results but never WRITES the precomputed cache,
-    // so the global cache only ever got populated by the nightly cron
-    // (scheduled-cache-clear → refreshAllCountries) or admin trigger.
-    // v7 dropped the wasteful warmup hit, so without an explicit boot
-    // trigger every global request would keep falling back to the
-    // (now-fast, indexed) DB query instead of the Redis precomputed
-    // blob. Schedule the proper warmup 60s after boot so the new
-    // indexes have started building and the rest of phase 1 warmup
-    // has finished. computeGlobalStations + 10 popular countries
-    // total ~11 aggregates; we already throttle them with sleep(200).
-    setTimeout(async () => {
-      try {
-        const { PrecomputedStationsService } = await import('./services/precomputed-stations');
-        await PrecomputedStationsService.warmupPopularCountries();
-      } catch (err: any) {
-        logger.warn('⚠️ PrecomputedStations boot warmup failed (non-critical, cron will retry): ' + (err?.message || 'unknown'));
-      }
-    }, 60_000);
+    // Legacy comment retained for context (original v7 code stripped):
+    // The GLOBAL PrecomputedStations cache used to be populated at boot.
+    // It is now populated by the first organic visitor to the global
+    // stations page or by the off-peak cron refresh below. The
+    // singleflight wrapper around the precomputed service guarantees
+    // exactly one compute pass even under concurrent SSR misses.
   } else {
-    logger.log('⚡ Popular stations & TV/Mobile cache warmup: Skipped in dev mode');
+    logger.log('⚡ Boot warmup skipped (dev mode) — caches fill on demand');
   }
 
   // === HALOGO MIGRATION (one-time background, production only) ===
@@ -669,22 +694,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ TV/Mobile cache refresh scheduled: every 2 days at 2:00 AM (Europe/Berlin)');
 
-  // Genres cache: refresh every 5 minutes (NOT immediate - startup warmup handles initial load)
-  // Using a flag to skip the first fire if startup warmup already ran
-  let genresWarmupDone = false;
-  if (process.env.NODE_ENV !== 'development') {
-    setTimeout(async () => {
-      try {
-        const start = Date.now();
-        await PrecomputedGenresService.warmupCache();
-        genresWarmupDone = true;
-        logger.log(`🔥 PrecomputedGenres startup warmup completed in ${Date.now() - start}ms`);
-      } catch (error) { logger.error('PrecomputedGenres startup warmup failed:', error); }
-    }, 15000);
-  } else {
-    genresWarmupDone = true;
-    logger.log('⚡ Genres cache warmup: Skipped in dev mode');
-  }
+  // INCIDENT 2026-05-15 v10 — PrecomputedGenres boot warmup REMOVED.
+  // Caches fill lazily on first organic request via the singleflight
+  // wrapper. Cron refresh below still runs daily at 5 AM Berlin.
+  void PrecomputedGenresService;
 
   cron.default.schedule('0 5 * * *', async () => {
     try {

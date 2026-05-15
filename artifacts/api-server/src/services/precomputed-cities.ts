@@ -73,57 +73,49 @@ export class PrecomputedCitiesService {
       return { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
     }
 
+    // INCIDENT 2026-05-15 v10 — REWRITTEN. The previous implementation used
+    // a heavy $facet + $switch with N regex branches per document (Austria
+    // had 27 cities = 27 regex evals per station × thousands of docs). On
+    // cold M10 it routinely tripped 15s maxTimeMS and emitted "Failed to
+    // compute cities" SSR errors. New strategy: do ONE cheap indexed
+    // .find() for the country (uses country_1_votes_-1 or country_1
+    // index), project only the small fields we need, and bucket cities
+    // in Node memory. A typical country fetches <2k docs (well below
+    // the 16MB BSON limit), and the lean projection keeps payload tiny.
     const searchPatterns = getCountrySearchPatterns(countryName);
-    const countryRegex = searchPatterns.map(p => new RegExp(`^${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i'));
-
-    const pipeline = [
-      {
-        $match: {
-          $or: countryRegex.map(regex => ({ country: regex })),
-          lastCheckOk: true
-        }
-      },
-      {
-        $facet: {
-          totalCount: [{ $count: 'count' }],
-          cityCounts: cities.length > 0 ? [
-            {
-              $project: {
-                matchedCity: {
-                  $switch: {
-                    branches: cities.map(city => ({
-                      case: {
-                        $or: [
-                          { $regexMatch: { input: { $ifNull: ['$name', ''] }, regex: new RegExp(escapeRegex(city), 'i') } },
-                          { $regexMatch: { input: { $ifNull: ['$tags', ''] }, regex: new RegExp(escapeRegex(city), 'i') } },
-                          { $regexMatch: { input: { $ifNull: ['$state', ''] }, regex: new RegExp(escapeRegex(city), 'i') } }
-                        ]
-                      },
-                      then: city
-                    })),
-                    default: null
-                  }
-                }
-              }
-            },
-            { $match: { matchedCity: { $ne: null } } },
-            { $group: { _id: '$matchedCity', count: { $sum: 1 } } }
-          ] : []
-        }
-      }
-    ];
+    const countryRegex = searchPatterns.map(p => new RegExp(`^${escapeRegex(p)}$`, 'i'));
 
     try {
-      const result = await Station.aggregate(pipeline).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
-      const totalCountryStations = result[0]?.totalCount[0]?.count || 0;
-      const cityCountsRaw = result[0]?.cityCounts || [];
+      const docs = await Station.find(
+        {
+          $or: countryRegex.map(regex => ({ country: regex })),
+          lastCheckOk: true
+        },
+        { name: 1, tags: 1, state: 1 }
+      )
+        .lean()
+        .maxTimeMS(8000);
+
+      const totalCountryStations = docs.length;
+
+      // Pre-build lowercase city patterns once.
+      const cityPatterns = cities.map(city => ({
+        name: city,
+        re: new RegExp(escapeRegex(city), 'i')
+      }));
 
       const cityCountMap = new Map<string, number>();
-      cityCountsRaw.forEach((item: { _id: string; count: number }) => {
-        if (item._id) {
-          cityCountMap.set(item._id, item.count);
+      for (const doc of docs as any[]) {
+        const name = doc.name || '';
+        const tags = typeof doc.tags === 'string' ? doc.tags : Array.isArray(doc.tags) ? doc.tags.join(',') : '';
+        const state = doc.state || '';
+        for (const cp of cityPatterns) {
+          if (cp.re.test(name) || cp.re.test(tags) || cp.re.test(state)) {
+            cityCountMap.set(cp.name, (cityCountMap.get(cp.name) || 0) + 1);
+            break; // a station is bucketed into the first matching city
+          }
         }
-      });
+      }
 
       const citiesWithCounts: CityData[] = cities
         .map(city => ({
@@ -142,45 +134,54 @@ export class PrecomputedCitiesService {
       };
 
       await CacheManager.set(this.getCacheKey(countryName), data, { ttl: CACHE_TTL });
-      logger.log(`🏙️ Cached cities for ${countryName}: ${citiesWithCounts.length} cities`);
+      logger.log(`🏙️ Cached cities for ${countryName}: ${citiesWithCounts.length} cities (${totalCountryStations} docs scanned)`);
 
       return data;
-    } catch (error) {
-      logger.error(`Failed to compute cities for ${countryName}:`, error);
+    } catch (error: any) {
+      // SOFT-FAIL: never crash the SSR page. Log the real reason and
+      // serve an empty list. The page renders without the city grid.
+      logger.error(
+        `❌ precomputed-cities ${countryName} failed: ` +
+        `code=${error?.code || error?.codeName || 'unknown'} msg=${error?.message || error}`
+      );
       return { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
     }
   }
 
   static async getCitiesForCountry(countryName: string): Promise<PrecomputedCitiesData> {
     const cacheKey = this.getCacheKey(countryName);
-    const cached = await CacheManager.get<PrecomputedCitiesData>(cacheKey);
-    
-    if (cached) {
-      return cached;
-    }
-
-    return this.computeCitiesForCountry(countryName);
+    // Singleflight: coalesce concurrent SSR misses on the same country
+    // so the planner only sees ONE compute pass per country at a time.
+    return CacheManager.getOrSetSingleFlight<PrecomputedCitiesData>(
+      cacheKey,
+      () => this.computeCitiesForCountry(countryName),
+      { ttl: CACHE_TTL }
+    );
   }
 
   static async warmupCache(): Promise<void> {
-    const countries = Object.keys(COUNTRY_CITIES);
-    logger.log(`🏙️ Warming up cities cache for ${countries.length} countries...`);
-    
-    for (const country of countries) {
-      try {
-        await this.computeCitiesForCountry(country);
-        await new Promise(resolve => setTimeout(resolve, 150));
-      } catch (error) {
-        logger.error(`Failed to warmup cities cache for ${country}:`, error);
-      }
-    }
-    
-    logger.log(`✅ Cities cache warmup complete`);
+    // INCIDENT 2026-05-15: boot warmup of cities is INTENTIONALLY a no-op
+    // per user directive ("ilk gelenler olmaya baslayinca yapsin").
+    // The 7-day TTL means each country is computed at most once per week
+    // by the first organic visitor — which now uses the cheap path.
+    logger.log('⏭️ PrecomputedCities.warmupCache() is a no-op — caches fill lazily on first organic request (7-day TTL)');
   }
 
   static async refreshAllCaches(): Promise<void> {
-    logger.log(`🔄 Refreshing all cities caches...`);
-    await this.warmupCache();
+    // Admin-only manual refresh path (called from /api/admin/sitemap/rebuild
+    // and similar). Sequential, gentle, bounded.
+    const countries = Object.keys(COUNTRY_CITIES);
+    logger.log(`🔄 Refreshing cities caches for ${countries.length} countries (admin-triggered)...`);
+    for (const country of countries) {
+      try {
+        await CacheManager.del(this.getCacheKey(country));
+        await this.computeCitiesForCountry(country);
+        await new Promise(r => setTimeout(r, 250));
+      } catch (err: any) {
+        logger.warn(`refreshAllCaches: ${country} failed (${err?.message || 'unknown'}) — continuing`);
+      }
+    }
+    logger.log('✅ Admin cities cache refresh complete');
   }
 
   static getSupportedCountries(): string[] {

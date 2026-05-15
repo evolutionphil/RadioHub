@@ -92,6 +92,72 @@ HTTP status codes / Apple error bodies / similar non-secret context.
 - After a bulk import/cleanup, force an immediate refresh with:
   `POST /api/admin/sitemap/rebuild` (admin-only).
 
+## Hint discipline — DO NOT add `.hint('index_name')` without a fresh probe
+
+INCIDENT 2026-05-15 v10 (4th recurrence): production /api/stations/popular
+and /api/cities/precomputed silently 500'd because previously-added
+`.hint('lastCheckOk_1_votes_-1')` (and 2 other hints) referenced indexes
+that the May 14 Atlas index audit (commit aee98c81e) HID. Hinting a
+hidden index throws BadValue (code 2) and the catch returned 500.
+
+**Rule**: every `.hint('name')` MUST be preceded by a comment of the form
+`// HINT-VERIFIED YYYY-MM-DD - <name>` with proof that the index is
+present AND visible. The probe to verify is admin-only:
+
+`GET /api/admin/db/indexes` — returns `[{name, key, hidden, accesses}]`
+for every index on the `stations` collection (uses `$indexStats`). If
+`hidden: true`, do not hint that index. If the index is missing entirely,
+add it via `Station.collection.createIndex(...)` in `routes.ts`
+`createIndexes()` first.
+
+When in doubt, **DO NOT hint at all** — the planner is faster than a
+silent 500. We removed all 3 hints in v10
+(station-public-routes.ts:228/717, precomputed-stations.ts:225) and the
+endpoints serve correctly without them.
+
+## Lazy cache fill (NO eager boot warmup)
+
+INCIDENT 2026-05-15 v10 — boot warmup is REMOVED. Per user directive
+("ilk gelenler olmaya baslayinca yapsin"), caches fill lazily as the
+first organic visitor arrives. Stampede protection is provided by
+`CacheManager.getOrSetSingleFlight(key, loader, opts)` (see
+`cache.ts:160`) which coalesces concurrent misses on the same key into
+ONE upstream call.
+
+What was stripped from `routes.ts` boot path:
+- `warmupViaHttp()` 5s setTimeout + 50min setInterval
+- `warmupPopularStationsCache()` + `warmupTvMobileCache()`
+- `PrecomputedStationsService.warmupPopularCountries()` 60s setTimeout
+- `PrecomputedGenresService.warmupCache()` 15s setTimeout
+- `PrecomputedCitiesService.warmupCache()` is now a no-op
+
+What remains at boot: ONE cheap `Station.findOne({lastCheckOk:true})`
+probe at the 5s mark to confirm the cluster is reachable. Off-peak cron
+refreshes (TV/Mobile 2 AM, Genres 5 AM, Popular 6:30 AM, all
+Europe/Berlin) still run for steady-state coverage.
+
+If you re-add boot warmup, the M10 cluster will recurringly burn down
+under multiplanner contention + connection pool exhaustion. DO NOT.
+
+## Public read endpoints MUST soft-fail (never 500)
+
+A 500 from a public read endpoint breaks SSR pages (homepage, country,
+city, genre) and shows an error page to organic users. Every public
+read in `station-public-routes.ts`, `genres-countries-routes.ts`,
+`regions-recommendations-routes.ts` now does:
+
+```ts
+} catch (error: any) {
+  console.error(`❌ /api/... failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+  res.set('Cache-Control', 'public, max-age=30');
+  res.json(<empty-but-shape-correct payload>);
+}
+```
+
+The 30-second short-cache on the failure response prevents a single
+slow query from stampeding the cluster on retry, and the error log
+includes the Mongo `code`/`codeName` so we can diagnose without a 500.
+
 ## MongoDB aggregation memory limits (read before adding new aggregations)
 
 Atlas enforces a **32MB sort memory limit per aggregation stage** at every

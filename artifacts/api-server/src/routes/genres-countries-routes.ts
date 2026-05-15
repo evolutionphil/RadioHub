@@ -421,8 +421,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       }
       
       res.json(response);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch genres' });
+    } catch (error: any) {
+      console.error(`❌ /api/genres failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, genres: [], data: [], total: 0, count: 0, page: 1, currentPage: 1, limit: 20, perPage: 20, totalPages: 0 });
     }
   });
 
@@ -463,8 +465,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         computedAt: raw.computedAt,
         countryName: raw.countryName
       });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch precomputed genres' });
+    } catch (error: any) {
+      console.error(`❌ /api/genres/precomputed failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json({ success: true, data: [], genres: [], count: 0, total: 0, currentPage: 1, page: 1, perPage: 27, limit: 27, totalPages: 0, computedAt: Date.now(), countryName: 'global' });
     }
   });
 
@@ -493,8 +497,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       await CacheManager.set(cacheKey, genres, { ttl: 600 });
       res.json(genres);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch discoverable genres' });
+    } catch (error: any) {
+      console.error(`❌ /api/genres/discoverable failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json([]);
     }
   });
 
@@ -531,9 +537,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       }
 
       return void res.status(404).json({ error: 'Genre not found' });
-    } catch (error) {
-      console.error('Error fetching genre by slug:', error);
-      res.status(500).json({ error: 'Failed to fetch genre' });
+    } catch (error: any) {
+      console.error(`❌ /api/genres/slug failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'public, max-age=30');
+      res.status(404).json({ error: 'Genre not found' });
     }
   });
 

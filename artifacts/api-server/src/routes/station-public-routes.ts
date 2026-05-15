@@ -210,56 +210,27 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1
       };
 
-      // FIX (2026-05-15): the prior hint names
-      // (`lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1` and
-      // `lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1`) DO NOT EXIST on
-      // the Atlas cluster — hinting a non-existent index throws code 2 /
-      // BadValue and the whole endpoint returned 500 (Railway boot 2026-05-15
-      // 01:46 in attached production logs).
-      //   * Featured query: no hint — the planner picks the selective
-      //     `isFeatured_1` (and post-filters `showInGlobalPopular`).
-      //   * Regular query: hint to an index that actually exists, scoped by
-      //     whether `country` was supplied. Both names below were verified
-      //     present and active via db.stations.getIndexes().
-      const popularHasCountry = !!(country && country !== 'all' && country !== 'null');
-      const popularRegularHint = popularHasCountry
-        ? 'country_1_lastCheckOk_1_votes_-1'
-        : 'lastCheckOk_1_votes_-1';
-      // INCIDENT 2026-05-15 v9 — add featured-query hint too. v8 left the
-      // featured aggregate hint-less (per the older comment "planner picks
-      // the selective isFeatured_1") but on cold M10 the planner blew the
-      // 15s budget choosing among candidates and the catch block returned
-      // 500. The compound indexes
-      //   lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1
-      //   lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1
-      // are both created in routes.ts createIndexes (verified present),
-      // and they match this aggregate's match+sort exactly.
-      const popularFeaturedHint = popularHasCountry
-        ? 'lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1'
-        : 'lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1';
-
-      // INCIDENT 2026-05-15 v8 — add `maxTimeMS: 15000` per replit.md
-      // rule "every Station.aggregate() needs maxTimeMS+allowDiskUse".
-      // Without it these aggregates would run indefinitely server-side
-      // while the boot warmup HTTP client (undici) gave up at its
-      // default 30s headersTimeout and logged "fetch failed", leaving
-      // the server still churning on the query for as long as the
-      // cluster needed. With 15s the server self-terminates, freeing
-      // the connection slot. 15s is well over the typical hot-cache
-      // serving time (<200ms) and below the 30s undici headers budget.
+      // INCIDENT 2026-05-15 v10 — REMOVED all `.hint()` calls. The May 14
+      // Atlas index audit (commit aee98c81e) HID 17 stations indexes
+      // including `lastCheckOk_1_votes_-1`. Hinting a hidden index throws
+      // BadValue (code 2) and silently 500'd the popular endpoint. We trust
+      // the planner now; supporting indexes are PRESENT and visible
+      // (country_1_votes_-1, isFeatured_1, votes_-1). Any new hint MUST
+      // be tagged with `// HINT-VERIFIED YYYY-MM-DD` after probing
+      // `db.stations.aggregate([{$indexStats:{}}])` on the live cluster.
       const [featuredStations, regularStations] = await Promise.all([
         Station.aggregate([
           { $match: featuredFilter },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint(popularFeaturedHint).option({ maxTimeMS: 15000, allowDiskUse: true }),
+        ]).option({ maxTimeMS: 15000, allowDiskUse: true }),
         Station.aggregate([
           { $match: { ...countryFilter, isFeatured: { $ne: true } } },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint(popularRegularHint).option({ maxTimeMS: 15000, allowDiskUse: true })
+        ]).option({ maxTimeMS: 15000, allowDiskUse: true })
       ]);
       
       const allCandidates = [...featuredStations, ...regularStations];
@@ -307,8 +278,17 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       await CacheManager.set(cacheKey, stations, { ttl: 3600 });
       res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
       res.json(stripPlaceholders(stations));
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch popular stations' });
+    } catch (error: any) {
+      // SOFT-FAIL (2026-05-15 v10): never 500 a public read endpoint.
+      // Log the real reason (codeName + message) so we can see it in
+      // Railway tail, then serve an empty array. The frontend handles
+      // empty lists gracefully; a 500 breaks the whole homepage SSR.
+      logger.error(
+        `❌ /api/stations/popular failed (country=${req.query.country || 'all'}, limit=${req.query.limit || '?'}): ` +
+        `code=${error?.code || error?.codeName || 'unknown'} msg=${error?.message || error}`
+      );
+      res.set('Cache-Control', 'public, max-age=30');
+      res.json([]);
     }
   });
 
@@ -697,17 +677,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
             // 32MB sort memory limit on a 200k-doc scan and emits
             // "Executor error during getMore :: operation exceeded time
             // limit" within 5-10s instead of the budgeted 60s.
-            // INCIDENT 2026-05-15 v8 — explicit `.hint()` to bypass the
-            // multiplanner. With v7 we added the supporting compound index
-            // but on cold M10 the multiplanner kept timing out at 60s with
-            // "error while multiplanner was selecting best plan" because
-            // it was evaluating multiple candidate indexes
-            // (lastCheckOk_1_votes_-1, lastCheckOk_-1_votes_-1,
-            //  lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1, etc.)
-            // and could not finish plan selection within budget while the
-            // cluster was busy serving other cold queries. Hinting forces
-            // the executor straight to the optimal pre-sorted index, no
-            // plan evaluation needed.
+            // INCIDENT 2026-05-15 v10 — REMOVED `.hint('lastCheckOk_1_hasLogo_-1_votes_-1')`.
+            // That index was hidden by the May 14 Atlas index audit and the
+            // hint was throwing BadValue. Trust the planner; the supporting
+            // index `country_1_lastCheckOk_1_hasLogo_-1_votes_-1` is still
+            // present (visible) per `db.stations.getIndexes()`.
             const [stations, total] = await Promise.all([
               Station.find(mongoFilter)
                 .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
@@ -716,7 +690,6 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
                 .limit(limitNum)
                 .maxTimeMS(60000)
                 .allowDiskUse(true)
-                .hint('lastCheckOk_1_hasLogo_-1_votes_-1')
                 .lean(),
               Station.countDocuments(mongoFilter).maxTimeMS(30000).catch(() => 0),
             ]);
