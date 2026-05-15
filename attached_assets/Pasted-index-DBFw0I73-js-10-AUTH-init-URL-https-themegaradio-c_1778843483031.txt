@@ -1,0 +1,51 @@
+index-DBFw0I73.js:10 [AUTH] init — URL: https://themegaradio.com/de
+index-DBFw0I73.js:10 [AUTH] init — auth_token: NONE
+index-DBFw0I73.js:10 LCP: 648
+sw.js:228 🚀 Service Worker script loaded
+sw.js:20 🔧 Service Worker installed
+index-DBFw0I73.js:10 LCP: 864
+sw.js:34 ✅ Service Worker activated
+index-DBFw0I73.js:10 FID: 2.1999999284744263
+YURADIO:1  Failed to load resource: net::ERR_EMPTY_RESPONSE
+YURADIO:1  Failed to load resource: net::ERR_EMPTY_RESPONSE
+stream.radiotechnikum.at:80/YURADIO?_t=1778843083225:1  GET https://stream.radiotechnikum.at:80/YURADIO?_t=1778843083225 net::ERR_EMPTY_RESPONSE
+hls-PqkoW0Po.js:40  GET https://turkmedya.radyotvonline.com/turkmedya/alemfm.stream/playlist.m3u8?_t=1778843092838 net::ERR_CERT_DATE_INVALID
+openAndSendXhr @ hls-PqkoW0Po.js:40
+loadInternal @ hls-PqkoW0Po.js:40
+load @ hls-PqkoW0Po.js:40
+load @ hls-PqkoW0Po.js:40
+onManifestLoading @ hls-PqkoW0Po.js:40
+Al.o.emit @ hls-PqkoW0Po.js:16
+emit @ hls-PqkoW0Po.js:40
+trigger @ hls-PqkoW0Po.js:40
+loadSource @ hls-PqkoW0Po.js:40
+(anonymous) @ useGlobalPlayer-WnF5Tw3m.js:1
+Promise.then
+se @ useGlobalPlayer-WnF5Tw3m.js:1
+await in se
+(anonymous) @ radio-frontend-BPAcgotY.js:44
+F @ station-card-DCvJxeFt.js:1
+onClick @ station-card-DCvJxeFt.js:1
+Am @ index-DBFw0I73.js:9
+(anonymous) @ index-DBFw0I73.js:9
+Dd @ index-DBFw0I73.js:9
+kc @ index-DBFw0I73.js:9
+Pc @ index-DBFw0I73.js:10
+d0 @ index-DBFw0I73.js:10
+sw.js:219 💓 Keep-alive received at: 13:05:46
+sw.js:219 💓 Keep-alive received at: 13:06:11
+sw.js:219 💓 Keep-alive received at: 13:06:36
+sw.js:219 💓 Keep-alive received at: 13:07:01
+sw.js:219 💓 Keep-alive received at: 13:07:26
+sw.js:219 💓 Keep-alive received at: 13:07:51
+sw.js:219 💓 Keep-alive received at: 13:08:16
+sw.js:219 💓 Keep-alive received at: 13:08:41
+sw.js:219 💓 Keep-alive received at: 13:09:06
+palstation106.com/img/logo/pal-station.ico:1  GET https://palstation106.com/img/logo/pal-station.ico net::ERR_CERT_DATE_INVALID
+sw.js:219 💓 Keep-alive received at: 13:09:50
+de/sender/power-pop:1 Blocked aria-hidden on an element because its descendant retained focus. The focus must not be hidden from assistive technology users. Avoid using aria-hidden on a focused element or its ancestor. Consider using the inert attribute instead, which will also prevent focus. For more details, see the aria-hidden section of the WAI-ARIA specification at https://w3c.github.io/aria/#aria-hidden.
+Element with focus: <button.rounded bg-[#4D4D4D] px-3 py-1 text-white font-sans whitespace-nowrap>
+Ancestor with aria-hidden: <div#root> <div id=​"root">​…​</div>​
+sw.js:219 💓 Keep-alive received at: 13:10:15
+sw.js:219 💓 Keep-alive received at: 13:10:40
+sw.js:219 💓 Keep-alive received at: 13:11:05

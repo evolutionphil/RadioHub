@@ -590,6 +590,49 @@ app.use(session(sessionConfig));
     logger.log(`🔗 CORS allowed origins: ${CORS_ALLOWED_ORIGINS.join(', ')}`);
     logger.log(`🔗 Frontend URL: ${FRONTEND_URL}`);
 
+    // 2026-05-15 INCIDENT — GSC inspection cron + scheduled-* services were
+    // never starting in production because they live deep inside the giant
+    // (async () => { ... })() block below (line ~702), which awaits
+    // BulkDescriptionJob.find(), performanceCache.warmupCaches() and a
+    // 40k-station description-cleanup cursor BEFORE reaching the scheduler
+    // init section. When Mongo is stressed at boot (Atlas M10 + warmup
+    // hammer), those awaits hang for many minutes and the schedulers
+    // (including GSC cron) are never registered. The hourly :07 GSC tick
+    // therefore silently skipped every day.
+    //
+    // Fix: hoist scheduler initialization into its OWN parallel async block
+    // that runs as soon as Mongo is connected (we already awaited
+    // connectToMongoDB() at line 475). Each init call is sync (registers a
+    // node-cron schedule and returns immediately), so this completes in
+    // <1s and is independent of the heavy warmup chain.
+    void (async () => {
+      if (process.env.NODE_ENV === 'development') return;
+      try {
+        const inits: Array<[string, () => Promise<void>]> = [
+          ['scheduled cache clear', async () => { (await import('./services/scheduled-cache-clear')).scheduledCacheClearService.initialize(); }],
+          ['scheduled logo processor', async () => { (await import('./services/scheduled-logo-processor')).scheduledLogoProcessor.initialize(); }],
+          ['scheduled junk cleanup', async () => { (await import('./services/scheduled-junk-cleanup')).scheduledJunkCleanup.initialize(); }],
+          ['scheduled admin-setting-history prune', async () => { (await import('./services/scheduled-admin-setting-history-prune')).scheduledAdminSettingHistoryPrune.initialize(); }],
+          ['scheduled backfill', async () => { (await import('./services/scheduled-backfill')).scheduledBackfill.initialize(); }],
+          ['scheduled station sync', async () => { (await import('./services/scheduled-station-sync')).scheduledStationSync.initialize(); }],
+          ['scheduled coverage snapshot', async () => { (await import('./services/scheduled-coverage-snapshot')).scheduledCoverageSnapshot.initialize(); }],
+          ['scheduled genre-slug cleanup', async () => { (await import('./services/scheduled-genre-slug-cleanup')).scheduledGenreSlugCleanup.initialize(); }],
+          ['scheduled genre station-counts', async () => { (await import('./services/scheduled-genre-station-counts')).scheduledGenreStationCounts.initialize(); }],
+          ['scheduled sitemap-diff', async () => { (await import('./services/scheduled-sitemap-diff')).scheduledSitemapDiff.initialize(); }],
+          ['GSC inspection cron', async () => { (await import('./services/gsc-inspection')).gscInspectionService.initialize(); }],
+          ['scheduled mapping-audit digest', async () => { (await import('./services/scheduled-mapping-audit-digest')).scheduledMappingAuditDigest.initialize(); }],
+          ['scheduled stuck/resubmit digest', async () => { (await import('./services/scheduled-stuck-resubmit-digest')).scheduledStuckResubmitDigest.initialize(); }],
+        ];
+        for (const [name, fn] of inits) {
+          try { await fn(); logger.log(`✅ SCHEDULER: ${name} initialized`); }
+          catch (e: any) { logger.warn(`⚠️ SCHEDULER: ${name} init failed: ${e?.message || e}`); }
+        }
+        logger.log(`✅ SCHEDULER: All ${inits.length} scheduled services registered (independent of cache warmup)`);
+      } catch (err) {
+        console.error('❌ SCHEDULER: Top-level init failure:', err);
+      }
+    })();
+
     // Sitemap subsystem (manifest-driven). Mirrors the same init block in
     // index-web.ts so the api-server keeps sitemap manifests fresh in
     // production deployments where only this entrypoint runs. Without this
@@ -797,78 +840,15 @@ app.use(session(sessionConfig));
 
       logger.log('✅ BACKGROUND: All cache warmup operations completed');
 
+      // 2026-05-15: scheduler initialization moved to a parallel async block
+      // right after server.listen() (see ~line 611). It must NOT live here —
+      // this block awaits heavy Mongo cache warmup operations that hang for
+      // many minutes when Atlas is stressed at boot, which previously meant
+      // GSC cron and 12 other scheduled-* services were silently never
+      // registered. Do not re-add scheduler init here.
       if (process.env.NODE_ENV !== 'development') {
-        try {
-          const { scheduledCacheClearService } = await import('./services/scheduled-cache-clear');
-          scheduledCacheClearService.initialize();
-          logger.log('✅ BACKGROUND: Scheduled cache clear service initialized');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled cache clear:', error.message);
-        }
-
-        try {
-          const { scheduledLogoProcessor } = await import('./services/scheduled-logo-processor');
-          scheduledLogoProcessor.initialize();
-          logger.log('✅ BACKGROUND: Scheduled logo processor initialized (nightly 02:00)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled logo processor:', error.message);
-        }
-
-        try {
-          const { scheduledJunkCleanup } = await import('./services/scheduled-junk-cleanup');
-          scheduledJunkCleanup.initialize();
-          logger.log('✅ BACKGROUND: Scheduled junk cleanup initialized (nightly 03:30)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled junk cleanup:', error.message);
-        }
-
-        try {
-          const { scheduledAdminSettingHistoryPrune } = await import(
-            './services/scheduled-admin-setting-history-prune'
-          );
-          scheduledAdminSettingHistoryPrune.initialize();
-          logger.log(
-            '✅ BACKGROUND: Scheduled admin-setting-history prune initialized (nightly 04:15)',
-          );
-        } catch (error: any) {
-          logger.warn(
-            '⚠️ Failed to initialize scheduled admin-setting-history prune:',
-            error.message,
-          );
-        }
-
-        try {
-          const { scheduledBackfill } = await import('./services/scheduled-backfill');
-          scheduledBackfill.initialize();
-          logger.log('✅ BACKGROUND: Scheduled logo+tag backfill initialized (Sun 04:00, top-5 countries)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled backfill:', error.message);
-        }
-
-        // 2026-05-09: nightly Radio-Browser delta sync. Bumps every touched
-        // station's updatedAt → keeps sitemap-stations-*.xml <lastmod>
-        // current → Google keeps re-crawling. Set
-        // ENABLE_NIGHTLY_SYNC_CRON=false on replicas to avoid double-runs.
-        try {
-          const { scheduledStationSync } = await import('./services/scheduled-station-sync');
-          scheduledStationSync.initialize();
-          logger.log('✅ BACKGROUND: Nightly station sync initialized (daily 03:00 Europe/Berlin)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize nightly station sync:', error.message);
-        }
-
-        try {
-          const { scheduledCoverageSnapshot } = await import('./services/scheduled-coverage-snapshot');
-          scheduledCoverageSnapshot.initialize();
-          logger.log('✅ BACKGROUND: Scheduled coverage snapshot initialized (nightly 04:30)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled coverage snapshot:', error.message);
-        }
-
-        // Task #176: auto-seed historical coverage snapshots on first
-        // deploy so the admin sparkline isn't empty for a month. The
-        // helper is idempotent and gated on the existing row count, so
-        // it's a no-op once the collection has been seeded.
+        // Coverage backfill on boot (idempotent, gated on row count, can
+        // safely live here since it's not a cron registration).
         try {
           const { maybeRunCoverageBackfillOnBoot } = await import('./services/coverage-backfill-on-boot');
           await maybeRunCoverageBackfillOnBoot();
@@ -876,72 +856,14 @@ app.use(session(sessionConfig));
           logger.warn('⚠️ Failed to evaluate coverage boot backfill:', error.message);
         }
 
-        try {
-          const { scheduledGenreSlugCleanup } = await import('./services/scheduled-genre-slug-cleanup');
-          scheduledGenreSlugCleanup.initialize();
-          logger.log('✅ BACKGROUND: Scheduled genre-slug cleanup initialized (Sun 05:00 Europe/Berlin)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled genre-slug cleanup:', error.message);
-        }
-
-        // Task #368: scrub duplicate Genre.slug values on every boot so a
-        // future code path or manual DB edit that reintroduces a
-        // duplicate doesn't silently block the partial unique index
-        // build. Cheap no-op when no duplicates are found.
+        // Task #368: idempotent duplicate Genre.slug scrub on boot.
         try {
           const { maybeRunDuplicateGenreSlugCleanupOnBoot } = await import(
             './services/duplicate-genre-slug-cleanup-on-boot'
           );
           await maybeRunDuplicateGenreSlugCleanupOnBoot();
         } catch (error: any) {
-          logger.warn(
-            '⚠️ Failed to run boot duplicate-genre-slug cleanup:',
-            error.message,
-          );
-        }
-
-        try {
-          const { scheduledGenreStationCounts } = await import('./services/scheduled-genre-station-counts');
-          scheduledGenreStationCounts.initialize();
-          logger.log('✅ BACKGROUND: Scheduled genre station-counts recompute initialized (daily 02:30 Europe/Berlin)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled genre station-counts:', error.message);
-        }
-
-        try {
-          const { scheduledSitemapDiff } = await import('./services/scheduled-sitemap-diff');
-          scheduledSitemapDiff.initialize();
-          logger.log('✅ BACKGROUND: Scheduled sitemap-diff IndexNow initialized (nightly 04:45)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled sitemap-diff IndexNow:', error.message);
-        }
-
-        // Task #191: surface GSC URL Inspection data to admins.
-        try {
-          const { gscInspectionService } = await import('./services/gsc-inspection');
-          gscInspectionService.initialize();
-          logger.log('✅ BACKGROUND: GSC inspection cron initialized (discovery 12h, inspection hourly)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize GSC inspection cron:', error.message);
-        }
-
-        try {
-          const { scheduledMappingAuditDigest } = await import('./services/scheduled-mapping-audit-digest');
-          scheduledMappingAuditDigest.initialize();
-          logger.log('✅ BACKGROUND: Scheduled mapping-audit digest initialized (06:00 Europe/Berlin, cadence per-tick)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled mapping-audit digest:', error.message);
-        }
-
-        // Task #355 — weekly stuck/resubmit digest. Companion email to
-        // the Task #266 auto-resubmit cron so trends surface without
-        // anyone polling the GSC dashboard.
-        try {
-          const { scheduledStuckResubmitDigest } = await import('./services/scheduled-stuck-resubmit-digest');
-          scheduledStuckResubmitDigest.initialize();
-          logger.log('✅ BACKGROUND: Scheduled stuck/resubmit digest initialized (Mon 06:30 Europe/Berlin)');
-        } catch (error: any) {
-          logger.warn('⚠️ Failed to initialize scheduled stuck/resubmit digest:', error.message);
+          logger.warn('⚠️ Failed to run boot duplicate-genre-slug cleanup:', error.message);
         }
       }
 

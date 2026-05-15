@@ -341,10 +341,19 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
         logger.log('✅ Cached discoverable genres');
       } catch {}
 
-      try {
-        await PrecomputedCitiesService.warmupCache();
-        logger.log('✅ Cached cities for all supported countries');
-      } catch {}
+      // 2026-05-15 INCIDENT: PrecomputedCitiesService.warmupCache() runs a
+      // heavy $facet/$switch aggregation per country sequentially for 19
+      // countries. At boot, when Atlas is already stressed by HTTP self-
+      // warmup + popular/community refresh, this hammer pushed the
+      // connection pool to exhaustion — every country errored with
+      // MongoNetworkTimeoutError or MaxTimeMSExpired (16+ failures in a
+      // row in the 2026-05-15 prod log), tripped the circuit breaker, and
+      // forced a container restart loop. The cities cache has a 7-day
+      // TTL and `getCitiesForCountry()` lazily computes on cache miss, so
+      // the first organic request to each country page populates it just
+      // fine. Skipping the boot warmup costs the very first visitor of
+      // each country one slower page load and protects the cluster.
+      logger.log('⚡ SKIPPED: PrecomputedCities boot warmup — will populate on-demand per country (7-day TTL)');
 
       logger.log('🔥 Web cache warmup completed - translations, popular stations, community favorites, genres & cities cached!');
     } catch (error) {
