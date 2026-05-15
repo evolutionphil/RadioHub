@@ -568,9 +568,19 @@ class GscInspectionService {
     // next 03:15/15:15 cron tick. Delayed slightly so it doesn't fight
     // the boot sequence for Mongo connections.
     setTimeout(() => {
-      this.runDiscoveryOnce('boot').catch((err) =>
-        logger.error('❌ GSC discovery boot crashed:', err),
-      );
+      this.runDiscoveryOnce('boot').catch((err) => {
+        // INCIDENT 2026-05-15 v10.1 — downgrade noisy boot timeout to warn.
+        // GSC discovery boot is non-critical (the 03:15/15:15 cron will
+        // retry); a cold-cluster MongoNetworkTimeoutError here is an
+        // expected condition during M10 cold-start, not a 5xx event.
+        const msg = err?.message || String(err);
+        const isNetTimeout = /MongoNetworkTimeoutError|timed out|MaxTimeMSExpired/i.test(msg);
+        if (isNetTimeout) {
+          logger.warn(`⚠️ GSC discovery boot skipped (cluster cold): ${msg}`);
+        } else {
+          logger.error('❌ GSC discovery boot crashed:', err);
+        }
+      });
       // Task #266 — one-shot backfill for legacy rows. Any URL that's
       // already in a non-indexed bucket but is missing `notIndexedSince`
       // (because the field didn't exist before this task) gets anchored

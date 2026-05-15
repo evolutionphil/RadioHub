@@ -1752,7 +1752,12 @@ ${keysText}`;
         {
           $sort: { count: -1 }
         }
-      ]).option({ maxTimeMS: 12000, allowDiskUse: true });
+      // INCIDENT 2026-05-15 v10.1 — bumped 12s → 30s. Single-flight
+      // already coalesces concurrent misses to ONE call AND the 24h
+      // TTL means we eat this aggregate at most once per day. The
+      // prior 12s budget tripped MaxTimeMSExpired during M10 cluster
+      // stress and forced every visitor onto the empty-array fallback.
+      ]).option({ maxTimeMS: 30000, allowDiskUse: true });
 
       // Clean up the language names - remove malformed data
       const cleanLanguages = languageStats

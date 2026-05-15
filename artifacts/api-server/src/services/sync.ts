@@ -123,7 +123,18 @@ export class SyncService {
 
     } catch (error: any) {
       this.isRunning = false;
-      console.error('💥 Sync failed:', error);
+      // INCIDENT 2026-05-15 v10.1 — sync runs on a periodic interval and
+      // is automatically retried on the next tick. A MongoNetworkTimeout
+      // mid-cycle is an expected condition during cluster stress, not a
+      // 5xx-class error — downgrade to warn so the failure shows up in
+      // the live tail without polluting alert dashboards.
+      const msg = error?.message || String(error);
+      const isNetTimeout = /MongoNetworkTimeoutError|timed out|MaxTimeMSExpired/i.test(msg);
+      if (isNetTimeout) {
+        logger.warn(`⚠️ Sync skipped (cluster cold, will retry next cycle): ${msg}`);
+      } else {
+        logger.error('💥 Sync failed:', error);
+      }
       
       // Log the error
       await SyncLog.findOneAndUpdate(
