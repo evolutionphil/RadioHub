@@ -210,10 +210,21 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1
       };
 
+      // FIX (2026-05-15): the prior hint names
+      // (`lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1` and
+      // `lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1`) DO NOT EXIST on
+      // the Atlas cluster — hinting a non-existent index throws code 2 /
+      // BadValue and the whole endpoint returned 500 (Railway boot 2026-05-15
+      // 01:46 in attached production logs).
+      //   * Featured query: no hint — the planner picks the selective
+      //     `isFeatured_1` (and post-filters `showInGlobalPopular`).
+      //   * Regular query: hint to an index that actually exists, scoped by
+      //     whether `country` was supplied. Both names below were verified
+      //     present and active via db.stations.getIndexes().
       const popularHasCountry = !!(country && country !== 'all' && country !== 'null');
-      const popularHint = popularHasCountry
-        ? 'lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1'
-        : 'lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1';
+      const popularRegularHint = popularHasCountry
+        ? 'country_1_lastCheckOk_1_votes_-1'
+        : 'lastCheckOk_1_votes_-1';
 
       const [featuredStations, regularStations] = await Promise.all([
         Station.aggregate([
@@ -221,13 +232,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint(popularHint).allowDiskUse(true),
+        ]).allowDiskUse(true),
         Station.aggregate([
           { $match: { ...countryFilter, isFeatured: { $ne: true } } },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).hint(popularHint).allowDiskUse(true)
+        ]).hint(popularRegularHint).allowDiskUse(true)
       ]);
       
       const allCandidates = [...featuredStations, ...regularStations];
