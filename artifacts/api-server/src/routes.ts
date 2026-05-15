@@ -236,6 +236,23 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       await Station.collection.createIndex({ language: 1 });
       await Station.collection.createIndex({ tags: 1, votes: -1 });
       await Station.collection.createIndex({ country: 1, language: 1 });
+      // INCIDENT 2026-05-15 v7 — two indexes added to eliminate the
+      // 60s "Executor error during getMore" timeouts on
+      // /api/stations/precomputed cold-fallback and PrecomputedStations
+      // computeCountryStationsByName. Both queries sort by
+      // {hasLogo:-1, votes:-1} which previously had NO supporting index
+      // → MongoDB executed an in-memory sort over 200k+ docs and hit the
+      // 32MB sort memory limit. With these compound indexes the planner
+      // can stream results pre-sorted (no SORT stage) and budget falls
+      // from 60s+ to <500ms typical, even on M10 cold start.
+      await Station.collection.createIndex(
+        { lastCheckOk: 1, hasLogo: -1, votes: -1 },
+        { background: true, name: 'lastCheckOk_1_hasLogo_-1_votes_-1' },
+      );
+      await Station.collection.createIndex(
+        { country: 1, lastCheckOk: 1, hasLogo: -1, votes: -1 },
+        { background: true, name: 'country_1_lastCheckOk_1_hasLogo_-1_votes_-1' },
+      );
       try {
         await Station.collection.dropIndex('station_text_search');
         logger.log('✅ Dropped existing text search index to prevent conflicts');
@@ -454,7 +471,16 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       const t0 = Date.now();
       try {
         const ctrl = new AbortController();
-        const to = setTimeout(() => ctrl.abort(), 10000);
+        // INCIDENT 2026-05-15 v7 — bump client abort 10s→35s. The previous
+        // 10s budget was SHORTER than every server-side maxTimeMS on the
+        // warmed endpoints (12-60s), so cluster-cold aggregations were
+        // routinely client-aborted while STILL RUNNING server-side, leaving
+        // orphan operations that held connections + planner slots for the
+        // remainder of their server budget. With 35s the client waits for
+        // the server to either finish or self-terminate via maxTimeMS, so
+        // the "abort + orphan" race goes away. The 3-consecutive-fail
+        // circuit breaker still protects against a truly dead cluster.
+        const to = setTimeout(() => ctrl.abort(), 35000);
         const r = await fetch(base + path, { signal: ctrl.signal, headers: { 'x-warmup': '1' } });
         clearTimeout(to);
         if (r.ok) {
@@ -490,15 +516,30 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     // traffic fills those naturally.
 
     // === Phase 1: global boot keys (fast, every user needs these) ===
+    // INCIDENT 2026-05-15 v7 — DROPPED from boot warmup:
+    //   • /api/filters/languages — Station.aggregate $group by language
+    //     over the full collection (~250k docs); cache TTL is already
+    //     24h so the very first organic visitor warms it once and every
+    //     subsequent request is a Redis hit. Boot warmup brought no
+    //     value AND was the first hit to fail in the 17:42 incident,
+    //     blocking the rest of phase 1 on the 3-consecutive-fail
+    //     breaker.
+    //   • /api/stations/precomputed?countryName=global&page=1&limit=200
+    //     — this routes to the cold-fallback Station.find().sort()
+    //     branch with a 200-doc page and 60s server budget, the heaviest
+    //     single query in the warmup. With the new
+    //     {lastCheckOk:1, hasLogo:-1, votes:-1} index it is fast enough
+    //     for organic traffic to populate on first hit; we no longer
+    //     pay 60s of cluster CPU at boot just to mirror what the
+    //     PrecomputedStationsService.warmupPopularCountries() background
+    //     job already builds in the global-cache path.
     await hit('/api/filters/countries');
-    await hit('/api/filters/languages');
     await hit('/api/filters/genres');
     await hit('/api/countries');
     await hit('/api/countries?format=rich');
     await hit('/api/genres');
     await hit('/api/stations/popular?limit=12');
     await hit('/api/stations/popular?limit=4');
-    await hit('/api/stations/precomputed?countryName=global&page=1&limit=200');
     logger.log(`🔥 [warmup] phase 1 (global boot keys) done in ${Date.now() - startAll}ms`);
 
     // === Phase 2: top 25 countries, one at a time, slow ===
@@ -545,6 +586,29 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     setInterval(() => {
       warmupViaHttp().catch(err => logger.warn('⚠️ Periodic self-warmup failed: ' + err?.message));
     }, 50 * 60 * 1000);
+
+    // INCIDENT 2026-05-15 v7 — populate the GLOBAL PrecomputedStations
+    // cache at boot. Previously the boot HTTP warmup hit
+    // `/api/stations/precomputed?countryName=global&page=1&limit=200`
+    // which routed to the cold-fallback `Station.find().sort()` path —
+    // that path SERVES results but never WRITES the precomputed cache,
+    // so the global cache only ever got populated by the nightly cron
+    // (scheduled-cache-clear → refreshAllCountries) or admin trigger.
+    // v7 dropped the wasteful warmup hit, so without an explicit boot
+    // trigger every global request would keep falling back to the
+    // (now-fast, indexed) DB query instead of the Redis precomputed
+    // blob. Schedule the proper warmup 60s after boot so the new
+    // indexes have started building and the rest of phase 1 warmup
+    // has finished. computeGlobalStations + 10 popular countries
+    // total ~11 aggregates; we already throttle them with sleep(200).
+    setTimeout(async () => {
+      try {
+        const { PrecomputedStationsService } = await import('./services/precomputed-stations');
+        await PrecomputedStationsService.warmupPopularCountries();
+      } catch (err: any) {
+        logger.warn('⚠️ PrecomputedStations boot warmup failed (non-critical, cron will retry): ' + (err?.message || 'unknown'));
+      }
+    }, 60_000);
   } else {
     logger.log('⚡ Popular stations & TV/Mobile cache warmup: Skipped in dev mode');
   }

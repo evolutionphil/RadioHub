@@ -667,6 +667,15 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
             }
             const escQ = escapeRegex(search, 80);
             if (escQ) { mongoFilter.name = { $regex: new RegExp(escQ, 'i') }; }
+            // INCIDENT 2026-05-15 v7 — `.allowDiskUse(true)` is REQUIRED here.
+            // Sort key {hasLogo:-1, votes:-1} is satisfied by the new
+            // {lastCheckOk:1, hasLogo:-1, votes:-1} index (added 2026-05-15
+            // in routes.ts createIndexes), but during the rolling index build
+            // and on cold planner state the executor still falls back to a
+            // blocking SORT stage. Without allowDiskUse Atlas M10 hits the
+            // 32MB sort memory limit on a 200k-doc scan and emits
+            // "Executor error during getMore :: operation exceeded time
+            // limit" within 5-10s instead of the budgeted 60s.
             const [stations, total] = await Promise.all([
               Station.find(mongoFilter)
                 .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
@@ -674,6 +683,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
                 .skip(skip)
                 .limit(limitNum)
                 .maxTimeMS(60000)
+                .allowDiskUse(true)
                 .lean(),
               Station.countDocuments(mongoFilter).maxTimeMS(30000).catch(() => 0),
             ]);

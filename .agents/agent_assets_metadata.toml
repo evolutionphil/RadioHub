@@ -53,3 +53,9 @@ id = "oahO0FSot6URiYAgz7I2f"
 uri = "file://.local/diagnostic-2026-05-15.md"
 type = "text"
 title = "MegaRadio Teşhis Raporu — 2026-05-15"
+
+[[outputs]]
+id = "RdVw8XtKRng5H79xaFqP9"
+uri = "file://.local/diagnostic-2026-05-15-v7-fixes.md"
+type = "text"
+title = "MegaRadio v7 Düzeltme Raporu"

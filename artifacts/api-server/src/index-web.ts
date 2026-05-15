@@ -1157,14 +1157,14 @@ app.use('/api/stream', streamServiceProxy);
         // returning 0 and silently falling back to LKG. See index-api.ts for
         // full rationale. warmupCaches() is memoized so the parallel
         // background-tasks block above won't re-run it.
-        if (process.env.NODE_ENV !== 'development') {
-          try {
-            await performanceCache.warmupCaches();
-            logger.log('🔥 SITEMAP-INIT: pre-warmed translation cache');
-          } catch (warmErr) {
-            logger.warn('⚠️ SITEMAP-INIT: translation pre-warm failed (will fall back to LKG):', (warmErr as Error)?.message);
-          }
-        }
+        // INCIDENT 2026-05-15 v7 — duplicate `performanceCache.warmupCaches()`
+        // call removed. The block at L1124-1130 already awaits the same call
+        // before this point in the boot sequence (the `await` on L1127
+        // completes before the qualified-languages init starts at L1168),
+        // and warmupCaches() is memoized so a second call returned the same
+        // cached promise instantly anyway. Dropping the dead call removes a
+        // misleading "🔥 SITEMAP-INIT: pre-warmed translation cache" log
+        // line that suggested a second warmup ran when none did.
         const { initializeQualifiedLanguages } = await import('./seo/qualified-languages');
         await initializeQualifiedLanguages();
         const { buildAllSitemapManifests, startManifestRefreshLoop } = await import('./seo/sitemap-manifest-builder');
