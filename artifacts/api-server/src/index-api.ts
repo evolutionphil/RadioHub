@@ -386,8 +386,28 @@ app.use(compression({
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 
+// 2026-05-15: Replaced sendFile of /app/public/api-docs.html (which never
+// existed in the prod image — Railway logs were full of `ENOENT: no such
+// file or directory, stat '/app/public/api-docs.html'`). The api-server's
+// `/` is informational only; the browsable API docs live at /api-docs in
+// the SPA artifact. Serve a minimal inline page so the route returns 200
+// and points operators / curl probes at the right places.
 app.get('/', (_req, res) => {
-  res.sendFile(path.join(publicPath, 'api-docs.html'));
+  res
+    .status(200)
+    .type('html')
+    .send(
+      '<!doctype html><meta charset="utf-8">' +
+        '<title>Mega Radio API</title>' +
+        '<style>body{font:14px/1.5 -apple-system,system-ui,sans-serif;max-width:640px;margin:48px auto;padding:0 16px;color:#222}code{background:#f4f4f5;padding:2px 6px;border-radius:4px}</style>' +
+        '<h1>Mega Radio API</h1>' +
+        '<p>This host serves the JSON API for <a href="https://themegaradio.com">themegaradio.com</a>.</p>' +
+        '<ul>' +
+          '<li>Health: <code>GET /api/healthz</code></li>' +
+          '<li>API base: <code>/api/*</code></li>' +
+          '<li>Browsable docs: <a href="https://themegaradio.com/api-docs">themegaradio.com/api-docs</a></li>' +
+        '</ul>',
+    );
 });
 
 app.use('/assets', express.static(path.join(distPublicPath, 'assets'), { maxAge: '1y', immutable: true }));

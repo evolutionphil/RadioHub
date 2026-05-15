@@ -126,7 +126,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'تعرّف على Mega Radio: منصة الراديو المجانية عبر الإنترنت مع أكثر من 60.000 محطة مباشرة من 120+ دولة. استمع للموسيقى والأخبار والرياضة والبرامج الحوارية.',
     },
     contact: {
-      title: 'تواصل مع Mega Radio',
+      title: 'تواصل مع Mega Radio — themegaradio.com',
       description: 'تواصل مع فريق Mega Radio للدعم أو الملاحظات أو الشراكات. نحن هنا لمساعدتك في تجربة بث الراديو المجاني عبر الإنترنت.',
     },
     applications: {
@@ -252,7 +252,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Tutustu Mega Radioon: ilmaiseen verkkoradio-alustaan, jolla on 60 000+ live-asemaa 120+ maasta. Kuuntele musiikkia, uutisia, urheilua ja puheradiota.',
     },
     contact: {
-      title: 'Ota yhteyttä Mega Radioon',
+      title: 'Ota yhteyttä Mega Radioon — themegaradio.com',
       description: 'Ota yhteyttä Mega Radion tiimiin tukea, palautetta tai yhteistyötä varten. Autamme mielellämme ilmaisen verkkoradio-kokemuksesi kanssa.',
     },
     applications: {
@@ -266,7 +266,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Γνωρίστε το Mega Radio: τη δωρεάν online πλατφόρμα ραδιοφώνου με 60.000+ ζωντανούς σταθμούς από 120+ χώρες. Ακούστε μουσική, ειδήσεις, αθλητικά, ομιλία.',
     },
     contact: {
-      title: 'Επικοινωνία Mega Radio',
+      title: 'Επικοινωνία Mega Radio — themegaradio.com',
       description: 'Επικοινωνήστε με την ομάδα του Mega Radio για υποστήριξη, σχόλια ή συνεργασίες. Είμαστε εδώ για τη δωρεάν online εμπειρία ραδιοφώνου σας.',
     },
     applications: {
@@ -434,7 +434,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: '了解 Mega Radio：免费在线广播平台，覆盖 120 多个国家、60,000+ 直播电台。畅听音乐、新闻、体育和谈话广播。',
     },
     contact: {
-      title: '联系 Mega Radio — 与我们联系',
+      title: '联系 Mega Radio — 与我们联系 — themegaradio.com',
       description: '联系 Mega Radio 团队，获取支持、反馈或合作机会。我们随时为您的免费在线广播体验提供帮助。',
     },
     applications: {
@@ -448,7 +448,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio をご紹介します：120 以上の国・60,000 以上のライブ局を備えた無料オンラインラジオ。音楽、ニュース、スポーツ、トーク番組をお楽しみください。',
     },
     contact: {
-      title: 'Mega Radio お問い合わせ',
+      title: 'Mega Radio お問い合わせ — themegaradio.com',
       description: 'サポート、フィードバック、提携のご相談は Mega Radio チームへお気軽にどうぞ。無料オンラインラジオ体験をサポートします。',
     },
     applications: {
@@ -462,7 +462,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio를 소개합니다: 120개 이상의 국가에서 60,000개 이상의 라이브 방송국을 제공하는 무료 온라인 라디오 플랫폼. 음악, 뉴스, 스포츠, 토크 라디오.',
     },
     contact: {
-      title: 'Mega Radio 문의 — 연락하기',
+      title: 'Mega Radio 문의 — 연락하기 — themegaradio.com',
       description: '지원, 피드백 또는 파트너십 문의는 Mega Radio 팀에 연락해 주세요. 무료 온라인 라디오 청취 경험을 도와드립니다.',
     },
     applications: {
@@ -490,7 +490,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'รู้จัก Mega Radio: แพลตฟอร์มวิทยุออนไลน์ฟรี รวมสถานีสด 60,000+ จาก 120+ ประเทศ ฟังเพลง ข่าว กีฬา และรายการสนทนาได้ทั่วโลก',
     },
     contact: {
-      title: 'ติดต่อ Mega Radio',
+      title: 'ติดต่อ Mega Radio — themegaradio.com',
       description: 'ติดต่อทีม Mega Radio สำหรับการสนับสนุน คำติชม หรือความร่วมมือ เราพร้อมช่วยเหลือประสบการณ์การฟังวิทยุออนไลน์ฟรีของคุณ',
     },
     applications: {
@@ -532,7 +532,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Kenali Mega Radio: platform radio dalam talian percuma dengan 60,000+ stesen langsung dari 120+ negara. Dengar muzik, berita, sukan dan radio bual.',
     },
     contact: {
-      title: 'Hubungi Mega Radio',
+      title: 'Hubungi Mega Radio — themegaradio.com',
       description: 'Hubungi pasukan Mega Radio untuk sokongan, maklum balas atau kerjasama. Kami di sini untuk membantu pengalaman radio dalam talian percuma anda.',
     },
     applications: {
@@ -546,7 +546,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Alamin ang tungkol sa Mega Radio: libreng online radio platform na may 60,000+ live stations mula sa 120+ bansa. Makinig ng musika, balita, at sports.',
     },
     contact: {
-      title: 'Makipag-ugnayan sa Mega Radio',
+      title: 'Makipag-ugnayan sa Mega Radio — themegaradio.com',
       description: 'Makipag-ugnayan sa Mega Radio team para sa suporta, feedback o partnership. Nandito kami para tulungan ang libreng online radio experience mo.',
     },
     applications: {
@@ -560,7 +560,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'הכירו את Mega Radio: פלטפורמת רדיו אינטרנטי חינם עם 60,000+ תחנות חיות מ-120+ מדינות. האזינו למוזיקה, חדשות, ספורט ורדיו דיבור.',
     },
     contact: {
-      title: 'יצירת קשר עם Mega Radio',
+      title: 'יצירת קשר עם Mega Radio — themegaradio.com',
       description: 'צרו קשר עם צוות Mega Radio לתמיכה, משוב או שותפויות. אנחנו כאן כדי לעזור לכם בחוויית הרדיו האינטרנטי החינם שלכם.',
     },
     applications: {
@@ -574,7 +574,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'با Mega Radio آشنا شوید: پلتفرم رادیوی آنلاین رایگان با بیش از ۶۰٬۰۰۰ ایستگاه زنده از ۱۲۰+ کشور. به موسیقی، اخبار، ورزش و گفت‌وگو گوش دهید.',
     },
     contact: {
-      title: 'تماس با Mega Radio',
+      title: 'تماس با Mega Radio — themegaradio.com',
       description: 'برای پشتیبانی، بازخورد یا همکاری با تیم Mega Radio تماس بگیرید. ما اینجا هستیم تا در تجربه رادیوی آنلاین رایگان شما کمک کنیم.',
     },
     applications: {
@@ -588,7 +588,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio کے بارے میں جانیں: 120+ ممالک سے 60,000+ لائیو اسٹیشنز کے ساتھ مفت آن لائن ریڈیو پلیٹ فارم۔ موسیقی، خبریں، کھیل اور بات چیت سنیں۔',
     },
     contact: {
-      title: 'Mega Radio سے رابطہ',
+      title: 'Mega Radio سے رابطہ — themegaradio.com',
       description: 'سپورٹ، رائے یا شراکت داری کے لیے Mega Radio ٹیم سے رابطہ کریں۔ ہم آپ کے مفت آن لائن ریڈیو تجربے میں مدد کے لیے حاضر ہیں۔',
     },
     applications: {
@@ -602,7 +602,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio সম্পর্কে জানুন: 120+ দেশ থেকে 60,000+ লাইভ স্টেশনযুক্ত বিনামূল্যে অনলাইন রেডিও প্ল্যাটফর্ম। গান, খবর, খেলা ও টক রেডিও শুনুন।',
     },
     contact: {
-      title: 'Mega Radio যোগাযোগ',
+      title: 'Mega Radio যোগাযোগ — themegaradio.com',
       description: 'সহায়তা, প্রতিক্রিয়া বা অংশীদারিত্বের জন্য Mega Radio দলের সাথে যোগাযোগ করুন। আপনার বিনামূল্যে অনলাইন রেডিও অভিজ্ঞতার জন্য আমরা এখানে আছি।',
     },
     applications: {
@@ -616,7 +616,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio பற்றி அறியுங்கள்: 120+ நாடுகளில் இருந்து 60,000+ நேரடி நிலையங்களுடன் இலவச ஆன்லைன் வானொலி தளம். இசை, செய்தி, விளையாட்டு கேளுங்கள்.',
     },
     contact: {
-      title: 'Mega Radio தொடர்பு',
+      title: 'Mega Radio தொடர்பு — themegaradio.com',
       description: 'ஆதரவு, கருத்து அல்லது கூட்டாண்மைக்காக Mega Radio குழுவை தொடர்பு கொள்ளுங்கள். உங்கள் இலவச ஆன்லைன் வானொலி அனுபவத்திற்காக நாங்கள் இங்கே இருக்கிறோம்.',
     },
     applications: {
@@ -630,7 +630,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio గురించి తెలుసుకోండి: 120+ దేశాల నుండి 60,000+ లైవ్ స్టేషన్‌లతో ఉచిత ఆన్‌లైన్ రేడియో ప్లాట్‌ఫారమ్. సంగీతం, వార్తలు, క్రీడలు వినండి.',
     },
     contact: {
-      title: 'Mega Radio సంప్రదించండి',
+      title: 'Mega Radio సంప్రదించండి — themegaradio.com',
       description: 'మద్దతు, అభిప్రాయం లేదా భాగస్వామ్యం కోసం Mega Radio బృందాన్ని సంప్రదించండి. మీ ఉచిత ఆన్‌లైన్ రేడియో అనుభవానికి మేము ఇక్కడ ఉన్నాము.',
     },
     applications: {
@@ -644,7 +644,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio बद्दल जाणून घ्या: 120+ देशांमधील 60,000+ थेट स्टेशनसह मोफत ऑनलाइन रेडिओ प्लॅटफॉर्म. संगीत, बातम्या, खेळ आणि टॉक रेडिओ ऐका.',
     },
     contact: {
-      title: 'Mega Radio संपर्क',
+      title: 'Mega Radio संपर्क — themegaradio.com',
       description: 'सहाय्य, अभिप्राय किंवा भागीदारीसाठी Mega Radio टीमशी संपर्क साधा. तुमच्या मोफत ऑनलाइन रेडिओ अनुभवासाठी आम्ही येथे आहोत.',
     },
     applications: {
@@ -658,7 +658,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio વિશે જાણો: 120+ દેશોના 60,000+ લાઇવ સ્ટેશન્સ સાથેનું મફત ઓનલાઇન રેડિયો પ્લેટફોર્મ. સંગીત, સમાચાર, રમતગમત અને ટૉક રેડિયો સાંભળો.',
     },
     contact: {
-      title: 'Mega Radio સંપર્ક',
+      title: 'Mega Radio સંપર્ક — themegaradio.com',
       description: 'સહાય, અભિપ્રાય અથવા ભાગીદારી માટે Mega Radio ટીમનો સંપર્ક કરો. તમારા મફત ઓનલાઇન રેડિયો અનુભવમાં મદદ કરવા અમે અહીં છીએ.',
     },
     applications: {
@@ -672,7 +672,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio ಬಗ್ಗೆ ತಿಳಿಯಿರಿ: 120+ ದೇಶಗಳ 60,000+ ನೇರ ಸ್ಟೇಷನ್‌ಗಳೊಂದಿಗೆ ಉಚಿತ ಆನ್‌ಲೈನ್ ರೇಡಿಯೋ ವೇದಿಕೆ. ಸಂಗೀತ, ಸುದ್ದಿ, ಕ್ರೀಡೆ, ಚರ್ಚಾ ರೇಡಿಯೋ ಕೇಳಿ.',
     },
     contact: {
-      title: 'Mega Radio ಸಂಪರ್ಕ',
+      title: 'Mega Radio ಸಂಪರ್ಕ — themegaradio.com',
       description: 'ಬೆಂಬಲ, ಅಭಿಪ್ರಾಯ ಅಥವಾ ಸಹಭಾಗಿತ್ವಕ್ಕಾಗಿ Mega Radio ತಂಡವನ್ನು ಸಂಪರ್ಕಿಸಿ. ನಿಮ್ಮ ಉಚಿತ ಆನ್‌ಲೈನ್ ರೇಡಿಯೋ ಅನುಭವಕ್ಕೆ ನಾವು ಸಹಾಯ ಮಾಡಲು ಇಲ್ಲಿದ್ದೇವೆ.',
     },
     applications: {
@@ -686,7 +686,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio പരിചയപ്പെടൂ: 120+ രാജ്യങ്ങളിൽ നിന്ന് 60,000+ ലൈവ് സ്റ്റേഷനുകളുള്ള സൗജന്യ ഓൺലൈൻ റേഡിയോ പ്ലാറ്റ്‌ഫോം. സംഗീതം, വാർത്ത, കായികം, ടോക്ക് റേഡിയോ.',
     },
     contact: {
-      title: 'Mega Radio ബന്ധപ്പെടുക',
+      title: 'Mega Radio ബന്ധപ്പെടുക — themegaradio.com',
       description: 'പിന്തുണ, ഫീഡ്‌ബാക്ക് അല്ലെങ്കിൽ പങ്കാളിത്തത്തിനായി Mega Radio ടീമിനെ ബന്ധപ്പെടുക. നിങ്ങളുടെ സൗജന്യ ഓൺലൈൻ റേഡിയോ അനുഭവത്തിന് ഞങ്ങൾ ഇവിടെയുണ്ട്.',
     },
     applications: {
@@ -700,7 +700,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio ਬਾਰੇ ਜਾਣੋ: 120+ ਦੇਸ਼ਾਂ ਦੇ 60,000+ ਲਾਈਵ ਸਟੇਸ਼ਨਾਂ ਵਾਲਾ ਮੁਫ਼ਤ ਆਨਲਾਈਨ ਰੇਡੀਓ ਪਲੇਟਫਾਰਮ। ਸੰਗੀਤ, ਖ਼ਬਰਾਂ, ਖੇਡਾਂ ਅਤੇ ਟਾਕ ਰੇਡੀਓ ਸੁਣੋ।',
     },
     contact: {
-      title: 'Mega Radio ਸੰਪਰਕ',
+      title: 'Mega Radio ਸੰਪਰਕ — themegaradio.com',
       description: 'ਸਹਾਇਤਾ, ਫ਼ੀਡਬੈਕ ਜਾਂ ਭਾਈਵਾਲੀ ਲਈ Mega Radio ਟੀਮ ਨਾਲ ਸੰਪਰਕ ਕਰੋ। ਤੁਹਾਡੇ ਮੁਫ਼ਤ ਆਨਲਾਈਨ ਰੇਡੀਓ ਅਨੁਭਵ ਲਈ ਅਸੀਂ ਇੱਥੇ ਹਾਂ।',
     },
     applications: {
@@ -714,7 +714,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Jifunze kuhusu Mega Radio: jukwaa la redio mtandaoni bure lenye vituo 60,000+ vya moja kwa moja kutoka nchi 120+. Sikiliza muziki, habari, michezo na mazungumzo.',
     },
     contact: {
-      title: 'Wasiliana na Mega Radio',
+      title: 'Wasiliana na Mega Radio — themegaradio.com',
       description: 'Wasiliana na timu ya Mega Radio kwa msaada, maoni au ushirikiano. Tuko hapa kukusaidia katika tajriba yako ya redio mtandaoni bure.',
     },
     applications: {
@@ -728,7 +728,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'ስለ Mega Radio ይወቁ፦ ከ120+ አገራት የ60,000+ ቀጥታ ጣቢያዎች ያለው ነፃ የመስመር ላይ ራዲዮ መድረክ። ሙዚቃ፣ ዜና፣ ስፖርት እና ውይይት ራዲዮ ያዳምጡ።',
     },
     contact: {
-      title: 'Mega Radio ያግኙን',
+      title: 'Mega Radio ያግኙን — themegaradio.com',
       description: 'ለድጋፍ፣ አስተያየት ወይም ሽርክና የMega Radio ቡድንን ያግኙ። ለነፃ የመስመር ላይ ራዲዮ ተሞክሮዎ ለመርዳት እዚህ ነን።',
     },
     applications: {
@@ -742,7 +742,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Funda nge-Mega Radio: inkundla yomsakazo we-inthanethi yamahhala enezikhungo eziphilayo eziwu-60,000+ ezivela emazweni angu-120+. Lalela umculo, izindaba, ezemidlalo.',
     },
     contact: {
-      title: 'Xhumana ne-Mega Radio',
+      title: 'Xhumana ne-Mega Radio — themegaradio.com',
       description: 'Xhumana neqembu le-Mega Radio ngokwesekwa, ukuphawula noma ubambiswano. Sikhona ukukusiza ngolwazi lwakho lomsakazo we-inthanethi mahhala.',
     },
     applications: {
@@ -756,7 +756,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Leer meer oor Mega Radio: die gratis aanlyn-radioplatform met 60 000+ regstreekse stasies uit 120+ lande. Luister na musiek, nuus, sport en gespreksradio.',
     },
     contact: {
-      title: 'Kontak Mega Radio',
+      title: 'Kontak Mega Radio — themegaradio.com',
       description: 'Kontak die Mega Radio-span vir ondersteuning, terugvoer of vennootskappe. Ons is hier om te help met jou gratis aanlyn-radio-ervaring.',
     },
     applications: {
@@ -770,7 +770,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mësoni më shumë për Mega Radio: platforma online e radios falas me 60.000+ stacione live nga 120+ vende. Dëgjoni muzikë, lajme, sport dhe radio bisedimore.',
     },
     contact: {
-      title: 'Kontakt Mega Radio',
+      title: 'Kontakt Mega Radio — themegaradio.com',
       description: 'Kontaktoni ekipin e Mega Radio për mbështetje, komente ose partneritete. Ne jemi këtu për të ndihmuar me përvojën tuaj të radios online falas.',
     },
     applications: {
@@ -784,7 +784,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Mega Radio ilə tanış olun: 120+ ölkədən 60.000+ canlı stansiyaya malik pulsuz onlayn radio platforması. Musiqi, xəbərlər, idman və söhbət radiosu dinləyin.',
     },
     contact: {
-      title: 'Mega Radio Əlaqə',
+      title: 'Mega Radio Əlaqə — themegaradio.com',
       description: 'Dəstək, rəy və ya tərəfdaşlıq üçün Mega Radio komandası ilə əlaqə saxlayın. Pulsuz onlayn radio təcrübənizdə kömək etmək üçün buradayıq.',
     },
     applications: {
@@ -798,7 +798,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Ծանոթացեք Mega Radio-ի հետ՝ 120+ երկրների 60,000+ ուղիղ կայաններով անվճար առցանց ռադիո հարթակ։ Լսեք երաժշտություն, լուրեր, սպորտ և զրուցարան։',
     },
     contact: {
-      title: 'Կապ Mega Radio-ի հետ',
+      title: 'Կապ Mega Radio-ի հետ — themegaradio.com',
       description: 'Կապվեք Mega Radio-ի թիմի հետ աջակցության, արձագանքի կամ համագործակցության համար։ Մենք այստեղ ենք՝ օգնելու ձեր անվճար առցանց ռադիոյի փորձառությանը։',
     },
     applications: {
@@ -812,7 +812,7 @@ export const STATIC_PAGE_SEO_TEMPLATES: Record<string, StaticPageSeoTemplate> = 
       description: 'Ka baro Mega Radio: madasha raadiyaha onlayn-ka ah ee bilaashka leh xafiisyo tooska ah 60,000+ oo ka kala yimid 120+ waddan. Dhageyso muusig, wararka, ciyaaraha.',
     },
     contact: {
-      title: 'Nala soo xidhiidh Mega Radio',
+      title: 'Nala soo xidhiidh Mega Radio — themegaradio.com',
       description: 'La xidhiidh kooxda Mega Radio si aad u hesho taageero, jawaab celin ama wadashaqayn. Waxaan halkan u joognaa inaan ku caawinno khibradaada raadiyaha bilaashka.',
     },
     applications: {
