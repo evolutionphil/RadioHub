@@ -222,15 +222,18 @@ export class PrecomputedGenresService {
   static async refreshAll(): Promise<void> {
     logger.log('🔄 Refreshing all genres caches...');
     
-    await CacheManager.del(GLOBAL_CACHE_KEY);
+    // INCIDENT 2026-05-15 v10.2 — read side is SWR; invalidate via delSWR
+    // so the envelope is dropped and the next caller recomputes.
+    await CacheManager.delSWR(GLOBAL_CACHE_KEY);
     await this.getGenres('global');
     
     const topCountries = ['DE', 'US', 'TR', 'FR', 'IT', 'ES', 'GB', 'BR', 'RU', 'JP', 'NL', 'AT', 'CH', 'PL', 'AU', 'CA', 'MX', 'IN', 'KR'];
     
     for (const country of topCountries) {
       try {
+        // INCIDENT 2026-05-15 v10.2 — read side is SWR; invalidate via delSWR.
         const cacheKey = this.getCacheKey(country);
-        await CacheManager.del(cacheKey);
+        await CacheManager.delSWR(cacheKey);
         await this.getGenres(country);
         await sleep(300);
       } catch (error) {

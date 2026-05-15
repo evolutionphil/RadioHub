@@ -241,6 +241,27 @@ export class CacheManager {
     return p;
   }
 
+  // SWR companion helpers — invalidation/refresh paths must use these
+  // (NOT plain set/del) when the read side is `getOrSetSWR`, otherwise
+  // writes go to a base key that nobody reads and cron refreshes have
+  // no effect.
+  static async setSWR<T>(
+    key: string,
+    value: T,
+    options: { freshTtl: number; staleTtl: number }
+  ): Promise<void> {
+    const envKey = `${key}:swr`;
+    const exp = Date.now() + options.freshTtl * 1000;
+    await CacheManager.set(envKey, { v: value, exp }, { ttl: options.staleTtl });
+  }
+  static async delSWR(key: string): Promise<void> {
+    const envKey = `${key}:swr`;
+    await CacheManager.del(envKey);
+    // also drop any in-flight refresh marker so the next caller
+    // recomputes immediately.
+    CacheManager.inflight.delete(envKey);
+  }
+
   // Delete cached data
   static async del(key: string): Promise<void> {
     try {

@@ -240,7 +240,10 @@ export class PrecomputedStationsService {
       countryName
     };
 
-    await CacheManager.set(this.getCacheKey(countryName), data, { ttl: CACHE_TTL });
+    // INCIDENT 2026-05-15 v10.2 — read side is now SWR (getCountryStations
+    // / getCountryStationsByName); write through `setSWR` so cron
+    // refreshes actually populate the envelope getOrSetSWR reads from.
+    await CacheManager.setSWR(this.getCacheKey(countryName), data, { freshTtl: CACHE_TTL, staleTtl: CACHE_TTL * 7 });
 
     return data;
     }, countryName);
@@ -524,7 +527,9 @@ export class PrecomputedStationsService {
       countryName: 'global'
     };
 
-    await CacheManager.set(GLOBAL_CACHE_KEY, data, { ttl: CACHE_TTL });
+    // INCIDENT 2026-05-15 v10.2 — read side is SWR (getGlobalStations);
+    // write through setSWR.
+    await CacheManager.setSWR(GLOBAL_CACHE_KEY, data, { freshTtl: CACHE_TTL, staleTtl: CACHE_TTL * 7 });
 
     const duration = Math.round((Date.now() - startTime) / 1000);
     logger.log(`✅ GLOBAL CACHE: Computed ${stations.length} stations (total: ${totalCount}) in ${duration}s`);
