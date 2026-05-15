@@ -180,7 +180,7 @@ async function loadTranslationsFromDb(
     const docs = await Translation.find({ language: lang })
       .populate('keyId')
       .lean()
-      .maxTimeMS(8000);
+      .maxTimeMS(60000);
     const map: Record<string, string> = {};
     for (const t of docs as any[]) {
       if (t?.keyId?.key && t?.value) {
@@ -204,36 +204,59 @@ async function loadTranslationsFromDb(
 }
 
 async function computeFromTranslations(): Promise<string[]> {
+  const langs = ACTIVE_SITEMAP_LANGUAGES as unknown as string[];
+
+  // PASS 1: cheap, cache-only sweep. Records misses for the bounded DB pass
+  // below. This split lets us early-exit when the cache is warm (zero DB
+  // pressure during steady state) and bound the worst-case DB cost.
   const qualified: string[] = [];
+  const misses: string[] = [];
   let cacheHits = 0;
-  let dbFallbacks = 0;
-  for (const lang of ACTIVE_SITEMAP_LANGUAGES as unknown as string[]) {
-    try {
-      let translations = performanceCache.getTranslations(lang);
-      if (translations) {
-        cacheHits++;
-      } else {
-        // Cache miss — fetch from DB instead of giving up. This is the
-        // critical fix: previously a cold cache (post-deploy or after RSS
-        // memory relief flushed quickCache/translationsCache) made every
-        // non-critical language report as "not qualified", collapsing the
-        // computed set from ~50 down to 10 (or 0) and triggering shrink-
-        // protection / LKG fallback every single recompute.
-        translations = await loadTranslationsFromDb(lang);
-        if (translations) dbFallbacks++;
-      }
-      if (translations && hasCompleteSeoTranslations(translations)) {
-        qualified.push(lang);
-      }
-    } catch (err) {
-      logger.warn(
-        `⚠️ qualified-languages: skipping ${lang} — translation load failed`,
-      );
+  for (const lang of langs) {
+    const translations = performanceCache.getTranslations(lang);
+    if (translations) {
+      cacheHits++;
+      if (hasCompleteSeoTranslations(translations)) qualified.push(lang);
+    } else {
+      misses.push(lang);
     }
   }
+
+  if (misses.length === 0) {
+    return qualified;
+  }
+
+  // PASS 2: bounded-concurrency DB fallback for misses. INCIDENT 2026-05-15:
+  // 50 sequential `Translation.find().populate()` calls during boot starved
+  // the Mongoose pool while other warmups were in flight. A small concurrency
+  // window (4) lets the DB fallback finish quickly without monopolising the
+  // pool — each query yields after issuing so other consumers can interleave.
+  const CONCURRENCY = 4;
+  let cursor = 0;
+  let dbFallbacks = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, misses.length) }, async () => {
+      while (cursor < misses.length) {
+        const idx = cursor++;
+        const lang = misses[idx];
+        try {
+          const translations = await loadTranslationsFromDb(lang);
+          if (translations) {
+            dbFallbacks++;
+            if (hasCompleteSeoTranslations(translations)) qualified.push(lang);
+          }
+        } catch (err) {
+          logger.warn(
+            `⚠️ qualified-languages: skipping ${lang} — translation load failed`,
+          );
+        }
+      }
+    }),
+  );
+
   if (dbFallbacks > 0) {
     logger.log(
-      `🔍 qualified-languages: compute scanned ${ACTIVE_SITEMAP_LANGUAGES.length} langs (cache hits=${cacheHits}, db fallbacks=${dbFallbacks}) → qualified=${qualified.length}`,
+      `🔍 qualified-languages: compute scanned ${langs.length} langs (cache hits=${cacheHits}, db fallbacks=${dbFallbacks}) → qualified=${qualified.length}`,
     );
   }
   return qualified;
@@ -456,8 +479,42 @@ export async function invalidateQualifiedLanguages(opts: { resetLkg?: boolean } 
  *
  * Call this BEFORE registering public sitemap routes (or before accepting
  * the first request). Returns the resulting state for logging.
+ *
+ * INCIDENT 2026-05-15 v2: previously this called `getQualifiedLanguagesState()`
+ * which ran the full live compute (50 sequential `Translation.find()` queries
+ * via the new DB fallback) at the same moment as similar-stations warmup,
+ * filters/languages aggregation, popular-stations warmup, hasLogo migration,
+ * and seo-health-stats. The combined load saturated the (intentionally small)
+ * Mongoose pool and tripped `waitQueueTimeoutMS=5000` repeatedly, cascading
+ * into "MongoNetworkTimeoutError" / "operation exceeded time limit" errors
+ * for ~90 seconds after boot.
+ *
+ * New behaviour: at boot we PREFER the persisted LKG (one cheap `findOne`)
+ * and prime the in-memory cache from it. The next user request that survives
+ * past the in-memory TTL will trigger the live compute organically — by then
+ * the warmup storm has subsided and the DB fallback is cheap.
  */
 export async function initializeQualifiedLanguages(): Promise<QualifiedLanguagesState> {
+  // Fast-path: serve from LKG without touching Translation collection.
+  try {
+    const lkg = await loadLkg();
+    if (lkg && lkg.languages.length > 0) {
+      const now = Date.now();
+      memoryCache = { state: lkg, expiresAt: now + CACHE_TTL_MS };
+      lastHash = lkg.hash;
+      lastLanguages = [...lkg.languages];
+      logger.log(
+        `🚀 qualified-languages init (boot fast-path): ${lkg.languages.length} langs from LKG, hash=${lkg.hash} (live compute deferred to first cache-miss)`,
+      );
+      return lkg;
+    }
+  } catch (err) {
+    logger.warn(
+      `⚠️ qualified-languages: LKG fast-path read failed at boot — ${(err as any)?.message?.slice(0, 120) || err}`,
+    );
+  }
+
+  // No LKG yet — fall through to full compute (safe on a fresh DB).
   try {
     const state = await getQualifiedLanguagesState();
     logger.log(

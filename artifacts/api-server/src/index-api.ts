@@ -492,12 +492,16 @@ if (isProduction && mongoUri) {
     autoRemove: 'native',
     touchAfter: 24 * 60 * 60,
     mongoOptions: {
-      maxPoolSize: 5,
-      minPoolSize: 0,
-      serverSelectionTimeoutMS: 5000,
-      connectTimeoutMS: 10000,
-      socketTimeoutMS: 10000,
-      waitQueueTimeoutMS: 2000,
+      // INCIDENT 2026-05-15 v3 — USER DIRECTIVE: maxed out. Session store is
+      // low-volume (one read/write per HTTP request, mostly cached), so a
+      // generous pool + long timeouts cost nothing in steady state and
+      // eliminate the cascade during boot or failover.
+      maxPoolSize: 20,
+      minPoolSize: 2,
+      serverSelectionTimeoutMS: 60000,
+      connectTimeoutMS: 60000,
+      socketTimeoutMS: 120000,
+      waitQueueTimeoutMS: 60000,
       maxIdleTimeMS: 120000,
       heartbeatFrequencyMS: 10000,
       family: 4,
@@ -505,7 +509,7 @@ if (isProduction && mongoUri) {
       retryReads: true,
     },
   });
-  logger.log('🔐 Using MongoDB session store for production (pinned pool=5, 10s timeouts)');
+  logger.log('🔐 Using MongoDB session store for production (pool=20, 60s wait / 120s socket)');
 }
 
 app.use(session(sessionConfig));

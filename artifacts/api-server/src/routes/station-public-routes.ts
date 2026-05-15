@@ -673,9 +673,9 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
                 .sort({ hasLogo: -1, votes: -1 })
                 .skip(skip)
                 .limit(limitNum)
-                .maxTimeMS(8000)
+                .maxTimeMS(60000)
                 .lean(),
-              Station.countDocuments(mongoFilter).maxTimeMS(5000).catch(() => 0),
+              Station.countDocuments(mongoFilter).maxTimeMS(30000).catch(() => 0),
             ]);
             return void res.json({
               success: true, data: stations, stations, total, count: total, page: pageNum,

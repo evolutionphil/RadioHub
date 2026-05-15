@@ -272,13 +272,20 @@ async function doConnect() {
   //     up quickly, and the pool never accumulates stuck handles.
   //   - heartbeatFrequencyMS 5s (was 10s) so the driver notices topology
   //     changes (failover) twice as fast.
+  // INCIDENT 2026-05-15 v3 — USER DIRECTIVE: maximise every timeout knob so
+  // boot warmup, sync ingest, and admin aggregations never get cut off by a
+  // tight client-side budget. Atlas M10 happily handles 100 connections (cap
+  // is 1500 cluster-wide) and 2-minute socket waits; the previous tight
+  // values were aimed at "fail fast during failover" but caused more harm
+  // than good during normal boot. Generous values here + soft-fail catches
+  // in route handlers give the same UX without the timeout cascade.
   await mongoose.connect(MONGODB_URI, {
-    maxPoolSize: isProd ? 30 : 10,
-    minPoolSize: isProd ? 5 : 2,
-    serverSelectionTimeoutMS: isProd ? 8000 : 15000,
-    socketTimeoutMS: isProd ? 15000 : 30000,
-    connectTimeoutMS: isProd ? 10000 : 15000,
-    waitQueueTimeoutMS: isProd ? 5000 : 10000,
+    maxPoolSize: isProd ? 100 : 10,
+    minPoolSize: isProd ? 10 : 2,
+    serverSelectionTimeoutMS: isProd ? 60000 : 30000,
+    socketTimeoutMS: isProd ? 120000 : 60000,
+    connectTimeoutMS: isProd ? 60000 : 30000,
+    waitQueueTimeoutMS: isProd ? 60000 : 30000,
     bufferCommands: false,
     maxIdleTimeMS: 30000,
     family: 4,
