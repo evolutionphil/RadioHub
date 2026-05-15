@@ -219,7 +219,16 @@ export class CacheManager {
         const refresh = (async () => {
           try {
             const fresh = await loader();
-            await CacheManager.set(envKey, { v: fresh, exp: now + freshTtl * 1000 }, { ttl: staleTtl });
+            // INCIDENT 2026-05-15 v10.2 round 6 — capture exp at WRITE
+            // time, not before loader execution. A slow loader
+            // (multi-second Mongo aggregate) was previously eating
+            // into the fresh window from the moment we entered the
+            // refresh closure, so a 1h fresh TTL with a 10s loader
+            // effectively had ~3590s freshness and could even be
+            // already-stale on write under really pathological
+            // latency. Using Date.now() here gives the configured
+            // freshTtl from the moment the fresh value lands.
+            await CacheManager.set(envKey, { v: fresh, exp: Date.now() + freshTtl * 1000 }, { ttl: staleTtl });
             CacheManager.swrRefreshFailures.delete(envKey);
           } catch (err: any) {
             // Keep stale; next caller will retry. INCIDENT 2026-05-15

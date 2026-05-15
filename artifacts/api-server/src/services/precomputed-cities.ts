@@ -148,13 +148,17 @@ export class PrecomputedCitiesService {
 
       return data;
     } catch (error: any) {
-      // SOFT-FAIL: never crash the SSR page. Log the real reason and
-      // serve an empty list. The page renders without the city grid.
+      // INCIDENT 2026-05-15 v10.2 round 6 — RETHROW on transient
+      // compute failure so the singleflight wrapper does NOT cache the
+      // empty fallback for the full 7-day TTL. The wrapper in
+      // getCitiesForCountry catches and returns empty for the request,
+      // but the next request will retry the compute instead of being
+      // poisoned with an empty list for a week.
       logger.error(
         `❌ precomputed-cities ${countryName} failed: ` +
         `code=${error?.code || error?.codeName || 'unknown'} msg=${error?.message || error}`
       );
-      return { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
+      throw error;
     }
   }
 
@@ -162,11 +166,18 @@ export class PrecomputedCitiesService {
     const cacheKey = this.getCacheKey(countryName);
     // Singleflight: coalesce concurrent SSR misses on the same country
     // so the planner only sees ONE compute pass per country at a time.
-    return CacheManager.getOrSetSingleFlight<PrecomputedCitiesData>(
-      cacheKey,
-      () => this.computeCitiesForCountry(countryName),
-      { ttl: CACHE_TTL }
-    );
+    // INCIDENT 2026-05-15 v10.2 round 6 — wrap in try/catch so a
+    // compute throw becomes a per-request empty soft-fail (SSR page
+    // still renders) WITHOUT poisoning the cache with empty data.
+    try {
+      return await CacheManager.getOrSetSingleFlight<PrecomputedCitiesData>(
+        cacheKey,
+        () => this.computeCitiesForCountry(countryName),
+        { ttl: CACHE_TTL }
+      );
+    } catch {
+      return { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
+    }
   }
 
   static async warmupCache(): Promise<void> {
