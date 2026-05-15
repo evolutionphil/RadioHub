@@ -1727,7 +1727,11 @@ ${keysText}`;
       // INCIDENT 2026-05-15 v10 — wrap the heavy distinct-language
       // aggregate in single-flight so concurrent cold misses (homepage
       // SSR fanout) coalesce to ONE Mongo call.
-      const cleanLanguages = await CacheManager.getOrSetSingleFlight<string[]>(cacheKey, async () => {
+      // INCIDENT 2026-05-15 v10.2 — upgraded singleflight → SWR
+      // (24h fresh / 7d stale) so a stressed cluster mid-refresh
+      // keeps serving the prior language list instead of falling
+      // through to the empty-array soft-fail.
+      const cleanLanguages = await CacheManager.getOrSetSWR<string[]>(cacheKey, async () => {
       // Get aggregated language data with counts
       const languageStats = await Station.aggregate([
         {
@@ -1785,13 +1789,14 @@ ${keysText}`;
         .sort();
 
         return cleanLanguages;
-      }, { ttl: 86400 });
+      }, { freshTtl: 86400, staleTtl: 86400 * 7 });
       res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
       res.json(cleanLanguages);
     } catch (error: any) {
-      logger.warn('[filters/languages] failed: ' + (error?.message || 'unknown'));
+      logger.warn(`[filters/languages] failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || 'unknown'}`);
+      // INCIDENT 2026-05-15 v10.2 — read SWR envelope on fallback path.
       let stale: any = null;
-      try { stale = await CacheManager.get(cacheKey); } catch {}
+      try { stale = await CacheManager.getSWR(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
       res.json(Array.isArray(stale) ? stale : []);
     }

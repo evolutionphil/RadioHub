@@ -107,7 +107,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // concurrent cold misses (typical SSR fanout when CDN expires the
       // homepage) coalesce into ONE Mongo aggregate. Previously each
       // miss spawned its own pair of aggregates, draining the M10 pool.
-      const computed = await CacheManager.getOrSetSingleFlight<any[]>(cacheKey, async () => {
+      // INCIDENT 2026-05-15 v10.2 — upgraded to true SWR (1h fresh /
+      // 6h stale) so a stressed cluster keeps serving last-known-good
+      // popular stations during refresh windows instead of waiting
+      // 5-15s on the aggregate.
+      const computed = await CacheManager.getOrSetSWR<any[]>(cacheKey, async () => {
         if (isTV && Number(limit) <= 10) {
           let tvFilter: any = { lastCheckOk: true };
           if (country && country !== 'all' && country !== 'null') {
@@ -267,7 +271,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         // Cache the FULL station shape; the response writer below applies
         // the TV slim transform / placeholder strip per request.
         return stations;
-      }, { ttl: 3600 });
+      }, { freshTtl: 3600, staleTtl: 21600 });
 
       res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
       if (isTV) {
@@ -285,8 +289,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         `❌ /api/stations/popular failed (country=${req.query.country || 'all'}, limit=${req.query.limit || '?'}): ` +
         `code=${error?.code || error?.codeName || 'unknown'} msg=${error?.message || error}`
       );
+      // INCIDENT 2026-05-15 v10.2 — read SWR envelope (`<key>:swr`),
+      // not the dead base key, so we actually surface last-known-good.
       let stale: any = null;
-      try { stale = await CacheManager.get(cacheKey); } catch {}
+      try { stale = await CacheManager.getSWR(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
       // Apply the same response shaping as the success path so the
       // payload contract is identical on stale fallback (TV gets slim
