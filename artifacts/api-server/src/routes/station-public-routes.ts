@@ -706,7 +706,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
               pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) }
             });
           } catch (fallbackErr: any) {
-            logger.warn('[/api/stations/precomputed] global cold-fallback failed: ' + (fallbackErr?.message || 'unknown'));
+            // INCIDENT 2026-05-15 v10.2 — structured code/codeName +
+            // Cache-Control: no-store so a transient cluster blip
+            // doesn't get cached as an empty payload by upstream CDN.
+            logger.warn(`[/api/stations/precomputed] global cold-fallback failed: code=${fallbackErr?.code || 'unknown'} codeName=${fallbackErr?.codeName || 'unknown'} msg=${fallbackErr?.message || 'unknown'}`);
+            res.set('Cache-Control', 'no-store');
             return void res.json({
               success: true, data: [], stations: [], total: 0, count: 0, page: pageNum,
               totalPages: 0, cached: false,
@@ -755,7 +759,11 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // storm it printed 200+ stack traces in 10 minutes. Downgrade to a
       // single-line warn + return an empty payload so a transient cluster
       // blip degrades gracefully instead of looking like an outage in logs.
-      logger.warn('[/api/stations/precomputed] failed: ' + (error?.message || 'unknown'));
+      // INCIDENT 2026-05-15 v10.2 — structured code/codeName + no-store
+      // on the failure response so a transient cluster blip doesn't
+      // get cached as an empty payload by upstream CDN.
+      logger.warn(`[/api/stations/precomputed] failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || 'unknown'}`);
+      res.set('Cache-Control', 'no-store');
       res.json({
         success: true, data: [], stations: [], total: 0, count: 0,
         page: 1, totalPages: 0, cached: false,

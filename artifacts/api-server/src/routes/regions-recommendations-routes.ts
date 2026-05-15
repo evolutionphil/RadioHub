@@ -136,67 +136,61 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
 
   // Get global popular cities - CACHED
   app.get('/api/cities/global', async (req, res) => {
+    const cacheKey = 'global_cities_v1';
+    const CacheManager = (await import('../cache')).default;
     try {
-      const cacheKey = 'global_cities_v1';
-      const CacheManager = (await import('../cache')).default;
-      const cached = await CacheManager.get<any>(cacheKey);
-      if (cached) {
-        return void res.json({
-          success: true,
-          data: { cities: cached },
-          cached: true
-        });
-      }
-      
-      const majorCountries = ['United States', 'Germany', 'United Kingdom', 'France', 'Italy', 'Spain', 'Canada', 'Australia', 'Austria', 'Netherlands'];
-      const globalCities = [];
-      
-      for (const countryName of majorCountries) {
-        const cities = COUNTRY_CITIES[countryName] || [];
-        const topCities = cities.slice(0, 3);
-        
-        for (const city of topCities) {
-          const searchPatterns = getCountrySearchPatterns(countryName);
-          
-          const aggregationResults = await Station.aggregate([
-            {
-              $match: {
-                $and: [
-                  { $or: searchPatterns.map(pattern => ({ country: { $regex: new RegExp(pattern, 'i') } })) },
-                  { state: { $regex: new RegExp(city, 'i') } }
-                ]
-              }
-            },
-            { $count: "stationCount" }
-          ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
-          
-          const stationCount = aggregationResults.length > 0 ? aggregationResults[0].stationCount : 0;
-          
-          if (stationCount > 0) {
-            globalCities.push({
-              name: city,
-              country: countryName,
-              stationCount
-            });
+      // INCIDENT 2026-05-15 v10.2 — wrap the 30-aggregate fan-out in
+      // single-flight + SWR. With ~10 major countries × 3 cities this
+      // route fires 30 sequential $count aggregates on cold miss; under
+      // SSR fanout that was multiplying into hundreds of concurrent
+      // aggregates and contributing to multiplanner contention. SWR
+      // (1h fresh / 24h stale) keeps response instant even mid-refresh.
+      const topGlobalCities = await CacheManager.getOrSetSWR<any[]>(cacheKey, async () => {
+        const majorCountries = ['United States', 'Germany', 'United Kingdom', 'France', 'Italy', 'Spain', 'Canada', 'Australia', 'Austria', 'Netherlands'];
+        const globalCities: any[] = [];
+
+        for (const countryName of majorCountries) {
+          const cities = COUNTRY_CITIES[countryName] || [];
+          const topCities = cities.slice(0, 3);
+
+          for (const city of topCities) {
+            const searchPatterns = getCountrySearchPatterns(countryName);
+
+            const aggregationResults = await Station.aggregate([
+              {
+                $match: {
+                  $and: [
+                    { $or: searchPatterns.map(pattern => ({ country: { $regex: new RegExp(pattern, 'i') } })) },
+                    { state: { $regex: new RegExp(city, 'i') } }
+                  ]
+                }
+              },
+              { $count: "stationCount" }
+            ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
+
+            const stationCount = aggregationResults.length > 0 ? aggregationResults[0].stationCount : 0;
+
+            if (stationCount > 0) {
+              globalCities.push({ name: city, country: countryName, stationCount });
+            }
           }
         }
-      }
-      
-      globalCities.sort((a, b) => b.stationCount - a.stationCount);
-      const topGlobalCities = globalCities.slice(0, 20);
-      
-      await CacheManager.set(cacheKey, topGlobalCities, { ttl: 1800 });
-      
+
+        globalCities.sort((a, b) => b.stationCount - a.stationCount);
+        return globalCities.slice(0, 20);
+      }, { freshTtl: 3600, staleTtl: 86400 });
+
       res.json({
         success: true,
-        data: {
-          cities: topGlobalCities
-        }
+        data: { cities: topGlobalCities }
       });
     } catch (error: any) {
-      console.error(`❌ /api/cities/global failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      // INCIDENT 2026-05-15 v10.2 — structured code/codeName + SWR fallback.
+      logger.error(`❌ /api/cities/global failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || error}`);
+      let stale: any[] | null = null;
+      try { stale = await CacheManager.get<any[]>(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json({ success: true, data: { cities: [] } });
+      res.json({ success: true, data: { cities: Array.isArray(stale) ? stale : [] } });
     }
   });
 
@@ -592,17 +586,15 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
   });
 
   app.get("/api/recommendations/diverse", async (req, res) => {
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const country = (req.query.country as string) || null;
+    const cacheKey = `recommendations:diverse:${country || 'all'}:${limit}`;
     try {
-      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
-      const country = (req.query.country as string) || null;
-
-      const cacheKey = `recommendations:diverse:${country || 'all'}:${limit}`;
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) {
-        return void res.json(cached);
-      }
-
-      const topGenres = await Genre.find({ stationCount: { $gt: 5 } })
+      // INCIDENT 2026-05-15 v10.2 — single-flight + SWR. This route
+      // fans out 10 $sample aggregates in parallel; without coalescing
+      // a homepage SSR burst could trigger 100+ concurrent computes.
+      const result = await CacheManager.getOrSetSWR<{ stations: any[]; total: number }>(cacheKey, async () => {
+        const topGenres = await Genre.find({ stationCount: { $gt: 5 } })
         .sort({ stationCount: -1 })
         .limit(10)
         .select('name slug')
@@ -637,13 +629,15 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         return true;
       }).slice(0, limit);
 
-      const result = { stations: uniqueStations, total: uniqueStations.length };
-      await CacheManager.set(cacheKey, result, { ttl: 300 });
+        return { stations: uniqueStations, total: uniqueStations.length };
+      }, { freshTtl: 300, staleTtl: 3600 });
       res.json(result);
     } catch (error: any) {
-      console.error(`❌ /api/recommendations/diverse failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      logger.error(`❌ /api/recommendations/diverse failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try { stale = await CacheManager.get(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json({ stations: [], total: 0 });
+      res.json(stale ?? { stations: [], total: 0 });
     }
   });
 
