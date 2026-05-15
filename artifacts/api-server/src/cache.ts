@@ -245,6 +245,11 @@ export class CacheManager {
   // (NOT plain set/del) when the read side is `getOrSetSWR`, otherwise
   // writes go to a base key that nobody reads and cron refreshes have
   // no effect.
+  static async getSWR<T>(key: string): Promise<T | null> {
+    const env = await CacheManager.get<{ v: T; exp: number }>(`${key}:swr`);
+    if (env && typeof env === 'object' && 'v' in env) return env.v as T;
+    return null;
+  }
   static async setSWR<T>(
     key: string,
     value: T,

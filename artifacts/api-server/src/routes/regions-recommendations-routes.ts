@@ -187,8 +187,11 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
     } catch (error: any) {
       // INCIDENT 2026-05-15 v10.2 — structured code/codeName + SWR fallback.
       logger.error(`❌ /api/cities/global failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || error}`);
+      // INCIDENT 2026-05-15 v10.2 — catch-path must read SWR envelope
+      // (`<key>:swr`), not the dead base key, to actually surface
+      // last-known-good when the loader threw.
       let stale: any[] | null = null;
-      try { stale = await CacheManager.get<any[]>(cacheKey); } catch {}
+      try { stale = await CacheManager.getSWR<any[]>(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
       res.json({ success: true, data: { cities: Array.isArray(stale) ? stale : [] } });
     }
@@ -634,8 +637,9 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       res.json(result);
     } catch (error: any) {
       logger.error(`❌ /api/recommendations/diverse failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || error}`);
+      // INCIDENT 2026-05-15 v10.2 — read SWR envelope on fallback path.
       let stale: any = null;
-      try { stale = await CacheManager.get(cacheKey); } catch {}
+      try { stale = await CacheManager.getSWR(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
       res.json(stale ?? { stations: [], total: 0 });
     }
