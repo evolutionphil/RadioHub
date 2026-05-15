@@ -496,11 +496,12 @@ if (isProduction && mongoUri) {
       // low-volume (one read/write per HTTP request, mostly cached), so a
       // generous pool + long timeouts cost nothing in steady state and
       // eliminate the cascade during boot or failover.
-      // INCIDENT 2026-05-15 v5 — pool right-sized to match real load. Session
-      // store sees < 1 op/sec; 20 sockets reserved 60–120 MB native for no
-      // reason. Drop maxPool to 6 (still >>peak), keep min at 1. Timeouts
-      // unchanged — pool size is independent of timeout budget.
-      maxPoolSize: 6,
+      // INCIDENT 2026-05-15 v6 — REVERT v5 reduction. v5 capped maxPool=6
+      // for the session store; under crawler bursts every request touches
+      // the session store, and 6 sockets aren't enough. Restore maxPool=20
+      // (v3 value) but keep minPool=1 so the steady-state native footprint
+      // stays low. Pool grows on demand up to 20 and shrinks back to 1.
+      maxPoolSize: 20,
       minPoolSize: 1,
       serverSelectionTimeoutMS: 60000,
       connectTimeoutMS: 60000,

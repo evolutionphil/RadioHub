@@ -279,19 +279,19 @@ async function doConnect() {
   // values were aimed at "fail fast during failover" but caused more harm
   // than good during normal boot. Generous values here + soft-fail catches
   // in route handlers give the same UX without the timeout cascade.
-  // INCIDENT 2026-05-15 v5 — pool-size right-sizing (timeouts UNCHANGED).
-  // Each MongoDB driver TLS connection costs ~5–10 MB of native heap (BSON
-  // buffers, OpenSSL session state, write batch staging). With M10's 3-node
-  // replica set the driver opens a connection per node per pool slot, so
-  // maxPool=100 / minPool=10 reserves 30 idle TLS sockets at boot worth
-  // 150–300 MB native — visible in production as a 400–600 MB native
-  // baseline. Pool size is INDEPENDENT of timeout budget: the long
-  // serverSelection / socket / waitQueue values stay, we just stop
-  // pre-allocating sockets nobody uses. Observed peak concurrency on this
-  // workload is < 15 inflight ops, so maxPool=30 / minPool=2 keeps headroom
-  // (2x peak) and frees ~250 MB native vs the previous setting.
+  // INCIDENT 2026-05-15 v6 — REVERT v5 maxPool reduction.
+  // v5 dropped maxPool 100→30 reasoning that "peak concurrency < 15 ops"
+  // based on steady-state DIAG snapshots. PRODUCTION REALITY: cold-fallback
+  // bursts on `/api/stations/precomputed` (multi-language warmup + concurrent
+  // crawler hits) easily exceed 30 inflight ops. With waitQueueTimeoutMS=60s
+  // the pool saturated and emitted hundreds of MongoWaitQueueTimeoutError
+  // within seconds. Restore maxPool=100 (v3 user-directive value) — pool
+  // size MUST accommodate burst, not just average. Keep minPool=2 (down
+  // from v3's 10): idle baseline only holds 2 sockets so the native heap
+  // benefit of v5 is preserved without capping burst capacity. The pool
+  // grows on demand up to 100 and shrinks back to 2 after maxIdleTimeMS.
   await mongoose.connect(MONGODB_URI, {
-    maxPoolSize: isProd ? 30 : 10,
+    maxPoolSize: isProd ? 100 : 10,
     minPoolSize: isProd ? 2 : 2,
     serverSelectionTimeoutMS: isProd ? 60000 : 30000,
     socketTimeoutMS: isProd ? 120000 : 60000,
