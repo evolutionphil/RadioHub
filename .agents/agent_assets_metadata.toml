@@ -35,3 +35,15 @@ id = "DK8i8CI645IUIKct6dO9i"
 uri = "file://.local/SEO_AUDIT_REPORT.md"
 type = "text"
 title = "MegaRadio SEO Audit & Fix Report"
+
+[[outputs]]
+id = "LVnbqLz2FJbeyrV4zVNcy"
+uri = "file://.local/seo-final-report-tr.md"
+type = "text"
+title = "SEO Son Rapor (Türkçe)"
+
+[[outputs]]
+id = "-B0bElZRuG4A8cidEFDck"
+uri = "file://.local/seo-architect-validation.md"
+type = "text"
+title = "SEO Architect Doğrulama"
