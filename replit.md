@@ -121,6 +121,16 @@ silent 500. We removed all 3 hints in v10
 (station-public-routes.ts:228/717, precomputed-stations.ts:225) and the
 endpoints serve correctly without them.
 
+**Code-2 retry rule (v10.2 round 7)**: any query that DOES use
+`.hint(...)` MUST catch BadValue (`error.code === 2` /
+`error.codeName === 'BadValue'`) and retry the same query unhinted
+before giving up. The only remaining hinted queries
+(`sitemap-manifest-builder.ts` Station + Genre cursors) follow this
+pattern: a `buildXxxCursor(useHint)` factory plus a try/catch around
+the for-await that rebuilds with `useHint=false` on code 2. If you
+add a new hinted query, copy that pattern — never let a hidden /
+renamed index hard-fail a sitemap rebuild or an endpoint.
+
 The CI guard test at
 `artifacts/api-server/tests/hint-discipline.test.ts` greps the
 api-server source for `.hint(` and fails the build if any usage is

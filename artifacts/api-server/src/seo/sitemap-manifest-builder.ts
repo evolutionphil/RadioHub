@@ -376,46 +376,56 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
   // With `.hint({votes:-1})` Mongo skips multiplanner entirely and uses
   // the index immediately → no in-memory sort, no crash, and boot-time
   // `buildAllSitemapManifests` succeeds.
-  const cursor = Station.find({
-    slug: { $exists: true, $ne: '' },
-    $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-  })
-    .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon descriptions')
-    // ARCHITECT FIX (2026-05-10, take 2): the FIRST hint-fix only stopped
-    // the multiplanner crash. Logs then revealed a SECOND in-memory sort
-    // crash during EXECUTION (`Executor error during find command :: Sort
-    // exceeded memory limit`). Root cause: the index is `{votes:-1}`
-    // (single-field) but the sort spec was `{votes:-1, _id:1}` —
-    // two-field. Mongo can satisfy the votes order from the index but
-    // adds a blocking SORT stage to break ties on `_id`, which buffers
-    // all 48k+ candidates in memory and blows the 33MB limit. Atlas
-    // shared/serverless tiers REJECT `allowDiskUse(true)` so we can't
-    // spill. Solution: drop `_id` from the sort spec — the index alone
-    // fully satisfies the order, no SORT stage is added, and ties are
-    // broken by natural index/RecordId order (deterministic enough for
-    // sitemap chunking; per-chunk JS already controls the slice).
-    .sort({ votes: -1 })
-    // HINT-VERIFIED 2026-05-15 - {votes:-1} (key-spec hint, not name; survives Atlas index renames/hides)
-    .hint({ votes: -1 })
-    .read('primary')
-    .lean()
-    .cursor({ batchSize: 500 });
-
-  let processed = 0;
-  for await (const stationDoc of cursor as any) {
-    const station = stationDoc as StationLite;
-    const indexableLangs = getIndexableLanguagesForStation(station as any, qualifiedLanguages);
-    if (indexableLangs.length === 0) continue;
-    const entry = {
-      id: station._id,
-      votes: typeof station.votes === 'number' ? station.votes : 0,
-      updatedAt: station.updatedAt,
-    };
-    for (const lang of indexableLangs) {
-      const bucket = buckets.get(lang);
-      if (bucket) bucket.push(entry);
+  // INCIDENT 2026-05-15 v10.2 round 7 — wrap cursor creation in a
+  // factory so we can retry without the .hint() if the planner
+  // rejects it with BadValue (code 2 — index hidden / renamed).
+  // This codifies the "code 2 → retry unhinted" discipline from
+  // replit.md for the only remaining hinted query in the codebase.
+  const buildStationCursor = (useHint: boolean) => {
+    const q = Station.find({
+      slug: { $exists: true, $ne: '' },
+      $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+    })
+      .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon descriptions')
+      .sort({ votes: -1 });
+    if (useHint) {
+      // HINT-VERIFIED 2026-05-15 - {votes:-1} (key-spec hint, not name; survives Atlas index renames/hides)
+      q.hint({ votes: -1 });
     }
-    processed++;
+    return q.read('primary').lean().cursor({ batchSize: 500 });
+  };
+
+  let cursor = buildStationCursor(true);
+  let processed = 0;
+  const consume = async (c: any) => {
+    for await (const stationDoc of c) {
+      const station = stationDoc as StationLite;
+      const indexableLangs = getIndexableLanguagesForStation(station as any, qualifiedLanguages);
+      if (indexableLangs.length === 0) continue;
+      const entry = {
+        id: station._id,
+        votes: typeof station.votes === 'number' ? station.votes : 0,
+        updatedAt: station.updatedAt,
+      };
+      for (const lang of indexableLangs) {
+        const bucket = buckets.get(lang);
+        if (bucket) bucket.push(entry);
+      }
+      processed++;
+    }
+  };
+  try {
+    await consume(cursor);
+  } catch (err: any) {
+    if (err?.code === 2 || err?.codeName === 'BadValue') {
+      logger.warn(`[sitemap-builder] hinted Station cursor rejected (code=${err?.code}); retrying without index hint — ${err?.message || ''}`);
+      processed = 0;
+      buckets.forEach((b) => (b.length = 0));
+      cursor = buildStationCursor(false);
+      await consume(cursor);
+    } else {
+      throw err;
+    }
   }
   logger.log(`📦 manifest-builder: scanned ${processed} indexable stations across ${qualifiedLanguages.length} langs`);
 
@@ -473,33 +483,55 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
   // ARCHITECT FIX (2026-05-10, take 2): same blocking-SORT bug as the
   // Station cursor — drop `_id` tie-breaker so the {stationCount:-1}
   // index fully satisfies the sort with no in-memory SORT stage.
-  const cursor = Genre.find({ slug: { $exists: true, $ne: '' } })
-    .select('_id slug stationCount updatedAt')
-    .sort({ stationCount: -1 })
-    // HINT-VERIFIED 2026-05-15 - {stationCount:-1} (key-spec hint, not name; survives Atlas index renames/hides)
-    .hint({ stationCount: -1 })
-    .lean()
-    .cursor({ batchSize: 500 });
+  // INCIDENT 2026-05-15 v10.2 round 7 — same retry-without-hint
+  // pattern as the Station cursor above. If Atlas hides/renames the
+  // {stationCount:-1} index, the planner throws BadValue (code 2);
+  // we then re-issue without the hint so sitemap generation never
+  // hard-fails on an index-audit.
+  const buildGenreCursor = (useHint: boolean) => {
+    const q = Genre.find({ slug: { $exists: true, $ne: '' } })
+      .select('_id slug stationCount updatedAt')
+      .sort({ stationCount: -1 });
+    if (useHint) {
+      // HINT-VERIFIED 2026-05-15 - {stationCount:-1} (key-spec hint, not name; survives Atlas index renames/hides)
+      q.hint({ stationCount: -1 });
+    }
+    return q.lean().cursor({ batchSize: 500 });
+  };
 
   const ids: mongoose.Types.ObjectId[] = [];
   const updatedAts: Date[] = [];
   let scanned = 0;
   let skippedNotWhitelisted = 0;
   let skippedThin = 0;
-  for await (const g of cursor as any) {
-    scanned++;
-    const slug: string | undefined = (g as any).slug;
-    const stationCount: number = (g as any).stationCount ?? 0;
-    if (!isWhitelistedGenreSlug(slug)) {
-      skippedNotWhitelisted++;
-      continue;
+  const consumeGenres = async (c: any) => {
+    for await (const g of c) {
+      scanned++;
+      const slug: string | undefined = (g as any).slug;
+      const stationCount: number = (g as any).stationCount ?? 0;
+      if (!isWhitelistedGenreSlug(slug)) {
+        skippedNotWhitelisted++;
+        continue;
+      }
+      if (stationCount < MIN_STATIONS_FOR_GENRE_INDEX) {
+        skippedThin++;
+        continue;
+      }
+      ids.push((g as any)._id);
+      if ((g as any).updatedAt instanceof Date) updatedAts.push((g as any).updatedAt);
     }
-    if (stationCount < MIN_STATIONS_FOR_GENRE_INDEX) {
-      skippedThin++;
-      continue;
+  };
+  try {
+    await consumeGenres(buildGenreCursor(true));
+  } catch (err: any) {
+    if (err?.code === 2 || err?.codeName === 'BadValue') {
+      logger.warn(`[sitemap-builder] hinted Genre cursor rejected (code=${err?.code}); retrying without index hint — ${err?.message || ''}`);
+      scanned = 0; skippedNotWhitelisted = 0; skippedThin = 0;
+      ids.length = 0; updatedAts.length = 0;
+      await consumeGenres(buildGenreCursor(false));
+    } else {
+      throw err;
     }
-    ids.push((g as any)._id);
-    if ((g as any).updatedAt instanceof Date) updatedAts.push((g as any).updatedAt);
   }
   logger.log(
     `📦 manifest-builder: genres scanned=${scanned} kept=${ids.length} ` +
