@@ -37,6 +37,7 @@
  */
 
 import { Station } from '@workspace/db-shared/mongo-schemas';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { getActiveManifest, extractTopCountriesFromChunk } from './sitemap-manifest-builder';
 import { getCachedQualifiedLanguages } from './qualified-languages';
 import { GENRE_WHITELIST_SEED } from './genre-whitelist-seed';
@@ -159,7 +160,7 @@ export async function buildLlmsTxtBody(baseUrl: string): Promise<string> {
   lines.push('');
 
   lines.push('## Key sections');
-  lines.push(`${cleanBase}/en/radios`);
+  lines.push(`${cleanBase}/en/stations`);
   lines.push(`${cleanBase}/en/genres`);
   lines.push(`${cleanBase}/en/regions`);
   lines.push(`${cleanBase}/en/about`);
@@ -174,7 +175,10 @@ export async function buildLlmsTxtBody(baseUrl: string): Promise<string> {
     lines.push('## Localized entry points');
     for (const lang of qualifiedLangs) {
       if (lang === 'en') continue;
-      lines.push(`${cleanBase}/${lang}/radios`);
+      // v11: point AI bots at the canonical /lang/{stations-translated}
+      // (was /lang/radios which would 301 via STATION_LIST_ALIASES).
+      const stationsSlug = URL_TRANSLATIONS[lang]?.stations || 'stations';
+      lines.push(`${cleanBase}/${lang}/${stationsSlug}`);
     }
     lines.push('');
   }

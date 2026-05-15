@@ -557,13 +557,13 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
 // Task #128: includes /faq, /contact, /privacy-policy, /terms-and-conditions,
 // /applications so Google has a discovery path to those pages.
 //
-// /radios (NOT /stations) is the canonical listing path: the SPA mounts
-// the listing at the literal /radios route (artifacts/megaradio/src/App.tsx
-// ~line 255), and url-redirect-middleware Step 7 now 301s
-// /lang/{station-singular} and /lang/{stations-plural} to
-// /lang/{radios-translated}. Emitting /stations here would make every
-// sitemap URL a 301 and trigger Google sitemap-redirect warnings.
-const MAIN_STATIC_PAGES = ['', '/radios', '/genres', '/about', '/regions',
+// 2026-05-15 v11 FLIP: /stations (NOT /radios) is the canonical listing
+// path. Must mirror seo-sitemap-routes.ts mainPages (line 1189) which
+// emits /stations. The url-redirect-middleware STATION_LIST_ALIASES
+// canonical was flipped from .radios to .stations on the same date so
+// every sitemap URL serves 200 instead of 301'ing to a different URL.
+// (Previous setup caused "Submitted URL is a redirect" GSC warnings.)
+const MAIN_STATIC_PAGES = ['', '/stations', '/genres', '/about', '/regions',
   '/regions/europe', '/regions/asia', '/regions/africa',
   '/regions/north-america', '/regions/south-america', '/regions/oceania',
   '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications'];

@@ -733,7 +733,12 @@ const SeoMainRouter = React.memo(() => {
                   <Route path={`/${langConfig.code}/${translations['radios']}`} component={PlayerWrapper} />
                 )}
                 {translations['stations'] && (
-                  <Route path={`/${langConfig.code}/${translations['stations']}/:id`} component={PlayerWrapper} />
+                  <>
+                    {/* Listing route at the canonical /lang/{stations} URL — must
+                        match url-redirect-middleware STATION_LIST_ALIASES canonical. */}
+                    <Route path={`/${langConfig.code}/${translations['stations']}`} component={PlayerWrapper} />
+                    <Route path={`/${langConfig.code}/${translations['stations']}/:id`} component={PlayerWrapper} />
+                  </>
                 )}
                 {translations['users'] && (
                   <>
@@ -897,10 +902,14 @@ const SeoMainRouter = React.memo(() => {
               <Route path={`/${countryCode}/${translations['station']}/:slug`} component={PlayerWrapper} />
             )}
             
-            {/* Stations - English + Translated */}
+            {/* Stations - English + Translated (listing + detail) */}
+            <Route path={`/${countryCode}/stations`} component={PlayerWrapper} />
             <Route path={`/${countryCode}/stations/:id`} component={PlayerWrapper} />
             {translations['stations'] && (
-              <Route path={`/${countryCode}/${translations['stations']}/:id`} component={PlayerWrapper} />
+              <>
+                <Route path={`/${countryCode}/${translations['stations']}`} component={PlayerWrapper} />
+                <Route path={`/${countryCode}/${translations['stations']}/:id`} component={PlayerWrapper} />
+              </>
             )}
             
             {/* Users - English + Translated */}

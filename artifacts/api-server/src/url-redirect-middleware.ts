@@ -130,39 +130,68 @@ const STATION_DETAIL_ALIASES = new Map<string, { canonical: string; aliases: Set
 // STATION-LIST CANONICAL ALIAS MAP
 // =====================================================================
 // Listing-page counterpart of the detail-page collapse above.
-// Same three URL synonyms but at the 2-segment listing level
-// (/lang/{seg}, no slug):
-//   /az/stansiya, /az/radio   (singular vs radios)
-//   /hr/stanica,  /hr/radio
-//   /de/sender,   /de/radios
-//   /it/stazione, /it/stazioni, /it/radio
-//   /en/station,  /en/stations, /en/radios
-// Canonical = URL_TRANSLATIONS[lang].radios (or 'radios' for English)
-// because the SPA mounts the listing component at the literal /radios
-// route (artifacts/megaradio/src/App.tsx ~line 255), and the SPA's
-// reverse-translation already maps /lang/{radios-translated} back to
-// the /radios route handler.
+// Same URL synonyms collapsed at the 2-segment listing level (/lang/{seg}).
 //
-// NOTE: The bare root /lang vs /lang/{radios-translated} duplicate
-// (e.g. /hr vs /hr/radio) is NOT addressed here — redirecting the
-// language root would break the home page UX. That requires either a
-// rel=canonical link from the SPA or a separate strategy.
+// 2026-05-15 v11 FLIP: canonical is now URL_TRANSLATIONS[lang].stations
+// (was .radios). Reason:
+//   - sitemap-main-{lang}.xml emits /lang/{stations-translated} (e.g.
+//     /tr/istasyonlar, /de/sender, /es/estaciones — see
+//     seo-sitemap-routes.ts line 1189 mainPages = ['/stations', ...]).
+//   - The previous canonical (radios slug) caused every sitemap URL to
+//     be 301'd to a different URL → "Submitted URL is a redirect" GSC
+//     warnings + Google would not index the sitemap entries.
+// Now the canonical matches what the sitemap submits, and the radios /
+// station / stations synonyms 301 INTO the canonical.
+//
+// NATURAL-LANGUAGE ALIASES (USER_TYPED_LIST_ALIASES below) cover plurals
+// users actually type but that are NOT in URL_TRANSLATIONS — e.g. a
+// Turkish user types `/tr/radyolar` (natural plural), not `/tr/radyo`
+// (the singular radios slug). Without this map those URLs hit the
+// slug-shape 404 gate.
 // =====================================================================
+
+// User-typed plurals / Cyrillic equivalents that aren't in URL_TRANSLATIONS
+// but that real visitors type by hand. All entries 301 to the canonical
+// listing URL for that language.
+const USER_TYPED_LIST_ALIASES: Record<string, string[]> = {
+  tr: ['radyolar', 'radyoları', 'radyolari'], // Turkish plural of radyo
+  az: ['radiolar', 'radiolari'],              // Azerbaijani plural
+  ro: ['radiouri', 'radioul'],                 // Romanian plural & def
+  bg: ['радио', 'радиостанции'],               // Bulgarian Cyrillic
+  ru: ['радио', 'радиостанции'],               // Russian Cyrillic
+  sr: ['радио', 'радио-станице'],              // Serbian Cyrillic
+  uk: ['радіостанції'],                         // Ukrainian extra
+  he: ['רדיו', 'תחנות-רדיו'],                  // Hebrew natural
+  hi: ['रेडियो', 'रेडियो-स्टेशन'],              // Hindi Devanagari
+  fa: ['رادیو', 'ایستگاه-رادیو'],              // Persian
+  ja: ['ラジオ局', 'ラジオステーション'],        // Japanese variants
+  ko: ['라디오방송', '라디오-스테이션'],         // Korean variants
+  zh: ['广播', '广播电台', '电台广播'],         // Chinese variants
+  th: ['สถานีวิทยุ', 'วิทยุออนไลน์'],          // Thai variants
+  ar: ['راديو', 'محطات-إذاعية'],               // Arabic
+  nl: ['radios'],                              // Dutch English fallback
+  pl: ['radio'],                               // Polish singular fallback
+  sk: ['radia'],                               // Slovak plural fallback
+};
+
 const STATION_LIST_ALIASES = new Map<string, { canonical: string; aliases: Set<string> }>();
 (function buildStationListAliases() {
   for (const [lang, tr] of Object.entries(URL_TRANSLATIONS)) {
-    const canonical = tr.radios;
+    const canonical = tr.stations;
     if (!canonical) continue;
     const aliases = new Set<string>();
     if (tr.station && tr.station !== canonical) aliases.add(tr.station);
-    if (tr.stations && tr.stations !== canonical) aliases.add(tr.stations);
+    if (tr.radios && tr.radios !== canonical) aliases.add(tr.radios);
+    for (const extra of USER_TYPED_LIST_ALIASES[lang] || []) {
+      if (extra && extra !== canonical) aliases.add(extra);
+    }
     if (aliases.size > 0) {
       STATION_LIST_ALIASES.set(lang, { canonical, aliases });
     }
   }
   STATION_LIST_ALIASES.set('en', {
-    canonical: 'radios',
-    aliases: new Set(['station', 'stations']),
+    canonical: 'stations',
+    aliases: new Set(['station', 'radios', 'radio']),
   });
 })();
 
