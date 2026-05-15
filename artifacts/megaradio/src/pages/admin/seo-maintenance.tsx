@@ -608,6 +608,52 @@ export default function SeoMaintenancePage() {
     },
   });
 
+  // 2026-05-15: GSC URL Inspection manual trigger. Same endpoint the
+  // GSC dashboard's "Run inspection batch" button uses — exposed here
+  // so the SEO admin doesn't have to switch pages just to kick the cron
+  // ahead of its hourly tick.
+  const runGscBatch = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin/gsc-inspection/refresh", {}),
+  });
+
+  const runGscDiscover = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin/gsc-inspection/discover", {}),
+  });
+
+  const gscStatusQuery = useQuery<{
+    configured: boolean;
+    cronEnabled: boolean;
+    inspectionRunning: boolean;
+    discoveryRunning: boolean;
+    lastInspectionAt: string | null;
+    lastDiscoveryAt: string | null;
+    lastInspectionStats: { attempted: number; succeeded: number; failed: number } | null;
+    totalUrls: number;
+    defaultBatchSize: number;
+  }>({
+    queryKey: ["/api/admin/gsc-inspection/status"],
+    refetchInterval: 30_000,
+  });
+
+  // 2026-05-15: Station sync manual trigger. Same code path as the
+  // 03:00 Berlin nightly cron — pulls Radio-Browser dump and updates
+  // votes / clickCount / bitrate / urlResolved. Fire-and-forget.
+  const runStationSync = useMutation({
+    mutationFn: async () => apiRequest("POST", "/api/admin/sync/run-now", {}),
+  });
+
+  const stationSyncStatusQuery = useQuery<{
+    ok: boolean;
+    status: {
+      isRunning: boolean;
+      lastRunAt: string | null;
+      lastResult: { success: boolean; durationMs: number; message: string } | null;
+    };
+  }>({
+    queryKey: ["/api/admin/sync/status"],
+    refetchInterval: 15_000,
+  });
+
   const rebuildSitemap = useMutation({
     mutationFn: async () => apiRequest("POST", "/api/admin/sitemap/rebuild", {}),
     onSuccess: (data: any) => {
@@ -713,6 +759,164 @@ export default function SeoMaintenancePage() {
               )}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* GSC URL Inspection + Radio-Browser Station Sync — manuel tetikleyiciler */}
+      <Card className="bg-white border-blue-200">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            🔍 GSC URL Inspection & Vote/Sync — Manuel Tetikle
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* GSC bölümü */}
+          <div className="space-y-2 border-b border-slate-200 pb-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-800">Google Search Console URL Inspection</p>
+              <Link href="/admin/gsc-inspection" className="text-xs text-blue-600 hover:underline">
+                Tam panel →
+              </Link>
+            </div>
+            <p className="text-xs text-slate-600">
+              Tüm sitemap URL'lerini Google'a sorar (indexed / not indexed / error). Otomatik:
+              keşif 12 saatte bir, inspection saatte bir tick. Manuel basınca cron'u beklemeden bir batch çalışır.
+            </p>
+            <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2">
+              <div>
+                <strong>Durum:</strong>{" "}
+                {gscStatusQuery.data
+                  ? gscStatusQuery.data.configured
+                    ? gscStatusQuery.data.cronEnabled
+                      ? "✅ aktif (cron + API yapılandırılmış)"
+                      : "⚠️ API yapılandırılmış, cron kapalı"
+                    : "❌ GSC_SERVICE_ACCOUNT_JSON / GSC_SITE_URL eksik"
+                  : "yükleniyor..."}
+              </div>
+              {gscStatusQuery.data?.lastInspectionAt && (
+                <div>
+                  <strong>Son batch:</strong> {new Date(gscStatusQuery.data.lastInspectionAt).toLocaleString("tr-TR")}
+                  {gscStatusQuery.data.lastInspectionStats && (
+                    <> — {gscStatusQuery.data.lastInspectionStats.succeeded}/{gscStatusQuery.data.lastInspectionStats.attempted} başarılı</>
+                  )}
+                </div>
+              )}
+              {gscStatusQuery.data?.totalUrls != null && (
+                <div>
+                  <strong>Toplam URL:</strong> {gscStatusQuery.data.totalUrls.toLocaleString("tr-TR")} —{" "}
+                  <strong>Batch boyutu:</strong> {gscStatusQuery.data.defaultBatchSize}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                onClick={() => runGscBatch.mutate()}
+                disabled={
+                  runGscBatch.isPending ||
+                  gscStatusQuery.data?.inspectionRunning ||
+                  !gscStatusQuery.data?.configured
+                }
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {runGscBatch.isPending || gscStatusQuery.data?.inspectionRunning
+                  ? "Inspection çalışıyor..."
+                  : `🔍 Inspection Batch'i Şimdi Çalıştır (${gscStatusQuery.data?.defaultBatchSize ?? 50})`}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => runGscDiscover.mutate()}
+                disabled={runGscDiscover.isPending || gscStatusQuery.data?.discoveryRunning}
+                className="border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                {runGscDiscover.isPending || gscStatusQuery.data?.discoveryRunning
+                  ? "Keşif çalışıyor..."
+                  : "🔎 URL Keşfini Şimdi Çalıştır"}
+              </Button>
+            </div>
+            {runGscBatch.data && (
+              <div className="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-800">
+                ✅ Inspection batch tamamlandı: {(runGscBatch.data as any)?.stats?.succeeded ?? 0}/
+                {(runGscBatch.data as any)?.stats?.attempted ?? 0} URL başarılı
+                {((runGscBatch.data as any)?.stats?.failed ?? 0) > 0 && (
+                  <> — {(runGscBatch.data as any).stats.failed} başarısız</>
+                )}
+              </div>
+            )}
+            {(runGscBatch.error || runGscDiscover.error) && (
+              <div className="text-xs bg-rose-50 border border-rose-200 rounded p-2 text-rose-700">
+                ❌ {((runGscBatch.error || runGscDiscover.error) as Error).message}
+              </div>
+            )}
+            {runGscDiscover.data && (
+              <div className="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-800">
+                ✅ URL keşfi tamamlandı: +{(runGscDiscover.data as any)?.stats?.inserted ?? 0} yeni,
+                ↻{(runGscDiscover.data as any)?.stats?.refreshed ?? 0} yenilendi,
+                🗑️{(runGscDiscover.data as any)?.stats?.pruned ?? 0} silindi
+              </div>
+            )}
+          </div>
+
+          {/* Station Sync bölümü */}
+          <div className="space-y-2">
+            <p className="text-sm font-semibold text-slate-800">Radio-Browser Station Sync (oy & metadata güncelleme)</p>
+            <p className="text-xs text-slate-600">
+              Radio-Browser'dan tüm istasyonları çeker; <strong>votes</strong>, <strong>clickCount</strong>,
+              <strong> bitrate</strong>, <strong>url</strong>, <strong>tags</strong> ve sağlık alanlarını günceller.
+              Açıklama / logo / rating gibi kullanıcı verileri korunur. Otomatik: her gece 03:00 (Berlin).
+              Manuel: oy sayıları "stale" görünüyorsa basın (örn. Power Pop 9.6k vs Radio-Browser 10450).
+            </p>
+            <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-2">
+              <div>
+                <strong>Durum:</strong>{" "}
+                {stationSyncStatusQuery.data?.status?.isRunning
+                  ? "🔄 ŞU ANDA ÇALIŞIYOR"
+                  : "✅ boşta"}
+              </div>
+              {stationSyncStatusQuery.data?.status?.lastRunAt && (
+                <div>
+                  <strong>Son çalıştırma:</strong>{" "}
+                  {new Date(stationSyncStatusQuery.data.status.lastRunAt).toLocaleString("tr-TR")}
+                  {stationSyncStatusQuery.data.status.lastResult && (
+                    <>
+                      {" — "}
+                      {stationSyncStatusQuery.data.status.lastResult.success ? "✅" : "❌"}{" "}
+                      {(stationSyncStatusQuery.data.status.lastResult.durationMs / 1000).toFixed(1)}s
+                    </>
+                  )}
+                </div>
+              )}
+              {stationSyncStatusQuery.data?.status?.lastResult?.message && (
+                <div className="truncate" title={stationSyncStatusQuery.data.status.lastResult.message}>
+                  <strong>Mesaj:</strong> {stationSyncStatusQuery.data.status.lastResult.message}
+                </div>
+              )}
+            </div>
+            <Button
+              onClick={() => {
+                if (window.confirm(
+                  "Tüm istasyonları Radio-Browser'dan yeniden çekip vote/clickCount/url alanlarını güncellemek istediğinden emin misin? İşlem 2-5 dakika sürer ve arka planda devam eder."
+                )) {
+                  runStationSync.mutate();
+                }
+              }}
+              disabled={runStationSync.isPending || stationSyncStatusQuery.data?.status?.isRunning}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {runStationSync.isPending || stationSyncStatusQuery.data?.status?.isRunning
+                ? "Sync çalışıyor (2-5 dk)..."
+                : "🔄 Station Sync'i Şimdi Çalıştır"}
+            </Button>
+            {runStationSync.data && (
+              <div className="text-xs bg-emerald-50 border border-emerald-200 rounded p-2 text-emerald-800">
+                ✅ Sync tetiklendi (arka planda çalışıyor) — durumu yukarıdaki "Son çalıştırma" satırından izleyebilirsin (15s'de bir yenilenir).
+              </div>
+            )}
+            {runStationSync.error && (
+              <div className="text-xs bg-rose-50 border border-rose-200 rounded p-2 text-rose-700">
+                ❌ {(runStationSync.error as Error).message}
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
