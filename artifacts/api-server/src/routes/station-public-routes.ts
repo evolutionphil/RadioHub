@@ -656,76 +656,21 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const identifier = (countryName as string) || (countryCode as string);
       const isGlobal = !identifier || identifier === 'global' || identifier === 'all';
 
-      // For global requests: check cache readiness; if not ready, use fast MongoDB fallback
-      // INCIDENT 2026-05-14 round 8: this fallback was the smoking gun for the
-      // /api/stations/precomputed?countryName=global timeouts. Previous code did
-      // a full Station.find({}).sort({ hasLogo:-1, votes:-1 }).skip().limit() with
-      // NO maxTimeMS and NO lastCheckOk filter — a 200k-doc in-memory sort that
-      // saturated the primary during the failover. Now we:
-      //   1. Always filter by lastCheckOk:true (matches the cached path),
-      //   2. Cap execution at 8s with maxTimeMS,
-      //   3. Soft-fail with empty list on any timeout/error so the page still
-      //      renders rather than emitting a 500 + ERR stack trace.
-      if (isGlobal) {
-        const cacheReady = await PrecomputedStationsService.hasGlobalCache();
-        if (!cacheReady) {
-          try {
-            const skip = (pageNum - 1) * limitNum;
-            const escG = escapeRegex(genre, 60);
-            const mongoFilter: any = { lastCheckOk: true };
-            if (escG) {
-              mongoFilter.$or = [
-                { genre: { $regex: new RegExp(escG, 'i') } },
-                { tags: { $regex: new RegExp(escG, 'i') } },
-              ];
-            }
-            const escQ = escapeRegex(search, 80);
-            if (escQ) { mongoFilter.name = { $regex: new RegExp(escQ, 'i') }; }
-            // INCIDENT 2026-05-15 v7 — `.allowDiskUse(true)` is REQUIRED here.
-            // Sort key {hasLogo:-1, votes:-1} is satisfied by the new
-            // {lastCheckOk:1, hasLogo:-1, votes:-1} index (added 2026-05-15
-            // in routes.ts createIndexes), but during the rolling index build
-            // and on cold planner state the executor still falls back to a
-            // blocking SORT stage. Without allowDiskUse Atlas M10 hits the
-            // 32MB sort memory limit on a 200k-doc scan and emits
-            // "Executor error during getMore :: operation exceeded time
-            // limit" within 5-10s instead of the budgeted 60s.
-            // INCIDENT 2026-05-15 v10 — REMOVED `.hint('lastCheckOk_1_hasLogo_-1_votes_-1')`.
-            // That index was hidden by the May 14 Atlas index audit and the
-            // hint was throwing BadValue. Trust the planner; the supporting
-            // index `country_1_lastCheckOk_1_hasLogo_-1_votes_-1` is still
-            // present (visible) per `db.stations.getIndexes()`.
-            const [stations, total] = await Promise.all([
-              Station.find(mongoFilter)
-                .select('_id name url urlResolved favicon country countrycode state language genre codec bitrate homepage tags slug hls votes clickCount lastCheckOk hasLogo logoAssets')
-                .sort({ hasLogo: -1, votes: -1 })
-                .skip(skip)
-                .limit(limitNum)
-                .maxTimeMS(60000)
-                .allowDiskUse(true)
-                .lean(),
-              Station.countDocuments(mongoFilter).maxTimeMS(30000).catch(() => 0),
-            ]);
-            return void res.json({
-              success: true, data: stations, stations, total, count: total, page: pageNum,
-              totalPages: Math.ceil(total / limitNum), cached: false,
-              pagination: { page: pageNum, limit: limitNum, total, pages: Math.ceil(total / limitNum) }
-            });
-          } catch (fallbackErr: any) {
-            // INCIDENT 2026-05-15 v10.2 — structured code/codeName +
-            // Cache-Control: no-store so a transient cluster blip
-            // doesn't get cached as an empty payload by upstream CDN.
-            logger.warn(`[/api/stations/precomputed] global cold-fallback failed: code=${fallbackErr?.code || 'unknown'} codeName=${fallbackErr?.codeName || 'unknown'} msg=${fallbackErr?.message || 'unknown'}`);
-            res.set('Cache-Control', 'no-store');
-            return void res.json({
-              success: true, data: [], stations: [], total: 0, count: 0, page: pageNum,
-              totalPages: 0, cached: false,
-              pagination: { page: pageNum, limit: limitNum, total: 0, pages: 0 }
-            });
-          }
-        }
-      }
-
+      // INCIDENT 2026-05-15 v10.2 round 9 — REMOVED the `hasGlobalCache()`
+      // cold-fallback branch. Previously, when the SWR envelope was
+      // empty, the route ran an uncoalesced direct `Station.find()` on
+      // every cold request: NOT singleflight-coalesced (so 100 cold SSR
+      // requests = 100 200k-doc scans), and the result was NEVER
+      // written into the SWR envelope (so the cache could never warm
+      // up — every request stayed cold forever).
+      //
+      // Fix: always route through `PrecomputedStationsService.getGlobalStations()`,
+      // which is wrapped in `getOrSetSWR` with singleflight. The first
+      // organic visitor pays one bounded compute (15s `maxTimeMS`), the
+      // result is written into the SWR envelope, and every concurrent
+      // miss coalesces onto that same in-flight promise. After the
+      // envelope is populated, subsequent traffic gets fresh-or-stale
+      // hits with background refresh — no more cold fallback ever.
       let result;
       if (isGlobal) {
         result = await PrecomputedStationsService.getGlobalStations(pageNum, limitNum);
