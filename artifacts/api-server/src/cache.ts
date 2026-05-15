@@ -179,6 +179,68 @@ export class CacheManager {
     return p;
   }
 
+  // Stale-while-revalidate helper. Stores `{v, exp}` envelope under
+  // `<key>:swr`. Two TTLs:
+  //   freshTtl — under this age, value is returned immediately, no refresh.
+  //   staleTtl — between freshTtl and staleTtl, value is returned
+  //              immediately AND a background refresh is kicked off (
+  //              coalesced via the same inflight Map as singleflight).
+  // Past staleTtl: behaves like singleflight — block the caller until
+  // a fresh value is computed.
+  // Designed for the precomputed-stations / precomputed-genres /
+  // precomputed-cities path: 24h freshTtl + 7d staleTtl means an
+  // organic visitor never waits on a Mongo aggregate during normal
+  // ops, AND a brief Atlas hiccup just serves last-known-good while
+  // the cluster recovers — no 500, no empty payload.
+  static async getOrSetSWR<T>(
+    key: string,
+    loader: () => Promise<T>,
+    options: { freshTtl: number; staleTtl: number }
+  ): Promise<T> {
+    const { freshTtl, staleTtl } = options;
+    const envKey = `${key}:swr`;
+    const env = await CacheManager.get<{ v: T; exp: number }>(envKey);
+    const now = Date.now();
+    if (env && typeof env === 'object' && 'v' in env && 'exp' in env) {
+      const ageMs = now - (env.exp - freshTtl * 1000);
+      const isFresh = ageMs < freshTtl * 1000;
+      if (isFresh) {
+        return env.v;
+      }
+      // Stale-but-usable: serve immediately, refresh in background
+      // (coalesced via inflight). Errors are swallowed so a transient
+      // upstream failure does not break the response.
+      if (!CacheManager.inflight.has(envKey)) {
+        const refresh = (async () => {
+          try {
+            const fresh = await loader();
+            await CacheManager.set(envKey, { v: fresh, exp: now + freshTtl * 1000 }, { ttl: staleTtl });
+          } catch {
+            // keep stale; next caller will retry
+          } finally {
+            CacheManager.inflight.delete(envKey);
+          }
+        })();
+        CacheManager.inflight.set(envKey, refresh);
+      }
+      return env.v;
+    }
+    // No envelope at all — block the first caller, coalesce the rest.
+    const existing = CacheManager.inflight.get(envKey);
+    if (existing) return existing as Promise<T>;
+    const p = (async () => {
+      try {
+        const v = await loader();
+        await CacheManager.set(envKey, { v, exp: Date.now() + freshTtl * 1000 }, { ttl: staleTtl });
+        return v;
+      } finally {
+        CacheManager.inflight.delete(envKey);
+      }
+    })();
+    CacheManager.inflight.set(envKey, p);
+    return p;
+  }
+
   // Delete cached data
   static async del(key: string): Promise<void> {
     try {

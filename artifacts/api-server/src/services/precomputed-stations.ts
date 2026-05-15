@@ -268,13 +268,12 @@ export class PrecomputedStationsService {
 
     const resolvedName = await this.resolveCountryName(countryName);
     const cacheKey = this.getCacheKey(resolvedName);
-    let data = await CacheManager.get<PrecomputedCountryData>(cacheKey);
+    // INCIDENT 2026-05-15 v10.2 — same SWR wrapper as the by-name path.
     let cached = true;
-
-    if (!data) {
+    const data = await CacheManager.getOrSetSWR<PrecomputedCountryData>(cacheKey, async () => {
       cached = false;
-      data = await this.computeCountryStationsByName(resolvedName);
-    }
+      return await this.computeCountryStationsByName(resolvedName);
+    }, { freshTtl: 86400, staleTtl: 86400 * 7 });
 
     const offset = (page - 1) * limit;
     const paginatedStations = data.stations.slice(offset, offset + limit);
@@ -295,13 +294,15 @@ export class PrecomputedStationsService {
   ): Promise<{ stations: PrecomputedStation[]; total: number; page: number; totalPages: number; cached: boolean }> {
     const resolvedName = await this.resolveCountryName(countryName);
     const cacheKey = this.getCacheKey(resolvedName);
-    let data = await CacheManager.get<PrecomputedCountryData>(cacheKey);
+    // INCIDENT 2026-05-15 v10.2 — single-flight + SWR. Concurrent SSR
+    // cold misses (homepage fanout when CDN expires) coalesce into ONE
+    // compute. The 7-day stale window means a brief Atlas hiccup mid-
+    // refresh serves last-known-good instead of throwing a 500.
     let cached = true;
-
-    if (!data) {
+    const data = await CacheManager.getOrSetSWR<PrecomputedCountryData>(cacheKey, async () => {
       cached = false;
-      data = await this.computeCountryStationsByName(resolvedName);
-    }
+      return await this.computeCountryStationsByName(resolvedName);
+    }, { freshTtl: 86400, staleTtl: 86400 * 7 });
 
     const offset = (page - 1) * limit;
     const paginatedStations = data.stations.slice(offset, offset + limit);
@@ -538,13 +539,16 @@ export class PrecomputedStationsService {
     page: number = 1, 
     limit: number = 33
   ): Promise<{ stations: PrecomputedStation[]; total: number; page: number; totalPages: number; cached: boolean }> {
-    let data = await CacheManager.get<PrecomputedCountryData>(GLOBAL_CACHE_KEY);
+    // INCIDENT 2026-05-15 v10.2 — global cache is the heaviest compute
+    // (per-country aggregate × ~200 countries). SWR is essential here:
+    // freshTtl 24h, staleTtl 7d so a stressed cluster keeps serving
+    // last-known-good while a single coalesced refresh runs in the
+    // background.
     let cached = true;
-
-    if (!data) {
+    const data = await CacheManager.getOrSetSWR<PrecomputedCountryData>(GLOBAL_CACHE_KEY, async () => {
       cached = false;
-      data = await this.computeGlobalStations();
-    }
+      return await this.computeGlobalStations();
+    }, { freshTtl: 86400, staleTtl: 86400 * 7 });
 
     const offset = (page - 1) * limit;
     const paginatedStations = data.stations.slice(offset, offset + limit);

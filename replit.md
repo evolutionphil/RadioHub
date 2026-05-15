@@ -102,13 +102,19 @@ hidden index throws BadValue (code 2) and the catch returned 500.
 
 **Rule**: every `.hint('name')` MUST be preceded by a comment of the form
 `// HINT-VERIFIED YYYY-MM-DD - <name>` with proof that the index is
-present AND visible. The probe to verify is admin-only:
+present AND visible. To verify, run `$indexStats` on the live cluster
+via the Atlas Data Explorer **OR** the `mongosh` shell:
 
-`GET /api/admin/db/indexes` — returns `[{name, key, hidden, accesses}]`
-for every index on the `stations` collection (uses `$indexStats`). If
-`hidden: true`, do not hint that index. If the index is missing entirely,
-add it via `Station.collection.createIndex(...)` in `routes.ts`
-`createIndexes()` first.
+```
+db.stations.aggregate([{$indexStats:{}}], {allowDiskUse:true})
+  .toArray().map(i => ({name: i.name, hidden: !!i.hidden, accesses: i.accesses.ops}))
+```
+
+If `hidden: true`, do not hint that index. If the index is missing
+entirely, add it via `Station.collection.createIndex(...)` in `routes.ts`
+`createIndexes()` first. (The previous v10 admin route
+`GET /api/admin/db/indexes` was deliberately removed — it was a
+temporary probe, not a permanent surface.)
 
 When in doubt, **DO NOT hint at all** — the planner is faster than a
 silent 500. We removed all 3 hints in v10

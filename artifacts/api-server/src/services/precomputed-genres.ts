@@ -179,19 +179,25 @@ export class PrecomputedGenresService {
   static async getGenres(countryIdentifier?: string): Promise<PrecomputedGenresData> {
     const cacheKey = this.getCacheKey(countryIdentifier || 'global');
     const startTime = Date.now();
-    
-    const cached = await CacheManager.get<PrecomputedGenresData>(cacheKey);
-    if (cached) {
-      logger.log(`[Cache HIT] precomputed genres ${countryIdentifier || 'global'} (${Date.now() - startTime}ms)`);
-      return cached;
-    }
 
-    logger.log(`[Cache MISS] precomputed genres ${countryIdentifier || 'global'} - computing...`);
-    const data = await this.computeGenresForCountry(countryIdentifier);
-    
-    await CacheManager.set(cacheKey, data, { ttl: CACHE_TTL });
-    logger.log(`📦 Cached genres for ${countryIdentifier || 'global'}: ${data.total} genres (${Date.now() - startTime}ms)`);
-    
+    // INCIDENT 2026-05-15 v10.2 — wrap in SWR so concurrent cold misses
+    // coalesce AND a stressed M10 keeps serving last-known-good genre
+    // counts during refresh windows. The country aggregate is the
+    // exact path that emitted "[precomputed-genres] country aggregate
+    // failed for Türkiye :: error while multiplanner was selecting
+    // best plan" in prod logs — SWR ensures the visitor still gets a
+    // populated response.
+    const data = await CacheManager.getOrSetSWR<PrecomputedGenresData>(
+      cacheKey,
+      async () => {
+        logger.log(`[Cache MISS] precomputed genres ${countryIdentifier || 'global'} - computing...`);
+        const fresh = await this.computeGenresForCountry(countryIdentifier);
+        logger.log(`📦 Cached genres for ${countryIdentifier || 'global'}: ${fresh.total} genres (${Date.now() - startTime}ms)`);
+        return fresh;
+      },
+      { freshTtl: CACHE_TTL, staleTtl: CACHE_TTL * 4 } // 7d fresh, 28d stale
+    );
+
     return data;
   }
 
