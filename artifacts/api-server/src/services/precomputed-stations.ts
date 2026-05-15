@@ -571,10 +571,16 @@ export class PrecomputedStationsService {
   }
 
   /**
-   * Check if global cache exists
+   * Check if global cache exists.
+   * INCIDENT 2026-05-15 v10.2 — read side migrated to SWR, so writes
+   * now land under `<key>:swr`. This probe MUST read the SWR envelope
+   * via `getSWR(...)`; the previous `CacheManager.get(GLOBAL_CACHE_KEY)`
+   * was always returning false after the migration, gating every
+   * global request onto the cold-fallback Mongo path and bypassing
+   * the new singleflight/SWR protections.
    */
   static async hasGlobalCache(): Promise<boolean> {
-    const data = await CacheManager.get<PrecomputedCountryData>(GLOBAL_CACHE_KEY);
+    const data = await CacheManager.getSWR<PrecomputedCountryData>(GLOBAL_CACHE_KEY);
     return !!data;
   }
 }
