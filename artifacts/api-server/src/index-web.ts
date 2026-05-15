@@ -827,7 +827,7 @@ app.use('/api/stream', streamServiceProxy);
       // modulepreload hints) so the browser can actually mount React on top
       // of this SSR HTML. See `getProdAssetTags()` for the rationale.
       const prodTags = getProdAssetTags();
-      const htmlContent = `<!DOCTYPE html>
+      let htmlContent = `<!DOCTYPE html>
 <html lang="${seoData.language}" dir="${htmlDir}">
   <head>
     <meta charset="UTF-8" />
@@ -942,10 +942,23 @@ app.use('/api/stream', streamServiceProxy);
         if (!stationNotFound) {
           performanceCache.setSeoHtml(cleanUrl, htmlContent);
         }
-        // Mirror <meta robots> on the header (see cache-HIT branch above).
-        if (seoTags?.noIndex === true) {
+        // Soft-404 guard (2026-05-15): when the SSR resolves to "not
+        // found", we MUST emit noindex on BOTH the X-Robots-Tag header
+        // AND the in-body <meta name="robots"> tag. Previously the body
+        // still said `index, follow` because seoTags.noIndex was not set
+        // for notFound pages — Google sees a contradictory 404+indexable
+        // signal and parks the URL as "soft 404". Force-rewrite the meta
+        // tag in the rendered HTML so the two signals always agree.
+        const forceNoIndex = stationNotFound || seoTags?.noIndex === true;
+        if (forceNoIndex) {
           res.removeHeader('X-Robots-Tag');
           res.setHeader('X-Robots-Tag', 'noindex, follow');
+          if (stationNotFound && /<meta[^>]+name=["']robots["'][^>]+content=["']index/i.test(htmlContent)) {
+            htmlContent = htmlContent.replace(
+              /(<meta[^>]+name=["']robots["'][^>]+content=["'])[^"']*(["'][^>]*>)/i,
+              '$1noindex, follow$2'
+            );
+          }
         }
         res.status(stationNotFound ? 404 : 200).set({
           'Content-Type': 'text/html',
