@@ -478,14 +478,34 @@ const mongoUri = process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb
 const isProduction = process.env.NODE_ENV === 'production' || isReplit;
 
 if (isProduction && mongoUri) {
+  // INCIDENT 2026-05-15: connect-mongo was previously created without any
+  // `mongoOptions`, so it spun up a SECOND Mongo client with the driver
+  // defaults (maxPoolSize=100, socketTimeoutMS=infinite, no waitQueueTimeout).
+  // On Atlas M10 (1500 conn cap shared across the cluster) this dual-client
+  // setup leaked sockets during a primary failover and starved the main
+  // Mongoose pool, contributing to the timeout cascade. Pin a small pool +
+  // matching timeouts so the session store can't outgrow Mongoose.
   sessionConfig.store = MongoStore.create({
     mongoUrl: mongoUri,
     collectionName: 'sessions',
     ttl: 3 * 24 * 60 * 60,
     autoRemove: 'native',
     touchAfter: 24 * 60 * 60,
+    mongoOptions: {
+      maxPoolSize: 5,
+      minPoolSize: 0,
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 10000,
+      socketTimeoutMS: 10000,
+      waitQueueTimeoutMS: 2000,
+      maxIdleTimeMS: 120000,
+      heartbeatFrequencyMS: 10000,
+      family: 4,
+      retryWrites: true,
+      retryReads: true,
+    },
   });
-  logger.log('🔐 Using MongoDB session store for production');
+  logger.log('🔐 Using MongoDB session store for production (pinned pool=5, 10s timeouts)');
 }
 
 app.use(session(sessionConfig));

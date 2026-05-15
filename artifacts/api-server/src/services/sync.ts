@@ -34,7 +34,7 @@ export class SyncService {
         status: 'running',
         startedAt: new Date()
       });
-      await syncLog.save();
+      await this.withMongoRetry('syncLog.create', () => syncLog.save());
 
       // Load blacklisted stations to prevent re-import
       logger.log('📋 Loading blacklisted stations...');
@@ -79,7 +79,7 @@ export class SyncService {
       syncLog.stationsSkipped = result.skipped + result.blacklisted;
       syncLog.stationsAutoFlagged = result.autoFlagged;
       syncLog.completedAt = new Date();
-      await syncLog.save();
+      await this.withMongoRetry('syncLog.complete', () => syncLog.save());
 
       this.lastSyncResult = result;
       this.isRunning = false;
@@ -141,35 +141,76 @@ export class SyncService {
 
   private async createIndexes(): Promise<void> {
     const collection = Station.collection;
-    
-    // Drop all existing indexes (except _id)
-    try {
-      await collection.dropIndexes();
-    } catch (error) {
-      logger.log('⚠️ Could not drop indexes (they may not exist)');
-    }
 
-    // Create essential indexes
-    await collection.createIndex({ stationuuid: 1 }, { unique: true });
-    await collection.createIndex({ votes: -1 });
-    await collection.createIndex({ country: 1 });
-    await collection.createIndex({ language: 1 });
-    await collection.createIndex({ tags: 1, votes: -1 });
-    await collection.createIndex({ country: 1, language: 1 });
-    
+    // INCIDENT 2026-05-15: previous version called `collection.dropIndexes()`
+    // before recreating, which kills any in-flight admin aggregation that was
+    // using one of those indexes. Production logs showed:
+    //   "PlanExecutor error during aggregation :: caused by :: query plan
+    //    killed :: index 'tags_1' dropped"
+    // exactly when the nightly sync ran while admin tags-status-summary was
+    // open. We never need to drop these — `createIndex` is idempotent and a
+    // no-op when the index already exists with the same definition. The new
+    // `background: true` keeps even brand-new index builds non-blocking.
+    const ix = (spec: any, opts: any = {}) =>
+      collection.createIndex(spec, { background: true, ...opts });
+
+    await ix({ stationuuid: 1 }, { unique: true });
+    await ix({ votes: -1 });
+    await ix({ country: 1 });
+    await ix({ language: 1 });
+    await ix({ tags: 1, votes: -1 });
+    await ix({ country: 1, language: 1 });
+
     // Create text search index with proper language settings
-    await collection.createIndex({ 
-      name: 'text', 
-      country: 'text', 
-      tags: 'text' 
-    }, { 
-      name: 'station_text_search',
-      weights: { name: 10, tags: 3, country: 1 },
-      textIndexVersion: 3,
-      default_language: 'english' // Prevent language override errors
-    });
-    
-    logger.log('✅ Database indexes created');
+    await ix(
+      { name: 'text', country: 'text', tags: 'text' },
+      {
+        name: 'station_text_search',
+        weights: { name: 10, tags: 3, country: 1 },
+        textIndexVersion: 3,
+        default_language: 'english', // Prevent language override errors
+      },
+    );
+
+    logger.log('✅ Database indexes ensured (idempotent, no drop)');
+  }
+
+  /**
+   * Retry helper for transient Mongo write errors during sync. The Mongo node
+   * driver already retries idempotent writes once, but in 2026-05-15 we saw a
+   * `MongoNetworkTimeoutError` (errorLabel: RetryableWriteError) during a
+   * routine sync that aborted the whole job. Wrap the bulk insert/update +
+   * syncLog.save() calls so a transient blip costs us a few seconds, not the
+   * entire 60K-station ingest.
+   */
+  private async withMongoRetry<T>(
+    op: string,
+    fn: () => Promise<T>,
+    maxAttempts = 4,
+  ): Promise<T> {
+    let lastErr: any;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        lastErr = err;
+        const labels: Set<string> | undefined = err?.errorLabelSet;
+        const isNetTimeout = err?.name === 'MongoNetworkTimeoutError';
+        const isRetryable =
+          isNetTimeout ||
+          (labels && (labels.has('RetryableWriteError') || labels.has('TransientTransactionError'))) ||
+          /timed out|topology was destroyed|server selection|ECONNRESET/i.test(err?.message || '');
+        if (!isRetryable || attempt >= maxAttempts) {
+          throw err;
+        }
+        const backoff = Math.min(1000 * 2 ** (attempt - 1), 8000) + Math.floor(Math.random() * 250);
+        logger.warn(
+          `🔁 sync.${op}: retryable error on attempt ${attempt}/${maxAttempts} — backing off ${backoff}ms (${err?.name || 'Error'}: ${(err?.message || '').slice(0, 120)})`,
+        );
+        await new Promise((r) => setTimeout(r, backoff));
+      }
+    }
+    throw lastErr;
   }
 
   private async fetchAllStations(): Promise<any[]> {
@@ -218,7 +259,11 @@ export class SyncService {
     blacklistedUuids: Set<string>,
     blacklistedUrls: Set<string>
   ): Promise<{ processed: number; inserted: number; updated: number; skipped: number; blacklisted: number; autoFlagged: number }> {
-    const batchSize = 1000;
+    // INCIDENT 2026-05-15: 1000-doc batches were tripping `socketTimeoutMS=15s`
+    // on M10 during peak ingest (60K stations). 300-doc batches are well under
+    // the timeout budget and let the per-batch retry helper recover from a
+    // single blip without losing the whole sync. Override via env if needed.
+    const batchSize = Math.max(50, Math.min(2000, Number(process.env.SYNC_BATCH_SIZE) || 300));
     let processed = 0;
     let inserted = 0;
     let updated = 0;
@@ -297,9 +342,10 @@ export class SyncService {
           return doc;
         });
         try {
-          const insertResult = await Station.insertMany(convertedNewStations, { 
-            ordered: false 
-          });
+          const insertResult = await this.withMongoRetry(
+            `insertMany.batch${Math.ceil((i + 1) / batchSize)}`,
+            () => Station.insertMany(convertedNewStations, { ordered: false }),
+          );
           inserted += insertResult.length;
           autoFlagged += batchAutoFlagged;
           logger.log(`➕ Batch ${Math.ceil((i + 1) / batchSize)}: Inserted ${insertResult.length} new stations (🚯 ${batchAutoFlagged} auto-flagged junk)`);
@@ -378,7 +424,10 @@ export class SyncService {
         });
 
         try {
-          const updateResult = await Station.bulkWrite(bulkOps, { ordered: false });
+          const updateResult = await this.withMongoRetry(
+            `bulkWrite.batch${Math.ceil((i + 1) / batchSize)}`,
+            () => Station.bulkWrite(bulkOps, { ordered: false }),
+          );
           updated += updateResult.modifiedCount || existingStationsToUpdate.length;
           logger.log(`🔄 Batch ${Math.ceil((i + 1) / batchSize)}: Updated ${updateResult.modifiedCount} existing stations`);
         } catch (error: any) {
@@ -387,10 +436,21 @@ export class SyncService {
       }
 
       processed += batch.length;
-      
-      // Update sync log progress
+
+      // Update sync log progress (best-effort: a transient blip on the
+      // progress write must NOT abort the whole 60K-station sync).
       syncLog.stationsProcessed = processed;
-      await syncLog.save();
+      try {
+        await this.withMongoRetry(
+          `syncLog.progress.batch${Math.ceil((i + 1) / batchSize)}`,
+          () => syncLog.save(),
+          2, // tighter retry — progress write is non-critical
+        );
+      } catch (err: any) {
+        logger.warn(
+          `⚠️ syncLog progress write failed (non-fatal): ${err?.message?.slice(0, 100) || err}`,
+        );
+      }
       
       logger.log(`📈 Progress: ${processed}/${apiStations.length} processed (${Math.round(processed/apiStations.length*100)}%) | ➕${inserted} 🔄${updated} ⚫${blacklisted} 🚯${autoFlagged}`);
     }

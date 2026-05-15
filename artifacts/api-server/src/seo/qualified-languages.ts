@@ -41,7 +41,10 @@ import {
   hasCompleteSeoTranslations,
 } from '@workspace/seo-shared/seo-config';
 import { logger } from '../utils/logger';
-import { SeoQualifiedLanguagesLkg } from '@workspace/db-shared/mongo-schemas';
+import {
+  SeoQualifiedLanguagesLkg,
+  Translation,
+} from '@workspace/db-shared/mongo-schemas';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -101,6 +104,13 @@ let lastHash: string | null = null;
 let lastLanguages: readonly string[] | null = null;
 let driftHistory: number[] = []; // timestamps of SIGNIFICANT hash changes within DRIFT_WINDOW_MS
 
+// Singleflight: when many concurrent requests miss the in-memory cache at the
+// same moment (e.g. cache TTL expiry on a busy SSR worker), we must NOT fan
+// out 50+ Translation.find() queries per request. Share one in-flight compute
+// across all callers (INCIDENT 2026-05-15: thundering herd amplified Atlas
+// load and made the timeout cascade worse).
+let inflightCompute: Promise<QualifiedLanguagesState> | null = null;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -155,11 +165,63 @@ function recordDrift(newHash: string, newLanguages: readonly string[]): void {
   lastLanguages = [...newLanguages];
 }
 
+/**
+ * Loads a single language's translation map directly from MongoDB. Used as a
+ * fallback when `performanceCache.getTranslations(lang)` returns null because
+ * the warmup only preloads 10 critical languages — every other language was
+ * silently treated as "not qualified" before this DB-backed fallback existed,
+ * which is why production logs showed `live compute returned 0; serving LKG`
+ * and `computed=10 < LKG=50 × 0.5` over and over (INCIDENT 2026-05-15).
+ */
+async function loadTranslationsFromDb(
+  lang: string,
+): Promise<Record<string, string> | null> {
+  try {
+    const docs = await Translation.find({ language: lang })
+      .populate('keyId')
+      .lean()
+      .maxTimeMS(8000);
+    const map: Record<string, string> = {};
+    for (const t of docs as any[]) {
+      if (t?.keyId?.key && t?.value) {
+        map[t.keyId.key] = t.value;
+      }
+    }
+    if (Object.keys(map).length === 0) return null;
+    // Backfill the in-memory cache so subsequent reads are O(1).
+    try {
+      performanceCache.setTranslations(lang, map);
+    } catch {
+      /* non-fatal */
+    }
+    return map;
+  } catch (err) {
+    logger.warn(
+      `⚠️ qualified-languages: DB fallback failed for ${lang} — ${(err as any)?.message?.slice(0, 120) || err}`,
+    );
+    return null;
+  }
+}
+
 async function computeFromTranslations(): Promise<string[]> {
   const qualified: string[] = [];
+  let cacheHits = 0;
+  let dbFallbacks = 0;
   for (const lang of ACTIVE_SITEMAP_LANGUAGES as unknown as string[]) {
     try {
-      const translations = await performanceCache.getTranslations(lang);
+      let translations = performanceCache.getTranslations(lang);
+      if (translations) {
+        cacheHits++;
+      } else {
+        // Cache miss — fetch from DB instead of giving up. This is the
+        // critical fix: previously a cold cache (post-deploy or after RSS
+        // memory relief flushed quickCache/translationsCache) made every
+        // non-critical language report as "not qualified", collapsing the
+        // computed set from ~50 down to 10 (or 0) and triggering shrink-
+        // protection / LKG fallback every single recompute.
+        translations = await loadTranslationsFromDb(lang);
+        if (translations) dbFallbacks++;
+      }
       if (translations && hasCompleteSeoTranslations(translations)) {
         qualified.push(lang);
       }
@@ -168,6 +230,11 @@ async function computeFromTranslations(): Promise<string[]> {
         `⚠️ qualified-languages: skipping ${lang} — translation load failed`,
       );
     }
+  }
+  if (dbFallbacks > 0) {
+    logger.log(
+      `🔍 qualified-languages: compute scanned ${ACTIVE_SITEMAP_LANGUAGES.length} langs (cache hits=${cacheHits}, db fallbacks=${dbFallbacks}) → qualified=${qualified.length}`,
+    );
   }
   return qualified;
 }
@@ -241,6 +308,24 @@ export async function getQualifiedLanguagesState(): Promise<QualifiedLanguagesSt
     return memoryCache.state;
   }
 
+  // Singleflight dedupe: if a compute is already in flight, await it instead
+  // of starting a parallel one. All concurrent callers share the result.
+  if (inflightCompute) {
+    return inflightCompute;
+  }
+
+  inflightCompute = (async (): Promise<QualifiedLanguagesState> => {
+    try {
+      return await doComputeAndCache();
+    } finally {
+      inflightCompute = null;
+    }
+  })();
+  return inflightCompute;
+}
+
+async function doComputeAndCache(): Promise<QualifiedLanguagesState> {
+  const now = Date.now();
   const computed = await computeFromTranslations();
 
   // Try to load LKG up front so we can compare sizes for shrink protection.
