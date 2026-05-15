@@ -4,7 +4,7 @@ import { toast } from '@/hooks/use-toast';
 import { createMetadataClient } from '@/services/metadata-client';
 import { trackStationPlay, trackListeningTime, trackStationFavorite } from '../lib/analytics';
 import { logger } from '@/lib/logger';
-import { getStreamProxyUrl } from '@/lib/utils';
+import { getStreamProxyUrl, resolveStreamUrl } from '@/lib/utils';
 
 import type { GlobalPlayerState } from './useGlobalPlayer.shell';
 import { GlobalPlayerContext } from './useGlobalPlayer.shell';
@@ -376,12 +376,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             const separator = baseUrl.includes('?') ? '&' : '?';
             const streamUrl = `${baseUrl}${separator}_t=${cacheBuster}`;
             
-            let finalUrl = streamUrl;
-            if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
-              const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-              finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
-            }
-            
+            const finalUrl = resolveStreamUrl(streamUrl, currentStation);
+
             audioRef.current.src = finalUrl;
             audioRef.current.load();
             
@@ -462,12 +458,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             const separator = baseUrl.includes('?') ? '&' : '?';
             const streamUrl = `${baseUrl}${separator}_t=${cacheBuster}`;
             
-            let finalUrl = streamUrl;
-            if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
-              const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-              finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
-            }
-            
+            const finalUrl = resolveStreamUrl(streamUrl, currentStation);
+
             audioRef.current.src = finalUrl;
             audioRef.current.load();
             
@@ -514,13 +506,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             if (!baseUrl) return;
             const cacheBuster = Date.now();
             const separator = baseUrl.includes('?') ? '&' : '?';
-            let finalUrl = `${baseUrl}${separator}_t=${cacheBuster}`;
-            
-            if (baseUrl.startsWith('http://') && window.location.protocol === 'https:') {
-              const encodedUrl = btoa(finalUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-              finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
-            }
-            
+            const finalUrl = resolveStreamUrl(`${baseUrl}${separator}_t=${cacheBuster}`, currentStation);
+
             audioRef.current.src = finalUrl;
             audioRef.current.load();
             lastTimeUpdateRef.current = Date.now();
@@ -594,12 +581,8 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
             
             reconnectTimeoutRef.current = setTimeout(() => {
               if (audioRef.current && currentStation && !isPlayPendingRef.current) {
-                let finalUrl = nextCandidate;
-                if (nextCandidate.startsWith('http://') && window.location.protocol === 'https:') {
-                  const encodedUrl = btoa(nextCandidate).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-                  finalUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
-                }
-                
+                const finalUrl = resolveStreamUrl(nextCandidate, currentStation);
+
                 audioRef.current.src = finalUrl;
                 audioRef.current.load();
                 safePlay('candidate-fallback').catch(console.error).finally(() => {
@@ -929,13 +912,11 @@ export function GlobalPlayerProvider({ children }: { children: ReactNode }) {
         
       } else {
         logger.log('🎵 Direct Stream: Smart proxy routing');
-        
-        if (streamUrl.startsWith('http://') && window.location.protocol === 'https:') {
-          const encodedUrl = btoa(streamUrl).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
-          finalStreamUrl = getStreamProxyUrl(`/api/stream/${encodedUrl}`);
-          logger.log('🔒 HTTP stream → proxy for mixed content fix');
+
+        finalStreamUrl = resolveStreamUrl(streamUrl, currentStation);
+        if (finalStreamUrl !== streamUrl) {
+          logger.log('🔒 Routing through stream proxy (mixed-content / bad-port / sslError)');
         } else {
-          finalStreamUrl = streamUrl;
           logger.log('✅ HTTPS stream → direct connection (no proxy needed)');
         }
         

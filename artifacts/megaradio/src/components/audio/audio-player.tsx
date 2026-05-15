@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { StationLogo } from '@/components/ui/station-logo';
 import { useGlobalPlayer } from '@/hooks/useGlobalPlayer';
-import { normalizeFaviconUrl } from '@/lib/utils';
+import { normalizeFaviconUrl, resolveStreamUrl } from '@/lib/utils';
 import type { StationWithCountry } from '@workspace/db-shared/schema';
 
 interface AudioPlayerProps {
@@ -321,7 +321,7 @@ export function AudioPlayer({ station, onClose, onNext, onPrevious }: AudioPlaye
       }
       
       // Set source and configure audio element
-      audioRef.current.src = station.url;
+      audioRef.current.src = resolveStreamUrl(station.url, station);
       audioRef.current.volume = volume[0];
       audioRef.current.muted = false;
       

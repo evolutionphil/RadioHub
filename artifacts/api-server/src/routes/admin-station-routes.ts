@@ -386,6 +386,48 @@ interface RouteDeps {
 export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   const { requireAdmin } = deps;
 
+  // 2026-05-15: manual on-demand trigger for the nightly Radio-Browser sync.
+  // Same code path as the 03:00 Berlin cron (`scheduledStationSync.runOnce`)
+  // — pulls the full station dump, updates whitelisted fields including
+  // `votes` and `clickCount`, then rebuilds sitemap manifests and pings
+  // IndexNow. Use this when votes look stale (e.g. Power Pop showing 9.6k
+  // locally vs 10450 on Radio-Browser) without waiting until 03:00.
+  app.post("/api/admin/sync/run-now", requireAdmin, async (_req, res) => {
+    try {
+      const { scheduledStationSync } = await import('../services/scheduled-station-sync');
+      const status = scheduledStationSync.getStatus();
+      if (status.isRunning) {
+        return res.status(409).json({
+          ok: false,
+          message: 'Station sync already in progress',
+          status,
+        });
+      }
+      // Fire-and-forget: full sync takes minutes. Return 202 immediately so
+      // the admin UI doesn't hang on the request.
+      scheduledStationSync.runOnce('admin-trigger').catch((err) => {
+        logger.error('Manual station sync (admin-trigger) crashed:', err);
+      });
+      return res.status(202).json({
+        ok: true,
+        message: 'Station sync triggered. Poll GET /api/admin/sync/status for completion.',
+      });
+    } catch (err: any) {
+      logger.error('admin/sync/run-now failed:', err);
+      return res.status(500).json({ ok: false, message: err?.message ?? 'unknown_error' });
+    }
+  });
+
+  // Status of the most recent (or in-progress) Radio-Browser sync.
+  app.get("/api/admin/sync/status", requireAdmin, async (_req, res) => {
+    try {
+      const { scheduledStationSync } = await import('../services/scheduled-station-sync');
+      return res.json({ ok: true, status: scheduledStationSync.getStatus() });
+    } catch (err: any) {
+      return res.status(500).json({ ok: false, message: err?.message ?? 'unknown_error' });
+    }
+  });
+
   // DATA SYNC UTILITY - Fix follower counts for all users
   app.post("/api/admin/sync-follower-counts", requireAdmin, async (req, res) => {
     try {

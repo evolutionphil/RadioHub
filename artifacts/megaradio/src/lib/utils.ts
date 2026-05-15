@@ -14,6 +14,57 @@ export function getStreamProxyUrl(path: string): string {
   return `${_STREAM_PROXY_BASE}${path}`;
 }
 
+/**
+ * Decide whether a raw upstream stream URL must be tunnelled through the
+ * stream proxy (stream.themegaradio.com / VITE_STREAM_PROXY_URL).
+ *
+ * Chrome silently kills these direct loads because:
+ *   - `http://` on an `https://` page → mixed-content block (ERR_EMPTY_RESPONSE)
+ *   - `https://host:80/...` or `:8000/:8080` → forced plaintext on a TLS port
+ *     scheme combo, browser refuses (also ERR_EMPTY_RESPONSE in prod logs)
+ *   - Upstream TLS cert expired / hostname mismatch → ERR_CERT_DATE_INVALID
+ *     (the only signal we have for this AHEAD of a play attempt is the
+ *     `sslError` flag we ingest from Radio-Browser into Mongo, which is
+ *     surfaced on the station object as `sslError: true`)
+ *
+ * Returns the URL the audio element / hls.js should actually load. When
+ * proxying is needed, the URL is base64url-encoded and routed through
+ * `/api/stream/<encoded>`.
+ */
+export function resolveStreamUrl(
+  rawUrl: string,
+  station?: Record<string, any> | null,
+): string {
+  if (!rawUrl) return rawUrl;
+
+  let needsProxy = false;
+
+  // 1. Plain HTTP on an HTTPS page → mixed content.
+  if (rawUrl.startsWith('http://') && typeof window !== 'undefined' && window.location.protocol === 'https:') {
+    needsProxy = true;
+  }
+
+  // 2. Explicit plaintext port baked into an https URL (Icecast/Shoutcast
+  //    style) — Chrome treats these as mixed content too. Match :80/:8000/
+  //    :8080/:8888/:8443 immediately followed by `/` or end of authority.
+  if (!needsProxy && /^https?:\/\/[^/]+:(80|8000|8080|8888)(\/|$)/.test(rawUrl)) {
+    needsProxy = true;
+  }
+
+  // 3. Radio-Browser already flagged the upstream cert as invalid for this
+  //    station — route preemptively rather than waiting for the load to
+  //    fail with ERR_CERT_DATE_INVALID.
+  if (!needsProxy && station?.sslError === true) {
+    needsProxy = true;
+  }
+
+  if (!needsProxy) return rawUrl;
+
+  const encoded = safeBase64Encode(rawUrl);
+  if (!encoded) return rawUrl;
+  return getStreamProxyUrl(`/api/stream/${encoded}`);
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
