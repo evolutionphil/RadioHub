@@ -70,20 +70,30 @@ export class PerformanceCache {
   private static CACHE_FULL_WARN_COOLDOWN = 60_000;
   
   private constructor() {
-    this.translationsCache = new NodeCache({ 
+    // INCIDENT 2026-05-15 v5: production RSS sat at ~850MB sustained with
+    // heap=200-400MB and native≈400-600MB, triggering MEMORY CRITICAL on a
+    // 30-second cadence. Root-cause math:
+    //   seoHtmlCache  8000 keys × ~50–150KB HTML  → up to 1.2 GB JS heap
+    //   pageDataCache 5000 keys (full SEO+station blobs) → 200–500 MB heap
+    //   ogImageCache  500 PNG buffers             → ~40 MB native ext
+    // Even though Redis backs the same data, the in-process mirror grew
+    // unbounded under crawler traffic. Cap the per-process mirrors well
+    // below the M10 process budget; Redis remains the cross-process source
+    // of truth and survives a per-process eviction.
+    this.translationsCache = new NodeCache({
       stdTTL: 3600,
       checkperiod: 600,
       maxKeys: 100,
       useClones: false
     });
-    
-    this.seoHtmlCache = new NodeCache({ 
+
+    this.seoHtmlCache = new NodeCache({
       stdTTL: 1800,
       checkperiod: 300,
-      maxKeys: 8000,
+      maxKeys: 1500,
       useClones: false
     });
-    
+
     // CRITICAL INDEXABILITY-GATE RULE: pageDataCache TTL MUST be >= seoHtmlCache
     // TTL so the cache-HIT junk guard in server/index.ts + server/index-web.ts
     // can always find the `stationIsJunk` flag that accompanies the HTML it is
@@ -93,11 +103,11 @@ export class PerformanceCache {
     this.pageDataCache = new NodeCache({
       stdTTL: 1800,
       checkperiod: 300,
-      maxKeys: 5000,
+      maxKeys: 1500,
       useClones: false
     });
-    
-    this.quickCache = new NodeCache({ 
+
+    this.quickCache = new NodeCache({
       stdTTL: 300,
       checkperiod: 120,
       maxKeys: 300,

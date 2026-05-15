@@ -496,8 +496,12 @@ if (isProduction && mongoUri) {
       // low-volume (one read/write per HTTP request, mostly cached), so a
       // generous pool + long timeouts cost nothing in steady state and
       // eliminate the cascade during boot or failover.
-      maxPoolSize: 20,
-      minPoolSize: 2,
+      // INCIDENT 2026-05-15 v5 — pool right-sized to match real load. Session
+      // store sees < 1 op/sec; 20 sockets reserved 60–120 MB native for no
+      // reason. Drop maxPool to 6 (still >>peak), keep min at 1. Timeouts
+      // unchanged — pool size is independent of timeout budget.
+      maxPoolSize: 6,
+      minPoolSize: 1,
       serverSelectionTimeoutMS: 60000,
       connectTimeoutMS: 60000,
       socketTimeoutMS: 120000,
@@ -1071,11 +1075,15 @@ app.use(session(sessionConfig));
           }
           if ((now - lastMemoryGcTime) > MEMORY_GC_COOLDOWN) {
             lastMemoryGcTime = now;
-            console.error(`🚨 MEMORY CRITICAL: rss=${rssMB}MB heap=${heapMB}MB — clearing caches + forcing GC`);
+            // INCIDENT 2026-05-15 v5: previous handler also called
+            // CacheManager.clearByPattern('precomputed_'|'stations:'|'genres:'),
+            // which deletes keys from REDIS — a separate process. That cannot
+            // reduce THIS process's RSS (the actual symptom we're reacting
+            // to), only causes a cluster-wide cache stampede every 2 minutes.
+            // Drop the Redis flush; keep only in-process cache eviction +
+            // forced GC, which is what actually frees RSS.
+            console.error(`🚨 MEMORY CRITICAL: rss=${rssMB}MB heap=${heapMB}MB — clearing in-process caches + forcing GC`);
             performanceCache.clearAllForMemoryRelief();
-            await CacheManager.clearByPattern('precomputed_');
-            await CacheManager.clearByPattern('stations:');
-            await CacheManager.clearByPattern('genres:');
             try {
               const { clearOgCache } = await import('./og-image-generator');
               clearOgCache();

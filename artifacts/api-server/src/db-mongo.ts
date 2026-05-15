@@ -279,9 +279,20 @@ async function doConnect() {
   // values were aimed at "fail fast during failover" but caused more harm
   // than good during normal boot. Generous values here + soft-fail catches
   // in route handlers give the same UX without the timeout cascade.
+  // INCIDENT 2026-05-15 v5 — pool-size right-sizing (timeouts UNCHANGED).
+  // Each MongoDB driver TLS connection costs ~5–10 MB of native heap (BSON
+  // buffers, OpenSSL session state, write batch staging). With M10's 3-node
+  // replica set the driver opens a connection per node per pool slot, so
+  // maxPool=100 / minPool=10 reserves 30 idle TLS sockets at boot worth
+  // 150–300 MB native — visible in production as a 400–600 MB native
+  // baseline. Pool size is INDEPENDENT of timeout budget: the long
+  // serverSelection / socket / waitQueue values stay, we just stop
+  // pre-allocating sockets nobody uses. Observed peak concurrency on this
+  // workload is < 15 inflight ops, so maxPool=30 / minPool=2 keeps headroom
+  // (2x peak) and frees ~250 MB native vs the previous setting.
   await mongoose.connect(MONGODB_URI, {
-    maxPoolSize: isProd ? 100 : 10,
-    minPoolSize: isProd ? 10 : 2,
+    maxPoolSize: isProd ? 30 : 10,
+    minPoolSize: isProd ? 2 : 2,
     serverSelectionTimeoutMS: isProd ? 60000 : 30000,
     socketTimeoutMS: isProd ? 120000 : 60000,
     connectTimeoutMS: isProd ? 60000 : 30000,

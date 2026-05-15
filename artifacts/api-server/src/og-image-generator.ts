@@ -5,10 +5,15 @@ import fsp from 'fs/promises';
 import { Station } from '@workspace/db-shared/mongo-schemas';
 import NodeCache from 'node-cache';
 
-sharp.cache({ memory: 50, files: 20, items: 100 });
+// INCIDENT 2026-05-15 v5: sharp's libvips cache held up to 50 MB native +
+// 100 decoded image items per worker. Combined with the 500-entry PNG
+// `ogImageCache` below this single module accounted for ~80–120 MB of the
+// sustained native footprint. Tighten both: libvips cache → 20 MB / 30
+// items, OG result cache → 150 entries (TTL unchanged at 1h).
+sharp.cache({ memory: 20, files: 10, items: 30 });
 sharp.concurrency(1);
 
-const ogImageCache = new NodeCache({ stdTTL: 3600, checkperiod: 600, maxKeys: 500 });
+const ogImageCache = new NodeCache({ stdTTL: 3600, checkperiod: 600, maxKeys: 150 });
 
 export function clearOgCache(): void {
   const count = ogImageCache.keys().length;

@@ -9,7 +9,10 @@ import { logger } from '../utils/logger';
 import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
 import { validateOutboundUrl } from '../utils/safe-fetch';
 
-sharp.cache({ memory: 50, files: 20, items: 100 });
+// INCIDENT 2026-05-15 v5: keep libvips cache lean — see og-image-generator
+// for full rationale. Logo processing runs in background batches and rarely
+// benefits from a large warm cache.
+sharp.cache({ memory: 20, files: 10, items: 30 });
 sharp.concurrency(1);
 
 const gunzip = promisify(zlib.gunzip);
