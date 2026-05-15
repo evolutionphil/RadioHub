@@ -225,6 +225,18 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const popularRegularHint = popularHasCountry
         ? 'country_1_lastCheckOk_1_votes_-1'
         : 'lastCheckOk_1_votes_-1';
+      // INCIDENT 2026-05-15 v9 — add featured-query hint too. v8 left the
+      // featured aggregate hint-less (per the older comment "planner picks
+      // the selective isFeatured_1") but on cold M10 the planner blew the
+      // 15s budget choosing among candidates and the catch block returned
+      // 500. The compound indexes
+      //   lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1
+      //   lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1
+      // are both created in routes.ts createIndexes (verified present),
+      // and they match this aggregate's match+sort exactly.
+      const popularFeaturedHint = popularHasCountry
+        ? 'lastCheckOk_1_country_1_isFeatured_1_votes_-1_clickCount_-1'
+        : 'lastCheckOk_1_isFeatured_1_votes_-1_clickCount_-1';
 
       // INCIDENT 2026-05-15 v8 — add `maxTimeMS: 15000` per replit.md
       // rule "every Station.aggregate() needs maxTimeMS+allowDiskUse".
@@ -241,7 +253,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: requestedLimit * fetchMultiplier }
-        ]).option({ maxTimeMS: 15000, allowDiskUse: true }),
+        ]).hint(popularFeaturedHint).option({ maxTimeMS: 15000, allowDiskUse: true }),
         Station.aggregate([
           { $match: { ...countryFilter, isFeatured: { $ne: true } } },
           { $sort: { votes: -1, clickCount: -1 } },
