@@ -47,3 +47,9 @@ id = "-B0bElZRuG4A8cidEFDck"
 uri = "file://.local/seo-architect-validation.md"
 type = "text"
 title = "SEO Architect Doğrulama"
+
+[[outputs]]
+id = "oahO0FSot6URiYAgz7I2f"
+uri = "file://.local/diagnostic-2026-05-15.md"
+type = "text"
+title = "MegaRadio Teşhis Raporu — 2026-05-15"
