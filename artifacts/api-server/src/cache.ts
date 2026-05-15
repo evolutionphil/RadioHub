@@ -157,6 +157,11 @@ export class CacheManager {
   // one upstream call. Prevents cache stampedes during precompute warmup or
   // when a hot key TTLs out under traffic.
   private static inflight = new Map<string, Promise<any>>();
+  // INCIDENT 2026-05-15 v10.2 round 5 — count consecutive SWR
+  // background-refresh failures per envelope key so a silently-stuck
+  // stale value (broken loader, persistent Mongo timeout) becomes
+  // visible via warn-level logs instead of being silently swallowed.
+  private static swrRefreshFailures = new Map<string, number>();
   static async getOrSetSingleFlight<T>(
     key: string,
     loader: () => Promise<T>,
@@ -215,8 +220,25 @@ export class CacheManager {
           try {
             const fresh = await loader();
             await CacheManager.set(envKey, { v: fresh, exp: now + freshTtl * 1000 }, { ttl: staleTtl });
-          } catch {
-            // keep stale; next caller will retry
+            CacheManager.swrRefreshFailures.delete(envKey);
+          } catch (err: any) {
+            // Keep stale; next caller will retry. INCIDENT 2026-05-15
+            // v10.2 round 5 — count consecutive refresh failures per
+            // key and warn-log every 5th so a silently-stuck stale
+            // value (e.g. broken loader, persistent Mongo timeout) is
+            // visible in the Railway tail without spamming on every
+            // request.
+            const prev = CacheManager.swrRefreshFailures.get(envKey) || 0;
+            const next = prev + 1;
+            CacheManager.swrRefreshFailures.set(envKey, next);
+            if (next === 1 || next % 5 === 0) {
+              try {
+                logger.warn(
+                  `[swr] background refresh failed key=${envKey} consecutive=${next} ` +
+                  `code=${err?.code || err?.codeName || 'unknown'} msg=${err?.message || 'unknown'}`
+                );
+              } catch {}
+            }
           } finally {
             CacheManager.inflight.delete(envKey);
           }
