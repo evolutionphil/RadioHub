@@ -8,6 +8,7 @@ import { RecommendationEngine } from '../services/recommendation-engine';
 import { getAllCountryInfoFromDb } from '../utils/normalize-country';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
 import { PrecomputedStationsService } from '../services/precomputed-stations';
+import { PrecomputedPopularGlobalService } from '../services/precomputed-popular-global';
 import { slugifyStationName, evaluateJunkStation } from '../seo/junk-station-rules';
 
 // Escape regex meta-characters from user input. Without this, callers can pass
@@ -111,6 +112,35 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // 6h stale) so a stressed cluster keeps serving last-known-good
       // popular stations during refresh windows instead of waiting
       // 5-15s on the aggregate.
+      const isGlobalPath = !country || country === 'all' || country === 'null';
+      const isStateFiltered = !!(state && state !== 'all');
+
+      // INCIDENT 2026-05-16 — /api/stations/popular?country=all (homepage)
+      // 500'd 8 times in an 8h window with code=50 multiplanner timeout.
+      // The live featured+regular fanout against {lastCheckOk:true} (no
+      // country prefix) routinely blew the 15s budget on M10 because the
+      // planner couldn't pin a useful index. Route the global path through
+      // the per-country batched precomputer (uses the country-prefixed
+      // index, never one giant global $sort) so visitors never wait on
+      // that aggregate. TV fast-path and country-filtered paths keep
+      // their existing behavior.
+      if (isGlobalPath && !isStateFiltered && !(isTV && Number(limit) <= 10)) {
+        try {
+          const precomputed = await PrecomputedPopularGlobalService.getOrCompute(Number(limit));
+          // Review hardening — only short-circuit if we actually got a
+          // non-empty list. Otherwise fall through to the legacy SWR
+          // loader below (which has its own no-store stale fallback)
+          // so we never serve an empty cached homepage.
+          if (Array.isArray(precomputed) && precomputed.length > 0) {
+            res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
+            return void res.json(stripPlaceholders(precomputed));
+          }
+          logger.warn('[popular] global precompute returned empty, falling through to legacy loader');
+        } catch (e: any) {
+          logger.warn(`[popular] global precompute failed, falling through: ${e?.message || e}`);
+        }
+      }
+
       const computed = await CacheManager.getOrSetSWR<any[]>(cacheKey, async () => {
         if (isTV && Number(limit) <= 10) {
           let tvFilter: any = { lastCheckOk: true };

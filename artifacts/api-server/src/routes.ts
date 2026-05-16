@@ -21,6 +21,7 @@ import { RealtimeMetadataService } from './services/realtime-metadata';
 import { logger } from './utils/logger';
 import { PrecomputedCitiesService } from './services/precomputed-cities';
 import { PrecomputedGenresService } from './services/precomputed-genres';
+import { PrecomputedPopularGlobalService } from './services/precomputed-popular-global';
 import {
   refreshTranslationsCache,
   refreshPopularStationsCache,
@@ -682,6 +683,18 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ Genres cache refresh scheduled: daily 5:00 AM (on-demand for first request)');
 
+  // INCIDENT 2026-05-16 — nightly denormalize: populate `genre_counts`
+  // collection so the runtime /api/genres/precomputed read path is a
+  // cheap find() instead of a per-request unwind+group aggregate that
+  // routinely timed out under M10 multiplanner pressure.
+  cron.default.schedule('30 3 * * *', async () => {
+    try {
+      const result = await PrecomputedGenresService.refreshGenreCounts();
+      logger.log(`⏰ [Cron] genre_counts refreshed: global=${result.global}, countries=${result.countries}, failures=${result.failures}, ${result.durationMs}ms`);
+    } catch (error) { logger.error('[Cron] genre_counts refresh failed:', error); }
+  }, { timezone: 'Europe/Berlin' });
+  logger.log('⏰ genre_counts denormalize scheduled: daily 3:30 AM (Europe/Berlin)');
+
   cron.default.schedule('30 6 * * *', async () => {
     try {
       const start = Date.now();
@@ -700,6 +713,20 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     } catch (error) { logger.error('[Cron] Popular stations cache refresh failed:', error); }
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ Popular stations cache refresh scheduled: daily 6:30 AM (on-demand for first request)');
+
+  // INCIDENT 2026-05-16 — popular global (country=all) is the homepage's
+  // hottest endpoint and the live featured+regular fanout timed out 8x
+  // in an 8h window on M10. Refresh the per-country-batched precompute
+  // every 4h so the SWR envelope is always fresh and visitors never
+  // wait on the live aggregate.
+  cron.default.schedule('15 */4 * * *', async () => {
+    try {
+      const start = Date.now();
+      await PrecomputedPopularGlobalService.refresh();
+      logger.log(`⏰ [Cron] Popular global precompute refreshed in ${Date.now() - start}ms`);
+    } catch (error) { logger.error('[Cron] Popular global precompute failed:', error); }
+  }, { timezone: 'Europe/Berlin' });
+  logger.log('⏰ Popular global precompute scheduled: every 4h (on-demand for first request)');
 
   // NOTE: bare /stations is handled by url-redirect-middleware which
   // 301-redirects directly to /{lang}/{translated} in a single hop.

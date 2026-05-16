@@ -14,6 +14,69 @@ import {
 // Cache for sync status
 const syncCache = new NodeCache({ stdTTL: 300 });
 
+// INCIDENT 2026-05-16 — radio-browser sync exploded with AxiosError 502
+// because we only ever tried `de1.api.radio-browser.info`. The
+// radio-browser project runs ~6 mirrors; when one is down we now
+// transparently fall through to the next instead of skipping the
+// nightly sync entirely. Order matters — most-reliable first.
+const RADIO_BROWSER_MIRRORS = [
+  'de2.api.radio-browser.info',
+  'fr1.api.radio-browser.info',
+  'nl1.api.radio-browser.info',
+  'at1.api.radio-browser.info',
+  'uk1.api.radio-browser.info',
+  'de1.api.radio-browser.info',
+];
+
+function isRetryableMirrorError(err: any): boolean {
+  const status = err?.response?.status;
+  if (typeof status === 'number' && status >= 500) return true;
+  const code = err?.code;
+  return (
+    code === 'ECONNREFUSED' ||
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT' ||
+    code === 'ENOTFOUND' ||
+    code === 'EAI_AGAIN' ||
+    code === 'ERR_BAD_RESPONSE'
+  );
+}
+
+/**
+ * Try the same radio-browser request against each mirror until one
+ * succeeds. `pathBuilder(host)` returns the full URL to hit; we try
+ * mirrors in order and only fall through on 5xx / network errors —
+ * 4xx (e.g. 404 byuuid) is returned verbatim so callers handle it.
+ */
+export async function fetchWithMirrorFallback<T = any>(
+  pathBuilder: (host: string) => string,
+  options: import('axios').AxiosRequestConfig = {},
+  context: string = 'radio-browser',
+): Promise<{ data: T; mirror: string }> {
+  let lastErr: any;
+  for (const mirror of RADIO_BROWSER_MIRRORS) {
+    const url = pathBuilder(mirror);
+    try {
+      logger.log(`🔄 [${context}] trying mirror=${mirror}`);
+      const resp = await axios.get<T>(url, options);
+      return { data: resp.data, mirror };
+    } catch (err: any) {
+      lastErr = err;
+      if (!isRetryableMirrorError(err)) {
+        // 4xx etc. — caller's problem, don't burn through other mirrors.
+        throw err;
+      }
+      logger.warn(
+        `⚠️ [${context}] mirror=${mirror} failed (status=${err?.response?.status || 'n/a'} code=${err?.code || 'n/a'}), trying next…`,
+      );
+    }
+  }
+  logger.error(
+    `❌ [${context}] all ${RADIO_BROWSER_MIRRORS.length} mirrors failed; last error: ${lastErr?.message || lastErr}`,
+  );
+  throw lastErr;
+}
+
 export class SyncService {
   private isRunning = false;
   private lastSyncResult: any = null;
@@ -238,23 +301,24 @@ export class SyncService {
     // back smaller than the requested page size (end of catalog reached).
     const PAGE_SIZE = 5000;
     const MAX_PAGES = 100; // hard ceiling — 500K stations is well above the catalog
-    const baseUrl =
-      'https://de1.api.radio-browser.info/json/stations/search';
     const all: any[] = [];
     const seen = new Set<string>();
 
     for (let page = 0; page < MAX_PAGES; page++) {
       const offset = page * PAGE_SIZE;
-      const response = await axios.get(baseUrl, {
-        timeout: 120000,
-        headers: { 'User-Agent': 'RadioApp/1.0' },
-        params: {
-          limit: PAGE_SIZE,
-          offset,
-          hidebroken: false,
+      // INCIDENT 2026-05-16 — go through fetchWithMirrorFallback so a
+      // single mirror's 502 no longer skips the whole nightly sync.
+      const { data, mirror } = await fetchWithMirrorFallback<any[]>(
+        (host) => `https://${host}/json/stations/search`,
+        {
+          timeout: 120000,
+          headers: { 'User-Agent': 'RadioApp/1.0' },
+          params: { limit: PAGE_SIZE, offset, hidebroken: false },
         },
-      });
-      const rows: any[] = Array.isArray(response.data) ? response.data : [];
+        `sync:fetchAllStations p${page + 1}`,
+      );
+      const rows: any[] = Array.isArray(data) ? data : [];
+      logger.log(`📡 [sync:fetchAllStations] mirror=${mirror} page=${page + 1} rows=${rows.length}`);
       logger.log(
         `📥 Radio-Browser page ${page + 1}: offset=${offset} received=${rows.length}`,
       );
@@ -974,14 +1038,15 @@ export class SyncService {
         const batchResults = await Promise.allSettled(
           batch.map(async (station) => {
             const uuid = station.stationuuid;
-            const apiResp = await axios.get<RadioBrowserTagsResponse>(
-              `https://de1.api.radio-browser.info/json/stations/byuuid/${encodeURIComponent(uuid)}`,
+            const { data: apiData } = await fetchWithMirrorFallback<RadioBrowserTagsResponse>(
+              (host) => `https://${host}/json/stations/byuuid/${encodeURIComponent(uuid)}`,
               {
                 timeout: 10000,
                 headers: { 'User-Agent': 'MegaRadio/1.0 (tags-hydration)' },
               },
+              'sync:tags-hydration',
             );
-            const remote = Array.isArray(apiResp.data) ? apiResp.data[0] : null;
+            const remote = Array.isArray(apiData) ? apiData[0] : null;
             const tags =
               remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
             if (!tags) {
@@ -1078,14 +1143,15 @@ export class SyncService {
       };
     }
     try {
-      const apiResp = await axios.get<RadioBrowserTagsResponse>(
-        `https://de1.api.radio-browser.info/json/stations/byuuid/${encodeURIComponent(uuid)}`,
+      const { data: apiData } = await fetchWithMirrorFallback<RadioBrowserTagsResponse>(
+        (host) => `https://${host}/json/stations/byuuid/${encodeURIComponent(uuid)}`,
         {
           timeout: 10000,
           headers: { 'User-Agent': 'MegaRadio/1.0 (tags-recheck-admin)' },
         },
+        'sync:tags-recheck-admin',
       );
-      const remote = Array.isArray(apiResp.data) ? apiResp.data[0] : null;
+      const remote = Array.isArray(apiData) ? apiData[0] : null;
       const tags =
         remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
       const now = new Date();
@@ -1190,14 +1256,15 @@ export class SyncService {
         const batchResults = await Promise.allSettled(
           batch.map(async (station) => {
             const uuid = station.stationuuid as string;
-            const apiResp = await axios.get<RadioBrowserTagsResponse>(
-              `https://de1.api.radio-browser.info/json/stations/byuuid/${encodeURIComponent(uuid)}`,
+            const { data: apiData } = await fetchWithMirrorFallback<RadioBrowserTagsResponse>(
+              (host) => `https://${host}/json/stations/byuuid/${encodeURIComponent(uuid)}`,
               {
                 timeout: 10000,
                 headers: { 'User-Agent': 'MegaRadio/1.0 (tags-recheck-admin-bulk)' },
               },
+              'sync:tags-recheck-admin-bulk',
             );
-            const remote = Array.isArray(apiResp.data) ? apiResp.data[0] : null;
+            const remote = Array.isArray(apiData) ? apiData[0] : null;
             const tags =
               remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
             const now = new Date();

@@ -4133,3 +4133,27 @@ AuthEventLogSchema.index({ ok: 1, ts: -1 });
 AuthEventLogSchema.index({ ts: 1 }, { expireAfterSeconds: 30 * 24 * 60 * 60 });
 
 export const AuthEventLog = mongoose.model<IAuthEventLog>('AuthEventLog', AuthEventLogSchema);
+
+// INCIDENT 2026-05-16 — denormalized per-country genre counts. The runtime
+// $unwind+$group aggregate on Station (5k+ docs × ~10 tags) routinely
+// blew the 8s/60s budgets under M10 multiplanner pressure; we now
+// precompute the counts nightly and the read path becomes a cheap
+// `find({country})` against this collection.
+export interface IGenreCount extends Document {
+  country: string; // 'global' | DB country name (e.g. 'Türkiye', 'Germany')
+  slug: string;
+  count: number;
+  updatedAt: Date;
+}
+
+const GenreCountSchema = new Schema<IGenreCount>({
+  country: { type: String, required: true },
+  slug: { type: String, required: true },
+  count: { type: Number, required: true, default: 0 },
+  updatedAt: { type: Date, default: Date.now },
+}, { collection: 'genre_counts' });
+
+GenreCountSchema.index({ country: 1, slug: 1 }, { unique: true });
+GenreCountSchema.index({ country: 1, count: -1 });
+
+export const GenreCount = mongoose.model<IGenreCount>('GenreCount', GenreCountSchema);

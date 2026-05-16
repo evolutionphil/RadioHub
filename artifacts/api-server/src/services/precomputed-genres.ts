@@ -1,5 +1,5 @@
 import { CacheManager } from '../cache';
-import { Station, Genre } from '@workspace/db-shared/mongo-schemas';
+import { Station, Genre, GenreCount } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import { sleep } from '../utils/event-loop-yield';
@@ -61,39 +61,62 @@ export class PrecomputedGenresService {
     //     OLD behavior (Rock+Jazz only) instead of an empty page.
     //   - Wrapped in SWR (28-day stale window) + nightly 5 AM cron, so
     //     a real visitor effectively NEVER waits for this aggregate.
+    // INCIDENT 2026-05-16 — denormalized read path. Instead of running
+    // the unwind+group aggregate at request time (8s/60s budgets that
+    // routinely timed out under M10 multiplanner pressure), read from
+    // the precomputed `genre_counts` collection populated nightly by
+    // PrecomputedGenresService.refreshGenreCounts(). The aggregate is
+    // kept only as a cold-start fallback for the very first deploy.
     let genreCounts: Array<{ _id: string; count: number }> = [];
+    const countryKey = dbName || 'global';
     try {
-      genreCounts = await Station.aggregate([
-        { $match: stationFilter },
-        {
-          $addFields: {
-            allTags: {
-              $setUnion: [
-                { $cond: [
-                  { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
-                  [{ $toLower: '$genre' }],
-                  []
-                ]},
-                { $cond: [
-                  { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
-                  { $map: {
-                    input: { $split: ['$tags', ','] },
-                    as: 'tag',
-                    in: { $toLower: { $trim: { input: '$$tag' } } }
-                  }},
-                  []
-                ]}
-              ]
+      const rows = await GenreCount.find({ country: countryKey })
+        .select({ slug: 1, count: 1, _id: 0 })
+        .lean();
+      genreCounts = rows.map(r => ({ _id: r.slug, count: r.count }));
+    } catch (gcErr: any) {
+      logger.warn(`[precomputed-genres] genre_counts read failed for ${countryKey}: ${gcErr?.message || 'unknown'}`);
+    }
+
+    if (genreCounts.length === 0) {
+      // Cold-start fallback: run the legacy aggregate ONCE so the first
+      // deploy (before nightly cron has populated genre_counts) still
+      // returns a populated list. After the cron runs, this branch is
+      // never hit.
+      try {
+        const aggCounts = await Station.aggregate([
+          { $match: stationFilter },
+          {
+            $addFields: {
+              allTags: {
+                $setUnion: [
+                  { $cond: [
+                    { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
+                    [{ $toLower: '$genre' }],
+                    []
+                  ]},
+                  { $cond: [
+                    { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
+                    { $map: {
+                      input: { $split: ['$tags', ','] },
+                      as: 'tag',
+                      in: { $toLower: { $trim: { input: '$$tag' } } }
+                    }},
+                    []
+                  ]}
+                ]
+              }
             }
-          }
-        },
-        { $unwind: '$allTags' },
-        { $match: { allTags: { $ne: '' } } },
-        { $group: { _id: '$allTags', count: { $sum: 1 } } }
-      ]).option({ maxTimeMS: isGlobal ? 60000 : 8000, allowDiskUse: true });
-    } catch (aggErr: any) {
-      logger.warn(`[precomputed-genres] aggregate failed for ${dbName || 'global'}: ${aggErr?.message || 'unknown'} — falling back to Genre.stationCount map`);
-      genreCounts = [];
+          },
+          { $unwind: '$allTags' },
+          { $match: { allTags: { $ne: '' } } },
+          { $group: { _id: '$allTags', count: { $sum: 1 } } }
+        ]).option({ maxTimeMS: isGlobal ? 60000 : 8000, allowDiskUse: true });
+        genreCounts = aggCounts;
+      } catch (aggErr: any) {
+        logger.warn(`[precomputed-genres] cold-start aggregate failed for ${countryKey}: ${aggErr?.message || 'unknown'}`);
+        genreCounts = [];
+      }
     }
 
     const tagCounts = new Map<string, number>();
@@ -246,5 +269,123 @@ export class PrecomputedGenresService {
     }
     
     logger.log('✅ Top genres caches refreshed (other countries refresh on-demand)');
+  }
+
+  // INCIDENT 2026-05-16 — nightly job that populates `genre_counts` for
+  // global + top countries. Runtime read path uses this collection
+  // instead of running the unwind+group aggregate per request.
+  // Runs ONCE per day with a generous budget (10 min, allowDiskUse) so
+  // a single planner stall doesn't take the page down.
+  static readonly GENRE_COUNT_TOP_COUNTRIES = [
+    'Türkiye', 'Germany', 'The United States Of America',
+    'The United Kingdom Of Great Britain And Northern Ireland',
+    'France', 'Spain', 'Italy', 'The Netherlands', 'Austria', 'Switzerland',
+    'Brazil', 'The Russian Federation', 'Japan', 'The Republic Of Korea',
+    'India', 'Mexico', 'Canada', 'Australia', 'Poland', 'Greece',
+    'Portugal', 'Belgium', 'Sweden', 'Norway', 'Denmark', 'Finland',
+    'Czechia', 'Hungary', 'Romania', 'Bulgaria',
+  ];
+
+  private static async computeCountsFor(countryDbName: string | null): Promise<Map<string, number>> {
+    const stationFilter: any = countryDbName ? normalizeCountryFilter(countryDbName) : {};
+    const aggCounts = await Station.aggregate([
+      { $match: stationFilter },
+      {
+        $addFields: {
+          allTags: {
+            $setUnion: [
+              { $cond: [
+                { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
+                [{ $toLower: '$genre' }],
+                []
+              ]},
+              { $cond: [
+                { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
+                { $map: {
+                  input: { $split: ['$tags', ','] },
+                  as: 'tag',
+                  in: { $toLower: { $trim: { input: '$$tag' } } }
+                }},
+                []
+              ]}
+            ]
+          }
+        }
+      },
+      { $unwind: '$allTags' },
+      { $match: { allTags: { $ne: '' } } },
+      { $group: { _id: '$allTags', count: { $sum: 1 } } }
+    ]).option({ maxTimeMS: 600000, allowDiskUse: true });
+    const m = new Map<string, number>();
+    for (const r of aggCounts) {
+      if (r._id) m.set(r._id, r.count);
+    }
+    return m;
+  }
+
+  private static async writeCountsForCountry(
+    countryKey: string,
+    counts: Map<string, number>
+  ): Promise<void> {
+    if (counts.size === 0) return;
+    const ops = Array.from(counts.entries()).map(([slug, count]) => ({
+      updateOne: {
+        filter: { country: countryKey, slug },
+        update: { $set: { country: countryKey, slug, count, updatedAt: new Date() } },
+        upsert: true,
+      },
+    }));
+    // Drop slugs that are no longer present so a tag that hit zero
+    // disappears from the page.
+    const slugs = Array.from(counts.keys());
+    await GenreCount.deleteMany({ country: countryKey, slug: { $nin: slugs } });
+    // Bulk-write in chunks of 500 to keep payload size sane.
+    for (let i = 0; i < ops.length; i += 500) {
+      const slice = ops.slice(i, i + 500);
+      try {
+        await GenreCount.bulkWrite(slice, { ordered: false });
+      } catch (err: any) {
+        logger.warn(`[precomputed-genres] bulkWrite chunk failed for ${countryKey}: ${err?.message || 'unknown'}`);
+      }
+    }
+  }
+
+  static async refreshGenreCounts(): Promise<{ global: number; countries: number; failures: number; durationMs: number }> {
+    const start = Date.now();
+    let countries = 0;
+    let failures = 0;
+    let globalCount = 0;
+
+    try {
+      const counts = await this.computeCountsFor(null);
+      await this.writeCountsForCountry('global', counts);
+      globalCount = counts.size;
+      logger.log(`[precomputed-genres] genre_counts: global → ${counts.size} slugs`);
+    } catch (err: any) {
+      failures++;
+      logger.error(`[precomputed-genres] genre_counts global failed: ${err?.message || err}`);
+    }
+
+    for (const dbName of this.GENRE_COUNT_TOP_COUNTRIES) {
+      try {
+        const counts = await this.computeCountsFor(dbName);
+        await this.writeCountsForCountry(dbName, counts);
+        countries++;
+        await sleep(500);
+      } catch (err: any) {
+        failures++;
+        logger.warn(`[precomputed-genres] genre_counts ${dbName} failed: ${err?.message || err}`);
+      }
+    }
+
+    // Drop the SWR envelopes so subsequent reads pick up the fresh map.
+    try { await CacheManager.delSWR(GLOBAL_CACHE_KEY); } catch {}
+    for (const dbName of this.GENRE_COUNT_TOP_COUNTRIES) {
+      try { await CacheManager.delSWR(this.getCacheKey(dbName)); } catch {}
+    }
+
+    const durationMs = Date.now() - start;
+    logger.log(`✅ [precomputed-genres] genre_counts refresh: global=${globalCount}, countries=${countries}, failures=${failures}, duration=${durationMs}ms`);
+    return { global: globalCount, countries, failures, durationMs };
   }
 }
