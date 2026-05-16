@@ -1,0 +1,92 @@
+#485 - Admin Panel Tam Backend Denetimi & Onarımı
+
+What & Why
+
+Admin panelindeki menü/sayfa/buton sayısı çok arttı ve bir kısmı sessizce backende düşmüyor ya da hata veriyor (örnek: "Detect Duplicates" butonu — Failed to detect duplicates: The string did not match the expected pattern, "Failed to load stations" toast'ları). Kullanıcı tek tek hangi butonun çalışıp çalışmadığını manuel test edemiyor. Bu görevde admin panelindeki her sayfa, her menü öğesi, her buton ve her form için frontend → backend bağlantısının fiilen çalıştığını doğrulayan kapsamlı bir denetim yapılacak ve bulunan tüm bozuk noktalar onarılacak.
+
+Not: Hata mesajındaki rumWebVitalsEventsAdaptiveGroups: orderBy: unknown enum value datetime_DESC GraphQL hatası bizim backendimizden değil — bu Cloudflare Web Analytics dashboard'unun (Cloudflare paneli) kendi hatasıdır, bizim kodumuzla ilgisi yok. Bu görev kapsamında değildir.
+Done looks like
+
+Admin panelinin (/admin/*) altındaki 29 sayfanın tamamı için somut bir denetim raporu var: her sayfada hangi butonlar/formlar/aksiyonlar var, hangi /api/... endpoint'ine bağlanıyor, manuel test sonucu (OK / Broken / Missing endpoint).
+Detect Duplicates butonu hatasız çalışıyor — /api/admin/stations/duplicates?threshold=... çağrısı 200 dönüyor, frontend'de toast hatası yok, sonuçlar listeleniyor.
+"Failed to load stations" gibi tekrarlayan toast hataları kayboldu — istasyon listeleyen tüm admin sayfaları (duplicates, db-management, advertisements, logo-management, vb.) veri yükleyebiliyor.
+Denetimde tespit edilen çağrılan ama backend'de var olmayan endpoint'ler ya backend'e implement edildi ya da frontend'den temizlendi (ölü buton kalmadı).
+Denetimde tespit edilen backend'i 4xx/5xx dönen butonlar düzeltildi (auth/middleware/routing/validation hatası giderildi, response shape uyumlu hale getirildi).
+Her admin sayfasının her butonu için en az bir kez happy-path manuel test yapıldı; kırık olanlar düzeltildi ve tekrar test edildi.
+Sonuçta kullanıcının panelde gezinirken aldığı Failed to ... / The string did not match the expected pattern / 404 Not Found / 500 Internal Server Error toast'ları kayboldu.
+Out of scope
+
+Admin paneli dışındaki son kullanıcı ekranlarının (anasayfa, ülke, şehir, tür sayfaları) audit'i — bu ayrı bir görev olur.
+UI/UX redesign — sadece backend bağlantısı çalışır hale getirilecek; düğme yerleri / renkleri değişmeyecek.
+Cloudflare dashboard tarafındaki GraphQL hatası (bizim kodumuz değil).
+Yeni admin özellikleri eklemek; kapsam mevcut butonların çalışır hale gelmesidir.
+Mongo şemasında / index'lerinde köklü değişiklik (gerekirse en küçük yamayla geçilecek; büyük değişiklik ayrı görev).
+Steps
+
+Admin sayfalarını ve buton/aksiyon envanterini çıkar.
+artifacts/megaradio/src/pages/admin/ altındaki 29 sayfanın her biri için:
+sayfanın çağırdığı tüm /api/... endpoint'leri (fetch / mutation / query),
+her butonun / form'un hangi endpoint'i tetiklediği,
+beklenen request/response şekli bir tabloya çıkartılır. Bu envanter sonraki adımların referansıdır (taskın çıktısı olarak .local/tasks/admin-audit-report.md dosyasına yazılır).
+Backend tarafında endpoint varlık ve auth doğrulaması.
+Adım 1'deki her endpoint için artifacts/api-server/src/routes/** altında karşılığı var mı kontrol et. Yoksa "missing endpoint" olarak işaretle.
+Her admin endpoint'inin requireAdmin / session middleware'inden geçtiğini doğrula. Geçmeyen varsa not düş.
+Express 5 path-to-regexp v8 değişiklikleri (/* → /*path, :param? → {:param}) yüzünden bozulmuş route var mı tara.
+"Detect Duplicates" hatasının kök nedenini bul ve düzelt.
+Frontend: artifacts/megaradio/src/pages/admin/duplicates.tsx → detectDuplicates() fetch'i ve JSON.parse / response transform aşamaları.
+Backend: /api/admin/stations/duplicates endpoint'inin gerçek konumu (admin-station-routes.ts veya translation-admin-routes.ts).
+"The string did not match the expected pattern" tipik bir RegExp / URL parse hatasıdır → endpoint döndürdüğü payload içindeki bir alanı (favicon URL, station URL, slug) frontend'in new URL(...) veya benzer bir parse'a soktuğu yer aranır.
+Hata reproduce edildikten sonra hem backend (eksik/yanlış alan) hem frontend (defansif parse) tarafında onarılır.
+"Failed to load stations" ve diğer ortak toast hatalarını gider.
+Listeleme yapan admin endpoint'lerini (db-management, advertisements, logo-management, radios, duplicates) tek tek manuel çağır (admin login + cookie ile), 4xx/5xx olanları öncelik sırasıyla düzelt.
+Public read endpoint'lerinde olduğu gibi admin listeleme endpoint'lerinin de (uygun yerde) "soft-fail + boş ama doğru shape payload" döndürmesini sağla — toast spam'ini bitir.
+Bulunan tüm kırık butonları kategorize edip onar.
+Backend'i hiç olmayan butonlar: ya endpoint implement edilir (basit CRUD ise) ya da frontend'den buton kaldırılır (ölü kod).
+Endpoint'i olan ama 4xx/5xx dönenler: root cause'a göre düzelt (eksik validasyon, hidden index hint, yanlış route param, response shape uyumsuzluğu).
+Auth düşürenler (401/403): middleware ya da session cookie aktarımı düzeltilir.
+Frontend response shape uyumsuzluğu: transform / type guard eklenir.
+Manuel doğrulama ve regresyon kontrolü.
+Her düzeltilen butonu admin oturumuyla manuel tekrar tetikle, console + network tab temiz olmalı.
+pnpm run typecheck ve pnpm run test (kök) yeşil kalmalı.
+Mevcut hint discipline (hint-discipline.test.ts) ve seo-templates-coverage testleri geçmeye devam etmeli.
+Log'larda "❌ AUTH …" veya yeni 500 yokluğu doğrulanır.
+Audit raporunu finalize et.
+.local/tasks/admin-audit-report.md içine her sayfa için: [OK / Fixed / Removed / Deferred] sonucu, ne yapıldığı, hangi commit/dosyada düzeltildiği yazılır. Bu rapor görev tamamlandığında kullanıcıya özet olarak sunulur.
+Relevant files
+
+artifacts/megaradio/src/pages/admin
+artifacts/megaradio/src/pages/admin/duplicates.tsx
+artifacts/megaradio/src/pages/admin/db-management.tsx
+artifacts/megaradio/src/pages/admin/advertisements.tsx
+artifacts/megaradio/src/pages/admin/logo-management.tsx
+artifacts/megaradio/src/pages/admin/dashboard.tsx
+artifacts/megaradio/src/pages/admin/admin-genres.tsx
+artifacts/megaradio/src/pages/admin/admin-genre-whitelist.tsx
+artifacts/megaradio/src/pages/admin/admin-users.tsx
+artifacts/megaradio/src/pages/admin/AdminCountryLanguageMappings.tsx
+artifacts/megaradio/src/pages/admin/AdminUrlTranslations.tsx
+artifacts/megaradio/src/pages/admin/translations.tsx
+artifacts/megaradio/src/pages/admin/translation-languages.tsx
+artifacts/megaradio/src/pages/admin/cities.tsx
+artifacts/megaradio/src/pages/admin/coverage.tsx
+artifacts/megaradio/src/pages/admin/coverage-country.tsx
+artifacts/megaradio/src/pages/admin/coverage-compare.tsx
+artifacts/megaradio/src/pages/admin/feedback.tsx
+artifacts/megaradio/src/pages/admin/footer-social-media.tsx
+artifacts/megaradio/src/pages/admin/genre-slug-cleanup.tsx
+artifacts/megaradio/src/pages/admin/genre-slug-cleanup-demotions.tsx
+artifacts/megaradio/src/pages/admin/gsc-inspection.tsx
+artifacts/megaradio/src/pages/admin/home-settings.tsx
+artifacts/megaradio/src/pages/admin/iap-events.tsx
+artifacts/megaradio/src/pages/admin/IndexNowMonitoring.tsx
+artifacts/megaradio/src/pages/admin/performance.tsx
+artifacts/megaradio/src/pages/admin/seo-maintenance.tsx
+artifacts/megaradio/src/pages/admin/seo-maintenance-run.tsx
+artifacts/megaradio/src/pages/admin/seo-preview.tsx
+artifacts/api-server/src/routes
+artifacts/api-server/src/routes/admin-station-routes.ts
+artifacts/api-server/src/routes/admin-maintenance-routes.ts
+artifacts/api-server/src/routes/translation-admin-routes.ts
+artifacts/api-server/src/routes/genres-countries-routes.ts
+artifacts/api-server/src/routes.ts
+artifacts/api-server/src/middleware/auth.ts
