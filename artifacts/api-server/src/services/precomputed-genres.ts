@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
 import { sleep } from '../utils/event-loop-yield';
 import { trackOperation } from '../utils/operation-tracker';
+import { getTopCountryDbNames } from '../seo/sitemap-manifest-builder';
 
 interface PrecomputedGenre {
   _id: string;
@@ -276,7 +277,13 @@ export class PrecomputedGenresService {
   // instead of running the unwind+group aggregate per request.
   // Runs ONCE per day with a generous budget (10 min, allowDiskUse) so
   // a single planner stall doesn't take the page down.
-  static readonly GENRE_COUNT_TOP_COUNTRIES = [
+  // Fallback list — used only if the dynamic sitemap top-30 query
+  // fails. The runtime source of truth is `getTopCountryDbNames()`
+  // from `seo/sitemap-manifest-builder.ts`, which returns the same
+  // top-N leaderboard the main sitemap bakes into `tc:` markers, so
+  // the genre-counts coverage stays in sync with the sitemap coverage
+  // when the country leaderboard shifts.
+  static readonly GENRE_COUNT_TOP_COUNTRIES_FALLBACK = [
     'Türkiye', 'Germany', 'The United States Of America',
     'The United Kingdom Of Great Britain And Northern Ireland',
     'France', 'Spain', 'Italy', 'The Netherlands', 'Austria', 'Switzerland',
@@ -285,6 +292,16 @@ export class PrecomputedGenresService {
     'Portugal', 'Belgium', 'Sweden', 'Norway', 'Denmark', 'Finland',
     'Czechia', 'Hungary', 'Romania', 'Bulgaria',
   ];
+
+  private static async resolveTopCountries(): Promise<string[]> {
+    try {
+      const dynamic = await getTopCountryDbNames(30);
+      if (Array.isArray(dynamic) && dynamic.length > 0) return dynamic;
+    } catch (err: any) {
+      logger.warn(`[precomputed-genres] getTopCountryDbNames failed, using fallback: ${err?.message || err}`);
+    }
+    return this.GENRE_COUNT_TOP_COUNTRIES_FALLBACK;
+  }
 
   private static async computeCountsFor(countryDbName: string | null): Promise<Map<string, number>> {
     const stationFilter: any = countryDbName ? normalizeCountryFilter(countryDbName) : {};
@@ -366,7 +383,8 @@ export class PrecomputedGenresService {
       logger.error(`[precomputed-genres] genre_counts global failed: ${err?.message || err}`);
     }
 
-    for (const dbName of this.GENRE_COUNT_TOP_COUNTRIES) {
+    const topCountries = await this.resolveTopCountries();
+    for (const dbName of topCountries) {
       try {
         const counts = await this.computeCountsFor(dbName);
         await this.writeCountsForCountry(dbName, counts);
@@ -380,7 +398,7 @@ export class PrecomputedGenresService {
 
     // Drop the SWR envelopes so subsequent reads pick up the fresh map.
     try { await CacheManager.delSWR(GLOBAL_CACHE_KEY); } catch {}
-    for (const dbName of this.GENRE_COUNT_TOP_COUNTRIES) {
+    for (const dbName of topCountries) {
       try { await CacheManager.delSWR(this.getCacheKey(dbName)); } catch {}
     }
 

@@ -607,6 +607,16 @@ export function extractTopCountriesFromChunk(
  *   - maxUpdatedAt feeds <lastmod>/Last-Modified, so listings reflect the latest
  *     station change inside any of the top countries (not just an arbitrary clock).
  */
+export async function getTopCountryDbNames(limit: number = TOP_COUNTRIES_LIMIT): Promise<string[]> {
+  // Single source of truth for "top N countries by indexable station count".
+  // Used by the main sitemap manifest AND by the nightly genre_counts
+  // denormalization job (precomputed-genres.ts) so both surfaces stay in
+  // sync — when a country drops/rises in the leaderboard, both the sitemap
+  // top-countries list and the per-country genre cache update together.
+  const { rawCountryNames } = await computeTopCountriesForMain(limit);
+  return rawCountryNames;
+}
+
 async function computeTopCountriesForMain(limit: number): Promise<{
   entries: Array<{ regionSlug: string; countrySlug: string }>;
   maxUpdatedAt?: Date;
