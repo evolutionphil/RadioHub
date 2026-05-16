@@ -125,20 +125,30 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // that aggregate. TV fast-path and country-filtered paths keep
       // their existing behavior.
       if (isGlobalPath && !isStateFiltered && !(isTV && Number(limit) <= 10)) {
+        // Review hardening — task spec requires the global path to NEVER
+        // fall back to the legacy live featured+regular aggregate (that
+        // was the original 500 source). Always go through the precompute
+        // envelope; on failure, serve last-known-good stale; if even
+        // stale is empty, soft-fail with [] + no-store so the next
+        // request retries immediately instead of locking visitors out.
         try {
           const precomputed = await PrecomputedPopularGlobalService.getOrCompute(Number(limit));
-          // Review hardening — only short-circuit if we actually got a
-          // non-empty list. Otherwise fall through to the legacy SWR
-          // loader below (which has its own no-store stale fallback)
-          // so we never serve an empty cached homepage.
           if (Array.isArray(precomputed) && precomputed.length > 0) {
             res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
             return void res.json(stripPlaceholders(precomputed));
           }
-          logger.warn('[popular] global precompute returned empty, falling through to legacy loader');
+          logger.warn('[popular] global precompute returned empty — trying stale');
         } catch (e: any) {
-          logger.warn(`[popular] global precompute failed, falling through: ${e?.message || e}`);
+          logger.warn(`[popular] global precompute failed — trying stale: ${e?.message || e}`);
         }
+        const stale = await PrecomputedPopularGlobalService.getStale(Number(limit));
+        if (stale && stale.length > 0) {
+          res.set('Cache-Control', 'no-store');
+          return void res.json(stripPlaceholders(stale));
+        }
+        logger.error('[popular] global precompute + stale both empty — soft-failing []');
+        res.set('Cache-Control', 'no-store');
+        return void res.json([]);
       }
 
       const computed = await CacheManager.getOrSetSWR<any[]>(cacheKey, async () => {

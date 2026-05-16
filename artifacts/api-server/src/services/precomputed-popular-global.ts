@@ -14,19 +14,21 @@ const POPULAR_PROJECTION = {
 
 const PER_COUNTRY_LIMIT = 40;
 const POOL_TRIM_THRESHOLD = 800;
-const FRESH_TTL = 6 * 3600;        // 6h fresh
-const STALE_TTL = 7 * 86400;       // 7d stale
+// Task spec: 7d fresh / 28d stale. The cron refresh runs every 4h, so
+// the envelope is virtually always within the fresh window in practice;
+// the long stale window is a safety net for sustained cluster outages.
+const FRESH_TTL = 7 * 86400;        // 7d fresh
+const STALE_TTL = 28 * 86400;       // 28d stale
 
 export const POPULAR_GLOBAL_LIMITS = [12, 24, 50] as const;
 
 export type PopularGlobalLimit = typeof POPULAR_GLOBAL_LIMITS[number];
 
-export function popularGlobalCacheKey(
-  limit: number,
-  excludeBroken: 'true' | 'false' = 'false',
-  variant: 'web' | 'tv' = 'web'
-): string {
-  return `popular_stations:all:all:${limit}:${excludeBroken}:${variant}:v2`;
+export function popularGlobalCacheKey(limit: number): string {
+  // Dedicated namespace for the global precompute envelope — kept
+  // separate from the legacy per-endpoint key so rollouts and dashboards
+  // can observe the precompute path independently.
+  return `precomputed_popular:v1:global:limit:${limit}`;
 }
 
 function trimPool(pool: any[], limit: number): any[] {
@@ -128,11 +130,11 @@ export class PrecomputedPopularGlobalService {
   static async refresh(): Promise<void> {
     try {
       const computed = await this.computeStations(Math.max(...POPULAR_GLOBAL_LIMITS));
-      // Pre-populate the SWR envelopes for every advertised limit/variant.
+      // Pre-populate the SWR envelopes for every advertised limit.
       for (const limit of POPULAR_GLOBAL_LIMITS) {
         const sliced = computed.slice(0, limit);
         await CacheManager.setSWR(
-          popularGlobalCacheKey(limit, 'false', 'web'),
+          popularGlobalCacheKey(limit),
           sliced,
           { freshTtl: FRESH_TTL, staleTtl: STALE_TTL }
         );
@@ -143,7 +145,7 @@ export class PrecomputedPopularGlobalService {
   }
 
   static async getOrCompute(limit: number): Promise<any[]> {
-    const key = popularGlobalCacheKey(limit, 'false', 'web');
+    const key = popularGlobalCacheKey(limit);
     return CacheManager.getOrSetSWR<any[]>(
       key,
       async () => {
@@ -153,7 +155,7 @@ export class PrecomputedPopularGlobalService {
           if (other === limit) continue;
           try {
             await CacheManager.setSWR(
-              popularGlobalCacheKey(other, 'false', 'web'),
+              popularGlobalCacheKey(other),
               computed.slice(0, other),
               { freshTtl: FRESH_TTL, staleTtl: STALE_TTL }
             );
@@ -163,6 +165,19 @@ export class PrecomputedPopularGlobalService {
       },
       { freshTtl: FRESH_TTL, staleTtl: STALE_TTL }
     );
+  }
+
+  /**
+   * Last-resort stale lookup. Used by the route's catch path so we never
+   * fall through to the legacy live aggregate when precompute fails.
+   */
+  static async getStale(limit: number): Promise<any[] | null> {
+    try {
+      const stale = await CacheManager.get<any[]>(popularGlobalCacheKey(limit));
+      return Array.isArray(stale) && stale.length > 0 ? stale : null;
+    } catch {
+      return null;
+    }
   }
 
   static get FRESH_TTL() { return FRESH_TTL; }
