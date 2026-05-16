@@ -899,38 +899,49 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
   // MAIN STATIONS LIST API - Full filter/sort/search/pagination
   app.get("/api/stations", async (req, res) => {
-    try {
-      const isTV = req.query.tv === '1';
-      const {
-        country,
-        state,
-        genre,
-        tags,
-        language,
-        search,
-        sort = 'votes',
-        order = 'desc',
-        excludeBroken = 'false',
-        excludeStationIds = '',
-        minVotes = 0,
-        timePeriod = 'all'
-      } = req.query;
+    // INCIDENT 2026-05-16 v11 — restructured: cacheable path (no search,
+    // no excludeStationIds) is now wrapped in CacheManager.getOrSetSingleFlight
+    // so 50 concurrent SSR cold misses on the same country page coalesce
+    // into ONE Mongo aggregate. The Railway 15:06-16:18 log dump showed
+    // this endpoint draining the 100-slot pool over 4 minutes because
+    // every miss spawned its own aggregate. Pattern copied from
+    // /api/stations/popular at L163.
+    // Also writes a country-only LKG ("last known good") cache after
+    // every successful aggregate so the catch-block fallback can serve
+    // a populated country page even when the exact filter/sort/page
+    // combination has no cached entry.
+    const isTV = req.query.tv === '1';
+    const {
+      country,
+      state,
+      genre,
+      tags,
+      language,
+      search,
+      sort = 'votes',
+      order = 'desc',
+      excludeBroken = 'false',
+      excludeStationIds = '',
+      minVotes = 0,
+      timePeriod = 'all'
+    } = req.query;
 
-      const safeParams = isTV ? tvValidateParams(req.query) : {
-        page: parseInt(req.query.page as string) || 1,
-        limit: parseInt(req.query.limit as string) || 25
-      };
-      const { page, limit } = safeParams;
+    const safeParams = isTV ? tvValidateParams(req.query) : {
+      page: parseInt(req.query.page as string) || 1,
+      limit: parseInt(req.query.limit as string) || 25
+    };
+    const { page, limit } = safeParams;
 
-      const webCacheKey = !search && !excludeStationIds
-        ? `stations:list:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${minVotes}:${timePeriod}:${isTV ? 'tv' : 'web'}`
-        : null;
+    const webCacheKey = !search && !excludeStationIds
+      ? `stations:list:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${minVotes}:${timePeriod}:${isTV ? 'tv' : 'web'}`
+      : null;
 
-      if (webCacheKey) {
-        const cached = await CacheManager.get(webCacheKey);
-        if (cached) return void res.json(cached);
-      }
+    // Country-only LKG cache key — last successful payload for this
+    // country regardless of filter/sort/page. Used as second-tier
+    // fallback in the catch block when the exact webCacheKey is cold.
+    const lkgKey = `stations:list:lkg:${country || 'all'}:${isTV ? 'tv' : 'web'}`;
 
+    const computeStationsList = async () => {
       const filter: any = {};
 
       if (excludeBroken === 'true') filter.lastCheckOk = true;
@@ -1087,9 +1098,14 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       pipeline.push({ $skip: (Number(page) - 1) * Number(limit) });
       pipeline.push({ $limit: Number(limit) });
 
-      const stations = await Station.aggregate(pipeline).allowDiskUse(true).option({ maxTimeMS: 20000 });
+      // INCIDENT 2026-05-16 v11 — maxTimeMS reduced 20000 → 8000.
+      // With socketTimeoutMS now 30s, a query that runs >8s would still
+      // hold the pool slot for the full 30s ceiling. Failing fast at 8s
+      // lets the next caller (single-flight coalesced) retry sooner and
+      // keeps pool slots free during M10 multiplanner pressure.
+      const stations = await Station.aggregate(pipeline).allowDiskUse(true).option({ maxTimeMS: 8000 });
 
-      const response = {
+      return {
         stations,
         totalCount: total,
         count: total,
@@ -1100,33 +1116,49 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           pages: Math.ceil(total / Number(limit))
         }
       };
+    };
 
-      if (webCacheKey) await CacheManager.set(webCacheKey, response, { ttl: 300 });
+    try {
+      // INCIDENT 2026-05-16 v11 — single-flight wrap for the cacheable
+      // path. When webCacheKey is set (no search, no excludeStationIds),
+      // 50 concurrent SSR misses on the same key coalesce to ONE
+      // aggregate. The non-cacheable path (admin search, exclude lists)
+      // still runs directly because the cache key is request-specific.
+      const response = webCacheKey
+        ? await CacheManager.getOrSetSingleFlight(webCacheKey, computeStationsList, { ttl: 300 })
+        : await computeStationsList();
+
+      // Write country-level LKG cache after every successful aggregate
+      // so the catch-block fallback can serve a populated country page
+      // even when the exact filter/sort/page combination has no entry.
+      // 6h TTL — generous because LKG is intentionally only consulted
+      // when the live aggregate fails.
+      if (response && response.stations && response.stations.length > 0) {
+        try { await CacheManager.set(lkgKey, response, { ttl: 21600 }); } catch {}
+      }
 
       res.json(response);
     } catch (error: any) {
       logger.error(`❌ /api/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
-      try {
-        const isTV = req.query.tv === '1';
-        const { country, state, genre, tags, language, search, sort = 'votes',
-          excludeBroken = 'false', excludeStationIds = '', minVotes = 0, timePeriod = 'all' } = req.query;
-        const safeParams = isTV ? tvValidateParams(req.query) : {
-          page: parseInt(req.query.page as string) || 1,
-          limit: parseInt(req.query.limit as string) || 25
-        };
-        const { page, limit } = safeParams;
-        const webCacheKey = !search && !excludeStationIds
-          ? `stations:list:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${minVotes}:${timePeriod}:${isTV ? 'tv' : 'web'}`
-          : null;
-        if (webCacheKey) stale = await CacheManager.get(webCacheKey);
-      } catch {}
+      // Stale fallback is ONLY used for cacheable requests (no search,
+      // no excludeStationIds). For search / exclude requests, returning
+      // a country-level LKG would surface unrelated stations (e.g. a
+      // failed `?search=jazz` would return ALL of Germany's stations).
+      // Tier 1: exact webCacheKey (may already be populated by a
+      // parallel successful caller before we threw).
+      // Tier 2: country-level LKG so the visitor still gets a populated
+      // page even on a cold exact-key miss.
+      if (webCacheKey) {
+        try { stale = await CacheManager.get(webCacheKey); } catch {}
+        if (!stale) {
+          try { stale = await CacheManager.get(lkgKey); } catch {}
+        }
+      }
       res.set('Cache-Control', 'no-store');
-      const pageNum = parseInt(req.query.page as string) || 1;
-      const limitNum = parseInt(req.query.limit as string) || 25;
       res.json(stale ?? {
         stations: [], totalCount: 0, count: 0,
-        pagination: { page: pageNum, limit: limitNum, total: 0, pages: 0 }
+        pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 }
       });
     }
   });

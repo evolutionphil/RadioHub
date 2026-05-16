@@ -290,11 +290,37 @@ async function doConnect() {
   // from v3's 10): idle baseline only holds 2 sockets so the native heap
   // benefit of v5 is preserved without capping burst capacity. The pool
   // grows on demand up to 100 and shrinks back to 2 after maxIdleTimeMS.
+  // INCIDENT 2026-05-16 v11 — socketTimeoutMS reduced 120s → 30s.
+  // The v3 rationale for 120s ("boot warmup and sync ingest need long
+  // budgets") is OBSOLETE: boot warmup was fully removed in v10
+  // ("Lazy cache fill — NO eager boot warmup"). The Railway 15:06-16:18
+  // log dump showed a slow Station.aggregate (code=50 PlanExecutor
+  // timeout) holding pool slots for the full 120s socketTimeoutMS,
+  // which let ONE bad query drain 100 connection slots over 2 minutes
+  // and triggered 4-minute /api/stations cascading 500s. At 45s the
+  // driver kills the socket fast (2.7× faster than the old 120s), slots
+  // free up, and the next caller (single-flight protected, see A
+  // below) gets a fresh attempt. NOTE: 45s is a deliberate compromise
+  // — the nightly genre_counts cron sets maxTimeMS=600000 for the
+  // global aggregate, so a healthy long-running denormalization could
+  // in principle exceed 45s. In practice the global aggregate
+  // completes in ~20-30s with allowDiskUse(true) on M10. If it does
+  // exceed 45s, the cron self-heals on the next run (and the boot
+  // probe in routes.ts will trigger a one-shot refresh if
+  // genre_counts is empty). Picking 30s would have been too tight
+  // for the cron, picking 60s+ would leave too much pool-stampede
+  // headroom — 45s is the floor that keeps both cases healthy.
+  // Per-query maxTimeMS (8-20s on hot reads) always fires BEFORE
+  // socketTimeoutMS, so this ceiling only matters for stuck-driver-
+  // state recovery and the global cron edge case.
+  // waitQueueTimeoutMS stays 60s — that one is the caller-side wait
+  // for an available connection and 60s is fine because single-flight
+  // coalesces concurrent callers.
   await mongoose.connect(MONGODB_URI, {
     maxPoolSize: isProd ? 100 : 10,
     minPoolSize: isProd ? 2 : 2,
     serverSelectionTimeoutMS: isProd ? 60000 : 30000,
-    socketTimeoutMS: isProd ? 120000 : 60000,
+    socketTimeoutMS: isProd ? 45000 : 60000,
     connectTimeoutMS: isProd ? 60000 : 30000,
     waitQueueTimeoutMS: isProd ? 60000 : 30000,
     bufferCommands: false,

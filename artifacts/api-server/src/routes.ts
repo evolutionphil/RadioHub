@@ -695,6 +695,48 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ genre_counts denormalize scheduled: daily 3:30 AM (Europe/Berlin)');
 
+  // INCIDENT 2026-05-16 v11 — genre_counts emptiness probe + one-shot
+  // self-heal. The Railway 15:06-16:18 log dump showed `[precomputed-
+  // genres] cold-start aggregate failed for Poland / global` firing
+  // three times in a single hour. The cold-start branch is only
+  // supposed to run on the very first deploy (before the 3:30 AM
+  // cron has populated `genre_counts`), so seeing it fire repeatedly
+  // means `genre_counts` is empty or stale. When empty, every
+  // /api/genres/precomputed cold miss runs a 60s aggregate that
+  // pins a connection slot for the full duration — exactly the
+  // pool-drain pattern we just fixed for /api/stations.
+  // Strategy: 90 seconds after boot, count documents. If zero, log
+  // a loud warning AND fire one refreshGenreCounts() in the
+  // background so the next visitor never hits the cold-start dial.
+  // This is NOT eager boot warmup (forbidden per the "Lazy cache
+  // fill" rule in replit.md) — it is a one-shot self-heal for a
+  // missing denormalization table. The cron remains the steady-
+  // state owner.
+  setTimeout(async () => {
+    try {
+      const { GenreCount } = await import('@workspace/db-shared/mongo-schemas');
+      const count = await GenreCount.estimatedDocumentCount();
+      if (count === 0) {
+        logger.warn(
+          `⚠️ [genre_counts] EMPTY at boot — nightly 3:30 AM cron may not have run yet. ` +
+          `Triggering one-shot refresh in background to avoid cold-start aggregate cascade.`
+        );
+        // Fire-and-forget; refreshGenreCounts() has its own try/catch
+        // per country, so a partial failure won't take down boot.
+        PrecomputedGenresService.refreshGenreCounts()
+          .then(r => logger.log(
+            `✅ [genre_counts] self-heal complete: global=${r.global}, countries=${r.countries}, ` +
+            `failures=${r.failures}, ${r.durationMs}ms`
+          ))
+          .catch(e => logger.error(`❌ [genre_counts] self-heal failed: ${e?.message || e}`));
+      } else {
+        logger.log(`✅ [genre_counts] probe OK: ${count} documents present, cron is healthy`);
+      }
+    } catch (error: any) {
+      logger.warn(`[genre_counts] boot probe failed (non-critical): ${error?.message || error}`);
+    }
+  }, 90_000);
+
   cron.default.schedule('30 6 * * *', async () => {
     try {
       const start = Date.now();
