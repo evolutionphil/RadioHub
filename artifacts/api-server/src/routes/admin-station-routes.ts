@@ -1112,6 +1112,120 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // DUPLICATES DETECTION ENDPOINT (Admin Only)
+  // Task #485: the admin "Detect Duplicates" page calls this endpoint to
+  // group stations that share the same normalized name + country (or the
+  // same stream URL) so they can be merged or bulk-deleted. The previous
+  // build had no handler, so the SPA catch-all returned the index.html
+  // shell — which the page tried to JSON.parse and then walked through
+  // `new URL(station.favicon)`, surfacing the Safari "The string did not
+  // match the expected pattern" error to the user.
+  //
+  // Response shape (matches duplicates.tsx expectations):
+  //   { duplicates: [{ _id: {name, country} | string, count, stations: [...] }],
+  //     total: number, totalStations: number }
+  //
+  // Public read soft-fail rule does NOT apply here (admin-only, behind
+  // requireAdmin) — surface real errors so the admin can act on them.
+  app.get("/api/admin/stations/duplicates", requireAdmin, async (req, res) => {
+    try {
+      const thresholdRaw = parseFloat(String(req.query.threshold ?? '0.85'));
+      const threshold = Number.isFinite(thresholdRaw)
+        ? Math.min(1, Math.max(0, thresholdRaw))
+        : 0.85;
+      const minLen = threshold >= 0.95 ? 1 : threshold >= 0.85 ? 3 : 4;
+
+      const totalStations = await Station.estimatedDocumentCount();
+
+      // Group by normalized name + country. We deliberately stay on the
+      // simple, deterministic name-equality strategy (case + whitespace
+      // insensitive) instead of full fuzzy matching: it's fast, predictable,
+      // and matches what the merge UI already does. The threshold knob still
+      // gates the minimum normalized-name length so very short names ("FM",
+      // "Mix") don't dominate the result.
+      const groups = await Station.aggregate([
+        {
+          $project: {
+            _id: 1,
+            name: 1,
+            country: 1,
+            url: 1,
+            urlResolved: 1,
+            votes: 1,
+            playbackSuccessCount: 1,
+            lastCheckOk: 1,
+            favicon: 1,
+            localImagePath: 1,
+            normalizedName: {
+              $trim: {
+                input: { $toLower: { $ifNull: ['$name', ''] } },
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            $expr: { $gte: [{ $strLenCP: '$normalizedName' }, minLen] },
+          },
+        },
+        {
+          $group: {
+            _id: { name: '$normalizedName', country: { $ifNull: ['$country', ''] } },
+            count: { $sum: 1 },
+            stations: {
+              $push: {
+                _id: '$_id',
+                name: '$name',
+                url: '$url',
+                urlResolved: '$urlResolved',
+                votes: { $ifNull: ['$votes', 0] },
+                playbackSuccessCount: { $ifNull: ['$playbackSuccessCount', 0] },
+                lastCheckOk: { $ifNull: ['$lastCheckOk', false] },
+                favicon: '$favicon',
+                localImagePath: '$localImagePath',
+                country: '$country',
+              },
+            },
+          },
+        },
+        { $match: { count: { $gt: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 500 },
+      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+
+      // Strip null/empty favicons so the frontend never tries to
+      // `new URL("")` (the actual source of the Safari pattern-mismatch
+      // error). The frontend already tolerates a missing favicon.
+      const sanitized = groups.map((g: any) => ({
+        _id: { name: g._id?.name ?? '', country: g._id?.country ?? '' },
+        count: g.count,
+        stations: (g.stations || []).map((s: any) => ({
+          ...s,
+          favicon:
+            typeof s.favicon === 'string' && /^https?:\/\//i.test(s.favicon.trim())
+              ? s.favicon.trim()
+              : undefined,
+        })),
+      }));
+
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        duplicates: sanitized,
+        total: sanitized.length,
+        totalStations,
+        threshold,
+      });
+    } catch (error: any) {
+      logger.error(
+        `❌ /api/admin/stations/duplicates failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`,
+      );
+      res.status(500).json({
+        error: 'Failed to detect duplicates',
+        details: error?.message || String(error),
+      });
+    }
+  });
+
   // BULK DELETE STATIONS ENDPOINT (Admin Only) - For duplicates management
   app.post("/api/admin/delete-stations", requireAdmin, async (req, res) => {
     try {

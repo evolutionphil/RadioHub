@@ -238,6 +238,37 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
 export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
 
+  // Task #485: the admin Performance page exposes a "Clear SEO caches"
+  // button that POSTs here. Without a handler the SPA catch-all returned
+  // index.html and the page surfaced a generic "Failed to clear SEO caches"
+  // toast on every visit. The implementation drops the in-memory SEO HTML
+  // and page-data caches via `performanceCache.clearSeoCaches()` (already
+  // exposed for internal callers) and returns the cleared counts so the
+  // UI can render its result panel.
+  app.post(
+    "/api/admin/cache/clear-seo",
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const { performanceCache } = await import('../performance-cache');
+        const cleared = performanceCache.clearSeoCaches();
+        res.json({
+          success: true,
+          ...cleared,
+          message: `Cleared ${cleared.seoHtmlCleared} SEO HTML entries and ${cleared.pageDataCleared} page-data entries.`,
+        });
+      } catch (error: any) {
+        logger.error(
+          `❌ /api/admin/cache/clear-seo failed: ${error?.message || error}`,
+        );
+        res.status(500).json({
+          success: false,
+          message: error?.message || 'Failed to clear SEO caches',
+        });
+      }
+    },
+  );
+
   // Aggregated SEO health stats. Optional `?country=TR` narrows everything
   // to a single market. With no filter it returns the global picture.
   app.get(
