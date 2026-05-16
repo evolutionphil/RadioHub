@@ -173,7 +173,9 @@ export class PrecomputedPopularGlobalService {
    */
   static async getStale(limit: number): Promise<any[] | null> {
     try {
-      const stale = await CacheManager.get<any[]>(popularGlobalCacheKey(limit));
+      // Review fix — SWR envelopes are stored under `<key>:swr`, so we
+      // must use getSWR (not get) to retrieve the last-known-good list.
+      const stale = await CacheManager.getSWR<any[]>(popularGlobalCacheKey(limit));
       return Array.isArray(stale) && stale.length > 0 ? stale : null;
     } catch {
       return null;

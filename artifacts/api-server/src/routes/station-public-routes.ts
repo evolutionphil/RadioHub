@@ -112,8 +112,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // 6h stale) so a stressed cluster keeps serving last-known-good
       // popular stations during refresh windows instead of waiting
       // 5-15s on the aggregate.
-      const isGlobalPath = !country || country === 'all' || country === 'null';
-      const isStateFiltered = !!(state && state !== 'all');
+      const isGlobalPath = !country || country === 'all' || country === 'null' || country === 'undefined';
+      // Review fix — treat 'null'/'undefined' string sentinels and empty
+      // strings the same as a missing state so /api/stations/popular?
+      // country=all&state=null still routes through the global precompute
+      // branch instead of slipping into the legacy live aggregate.
+      const stateStr = typeof state === 'string' ? state : '';
+      const isStateFiltered = !!(stateStr && stateStr !== 'all' && stateStr !== 'null' && stateStr !== 'undefined');
 
       // INCIDENT 2026-05-16 — /api/stations/popular?country=all (homepage)
       // 500'd 8 times in an 8h window with code=50 multiplanner timeout.
