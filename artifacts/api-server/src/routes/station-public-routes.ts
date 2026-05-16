@@ -185,7 +185,22 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       };
       
       if (country && country !== 'all' && country !== 'null') {
-        Object.assign(countryFilter, normalizeCountryFilter(country as string));
+        // INCIDENT 2026-05-16: normalizeCountryFilter returns
+        // `{country: /Turkey/i}` (case-insensitive regex). Mongo
+        // CANNOT use the lastCheckOk_1_country_1_... compound index
+        // for a regex with /i flag — every popular request did a
+        // full collection scan and timed out at 15s (code 50,
+        // PlanExecutor MaxTimeMSExpired) on the Turkey query path.
+        // Fix: use exact equality on the canonical dbName when we
+        // have one (resolveToDbName already maps ISO/aliases →
+        // "Turkey", "Germany", etc.). Falls back to the legacy
+        // regex only for unknown country strings.
+        const canonical = resolveToDbName(country as string);
+        if (canonical) {
+          countryFilter.country = canonical;
+        } else {
+          Object.assign(countryFilter, normalizeCountryFilter(country as string));
+        }
       }
       if (state && state !== 'all') {
         countryFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
