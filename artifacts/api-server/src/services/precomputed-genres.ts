@@ -48,49 +48,52 @@ export class PrecomputedGenresService {
     return trackOperation('compute-genres', async () => {
     const stationFilter: any = isGlobal ? {} : normalizeCountryFilter(dbName);
 
-    // INCIDENT 2026-05-14: this aggregate ($unwind every station's tags +
-    // $group) cannot complete inside Atlas's plan-executor budget on the
-    // global dataset (40k+ stations) and was the source of:
-    //   "PrecomputedGenres startup warmup failed: MaxTimeMSExpired"
-    // For the GLOBAL path use the pre-aggregated Genre.stationCount that
-    // the recompute job maintains. For COUNTRY paths run the aggregate
-    // with a tight budget AND a try/catch fallback so a slow country
-    // never crashes the warmup or fills the log with a stack trace.
+    // INCIDENT 2026-05-14 (revisited 2026-05-16): the previous "skip on
+    // global" workaround caused /api/genres/precomputed to return only
+    // the 2 hand-curated Discoverable genres (Rock, Jazz) globally, so
+    // the mobile/web Genres page looked broken. We now ALWAYS run the
+    // unwind+group aggregate, but:
+    //   - Global gets a generous 60s budget + allowDiskUse so the
+    //     planner can spill ~40k stations × ~10 tags = ~400k unwound
+    //     docs to disk. Country keeps the tight 8s budget.
+    //   - try/catch falls back to the pre-aggregated Genre.stationCount
+    //     map if the aggregate ever times out, so we degrade to the
+    //     OLD behavior (Rock+Jazz only) instead of an empty page.
+    //   - Wrapped in SWR (28-day stale window) + nightly 5 AM cron, so
+    //     a real visitor effectively NEVER waits for this aggregate.
     let genreCounts: Array<{ _id: string; count: number }> = [];
-    if (!isGlobal) {
-      try {
-        genreCounts = await Station.aggregate([
-          { $match: stationFilter },
-          {
-            $addFields: {
-              allTags: {
-                $setUnion: [
-                  { $cond: [
-                    { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
-                    [{ $toLower: '$genre' }],
-                    []
-                  ]},
-                  { $cond: [
-                    { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
-                    { $map: {
-                      input: { $split: ['$tags', ','] },
-                      as: 'tag',
-                      in: { $toLower: { $trim: { input: '$$tag' } } }
-                    }},
-                    []
-                  ]}
-                ]
-              }
+    try {
+      genreCounts = await Station.aggregate([
+        { $match: stationFilter },
+        {
+          $addFields: {
+            allTags: {
+              $setUnion: [
+                { $cond: [
+                  { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
+                  [{ $toLower: '$genre' }],
+                  []
+                ]},
+                { $cond: [
+                  { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
+                  { $map: {
+                    input: { $split: ['$tags', ','] },
+                    as: 'tag',
+                    in: { $toLower: { $trim: { input: '$$tag' } } }
+                  }},
+                  []
+                ]}
+              ]
             }
-          },
-          { $unwind: '$allTags' },
-          { $match: { allTags: { $ne: '' } } },
-          { $group: { _id: '$allTags', count: { $sum: 1 } } }
-        ]).option({ maxTimeMS: 8000, allowDiskUse: true });
-      } catch (aggErr: any) {
-        logger.warn(`[precomputed-genres] country aggregate failed for ${dbName}, falling back to global counts: ${aggErr?.message || 'unknown'}`);
-        genreCounts = [];
-      }
+          }
+        },
+        { $unwind: '$allTags' },
+        { $match: { allTags: { $ne: '' } } },
+        { $group: { _id: '$allTags', count: { $sum: 1 } } }
+      ]).option({ maxTimeMS: isGlobal ? 60000 : 8000, allowDiskUse: true });
+    } catch (aggErr: any) {
+      logger.warn(`[precomputed-genres] aggregate failed for ${dbName || 'global'}: ${aggErr?.message || 'unknown'} — falling back to Genre.stationCount map`);
+      genreCounts = [];
     }
 
     const tagCounts = new Map<string, number>();
@@ -101,10 +104,11 @@ export class PrecomputedGenresService {
     const realGenres = await Genre.find({ isDiscoverable: true }).lean();
     const genreSet = new Set(realGenres.map(g => g.slug?.toLowerCase()));
 
-    // INCIDENT 2026-05-14: on the global path the heavy aggregate is now
-    // skipped, so seed tagCounts from the pre-aggregated Genre.stationCount
-    // field. Without this, the count loop below would emit an empty list.
-    if (isGlobal) {
+    // Cold-start safety: if the aggregate timed out on global, seed
+    // tagCounts from the pre-aggregated Genre.stationCount so the
+    // page still renders (with the OLD limited set) instead of empty.
+    if (isGlobal && tagCounts.size === 0) {
+      logger.warn('[precomputed-genres] global aggregate empty — using Genre.stationCount fallback');
       for (const g of realGenres) {
         const slug = (g.slug || g.name || '').toLowerCase();
         if (slug && (g as any).stationCount > 0) {
