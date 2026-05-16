@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppLog, UserListeningHistory, AuthToken, ApiKey as ApiKeyModel } from '@workspace/db-shared/mongo-schemas';
+import { Advertisement, FooterSocialMedia, SeoMetadata, User, UserFavorite, AppLog, UserListeningHistory, AuthToken, ApiKey as ApiKeyModel, Feedback } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import crypto from 'crypto';
 import { isQuotaExceeded, safeWrite, handleQuotaError, isQuotaError } from "../utils/quota-guard";
@@ -1000,6 +1000,97 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
       res.json(history);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch history' });
+    }
+  });
+
+  // ---- Admin: user feedback queue (read / triage / delete)
+  // Backs artifacts/megaradio/src/pages/admin/feedback.tsx. Accepts
+  // `status` and `type` query params; the special value 'all' (or
+  // missing) disables that filter. Response shape matches what the
+  // page consumes: `{ feedback, stats }`.
+  app.get("/api/admin/feedback", requireAdmin, async (req, res) => {
+    try {
+      const FEEDBACK_STATUSES = new Set(['open', 'in-progress', 'resolved', 'closed']);
+      const FEEDBACK_TYPES = new Set(['bug', 'feature', 'general']);
+
+      const statusRaw = typeof req.query.status === 'string' ? req.query.status : 'all';
+      const typeRaw = typeof req.query.type === 'string' ? req.query.type : 'all';
+
+      const filter: Record<string, unknown> = {};
+      if (statusRaw !== 'all' && FEEDBACK_STATUSES.has(statusRaw)) {
+        filter.status = statusRaw;
+      }
+      if (typeRaw !== 'all' && FEEDBACK_TYPES.has(typeRaw)) {
+        filter.type = typeRaw;
+      }
+
+      const limitRaw = Number.parseInt(typeof req.query.limit === 'string' ? req.query.limit : '', 10);
+      const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(limitRaw, 1), 500) : 200;
+
+      const [feedback, statusAgg, typeAgg, total] = await Promise.all([
+        Feedback.find(filter).sort({ createdAt: -1 }).limit(limit).lean(),
+        Feedback.aggregate([{ $group: { _id: '$status', count: { $sum: 1 } } }]),
+        Feedback.aggregate([{ $group: { _id: '$type', count: { $sum: 1 } } }]),
+        Feedback.countDocuments({}),
+      ]);
+
+      const statusCounts: Record<string, number> = {};
+      for (const row of statusAgg) statusCounts[row._id as string] = row.count as number;
+      const typeCounts: Record<string, number> = { bug: 0, feature: 0, general: 0 };
+      for (const row of typeAgg) {
+        if (row._id in typeCounts) typeCounts[row._id as string] = row.count as number;
+      }
+
+      res.json({
+        feedback,
+        stats: {
+          total,
+          open: statusCounts['open'] || 0,
+          inProgress: statusCounts['in-progress'] || 0,
+          resolved: statusCounts['resolved'] || 0,
+          closed: statusCounts['closed'] || 0,
+          byType: typeCounts,
+        },
+      });
+    } catch (error) {
+      logger.error(`❌ /api/admin/feedback list failed: ${(error as Error)?.message || error}`);
+      res.status(500).json({ error: 'Failed to fetch feedback' });
+    }
+  });
+
+  app.patch("/api/admin/feedback/:id", requireAdmin, async (req, res) => {
+    try {
+      const FEEDBACK_STATUSES = new Set(['open', 'in-progress', 'resolved', 'closed']);
+      const { status, response } = req.body ?? {};
+      const update: Record<string, unknown> = { updatedAt: new Date() };
+      if (typeof status === 'string') {
+        if (!FEEDBACK_STATUSES.has(status)) {
+          return void res.status(400).json({ error: 'Invalid status' });
+        }
+        update.status = status;
+      }
+      if (typeof response === 'string') {
+        const trimmed = response.trim();
+        if (trimmed.length > 0) update.response = trimmed;
+      }
+
+      const updated = await Feedback.findByIdAndUpdate(req.params.id, update, { returnDocument: 'after' }).lean();
+      if (!updated) return void res.status(404).json({ error: 'Feedback not found' });
+      res.json(updated);
+    } catch (error) {
+      logger.error(`❌ /api/admin/feedback PATCH failed: ${(error as Error)?.message || error}`);
+      res.status(500).json({ error: 'Failed to update feedback' });
+    }
+  });
+
+  app.delete("/api/admin/feedback/:id", requireAdmin, async (req, res) => {
+    try {
+      const deleted = await Feedback.findByIdAndDelete(req.params.id);
+      if (!deleted) return void res.status(404).json({ error: 'Feedback not found' });
+      res.json({ success: true });
+    } catch (error) {
+      logger.error(`❌ /api/admin/feedback DELETE failed: ${(error as Error)?.message || error}`);
+      res.status(500).json({ error: 'Failed to delete feedback' });
     }
   });
 
