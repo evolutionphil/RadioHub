@@ -311,13 +311,22 @@ export class SyncService {
       const { data, mirror } = await fetchWithMirrorFallback<any[]>(
         (host) => `https://${host}/json/stations/search`,
         {
-          timeout: 120000,
+          // Per-mirror 30s budget (task #484): 6 mirrors × 30s = 3min hard
+          // ceiling for one page — fast enough that a single dead mirror
+          // doesn't stall the nightly sync, generous enough for a 5000-row
+          // JSON page over a slow upstream.
+          timeout: 30000,
           headers: { 'User-Agent': 'RadioApp/1.0' },
           params: { limit: PAGE_SIZE, offset, hidebroken: false },
         },
         `sync:fetchAllStations p${page + 1}`,
       );
       const rows: any[] = Array.isArray(data) ? data : [];
+      if (page === 0) {
+        // Explicit cron:nightly trace line — surfaces the chosen mirror in
+        // the Railway tail without having to grep for `trying mirror=`.
+        logger.log(`🌙 Sync started via mirror=${mirror}`);
+      }
       logger.log(`📡 [sync:fetchAllStations] mirror=${mirror} page=${page + 1} rows=${rows.length}`);
       logger.log(
         `📥 Radio-Browser page ${page + 1}: offset=${offset} received=${rows.length}`,
