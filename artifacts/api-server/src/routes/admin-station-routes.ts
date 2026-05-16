@@ -63,6 +63,215 @@ type RecheckTagsJob = {
 };
 const recheckTagsJobs = new Map<string, RecheckTagsJob>();
 const RECHECK_TAGS_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
+
+// Task #490: in-memory tracker for the bulk auto-merge-all job. Kept
+// process-local on purpose — these jobs only run for a few minutes and
+// the admin UI polls every 1s, so persistence is unnecessary. If the
+// API server restarts mid-job, the frontend's polling loop will see a
+// 404 from /api/admin/merge-jobs/:jobId and surface the failure.
+type MergeAllJobMergedStation = {
+  groupName: string;
+  primaryStation: { name: string; country: string };
+  mergedStations: Array<{ name: string; votes: number; url: string }>;
+  fallbackUrlsAdded: number;
+  totalVotes: number;
+};
+type MergeAllJob = {
+  jobId: string;
+  status: 'running' | 'completed' | 'failed';
+  dryRun: boolean;
+  threshold: number;
+  startedAt: number;
+  finishedAt?: number;
+  errorMessage?: string;
+  progress: {
+    currentStep: string;
+    percentage: number;
+    groupsProcessed: number;
+    totalGroups: number;
+  };
+  results?: {
+    message: string;
+    mergedStations: MergeAllJobMergedStation[];
+    errors: string[];
+    // Convenience totals also used by the sync-fallback code path in
+    // the frontend (autoMergeAll in duplicates.tsx ~line 658).
+    totalGroups: number;
+    mergedGroups: number;
+    totalStationsToDelete: number;
+    totalStationsDeleted: number;
+  };
+};
+const mergeAllJobs = new Map<string, MergeAllJob>();
+const MERGE_ALL_JOB_TTL_MS = 60 * 60 * 1000; // 1h after completion
+function cleanupMergeAllJobs() {
+  const now = Date.now();
+  for (const [id, j] of mergeAllJobs) {
+    if (j.finishedAt && now - j.finishedAt > MERGE_ALL_JOB_TTL_MS) {
+      mergeAllJobs.delete(id);
+    }
+  }
+}
+
+async function runAutoMergeAllJob(jobId: string): Promise<void> {
+  const job = mergeAllJobs.get(jobId);
+  if (!job) return;
+
+  // Step 1: detect duplicate groups using the same aggregation as
+  // GET /api/admin/stations/duplicates so admins see exactly what the
+  // Duplicates page just listed.
+  const minLen = job.threshold >= 0.95 ? 1 : job.threshold >= 0.85 ? 3 : 4;
+  type GroupStation = {
+    _id: mongoose.Types.ObjectId;
+    name: string;
+    url: string;
+    votes: number;
+    country: string;
+  };
+  type DuplicateGroup = {
+    _id: { name: string; country: string };
+    count: number;
+    stations: GroupStation[];
+  };
+  const groups = (await Station.aggregate([
+    {
+      $project: {
+        _id: 1,
+        name: 1,
+        country: 1,
+        url: 1,
+        votes: 1,
+        normalizedName: {
+          $trim: { input: { $toLower: { $ifNull: ['$name', ''] } } },
+        },
+      },
+    },
+    { $match: { $expr: { $gte: [{ $strLenCP: '$normalizedName' }, minLen] } } },
+    {
+      $group: {
+        _id: { name: '$normalizedName', country: { $ifNull: ['$country', ''] } },
+        count: { $sum: 1 },
+        stations: {
+          $push: {
+            _id: '$_id',
+            name: '$name',
+            url: '$url',
+            votes: { $ifNull: ['$votes', 0] },
+            country: '$country',
+          },
+        },
+      },
+    },
+    { $match: { count: { $gt: 1 } } },
+    { $sort: { count: -1 } },
+    { $limit: 500 },
+  ]).option({ maxTimeMS: 20000, allowDiskUse: true })) as DuplicateGroup[];
+
+  job.progress.totalGroups = groups.length;
+  job.progress.currentStep = job.dryRun
+    ? `Previewing ${groups.length} groups…`
+    : `Merging ${groups.length} groups…`;
+  job.progress.percentage = groups.length === 0 ? 100 : 1;
+
+  const mergedStations: MergeAllJobMergedStation[] = [];
+  const errors: string[] = [];
+  let totalStationsToDelete = 0;
+  let totalStationsDeleted = 0;
+  let mergedGroups = 0;
+
+  for (let i = 0; i < groups.length; i++) {
+    const group = groups[i];
+    const groupLabel = group._id?.name || '(unnamed)';
+    try {
+      // Highest-voted wins. Stable on _id when tied for determinism.
+      const sorted = [...group.stations].sort((a, b) => {
+        const va = a.votes || 0;
+        const vb = b.votes || 0;
+        if (vb !== va) return vb - va;
+        return String(a._id).localeCompare(String(b._id));
+      });
+      const primary = sorted[0];
+      const duplicates = sorted.slice(1);
+      if (!primary || duplicates.length === 0) continue;
+
+      totalStationsToDelete += duplicates.length;
+      const totalVotes = duplicates.reduce(
+        (sum, s) => sum + (s.votes || 0),
+        primary.votes || 0,
+      );
+
+      if (!job.dryRun) {
+        type SlugOnly = { slug?: string | null };
+        await Station.findByIdAndUpdate(primary._id, { votes: totalVotes });
+        const primaryDoc = (await Station.findById(primary._id)
+          .select('slug')
+          .lean()) as SlugOnly | null;
+        if (primaryDoc?.slug) {
+          performanceCache.invalidateStationCache(primaryDoc.slug);
+        }
+        const dupDocs = (await Station.find({
+          _id: { $in: duplicates.map((d) => d._id) },
+        })
+          .select('slug')
+          .lean()) as SlugOnly[];
+        for (const d of dupDocs) {
+          if (d?.slug) performanceCache.invalidateStationCache(d.slug);
+        }
+        const delRes = await Station.deleteMany({
+          _id: { $in: duplicates.map((d) => d._id) },
+        });
+        totalStationsDeleted += delRes?.deletedCount ?? duplicates.length;
+      }
+
+      mergedGroups += 1;
+      mergedStations.push({
+        groupName: groupLabel,
+        primaryStation: {
+          name: primary.name || groupLabel,
+          country: primary.country || group._id?.country || '',
+        },
+        mergedStations: duplicates.map((d) => ({
+          name: d.name || '',
+          votes: d.votes || 0,
+          url: d.url || '',
+        })),
+        // No fallback-URL persistence layer exists yet — surface 0 so
+        // the UI line ("Added N fallback URL(s)") renders correctly
+        // without lying about a feature that isn't wired up.
+        fallbackUrlsAdded: 0,
+        totalVotes,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`${groupLabel}: ${msg}`);
+      logger.error(
+        `❌ auto-merge-all job ${jobId} failed on group "${groupLabel}": ${msg}`,
+      );
+    }
+
+    job.progress.groupsProcessed = i + 1;
+    job.progress.percentage = Math.round(((i + 1) / Math.max(groups.length, 1)) * 100);
+    job.progress.currentStep = job.dryRun
+      ? `Previewed ${i + 1}/${groups.length} groups`
+      : `Merged ${i + 1}/${groups.length} groups`;
+  }
+
+  job.status = 'completed';
+  job.finishedAt = Date.now();
+  job.progress.percentage = 100;
+  job.progress.currentStep = job.dryRun ? 'Dry run complete' : 'Merge complete';
+  job.results = {
+    message: job.dryRun
+      ? `Dry run: would merge ${mergedGroups} group${mergedGroups === 1 ? '' : 's'}, removing ${totalStationsToDelete} duplicate station${totalStationsToDelete === 1 ? '' : 's'}.`
+      : `Merged ${mergedGroups} group${mergedGroups === 1 ? '' : 's'}, deleted ${totalStationsDeleted} duplicate station${totalStationsDeleted === 1 ? '' : 's'}.`,
+    mergedStations,
+    errors,
+    totalGroups: groups.length,
+    mergedGroups,
+    totalStationsToDelete,
+    totalStationsDeleted,
+  };
+}
 function cleanupRecheckTagsJobs() {
   const now = Date.now();
   for (const [jobId, job] of recheckTagsJobs) {
@@ -1224,6 +1433,84 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         details: error?.message || String(error),
       });
     }
+  });
+
+  // BULK AUTO-MERGE EVERY DUPLICATE GROUP (Task #490)
+  //
+  // Companion to GET /api/admin/stations/duplicates. Enqueues an in-process
+  // async job that walks every duplicate group (same name+country grouping
+  // as the detection endpoint) and either previews (dryRun) or actually
+  // merges each one — keeping the highest-voted station as primary,
+  // summing votes, and deleting the rest. Progress is exposed via
+  // GET /api/admin/merge-jobs/:jobId so the frontend can poll for a
+  // running percentage and a final results summary.
+  //
+  // Frontend contract (artifacts/megaradio/src/pages/admin/duplicates.tsx
+  // `pollJobStatus` ~line 530): the polled job document must expose
+  //   { status: 'running'|'completed'|'failed',
+  //     progress: { currentStep, percentage, groupsProcessed, totalGroups },
+  //     results?: { message, mergedStations: [{ groupName,
+  //       primaryStation: { name, country },
+  //       mergedStations: [{ name, votes, url }],
+  //       fallbackUrlsAdded, totalVotes }], errors: string[] },
+  //     errorMessage?: string }
+  app.post("/api/admin/auto-merge-all", requireAdmin, async (req, res) => {
+    try {
+      const thresholdRaw = parseFloat(String(req.body?.threshold ?? '0.85'));
+      const threshold = Number.isFinite(thresholdRaw)
+        ? Math.min(1, Math.max(0, thresholdRaw))
+        : 0.85;
+      const dryRun = req.body?.dryRun !== false; // default to safe preview
+
+      const jobId = new mongoose.Types.ObjectId().toString();
+      const job: MergeAllJob = {
+        jobId,
+        status: 'running',
+        dryRun,
+        threshold,
+        startedAt: Date.now(),
+        progress: {
+          currentStep: 'Detecting duplicate groups…',
+          percentage: 0,
+          groupsProcessed: 0,
+          totalGroups: 0,
+        },
+      };
+      mergeAllJobs.set(jobId, job);
+      cleanupMergeAllJobs();
+
+      // Fire-and-forget — errors are captured into the job record.
+      void runAutoMergeAllJob(jobId).catch((err) => {
+        const j = mergeAllJobs.get(jobId);
+        if (!j) return;
+        j.status = 'failed';
+        j.errorMessage = err?.message || String(err);
+        j.finishedAt = Date.now();
+        logger.error(
+          `❌ /api/admin/auto-merge-all job ${jobId} crashed: ${j.errorMessage}`,
+        );
+      });
+
+      return void res.json({ success: true, async: true, jobId });
+    } catch (error: any) {
+      logger.error(
+        `❌ /api/admin/auto-merge-all failed to enqueue: ${error?.message || error}`,
+      );
+      return void res
+        .status(500)
+        .json({ success: false, error: error?.message || 'Failed to start auto-merge' });
+    }
+  });
+
+  // Polling endpoint for bulk merge job progress (Task #490).
+  app.get("/api/admin/merge-jobs/:jobId", requireAdmin, (req, res) => {
+    const { jobId } = req.params as { jobId: string };
+    const job = mergeAllJobs.get(jobId);
+    if (!job) {
+      return void res.status(404).json({ error: 'Job not found' });
+    }
+    res.set('Cache-Control', 'no-store');
+    return void res.json(job);
   });
 
   // BULK DELETE STATIONS ENDPOINT (Admin Only) - For duplicates management
