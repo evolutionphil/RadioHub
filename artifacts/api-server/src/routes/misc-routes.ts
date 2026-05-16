@@ -830,7 +830,7 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
             carplayErrors: [{ $unwind: '$logs' }, { $match: { 'logs.message': { $regex: 'CarPlay|Template', $options: 'i' }, 'logs.level': 'error' } }, { $count: 'count' }],
           },
         },
-      ]);
+      ]).option({ maxTimeMS: 15000, allowDiskUse: true });
       const pipeline = aggResult[0] || {};
       const byPlatform: Record<string, number> = {};
       (pipeline.byPlatform || []).forEach((p: any) => { if (p._id) byPlatform[p._id] = p.count; });

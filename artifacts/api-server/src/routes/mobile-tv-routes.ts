@@ -776,7 +776,7 @@ If you have any questions about this privacy policy or our data practices, pleas
           { $group: { _id: '$country', count: { $sum: 1 }, code: { $first: '$countrycode' } } },
           { $sort: { count: -1 } },
           { $limit: 200 }
-        ]).catch(() => [])
+        ]).option({ maxTimeMS: 15000, allowDiskUse: true }).catch(() => [])
       ]);
 
       const seenNames = new Set<string>();

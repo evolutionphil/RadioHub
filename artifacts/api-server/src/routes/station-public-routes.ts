@@ -90,8 +90,12 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const result = stripPlaceholders(station);
       await CacheManager.set(cacheKey, result, { ttl: 300 });
       res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch station' });
+    } catch (error: any) {
+      logger.error(`❌ /api/station/:identifier failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try { stale = await CacheManager.get(`station:detail:${req.params.identifier}`); } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(stale ?? null);
     }
   });
 
@@ -395,8 +399,16 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const result = stripPlaceholders(stations);
       await CacheManager.set(cacheKey, result, { ttl: 1800 });
       res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch stations with geo coordinates' });
+    } catch (error: any) {
+      logger.error(`❌ /api/stations/with-geo failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try {
+        const rawLimit = parseInt((req.query.limit as string) || '1000', 10);
+        const safeLimit = Math.min(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : 1000, 5000);
+        stale = await CacheManager.get(`stations:with_geo:${safeLimit}`);
+      } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(stale ?? []);
     }
   });
 
@@ -565,8 +577,20 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       }
 
       res.json(stripPlaceholders(stations));
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch nearby stations' });
+    } catch (error: any) {
+      logger.error(`❌ /api/stations/nearby failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try {
+        const { lat, lng, radius = 100, country, excludeBroken = 'false' } = req.query;
+        if (lat && lng) {
+          const snappedLat = Math.round(parseFloat(lat as string) * 100) / 100;
+          const snappedLng = Math.round(parseFloat(lng as string) * 100) / 100;
+          const countryKey = country && country !== 'all' ? (country as string) : 'global';
+          stale = await CacheManager.get(`nearby:${snappedLat}_${snappedLng}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`);
+        }
+      } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(stale ?? []);
     }
   });
 
@@ -639,8 +663,15 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       
       await CacheManager.set(cacheKey, result, { ttl: 1800 });
       res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch station statistics' });
+    } catch (error: any) {
+      logger.error(`❌ /api/stations/stats failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try { stale = await CacheManager.get('station_stats'); } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(stale ?? {
+        total: 0, working: 0, broken: 0, workingPercentage: 0,
+        lastUpdated: new Date().toISOString()
+      });
     }
   });
 
@@ -683,8 +714,15 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       await CacheManager.set(cacheKey, resultStations, { ttl: 3600 });
       res.json(stripPlaceholders(resultStations));
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch similar stations' });
+    } catch (error: any) {
+      logger.error(`❌ /api/stations/similar/:id failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try {
+        const limitNum = Number(req.query.limit ?? 6);
+        stale = await CacheManager.get(`similar_stations:${req.params.id}:${limitNum}`);
+      } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(stale ?? []);
     }
   });
 
@@ -701,8 +739,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       ]);
       if (!station) return void res.status(404).json({ error: 'No stations found for this country' });
       res.json(stripPlaceholders(station));
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch random station' });
+    } catch (error: any) {
+      logger.error(`❌ /api/stations/country-random failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      res.set('Cache-Control', 'no-store');
+      res.json(null);
     }
   });
 
@@ -848,8 +888,12 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const result = { stations: linked };
       await CacheManager.set(cacheKey, result, { ttl: 1800 });
       res.json(result);
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch linked stations' });
+    } catch (error: any) {
+      logger.error(`❌ /api/stations/:stationId/linked failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try { stale = await CacheManager.get(`stations:linked:${req.params.stationId}`); } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(stale ?? { stations: [] });
     }
   });
 
@@ -1060,9 +1104,30 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       if (webCacheKey) await CacheManager.set(webCacheKey, response, { ttl: 300 });
 
       res.json(response);
-    } catch (error) {
-      logger.error('Error fetching stations:', error);
-      res.status(500).json({ error: 'Failed to fetch stations' });
+    } catch (error: any) {
+      logger.error(`❌ /api/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try {
+        const isTV = req.query.tv === '1';
+        const { country, state, genre, tags, language, search, sort = 'votes',
+          excludeBroken = 'false', excludeStationIds = '', minVotes = 0, timePeriod = 'all' } = req.query;
+        const safeParams = isTV ? tvValidateParams(req.query) : {
+          page: parseInt(req.query.page as string) || 1,
+          limit: parseInt(req.query.limit as string) || 25
+        };
+        const { page, limit } = safeParams;
+        const webCacheKey = !search && !excludeStationIds
+          ? `stations:list:${country || 'all'}:${state || 'all'}:${genre || 'all'}:${tags || 'all'}:${language || 'all'}:${sort}:${page}:${limit}:${excludeBroken}:${minVotes}:${timePeriod}:${isTV ? 'tv' : 'web'}`
+          : null;
+        if (webCacheKey) stale = await CacheManager.get(webCacheKey);
+      } catch {}
+      res.set('Cache-Control', 'no-store');
+      const pageNum = parseInt(req.query.page as string) || 1;
+      const limitNum = parseInt(req.query.limit as string) || 25;
+      res.json(stale ?? {
+        stations: [], totalCount: 0, count: 0,
+        pagination: { page: pageNum, limit: limitNum, total: 0, pages: 0 }
+      });
     }
   });
 }
