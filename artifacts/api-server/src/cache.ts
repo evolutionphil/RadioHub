@@ -162,6 +162,37 @@ export class CacheManager {
   // stale value (broken loader, persistent Mongo timeout) becomes
   // visible via warn-level logs instead of being silently swallowed.
   private static swrRefreshFailures = new Map<string, number>();
+  // INCIDENT 2026-05-16 v12 — per-key waiter telemetry. When the M10
+  // cluster gets slow, a single-flight loader can be stuck for tens of
+  // seconds with dozens of concurrent callers piling on behind it. We
+  // had no visibility into "how bad" it was. Now we count waiters per
+  // key, track the peak, and emit ONE warn-line per minute summarizing
+  // the hottest contended key. No per-request log spam, no overhead on
+  // the cache-hit fast path.
+  private static waiterCounts = new Map<string, number>();
+  private static waiterPeaks = new Map<string, number>();
+  private static lastTelemetryLogMs = 0;
+  private static maybeLogTelemetry(): void {
+    const now = Date.now();
+    if (now - CacheManager.lastTelemetryLogMs < 60_000) return;
+    if (CacheManager.waiterPeaks.size === 0) return;
+    CacheManager.lastTelemetryLogMs = now;
+    let hottestKey = '';
+    let hottestPeak = 0;
+    let totalKeys = 0;
+    for (const [k, peak] of CacheManager.waiterPeaks) {
+      totalKeys++;
+      if (peak > hottestPeak) { hottestPeak = peak; hottestKey = k; }
+    }
+    if (hottestPeak >= 3) {
+      try {
+        logger.warn(
+          `[single-flight] last 60s: ${totalKeys} contended key(s), hottest="${hottestKey}" peak=${hottestPeak} waiters`
+        );
+      } catch {}
+    }
+    CacheManager.waiterPeaks.clear();
+  }
   static async getOrSetSingleFlight<T>(
     key: string,
     loader: () => Promise<T>,
@@ -170,7 +201,20 @@ export class CacheManager {
     const cached = await CacheManager.get<T>(key);
     if (cached !== null) return cached;
     const existing = CacheManager.inflight.get(key);
-    if (existing) return existing as Promise<T>;
+    if (existing) {
+      const w = (CacheManager.waiterCounts.get(key) || 0) + 1;
+      CacheManager.waiterCounts.set(key, w);
+      const peak = CacheManager.waiterPeaks.get(key) || 0;
+      if (w > peak) CacheManager.waiterPeaks.set(key, w);
+      try {
+        return await (existing as Promise<T>);
+      } finally {
+        const remaining = (CacheManager.waiterCounts.get(key) || 1) - 1;
+        if (remaining <= 0) CacheManager.waiterCounts.delete(key);
+        else CacheManager.waiterCounts.set(key, remaining);
+        CacheManager.maybeLogTelemetry();
+      }
+    }
     const p = (async () => {
       try {
         const value = await loader();
@@ -178,6 +222,7 @@ export class CacheManager {
         return value;
       } finally {
         CacheManager.inflight.delete(key);
+        CacheManager.maybeLogTelemetry();
       }
     })();
     CacheManager.inflight.set(key, p);

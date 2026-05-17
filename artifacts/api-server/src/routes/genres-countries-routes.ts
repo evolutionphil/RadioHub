@@ -732,60 +732,71 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
   });
 
   app.get("/api/genres/:slug/stations", async (req, res) => {
+    const { slug } = req.params;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
+    const skip = (page - 1) * limit;
+    const rawCountry = (req.query.country as string) || null;
+    const country = (rawCountry && rawCountry !== 'undefined' && rawCountry !== 'null')
+      ? (resolveToDbName(rawCountry) || rawCountry)
+      : null;
+
+    const cacheKey = `genre-stations:${slug}:${country || 'all'}:${page}:${limit}`;
     try {
-      const { slug } = req.params;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100);
-      const skip = (page - 1) * limit;
-      const rawCountry = (req.query.country as string) || null;
-      const country = (rawCountry && rawCountry !== 'undefined' && rawCountry !== 'null')
-        ? (resolveToDbName(rawCountry) || rawCountry)
-        : null;
+      // INCIDENT 2026-05-16 v12 — was hard-500 on timeout, breaking SSR
+      // genre pages. Single-flight + 8s maxTimeMS + soft-fail catch.
+      const result = await CacheManager.getOrSetSingleFlight(cacheKey, async () => {
+        const genre = await Genre.findOne({ slug }).maxTimeMS(5000).lean();
+        if (!genre) {
+          return { __notFound: true } as any;
+        }
 
-      const cacheKey = `genre-stations:${slug}:${country || 'all'}:${page}:${limit}`;
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) {
-        return void res.json(cached);
-      }
+        const filter: any = {
+          $or: [
+            { tags: { $regex: new RegExp(`(^|,)\\s*${(genre as any).name}\\s*(,|$)`, 'i') } },
+            { genre: { $regex: new RegExp((genre as any).name, 'i') } }
+          ]
+        };
+        if (country) {
+          filter.country = { $regex: new RegExp(`^${country}$`, 'i') };
+        }
 
-      const genre = await Genre.findOne({ slug }).lean();
-      if (!genre) {
+        const [stations, total] = await Promise.all([
+          Station.find(filter)
+            .select('name slug favicon url country language genre tags votes codec bitrate logoAssets')
+            .sort({ votes: -1 })
+            .skip(skip)
+            .limit(limit)
+            .maxTimeMS(8000)
+            .lean(),
+          Station.countDocuments(filter).maxTimeMS(8000)
+        ]);
+
+        return {
+          genre: { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount },
+          stations,
+          total,
+          page,
+          pages: Math.ceil(total / limit)
+        };
+      }, { ttl: 300 });
+
+      if ((result as any).__notFound) {
         return void res.status(404).json({ error: 'Genre not found' });
       }
-
-      const filter: any = {
-        $or: [
-          { tags: { $regex: new RegExp(`(^|,)\\s*${(genre as any).name}\\s*(,|$)`, 'i') } },
-          { genre: { $regex: new RegExp((genre as any).name, 'i') } }
-        ]
-      };
-      if (country) {
-        filter.country = { $regex: new RegExp(`^${country}$`, 'i') };
-      }
-
-      const [stations, total] = await Promise.all([
-        Station.find(filter)
-          .select('name slug favicon url country language genre tags votes codec bitrate logoAssets')
-          .sort({ votes: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        Station.countDocuments(filter)
-      ]);
-
-      const result = {
-        genre: { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount },
-        stations,
-        total,
-        page,
-        pages: Math.ceil(total / limit)
-      };
-
-      await CacheManager.set(cacheKey, result, { ttl: 300 });
       res.json(result);
-    } catch (error) {
-      console.error('Error fetching genre stations:', error);
-      res.status(500).json({ error: 'Failed to fetch genre stations' });
+    } catch (error: any) {
+      logger.error(`❌ /api/genres/:slug/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try { stale = await CacheManager.get(cacheKey); } catch {}
+      res.set('Cache-Control', 'no-store');
+      res.json(stale ?? {
+        genre: { name: slug, slug, stationCount: 0 },
+        stations: [],
+        total: 0,
+        page,
+        pages: 0
+      });
     }
   });
 }

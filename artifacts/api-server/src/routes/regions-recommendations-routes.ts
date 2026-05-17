@@ -333,8 +333,9 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
 
   // Get cities in a specific country
   app.get('/api/regions/:regionSlug/:countrySlug', async (req, res) => {
+    const { regionSlug, countrySlug } = req.params;
+    const cacheKey = `regions:country:${regionSlug}:${countrySlug}`;
     try {
-      const { regionSlug, countrySlug } = req.params;
       const region = (WORLD_REGIONS as any)[regionSlug];
       
       if (!region) {
@@ -354,103 +355,94 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
           error: 'Country not found'
         });
       }
-      
-      const cities = COUNTRY_CITIES[countryName] || [];
-      const citiesWithCounts = await Promise.all(cities.map(async (city) => {
+
+      // INCIDENT 2026-05-16 v12 — single-flight + tighter maxTimeMS.
+      // Previously every cold miss fanned out (cities.length + 1)
+      // aggregates each with a 15s budget. Under SSR fanout (multiple
+      // languages × parallel CDN expirations) this was the primary
+      // pool-drain source after /api/stations. Single-flight coalesces
+      // concurrent misses into ONE compute, 8s budget keeps the pool
+      // freeing fast, 5-minute cache TTL absorbs steady traffic.
+      const payload = await CacheManager.getOrSetSingleFlight(cacheKey, async () => {
+        const cities = COUNTRY_CITIES[countryName] || [];
+        const citiesWithCounts = await Promise.all(cities.map(async (city) => {
+          const searchPatterns = getCountrySearchPatterns(countryName);
+
+          const aggregationResults = await Station.aggregate([
+            {
+              $match: {
+                $and: [
+                  {
+                    $or: searchPatterns.map(pattern => ({
+                      country: { $regex: new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+                    }))
+                  },
+                  {
+                    $or: [
+                      { name: { $regex: new RegExp(city, 'i') } },
+                      { tags: { $regex: new RegExp(city, 'i') } }
+                    ]
+                  }
+                ]
+              }
+            },
+            { $group: { _id: "$_id" } },
+            { $count: "totalStations" }
+          ]).allowDiskUse(true).option({ maxTimeMS: 8000 });
+
+          const totalCount = aggregationResults[0]?.totalStations || 0;
+
+          return {
+            name: city,
+            slug: city.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, ''),
+            stationCount: totalCount
+          };
+        }));
+
         const searchPatterns = getCountrySearchPatterns(countryName);
-        
-        const aggregationResults = await Station.aggregate([
+
+        const allCountryStationsResult = await Station.aggregate([
           {
             $match: {
-              $and: [
-                {
-                  $or: searchPatterns.map(pattern => ({ 
-                    country: { $regex: new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
-                  }))
-                },
-                {
-                  $or: [
-                    { name: { $regex: new RegExp(city, 'i') } },
-                    { tags: { $regex: new RegExp(city, 'i') } }
-                  ]
-                }
-              ]
+              $or: searchPatterns.map(pattern => ({
+                country: { $regex: new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
+              }))
             }
           },
-          {
-            $group: {
-              _id: "$_id"
-            }
-          },
-          {
-            $count: "totalStations"
-          }
-        ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
-        
-        const totalCount = aggregationResults[0]?.totalStations || 0;
-        
+          { $group: { _id: "$_id" } },
+          { $count: "totalStations" }
+        ]).allowDiskUse(true).option({ maxTimeMS: 8000 });
+
+        const totalCountryStations = allCountryStationsResult[0]?.totalStations || 0;
+        const stationsInCities = citiesWithCounts.reduce((sum, city) => sum + city.stationCount, 0);
+        const stationsWithoutCity = totalCountryStations - stationsInCities;
+
+        const citiesWithStations = citiesWithCounts.filter(city => city.stationCount > 0);
+        citiesWithStations.sort((a, b) => b.stationCount - a.stationCount);
+
+        const finalCities = [];
+        if (stationsWithoutCity > 0) {
+          finalCities.push({ name: 'ALL', slug: 'all', stationCount: stationsWithoutCity });
+        }
+        finalCities.push(...citiesWithStations);
+
         return {
-          name: city,
-          slug: city.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, ''),
-          stationCount: totalCount
+          success: true,
+          data: {
+            region: { name: region.name, slug: regionSlug },
+            country: { name: countryName, slug: countrySlug },
+            cities: finalCities
+          }
         };
-      }));
-      
-      const searchPatterns = getCountrySearchPatterns(countryName);
-      
-      const allCountryStationsResult = await Station.aggregate([
-        {
-          $match: {
-            $or: searchPatterns.map(pattern => ({ 
-              country: { $regex: new RegExp(`^${pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }
-            }))
-          }
-        },
-        {
-          $group: {
-            _id: "$_id"
-          }
-        },
-        {
-          $count: "totalStations"
-        }
-      ]).allowDiskUse(true).option({ maxTimeMS: 15000 });
-      
-      const totalCountryStations = allCountryStationsResult[0]?.totalStations || 0;
-      const stationsInCities = citiesWithCounts.reduce((sum, city) => sum + city.stationCount, 0);
-      const stationsWithoutCity = totalCountryStations - stationsInCities;
-      
-      const citiesWithStations = citiesWithCounts.filter(city => city.stationCount > 0);
-      citiesWithStations.sort((a, b) => b.stationCount - a.stationCount);
-      
-      const finalCities = [];
-      if (stationsWithoutCity > 0) {
-        finalCities.push({
-          name: 'ALL',
-          slug: 'all',
-          stationCount: stationsWithoutCity
-        });
-      }
-      finalCities.push(...citiesWithStations);
-      
-      res.json({
-        success: true,
-        data: {
-          region: {
-            name: region.name,
-            slug: regionSlug
-          },
-          country: {
-            name: countryName,
-            slug: countrySlug
-          },
-          cities: finalCities
-        }
-      });
+      }, { ttl: 300 });
+
+      res.json(payload);
     } catch (error: any) {
       logger.error(`❌ /api/regions/:slug/:country failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
+      let stale: any = null;
+      try { stale = await CacheManager.get(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json({ success: true, data: { cities: [] } });
+      res.json(stale ?? { success: true, data: { region: { name: '', slug: regionSlug }, country: { name: '', slug: countrySlug }, cities: [] } });
     }
   });
 
@@ -543,26 +535,29 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
         }
       }
 
-      const [stations, total] = await Promise.all([
-        Station.find(stationFilter)
-          .sort({ [sortBy as string]: order === 'desc' ? -1 : 1 })
-          .skip(Number(offset))
-          .limit(Number(limit))
-          .lean(),
-        Station.countDocuments(stationFilter)
-      ]);
-      
-      res.json({
-        success: true,
-        data: {
-          stations,
-          total,
-          limit: Number(limit),
-          offset: Number(offset),
-          countryName,
-          cityName
-        }
-      });
+      // INCIDENT 2026-05-16 v12 — add explicit maxTimeMS (8s) on both
+      // queries. Previously these had no per-query budget and inherited
+      // the socketTimeoutMS(45s) ceiling, meaning ONE slow regex
+      // countDocuments could pin a connection for 45s. 8s is plenty
+      // for an indexed find + count and lets the pool recycle fast.
+      const stationsCacheKey = `regions:stations:${regionSlug}:${countrySlug}:${citySlug || 'none'}:${sortBy}:${order}:${limit}:${offset}`;
+      const payload = await CacheManager.getOrSetSingleFlight(stationsCacheKey, async () => {
+        const [stations, total] = await Promise.all([
+          Station.find(stationFilter)
+            .sort({ [sortBy as string]: order === 'desc' ? -1 : 1 })
+            .skip(Number(offset))
+            .limit(Number(limit))
+            .maxTimeMS(8000)
+            .lean(),
+          Station.countDocuments(stationFilter).maxTimeMS(8000)
+        ]);
+        return {
+          success: true,
+          data: { stations, total, limit: Number(limit), offset: Number(offset), countryName, cityName }
+        };
+      }, { ttl: 300 });
+
+      res.json(payload);
     } catch (error: any) {
       logger.error(`❌ /api/regions/:slug/:country/:city/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       res.set('Cache-Control', 'no-store');

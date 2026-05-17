@@ -636,6 +636,26 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
         logger.warn('🔧 MIGRATION: hasLogo skipped — primary ping failed (' + (pingErr?.message || 'unknown') + '), will retry');
         return;
       }
+      // INCIDENT 2026-05-16 v12 — short-circuit: if zero docs still need
+      // hasLogo, skip the entire scan and persist the migration key.
+      // Previously every boot re-walked the whole stations collection
+      // (millions of docs, 2000-doc batches with 100ms gaps) and racked
+      // up pool pressure for ~10 minutes even when nothing needed
+      // updating. The cache write at the end is what marks it done,
+      // but the cache lives in NodeCache + Redis — a process restart
+      // or eviction reset it. Now we check Mongo state of truth first.
+      try {
+        const pending = await Station.countDocuments({ hasLogo: { $exists: false } }).maxTimeMS(8000);
+        if (pending === 0) {
+          await CacheManager.set(migrationKey, true, { ttl: 86400 * 365 });
+          logger.log('✅ MIGRATION: hasLogo already populated for all stations — short-circuit, no scan needed');
+          return;
+        }
+        logger.log(`🔧 MIGRATION: hasLogo — ${pending} stations still need backfill`);
+      } catch (probeErr: any) {
+        logger.warn('🔧 MIGRATION: hasLogo pending-probe failed (' + (probeErr?.message || 'unknown') + '), will retry');
+        return;
+      }
       logger.log('🔧 MIGRATION: Populating hasLogo field for all stations...');
       const BATCH = 2000;
       let skip = 0, totalUpdated = 0;
@@ -695,40 +715,28 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   }, { timezone: 'Europe/Berlin' });
   logger.log('⏰ genre_counts denormalize scheduled: daily 3:30 AM (Europe/Berlin)');
 
-  // INCIDENT 2026-05-16 v11 — genre_counts emptiness probe + one-shot
-  // self-heal. The Railway 15:06-16:18 log dump showed `[precomputed-
-  // genres] cold-start aggregate failed for Poland / global` firing
-  // three times in a single hour. The cold-start branch is only
-  // supposed to run on the very first deploy (before the 3:30 AM
-  // cron has populated `genre_counts`), so seeing it fire repeatedly
-  // means `genre_counts` is empty or stale. When empty, every
-  // /api/genres/precomputed cold miss runs a 60s aggregate that
-  // pins a connection slot for the full duration — exactly the
-  // pool-drain pattern we just fixed for /api/stations.
-  // Strategy: 90 seconds after boot, count documents. If zero, log
-  // a loud warning AND fire one refreshGenreCounts() in the
-  // background so the next visitor never hits the cold-start dial.
-  // This is NOT eager boot warmup (forbidden per the "Lazy cache
-  // fill" rule in replit.md) — it is a one-shot self-heal for a
-  // missing denormalization table. The cron remains the steady-
-  // state owner.
+  // INCIDENT 2026-05-16 v12 — boot probe is now WARN-ONLY (no self-heal).
+  // v11's "fire refreshGenreCounts() if empty" was the TRIGGER of the
+  // 18:20+ cluster overload: refreshGenreCounts() runs 1 global + ~30
+  // country aggregates back-to-back, each holding a connection slot for
+  // up to socketTimeoutMS(45s). On a fresh boot with empty genre_counts
+  // it saturated the M10 pool within ~5 minutes and cascaded into
+  // /api/stations + /api/regions + /api/genres timeouts. Per replit.md
+  // "Lazy cache fill — NO eager boot warmup" rule, leave the table
+  // empty; the 3:30 AM cron will populate it. Cold misses on
+  // /api/genres/precomputed are protected by their own SWR + single-
+  // flight wrapper, so the first organic request per country pays the
+  // cost ONCE and serves stale-while-revalidate afterward.
   setTimeout(async () => {
     try {
       const { GenreCount } = await import('@workspace/db-shared/mongo-schemas');
       const count = await GenreCount.estimatedDocumentCount();
       if (count === 0) {
         logger.warn(
-          `⚠️ [genre_counts] EMPTY at boot — nightly 3:30 AM cron may not have run yet. ` +
-          `Triggering one-shot refresh in background to avoid cold-start aggregate cascade.`
+          `⚠️ [genre_counts] EMPTY at boot — nightly 3:30 AM cron has not populated yet. ` +
+          `NOT self-healing at boot (would drain the pool); lazy per-country fill on first organic request. ` +
+          `Trigger manually via POST /api/admin/genres/refresh-counts if needed.`
         );
-        // Fire-and-forget; refreshGenreCounts() has its own try/catch
-        // per country, so a partial failure won't take down boot.
-        PrecomputedGenresService.refreshGenreCounts()
-          .then(r => logger.log(
-            `✅ [genre_counts] self-heal complete: global=${r.global}, countries=${r.countries}, ` +
-            `failures=${r.failures}, ${r.durationMs}ms`
-          ))
-          .catch(e => logger.error(`❌ [genre_counts] self-heal failed: ${e?.message || e}`));
       } else {
         logger.log(`✅ [genre_counts] probe OK: ${count} documents present, cron is healthy`);
       }
