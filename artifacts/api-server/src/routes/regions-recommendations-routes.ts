@@ -248,18 +248,22 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
   });
 
   // Get countries in a specific region
+  // INCIDENT 2026-05-16 v12 — wrapped in single-flight cache (5min TTL)
+  // for consistency with the country/city sub-routes and to absorb any
+  // surge of organic SSR fanout. The compute itself is pure JS (no DB)
+  // so the cache also lets us serve from memory under load.
   app.get('/api/regions/:regionSlug', async (req, res) => {
+    const { regionSlug } = req.params;
     try {
-      const { regionSlug } = req.params;
       const region = (WORLD_REGIONS as any)[regionSlug];
-      
       if (!region) {
         return void res.status(404).json({
           success: false,
           error: 'Region not found'
         });
       }
-      
+      const cacheKey = `regions:list:${regionSlug}`;
+      const payload = await CacheManager.getOrSetSingleFlight(cacheKey, async () => {
       const accurateCountMap: Record<string, number> = {
         'The United States Of America': 1862,
         'China': 1673, 
@@ -313,21 +317,20 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
       
       const countriesWithStations = countries.filter((country: any) => country.stationCount > 0);
       countriesWithStations.sort((a: any, b: any) => b.stationCount - a.stationCount);
-      
-      res.json({
-        success: true,
-        data: {
-          region: {
-            name: region.name,
-            slug: regionSlug
+
+        return {
+          success: true,
+          data: {
+            region: { name: region.name, slug: regionSlug },
+            countries: countriesWithStations,
           },
-          countries: countriesWithStations
-        }
-      });
+        };
+      }, { ttl: 300 });
+      res.json(payload);
     } catch (error: any) {
       logger.error(`❌ /api/regions/:slug failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       res.set('Cache-Control', 'no-store');
-      res.json({ success: true, data: { region: { name: '', slug: req.params.regionSlug }, countries: [] } });
+      res.json({ success: true, data: { region: { name: '', slug: regionSlug }, countries: [] } });
     }
   });
 

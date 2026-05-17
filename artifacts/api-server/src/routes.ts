@@ -644,10 +644,17 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       // updating. The cache write at the end is what marks it done,
       // but the cache lives in NodeCache + Redis — a process restart
       // or eviction reset it. Now we check Mongo state of truth first.
+      // INCIDENT 2026-05-16 v12 — marker TTL is effectively PERMANENT
+      // (75 years ≈ year 2099). Previously `ttl: 86400 * 365` (1 year)
+      // meant a normal Redis eviction or process restart after that
+      // window would re-trigger the full scan. hasLogo is a one-time
+      // backfill; once done, nothing in the codebase ever clears the
+      // flag, so the marker should never expire.
+      const PERMANENT_TTL = 86400 * 365 * 75;
       try {
         const pending = await Station.countDocuments({ hasLogo: { $exists: false } }).maxTimeMS(8000);
         if (pending === 0) {
-          await CacheManager.set(migrationKey, true, { ttl: 86400 * 365 });
+          await CacheManager.set(migrationKey, true, { ttl: PERMANENT_TTL });
           logger.log('✅ MIGRATION: hasLogo already populated for all stations — short-circuit, no scan needed');
           return;
         }
@@ -671,7 +678,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
         skip += BATCH;
         await new Promise(r => setTimeout(r, 100));
       }
-      await CacheManager.set(migrationKey, true, { ttl: 86400 * 365 });
+      await CacheManager.set(migrationKey, true, { ttl: PERMANENT_TTL });
       logger.log(`✅ MIGRATION: hasLogo populated for ${totalUpdated} stations`);
     } catch (err: any) {
       // Downgrade to warn — migration is idempotent and retried on the next

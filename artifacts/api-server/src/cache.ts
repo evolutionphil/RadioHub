@@ -177,17 +177,17 @@ export class CacheManager {
     if (now - CacheManager.lastTelemetryLogMs < 60_000) return;
     if (CacheManager.waiterPeaks.size === 0) return;
     CacheManager.lastTelemetryLogMs = now;
-    let hottestKey = '';
-    let hottestPeak = 0;
-    let totalKeys = 0;
-    for (const [k, peak] of CacheManager.waiterPeaks) {
-      totalKeys++;
-      if (peak > hottestPeak) { hottestPeak = peak; hottestKey = k; }
-    }
-    if (hottestPeak >= 3) {
+    const entries = Array.from(CacheManager.waiterPeaks.entries())
+      .sort((a, b) => b[1] - a[1]);
+    const totalKeys = entries.length;
+    const top5 = entries.slice(0, 5).filter(([, peak]) => peak >= 3);
+    if (top5.length > 0) {
       try {
+        const summary = top5
+          .map(([k, peak]) => `"${k}"=${peak}`)
+          .join(', ');
         logger.warn(
-          `[single-flight] last 60s: ${totalKeys} contended key(s), hottest="${hottestKey}" peak=${hottestPeak} waiters`
+          `[single-flight] last 60s: ${totalKeys} contended key(s), top-${top5.length} by peak waiters: ${summary}`
         );
       } catch {}
     }

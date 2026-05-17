@@ -745,12 +745,14 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     try {
       // INCIDENT 2026-05-16 v12 — was hard-500 on timeout, breaking SSR
       // genre pages. Single-flight + 8s maxTimeMS + soft-fail catch.
-      const result = await CacheManager.getOrSetSingleFlight(cacheKey, async () => {
-        const genre = await Genre.findOne({ slug }).maxTimeMS(5000).lean();
-        if (!genre) {
-          return { __notFound: true } as any;
-        }
+      // Genre.findOne stays OUTSIDE the single-flight so a real 404 is
+      // a clean 404 (no `as any` sentinel inside the cached payload).
+      const genre = await Genre.findOne({ slug }).maxTimeMS(5000).lean();
+      if (!genre) {
+        return void res.status(404).json({ error: 'Genre not found' });
+      }
 
+      const result = await CacheManager.getOrSetSingleFlight(cacheKey, async () => {
         const filter: any = {
           $or: [
             { tags: { $regex: new RegExp(`(^|,)\\s*${(genre as any).name}\\s*(,|$)`, 'i') } },
@@ -781,17 +783,17 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         };
       }, { ttl: 300 });
 
-      if ((result as any).__notFound) {
-        return void res.status(404).json({ error: 'Genre not found' });
-      }
       res.json(result);
     } catch (error: any) {
       logger.error(`❌ /api/genres/:slug/stations failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
       try { stale = await CacheManager.get(cacheKey); } catch {}
       res.set('Cache-Control', 'no-store');
+      // Soft-fail payload: empty-but-shape-correct. `name: ''` (not the
+      // slug) so the client can't accidentally render a fake genre title
+      // when the DB is down.
       res.json(stale ?? {
-        genre: { name: slug, slug, stationCount: 0 },
+        genre: { name: '', slug, stationCount: 0 },
         stations: [],
         total: 0,
         page,
