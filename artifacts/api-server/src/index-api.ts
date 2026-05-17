@@ -960,7 +960,11 @@ app.use(session(sessionConfig));
       const MEMORY_GC_COOLDOWN = 10 * 60 * 1000;
       let lastMemoryWarningTime = 0;
       const MEMORY_WARNING_INTERVAL = 5 * 60 * 1000;
-      const RSS_WARNING_MB = parseInt(process.env.RSS_WARNING_MB || '1400', 10);
+      // RSS_WARNING_MB env removed (v13): there is no warning-only action
+      // between CRITICAL and RESTART; the periodic DIAG line already prints
+      // RSS on every interval, so a separate warning branch would just be
+      // duplicate noise. Only CRITICAL (log-only) and RESTART (SIGTERM)
+      // matter now.
       const RSS_CRITICAL_MB = parseInt(process.env.RSS_CRITICAL_MB || '1700', 10);
       const RSS_RESTART_MB = parseInt(process.env.RSS_RESTART_MB || '2200', 10);
 

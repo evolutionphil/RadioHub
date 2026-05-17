@@ -156,7 +156,9 @@ GC pattern, jemalloc working-set normal. Önceki eşikler
 
 **Yeni eşikler (v13)** — `artifacts/api-server/src/index-api.ts`
 `MEMORY MONITOR` bloğu:
-- `RSS_WARNING_MB = 1400` (eski 600; aksiyon zaten kaldırıldı)
+- `RSS_WARNING_MB` env'i kaldırıldı (v13). Aralarda aksiyon yok;
+  DIAG hattı zaten RSS'i periyodik basıyor, ikinci bir warning
+  branch'i sadece gürültü olurdu.
 - `RSS_CRITICAL_MB = 1700` (eski 800; sadece uyarı, cache flush yok)
 - `RSS_RESTART_MB = 2200` (eski 1200; gerçek OOM yakını için SIGTERM
   güvenlik ağı). ENV ile override edilebilir — Railway plan'ı
