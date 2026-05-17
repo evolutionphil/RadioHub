@@ -186,8 +186,8 @@ export class CacheManager {
         const summary = top5
           .map(([k, peak]) => `"${k}"=${peak}`)
           .join(', ');
-        logger.warn(
-          `[single-flight] last 60s: ${totalKeys} contended key(s), top-${top5.length} by peak waiters: ${summary}`
+        logger.log(
+          `🛬 SF stats: last 60s — ${totalKeys} contended key(s), top-${top5.length} by peak waiters: ${summary}`
         );
       } catch {}
     }
