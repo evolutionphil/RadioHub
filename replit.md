@@ -137,6 +137,52 @@ api-server source for `.hint(` and fails the build if any usage is
 missing the verification comment. It runs automatically as part of
 `pnpm run test` (which the root build invokes).
 
+## Memory monitor thresholds — DO NOT lower without re-reading
+
+INCIDENT 2026-05-17 v13: 5 saatlik prod log analizi gösterdi ki RSS
+780–840 MB arası **stabil** (sızıntı yok), V8 heap 50–200 MB sağlıklı
+GC pattern, jemalloc working-set normal. Önceki eşikler
+(`RSS_WARNING_MB=600`, `RSS_CRITICAL_MB=800`) Node + Sharp + Mongoose
++ SSR yapan bir proses için çok düşüktü ve dakikada bir alarm
+çalıyordu. Yan etkileri:
+
+1. Her 5 dk `performanceCache.clearSeoAndQuickCaches()` → bir sonraki
+   SSR isteği Redis'e + Mongo'ya iniyor → cache thrash + cold-miss
+   cascade. 16 Mayıs M10 dalgalarının ortağıydı.
+2. Her 2 dk `performanceCache.clearAllForMemoryRelief()` + force GC
+   + `clearOgCache()` — `OG image cache cleared: 0 entries` mesajının
+   defalarca tekrarı, alarmın boşa çaldığını kanıtladı.
+3. Heap 200 → 50 → 200 zikzakı force GC pressure ürünü.
+
+**Yeni eşikler (v13)** — `artifacts/api-server/src/index-api.ts`
+`MEMORY MONITOR` bloğu:
+- `RSS_WARNING_MB = 1400` (eski 600; aksiyon zaten kaldırıldı)
+- `RSS_CRITICAL_MB = 1700` (eski 800; sadece uyarı, cache flush yok)
+- `RSS_RESTART_MB = 2200` (eski 1200; gerçek OOM yakını için SIGTERM
+  güvenlik ağı). ENV ile override edilebilir — Railway plan'ı
+  değişirse `RSS_RESTART_MB` env'ini güncelle.
+- `heapMB > 3500` koşulu **AYNEN KORUNDU** — gerçek V8 heap leak'i
+  için backstop; force GC'yi tetikler (cache flush yine yok).
+- `MEMORY_GC_COOLDOWN = 10 min` (eski 2 min).
+
+**`native≈` metriği yeniden adlandırıldı**: artık `other≈ =
+rss - heap - external - ab`. Eski formül `rss - heapTotal`
+yanıltıcıydı (V8 isolate, JIT cache, jemalloc dirty page'ler,
+libuv buffer'larını native gibi gösteriyordu). Yeni "other" da
+saf native C++ değil — V8 isolate + JIT + glibc/jemalloc artıkları
+içerir, sadece eskisinden daha az yanıltıcı.
+
+**Mongo `maxPoolSize`** intentionally stays at 100 in prod
+(`db-mongo.ts:320`). v5'te 30'a düşürüldüğünde
+`MongoWaitQueueTimeoutError` storm'u oldu (cold-fallback bursts
+exceeded 30 inflight ops), v6'da 100'e geri çıkıldı. v13 task plan'ı
+bu kararı bilmiyordu; pool'a dokunulmadı (deviation).
+
+DO NOT re-add cache flush or force-GC tied to RSS thresholds without
+re-reading this section. The thresholds are intentionally far above
+the steady-state working set so the alarm only fires for **real**
+memory growth events, not normal jemalloc behavior.
+
 ## Lazy cache fill (NO eager boot warmup)
 
 INCIDENT 2026-05-15 v10 — boot warmup is REMOVED. Per user directive

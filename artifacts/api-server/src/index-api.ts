@@ -946,15 +946,23 @@ app.use(session(sessionConfig));
       console.log(`🔧 LD_PRELOAD=${ldPreload}`);
       console.log(`🔧 MALLOC_CONF=${mallocConf}`);
 
+      // INCIDENT 2026-05-17 v13 — alarm thresholds raised + thrash aksiyonları kaldırıldı.
+      // 17 Mayıs 5 saatlik log analizi: RSS 780-840 MB arası STABİL (sızıntı yok),
+      // V8 heap 50-200 MB sağlıklı, jemalloc working-set normal. Eski 600/800 MB
+      // eşikleri Node + Sharp + Mongoose + SSR yapan bir proses için çok düşüktü;
+      // her 5 dk seoHtmlCache + quickCache flush ediliyor, her 2 dk
+      // performanceCache + OG cache + force GC tetikleniyordu. Bu cache thrash
+      // 16 Mayıs M10 dalgalarının ortağıydı (#500 ana kök nedeni durdurdu).
+      // Yeni eşikler 4 GB --max-old-space-size + Railway plan limitine uygun.
+      // `heapMB > 3500` koşulu KORUNDU — gerçek V8 heap leak'i hâlâ yakalar.
+      // DO NOT lower without re-reading replit.md "Memory monitor thresholds".
       let lastMemoryGcTime = 0;
-      const MEMORY_GC_COOLDOWN = 2 * 60 * 1000;
-      let lastProactiveClearTime = 0;
-      const PROACTIVE_CLEAR_COOLDOWN = 5 * 60 * 1000;
+      const MEMORY_GC_COOLDOWN = 10 * 60 * 1000;
       let lastMemoryWarningTime = 0;
-      const MEMORY_WARNING_INTERVAL = 3 * 60 * 1000;
-      const RSS_WARNING_MB = parseInt(process.env.RSS_WARNING_MB || '600', 10);
-      const RSS_CRITICAL_MB = parseInt(process.env.RSS_CRITICAL_MB || '800', 10);
-      const RSS_RESTART_MB = parseInt(process.env.RSS_RESTART_MB || '1200', 10);
+      const MEMORY_WARNING_INTERVAL = 5 * 60 * 1000;
+      const RSS_WARNING_MB = parseInt(process.env.RSS_WARNING_MB || '1400', 10);
+      const RSS_CRITICAL_MB = parseInt(process.env.RSS_CRITICAL_MB || '1700', 10);
+      const RSS_RESTART_MB = parseInt(process.env.RSS_RESTART_MB || '2200', 10);
 
       const tryGc = () => {
         try {
@@ -1021,10 +1029,15 @@ app.use(session(sessionConfig));
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
         const extMB = Math.round(mem.external / 1024 / 1024);
         const abMB = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
-        console.log(`📊 STARTUP DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${extMB}MB ab=${abMB}MB native≈${rssMB - heapTotalMB}MB | conns=${conns} | handles: ${handleStr}`);
+        const otherMB = rssMB - heapTotalMB - extMB - abMB;
+        console.log(`📊 STARTUP DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${extMB}MB ab=${abMB}MB other≈${otherMB}MB | conns=${conns} | handles: ${handleStr}`);
       }, 10_000);
 
-      setInterval(() => { tryGc(); }, 60_000);
+      // v13 NOTE: unconditional 60s tryGc() loop was REMOVED — global.gc()
+      // every minute is exactly the force-GC pressure that produced the
+      // 200→50→200 heap zigzag during May 16/17. GC is now hint-only
+      // inside the DIAG block when heapMB > 3500 on a 10 min cooldown.
+      console.log(`🔧 GC hint available: ${typeof (globalThis as any).gc === 'function'}`);
 
       setInterval(async () => {
         try {
@@ -1034,7 +1047,12 @@ app.use(session(sessionConfig));
         const heapTotalMB = Math.round(mem.heapTotal / 1024 / 1024);
         const externalMB = Math.round(mem.external / 1024 / 1024);
         const abMB = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
-        const nativeMB = rssMB - heapTotalMB;
+        // v13: "native" eski formül (rss - heapTotal) yanıltıcıydı — V8 isolate,
+        // JIT cache, jemalloc dirty page'ler, libuv buffer'ları dahil her şeyi
+        // native gibi gösteriyordu. Yeni "other" = rss - heap - external - ab
+        // operatör için daha az yanıltıcı. Yine de bu native C++ değil; V8
+        // isolate + JIT + glibc/jemalloc artıkları içerir.
+        const otherMB = rssMB - heapTotalMB - externalMB - abMB;
         const now = Date.now();
 
         if ((now - lastDiagLogTime) > DIAG_LOG_INTERVAL) {
@@ -1046,7 +1064,7 @@ app.use(session(sessionConfig));
           const botRpm = Math.round(botReqsLastWindow / winMin);
           const userRpm = Math.round(userReqsLastWindow / winMin);
           const majorRpm = Math.round(majorBotReqsLastWindow / winMin);
-          console.log(`📊 DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${externalMB}MB ab=${abMB}MB native≈${nativeMB}MB | conns=${conns} | reqs active bot:${activeBotReqs} user:${activeUserReqs} | rpm bot:${botRpm}(major:${majorRpm}) user:${userRpm} | handles: ${handleStr}`);
+          console.log(`📊 DIAG: rss=${rssMB}MB heap=${heapMB}/${heapTotalMB}MB ext=${externalMB}MB ab=${abMB}MB other≈${otherMB}MB | conns=${conns} | reqs active bot:${activeBotReqs} user:${activeUserReqs} | rpm bot:${botRpm}(major:${majorRpm}) user:${userRpm} | handles: ${handleStr}`);
           botReqsLastWindow = 0;
           userReqsLastWindow = 0;
           majorBotReqsLastWindow = 0;
@@ -1056,39 +1074,34 @@ app.use(session(sessionConfig));
           const conns = await getConnectionCount();
           const handles = getHandleDiagnostics();
           const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
-          console.error(`🔄 RSS RESTART: rss=${rssMB}MB heap=${heapMB}MB ext=${externalMB}MB native≈${nativeMB}MB | conns=${conns} | handles: ${handleStr}`);
+          console.error(`🔄 RSS RESTART: rss=${rssMB}MB heap=${heapMB}MB ext=${externalMB}MB other≈${otherMB}MB | conns=${conns} | handles: ${handleStr}`);
           process.kill(process.pid, 'SIGTERM');
           return;
         }
 
-        if (rssMB > RSS_WARNING_MB && (now - lastProactiveClearTime) > PROACTIVE_CLEAR_COOLDOWN) {
-          console.log(`🧹 RSS MEMORY RELIEF: rss=${rssMB}MB heap=${heapMB}MB ext=${externalMB}MB native≈${nativeMB}MB — clearing SEO & quick caches`);
-          performanceCache.clearSeoAndQuickCaches();
-          tryGc();
-          lastProactiveClearTime = now;
-        }
-
+        // INCIDENT 2026-05-17 v13 — RSS MEMORY RELIEF + MEMORY CRITICAL flush
+        // aksiyonları kaldırıldı. 17 Mayıs log analizi: heap 50-200 MB stabil,
+        // RSS 780-840 MB normal working set. Eski "relief" her 5 dk
+        // seoHtmlCache+quickCache flush ediyordu → bir sonraki SSR isteği
+        // Redis'e + Mongo'ya iniyor, cache thrash + cold-miss cascade. Eski
+        // "critical" her 2 dk performanceCache + OG cache flush + force GC
+        // yapıyordu — "OG image cache cleared: 0 entries" tekrarı silinecek
+        // bir şey olmadığı halde alarmın boşa çaldığını kanıtladı.
+        // YENİ DAVRANIŞ: sadece uyarı logla, aksiyon yok. Gerçek tehlike
+        // RSS_RESTART_MB'de SIGTERM ile karşılanır; heap > 3500 MB hâlâ
+        // gerçek V8 leak'i için bir backstop.
         if (rssMB > RSS_CRITICAL_MB || heapMB > 3500) {
           if ((now - lastMemoryWarningTime) > MEMORY_WARNING_INTERVAL) {
             const conns = await getConnectionCount();
-            console.warn(`⚠️ MEMORY WARNING: rss=${rssMB}MB heap=${heapMB}MB/${heapTotalMB}MB ext=${externalMB}MB native≈${nativeMB}MB conns=${conns}`);
+            console.warn(`⚠️ MEMORY HIGH: rss=${rssMB}MB heap=${heapMB}MB/${heapTotalMB}MB ext=${externalMB}MB other≈${otherMB}MB conns=${conns} — sadece gözlem, aksiyon yok`);
             lastMemoryWarningTime = now;
           }
-          if ((now - lastMemoryGcTime) > MEMORY_GC_COOLDOWN) {
+          // V8 heap gerçekten yüksekse (>3500 MB) 10 dk'da bir hint GC.
+          // Normal RSS yüksekliği için GC çağırmak işe yaramaz (heap zaten
+          // küçük), sadece V8'i thrash eder.
+          if (heapMB > 3500 && (now - lastMemoryGcTime) > MEMORY_GC_COOLDOWN) {
             lastMemoryGcTime = now;
-            // INCIDENT 2026-05-15 v5: previous handler also called
-            // CacheManager.clearByPattern('precomputed_'|'stations:'|'genres:'),
-            // which deletes keys from REDIS — a separate process. That cannot
-            // reduce THIS process's RSS (the actual symptom we're reacting
-            // to), only causes a cluster-wide cache stampede every 2 minutes.
-            // Drop the Redis flush; keep only in-process cache eviction +
-            // forced GC, which is what actually frees RSS.
-            console.error(`🚨 MEMORY CRITICAL: rss=${rssMB}MB heap=${heapMB}MB — clearing in-process caches + forcing GC`);
-            performanceCache.clearAllForMemoryRelief();
-            try {
-              const { clearOgCache } = await import('./og-image-generator');
-              clearOgCache();
-            } catch {}
+            console.warn(`🧹 v13: heap=${heapMB}MB > 3500MB — hinting GC (no cache flush)`);
             tryGc();
           }
         }
@@ -1114,12 +1127,13 @@ app.use(session(sessionConfig));
             const heapMB = Math.round(mem.heapUsed / 1024 / 1024);
             const rssMB = Math.round(mem.rss / 1024 / 1024);
             const extMB = Math.round(mem.external / 1024 / 1024);
-            const nativeMB = rssMB - Math.round(mem.heapTotal / 1024 / 1024);
+            const abMB2 = Math.round((mem.arrayBuffers || 0) / 1024 / 1024);
+            const otherMB2 = rssMB - Math.round(mem.heapTotal / 1024 / 1024) - extMB - abMB2;
             const gcStatsLocal = getGcStats();
             const ops = getActiveOperationsSummary();
             const handles = getHandleDiagnostics();
             const socketCount = (handles['Socket'] || 0) + (handles['TLSSocket'] || 0);
-            console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms | heap=${heapMB}MB rss=${rssMB}MB ext=${extMB}MB native≈${nativeMB}MB sockets=${socketCount} | GC: count=${gcStatsLocal.count} max=${gcStatsLocal.maxMs}ms total=${gcStatsLocal.totalMs}ms | Active: ${ops}`);
+            console.error(`🚨 EVENT LOOP BLOCKED: ${lag}ms | heap=${heapMB}MB rss=${rssMB}MB ext=${extMB}MB other≈${otherMB2}MB sockets=${socketCount} | GC: count=${gcStatsLocal.count} max=${gcStatsLocal.maxMs}ms total=${gcStatsLocal.totalMs}ms | Active: ${ops}`);
             resetGcStats();
           }
         }
