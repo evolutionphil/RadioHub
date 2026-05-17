@@ -32,6 +32,31 @@ import {
 // so a newer alert automatically un-suppresses the banner.
 const COVERAGE_DROP_ACK_KEY = 'coverage-drop-alert-ack';
 
+// Convert a lowercased city name (e.g. "new york", "san josé") to a
+// title-cased canonical spelling ("New York", "San José"). Used by the
+// admin "merge duplicate cities" endpoints (Task #488). Uses Unicode-aware
+// boundaries so non-ASCII letters (Turkish "İ"/"ı", accented vowels, etc.)
+// are upper-cased correctly. Splits keep separators (spaces, hyphens,
+// apostrophes) so we can rejoin without losing the original layout.
+function toTitleCaseCity(lower: string): string {
+  if (!lower) return '';
+  return lower
+    .toLocaleLowerCase()
+    .split(/(\s+|[-'’])/)
+    .map((part) => {
+      if (!part) return part;
+      const first = part.charAt(0);
+      // Only upper-case actual letters; skip separators like "-" or spaces.
+      const upper = first.toLocaleUpperCase();
+      if (upper === first && first !== first.toLocaleLowerCase()) {
+        // Already non-letter; return unchanged.
+        return part;
+      }
+      return upper + part.slice(1);
+    })
+    .join('');
+}
+
 const faviconUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -1511,6 +1536,246 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
     res.set('Cache-Control', 'no-store');
     return void res.json(job);
+  });
+
+  // CITY DUPLICATES DETECTION (Admin Only)
+  // Task #488: the admin Cities cleanup page calls these endpoints to find
+  // stations whose `city` field differs only by capitalization / whitespace
+  // (e.g. "ankara", "ANKARA", "Ankara") and merge them onto a single
+  // canonical spelling. Without these handlers the SPA catch-all returned
+  // the index.html shell, the JSON parse failed, and the page silently did
+  // nothing.
+  //
+  // Response shape (matches cities.tsx expectations):
+  //   {
+  //     totalCityGroups: number,
+  //     totalStationsAffected: number,
+  //     duplicates: [{
+  //       canonical: string,        // proper-cased target spelling
+  //       lowerCity: string,        // normalised key (lowercase, trimmed)
+  //       variations: [{ name, count, countries: string[] }],
+  //       totalStations: number,
+  //       countries: string[],
+  //     }],
+  //   }
+  app.get("/api/admin/cities/duplicates", requireAdmin, async (_req, res) => {
+    try {
+      const groups = await Station.aggregate([
+        {
+          $match: {
+            city: { $type: 'string', $ne: '' },
+          },
+        },
+        {
+          $project: {
+            city: 1,
+            country: 1,
+            lowerCity: {
+              $trim: { input: { $toLower: '$city' } },
+            },
+          },
+        },
+        {
+          $match: {
+            $expr: { $gte: [{ $strLenCP: '$lowerCity' }, 2] },
+          },
+        },
+        {
+          $group: {
+            _id: { lowerCity: '$lowerCity', name: '$city' },
+            count: { $sum: 1 },
+            countries: { $addToSet: { $ifNull: ['$country', ''] } },
+          },
+        },
+        {
+          $group: {
+            _id: '$_id.lowerCity',
+            variations: {
+              $push: {
+                name: '$_id.name',
+                count: '$count',
+                countries: '$countries',
+              },
+            },
+            totalStations: { $sum: '$count' },
+            allCountries: { $addToSet: '$countries' },
+          },
+        },
+        { $match: { $expr: { $gt: [{ $size: '$variations' }, 1] } } },
+        { $sort: { totalStations: -1 } },
+        { $limit: 500 },
+      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+
+      const duplicates = groups.map((g: any) => {
+        const lowerCity: string = g._id ?? '';
+        const variations: Array<{ name: string; count: number; countries: string[] }> = (
+          g.variations || []
+        ).map((v: any) => ({
+          name: String(v.name ?? ''),
+          count: Number(v.count ?? 0),
+          countries: Array.isArray(v.countries)
+            ? Array.from(new Set(v.countries.filter((c: any) => typeof c === 'string' && c)))
+            : [],
+        }));
+        // Pick the canonical spelling. Preference order:
+        //   1. An existing variation that already matches proper title-case.
+        //   2. The most popular variation by station count.
+        //   3. A computed title-case from the lowerCity.
+        const titleCase = toTitleCaseCity(lowerCity);
+        const titleCaseMatch = variations.find((v) => v.name === titleCase);
+        const mostPopular = [...variations].sort((a, b) => b.count - a.count)[0];
+        const canonical = titleCaseMatch
+          ? titleCaseMatch.name
+          : mostPopular
+            ? mostPopular.name
+            : titleCase;
+        const countries = Array.from(
+          new Set(
+            (g.allCountries || [])
+              .flat()
+              .filter((c: any) => typeof c === 'string' && c),
+          ),
+        ) as string[];
+        return {
+          canonical,
+          lowerCity,
+          variations,
+          totalStations: Number(g.totalStations ?? 0),
+          countries,
+        };
+      });
+
+      const totalStationsAffected = duplicates.reduce(
+        (sum, d) => sum + d.totalStations,
+        0,
+      );
+
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        totalCityGroups: duplicates.length,
+        totalStationsAffected,
+        duplicates,
+      });
+    } catch (error: any) {
+      logger.error(
+        `❌ /api/admin/cities/duplicates failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`,
+      );
+      res.status(500).json({
+        error: 'Failed to detect city duplicates',
+        details: error?.message || String(error),
+      });
+    }
+  });
+
+  // MERGE CITY DUPLICATES (Admin Only)
+  // Walks the same detection pipeline and, for every group, rewrites the
+  // `city` field of every station whose spelling differs from the chosen
+  // canonical. Stations are never deleted — only the `city` string is
+  // standardised.
+  app.post("/api/admin/cities/merge-duplicates", requireAdmin, async (_req, res) => {
+    try {
+      const groups = await Station.aggregate([
+        {
+          $match: {
+            city: { $type: 'string', $ne: '' },
+          },
+        },
+        {
+          $project: {
+            city: 1,
+            lowerCity: {
+              $trim: { input: { $toLower: '$city' } },
+            },
+          },
+        },
+        {
+          $match: {
+            $expr: { $gte: [{ $strLenCP: '$lowerCity' }, 2] },
+          },
+        },
+        {
+          $group: {
+            _id: { lowerCity: '$lowerCity', name: '$city' },
+            count: { $sum: 1 },
+          },
+        },
+        {
+          $group: {
+            _id: '$_id.lowerCity',
+            variations: {
+              $push: { name: '$_id.name', count: '$count' },
+            },
+          },
+        },
+        { $match: { $expr: { $gt: [{ $size: '$variations' }, 1] } } },
+      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+
+      const mergeOperations: Array<{
+        canonical: string;
+        merged: string[];
+        stationsUpdated: number;
+      }> = [];
+      let totalStationsUpdated = 0;
+      let cityGroupsProcessed = 0;
+
+      for (const g of groups) {
+        const lowerCity: string = g._id ?? '';
+        const variations: Array<{ name: string; count: number }> = (g.variations || []).map(
+          (v: any) => ({ name: String(v.name ?? ''), count: Number(v.count ?? 0) }),
+        );
+        const titleCase = toTitleCaseCity(lowerCity);
+        const titleCaseMatch = variations.find((v) => v.name === titleCase);
+        const mostPopular = [...variations].sort((a, b) => b.count - a.count)[0];
+        const canonical = titleCaseMatch
+          ? titleCaseMatch.name
+          : mostPopular
+            ? mostPopular.name
+            : titleCase;
+
+        const toRewrite = variations
+          .map((v) => v.name)
+          .filter((name) => name !== canonical);
+        if (toRewrite.length === 0) continue;
+
+        const result = await Station.updateMany(
+          { city: { $in: toRewrite } },
+          { $set: { city: canonical } },
+        );
+        const updated =
+          typeof (result as any).modifiedCount === 'number'
+            ? (result as any).modifiedCount
+            : typeof (result as any).nModified === 'number'
+              ? (result as any).nModified
+              : 0;
+        totalStationsUpdated += updated;
+        cityGroupsProcessed += 1;
+        mergeOperations.push({
+          canonical,
+          merged: toRewrite,
+          stationsUpdated: updated,
+        });
+      }
+
+      // Sort merge ops by impact so the UI's "top 5" preview is meaningful.
+      mergeOperations.sort((a, b) => b.stationsUpdated - a.stationsUpdated);
+
+      res.set('Cache-Control', 'no-store');
+      res.json({
+        success: true,
+        stationsUpdated: totalStationsUpdated,
+        cityGroupsProcessed,
+        mergeOperations,
+      });
+    } catch (error: any) {
+      logger.error(
+        `❌ /api/admin/cities/merge-duplicates failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`,
+      );
+      res.status(500).json({
+        success: false,
+        error: 'Failed to merge city duplicates',
+        details: error?.message || String(error),
+      });
+    }
   });
 
   // BULK DELETE STATIONS ENDPOINT (Admin Only) - For duplicates management
