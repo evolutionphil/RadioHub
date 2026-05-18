@@ -4272,4 +4272,296 @@ ${keysText}`;
       res.status(500).json({ error: 'Failed to fetch analytics summary' });
     }
   });
+
+  // =========================================================================
+  // SEO TRANSLATIONS HUB (Task #519 — 2026-05-18)
+  // Five endpoints that back the /admin/seo-translations dashboard page.
+  // =========================================================================
+
+  const SEO_KEYS_ALL = [
+    // station-level (7)
+    'default_station_about', 'from', 'genres', 'station_additional_info',
+    'live_radio', 'online_radio', 'radio_streaming',
+    // homepage-level (8)
+    'hero_worlds_best_radio', 'hero_over_100_countries', 'hero_listen_everywhere',
+    'nav_genres', 'nav_regions', 'nav_stations',
+    'popular_genres_title', 'popular_countries_title',
+  ] as const;
+
+  let inFlightApplyJob: Promise<unknown> | null = null;
+  let inFlightRegenerateJob: Promise<unknown> | null = null;
+
+  // GET /api/admin/seo-translations/coverage
+  // Returns per-language coverage for the 15 required SEO keys + qualified-language state.
+  app.get('/api/admin/seo-translations/coverage', deps.requireAdmin, async (_req: any, res: any) => {
+    try {
+      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+      const { getQualifiedLanguagesState } = await import('../seo/qualified-languages');
+
+      const [qualifiedState, keyDocs] = await Promise.all([
+        getQualifiedLanguagesState(),
+        TranslationKey.find({ key: { $in: SEO_KEYS_ALL as unknown as string[] } }, { key: 1 }).lean(),
+      ]);
+
+      const keyIdByName: Record<string, any> = {};
+      (keyDocs as any[]).forEach((k) => { keyIdByName[k.key] = k._id; });
+
+      const presentKeyIds = Object.values(keyIdByName);
+      const allLangCodes = (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).map((l: any) => l.code as string);
+
+      // One aggregation — fetch all translations for the 15 SEO keys across all languages.
+      const translationRows: { language: string; key: string }[] = await Translation.aggregate([
+        { $match: { keyId: { $in: presentKeyIds }, language: { $in: allLangCodes } } },
+        { $lookup: { from: 'translationkeys', localField: 'keyId', foreignField: '_id', as: 'k' } },
+        { $unwind: '$k' },
+        { $project: { _id: 0, language: 1, key: '$k.key' } },
+      ]).option({ maxTimeMS: 15000, allowDiskUse: true });
+
+      const byLang: Record<string, Set<string>> = {};
+      translationRows.forEach(({ language, key }) => {
+        if (!byLang[language]) byLang[language] = new Set();
+        byLang[language].add(key);
+      });
+
+      const qualifiedSet = new Set(qualifiedState.languages);
+      const allKeys = Array.from(SEO_KEYS_ALL);
+
+      const languages = (SEO_LANGUAGES as any[])
+        .filter((l: any) => l.enabled)
+        .map((l: any) => {
+          const completedKeys = allKeys.filter((k) => byLang[l.code]?.has(k));
+          const missingKeys = allKeys.filter((k) => !byLang[l.code]?.has(k));
+          return {
+            code: l.code,
+            name: l.name,
+            qualified: qualifiedSet.has(l.code),
+            completedKeys,
+            missingKeys,
+            completionPct: Math.round((completedKeys.length / allKeys.length) * 100),
+          };
+        })
+        .sort((a: any, b: any) => b.completionPct - a.completionPct);
+
+      res.json({ languages, totalQualified: qualifiedSet.size, qualifiedLangsState: qualifiedState });
+    } catch (err: any) {
+      logger.error('seo-translations/coverage failed:', err?.message);
+      res.status(500).json({ error: 'Failed to fetch SEO translation coverage' });
+    }
+  });
+
+  // POST /api/admin/seo-translations/apply
+  // Upserts the pre-generated Phase C translations.json into MongoDB.
+  app.post('/api/admin/seo-translations/apply', deps.requireAdmin, async (_req: any, res: any) => {
+    if (inFlightApplyJob) {
+      return void res.status(409).json({ error: 'Apply job already running', code: 'apply_in_progress' });
+    }
+    const startMs = Date.now();
+    let resolve!: () => void;
+    inFlightApplyJob = new Promise<void>((r) => { resolve = r; });
+
+    try {
+      const { promises: fsP } = await import('fs');
+      const { fileURLToPath } = await import('url');
+      const { resolve: pathResolve, dirname } = await import('path');
+      const __dir = dirname(fileURLToPath(import.meta.url));
+      const jsonPath = pathResolve(__dir, '../../../../../docs/seo-audit-2026-05/phase-c-translations/translations.json');
+
+      let TRANSLATIONS: Record<string, Record<string, string>>;
+      try {
+        TRANSLATIONS = JSON.parse(await fsP.readFile(jsonPath, 'utf-8'));
+      } catch {
+        return void res.status(500).json({ error: `translations.json not found at ${jsonPath}. Re-run phase-c-generate-translations.mjs first.` });
+      }
+
+      const ALL_KEYS = Object.keys(TRANSLATIONS.en ?? {});
+      const LANG_CODES = Object.keys(TRANSLATIONS);
+      const EN = TRANSLATIONS.en ?? {};
+
+      // Upsert TranslationKey documents for each key.
+      const keyIdMap: Record<string, any> = {};
+      for (const key of ALL_KEYS) {
+        const doc = await TranslationKey.findOneAndUpdate(
+          { key },
+          { $setOnInsert: { key, defaultValue: EN[key] ?? '', category: 'seo', isPlural: false, createdAt: new Date(), updatedAt: new Date() } },
+          { upsert: true, new: true },
+        ).lean();
+        keyIdMap[key] = (doc as any)?._id;
+      }
+
+      const byLanguage: Record<string, { inserted: number; skipped: number }> = {};
+      let totalInserted = 0;
+      let totalSkipped = 0;
+
+      for (const lang of LANG_CODES) {
+        let inserted = 0;
+        let skipped = 0;
+        for (const key of ALL_KEYS) {
+          const value = (TRANSLATIONS[lang]?.[key] ?? '').trim();
+          if (!value || !keyIdMap[key]) { skipped++; continue; }
+          const existing = await Translation.findOne({ keyId: keyIdMap[key], language: lang }).lean();
+          if (existing && (existing as any).value?.trim()) { skipped++; continue; }
+          await Translation.findOneAndUpdate(
+            { keyId: keyIdMap[key], language: lang },
+            { $set: { keyId: keyIdMap[key], language: lang, value, isCompleted: true, lastModified: new Date(), createdAt: new Date() } },
+            { upsert: true },
+          );
+          inserted++;
+        }
+        byLanguage[lang] = { inserted, skipped };
+        totalInserted += inserted;
+        totalSkipped += skipped;
+      }
+
+      res.json({
+        message: `Applied Phase C translations: ${totalInserted} inserted, ${totalSkipped} skipped`,
+        inserted: totalInserted,
+        skipped: totalSkipped,
+        byLanguage,
+        durationMs: Date.now() - startMs,
+      });
+    } catch (err: any) {
+      logger.error('seo-translations/apply failed:', err?.message);
+      res.status(500).json({ error: 'Apply failed: ' + (err?.message ?? 'unknown') });
+    } finally {
+      resolve();
+      inFlightApplyJob = null;
+    }
+  });
+
+  // POST /api/admin/seo-translations/regenerate
+  // Calls OpenAI gpt-4o-mini to fill any missing SEO keys.
+  app.post('/api/admin/seo-translations/regenerate', deps.requireAdmin, async (req: any, res: any) => {
+    if (inFlightRegenerateJob) {
+      return void res.status(409).json({ error: 'Regenerate job already running', code: 'regenerate_in_progress' });
+    }
+    if (!process.env.OPENAI_API_KEY) {
+      return void res.status(503).json({ error: 'OPENAI_API_KEY env var not set' });
+    }
+
+    const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+    const force: boolean = req.body?.force === true;
+    const requestedLangs: string[] | undefined = Array.isArray(req.body?.languages) ? req.body.languages : undefined;
+    const targetLangs = requestedLangs
+      ? (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled && requestedLangs.includes(l.code)).map((l: any) => l.code as string)
+      : (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).map((l: any) => l.code as string);
+
+    const startMs = Date.now();
+    let resolve!: () => void;
+    inFlightRegenerateJob = new Promise<void>((r) => { resolve = r; });
+
+    try {
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const keyDocs = await TranslationKey.find({ key: { $in: SEO_KEYS_ALL as unknown as string[] } }, { key: 1 }).lean();
+      const keyIdByName: Record<string, any> = {};
+      (keyDocs as any[]).forEach((k: any) => { keyIdByName[k.key] = k._id; });
+
+      const enRows = await Translation.find({ keyId: { $in: Object.values(keyIdByName) }, language: 'en' }).populate('keyId').lean();
+      const enDefaults: Record<string, string> = {};
+      (enRows as any[]).forEach((t: any) => { if (t.keyId?.key) enDefaults[t.keyId.key] = t.value; });
+
+      let totalGenerated = 0;
+      let totalSkipped = 0;
+      let totalFailed = 0;
+      const byLanguage: Record<string, { generated: number; skipped: number; failed: number }> = {};
+
+      const BATCH = 5;
+      for (let i = 0; i < targetLangs.length; i += BATCH) {
+        const batch = targetLangs.slice(i, i + BATCH);
+        await Promise.all(batch.map(async (lang) => {
+          const existing = await Translation.find({ keyId: { $in: Object.values(keyIdByName) }, language: lang }).populate('keyId').lean();
+          const existingKeys = new Set((existing as any[]).filter((t: any) => t.value?.trim()).map((t: any) => t.keyId?.key).filter(Boolean));
+          const missingKeys = force
+            ? (SEO_KEYS_ALL as readonly string[]).filter(() => true)
+            : (SEO_KEYS_ALL as readonly string[]).filter((k) => !existingKeys.has(k));
+
+          if (missingKeys.length === 0) { byLanguage[lang] = { generated: 0, skipped: SEO_KEYS_ALL.length, failed: 0 }; totalSkipped += SEO_KEYS_ALL.length; return; }
+
+          const langName = (SEO_LANGUAGES as any[]).find((l: any) => l.code === lang)?.name ?? lang;
+          try {
+            const prompt = `Translate the following JSON object values into ${langName} (${lang}). Keep keys exactly as-is. Do not translate brand name "Mega Radio" or placeholder "{STATION_NAME}". Return only valid JSON.\n\n${JSON.stringify(Object.fromEntries(missingKeys.map((k) => [k, enDefaults[k] ?? k])))}`;
+            const resp = await openai.chat.completions.create({
+              model: 'gpt-4o-mini',
+              messages: [{ role: 'user', content: prompt }],
+              response_format: { type: 'json_object' },
+              max_tokens: 1024,
+            });
+            const translated: Record<string, string> = JSON.parse(resp.choices[0]?.message?.content ?? '{}');
+            let gen = 0;
+            for (const key of missingKeys) {
+              const value = (translated[key] ?? '').trim();
+              if (!value || !keyIdByName[key]) continue;
+              await Translation.findOneAndUpdate(
+                { keyId: keyIdByName[key], language: lang },
+                { $set: { keyId: keyIdByName[key], language: lang, value, isCompleted: true, lastModified: new Date(), createdAt: new Date() } },
+                { upsert: true },
+              );
+              gen++;
+            }
+            byLanguage[lang] = { generated: gen, skipped: existingKeys.size, failed: missingKeys.length - gen };
+            totalGenerated += gen;
+            totalFailed += missingKeys.length - gen;
+          } catch (e: any) {
+            byLanguage[lang] = { generated: 0, skipped: existingKeys.size, failed: missingKeys.length };
+            totalFailed += missingKeys.length;
+            logger.warn(`seo-translations/regenerate: OpenAI failed for ${lang}: ${e?.message}`);
+          }
+        }));
+      }
+
+      res.json({
+        message: `Regenerated SEO translations: ${totalGenerated} keys across ${targetLangs.length} languages`,
+        generated: totalGenerated,
+        skipped: totalSkipped,
+        failed: totalFailed,
+        byLanguage,
+        durationMs: Date.now() - startMs,
+      });
+    } catch (err: any) {
+      logger.error('seo-translations/regenerate failed:', err?.message);
+      res.status(500).json({ error: 'Regenerate failed: ' + (err?.message ?? 'unknown') });
+    } finally {
+      resolve();
+      inFlightRegenerateJob = null;
+    }
+  });
+
+  // POST /api/admin/seo-translations/invalidate-cache
+  // Forces re-computation of the qualified-languages list.
+  app.post('/api/admin/seo-translations/invalidate-cache', deps.requireAdmin, async (_req: any, res: any) => {
+    try {
+      const { invalidateQualifiedLanguages, getQualifiedLanguagesState } = await import('../seo/qualified-languages');
+      await invalidateQualifiedLanguages({ resetLkg: false });
+      const fresh = await getQualifiedLanguagesState();
+      res.json({
+        message: `Qualified-languages cache invalidated. ${fresh.languages.length} languages now qualified.`,
+        newQualifiedCount: fresh.languages.length,
+        qualifiedLanguages: fresh.languages,
+        source: fresh.source,
+        computedAt: fresh.computedAt,
+      });
+    } catch (err: any) {
+      logger.error('seo-translations/invalidate-cache failed:', err?.message);
+      res.status(500).json({ error: 'Invalidate failed: ' + (err?.message ?? 'unknown') });
+    }
+  });
+
+  // POST /api/admin/seo-translations/warm-all
+  // Triggers the batched 57-language translation warmup in the background.
+  app.post('/api/admin/seo-translations/warm-all', deps.requireAdmin, async (_req: any, res: any) => {
+    try {
+      const { performanceCache: pc } = await import('../performance-cache');
+      // Reset the memoized warmup promise so it runs again even if already completed.
+      (pc as any).warmupPromise = null;
+      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+      const total = (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).length;
+      // Fire-and-forget — client gets immediate response.
+      void pc.warmupCaches().catch((e: any) => logger.warn('warm-all failed:', e?.message));
+      res.json({ message: `Warming ${total} languages in background (batches of 5, 500ms between batches)`, totalLanguages: total });
+    } catch (err: any) {
+      logger.error('seo-translations/warm-all failed:', err?.message);
+      res.status(500).json({ error: 'Warm-all failed: ' + (err?.message ?? 'unknown') });
+    }
+  });
 }

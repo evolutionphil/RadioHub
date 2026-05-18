@@ -421,37 +421,44 @@ export class PerformanceCache {
   async warmupCaches(): Promise<void> {
     if (this.warmupPromise) return this.warmupPromise;
     this.warmupPromise = trackOperation('warmup-translations', async () => {
-      // Top-10 languages only — keeps boot warmup under 10 MongoDB queries.
-      // Remaining 47 languages load lazily on first organic request; the
-      // singleflight in CacheManager coalesces concurrent cold misses so a
-      // crawler burst doesn't fan out into parallel DB hits.
-      // INCIDENT 2026-05-18: extending to all 57 langs caused pool exhaustion
-      // — 114 warmup queries (57 × find+populate) competed with 16+ simultaneous
-      // user requests for the 40-connection pool. Reverted to top-10.
-      logger.log('🔥 CACHE: Starting cache warmup (top 10 languages)...');
+      // INCIDENT 2026-05-18 (pool exhaustion): loading all 57 langs at once
+      // competed with live user traffic for the 40-connection pool. Fix: batch
+      // 5 languages at a time with a 500ms yield between batches — max 5
+      // concurrent MongoDB connections used at any point, ~6s total warmup time.
+      const priorityFirst = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
+      // Remaining languages after the priority set
+      const SEO_ALL = (await import('@workspace/seo-shared/seo-config'))
+        .SEO_LANGUAGES.filter((l: any) => l.enabled)
+        .map((l: any) => l.code as string);
+      const rest = SEO_ALL.filter((c: string) => !priorityFirst.includes(c));
+      const allLangs = [...priorityFirst, ...rest];
 
-      const criticalLanguages = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
+      logger.log(`🔥 CACHE: Starting batched translation warmup (${allLangs.length} languages, batch=5)...`);
+
+      const warmLanguage = async (language: string): Promise<number> => {
+        const translations = await Translation.find({ language }).populate('keyId').lean();
+        const translationMap: Record<string, string> = {};
+        (translations as any[]).forEach((t) => {
+          if (t.keyId?.key && t.value) translationMap[t.keyId.key] = t.value;
+        });
+        this.setTranslations(language, translationMap);
+        return Object.keys(translationMap).length;
+      };
 
       try {
+        const BATCH = 5;
+        const DELAY_MS = 500;
         let totalKeys = 0;
         let langsWithData = 0;
-        for (const language of criticalLanguages) {
-          const translations = await Translation.find({ language }).populate('keyId').lean();
-          const translationMap: Record<string, string> = {};
 
-          translations.forEach((t: any) => {
-            if (t.keyId?.key && t.value) {
-              translationMap[t.keyId.key] = t.value;
-            }
-          });
-
-          this.setTranslations(language, translationMap);
-          const k = Object.keys(translationMap).length;
-          totalKeys += k;
-          if (k > 0) langsWithData += 1;
+        for (let i = 0; i < allLangs.length; i += BATCH) {
+          const batch = allLangs.slice(i, i + BATCH);
+          const counts = await Promise.all(batch.map(warmLanguage));
+          counts.forEach((k) => { totalKeys += k; if (k > 0) langsWithData++; });
+          if (i + BATCH < allLangs.length) await sleep(DELAY_MS);
         }
 
-        logger.log(`🔥 CACHE: Warmed up translations for ${criticalLanguages.length} languages (${langsWithData} non-empty, ${totalKeys} keys total; others loaded on-demand)`);
+        logger.log(`🔥 CACHE: Warmed ${allLangs.length} languages (${langsWithData} non-empty, ${totalKeys} keys total)`);
       } catch (error) {
         // Reset memo so a failed warmup can be retried.
         this.warmupPromise = null;
