@@ -8,6 +8,7 @@ import {
   Translation,
   Station as StationModel,
 } from '@workspace/db-shared/mongo-schemas';
+import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 /**
  * Recursively freeze a value before storing it in a `useClones: false` cache.
@@ -87,10 +88,14 @@ export class PerformanceCache {
       useClones: false
     });
 
+    // MEMORY FIX 2026-05-18: reduced 1500→500. HTML is fast to re-render from
+    // pageDataCache (in-memory, no DB round-trip), so a smaller HTML cache
+    // keeps ~50MB (500×100KB avg) vs ~150MB at 1500 keys. pageDataCache stays
+    // large so the data layer stays hot even when HTML is evicted.
     this.seoHtmlCache = new NodeCache({
       stdTTL: 1800,
       checkperiod: 300,
-      maxKeys: 1500,
+      maxKeys: 500,
       useClones: false
     });
 
@@ -417,9 +422,14 @@ export class PerformanceCache {
   async warmupCaches(): Promise<void> {
     if (this.warmupPromise) return this.warmupPromise;
     this.warmupPromise = trackOperation('warmup-translations', async () => {
-      logger.log('🔥 CACHE: Starting lightweight cache warmup (top 10 languages only)...');
+      // MEMORY FIX 2026-05-18: warm all 57 enabled SEO languages instead of
+      // top-10 only. 57 × 15 keys = 855 small strings < 2MB total heap cost.
+      // Without this, the 47 non-primary languages miss translationsCache on
+      // every crawler request, fire DB queries, and add pool pressure on M10.
+      // Queries are sequential (for-loop with await) so pool load is bounded.
+      logger.log('🔥 CACHE: Starting cache warmup (all enabled SEO languages)...');
 
-      const criticalLanguages = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
+      const criticalLanguages = SEO_LANGUAGES.filter(l => l.enabled).map(l => l.code);
 
       try {
         let totalKeys = 0;
@@ -440,7 +450,7 @@ export class PerformanceCache {
           if (k > 0) langsWithData += 1;
         }
 
-        logger.log(`🔥 CACHE: Warmed up translations for ${criticalLanguages.length} languages (${langsWithData} non-empty, ${totalKeys} keys total; others loaded on-demand)`);
+        logger.log(`🔥 CACHE: Warmed translations for ${criticalLanguages.length} languages (${langsWithData} with data, ${totalKeys} keys total)`);
       } catch (error) {
         // Reset memo so a failed warmup can be retried.
         this.warmupPromise = null;
