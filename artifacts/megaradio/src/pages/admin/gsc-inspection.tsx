@@ -135,6 +135,18 @@ interface StatsResponse {
   byLanguage: { language: string; total: number; indexed: number }[];
 }
 
+type ServerNoindexReason =
+  | 'langIneligible'
+  | 'stationNoIndex'
+  | 'numericSlug'
+  | 'junk'
+  | null;
+
+interface ServerNoindex {
+  noindex: boolean;
+  reason: ServerNoindexReason;
+}
+
 interface UrlRow {
   _id: string;
   url: string;
@@ -152,11 +164,69 @@ interface UrlRow {
   lastResubmitStatus?: 'success' | 'failed';
   lastResubmitError?: string;
   resubmitCount?: number;
+  serverNoindex?: ServerNoindex;
 }
 
 interface UrlsResponse {
   rows: UrlRow[];
   pagination: { page: number; limit: number; total: number; pages: number };
+  qualifiedLanguages?: string[];
+  noindexFilterApplied?: boolean;
+}
+
+interface NoindexBreakdownResponse {
+  total: number;
+  breakdown: {
+    langIneligible: number;
+    numericSlug: number;
+    stationNoIndex: number;
+    junk: number;
+    indexable: number;
+  };
+  serverNoindexTotal: number;
+  qualifiedLanguageCount: number;
+  totalLanguagesInCache: number;
+  qualifiedLanguages: string[];
+  byLanguage: Array<{
+    language: string;
+    total: number;
+    qualified: boolean;
+    ineligible: number;
+  }>;
+  sampledStationUrls: number;
+}
+
+const NOINDEX_REASON_LABEL: Record<Exclude<ServerNoindexReason, null>, string> = {
+  langIneligible: 'Language not qualified',
+  stationNoIndex: 'Station noIndex=true',
+  numericSlug: 'Numeric-only slug',
+  junk: 'Junk station',
+};
+
+const NOINDEX_REASON_CLS: Record<Exclude<ServerNoindexReason, null>, string> = {
+  langIneligible: 'bg-purple-700 hover:bg-purple-800',
+  stationNoIndex: 'bg-rose-700 hover:bg-rose-800',
+  numericSlug: 'bg-yellow-700 hover:bg-yellow-800',
+  junk: 'bg-slate-700 hover:bg-slate-800',
+};
+
+function ServerNoindexBadge({ value }: { value?: ServerNoindex }) {
+  if (!value) return <span className="text-gray-500 text-xs">—</span>;
+  if (!value.noindex) {
+    return (
+      <Badge className="bg-green-700 hover:bg-green-800 text-white">
+        <CheckCircle2 className="w-3 h-3 mr-1" />
+        Indexable
+      </Badge>
+    );
+  }
+  const reason = value.reason ?? 'langIneligible';
+  return (
+    <Badge className={`${NOINDEX_REASON_CLS[reason]} text-white`}>
+      <XCircle className="w-3 h-3 mr-1" />
+      {NOINDEX_REASON_LABEL[reason]}
+    </Badge>
+  );
 }
 
 const STATE_LABEL: Record<GscState, string> = {
@@ -215,9 +285,10 @@ function readInitialFiltersFromUrl(): {
   group: string;
   state: string;
   search: string;
+  noindex: string;
 } {
   if (typeof window === 'undefined') {
-    return { language: 'all', group: 'all', state: 'all', search: '' };
+    return { language: 'all', group: 'all', state: 'all', search: '', noindex: 'any' };
   }
   const params = new URLSearchParams(window.location.search);
   return {
@@ -225,6 +296,7 @@ function readInitialFiltersFromUrl(): {
     group: params.get('group') ?? 'all',
     state: params.get('state') ?? 'all',
     search: params.get('search') ?? '',
+    noindex: params.get('noindex') ?? 'any',
   };
 }
 
@@ -235,6 +307,7 @@ export default function GscInspectionPage() {
   const [group, setGroup] = useState(initialFilters.group);
   const [state, setState] = useState(initialFilters.state);
   const [search, setSearch] = useState(initialFilters.search);
+  const [noindexFilter, setNoindexFilter] = useState(initialFilters.noindex);
   const [page, setPage] = useState(1);
   const [trendDays, setTrendDays] = useState<'30' | '90'>('30');
   const [trendLanguage, setTrendLanguage] = useState('all');
@@ -253,7 +326,7 @@ export default function GscInspectionPage() {
   const { data: urls, isLoading: urlsLoading } = useQuery<UrlsResponse>({
     queryKey: [
       '/api/admin/gsc-inspection/urls',
-      { language, group, state, search, page },
+      { language, group, state, search, noindexFilter, page },
     ],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -261,6 +334,7 @@ export default function GscInspectionPage() {
       if (group !== 'all') params.set('group', group);
       if (state !== 'all') params.set('state', state);
       if (search.trim()) params.set('search', search.trim());
+      if (noindexFilter !== 'any') params.set('noindex', noindexFilter);
       params.set('page', String(page));
       params.set('limit', '50');
       const r = await fetch(
@@ -269,6 +343,16 @@ export default function GscInspectionPage() {
       if (!r.ok) throw new Error('Failed to load URLs');
       return r.json();
     },
+  });
+
+  const { data: noindexBreakdown } = useQuery<NoindexBreakdownResponse>({
+    queryKey: ['/api/admin/gsc-inspection/noindex-breakdown'],
+    queryFn: async () => {
+      const r = await fetch('/api/admin/gsc-inspection/noindex-breakdown');
+      if (!r.ok) throw new Error('Failed to load noindex breakdown');
+      return r.json();
+    },
+    refetchInterval: 60_000,
   });
 
   const refreshBatch = useMutation({
@@ -576,6 +660,157 @@ export default function GscInspectionPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Phase A.24 — server-side noindex breakdown card.
+            Shows WHY the server is sending noindex (distinct from what
+            Google's verdict says in `state`). Primary surface for tracking
+            the 368-noindex incident and Phase B/C fix effectiveness. */}
+        <Card className="bg-[#1A1A1A] border-gray-800">
+          <CardHeader>
+            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+              <div>
+                <CardTitle>Server-side noindex breakdown</CardTitle>
+                <CardDescription className="text-gray-400">
+                  Why the server is currently sending <code>noindex</code> for
+                  URLs in the sitemap cache — distinct from Google's verdict
+                  above. <strong>langIneligible</strong> = URL's language not in
+                  the qualifiedLanguages set; this is the primary driver of the
+                  368-noindex incident.
+                </CardDescription>
+              </div>
+              <div className="text-right text-sm text-gray-400 shrink-0">
+                <div>
+                  <span className="text-gray-500">Qualified languages:</span>{' '}
+                  <strong className="text-white">
+                    {noindexBreakdown?.qualifiedLanguageCount ?? '—'}
+                  </strong>
+                  {' / '}
+                  <span>57</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">
+                  {noindexBreakdown?.qualifiedLanguages?.join(', ') || '—'}
+                </div>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <div className="rounded-md border border-purple-700/60 bg-purple-950/30 p-3">
+                <div className="text-xs text-purple-300">
+                  langIneligible
+                </div>
+                <div className="text-xl font-bold text-purple-200">
+                  {(
+                    noindexBreakdown?.breakdown.langIneligible ?? 0
+                  ).toLocaleString()}
+                </div>
+                <p className="text-[10px] text-purple-300/80 mt-1">
+                  Phase C: complete translations
+                </p>
+              </div>
+              <div className="rounded-md border border-rose-700/60 bg-rose-950/30 p-3">
+                <div className="text-xs text-rose-300">stationNoIndex</div>
+                <div className="text-xl font-bold text-rose-200">
+                  {(
+                    noindexBreakdown?.breakdown.stationNoIndex ?? 0
+                  ).toLocaleString()}
+                </div>
+                <p className="text-[10px] text-rose-300/80 mt-1">
+                  station.noIndex=true
+                </p>
+              </div>
+              <div className="rounded-md border border-yellow-700/60 bg-yellow-950/30 p-3">
+                <div className="text-xs text-yellow-300">numericSlug</div>
+                <div className="text-xl font-bold text-yellow-200">
+                  {(
+                    noindexBreakdown?.breakdown.numericSlug ?? 0
+                  ).toLocaleString()}
+                </div>
+                <p className="text-[10px] text-yellow-300/80 mt-1">
+                  Phase B.1 frontend slug bug
+                </p>
+              </div>
+              <div className="rounded-md border border-slate-600/60 bg-slate-950/30 p-3">
+                <div className="text-xs text-slate-300">junk</div>
+                <div className="text-xl font-bold text-slate-200">
+                  {(noindexBreakdown?.breakdown.junk ?? 0).toLocaleString()}
+                </div>
+                <p className="text-[10px] text-slate-300/80 mt-1">
+                  empty / dead stream / test feed
+                </p>
+              </div>
+              <div className="rounded-md border border-green-700/60 bg-green-950/30 p-3">
+                <div className="text-xs text-green-300">indexable</div>
+                <div className="text-xl font-bold text-green-200">
+                  {(
+                    noindexBreakdown?.breakdown.indexable ?? 0
+                  ).toLocaleString()}
+                </div>
+                <p className="text-[10px] text-green-300/80 mt-1">
+                  Server permits indexing
+                </p>
+              </div>
+            </div>
+
+            {noindexBreakdown && noindexBreakdown.byLanguage.length > 0 && (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm text-gray-400 hover:text-white">
+                  Per-language ineligibility breakdown (top 20)
+                </summary>
+                <Table className="mt-3">
+                  <TableHeader>
+                    <TableRow className="border-gray-800">
+                      <TableHead className="text-gray-400">Language</TableHead>
+                      <TableHead className="text-gray-400 text-right">
+                        Total URLs
+                      </TableHead>
+                      <TableHead className="text-gray-400 text-right">
+                        Ineligible
+                      </TableHead>
+                      <TableHead className="text-gray-400">
+                        Qualified?
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {noindexBreakdown.byLanguage.slice(0, 20).map((row) => (
+                      <TableRow key={row.language} className="border-gray-800">
+                        <TableCell className="text-gray-200">
+                          {row.language}
+                        </TableCell>
+                        <TableCell className="text-right text-gray-300">
+                          {row.total.toLocaleString()}
+                        </TableCell>
+                        <TableCell className="text-right text-purple-300">
+                          {row.ineligible.toLocaleString()}
+                        </TableCell>
+                        <TableCell>
+                          {row.qualified ? (
+                            <Badge className="bg-green-700 hover:bg-green-800 text-white">
+                              <CheckCircle2 className="w-3 h-3 mr-1" />
+                              Yes
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-purple-700 hover:bg-purple-800 text-white">
+                              <XCircle className="w-3 h-3 mr-1" />
+                              No
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <p className="text-xs text-gray-500 mt-2">
+                  Sampled {noindexBreakdown.sampledStationUrls.toLocaleString()}{' '}
+                  station URLs for per-station noindex checks. Languages in
+                  qualifiedLanguages render all 15 required SEO translation
+                  keys; others get noindex at the URL gate.
+                </p>
+              </details>
+            )}
+          </CardContent>
+        </Card>
 
         <Card className="bg-[#1A1A1A] border-gray-800">
           <CardHeader>
@@ -1028,6 +1263,22 @@ export default function GscInspectionPage() {
                     <SelectItem value="pending">Not yet inspected</SelectItem>
                   </SelectContent>
                 </Select>
+                <Select
+                  value={noindexFilter}
+                  onValueChange={(v) => {
+                    setNoindexFilter(v);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-[180px] bg-[#0E0E0E] border-gray-700">
+                    <SelectValue placeholder="Server noindex" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                    <SelectItem value="any">Any server status</SelectItem>
+                    <SelectItem value="noindex">Server noindex only</SelectItem>
+                    <SelectItem value="indexable">Server indexable only</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </CardHeader>
@@ -1046,6 +1297,7 @@ export default function GscInspectionPage() {
                       <TableHead className="text-gray-400">URL</TableHead>
                       <TableHead className="text-gray-400">Group</TableHead>
                       <TableHead className="text-gray-400">Lang</TableHead>
+                      <TableHead className="text-gray-400">Server</TableHead>
                       <TableHead className="text-gray-400">State</TableHead>
                       <TableHead className="text-gray-400">
                         Stuck since
@@ -1097,6 +1349,9 @@ export default function GscInspectionPage() {
                         </TableCell>
                         <TableCell className="text-gray-300">
                           {row.language}
+                        </TableCell>
+                        <TableCell>
+                          <ServerNoindexBadge value={row.serverNoindex} />
                         </TableCell>
                         <TableCell>
                           <StateBadge state={row.state} />
