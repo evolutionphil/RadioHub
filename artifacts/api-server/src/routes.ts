@@ -42,6 +42,7 @@ import { registerAdminStationRoutes } from './routes/admin-station-routes';
 import { registerPublicStationRoutes } from './routes/station-public-routes';
 import { registerGenresCountriesRoutes } from './routes/genres-countries-routes';
 import { registerTranslationAdminRoutes } from './routes/translation-admin-routes';
+import { registerSemrushAdminRoutes } from './routes/semrush-admin-routes';
 import { registerUserAuthRoutes } from './routes/user-auth-routes';
 import { registerMobileTvRoutes } from './routes/mobile-tv-routes';
 import { registerTranslationKeyRoutes, seedSeoTranslationKeys } from './routes/translation-keys-routes';
@@ -936,6 +937,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerPublicStationRoutes(app, deps);
   registerGenresCountriesRoutes(app, deps);
   registerTranslationAdminRoutes(app, deps);
+  registerSemrushAdminRoutes(app, deps);
   registerUserAuthRoutes(app, deps);
   registerMobileTvRoutes(app, deps);
   await registerTranslationKeyRoutes(app, deps);

@@ -8,7 +8,6 @@ import {
   Translation,
   Station as StationModel,
 } from '@workspace/db-shared/mongo-schemas';
-import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 /**
  * Recursively freeze a value before storing it in a `useClones: false` cache.
@@ -422,35 +421,44 @@ export class PerformanceCache {
   async warmupCaches(): Promise<void> {
     if (this.warmupPromise) return this.warmupPromise;
     this.warmupPromise = trackOperation('warmup-translations', async () => {
-      // MEMORY FIX 2026-05-18: warm all 57 enabled SEO languages instead of
-      // top-10 only. 57 × 15 keys = 855 small strings < 2MB total heap cost.
-      // Without this, the 47 non-primary languages miss translationsCache on
-      // every crawler request, fire DB queries, and add pool pressure on M10.
-      // Queries are sequential (for-loop with await) so pool load is bounded.
-      logger.log('🔥 CACHE: Starting cache warmup (all enabled SEO languages)...');
+      // INCIDENT 2026-05-18 (pool exhaustion): loading all 57 langs at once
+      // competed with live user traffic for the 40-connection pool. Fix: batch
+      // 5 languages at a time with a 500ms yield between batches — max 5
+      // concurrent MongoDB connections used at any point, ~6s total warmup time.
+      const priorityFirst = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
+      // Remaining languages after the priority set
+      const SEO_ALL = (await import('@workspace/seo-shared/seo-config'))
+        .SEO_LANGUAGES.filter((l: any) => l.enabled)
+        .map((l: any) => l.code as string);
+      const rest = SEO_ALL.filter((c: string) => !priorityFirst.includes(c));
+      const allLangs = [...priorityFirst, ...rest];
 
-      const criticalLanguages = SEO_LANGUAGES.filter(l => l.enabled).map(l => l.code);
+      logger.log(`🔥 CACHE: Starting batched translation warmup (${allLangs.length} languages, batch=5)...`);
+
+      const warmLanguage = async (language: string): Promise<number> => {
+        const translations = await Translation.find({ language }).populate('keyId').lean();
+        const translationMap: Record<string, string> = {};
+        (translations as any[]).forEach((t) => {
+          if (t.keyId?.key && t.value) translationMap[t.keyId.key] = t.value;
+        });
+        this.setTranslations(language, translationMap);
+        return Object.keys(translationMap).length;
+      };
 
       try {
+        const BATCH = 5;
+        const DELAY_MS = 500;
         let totalKeys = 0;
         let langsWithData = 0;
-        for (const language of criticalLanguages) {
-          const translations = await Translation.find({ language }).populate('keyId').lean();
-          const translationMap: Record<string, string> = {};
 
-          translations.forEach((t: any) => {
-            if (t.keyId?.key && t.value) {
-              translationMap[t.keyId.key] = t.value;
-            }
-          });
-
-          this.setTranslations(language, translationMap);
-          const k = Object.keys(translationMap).length;
-          totalKeys += k;
-          if (k > 0) langsWithData += 1;
+        for (let i = 0; i < allLangs.length; i += BATCH) {
+          const batch = allLangs.slice(i, i + BATCH);
+          const counts = await Promise.all(batch.map(warmLanguage));
+          counts.forEach((k) => { totalKeys += k; if (k > 0) langsWithData++; });
+          if (i + BATCH < allLangs.length) await sleep(DELAY_MS);
         }
 
-        logger.log(`🔥 CACHE: Warmed translations for ${criticalLanguages.length} languages (${langsWithData} with data, ${totalKeys} keys total)`);
+        logger.log(`🔥 CACHE: Warmed ${allLangs.length} languages (${langsWithData} non-empty, ${totalKeys} keys total)`);
       } catch (error) {
         // Reset memo so a failed warmup can be retried.
         this.warmupPromise = null;

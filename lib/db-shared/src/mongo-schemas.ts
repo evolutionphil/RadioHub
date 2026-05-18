@@ -4157,3 +4157,32 @@ GenreCountSchema.index({ country: 1, slug: 1 }, { unique: true });
 GenreCountSchema.index({ country: 1, count: -1 });
 
 export const GenreCount = mongoose.model<IGenreCount>('GenreCount', GenreCountSchema);
+
+// ─── SemrushIssue — imported from SEMrush Site Audit CSV exports ──────────────
+// 30-day TTL keeps the collection self-pruning after each re-import.
+export interface ISemrushIssue extends Document {
+  url: string;
+  statusCode: number;
+  issueType: string;
+  issueDescription: string;
+  priority: 'High' | 'Medium' | 'Low' | 'Info';
+  importedAt: Date;
+  expiresAt: Date;
+}
+
+const SemrushIssueSchema = new Schema<ISemrushIssue>({
+  url: { type: String, required: true },
+  statusCode: { type: Number, default: 0 },
+  issueType: { type: String, required: true },
+  issueDescription: { type: String, default: '' },
+  priority: { type: String, enum: ['High', 'Medium', 'Low', 'Info'], default: 'Info' },
+  importedAt: { type: Date, default: Date.now },
+  expiresAt: { type: Date, required: true },
+}, { collection: 'semrush_issues' });
+
+SemrushIssueSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+SemrushIssueSchema.index({ priority: 1, importedAt: -1 });
+SemrushIssueSchema.index({ issueType: 1 });
+SemrushIssueSchema.index({ url: 1 });
+
+export const SemrushIssue = mongoose.model<ISemrushIssue>('SemrushIssue', SemrushIssueSchema);

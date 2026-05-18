@@ -81,6 +81,7 @@ const navigation: NavigationItem[] = [
     name: 'Translations',
     icon: Globe,
     children: [
+      { name: 'SEO Translations Hub', href: '/admin/seo-translations' },
       { name: 'Translation Keys', href: '/admin/translations' },
       { name: 'Language Management', href: '/admin/translation-languages' },
     ]
@@ -91,6 +92,7 @@ const navigation: NavigationItem[] = [
     children: [
       { name: 'IndexNow Monitoring', href: '/admin/indexnow' },
       { name: 'GSC URL Inspection', href: '/admin/gsc-inspection' },
+      { name: 'SEMrush Issues', href: '/admin/semrush' },
       { name: 'URL Translations', href: '/admin/url-translations' },
       { name: 'Country-Language Map', href: '/admin/country-language-mappings' },
       { name: 'Genre Whitelist', href: '/admin/genre-whitelist' },

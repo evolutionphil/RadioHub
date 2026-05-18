@@ -82,20 +82,15 @@ export class PrecomputedCitiesService {
     // index), project only the small fields we need, and bucket cities
     // in Node memory. A typical country fetches <2k docs (well below
     // the 16MB BSON limit), and the lean projection keeps payload tiny.
+    // $in exact strings — O(log n) index scan on country_1.
+    // Previous $or+regex used case-insensitive anchored regex which
+    // cannot use the index on M10, causing MaxTimeMSExpired at boot.
     const searchPatterns = getCountrySearchPatterns(countryName);
-    const countryRegex = searchPatterns.map(p => new RegExp(`^${escapeRegex(p)}$`, 'i'));
-
-    // Bounded scan: cap the per-country slice at 5000 docs. Even the
-    // largest countries (USA ~1900, Germany ~1500) sit well below the
-    // cap, but the explicit limit guarantees the planner sees a small
-    // bounded window so a future bulk import can't silently turn this
-    // into a multi-GB scan. The total count is fetched as a parallel
-    // cheap countDocuments (uses the index, not the doc payload) so the
-    // displayed station total stays accurate even when the bucket scan
-    // is capped.
     const PER_COUNTRY_DOC_CAP = 5000;
+    const FIND_TIMEOUT_MS = 15000;
+    const COUNT_TIMEOUT_MS = 8000;
     const filter = {
-      $or: countryRegex.map(regex => ({ country: regex })),
+      country: { $in: searchPatterns },
       lastCheckOk: true
     };
 
@@ -104,8 +99,8 @@ export class PrecomputedCitiesService {
         Station.find(filter, { name: 1, tags: 1, state: 1 })
           .lean()
           .limit(PER_COUNTRY_DOC_CAP)
-          .maxTimeMS(8000),
-        Station.countDocuments(filter).maxTimeMS(5000).catch(() => 0)
+          .maxTimeMS(FIND_TIMEOUT_MS),
+        Station.countDocuments(filter).maxTimeMS(COUNT_TIMEOUT_MS).catch(() => 0)
       ]);
 
       // Pre-build lowercase city patterns once.
