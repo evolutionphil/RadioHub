@@ -1,0 +1,8 @@
+{
+  "error": "FATAL: Could not reach any Search Console property. Both sc-domain:themegaradio.com and https://themegaradio.com/ returned permission errors. Make sure the service account (megaradio-seo-audit@megaradio-276c6.iam.gserviceaccount.com) has been added to the property in Search Console.",
+  "candidates": [
+    "sc-domain:themegaradio.com",
+    "https://themegaradio.com/"
+  ],
+  "ts": "2026-05-18T20:09:40.979Z"
+}
