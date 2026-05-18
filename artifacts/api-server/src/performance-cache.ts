@@ -434,7 +434,8 @@ export class PerformanceCache {
       try {
         let totalKeys = 0;
         let langsWithData = 0;
-        for (const language of criticalLanguages) {
+        for (let i = 0; i < criticalLanguages.length; i++) {
+          const language = criticalLanguages[i];
           const translations = await Translation.find({ language }).populate('keyId').lean();
           const translationMap: Record<string, string> = {};
 
@@ -448,6 +449,10 @@ export class PerformanceCache {
           const k = Object.keys(translationMap).length;
           totalKeys += k;
           if (k > 0) langsWithData += 1;
+          // Yield event loop every 5 languages so concurrent boot tasks
+          // (slug-existence, sitemap, city precompute) can interleave
+          // without waiting for the full 57-lang warmup to complete first.
+          if (i > 0 && i % 5 === 0) await sleep(50);
         }
 
         logger.log(`🔥 CACHE: Warmed translations for ${criticalLanguages.length} languages (${langsWithData} with data, ${totalKeys} keys total)`);

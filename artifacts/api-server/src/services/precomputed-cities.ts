@@ -93,9 +93,17 @@ export class PrecomputedCitiesService {
     // cheap countDocuments (uses the index, not the doc payload) so the
     // displayed station total stays accurate even when the bucket scan
     // is capped.
+    //
+    // INCIDENT 2026-05-18: changed filter from regex $or to $in exact
+    // strings. The previous `$or: [{country:/^Turkey$/i}, ...]` used a
+    // case-insensitive regex which cannot use the country_1 index
+    // efficiently on M10, causing MaxTimeMSExpired (code=50) for every
+    // country at boot. $in with exact strings = O(log n) index scan.
+    // Country values in the DB are properly cased (e.g. "Turkey" not
+    // "turkey") so case-insensitive matching is unnecessary here.
     const PER_COUNTRY_DOC_CAP = 5000;
     const filter = {
-      $or: countryRegex.map(regex => ({ country: regex })),
+      country: { $in: searchPatterns },
       lastCheckOk: true
     };
 
@@ -104,8 +112,8 @@ export class PrecomputedCitiesService {
         Station.find(filter, { name: 1, tags: 1, state: 1 })
           .lean()
           .limit(PER_COUNTRY_DOC_CAP)
-          .maxTimeMS(8000),
-        Station.countDocuments(filter).maxTimeMS(5000).catch(() => 0)
+          .maxTimeMS(15000),
+        Station.countDocuments(filter).maxTimeMS(8000).catch(() => 0)
       ]);
 
       // Pre-build lowercase city patterns once.
