@@ -4186,3 +4186,27 @@ SemrushIssueSchema.index({ issueType: 1 });
 SemrushIssueSchema.index({ url: 1 });
 
 export const SemrushIssue = mongoose.model<ISemrushIssue>('SemrushIssue', SemrushIssueSchema);
+
+// ─── GscOAuthToken — stores the OAuth2 refresh token for the Google account
+// that has Search Console access. Only one document ever exists (latest wins).
+export interface IGscOAuthToken extends Document {
+  refreshToken: string;
+  accessToken?: string;
+  expiryDate?: number;
+  scope: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const GscOAuthTokenSchema = new Schema<IGscOAuthToken>({
+  refreshToken: { type: String, required: true },
+  accessToken: String,
+  expiryDate: Number,
+  scope: { type: String, default: 'https://www.googleapis.com/auth/webmasters.readonly' },
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: { type: Date, default: Date.now },
+}, { collection: 'gsc_oauth_tokens' });
+
+GscOAuthTokenSchema.index({ createdAt: -1 });
+
+export const GscOAuthToken = mongoose.model<IGscOAuthToken>('GscOAuthToken', GscOAuthTokenSchema);

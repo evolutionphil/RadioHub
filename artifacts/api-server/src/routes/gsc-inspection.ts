@@ -12,8 +12,13 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { GscUrlInspection, GscIndexingSnapshot, Station } from '@workspace/db-shared/mongo-schemas';
-import { gscInspectionService, isGscConfigured } from '../services/gsc-inspection';
+import { GscUrlInspection, GscIndexingSnapshot, GscOAuthToken, Station } from '@workspace/db-shared/mongo-schemas';
+import {
+  gscInspectionService,
+  isGscConfigured,
+  createOAuthClientFromEnv,
+  invalidateOAuthCache,
+} from '../services/gsc-inspection';
 import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
 import { isNumericOnlySlug, isJunkStation } from '../seo/junk-station-rules';
 import { logger } from '../utils/logger';
@@ -690,5 +695,91 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
     res.status(500).json({ error: 'failed to fetch noindex breakdown' });
   }
 });
+
+// ─── OAuth2 Routes ───────────────────────────────────────────────────────────
+
+router.get('/oauth/status', async (_req: Request, res: Response) => {
+  const hasEnvVars = Boolean(
+    process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET,
+  );
+  const token = hasEnvVars
+    ? await GscOAuthToken.findOne({}).sort({ createdAt: -1 }).lean()
+    : null;
+  res.json({
+    hasEnvVars,
+    connected: Boolean(token?.refreshToken),
+    connectedAt: token?.createdAt ?? null,
+    scope: token?.scope ?? null,
+  });
+});
+
+router.get('/oauth/init', (_req: Request, res: Response) => {
+  const client = createOAuthClientFromEnv();
+  if (!client) {
+    return void res.status(400).json({
+      error: 'GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET not set in Railway env vars',
+    });
+  }
+  const redirectUri = `${process.env.API_BASE_URL ?? 'https://api.themegaradio.com'}/api/admin/gsc-inspection/oauth/callback`;
+  const url = client.generateAuthUrl({
+    access_type: 'offline',
+    scope: ['https://www.googleapis.com/auth/webmasters.readonly'],
+    redirect_uri: redirectUri,
+    prompt: 'consent',
+  });
+  res.json({ url, redirectUri });
+});
+
+router.delete('/oauth/disconnect', async (_req: Request, res: Response) => {
+  await GscOAuthToken.deleteMany({});
+  invalidateOAuthCache();
+  res.json({ message: 'OAuth token disconnected' });
+});
+
+/**
+ * Handles the Google OAuth2 redirect after the user authorizes.
+ * Exported separately so routes.ts can mount it WITHOUT requireAdmin
+ * (Google sends a plain GET redirect — no auth headers possible).
+ */
+export async function handleOAuthCallback(req: Request, res: Response): Promise<void> {
+  const { code, error } = req.query as { code?: string; error?: string };
+  const adminBase = process.env.ADMIN_BASE_URL ?? 'https://themegaradio.com';
+
+  if (error) {
+    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=${encodeURIComponent(String(error))}`);
+    return;
+  }
+  if (!code) {
+    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=missing_code`);
+    return;
+  }
+  const client = createOAuthClientFromEnv();
+  if (!client) {
+    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=env_missing`);
+    return;
+  }
+  try {
+    const redirectUri = `${process.env.API_BASE_URL ?? 'https://api.themegaradio.com'}/api/admin/gsc-inspection/oauth/callback`;
+    const { tokens } = await client.getToken({ code, redirect_uri: redirectUri });
+    if (!tokens.refresh_token) {
+      res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=no_refresh_token`);
+      return;
+    }
+    await GscOAuthToken.deleteMany({});
+    await GscOAuthToken.create({
+      refreshToken: tokens.refresh_token,
+      accessToken: tokens.access_token ?? undefined,
+      expiryDate: tokens.expiry_date ?? undefined,
+      scope: tokens.scope ?? 'https://www.googleapis.com/auth/webmasters.readonly',
+    });
+    invalidateOAuthCache();
+    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_success=1`);
+  } catch (err: any) {
+    logger.error('GSC OAuth callback error:', err?.message ?? err);
+    res.redirect(
+      `${adminBase}/admin/gsc-inspection?oauth_error=${encodeURIComponent(err?.message ?? 'unknown')}`,
+    );
+  }
+}
 
 export default router;

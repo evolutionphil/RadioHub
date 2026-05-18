@@ -31,11 +31,12 @@
  */
 
 import cron from 'node-cron';
-import { JWT } from 'google-auth-library';
+import { JWT, OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
 import {
   GscUrlInspection,
   GscIndexingSnapshot,
+  GscOAuthToken,
   Station,
   Genre,
   type IGscUrlInspection,
@@ -397,19 +398,52 @@ function getJwt(): JWT | null {
   }
 }
 
+let cachedOAuthClient: OAuth2Client | null = null;
+
+export async function getOAuthClient(): Promise<OAuth2Client | null> {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  if (cachedOAuthClient) return cachedOAuthClient;
+  try {
+    const token = await GscOAuthToken.findOne({}).sort({ createdAt: -1 }).lean();
+    if (!token?.refreshToken) return null;
+    const client = new OAuth2Client({ clientId, clientSecret });
+    client.setCredentials({ refresh_token: token.refreshToken });
+    cachedOAuthClient = client;
+    return client;
+  } catch {
+    return null;
+  }
+}
+
+export function invalidateOAuthCache(): void {
+  cachedOAuthClient = null;
+}
+
+export function createOAuthClientFromEnv(): OAuth2Client | null {
+  const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
+  if (!clientId || !clientSecret) return null;
+  return new OAuth2Client({ clientId, clientSecret });
+}
+
 export function isGscConfigured(): boolean {
   return Boolean(
-    process.env.GSC_SERVICE_ACCOUNT_JSON && process.env.GSC_SITE_URL,
+    (process.env.GSC_SERVICE_ACCOUNT_JSON ||
+      (process.env.GOOGLE_OAUTH_CLIENT_ID &&
+        process.env.GOOGLE_OAUTH_CLIENT_SECRET)) &&
+      process.env.GSC_SITE_URL,
   );
 }
 
 async function inspectUrl(
   url: string,
-  jwt: JWT,
+  authClient: JWT | OAuth2Client,
   siteUrl: string,
 ): Promise<{ ok: true; payload: any } | { ok: false; error: string }> {
   try {
-    const accessToken = await jwt.getAccessToken();
+    const accessToken = await authClient.getAccessToken();
     if (!accessToken.token) {
       return { ok: false, error: 'no access token returned by JWT client' };
     }
@@ -962,8 +996,11 @@ class GscInspectionService {
       );
       return null;
     }
-    const jwt = getJwt();
-    if (!jwt) return null;
+    let authClient: JWT | OAuth2Client | null = getJwt();
+    if (!authClient) {
+      authClient = await getOAuthClient();
+    }
+    if (!authClient) return null;
     const siteUrl = process.env.GSC_SITE_URL!;
 
     this.inspectionRunning = true;
@@ -987,7 +1024,7 @@ class GscInspectionService {
 
       for (const row of candidates) {
         attempted += 1;
-        const result = await inspectUrl(row.url, jwt, siteUrl);
+        const result = await inspectUrl(row.url, authClient, siteUrl);
         const now = new Date();
         if (!result.ok) {
           failed += 1;
