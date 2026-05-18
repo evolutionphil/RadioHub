@@ -317,7 +317,11 @@ async function doConnect() {
   // for an available connection and 60s is fine because single-flight
   // coalesces concurrent callers.
   await mongoose.connect(MONGODB_URI, {
-    maxPoolSize: isProd ? 100 : 10,
+    // MEMORY FIX 2026-05-18: reduced 100→40. Single-pod Railway deployment
+    // never needs 100 connections; each native TLS socket holds ~4MB kernel
+    // buffers, so 100 conns = ~400MB in `other` RSS. At 40 conns per pod,
+    // 10 pods would use 400 connections — safe under M10's 500-conn limit.
+    maxPoolSize: isProd ? 40 : 10,
     minPoolSize: isProd ? 2 : 2,
     serverSelectionTimeoutMS: isProd ? 60000 : 30000,
     socketTimeoutMS: isProd ? 45000 : 60000,

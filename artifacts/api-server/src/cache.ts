@@ -10,11 +10,16 @@ import { startOperation, endOperation } from './utils/operation-tracker';
 // up-to-6MB each the worst case is ~1.2GB. Cut to 100 (worst case ~600MB)
 // — Redis is the source of truth, this is just a hot tier. Eviction churn
 // is fine because the Redis layer absorbs misses transparently.
-const memoryCache = new NodeCache({ 
+// MEMORY FIX 2026-05-18: raised 100→500 now that a 512KB payload gate
+// exists (see safeSet). Worst case: 500 × 512KB = 256MB, well below the
+// old 200-key risk. 57 SEO languages × genre/station/search routes need
+// >100 keys to stay warm — at 100 keys, constant eviction was sending
+// excess DB queries that showed up as pool pressure on M10.
+const memoryCache = new NodeCache({
   stdTTL: 600,
   checkperiod: 120,
   useClones: false,
-  maxKeys: 100
+  maxKeys: 500
 });
 
 // Redis client for production (optional)
