@@ -24,6 +24,7 @@ import { refreshCommunityFavoritesCache, fetchTranslationsForLanguage, refreshTr
 import { syncService } from "../services/sync";
 import { isQuotaExceeded, isQuotaError, handleQuotaError, safeWrite } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
+import { getPhaseCTranslations } from "../data/phase-c-translations";
 
 // Module-scoped lock for the auto-translate route. The translation pipeline
 // reads existing rows, calls OpenAI in batches, then writes results — running
@@ -4350,7 +4351,9 @@ ${keysText}`;
   });
 
   // POST /api/admin/seo-translations/apply
-  // Upserts the pre-generated Phase C translations.json into MongoDB.
+  // Upserts the pre-generated Phase C translations into MongoDB.
+  // Translations are embedded directly so no filesystem access is needed
+  // at runtime inside the Docker container.
   app.post('/api/admin/seo-translations/apply', deps.requireAdmin, async (_req: any, res: any) => {
     if (inFlightApplyJob) {
       return void res.status(409).json({ error: 'Apply job already running', code: 'apply_in_progress' });
@@ -4360,21 +4363,7 @@ ${keysText}`;
     inFlightApplyJob = new Promise<void>((r) => { resolve = r; });
 
     try {
-      const { promises: fsP } = await import('fs');
-      const { fileURLToPath } = await import('url');
-      const { resolve: pathResolve, dirname } = await import('path');
-      const __dir = dirname(fileURLToPath(import.meta.url));
-      // translations.json is bundled into src/data/ so it's available in
-      // the Docker container (docs/ is not copied to the image).
-      const jsonPath = pathResolve(__dir, '../data/phase-c-translations.json');
-
-      let TRANSLATIONS: Record<string, Record<string, string>>;
-      try {
-        TRANSLATIONS = JSON.parse(await fsP.readFile(jsonPath, 'utf-8'));
-      } catch {
-        return void res.status(500).json({ error: `translations.json not found at ${jsonPath}. File should be bundled at artifacts/api-server/src/data/phase-c-translations.json.` });
-      }
-
+      const TRANSLATIONS: Record<string, Record<string, string>> = getPhaseCTranslations();
       const ALL_KEYS = Object.keys(TRANSLATIONS.en ?? {});
       const LANG_CODES = Object.keys(TRANSLATIONS);
       const EN = TRANSLATIONS.en ?? {};
