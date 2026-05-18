@@ -3,7 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "transliteration": "^2.6.1"
+  },
   "exports": {
+    "./slug-utils": "./src/slug-utils.ts",
     "./faq-schema": "./src/faq-schema.ts",
     "./structured-data": "./src/structured-data.ts",
     "./seo-config": "./src/seo-config.ts",
