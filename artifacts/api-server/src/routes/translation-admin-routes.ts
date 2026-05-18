@@ -4364,13 +4364,15 @@ ${keysText}`;
       const { fileURLToPath } = await import('url');
       const { resolve: pathResolve, dirname } = await import('path');
       const __dir = dirname(fileURLToPath(import.meta.url));
-      const jsonPath = pathResolve(__dir, '../../../../../docs/seo-audit-2026-05/phase-c-translations/translations.json');
+      // translations.json is bundled into src/data/ so it's available in
+      // the Docker container (docs/ is not copied to the image).
+      const jsonPath = pathResolve(__dir, '../data/phase-c-translations.json');
 
       let TRANSLATIONS: Record<string, Record<string, string>>;
       try {
         TRANSLATIONS = JSON.parse(await fsP.readFile(jsonPath, 'utf-8'));
       } catch {
-        return void res.status(500).json({ error: `translations.json not found at ${jsonPath}. Re-run phase-c-generate-translations.mjs first.` });
+        return void res.status(500).json({ error: `translations.json not found at ${jsonPath}. File should be bundled at artifacts/api-server/src/data/phase-c-translations.json.` });
       }
 
       const ALL_KEYS = Object.keys(TRANSLATIONS.en ?? {});
