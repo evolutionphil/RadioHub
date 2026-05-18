@@ -12,11 +12,75 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { GscUrlInspection, GscIndexingSnapshot } from '@workspace/db-shared/mongo-schemas';
+import { GscUrlInspection, GscIndexingSnapshot, Station } from '@workspace/db-shared/mongo-schemas';
 import { gscInspectionService, isGscConfigured } from '../services/gsc-inspection';
+import { getCachedQualifiedLanguages } from '../seo/qualified-languages';
+import { isNumericOnlySlug, isJunkStation } from '../seo/junk-station-rules';
 import { logger } from '../utils/logger';
 
 const router = Router();
+
+/**
+ * Compute the server-side noindex reason for a single URL.
+ *
+ * This mirrors the gate logic in seo-renderer.ts so the dashboard can show
+ * WHY the server is sending noindex for any given URL — distinct from
+ * Google's own verdict in `state`/`coverageState`.
+ *
+ * Returns the first matching reason in priority order. `null` means the
+ * server is currently serving the URL as indexable.
+ */
+type ServerNoindexReason =
+  | 'langIneligible'
+  | 'stationNoIndex'
+  | 'numericSlug'
+  | 'junk'
+  | null;
+
+function extractStationSlugFromUrl(url: string): string | null {
+  // URL shape: /<lang>/<translated-segment>/<station-slug>
+  // We can't decode the translated segment without the URL_TRANSLATIONS map,
+  // but the slug is always the final path component.
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean);
+    return parts[parts.length - 1] || null;
+  } catch {
+    return null;
+  }
+}
+
+function computeServerNoindex(
+  url: string,
+  language: string,
+  group: string,
+  qualifiedLangs: Set<string>,
+  stationBySlug: Map<string, { noIndex?: boolean; slug?: string; name?: string; url?: string; lastCheckOk?: boolean }>,
+): { noindex: boolean; reason: ServerNoindexReason } {
+  // Gate 1: language qualification (the 368-noindex root cause)
+  if (!qualifiedLangs.has(language)) {
+    return { noindex: true, reason: 'langIneligible' };
+  }
+
+  // Gate 2: station-specific checks (genres / countries / static are
+  // currently always indexable when the language is qualified, so we only
+  // check stations explicitly).
+  if (group === 'station') {
+    const slug = extractStationSlugFromUrl(url);
+    if (slug && isNumericOnlySlug(slug)) {
+      return { noindex: true, reason: 'numericSlug' };
+    }
+    const station = slug ? stationBySlug.get(slug) : undefined;
+    if (station?.noIndex === true) {
+      return { noindex: true, reason: 'stationNoIndex' };
+    }
+    if (station && isJunkStation(station)) {
+      return { noindex: true, reason: 'junk' };
+    }
+  }
+
+  return { noindex: false, reason: null };
+}
 
 router.get('/status', async (_req: Request, res: Response) => {
   try {
@@ -147,14 +211,59 @@ router.get('/urls', async (req: Request, res: Response) => {
       filter.url = { $regex: `^${escaped}` };
     }
 
-    const [rows, total] = await Promise.all([
+    const noindexFilter = String(req.query.noindex ?? 'any');
+
+    const [rawRows, total, qualifiedLangsArr] = await Promise.all([
       GscUrlInspection.find(filter)
         .sort({ state: 1, language: 1, url: 1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
       GscUrlInspection.countDocuments(filter),
+      getCachedQualifiedLanguages().catch(() => [] as string[]),
     ]);
+
+    const qualifiedLangs = new Set(qualifiedLangsArr);
+
+    // Batch-fetch stations for the URLs in this page so the per-URL noindex
+    // computation doesn't fan out into N Mongo queries.
+    const stationSlugs = Array.from(
+      new Set(
+        rawRows
+          .filter((r: any) => r.group === 'station')
+          .map((r: any) => extractStationSlugFromUrl(r.url))
+          .filter((s): s is string => Boolean(s)),
+      ),
+    );
+    const stations = stationSlugs.length
+      ? await Station.find(
+          { slug: { $in: stationSlugs } },
+          { slug: 1, noIndex: 1, name: 1, url: 1, lastCheckOk: 1 },
+        ).lean()
+      : [];
+    const stationBySlug = new Map<string, any>(
+      stations.map((s: any) => [s.slug, s]),
+    );
+
+    let rows = rawRows.map((r: any) => ({
+      ...r,
+      serverNoindex: computeServerNoindex(
+        r.url,
+        r.language,
+        r.group,
+        qualifiedLangs,
+        stationBySlug,
+      ),
+    }));
+
+    // Optional noindex filter — applied AFTER computation. Note: filtering
+    // here means `pagination.total` reflects pre-filter count (the DB-side
+    // total). Documented in the response so the UI can warn.
+    if (noindexFilter === 'noindex') {
+      rows = rows.filter(r => r.serverNoindex.noindex);
+    } else if (noindexFilter === 'indexable') {
+      rows = rows.filter(r => !r.serverNoindex.noindex);
+    }
 
     res.json({
       rows,
@@ -164,6 +273,8 @@ router.get('/urls', async (req: Request, res: Response) => {
         total,
         pages: Math.max(1, Math.ceil(total / limit)),
       },
+      qualifiedLanguages: qualifiedLangsArr,
+      noindexFilterApplied: noindexFilter !== 'any',
     });
   } catch (err: any) {
     logger.error('GSC inspection /urls failed:', err?.message ?? err);
@@ -444,6 +555,139 @@ router.post('/discover', async (_req: Request, res: Response) => {
   } catch (err: any) {
     logger.error('GSC inspection /discover failed:', err?.message ?? err);
     return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
+  }
+});
+
+/**
+ * Server-side noindex breakdown — distinct from Google's verdict.
+ *
+ * For every URL in gscurlinspections we compute the server's current
+ * indexability decision (via the same gates seo-renderer.ts uses) and
+ * return aggregate counts by reason. This is the dashboard's primary
+ * surface for tracking the 368-noindex incident: it tells you which URLs
+ * the server is actively telling Google to skip vs. which Google is
+ * choosing to skip on its own.
+ *
+ * Returned counts:
+ *  - langIneligible: URL language not in qualifiedLanguages (the LKG gate)
+ *  - stationNoIndex: station.noIndex === true
+ *  - numericSlug: slug matches /^-?\d+$/ (frontend slug bug victims)
+ *  - junk: station fails isJunkStation() (empty name, dead stream, …)
+ *  - indexable: none of the above
+ *
+ * Heavy aggregation — uses Mongo aggregation for language counts, then
+ * a single station lookup keyed by every station slug. Safe to call
+ * read-only; takes ~1-2s on a 10k-URL collection.
+ */
+router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
+  try {
+    const qualifiedLangsArr = await getCachedQualifiedLanguages().catch(
+      () => [] as string[],
+    );
+    const qualifiedLangs = new Set(qualifiedLangsArr);
+
+    // Per-language totals from gscurlinspections
+    const byLangAgg = await GscUrlInspection.aggregate([
+      {
+        $group: {
+          _id: { language: '$language', group: '$group' },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    let langIneligible = 0;
+    let totalUrls = 0;
+    const byLanguage: Record<string, { total: number; qualified: boolean; ineligible: number }> = {};
+
+    for (const row of byLangAgg as Array<{ _id: { language: string; group: string }; count: number }>) {
+      const lang = row._id.language;
+      totalUrls += row.count;
+      if (!byLanguage[lang]) {
+        byLanguage[lang] = { total: 0, qualified: qualifiedLangs.has(lang), ineligible: 0 };
+      }
+      byLanguage[lang].total += row.count;
+      if (!qualifiedLangs.has(lang)) {
+        langIneligible += row.count;
+        byLanguage[lang].ineligible += row.count;
+      }
+    }
+
+    // For station-specific reasons (junk, numericSlug, stationNoIndex) we
+    // need to look at every station URL. We aggregate the slugs from the
+    // gscurlinspections then join against Station.
+    const stationUrlSample = await GscUrlInspection.find(
+      { group: 'station' },
+      { url: 1, language: 1 },
+    )
+      .limit(50000)
+      .lean();
+
+    let numericSlugCount = 0;
+    let stationNoIndexCount = 0;
+    let junkCount = 0;
+    const slugSet = new Set<string>();
+    const slugToUrlInfo = new Map<string, { language: string; url: string }>();
+
+    for (const row of stationUrlSample as any[]) {
+      const slug = extractStationSlugFromUrl(row.url);
+      if (!slug) continue;
+      // Only count URLs whose language IS qualified — otherwise it's
+      // already counted in langIneligible and we don't want double-counting.
+      if (!qualifiedLangs.has(row.language)) continue;
+      if (isNumericOnlySlug(slug)) {
+        numericSlugCount++;
+        continue;
+      }
+      slugSet.add(slug);
+      if (!slugToUrlInfo.has(slug)) slugToUrlInfo.set(slug, row);
+    }
+
+    if (slugSet.size > 0) {
+      const stations = await Station.find(
+        { slug: { $in: Array.from(slugSet) } },
+        { slug: 1, noIndex: 1, name: 1, url: 1, lastCheckOk: 1 },
+      ).lean();
+      const stationBySlug = new Map<string, any>(
+        stations.map((s: any) => [s.slug, s]),
+      );
+
+      for (const slug of slugSet) {
+        const st = stationBySlug.get(slug);
+        if (!st) continue; // station missing — covered by sitemap drift, skip
+        if (st.noIndex === true) stationNoIndexCount++;
+        else if (isJunkStation(st)) junkCount++;
+      }
+    }
+
+    const serverNoindexTotal =
+      langIneligible + numericSlugCount + stationNoIndexCount + junkCount;
+    const indexable = Math.max(0, totalUrls - serverNoindexTotal);
+
+    res.json({
+      total: totalUrls,
+      breakdown: {
+        langIneligible,
+        numericSlug: numericSlugCount,
+        stationNoIndex: stationNoIndexCount,
+        junk: junkCount,
+        indexable,
+      },
+      serverNoindexTotal,
+      qualifiedLanguageCount: qualifiedLangsArr.length,
+      totalLanguagesInCache: Object.keys(byLanguage).length,
+      qualifiedLanguages: qualifiedLangsArr.sort(),
+      byLanguage: Object.entries(byLanguage)
+        .map(([language, info]) => ({ language, ...info }))
+        .sort((a, b) => b.ineligible - a.ineligible || b.total - a.total),
+      sampledStationUrls: stationUrlSample.length,
+    });
+  } catch (err: any) {
+    logger.error(
+      'GSC inspection /noindex-breakdown failed:',
+      err?.message ?? err,
+    );
+    res.status(500).json({ error: 'failed to fetch noindex breakdown' });
   }
 });
 

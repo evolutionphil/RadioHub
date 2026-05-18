@@ -44,6 +44,8 @@ COPY --from=base /deploy ./
 
 ENV NODE_ENV=production
 EXPOSE 3000
+# Port 443 is used when SSL_CERT + SSL_KEY env vars are set (Cloudflare Origin SSL)
+EXPOSE 443
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "const http=require('http');http.get('http://localhost:'+(process.env.PORT||3000)+'/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));"

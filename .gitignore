@@ -47,3 +47,7 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# SEO audit secrets (never commit)
+secrets/
+.env.audit

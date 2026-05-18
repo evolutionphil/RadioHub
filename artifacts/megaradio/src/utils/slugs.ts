@@ -2,15 +2,19 @@
 // RESTORED: Simple version without localStorage country detection (working version from 10+ days ago)
 
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
+export { slugifyStationName } from '@workspace/seo-shared/slug-utils';
+import { slugifyStationName } from '@workspace/seo-shared/slug-utils';
 
+/**
+ * Generate a URL slug from a station or user name.
+ *
+ * Delegates to slugifyStationName() from @workspace/seo-shared so that
+ * non-Latin scripts (Arabic, Cyrillic, Thai, CJK, Hangul, etc.) are
+ * transliterated rather than stripped — the old regex-only path produced
+ * empty strings that became numeric-only `-<id>` slugs and got noindex'd.
+ */
 export function generateSlug(stationName: string): string {
-  return stationName
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '') // Remove special characters except spaces and hyphens
-    .replace(/\s+/g, '-') // Replace spaces with hyphens
-    .replace(/-+/g, '-') // Replace multiple hyphens with single hyphen
-    .trim()
-    .replace(/^-+|-+$/g, ''); // Remove leading/trailing hyphens
+  return slugifyStationName(stationName);
 }
 
 // Get current language from URL path
