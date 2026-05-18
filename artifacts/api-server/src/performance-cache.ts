@@ -8,7 +8,6 @@ import {
   Translation,
   Station as StationModel,
 } from '@workspace/db-shared/mongo-schemas';
-import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 /**
  * Recursively freeze a value before storing it in a `useClones: false` cache.
@@ -422,20 +421,21 @@ export class PerformanceCache {
   async warmupCaches(): Promise<void> {
     if (this.warmupPromise) return this.warmupPromise;
     this.warmupPromise = trackOperation('warmup-translations', async () => {
-      // MEMORY FIX 2026-05-18: warm all 57 enabled SEO languages instead of
-      // top-10 only. 57 × 15 keys = 855 small strings < 2MB total heap cost.
-      // Without this, the 47 non-primary languages miss translationsCache on
-      // every crawler request, fire DB queries, and add pool pressure on M10.
-      // Queries are sequential (for-loop with await) so pool load is bounded.
-      logger.log('🔥 CACHE: Starting cache warmup (all enabled SEO languages)...');
+      // Top-10 languages only — keeps boot warmup under 10 MongoDB queries.
+      // Remaining 47 languages load lazily on first organic request; the
+      // singleflight in CacheManager coalesces concurrent cold misses so a
+      // crawler burst doesn't fan out into parallel DB hits.
+      // INCIDENT 2026-05-18: extending to all 57 langs caused pool exhaustion
+      // — 114 warmup queries (57 × find+populate) competed with 16+ simultaneous
+      // user requests for the 40-connection pool. Reverted to top-10.
+      logger.log('🔥 CACHE: Starting cache warmup (top 10 languages)...');
 
-      const criticalLanguages = SEO_LANGUAGES.filter(l => l.enabled).map(l => l.code);
+      const criticalLanguages = ['en', 'de', 'tr', 'fr', 'es', 'pt', 'it', 'nl', 'ru', 'ar'];
 
       try {
         let totalKeys = 0;
         let langsWithData = 0;
-        for (let i = 0; i < criticalLanguages.length; i++) {
-          const language = criticalLanguages[i];
+        for (const language of criticalLanguages) {
           const translations = await Translation.find({ language }).populate('keyId').lean();
           const translationMap: Record<string, string> = {};
 
@@ -449,13 +449,9 @@ export class PerformanceCache {
           const k = Object.keys(translationMap).length;
           totalKeys += k;
           if (k > 0) langsWithData += 1;
-          // Yield event loop every 5 languages so concurrent boot tasks
-          // (slug-existence, sitemap, city precompute) can interleave
-          // without waiting for the full 57-lang warmup to complete first.
-          if (i > 0 && i % 5 === 0) await sleep(50);
         }
 
-        logger.log(`🔥 CACHE: Warmed translations for ${criticalLanguages.length} languages (${langsWithData} with data, ${totalKeys} keys total)`);
+        logger.log(`🔥 CACHE: Warmed up translations for ${criticalLanguages.length} languages (${langsWithData} non-empty, ${totalKeys} keys total; others loaded on-demand)`);
       } catch (error) {
         // Reset memo so a failed warmup can be retried.
         this.warmupPromise = null;
