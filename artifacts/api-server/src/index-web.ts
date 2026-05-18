@@ -7,6 +7,7 @@ import compression from "compression";
 import fs from "fs";
 import path from "path";
 import { createServer } from "http";
+import { createServer as createHttpsServer } from "https";
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { connectToMongoDB } from "./db-mongo";
 import { performanceCache } from "./performance-cache";
@@ -1006,6 +1007,33 @@ app.use('/api/stream', streamServiceProxy);
   }));
 
   serveStatic(app);
+
+  // Optional HTTPS server for Cloudflare Origin SSL ("Full (strict)" mode).
+  // Set SSL_CERT and SSL_KEY environment variables (raw PEM content) to enable.
+  // The certificate must be a Cloudflare Origin Certificate for *.themegaradio.com.
+  // In Railway: add these as environment variables in the service settings.
+  // The HTTP server remains active alongside HTTPS for internal health checks.
+  const sslCert = process.env.SSL_CERT;
+  const sslKey = process.env.SSL_KEY;
+  if (sslCert && sslKey) {
+    try {
+      const httpsServer = createHttpsServer({ cert: sslCert, key: sslKey }, app);
+      const sslPort = parseInt(process.env.SSL_PORT || '443', 10);
+      httpsServer.on('upgrade', (req, socket, head) => {
+        const pathname = new URL(req.url || '', `https://${req.headers.host}`).pathname;
+        if (pathname.startsWith('/ws/')) {
+          wsProxy.upgrade!(req, socket as import('net').Socket, head);
+        } else {
+          try { socket.destroy(); } catch {}
+        }
+      });
+      httpsServer.listen({ port: sslPort, host: '0.0.0.0' }, () => {
+        logger.log(`🔒 FRONTEND-WEB: HTTPS listening on port ${sslPort} (Cloudflare Origin SSL)`);
+      });
+    } catch (err: any) {
+      logger.warn(`⚠️ HTTPS server failed to start (bad cert/key?): ${err?.message}`);
+    }
+  }
 
   let isShuttingDown = false;
 
