@@ -11,7 +11,7 @@ import performanceRouter from './routes/performance';
 import apiKeysRouter, { apiKeyMiddleware, seedDemoApiKey } from './routes/api-keys';
 import { userEngagementRouter } from './routes/user-engagement';
 import indexnowMonitoringRouter from './routes/indexnow-monitoring';
-import gscInspectionRouter from './routes/gsc-inspection';
+import gscInspectionRouter, { handleOAuthCallback } from './routes/gsc-inspection';
 import { IndexNowService } from './services/indexnow';
 import { COUNTRY_TO_LANGUAGE, CODE_TO_COUNTRY } from '@workspace/seo-shared/seo-config';
 import CacheManager, { CacheKeys, invalidateSocialCacheForUser } from './cache';
@@ -824,6 +824,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // Surfaces cached Google Search Console URL Inspection results so admins
   // can see, without leaving the app, which sitemap URLs Google has actually
   // indexed vs. left in "Discovered – currently not indexed".
+  // OAuth callback is unprotected: Google sends a plain GET redirect with no
+  // auth headers, so it must be registered before the requireAdmin mount.
+  app.get('/api/admin/gsc-inspection/oauth/callback', handleOAuthCallback);
   app.use('/api/admin/gsc-inspection', requireAdmin, gscInspectionRouter);
 
   app.post('/api/admin/indexnow/submit', requireAdmin, async (req, res) => {

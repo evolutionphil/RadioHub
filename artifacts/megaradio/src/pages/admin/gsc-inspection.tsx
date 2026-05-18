@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Card,
@@ -31,10 +31,14 @@ import {
   Clock,
   Download,
   ExternalLink,
+  Link2,
+  Link2Off,
+  Loader2,
   RefreshCcw,
   Search as SearchIcon,
   XCircle,
 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
 import {
   CartesianGrid,
@@ -196,6 +200,13 @@ interface NoindexBreakdownResponse {
   sampledStationUrls: number;
 }
 
+interface OAuthStatus {
+  hasEnvVars: boolean;
+  connected: boolean;
+  connectedAt: string | null;
+  scope: string | null;
+}
+
 const NOINDEX_REASON_LABEL: Record<Exclude<ServerNoindexReason, null>, string> = {
   langIneligible: 'Language not qualified',
   stationNoIndex: 'Station noIndex=true',
@@ -302,6 +313,7 @@ function readInitialFiltersFromUrl(): {
 
 export default function GscInspectionPage() {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const initialFilters = readInitialFiltersFromUrl();
   const [language, setLanguage] = useState(initialFilters.language);
   const [group, setGroup] = useState(initialFilters.group);
@@ -312,6 +324,54 @@ export default function GscInspectionPage() {
   const [trendDays, setTrendDays] = useState<'30' | '90'>('30');
   const [trendLanguage, setTrendLanguage] = useState('all');
   const [trendGroup, setTrendGroup] = useState('all');
+
+  // Show toast on OAuth redirect result
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get('oauth_success');
+    const oauthError = params.get('oauth_error');
+    if (success) {
+      toast({ title: 'Google account connected', description: 'GSC OAuth2 is now active.' });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/gsc-inspection/oauth/status'] });
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (oauthError) {
+      toast({ title: 'OAuth failed', description: decodeURIComponent(oauthError), variant: 'destructive' });
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const { data: oauthStatus } = useQuery<OAuthStatus>({
+    queryKey: ['/api/admin/gsc-inspection/oauth/status'],
+    refetchInterval: 60_000,
+  });
+
+  const connectOAuth = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/admin/gsc-inspection/oauth/init');
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error ?? `HTTP ${r.status}`);
+      }
+      return r.json() as Promise<{ url: string }>;
+    },
+    onSuccess: (data) => {
+      window.open(data.url, '_blank', 'noopener,noreferrer');
+    },
+    onError: (e: Error) => toast({ title: 'OAuth init failed', description: e.message, variant: 'destructive' }),
+  });
+
+  const disconnectOAuth = useMutation({
+    mutationFn: async () => {
+      const r = await fetch('/api/admin/gsc-inspection/oauth/disconnect', { method: 'DELETE' });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({ title: 'Disconnected', description: 'Google OAuth token removed.' });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/gsc-inspection/oauth/status'] });
+    },
+    onError: (e: Error) => toast({ title: 'Disconnect failed', description: e.message, variant: 'destructive' }),
+  });
 
   const { data: status, isLoading: statusLoading } = useQuery<StatusResponse>({
     queryKey: ['/api/admin/gsc-inspection/status'],
@@ -547,6 +607,59 @@ export default function GscInspectionPage() {
             the sitemap. Refreshed automatically on a schedule.
           </p>
         </div>
+
+        {/* OAuth2 Connection Card */}
+        <Card className="bg-[#1A1A1A] border-gray-700">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              {oauthStatus?.connected ? (
+                <CheckCircle2 className="w-4 h-4 text-green-400" />
+              ) : (
+                <Link2 className="w-4 h-4 text-gray-400" />
+              )}
+              Google Account Connection
+            </CardTitle>
+            <CardDescription className="text-gray-400 text-sm">
+              {oauthStatus?.connected
+                ? `Connected${oauthStatus.connectedAt ? ` on ${fmt(oauthStatus.connectedAt)}` : ''}. GSC API calls use your personal Google account.`
+                : oauthStatus?.hasEnvVars
+                ? 'Connect your Google account to enable live URL Inspection (bypasses the service account "email not found" bug).'
+                : 'Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Railway env vars, then connect.'}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-0 flex gap-2">
+            {oauthStatus?.connected ? (
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-700 text-red-400 hover:bg-red-950/30"
+                onClick={() => disconnectOAuth.mutate()}
+                disabled={disconnectOAuth.isPending}
+              >
+                {disconnectOAuth.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Link2Off className="w-4 h-4 mr-2" />
+                )}
+                Disconnect
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                onClick={() => connectOAuth.mutate()}
+                disabled={connectOAuth.isPending || !oauthStatus?.hasEnvVars}
+              >
+                {connectOAuth.isPending ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Link2 className="w-4 h-4 mr-2" />
+                )}
+                Connect with Google
+              </Button>
+            )}
+          </CardContent>
+        </Card>
 
         {!statusLoading && status && !status.configured && (
           <Card className="bg-amber-950/40 border-amber-700/60">
