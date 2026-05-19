@@ -5,6 +5,7 @@ import { normalizeCountryFilter } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
 import { PrecomputedStationsService } from "../services/precomputed-stations";
 import { logoProcessor } from "../services/logo-processor";
+import { isS3Configured } from "../services/s3-storage";
 import { IndexNowService } from "../services/indexnow";
 import { ObjectStorageService } from "../objectStorage";
 import CacheManager from "../cache";
@@ -113,7 +114,8 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         stationsNeedingProcessing: stationsNotProcessed,
         stationsWithoutLogo,
         stationsNoFavicon,
-        processingComplete: stationsNotProcessed === 0
+        processingComplete: stationsNotProcessed === 0,
+        s3Configured: isS3Configured(),
       });
     } catch (error: any) {
       console.error('Error getting logo stats:', error);

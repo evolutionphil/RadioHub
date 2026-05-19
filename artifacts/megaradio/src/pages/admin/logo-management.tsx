@@ -20,6 +20,7 @@ interface LogoStats {
   stationsWithoutLogo: number;
   stationsNoFavicon: number;
   processingComplete: boolean;
+  s3Configured: boolean;
 }
 
 interface MissingLogoStation {
@@ -260,6 +261,19 @@ export default function LogoManagement() {
           Refresh
         </Button>
       </div>
+
+      {stats && (
+        <div className={`flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium ${stats.s3Configured ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+          {stats.s3Configured ? (
+            <CheckCircle className="w-4 h-4 shrink-0 text-green-600" />
+          ) : (
+            <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+          )}
+          {stats.s3Configured
+            ? 'S3 configured — logos are uploaded to S3 and served from your bucket.'
+            : 'S3 NOT configured (AWS_BUCKET_NAME / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY missing). Logos are saved to local disk only and will be lost on Railway redeploy. Set the env vars in Railway and run "Reprocess All Logos".'}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <Card>
