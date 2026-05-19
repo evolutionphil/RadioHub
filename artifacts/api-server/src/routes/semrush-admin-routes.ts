@@ -20,9 +20,9 @@ const MAX_ROWS_PER_IMPORT = 50_000;
 
 function parsePriority(raw: string): 'High' | 'Medium' | 'Low' | 'Info' {
   const v = (raw ?? '').trim().toLowerCase();
-  if (v === 'high' || v === 'error') return 'High';
-  if (v === 'medium' || v === 'warning') return 'Medium';
-  if (v === 'low' || v === 'notice') return 'Low';
+  if (v === 'high' || v === 'error' || v === 'errors' || v === 'critical') return 'High';
+  if (v === 'medium' || v === 'warning' || v === 'warnings') return 'Medium';
+  if (v === 'low' || v === 'notice' || v === 'notices' || v === 'info') return 'Low';
   return 'Info';
 }
 
@@ -90,13 +90,21 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: 'No data rows found in CSV' });
       }
 
+      // Return the detected headers so callers can diagnose column mapping.
+      const detectedHeaders = rows[0] ? Object.keys(rows[0]) : [];
+
       const expiresAt = new Date(Date.now() + TTL_DAYS * 24 * 60 * 60 * 1000);
       const docs = rows.map((row) => ({
-        url: extractField(row, 'url', 'page', 'page_url'),
-        statusCode: parseInt(extractField(row, 'status_code', 'status', 'http_status') || '0', 10) || 0,
-        issueType: extractField(row, 'issue', 'issue_type', 'type', 'error_type') || 'Unknown',
-        issueDescription: extractField(row, 'description', 'issue_description', 'details') || '',
-        priority: parsePriority(extractField(row, 'priority', 'severity', 'level')),
+        // URL: standard + SEMrush "Page" column name
+        url: extractField(row, 'url', 'page', 'page_url', 'address', 'link'),
+        // Status code: SEMrush uses "Status Code" → status_code
+        statusCode: parseInt(extractField(row, 'status_code', 'status', 'http_status', 'response_code') || '0', 10) || 0,
+        // Issue type: SEMrush "Issue name" → issue_name, or "Check name", "Category" (for aggregated), "Error type" → error_type
+        issueType: extractField(row, 'issue_name', 'check_name', 'issue', 'issue_type', 'name', 'error_type', 'type', 'category') || 'Unknown',
+        // Description: SEMrush "Description" or "Details"
+        issueDescription: extractField(row, 'description', 'issue_description', 'details', 'about') || '',
+        // Priority: SEMrush "Severity" or "Category" (Errors/Warnings/Notices) or "Priority"
+        priority: parsePriority(extractField(row, 'severity', 'category', 'priority', 'level', 'type')),
         importedAt: new Date(),
         expiresAt,
       }));
@@ -105,11 +113,12 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
       await SemrushIssue.deleteMany({});
       const result = await SemrushIssue.insertMany(docs, { ordered: false });
 
-      logger.log(`SEMrush import: ${result.length} issues imported`);
+      logger.log(`SEMrush import: ${result.length} issues (headers: ${detectedHeaders.join(', ')})`);
       res.json({
         message: `Imported ${result.length} issues from SEMrush CSV`,
         count: result.length,
         expiresAt,
+        detectedHeaders,
       });
     } catch (err: any) {
       logger.error('semrush/import failed:', err?.message);

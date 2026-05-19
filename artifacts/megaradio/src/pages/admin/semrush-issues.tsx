@@ -56,8 +56,13 @@ export default function SemrushIssues() {
     staleTime: 30_000,
   });
 
+  // Use the { params } object form so getQueryFn builds correct query string.
   const issuesQuery = useQuery<IssuesResponse>({
-    queryKey: ["/api/admin/semrush/issues", page, priorityFilter, typeFilter],
+    queryKey: ["/api/admin/semrush/issues", {
+      page,
+      ...(priorityFilter ? { priority: priorityFilter } : {}),
+      ...(typeFilter ? { issueType: typeFilter } : {}),
+    }],
     staleTime: 30_000,
   });
 
@@ -76,8 +81,12 @@ export default function SemrushIssues() {
       }
       return r.json();
     },
-    onSuccess: (data) => {
-      toast({ title: "Import complete", description: `${data.count} issues imported` });
+    onSuccess: (data: any) => {
+      const headers = data.detectedHeaders?.join(', ') ?? '';
+      toast({
+        title: "Import complete",
+        description: `${data.count} issues imported${headers ? ` · columns: ${headers}` : ''}`,
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/semrush/summary"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/semrush/issues"] });
       setPage(1);
