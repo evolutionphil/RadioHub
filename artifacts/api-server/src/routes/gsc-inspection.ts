@@ -288,26 +288,27 @@ router.get('/urls', async (req: Request, res: Response) => {
 });
 
 router.post('/refresh', async (req: Request, res: Response) => {
-  try {
-    if (!isGscConfigured()) {
-      return res.status(400).json({
-        ok: false,
-        error:
-          'GSC is not configured. Set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL env vars.',
-      });
-    }
-    const requested = parseInt(String(req.body?.batchSize ?? ''), 10);
-    const batchSize =
-      Number.isFinite(requested) && requested > 0 ? requested : undefined;
-    const stats = await gscInspectionService.runInspectionBatchOnce(
-      batchSize,
-      'admin-manual',
-    );
-    return res.json({ ok: true, stats });
-  } catch (err: any) {
-    logger.error('GSC inspection /refresh failed:', err?.message ?? err);
-    return res.status(500).json({ ok: false, error: err?.message ?? 'failed' });
+  if (!isGscConfigured()) {
+    return res.status(400).json({
+      ok: false,
+      error:
+        'GSC is not configured. Set GSC_SERVICE_ACCOUNT_JSON and GSC_SITE_URL env vars.',
+    });
   }
+  const requested = parseInt(String(req.body?.batchSize ?? ''), 10);
+  const batchSize =
+    Number.isFinite(requested) && requested > 0 ? requested : undefined;
+
+  // Fire-and-forget: batch inspections take 30-120 s for 50 URLs (20 s/URL
+  // timeout). Awaiting synchronously would exceed Railway's 60 s HTTP
+  // timeout → 502.  The frontend polls GET /status for lastInspectionStats.
+  void gscInspectionService
+    .runInspectionBatchOnce(batchSize, 'admin-manual')
+    .catch((err: any) =>
+      logger.error('GSC inspection /refresh failed:', err?.message ?? err),
+    );
+
+  return res.json({ ok: true, message: 'Inspection batch started — poll GET /status for results', running: true });
 });
 
 router.post('/resubmit-stuck', async (_req: Request, res: Response) => {
