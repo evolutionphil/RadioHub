@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef, type CSSProperties, type MouseEvent as ReactMouseEvent } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ import {
   ChevronDown,
   ChevronUp,
   ChevronsUpDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -173,6 +175,7 @@ interface UsersViewPrefs {
   platformFilter: PlatformFilter;
   sort: { column: SortColumn; direction: SortDirection } | null;
   columnWidths: Partial<Record<ColumnKey, number>>;
+  limit: number;
 }
 
 const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
@@ -182,6 +185,7 @@ const DEFAULT_VIEW_PREFS: UsersViewPrefs = {
   platformFilter: "all",
   sort: null,
   columnWidths: {},
+  limit: 50,
 };
 
 const SORT_COLUMNS: ReadonlyArray<SortColumn> = [
@@ -236,6 +240,11 @@ function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
       columnWidths[k as ColumnKey] = clamped;
     }
   }
+  const limitRaw = obj.limit;
+  const limit =
+    typeof limitRaw === "number" && Number.isFinite(limitRaw)
+      ? Math.max(10, Math.min(200, Math.round(limitRaw)))
+      : 50;
   return {
     searchQuery: typeof obj.searchQuery === "string" ? obj.searchQuery : "",
     planFilter:
@@ -255,6 +264,7 @@ function sanitizeViewPrefs(raw: unknown): UsersViewPrefs {
         : "all",
     sort,
     columnWidths,
+    limit,
   };
 }
 
@@ -322,6 +332,21 @@ function getPlanRank(user: UserProfile): number {
   return PLAN_RANK[sub.plan] ?? 0;
 }
 
+// Simple debounce hook
+function useDebounce<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = useState(value);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => setDebounced(value), delay);
+    return () => { if (timer.current) clearTimeout(timer.current); };
+  }, [value, delay]);
+  return debounced;
+}
+
+// Sorts handled server-side (MongoDB can sort these cheaply with an index).
+const SERVER_SORT_COLUMNS = new Set<SortColumn>(["createdAt", "updatedAt", "name", "email", "followers"]);
+
 export default function AdminUsers() {
   const {
     prefs,
@@ -337,16 +362,36 @@ export default function AdminUsers() {
   const authMethodFilter = prefs.authMethodFilter;
   const platformFilter = prefs.platformFilter;
   const sort = prefs.sort;
-  const setSearchQuery = (value: string) =>
+  const limitPerPage = prefs.limit;
+  // Page resets to 1 whenever any filter/sort changes — not persisted.
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(searchQuery, 350);
+
+  const setSearchQuery = (value: string) => {
+    setPage(1);
     setPrefs((p) => ({ ...p, searchQuery: value }));
-  const setPlanFilter = (value: PlanFilter) =>
+  };
+  const setPlanFilter = (value: PlanFilter) => {
+    setPage(1);
     setPrefs((p) => ({ ...p, planFilter: value }));
-  const setAuthMethodFilter = (value: AuthMethodFilter) =>
+  };
+  const setAuthMethodFilter = (value: AuthMethodFilter) => {
+    setPage(1);
     setPrefs((p) => ({ ...p, authMethodFilter: value }));
-  const setPlatformFilter = (value: PlatformFilter) =>
+  };
+  const setPlatformFilter = (value: PlatformFilter) => {
+    setPage(1);
     setPrefs((p) => ({ ...p, platformFilter: value }));
-  const setSort = (next: UsersViewPrefs["sort"]) =>
+  };
+  const setLimitPerPage = (value: number) => {
+    setPage(1);
+    setPrefs((p) => ({ ...p, limit: value }));
+  };
+  const setSort = (next: UsersViewPrefs["sort"]) => {
+    // Reset to page 1 only for server-side sorts (page-local sorts don't need it).
+    if (!next || SERVER_SORT_COLUMNS.has(next.column)) setPage(1);
     setPrefs((p) => ({ ...p, sort: next }));
+  };
   const handleToggleSort = (column: SortColumn) => {
     setSort(
       !sort || sort.column !== column
@@ -448,7 +493,8 @@ export default function AdminUsers() {
     searchQuery.trim() !== "" ||
     hasActiveFilters ||
     sort !== null ||
-    hasCustomColumnWidths;
+    hasCustomColumnWidths ||
+    limitPerPage !== 50;
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [editData, setEditData] = useState<Partial<UserProfile>>({});
   // Local form state for the "Admin Overrides" section in the edit modal.
@@ -457,11 +503,30 @@ export default function AdminUsers() {
   const [subExpiresDraft, setSubExpiresDraft] = useState<string>("");
   const { toast } = useToast();
 
-  const { data: usersResponse, isLoading: isLoadingUsers, error: usersError } = useQuery<{ users: UserProfile[]; total: number }>({
-    queryKey: ["/api/admin/users"],
+  // Build server-side sort params (plan/favorites are sorted client-side within the loaded page)
+  const serverSortBy = sort && SERVER_SORT_COLUMNS.has(sort.column) ? sort.column : "createdAt";
+  const serverSortDir = (sort && SERVER_SORT_COLUMNS.has(sort.column)) ? sort.direction : "desc";
+
+  const queryParams = useMemo(() => {
+    const p: Record<string, string> = {
+      page: String(page),
+      limit: String(limitPerPage),
+      sortBy: serverSortBy,
+      sortDir: serverSortDir,
+    };
+    if (debouncedSearch.trim()) p.search = debouncedSearch.trim();
+    if (planFilter !== "all") p.plan = planFilter;
+    if (authMethodFilter !== "all") p.authMethod = authMethodFilter;
+    if (platformFilter !== "all") p.platform = platformFilter;
+    return p;
+  }, [page, limitPerPage, debouncedSearch, planFilter, authMethodFilter, platformFilter, serverSortBy, serverSortDir]);
+
+  const { data: usersResponse, isLoading: isLoadingUsers, error: usersError } = useQuery<{ users: UserProfile[]; total: number; totalPages: number }>({
+    queryKey: ["/api/admin/users", queryParams],
     staleTime: 30000,
     queryFn: async () => {
-      const res = await fetch("/api/admin/users", { credentials: "include" });
+      const qs = new URLSearchParams(queryParams).toString();
+      const res = await fetch(`/api/admin/users?${qs}`, { credentials: "include" });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`${res.status}: ${text}`);
@@ -471,148 +536,27 @@ export default function AdminUsers() {
     retry: 2,
   });
   const users = usersResponse?.users || [];
+  const totalUsers = usersResponse?.total ?? 0;
+  const totalPages = usersResponse?.totalPages ?? 1;
 
+  // Server handles search/plan/authMethod/platform/most-sorts.
+  // Client only sorts by plan or favorites (within the loaded page).
   const filteredUsers = useMemo(() => {
-    const normalizedSearch = searchQuery.toLowerCase();
-    const matches = users.filter((user) => {
-      const matchesSearch =
-        normalizedSearch === "" ||
-        user.email.toLowerCase().includes(normalizedSearch) ||
-        user.firstName?.toLowerCase().includes(normalizedSearch) ||
-        user.lastName?.toLowerCase().includes(normalizedSearch);
-      return (
-        matchesSearch &&
-        matchesPlanFilter(user.subscription, planFilter) &&
-        matchesAuthMethodFilter(user.authProvider, authMethodFilter) &&
-        matchesPlatformFilter(user.subscription, platformFilter)
-      );
-    });
-    if (!sort) return matches;
+    if (!sort || SERVER_SORT_COLUMNS.has(sort.column)) return users;
     const dir = sort.direction === "asc" ? 1 : -1;
-    // Returns a finite epoch ms or null for missing/invalid dates so the
-    // comparator can push them to the bottom in either direction.
-    const dateKey = (s?: string): number | null => {
-      if (!s) return null;
-      const t = new Date(s).getTime();
-      return Number.isFinite(t) ? t : null;
-    };
-    const sorted = [...matches].sort((a, b) => {
-      let av: number | string | null;
-      let bv: number | string | null;
-      switch (sort.column) {
-        case "createdAt":
-          av = dateKey(a.createdAt);
-          bv = dateKey(b.createdAt);
-          break;
-        case "updatedAt":
-          av = dateKey(a.updatedAt);
-          bv = dateKey(b.updatedAt);
-          break;
-        case "plan":
-          av = getPlanRank(a);
-          bv = getPlanRank(b);
-          break;
-        case "followers":
-          av = a.followers || 0;
-          bv = b.followers || 0;
-          break;
-        case "favorites":
-          av = a.favorites || 0;
-          bv = b.favorites || 0;
-          break;
-        case "name": {
-          const an = getNameKey(a);
-          const bn = getNameKey(b);
-          av = an === "" ? null : an;
-          bv = bn === "" ? null : bn;
-          break;
-        }
-        case "email":
-          av = a.email ? a.email.toLowerCase() : null;
-          bv = b.email ? b.email.toLowerCase() : null;
-          break;
+    return [...users].sort((a, b) => {
+      let av: number;
+      let bv: number;
+      if (sort.column === "plan") {
+        av = getPlanRank(a); bv = getPlanRank(b);
+      } else {
+        av = a.favorites || 0; bv = b.favorites || 0;
       }
-      // Missing values always sort to the bottom regardless of direction
-      // so admins always see real data first.
-      if (av === null && bv === null) return a.email.localeCompare(b.email);
-      if (av === null) return 1;
-      if (bv === null) return -1;
-      const cmp =
-        typeof av === "string" && typeof bv === "string"
-          ? av.localeCompare(bv)
-          : av < bv
-            ? -1
-            : av > bv
-              ? 1
-              : 0;
-      if (cmp === 0) {
-        // Stable secondary sort by email for predictable grouping.
-        return a.email.localeCompare(b.email);
-      }
-      return cmp * dir;
+      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      return cmp === 0 ? a.email.localeCompare(b.email) : cmp * dir;
     });
-    return sorted;
-  }, [users, searchQuery, planFilter, authMethodFilter, platformFilter, sort]);
+  }, [users, sort]);
 
-  // Counts per filter option computed from the currently loaded users so
-  // each dropdown doubles as a lightweight breakdown. We deliberately use
-  // `users` (the full loaded set) rather than `filteredUsers` so the
-  // numbers don't collapse to zero as soon as one filter is applied —
-  // admins want to see "where could I jump to next?".
-  const planCounts = useMemo(() => {
-    const counts: Record<PlanFilter, number> = {
-      all: users.length,
-      none: 0,
-      remove_ads: 0,
-      any_premium: 0,
-      premium_monthly: 0,
-      premium_yearly: 0,
-      premium_lifetime: 0,
-    };
-    for (const user of users) {
-      for (const value of PLAN_FILTER_VALUES) {
-        if (value === "all") continue;
-        if (matchesPlanFilter(user.subscription, value)) counts[value]++;
-      }
-    }
-    return counts;
-  }, [users]);
-
-  const platformCounts = useMemo(() => {
-    const counts: Record<PlatformFilter, number> = {
-      all: users.length,
-      ios: 0,
-      android: 0,
-      tvos: 0,
-      macos: 0,
-      web: 0,
-      admin: 0,
-    };
-    for (const user of users) {
-      for (const value of PLATFORM_FILTER_VALUES) {
-        if (value === "all") continue;
-        if (matchesPlatformFilter(user.subscription, value)) counts[value]++;
-      }
-    }
-    return counts;
-  }, [users]);
-
-  const authMethodCounts = useMemo(() => {
-    const counts: Record<AuthMethodFilter, number> = {
-      all: users.length,
-      email: 0,
-      google: 0,
-      facebook: 0,
-      apple: 0,
-    };
-    for (const user of users) {
-      for (const value of AUTH_METHOD_FILTER_VALUES) {
-        if (value === "all") continue;
-        if (matchesAuthMethodFilter(user.authProvider, value)) counts[value]++;
-      }
-    }
-    return counts;
-  }, [users]);
 
   const formatCount = (n: number) => n.toLocaleString();
 
@@ -938,13 +882,13 @@ export default function AdminUsers() {
                 <SelectValue placeholder="Filter by plan" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All plans ({formatCount(planCounts.all)})</SelectItem>
-                <SelectItem value="none">No plan ({formatCount(planCounts.none)})</SelectItem>
-                <SelectItem value="remove_ads">Remove Ads ({formatCount(planCounts.remove_ads)})</SelectItem>
-                <SelectItem value="any_premium">Any Premium ({formatCount(planCounts.any_premium)})</SelectItem>
-                <SelectItem value="premium_monthly">Premium · Monthly ({formatCount(planCounts.premium_monthly)})</SelectItem>
-                <SelectItem value="premium_yearly">Premium · Yearly ({formatCount(planCounts.premium_yearly)})</SelectItem>
-                <SelectItem value="premium_lifetime">Premium · Lifetime ({formatCount(planCounts.premium_lifetime)})</SelectItem>
+                <SelectItem value="all">All plans</SelectItem>
+                <SelectItem value="none">No plan</SelectItem>
+                <SelectItem value="remove_ads">Remove Ads</SelectItem>
+                <SelectItem value="any_premium">Any Premium</SelectItem>
+                <SelectItem value="premium_monthly">Premium · Monthly</SelectItem>
+                <SelectItem value="premium_yearly">Premium · Yearly</SelectItem>
+                <SelectItem value="premium_lifetime">Premium · Lifetime</SelectItem>
               </SelectContent>
             </Select>
             <Select
@@ -961,11 +905,11 @@ export default function AdminUsers() {
                 <SelectValue placeholder="Filter by auth method" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All sign-in methods ({formatCount(authMethodCounts.all)})</SelectItem>
-                <SelectItem value="email">Email ({formatCount(authMethodCounts.email)})</SelectItem>
-                <SelectItem value="google">Google ({formatCount(authMethodCounts.google)})</SelectItem>
-                <SelectItem value="facebook">Facebook ({formatCount(authMethodCounts.facebook)})</SelectItem>
-                <SelectItem value="apple">Apple ({formatCount(authMethodCounts.apple)})</SelectItem>
+                <SelectItem value="all">All sign-in methods</SelectItem>
+                <SelectItem value="email">Email</SelectItem>
+                <SelectItem value="google">Google</SelectItem>
+                <SelectItem value="facebook">Facebook</SelectItem>
+                <SelectItem value="apple">Apple</SelectItem>
               </SelectContent>
             </Select>
             <Select
@@ -982,20 +926,34 @@ export default function AdminUsers() {
                 <SelectValue placeholder="Filter by platform" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All platforms ({formatCount(platformCounts.all)})</SelectItem>
-                <SelectItem value="ios">iOS ({formatCount(platformCounts.ios)})</SelectItem>
-                <SelectItem value="android">Android ({formatCount(platformCounts.android)})</SelectItem>
-                <SelectItem value="tvos">tvOS ({formatCount(platformCounts.tvos)})</SelectItem>
-                <SelectItem value="macos">macOS ({formatCount(platformCounts.macos)})</SelectItem>
-                <SelectItem value="web">Web ({formatCount(platformCounts.web)})</SelectItem>
-                <SelectItem value="admin">Admin-granted ({formatCount(platformCounts.admin)})</SelectItem>
+                <SelectItem value="all">All platforms</SelectItem>
+                <SelectItem value="ios">iOS</SelectItem>
+                <SelectItem value="android">Android</SelectItem>
+                <SelectItem value="tvos">tvOS</SelectItem>
+                <SelectItem value="macos">macOS</SelectItem>
+                <SelectItem value="web">Web</SelectItem>
+                <SelectItem value="admin">Admin-granted</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select
+              value={String(limitPerPage)}
+              onValueChange={(v) => setLimitPerPage(Number(v))}
+            >
+              <SelectTrigger className="w-32" aria-label="Rows per page">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="25">25 / page</SelectItem>
+                <SelectItem value="50">50 / page</SelectItem>
+                <SelectItem value="100">100 / page</SelectItem>
+                <SelectItem value="200">200 / page</SelectItem>
               </SelectContent>
             </Select>
             <Button
               type="button"
               variant="outline"
               onClick={handleDownloadCsv}
-              disabled={filteredUsers.length === 0}
+              disabled={totalUsers === 0}
               data-testid="button-download-users-csv"
               aria-label="Download filtered users as CSV"
               title="Download the currently filtered user list as a CSV file"
@@ -1008,7 +966,7 @@ export default function AdminUsers() {
               type="button"
               variant="outline"
               onClick={handleDownloadXlsx}
-              disabled={filteredUsers.length === 0}
+              disabled={totalUsers === 0}
               data-testid="button-download-users-xlsx"
               aria-label="Download filtered users as Excel"
               title="Download the currently filtered user list as an Excel (.xlsx) file"
@@ -1029,23 +987,34 @@ export default function AdminUsers() {
 
       <Card>
         <CardHeader>
-          <CardTitle>All Users ({filteredUsers.length})</CardTitle>
+          <CardTitle>
+            {hasActiveFilters || debouncedSearch.trim()
+              ? `${formatCount(totalUsers)} users match`
+              : `All Users (${formatCount(totalUsers)})`}
+          </CardTitle>
           <CardDescription>Manage user profiles, data, and permissions</CardDescription>
         </CardHeader>
         <CardContent>
-          {!isLoadingUsers && !usersError && users.length > 0 && (
+          {!isLoadingUsers && !usersError && totalUsers > 0 && (
             <p
               className="text-sm text-gray-600 mb-4"
               data-testid="text-users-filter-summary"
             >
-              {hasActiveFilters || searchQuery.trim() !== "" ? (
+              {hasActiveFilters || debouncedSearch.trim() !== "" ? (
                 <>
-                  Showing <span className="font-medium text-gray-900">{formatCount(filteredUsers.length)}</span>{" "}
-                  of <span className="font-medium text-gray-900">{formatCount(users.length)}</span> users matching the current filters.
+                  Showing{" "}
+                  <span className="font-medium text-gray-900">
+                    {formatCount((page - 1) * limitPerPage + 1)}–{formatCount(Math.min(page * limitPerPage, totalUsers))}
+                  </span>{" "}
+                  of <span className="font-medium text-gray-900">{formatCount(totalUsers)}</span> matching users.
                 </>
               ) : (
                 <>
-                  Showing all <span className="font-medium text-gray-900">{formatCount(users.length)}</span> users.
+                  Showing{" "}
+                  <span className="font-medium text-gray-900">
+                    {formatCount((page - 1) * limitPerPage + 1)}–{formatCount(Math.min(page * limitPerPage, totalUsers))}
+                  </span>{" "}
+                  of <span className="font-medium text-gray-900">{formatCount(totalUsers)}</span> users.
                 </>
               )}
             </p>
@@ -1061,9 +1030,9 @@ export default function AdminUsers() {
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-gray-500" data-testid="text-empty-users">
-              {users.length === 0
+              {totalUsers === 0
                 ? "No users found"
-                : hasActiveFilters && searchQuery.trim() !== ""
+                : hasActiveFilters && debouncedSearch.trim() !== ""
                   ? "No users match your search and filters. Try clearing a filter or adjusting your search."
                   : hasActiveFilters
                     ? "No users match the selected filters. Try a different plan, sign-in method, or platform."
@@ -1350,6 +1319,72 @@ export default function AdminUsers() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-2">
+              <p className="text-sm text-gray-500">
+                Page <span className="font-medium">{page}</span> of{" "}
+                <span className="font-medium">{totalPages}</span>
+              </p>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(1)}
+                  disabled={page <= 1 || isLoadingUsers}
+                  aria-label="First page"
+                  className="px-2"
+                >
+                  «
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  disabled={page <= 1 || isLoadingUsers}
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                {/* Show up to 5 page buttons centered around current page */}
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  const start = Math.max(1, Math.min(page - 2, totalPages - 4));
+                  return start + i;
+                }).map((p) => (
+                  <Button
+                    key={p}
+                    variant={p === page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPage(p)}
+                    disabled={isLoadingUsers}
+                    className="w-8"
+                  >
+                    {p}
+                  </Button>
+                ))}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={page >= totalPages || isLoadingUsers}
+                  aria-label="Next page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPage(totalPages)}
+                  disabled={page >= totalPages || isLoadingUsers}
+                  aria-label="Last page"
+                  className="px-2"
+                >
+                  »
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
