@@ -84,16 +84,6 @@ export default function HomeSettings() {
               </CardContent>
             </Card>
           </div>
-
-          <Card className="bg-blue-50 border-blue-200">
-            <CardHeader>
-              <CardTitle className="text-blue-900">Coming Soon</CardTitle>
-              <CardDescription className="text-blue-800">More homepage sections will be added here</CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-blue-800">
-              <p>Additional homepage management features will be consolidated under this menu as the platform grows.</p>
-            </CardContent>
-          </Card>
         </TabsContent>
       </Tabs>
     </div>

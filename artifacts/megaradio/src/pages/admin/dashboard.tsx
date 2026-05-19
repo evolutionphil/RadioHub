@@ -54,7 +54,22 @@ interface DashboardStats {
     lastSyncStatus: string;
     isHealthy: boolean;
   };
+  health?: {
+    database: 'online' | 'offline';
+    radioBrowser: 'online' | 'stale' | 'offline';
+    translations: 'active' | 'empty';
+    lastSyncHoursAgo: number | null;
+  };
   recentSyncDate?: string | null;
+}
+
+type HealthLevel = 'good' | 'degraded' | 'issue';
+function deriveOverallHealth(h: DashboardStats['health']): HealthLevel {
+  if (!h) return 'good';
+  if (h.database === 'offline' || h.translations === 'empty') return 'issue';
+  if (h.radioBrowser === 'offline') return 'issue';
+  if (h.radioBrowser === 'stale') return 'degraded';
+  return 'good';
 }
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
@@ -259,10 +274,31 @@ export default function AdminDashboard() {
             Manage your radio station platform
           </p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1 border rounded-md text-sm">
-          <CheckCircle className="w-4 h-4 text-green-500" />
-          System Online
-        </div>
+        {(() => {
+          const level = deriveOverallHealth(stats?.health);
+          if (level === 'good') {
+            return (
+              <div className="flex items-center gap-2 px-3 py-1 border border-green-300 bg-green-50 rounded-md text-sm text-green-800">
+                <CheckCircle className="w-4 h-4 text-green-600" />
+                System Online
+              </div>
+            );
+          }
+          if (level === 'degraded') {
+            return (
+              <div className="flex items-center gap-2 px-3 py-1 border border-yellow-300 bg-yellow-50 rounded-md text-sm text-yellow-800">
+                <AlertCircle className="w-4 h-4 text-yellow-600" />
+                System Degraded
+              </div>
+            );
+          }
+          return (
+            <div className="flex items-center gap-2 px-3 py-1 border border-red-300 bg-red-50 rounded-md text-sm text-red-800">
+              <ShieldAlert className="w-4 h-4 text-red-600" />
+              System Issue
+            </div>
+          );
+        })()}
       </div>
 
       {/* Statistics Cards */}
@@ -856,28 +892,42 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Database Connection</span>
-                <div className="px-2 py-1 border rounded text-xs text-green-600 border-green-600">
-                  Online
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Radio-Browser API</span>
-                <div className="px-2 py-1 border rounded text-xs text-green-600 border-green-600">
-                  Connected
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm">Translation System</span>
-                <div className="px-2 py-1 border rounded text-xs text-green-600 border-green-600">
-                  Active
-                </div>
-              </div>
+              {(() => {
+                const greenChip = (text: string) => (
+                  <div className="px-2 py-1 border rounded text-xs text-green-700 border-green-500 bg-green-50">{text}</div>
+                );
+                const yellowChip = (text: string) => (
+                  <div className="px-2 py-1 border rounded text-xs text-yellow-700 border-yellow-500 bg-yellow-50">{text}</div>
+                );
+                const redChip = (text: string) => (
+                  <div className="px-2 py-1 border rounded text-xs text-red-700 border-red-500 bg-red-50">{text}</div>
+                );
+                const h = stats?.health;
+                return (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Database Connection</span>
+                      {h?.database === 'online' ? greenChip('Online') : redChip('Offline')}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Radio-Browser API</span>
+                      {h?.radioBrowser === 'online'
+                        ? greenChip('Online')
+                        : h?.radioBrowser === 'stale'
+                        ? yellowChip(`Stale (${h.lastSyncHoursAgo}h ago)`)
+                        : redChip('Offline (no sync)')}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm">Translation System</span>
+                      {h?.translations === 'active' ? greenChip('Active') : redChip('Empty')}
+                    </div>
+                  </>
+                );
+              })()}
               <div className="flex items-center justify-between">
                 <span className="text-sm">Last Sync</span>
                 <span className="text-sm text-muted-foreground">
-                  {stats?.syncStatus?.lastSync ? new Date(stats.syncStatus.lastSync).toLocaleDateString() : 'Never'}
+                  {stats?.syncStatus?.lastSync ? new Date(stats.syncStatus.lastSync).toLocaleString() : 'Never'}
                 </span>
               </div>
             </div>

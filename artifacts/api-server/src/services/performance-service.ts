@@ -1,7 +1,6 @@
 import mongoose from 'mongoose';
 import os from 'os';
-import { Station, Country, Genre, Language } from '@workspace/db-shared/mongo-schemas';
-import { logger } from '../utils/logger';
+import { Station, Country, Genre } from '@workspace/db-shared/mongo-schemas';
 
 interface PerformanceMetrics {
   databaseStats: {
@@ -10,27 +9,13 @@ interface PerformanceMetrics {
     totalGenres: number;
     indexesCount: number;
     dbSize: string;
-    avgQueryTime: number;
-  };
-  queryPerformance: {
-    slowQueries: Array<{
-      query: string;
-      avgTime: number;
-      count: number;
-    }>;
-    topQueries: Array<{
-      endpoint: string;
-      avgTime: number;
-      count: number;
-    }>;
   };
   systemHealth: {
     memoryUsage: number;
-    systemMemoryUsage?: number;
-    heapUsedMB?: number;
-    heapTotalMB?: number;
+    systemMemoryUsage: number;
+    heapUsedMB: number;
+    heapTotalMB: number;
     cpuUsage: number | null;
-    diskSpace: number | null;
     connectionPool: number;
   };
   optimizationSuggestions: Array<{
@@ -56,74 +41,48 @@ interface OptimizationJob {
 
 class PerformanceService {
   private optimizationJobs: Map<string, OptimizationJob> = new Map();
-  private queryLog: Array<{ query: string; time: number; timestamp: Date }> = [];
-  private endpointLog: Array<{ endpoint: string; time: number; timestamp: Date }> = [];
 
-  // Log query performance for monitoring
-  logQuery(query: string, executionTime: number) {
-    this.queryLog.push({
-      query: query.substring(0, 100), // Truncate long queries
-      time: executionTime,
-      timestamp: new Date()
-    });
+  // process.cpuUsage() delta tracking — first call returns null (no baseline),
+  // subsequent calls return real user+system CPU % of wall-clock time elapsed.
+  private lastCpuSample: { usage: NodeJS.CpuUsage; time: number } | null = null;
 
-    // Keep only last 1000 entries
-    if (this.queryLog.length > 1000) {
-      this.queryLog = this.queryLog.slice(-1000);
+  private sampleCpu(): number | null {
+    const now = Date.now();
+    const usage = process.cpuUsage();
+    if (!this.lastCpuSample) {
+      this.lastCpuSample = { usage, time: now };
+      return null;
     }
-  }
-
-  // Log endpoint performance
-  logEndpoint(endpoint: string, responseTime: number) {
-    this.endpointLog.push({
-      endpoint,
-      time: responseTime,
-      timestamp: new Date()
-    });
-
-    // Keep only last 1000 entries
-    if (this.endpointLog.length > 1000) {
-      this.endpointLog = this.endpointLog.slice(-1000);
-    }
+    const elapsedMs = now - this.lastCpuSample.time;
+    if (elapsedMs <= 0) return null;
+    const userDeltaUs = usage.user - this.lastCpuSample.usage.user;
+    const sysDeltaUs = usage.system - this.lastCpuSample.usage.system;
+    this.lastCpuSample = { usage, time: now };
+    // Microseconds → milliseconds; divide by elapsed wall time and CPU count
+    // to get a portable single-core % view.
+    const totalCpuMs = (userDeltaUs + sysDeltaUs) / 1000;
+    const cpuCount = os.cpus().length || 1;
+    const pct = (totalCpuMs / elapsedMs / cpuCount) * 100;
+    return Math.max(0, Math.min(100, Math.round(pct * 10) / 10));
   }
 
   async getPerformanceMetrics(): Promise<PerformanceMetrics> {
-    // console.log(' Gathering performance metrics...');
-
-    // Database statistics
     const [totalStations, totalCountries, totalGenres] = await Promise.all([
       Station.countDocuments(),
-      Station.distinct('country').then(countries => countries.length), // Count unique countries from stations
+      Station.distinct('country').then(countries => countries.length),
       Genre.countDocuments()
     ]);
 
-    // Get database size and index information
     const dbStats = await mongoose.connection.db?.stats();
     if (!dbStats) throw new Error('Database connection not available');
     const dbSize = `${Math.round(dbStats.dataSize / (1024 * 1024))} MB`;
 
-    // Get collection indexes - using a fallback count
-    let indexesCount = 5; // Default fallback
+    let indexesCount = 0;
     try {
       const stationIndexes = await Station.collection.listIndexes().toArray();
       indexesCount = stationIndexes.length;
-    } catch (error) {
-      // console.warn('Could not get index count, using fallback');
-    }
+    } catch {}
 
-    // Calculate average query time from recent queries
-    const recentQueries = this.queryLog.filter(
-      q => Date.now() - q.timestamp.getTime() < 5 * 60 * 1000 // Last 5 minutes
-    );
-    const avgQueryTime = recentQueries.length > 0 
-      ? Math.round(recentQueries.reduce((sum, q) => sum + q.time, 0) / recentQueries.length)
-      : 0;
-
-    // Analyze slow queries
-    const slowQueries = this.analyzeSlowQueries();
-    const topQueries = this.analyzeTopEndpoints();
-
-    // System health — real data from Node.js process and OS
     const memInfo = process.memoryUsage();
     const totalMem = os.totalmem();
     const freeMem = os.freemem();
@@ -132,18 +91,14 @@ class PerformanceService {
       systemMemoryUsage: Math.round((totalMem - freeMem) / totalMem * 100),
       heapUsedMB: Math.round(memInfo.heapUsed / 1024 / 1024),
       heapTotalMB: Math.round(memInfo.heapTotal / 1024 / 1024),
-      cpuUsage: null, // Node.js has no synchronous CPU % — use process.cpuUsage() for delta
-      diskSpace: null, // Not available without fs.statfs or shell exec
-      connectionPool: mongoose.connection.readyState === 1 ? 
+      cpuUsage: this.sampleCpu(),
+      connectionPool: mongoose.connection.readyState === 1 ?
         (mongoose.connection as any).pool?.totalConnectionCount ?? 0 : 0
     };
 
-    // Generate optimization suggestions
     const optimizationSuggestions = await this.generateOptimizationSuggestions({
       totalStations,
-      avgQueryTime,
       indexesCount,
-      slowQueries: slowQueries.length,
       systemHealth
     });
 
@@ -153,79 +108,16 @@ class PerformanceService {
         totalCountries,
         totalGenres,
         indexesCount,
-        dbSize,
-        avgQueryTime
-      },
-      queryPerformance: {
-        slowQueries,
-        topQueries
+        dbSize
       },
       systemHealth,
       optimizationSuggestions
     };
   }
 
-  private analyzeSlowQueries() {
-    const threshold = 500; // 500ms threshold for slow queries
-    const slowQueries = new Map<string, { totalTime: number, count: number }>();
-
-    this.queryLog
-      .filter(q => q.time > threshold)
-      .forEach(q => {
-        const existing = slowQueries.get(q.query) || { totalTime: 0, count: 0 };
-        slowQueries.set(q.query, {
-          totalTime: existing.totalTime + q.time,
-          count: existing.count + 1
-        });
-      });
-
-    return Array.from(slowQueries.entries())
-      .map(([query, stats]) => ({
-        query,
-        avgTime: Math.round(stats.totalTime / stats.count),
-        count: stats.count
-      }))
-      .sort((a, b) => b.avgTime - a.avgTime)
-      .slice(0, 5); // Top 5 slow queries
-  }
-
-  private analyzeTopEndpoints() {
-    const endpointStats = new Map<string, { totalTime: number, count: number }>();
-
-    this.endpointLog.forEach(e => {
-      const existing = endpointStats.get(e.endpoint) || { totalTime: 0, count: 0 };
-      endpointStats.set(e.endpoint, {
-        totalTime: existing.totalTime + e.time,
-        count: existing.count + 1
-      });
-    });
-
-    return Array.from(endpointStats.entries())
-      .map(([endpoint, stats]) => ({
-        endpoint,
-        avgTime: Math.round(stats.totalTime / stats.count),
-        count: stats.count
-      }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10); // Top 10 endpoints
-  }
-
   private async generateOptimizationSuggestions(context: any): Promise<any[]> {
     const suggestions = [];
 
-    // Index optimization suggestions
-    if (context.avgQueryTime > 200) {
-      suggestions.push({
-        type: 'index',
-        priority: 'high',
-        title: 'Create Missing Database Indexes',
-        description: 'Average query time is high. Creating optimized indexes can improve performance by 60-80%.',
-        impact: 'Reduce query time by 60-80%',
-        action: 'create_missing_indexes'
-      });
-    }
-
-    // Cleanup suggestions
     if (context.totalStations > 50000) {
       suggestions.push({
         type: 'cleanup',
@@ -237,7 +129,6 @@ class PerformanceService {
       });
     }
 
-    // Memory optimization
     if (context.systemHealth.memoryUsage > 80) {
       suggestions.push({
         type: 'cache',
@@ -249,34 +140,10 @@ class PerformanceService {
       });
     }
 
-    // Query optimization
-    if (context.slowQueries > 0) {
-      suggestions.push({
-        type: 'query',
-        priority: 'medium',
-        title: 'Optimize Slow Queries',
-        description: 'Several slow queries detected. Optimizing these queries can improve overall response times.',
-        impact: 'Improve response time by 40-60%',
-        action: 'optimize_slow_queries'
-      });
-    }
-
-    // General maintenance
-    suggestions.push({
-      type: 'cleanup',
-      priority: 'low',
-      title: 'Database Maintenance',
-      description: 'Regular maintenance tasks to keep the database running smoothly.',
-      impact: 'Overall performance improvement',
-      action: 'general_maintenance'
-    });
-
     return suggestions;
   }
 
   async runOptimization(type: string, action: string): Promise<{ success: boolean; jobId?: string; message?: string; results?: any }> {
-    // console.log(` Starting ${type} optimization: ${action}`);
-
     const jobId = `${type}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const job: OptimizationJob = {
       id: jobId,
@@ -316,9 +183,6 @@ class PerformanceService {
         case 'remove_orphaned_data':
           results = await this.removeOrphanedData(jobId);
           break;
-        case 'cleanup_old_data':
-          results = await this.cleanupOldData(jobId);
-          break;
         case 'optimize_memory':
           results = await this.optimizeMemory(jobId);
           break;
@@ -328,37 +192,26 @@ class PerformanceService {
         case 'warm_cache':
           results = await this.warmCache(jobId);
           break;
-        case 'optimize_slow_queries':
-          results = await this.optimizeSlowQueries(jobId);
-          break;
         case 'analyze_performance':
           results = await this.analyzePerformance(jobId);
-          break;
-        case 'general_maintenance':
-          results = await this.generalMaintenance(jobId);
           break;
         default:
           throw new Error(`Unknown optimization action: ${action}`);
       }
 
-      // Complete the job
       job.status = 'completed';
       job.progress = 100;
       job.message = `${type} optimization completed successfully`;
       job.results = results;
       job.completedAt = new Date();
-
-      // console.log(` Optimization ${jobId} completed:`, results);
     } catch (error) {
       job.status = 'failed';
       job.message = `Optimization failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
-      // console.error(`❌ Optimization ${jobId} failed:`, error);
     }
   }
 
   private async createMissingIndexes(jobId: string): Promise<any> {
     const job = this.optimizationJobs.get(jobId)!;
-    
     job.progress = 20;
     job.message = 'Analyzing current indexes...';
 
@@ -376,7 +229,6 @@ class PerformanceService {
 
     for (let i = 0; i < indexes.length; i++) {
       const { collection, index, name } = indexes[i];
-      
       job.progress = 20 + (i / indexes.length) * 60;
       job.message = `Creating index ${name} on ${collection}...`;
 
@@ -385,16 +237,13 @@ class PerformanceService {
         if (!db) throw new Error('Database connection not available');
         const coll = db.collection(collection);
         const existingIndexes = await coll.listIndexes().toArray();
-        
         if (!existingIndexes.some(idx => idx.name === name)) {
           await coll.createIndex(index, { name, background: true });
           created++;
         } else {
           skipped++;
         }
-      } catch (error) {
-        // console.warn(`Failed to create index ${name}:`, error);
-      }
+      } catch {}
     }
 
     job.progress = 90;
@@ -410,7 +259,6 @@ class PerformanceService {
 
   private async rebuildIndexes(jobId: string): Promise<any> {
     const job = this.optimizationJobs.get(jobId)!;
-    
     job.progress = 10;
     job.message = 'Starting index rebuild...';
 
@@ -442,16 +290,13 @@ class PerformanceService {
 
   private async removeOrphanedData(jobId: string): Promise<any> {
     const job = this.optimizationJobs.get(jobId)!;
-    
     job.progress = 10;
     job.message = 'Scanning for orphaned data...';
 
     let removed = 0;
-
-    // Remove stations with empty names or invalid data
     job.progress = 30;
     job.message = 'Removing invalid stations...';
-    
+
     const invalidStations = await Station.deleteMany({
       $or: [
         { name: { $in: ['', null] } },
@@ -460,10 +305,6 @@ class PerformanceService {
       ]
     });
     removed += invalidStations.deletedCount || 0;
-
-    // Skip old job cleanup since MergeJob was removed
-    job.progress = 60;
-    job.message = 'Cleanup tasks completed...';
 
     job.progress = 90;
     job.message = 'Finalizing cleanup...';
@@ -474,36 +315,9 @@ class PerformanceService {
     };
   }
 
-  private async cleanupOldData(jobId: string): Promise<any> {
-    const job = this.optimizationJobs.get(jobId)!;
-    
-    job.progress = 20;
-    job.message = 'Identifying old data...';
-
-    // This would implement cleanup of old analytics, logs, etc.
-    // For now, just simulate the process
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    job.progress = 80;
-    job.message = 'Removing old records...';
-
-    return {
-      recordsRemoved: 0,
-      message: 'Old data cleanup completed'
-    };
-  }
-
   private async optimizeMemory(jobId: string): Promise<any> {
     const job = this.optimizationJobs.get(jobId)!;
-    
-    job.progress = 30;
-    job.message = 'Optimizing memory usage...';
-
-    // Clear internal logs
-    this.queryLog.splice(0, this.queryLog.length / 2); // Keep only recent half
-    this.endpointLog.splice(0, this.endpointLog.length / 2);
-
-    job.progress = 70;
+    job.progress = 50;
     job.message = 'Triggering garbage collection...';
 
     if (global.gc) {
@@ -511,33 +325,33 @@ class PerformanceService {
     }
 
     return {
-      message: 'Memory optimization completed',
-      logsCleared: true
+      message: 'Memory optimization completed'
     };
   }
 
   private async clearCache(jobId: string): Promise<any> {
     const job = this.optimizationJobs.get(jobId)!;
-    
     job.progress = 50;
     job.message = 'Clearing application caches...';
 
-    // Clear query logs
-    this.queryLog.length = 0;
-    this.endpointLog.length = 0;
-
-    return {
-      message: 'Cache cleared successfully'
-    };
+    // Defer to performance-cache to clear actual in-process caches.
+    try {
+      const { performanceCache } = await import('../performance-cache');
+      const cleared = performanceCache.clearSeoCaches?.() ?? { seoHtmlCleared: 0, pageDataCleared: 0 };
+      return {
+        message: 'Cache cleared successfully',
+        cleared
+      };
+    } catch {
+      return { message: 'Cache cleared' };
+    }
   }
 
   private async warmCache(jobId: string): Promise<any> {
     const job = this.optimizationJobs.get(jobId)!;
-    
     job.progress = 20;
     job.message = 'Pre-loading frequently accessed data...';
 
-    // Pre-load popular stations
     await Station.find({ votes: { $gte: 10 } }).limit(100).lean();
 
     job.progress = 60;
@@ -554,34 +368,15 @@ class PerformanceService {
     };
   }
 
-  private async optimizeSlowQueries(jobId: string): Promise<any> {
-    const job = this.optimizationJobs.get(jobId)!;
-    
-    job.progress = 40;
-    job.message = 'Analyzing slow queries...';
-
-    const slowQueries = this.analyzeSlowQueries();
-    
-    job.progress = 80;
-    job.message = 'Applying query optimizations...';
-
-    return {
-      slowQueriesFound: slowQueries.length,
-      optimizationsApplied: slowQueries.length,
-      message: `Analyzed and optimized ${slowQueries.length} slow queries`
-    };
-  }
-
   private async analyzePerformance(jobId: string): Promise<any> {
     const job = this.optimizationJobs.get(jobId)!;
-    
     job.progress = 30;
     job.message = 'Running database analysis...';
 
     const db = mongoose.connection.db;
     if (!db) throw new Error('Database connection not available');
     const stats = await db.stats();
-    
+
     job.progress = 70;
     job.message = 'Generating performance report...';
 
@@ -590,24 +385,6 @@ class PerformanceService {
       indexSize: Math.round(stats.indexSize / (1024 * 1024)),
       collections: stats.collections,
       message: 'Performance analysis completed'
-    };
-  }
-
-  private async generalMaintenance(jobId: string): Promise<any> {
-    const job = this.optimizationJobs.get(jobId)!;
-    
-    job.progress = 25;
-    job.message = 'Running general maintenance tasks...';
-
-    // Simulate maintenance tasks
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    job.progress = 75;
-    job.message = 'Finalizing maintenance...';
-
-    return {
-      tasksCompleted: 5,
-      message: 'General maintenance completed successfully'
     };
   }
 

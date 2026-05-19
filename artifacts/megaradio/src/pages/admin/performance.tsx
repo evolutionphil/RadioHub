@@ -7,20 +7,17 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Progress } from '@/components/ui/progress';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
-import { 
-  Zap, 
-  Database, 
-  Clock, 
-  HardDrive, 
-  Activity, 
-  CheckCircle, 
-  AlertTriangle, 
+import {
+  Zap,
+  Database,
+  Activity,
+  CheckCircle,
+  AlertTriangle,
   Loader2,
-  BarChart3,
-  Trash2,
   RefreshCw,
   TrendingUp,
   Server,
+  Cpu,
   Gauge,
   Zap as ZapIcon
 } from 'lucide-react';
@@ -32,24 +29,13 @@ interface PerformanceMetrics {
     totalGenres: number;
     indexesCount: number;
     dbSize: string;
-    avgQueryTime: number;
-  };
-  queryPerformance: {
-    slowQueries: Array<{
-      query: string;
-      avgTime: number;
-      count: number;
-    }>;
-    topQueries: Array<{
-      endpoint: string;
-      avgTime: number;
-      count: number;
-    }>;
   };
   systemHealth: {
     memoryUsage: number;
-    cpuUsage: number;
-    diskSpace: number;
+    systemMemoryUsage?: number;
+    heapUsedMB?: number;
+    heapTotalMB?: number;
+    cpuUsage: number | null;
     connectionPool: number;
   };
   optimizationSuggestions: Array<{
@@ -71,26 +57,19 @@ interface OptimizationJob {
   results?: any;
 }
 
+type VitalStatus = 'good' | 'needs_improvement' | 'poor' | 'no_data';
+interface VitalAggregate {
+  p50: number | null;
+  p75: number | null;
+  p95: number | null;
+  status: VitalStatus;
+}
 interface WebVitalsData {
-  lcp: {
-    p50: number;
-    p75: number;
-    p95: number;
-    status: 'good' | 'needs-improvement' | 'poor';
-  };
-  inp: {
-    p50: number;
-    p75: number;
-    p95: number;
-    status: 'good' | 'needs-improvement' | 'poor';
-  };
-  cls: {
-    p50: number;
-    p75: number;
-    p95: number;
-    status: 'good' | 'needs-improvement' | 'poor';
-  };
+  lcp: VitalAggregate;
+  inp: VitalAggregate;
+  cls: VitalAggregate;
   lastUpdated: string;
+  totalSamples?: number;
 }
 
 interface CacheClearResponse {
@@ -99,7 +78,6 @@ interface CacheClearResponse {
   result: {
     timestamp: string;
     serverCache: { seoHtmlCleared: number; pageDataCleared: number };
-    cloudflare: { success: boolean; message: string };
   };
 }
 
@@ -260,8 +238,10 @@ export default function AdminPerformance() {
   const getVitalStatusColor = (status: string) => {
     switch (status) {
       case 'good': return 'bg-green-100 text-green-800 border-green-300';
+      case 'needs_improvement':
       case 'needs-improvement': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
       case 'poor': return 'bg-red-100 text-red-800 border-red-300';
+      case 'no_data': return 'bg-gray-100 text-gray-600 border-gray-300';
       default: return 'bg-gray-100 text-gray-800 border-gray-300';
     }
   };
@@ -269,10 +249,17 @@ export default function AdminPerformance() {
   const getVitalStatusText = (status: string) => {
     switch (status) {
       case 'good': return '✓ Good';
+      case 'needs_improvement':
       case 'needs-improvement': return '⚠ Needs Improvement';
       case 'poor': return '✕ Poor';
+      case 'no_data': return 'No data yet';
       default: return 'Unknown';
     }
+  };
+
+  const formatVital = (value: number | null, suffix: string, decimals = 0): string => {
+    if (value === null || value === undefined) return '—';
+    return `${value.toFixed(decimals)}${suffix}`;
   };
 
   const handleClearSeoCaches = async () => {
@@ -290,7 +277,7 @@ export default function AdminPerformance() {
       
       toast({
         title: 'Success',
-        description: 'SEO caches cleared successfully (server + Cloudflare)',
+        description: 'SEO caches cleared successfully',
       });
     } catch (error) {
       toast({
@@ -341,7 +328,7 @@ export default function AdminPerformance() {
 
       {/* System Overview */}
       {metrics && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
@@ -350,22 +337,7 @@ export default function AdminPerformance() {
               </div>
               <div className="text-2xl font-bold">{metrics.databaseStats.totalStations.toLocaleString()}</div>
               <div className="text-xs text-muted-foreground">
-                Stations • {metrics.databaseStats.dbSize}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className="h-4 w-4 text-green-600" />
-                <span className="text-sm font-medium">Avg Query Time</span>
-              </div>
-              <div className={`text-2xl font-bold ${getStatusColor(metrics.databaseStats.avgQueryTime, { good: 100, warning: 500 })}`}>
-                {metrics.databaseStats.avgQueryTime}ms
-              </div>
-              <div className="text-xs text-muted-foreground">
-                {metrics.databaseStats.indexesCount} indexes
+                Stations • {metrics.databaseStats.dbSize} • {metrics.databaseStats.indexesCount} indexes
               </div>
             </CardContent>
           </Card>
@@ -374,13 +346,16 @@ export default function AdminPerformance() {
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Server className="h-4 w-4 text-purple-600" />
-                <span className="text-sm font-medium">Memory Usage</span>
+                <span className="text-sm font-medium">Memory (Heap)</span>
               </div>
               <div className={`text-2xl font-bold ${getStatusColor(metrics.systemHealth.memoryUsage, { good: 60, warning: 80 })}`}>
                 {metrics.systemHealth.memoryUsage}%
               </div>
               <div className="text-xs text-muted-foreground">
-                CPU: {metrics.systemHealth.cpuUsage}%
+                {metrics.systemHealth.heapUsedMB ?? '—'}MB / {metrics.systemHealth.heapTotalMB ?? '—'}MB
+                {typeof metrics.systemHealth.systemMemoryUsage === 'number' && (
+                  <> • System {metrics.systemHealth.systemMemoryUsage}%</>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -388,14 +363,18 @@ export default function AdminPerformance() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center gap-2 mb-2">
-                <HardDrive className="h-4 w-4 text-orange-600" />
-                <span className="text-sm font-medium">Disk Space</span>
+                <Cpu className="h-4 w-4 text-orange-600" />
+                <span className="text-sm font-medium">CPU</span>
               </div>
-              <div className={`text-2xl font-bold ${getStatusColor(metrics.systemHealth.diskSpace, { good: 70, warning: 85 })}`}>
-                {metrics.systemHealth.diskSpace}%
+              <div className={`text-2xl font-bold ${
+                metrics.systemHealth.cpuUsage === null
+                  ? 'text-muted-foreground'
+                  : getStatusColor(metrics.systemHealth.cpuUsage, { good: 50, warning: 80 })
+              }`}>
+                {metrics.systemHealth.cpuUsage === null ? '—' : `${metrics.systemHealth.cpuUsage}%`}
               </div>
               <div className="text-xs text-muted-foreground">
-                {metrics.systemHealth.connectionPool} connections
+                {metrics.systemHealth.connectionPool} DB connections
               </div>
             </CardContent>
           </Card>
@@ -476,71 +455,6 @@ export default function AdminPerformance() {
         </Card>
       )}
 
-      {/* Query Performance */}
-      {metrics?.queryPerformance && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-4 w-4" />
-                Slow Queries
-              </CardTitle>
-              <CardDescription>
-                Queries taking longer than expected
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {metrics.queryPerformance.slowQueries.length > 0 ? (
-                <div className="space-y-3">
-                  {metrics.queryPerformance.slowQueries.map((query, index) => (
-                    <div key={index} className="border-l-2 border-red-200 pl-3">
-                      <div className="flex justify-between items-center">
-                        <span className="text-sm font-mono">{query.query}</span>
-                        <Badge variant="destructive">{query.avgTime}ms</Badge>
-                      </div>
-                      <div className="text-xs text-muted-foreground">
-                        Executed {query.count} times
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-4 text-muted-foreground">
-                  No slow queries detected
-                </div>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Activity className="h-4 w-4" />
-                Top Endpoints
-              </CardTitle>
-              <CardDescription>
-                Most frequently accessed endpoints
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {metrics.queryPerformance.topQueries.map((endpoint, index) => (
-                  <div key={index} className="border-l-2 border-blue-200 pl-3">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-mono">{endpoint.endpoint}</span>
-                      <Badge variant="outline">{endpoint.avgTime}ms</Badge>
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {endpoint.count} requests
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
       {/* Web Vitals - Core Web Vitals from Cloudflare RUM */}
       {webVitals && (
         <Card>
@@ -576,18 +490,18 @@ export default function AdminPerformance() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P50 (Good)</div>
-                  <div className="text-2xl font-bold text-green-600">{webVitals.lcp.p50.toFixed(2)}s</div>
+                  <div className="text-2xl font-bold text-green-600">{formatVital(webVitals.lcp.p50, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P75 (Target)</div>
-                  <div className="text-2xl font-bold text-yellow-600">{webVitals.lcp.p75.toFixed(2)}s</div>
+                  <div className="text-2xl font-bold text-yellow-600">{formatVital(webVitals.lcp.p75, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P95 (Check)</div>
-                  <div className="text-2xl font-bold text-red-600">{webVitals.lcp.p95.toFixed(2)}s</div>
+                  <div className="text-2xl font-bold text-red-600">{formatVital(webVitals.lcp.p95, 'ms')}</div>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground">Target: P75 &lt; 2.5s (Good), &lt; 4.0s (Needs Improvement)</p>
+              <p className="text-xs text-muted-foreground">Target: P75 &lt; 2500ms (Good), &lt; 4000ms (Needs Improvement)</p>
             </div>
 
             {/* INP */}
@@ -602,15 +516,15 @@ export default function AdminPerformance() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P50 (Good)</div>
-                  <div className="text-2xl font-bold text-green-600">{webVitals.inp.p50.toFixed(0)}ms</div>
+                  <div className="text-2xl font-bold text-green-600">{formatVital(webVitals.inp.p50, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P75 (Target)</div>
-                  <div className="text-2xl font-bold text-yellow-600">{webVitals.inp.p75.toFixed(0)}ms</div>
+                  <div className="text-2xl font-bold text-yellow-600">{formatVital(webVitals.inp.p75, 'ms')}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P95 (Check)</div>
-                  <div className="text-2xl font-bold text-red-600">{webVitals.inp.p95.toFixed(0)}ms</div>
+                  <div className="text-2xl font-bold text-red-600">{formatVital(webVitals.inp.p95, 'ms')}</div>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Target: P75 &lt; 200ms (Good), &lt; 500ms (Needs Improvement)</p>
@@ -628,15 +542,15 @@ export default function AdminPerformance() {
               <div className="grid grid-cols-3 gap-4">
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P50 (Good)</div>
-                  <div className="text-2xl font-bold text-green-600">{webVitals.cls.p50.toFixed(3)}</div>
+                  <div className="text-2xl font-bold text-green-600">{formatVital(webVitals.cls.p50, '', 3)}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P75 (Target)</div>
-                  <div className="text-2xl font-bold text-yellow-600">{webVitals.cls.p75.toFixed(3)}</div>
+                  <div className="text-2xl font-bold text-yellow-600">{formatVital(webVitals.cls.p75, '', 3)}</div>
                 </div>
                 <div className="border rounded-lg p-3">
                   <div className="text-xs text-muted-foreground mb-1">P95 (Check)</div>
-                  <div className="text-2xl font-bold text-red-600">{webVitals.cls.p95.toFixed(3)}</div>
+                  <div className="text-2xl font-bold text-red-600">{formatVital(webVitals.cls.p95, '', 3)}</div>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">Target: P75 &lt; 0.1 (Good), &lt; 0.25 (Needs Improvement)</p>
@@ -681,7 +595,7 @@ export default function AdminPerformance() {
                   </>
                 ) : (
                   <>
-                    <Trash2 className="h-4 w-4 mr-2" />
+                    <RefreshCw className="h-4 w-4 mr-2" />
                     Clear SEO Caches Now
                   </>
                 )}
@@ -707,17 +621,9 @@ export default function AdminPerformance() {
                 <AlertTriangle className="h-4 w-4 text-yellow-600" />
               )}
               <AlertDescription className={cacheClearResult.success ? "text-green-800" : "text-yellow-800"}>
-                <div className="font-medium mb-1">{cacheClearResult.success ? '✓ SEO Caches Cleared' : '⚠ Partial Clear - Check Configuration'}</div>
+                <div className="font-medium mb-1">{cacheClearResult.success ? '✓ SEO Caches Cleared' : '⚠ Clear failed'}</div>
                 <div className="text-sm space-y-1">
                   <div>Server caches cleared: {(cacheClearResult.result.serverCache.seoHtmlCleared || 0) + (cacheClearResult.result.serverCache.pageDataCleared || 0)} entries</div>
-                  <div>
-                    Cloudflare cache: {cacheClearResult.result.cloudflare.success ? '✓ Purged' : `✕ ${cacheClearResult.result.cloudflare.message}`}
-                  </div>
-                  {!cacheClearResult.result.cloudflare.success && (
-                    <div className="text-xs mt-2 p-2 bg-white/50 rounded">
-                      <strong>Setup Required:</strong> Configure Cloudflare API credentials (CLOUDFLARE_API_KEY, CLOUDFLARE_ZONE_ID, CLOUDFLARE_ACCOUNT_ID) to enable Cloudflare cache purging
-                    </div>
-                  )}
                   <div className="text-xs mt-2 font-mono">{new Date(cacheClearResult.result.timestamp).toLocaleString()}</div>
                 </div>
               </AlertDescription>
@@ -738,7 +644,7 @@ export default function AdminPerformance() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Button
               variant="outline"
               className="h-auto p-4 flex flex-col items-center gap-2"
@@ -747,16 +653,6 @@ export default function AdminPerformance() {
             >
               <Database className="h-6 w-6" />
               <span className="text-sm">Rebuild Indexes</span>
-            </Button>
-
-            <Button
-              variant="outline"
-              className="h-auto p-4 flex flex-col items-center gap-2"
-              onClick={() => runOptimization('cleanup', 'cleanup_old_data')}
-              disabled={optimizationJobs.some(j => j.type === 'cleanup' && j.status === 'running')}
-            >
-              <Trash2 className="h-6 w-6" />
-              <span className="text-sm">Clean Old Data</span>
             </Button>
 
             <Button
@@ -775,7 +671,7 @@ export default function AdminPerformance() {
               onClick={() => runOptimization('analyze', 'analyze_performance')}
               disabled={optimizationJobs.some(j => j.type === 'analyze' && j.status === 'running')}
             >
-              <BarChart3 className="h-6 w-6" />
+              <Activity className="h-6 w-6" />
               <span className="text-sm">Analyze DB</span>
             </Button>
           </div>
