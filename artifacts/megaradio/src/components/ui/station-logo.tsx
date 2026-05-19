@@ -78,11 +78,13 @@ function NoImageFallback({ className }: { className?: string }) {
 }
 
 // Resolve a logoAssets value to an absolute URL.
-// New S3 data: value is already a full https:// URL → return as-is.
-// Old local data: value is a filename like "logo-96.webp" → construct /station-logos path.
+// S3 data: value is already a full https:// URL → return as-is.
+// Local data: value is a filename → prefix with API base so the request goes
+// to the API container (which stores the files), not the web container.
+const _API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
 function resolveLogoUrl(folder: string, value: string): string {
   if (value.startsWith('https://') || value.startsWith('http://')) return value;
-  return `/station-logos/${folder}/${value}`;
+  return `${_API_ORIGIN}/station-logos/${folder}/${value}`;
 }
 
 function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 96): string {

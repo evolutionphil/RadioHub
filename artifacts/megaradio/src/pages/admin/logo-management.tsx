@@ -537,7 +537,7 @@ export default function LogoManagement() {
                     <div className="w-12 h-12 flex-shrink-0 bg-muted rounded">
                       {(station.logoAssets?.webp256 || station.logoAssets?.webp96) ? (
                         <img 
-                          src={(() => { const v = station.logoAssets!.webp256 || station.logoAssets!.webp96!; return v.startsWith('http') ? v : `/station-logos/${station.logoAssets!.folder}/${v}`; })()}
+                          src={(() => { const v = station.logoAssets!.webp256 || station.logoAssets!.webp96!; if (v.startsWith('http')) return v; const apiBase = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, ''); return `${apiBase}/station-logos/${station.logoAssets!.folder}/${v}`; })()}
                           alt={station.name}
                           className="w-12 h-12 object-cover rounded"
                           onError={(e) => {

@@ -12,12 +12,14 @@ interface FiltersProps {
   genre: string;
   hasDescriptions?: 'all' | 'yes' | 'no' | 'partial';
   tagsStatus?: 'all' | 'empty-cooldown' | 'never-checked';
+  hasLogo?: 'all' | 'yes' | 'no';
   onSearchChange: (value: string) => void;
   onCountryChange: (value: string) => void;
   onLanguageChange: (value: string) => void;
   onGenreChange: (value: string) => void;
   onHasDescriptionsChange?: (value: 'all' | 'yes' | 'no' | 'partial') => void;
   onTagsStatusChange?: (value: 'all' | 'empty-cooldown' | 'never-checked') => void;
+  onHasLogoChange?: (value: 'all' | 'yes' | 'no') => void;
 }
 
 export default function Filters({
@@ -27,12 +29,14 @@ export default function Filters({
   genre,
   hasDescriptions,
   tagsStatus,
+  hasLogo,
   onSearchChange,
   onCountryChange,
   onLanguageChange,
   onGenreChange,
   onHasDescriptionsChange,
   onTagsStatusChange,
+  onHasLogoChange,
 }: FiltersProps) {
   const { t } = useTranslation();
   
@@ -164,6 +168,22 @@ export default function Filters({
                 <SelectItem value="all">All tag statuses</SelectItem>
                 <SelectItem value="empty-cooldown">Stuck on empty (in cooldown)</SelectItem>
                 <SelectItem value="never-checked">Tagless &amp; never re-checked</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+
+          {onHasLogoChange && (
+            <Select
+              value={hasLogo || "all"}
+              onValueChange={(value) => onHasLogoChange(value as 'all' | 'yes' | 'no')}
+            >
+              <SelectTrigger className="w-full" title="Filter by logo presence">
+                <SelectValue placeholder="Logo" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All (logo status)</SelectItem>
+                <SelectItem value="yes">Has Logo</SelectItem>
+                <SelectItem value="no">No Logo</SelectItem>
               </SelectContent>
             </Select>
           )}

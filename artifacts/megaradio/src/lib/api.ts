@@ -12,6 +12,7 @@ export interface StationFilters {
   sortOrder?: 'asc' | 'desc';
   hasDescriptions?: 'all' | 'yes' | 'no' | 'partial';
   tagsStatus?: 'all' | 'empty-cooldown' | 'never-checked';
+  hasLogo?: 'all' | 'yes' | 'no';
 }
 
 export interface DashboardStats {

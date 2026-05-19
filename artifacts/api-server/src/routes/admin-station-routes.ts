@@ -731,10 +731,11 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         genre = '',
         hasDescriptions = 'all',
         tagsStatus = 'all',
+        hasLogo = 'all',
         sortBy = 'name',
         sortOrder = 'asc'
       } = req.query;
-      
+
       const cacheKey = `admin_stations:${JSON.stringify({
         page: String(page),
         limit: String(limit),
@@ -744,6 +745,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         genre: String(genre),
         hasDescriptions: String(hasDescriptions),
         tagsStatus: String(tagsStatus),
+        hasLogo: String(hasLogo),
         sortBy: String(sortBy),
         sortOrder: String(sortOrder)
       })}`;
@@ -837,10 +839,22 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         }
       }
       
+      if (hasLogo && hasLogo !== 'all') {
+        if (hasLogo === 'yes') {
+          filter.hasLogo = true;
+        } else if (hasLogo === 'no') {
+          filter.$or = [
+            ...(filter.$or || []),
+            { hasLogo: false },
+            { hasLogo: { $exists: false } },
+          ];
+        }
+      }
+
       const total = await Station.countDocuments(filter);
-      
+
       let stations: any = [];
-      
+
       if (sortBy === 'favicon') {
         const skip = (Number(page) - 1) * Number(limit);
         const lim = Number(limit);
