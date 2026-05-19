@@ -155,7 +155,23 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           res.set('Cache-Control', 'no-store');
           return void res.json(stripPlaceholders(stale));
         }
-        logger.error('[popular] global precompute + stale both empty — soft-failing []');
+        // Emergency fallback: precompute and stale both unavailable (e.g. first
+        // ever boot before cron has run + Redis completely cold). Run a minimal
+        // synchronous DB query so users never see an empty global popular list.
+        try {
+          const emergency = await Station.find({ lastCheckOk: true })
+            .sort({ votes: -1 })
+            .limit(Number(limit))
+            .lean();
+          if (emergency.length > 0) {
+            logger.warn(`[popular] using emergency DB fallback — ${emergency.length} stations`);
+            res.set('Cache-Control', 'no-store');
+            return void res.json(isTV ? emergency.map(tvSlimStation) : stripPlaceholders(emergency));
+          }
+        } catch (fallbackErr: any) {
+          logger.error(`[popular] emergency fallback also failed: ${fallbackErr?.message || fallbackErr}`);
+        }
+        logger.error('[popular] global precompute + stale + emergency all empty — soft-failing []');
         res.set('Cache-Control', 'no-store');
         return void res.json([]);
       }
@@ -169,7 +185,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           if (state && state !== 'all') {
             tvFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
           }
-          tvFilter['logoAssets.status'] = 'completed';
+          // Prefer processed logos (S3/local webp) but also accept stations
+          // with a favicon URL — otherwise the TV list is empty when S3 is
+          // not yet configured or logos haven't been processed yet.
+          tvFilter.$or = [
+            { 'logoAssets.status': 'completed' },
+            { favicon: { $exists: true, $nin: ['', null, 'null'] } },
+          ];
 
           // Single sort field so {country,lastCheckOk,votes} compound index
           // fully covers the query without a blocking in-memory SORT stage.
