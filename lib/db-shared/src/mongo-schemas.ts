@@ -4212,3 +4212,23 @@ const GscOAuthTokenSchema = new Schema<IGscOAuthToken>({
 GscOAuthTokenSchema.index({ createdAt: -1 });
 
 export const GscOAuthToken = mongoose.model<IGscOAuthToken>('GscOAuthToken', GscOAuthTokenSchema);
+
+// ─── TvVersionConfig — single document holding the TV/mobile version manifest.
+// Updated via admin API; never requires a code deploy.
+export interface ITvVersionConfig extends Document {
+  latest: Record<string, string>;
+  minimum: Record<string, string>;
+  releaseNotes: Record<string, string>;
+  storeUrl: Record<string, string>;
+  updatedAt: Date;
+}
+
+const TvVersionConfigSchema = new Schema<ITvVersionConfig>({
+  latest:       { type: Schema.Types.Mixed, default: {} },
+  minimum:      { type: Schema.Types.Mixed, default: {} },
+  releaseNotes: { type: Schema.Types.Mixed, default: {} },
+  storeUrl:     { type: Schema.Types.Mixed, default: {} },
+  updatedAt:    { type: Date, default: Date.now },
+}, { collection: 'tv_version_config' });
+
+export const TvVersionConfig = mongoose.model<ITvVersionConfig>('TvVersionConfig', TvVersionConfigSchema);

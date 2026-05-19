@@ -38,6 +38,7 @@ export const AdminSeoMaintenance = lazy(() => import("@/pages/admin/seo-maintena
 export const AdminSeoMaintenanceRun = lazy(() => import("@/pages/admin/seo-maintenance-run"));
 export const SeoTranslationsHub = lazy(() => import("@/pages/admin/seo-translations"));
 export const SemrushIssues = lazy(() => import("@/pages/admin/semrush-issues"));
+export const TvVersion = lazy(() => import("@/pages/admin/tv-version"));
 export const AdminCoverage = lazy(() => import("@/pages/admin/coverage"));
 export const AdminCoverageCountry = lazy(() => import("@/pages/admin/coverage-country"));
 export const AdminCoverageCompare = lazy(() => import("@/pages/admin/coverage-compare"));
