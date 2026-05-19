@@ -1390,6 +1390,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             lastCheckOk: 1,
             favicon: 1,
             localImagePath: 1,
+            hasLogo: 1,
             normalizedName: {
               $trim: {
                 input: { $toLower: { $ifNull: ['$name', ''] } },
@@ -1417,6 +1418,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
                 lastCheckOk: { $ifNull: ['$lastCheckOk', false] },
                 favicon: '$favicon',
                 localImagePath: '$localImagePath',
+                hasLogo: '$hasLogo',
                 country: '$country',
               },
             },

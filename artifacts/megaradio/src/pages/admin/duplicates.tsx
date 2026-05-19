@@ -21,23 +21,26 @@ import {
 import { Loader2, Merge, AlertTriangle, CheckCircle, Trash2, Crown, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
+interface DuplicateStation {
+  _id: string;
+  name: string;
+  url: string;
+  urlResolved?: string;
+  votes: number;
+  playbackSuccessCount: number;
+  lastCheckOk: boolean;
+  favicon?: string;
+  localImagePath?: string;
+  hasLogo?: boolean;
+  country: string;
+}
+
 interface DuplicateGroup {
   name: string;
   country: string;
   duplicateCount: number;
   totalVotes: number;
-  stations: Array<{
-    _id: string;
-    name: string;
-    url: string;
-    urlResolved?: string;
-    votes: number;
-    playbackSuccessCount: number;
-    lastCheckOk: boolean;
-    favicon?: string;
-    localImagePath?: string;
-    country: string;
-  }>;
+  stations: DuplicateStation[];
 }
 
 interface DuplicatesResponse {
@@ -116,12 +119,12 @@ export default function AdminDuplicates() {
         totalStations: data.totalStations
       };
       
-      // Sort stations within each group by votes (highest first)
+      // Sort stations within each group: image-having first, then by votes
       const sortedData: DuplicatesResponse = {
         ...transformedData,
         duplicateGroups: transformedData.duplicateGroups.map(group => ({
           ...group,
-          stations: [...group.stations].sort((a, b) => (b.votes || 0) - (a.votes || 0))
+          stations: sortStationsImageFirst(group.stations)
         }))
       };
       
@@ -146,17 +149,36 @@ export default function AdminDuplicates() {
     }
   };
 
+  // Returns true if a station has any displayable image
+  const stationHasImage = (s: DuplicateStation): boolean => {
+    if (s.hasLogo) return true;
+    if (s.favicon && s.favicon.trim() && s.favicon !== 'null' && s.favicon !== 'undefined') return true;
+    if (s.localImagePath && s.localImagePath.trim() && s.localImagePath !== 'null' && s.localImagePath !== 'undefined') return true;
+    return false;
+  };
+
+  // Sort stations: image+votes first, then votes only, then by id for stability
+  const sortStationsImageFirst = (stations: DuplicateStation[]): DuplicateStation[] =>
+    [...stations].sort((a, b) => {
+      const aImg = stationHasImage(a) ? 1 : 0;
+      const bImg = stationHasImage(b) ? 1 : 0;
+      if (bImg !== aImg) return bImg - aImg;             // image-having first
+      const vDiff = (b.votes || 0) - (a.votes || 0);
+      if (vDiff !== 0) return vDiff;                      // then highest votes
+      return String(a._id).localeCompare(String(b._id)); // stable tie-break
+    });
+
   // Get the group key for accessing selected primary stations
   const getGroupKey = (group: DuplicateGroup) => `${group.name}-${group.country}`;
-  
-  // Get the primary station (either manually selected or default to highest voted)
+
+  // Get the primary station (manually selected, or image+votes-first default)
   const getPrimaryStationForGroup = (group: DuplicateGroup) => {
     const groupKey = getGroupKey(group);
     const selectedId = selectedPrimaryStations[groupKey];
     if (selectedId) {
-      return group.stations.find(s => s._id === selectedId) || group.stations[0];
+      return group.stations.find(s => s._id === selectedId) || sortStationsImageFirst(group.stations)[0];
     }
-    return group.stations[0]; // Default to highest voted
+    return sortStationsImageFirst(group.stations)[0];
   };
 
   // Merge group keeping only the highest voted station
@@ -210,9 +232,10 @@ export default function AdminDuplicates() {
     });
   };
 
-  // Toggle selection of all duplicates in a group (except the highest voted - index 0)
+  // Toggle selection of all duplicates in a group (except the image-first primary)
   const toggleSelectAllInGroup = (group: DuplicateGroup) => {
-    const duplicateIds = new Set(group.stations.slice(1).map(s => s._id));
+    const primary = getPrimaryStationForGroup(group);
+    const duplicateIds = new Set(group.stations.filter(s => s._id !== primary._id).map(s => s._id));
     setSelectedStations(prev => {
       const newSet = new Set(prev);
       const allSelected = Array.from(duplicateIds).every(id => newSet.has(id));
@@ -228,21 +251,22 @@ export default function AdminDuplicates() {
     });
   };
 
-  // Check if all duplicates in a group are selected
+  // Check if all duplicates in a group are selected (primary excluded)
   const areAllDuplicatesSelected = (group: DuplicateGroup): boolean => {
-    const duplicateIds = group.stations.slice(1).map(s => s._id);
+    const primary = getPrimaryStationForGroup(group);
+    const duplicateIds = group.stations.filter(s => s._id !== primary._id).map(s => s._id);
     return duplicateIds.length > 0 && duplicateIds.every(id => selectedStations.has(id));
   };
 
-  // Select all duplicates across ALL groups (excluding highest-voted in each group)
+  // Select all duplicates across ALL groups (excluding the image-first primary in each group)
   const selectAllDuplicates = () => {
     if (!duplicates?.duplicateGroups) return;
-    
+
     const allDuplicateIds = new Set<string>();
     duplicates.duplicateGroups.forEach(group => {
-      // Skip the highest-voted station (index 0) in each group
-      group.stations.slice(1).forEach(station => {
-        allDuplicateIds.add(station._id);
+      const primary = getPrimaryStationForGroup(group);
+      group.stations.forEach(station => {
+        if (station._id !== primary._id) allDuplicateIds.add(station._id);
       });
     });
     setSelectedStations(allDuplicateIds);
@@ -274,60 +298,51 @@ export default function AdminDuplicates() {
 
     setIsDeletingStations(true);
     try {
-      // Helper function to check if a URL is valid (not null, empty, or string 'null'/'undefined')
+      // Helper: true if URL is a valid non-empty non-sentinel string
       const isValidUrl = (url: string | null | undefined): boolean => {
         if (!url) return false;
-        const trimmed = url.trim();
-        return trimmed !== '' && trimmed !== 'null' && trimmed !== 'undefined';
+        const t = url.trim();
+        return t !== '' && t !== 'null' && t !== 'undefined';
       };
 
-      // SMART FAVICON COPYING: Check each group for favicon copying needs
+      // SMART IMAGE COPYING: before deleting, ensure the surviving station keeps an image
       if (duplicates?.duplicateGroups) {
         let faviconsCopied = 0;
-        
+
         for (const group of duplicates.duplicateGroups) {
           const groupStationIds = new Set(group.stations.map(s => s._id));
           const selectedInGroup = Array.from(selectedStations).filter(id => groupStationIds.has(id));
-          
+
           if (selectedInGroup.length === 0) continue;
-          
-          // Find highest-voted station that's NOT being deleted
-          const remainingStations = group.stations
-            .filter(s => !selectedInGroup.includes(s._id))
-            .sort((a, b) => (b.votes || 0) - (a.votes || 0));
-          
-          const highestVotedRemaining = remainingStations[0];
-          
-          // Check if highest-voted remaining station lacks BOTH favicon and localImagePath
-          const remainingHasIcon = isValidUrl(highestVotedRemaining?.favicon) || isValidUrl(highestVotedRemaining?.localImagePath);
-          
-          // If highest-voted station exists and has NO icon (neither favicon nor localImagePath), try to copy one
-          if (highestVotedRemaining && !remainingHasIcon) {
-            // Find a favicon from stations being deleted (check BOTH favicon and localImagePath)
+
+          // Best remaining station: image-first, then votes
+          const remainingStations = sortStationsImageFirst(
+            group.stations.filter(s => !selectedInGroup.includes(s._id))
+          );
+          const bestRemaining = remainingStations[0];
+
+          // Only copy if the best remaining station has no image at all
+          if (bestRemaining && !stationHasImage(bestRemaining)) {
             const stationsBeingDeleted = group.stations.filter(s => selectedInGroup.includes(s._id));
-            const faviconSource = stationsBeingDeleted.find(s => 
-              isValidUrl(s.favicon) || isValidUrl(s.localImagePath)
-            );
-            
-            // Get the actual icon URL (prefer favicon, fallback to localImagePath)
-            const sourceFaviconUrl = isValidUrl(faviconSource?.favicon) 
-              ? faviconSource?.favicon ?? ''
-              : isValidUrl(faviconSource?.localImagePath) 
-                ? faviconSource?.localImagePath ?? ''
+            const faviconSource = stationsBeingDeleted.find(s => isValidUrl(s.favicon) || isValidUrl(s.localImagePath));
+            const sourceFaviconUrl = isValidUrl(faviconSource?.favicon)
+              ? faviconSource!.favicon!
+              : isValidUrl(faviconSource?.localImagePath)
+                ? faviconSource!.localImagePath!
                 : '';
-            
-            if (sourceFaviconUrl && faviconSource) {
+
+            if (sourceFaviconUrl) {
               try {
-                const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
+                const updateResponse = await fetch(`/api/admin/stations/${bestRemaining._id}`, {
                   method: 'PUT',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ favicon: sourceFaviconUrl })
+                  body: JSON.stringify({ favicon: sourceFaviconUrl }),
                 });
                 if (updateResponse.ok) {
                   faviconsCopied++;
                   toast({
-                    title: 'Favicon preserved',
-                    description: `Copied favicon from "${faviconSource.name}" to "${highestVotedRemaining.name}"`,
+                    title: 'Image preserved',
+                    description: `Copied image from "${faviconSource!.name}" to "${bestRemaining.name}"`,
                   });
                 } else {
                   const errorData = await updateResponse.json();
@@ -394,57 +409,43 @@ export default function AdminDuplicates() {
 
     setIsDeletingStations(true);
     try {
-      // SMART FAVICON COPYING: Find highest-voted station that's NOT being deleted
-      const remainingStations = group.stations
-        .filter(s => !selectedInGroup.includes(s._id))
-        .sort((a, b) => (b.votes || 0) - (a.votes || 0));
-      
-      const highestVotedRemaining = remainingStations[0];
-      
-      // Helper function to check if a URL is valid (not null, empty, or string 'null'/'undefined')
+      // SMART IMAGE COPYING: best remaining station = image-first, then votes
+      const bestRemaining = sortStationsImageFirst(
+        group.stations.filter(s => !selectedInGroup.includes(s._id))
+      )[0];
+
       const isValidUrl = (url: string | null | undefined): boolean => {
         if (!url) return false;
-        const trimmed = url.trim();
-        return trimmed !== '' && trimmed !== 'null' && trimmed !== 'undefined';
+        const t = url.trim();
+        return t !== '' && t !== 'null' && t !== 'undefined';
       };
-      
-      // Check if highest-voted remaining station lacks BOTH favicon and localImagePath
-      const remainingHasIcon = isValidUrl(highestVotedRemaining?.favicon) || isValidUrl(highestVotedRemaining?.localImagePath);
-      
-      // If highest-voted station exists and has NO icon (neither favicon nor localImagePath), try to copy one
-      if (highestVotedRemaining && !remainingHasIcon) {
-        // Find a favicon from stations being deleted (check BOTH favicon and localImagePath)
+
+      if (bestRemaining && !stationHasImage(bestRemaining)) {
         const stationsBeingDeleted = group.stations.filter(s => selectedInGroup.includes(s._id));
-        const faviconSource = stationsBeingDeleted.find(s => 
-          isValidUrl(s.favicon) || isValidUrl(s.localImagePath)
-        );
-        
-        // Get the actual icon URL (prefer favicon, fallback to localImagePath)
-        const sourceFaviconUrl = isValidUrl(faviconSource?.favicon) 
-          ? faviconSource?.favicon ?? ''
-          : isValidUrl(faviconSource?.localImagePath) 
-            ? faviconSource?.localImagePath ?? ''
+        const faviconSource = stationsBeingDeleted.find(s => isValidUrl(s.favicon) || isValidUrl(s.localImagePath));
+        const sourceFaviconUrl = isValidUrl(faviconSource?.favicon)
+          ? faviconSource!.favicon!
+          : isValidUrl(faviconSource?.localImagePath)
+            ? faviconSource!.localImagePath!
             : '';
-        
-        if (sourceFaviconUrl && faviconSource) {
+
+        if (sourceFaviconUrl) {
           try {
-            const updateResponse = await fetch(`/api/admin/stations/${highestVotedRemaining._id}`, {
+            const updateResponse = await fetch(`/api/admin/stations/${bestRemaining._id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ favicon: sourceFaviconUrl })
+              body: JSON.stringify({ favicon: sourceFaviconUrl }),
             });
             if (updateResponse.ok) {
               toast({
-                title: 'Favicon preserved',
-                description: `Copied favicon from "${faviconSource.name}" to "${highestVotedRemaining.name}"`,
+                title: 'Image preserved',
+                description: `Copied image from "${faviconSource!.name}" to "${bestRemaining.name}"`,
               });
             } else {
-              const errorData = await updateResponse.json();
-              console.error('Failed to update favicon:', errorData);
+              console.error('Failed to update favicon:', await updateResponse.json());
             }
           } catch (error) {
             console.error('Failed to copy favicon:', error);
-            // Continue with deletion even if favicon copy fails
           }
         }
       }
@@ -986,52 +987,66 @@ export default function AdminDuplicates() {
           </CardHeader>
           <CardContent className="p-2 sm:p-6">
             <div className="space-y-2 sm:space-y-3">
-              <RadioGroup 
-                value={selectedPrimaryStations[getGroupKey(group)] || group.stations[0]._id}
+              {/* Auto-select note */}
+              {(() => {
+                const autoP = sortStationsImageFirst(group.stations)[0];
+                const hasImg = stationHasImage(autoP);
+                return hasImg ? (
+                  <p className="text-xs text-green-600 dark:text-green-400 mb-2">
+                    ✓ Auto-selected primary has an image
+                  </p>
+                ) : null;
+              })()}
+              <RadioGroup
+                value={selectedPrimaryStations[getGroupKey(group)] || getPrimaryStationForGroup(group)._id}
                 onValueChange={(value) => {
                   setSelectedPrimaryStations(prev => ({
                     ...prev,
-                    [getGroupKey(group)]: value
+                    [getGroupKey(group)]: value,
                   }));
                 }}
               >
-                {group.stations.map((station, stationIndex) => {
-                  const isSelected = (selectedPrimaryStations[getGroupKey(group)] === station._id) || 
-                                   (!selectedPrimaryStations[getGroupKey(group)] && stationIndex === 0);
-                  
+                {group.stations.map((station) => {
+                  const primary = getPrimaryStationForGroup(group);
+                  const isSelected = station._id === primary._id;
+                  const hasImage = stationHasImage(station);
+
                   return (
                     <div key={station._id}>
-                      {/* Mobile-First Station Row */}
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-3 rounded border hover:bg-muted/50 transition-colors gap-2">
+                      {/* Station Row */}
+                      <div className={`flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-3 rounded border hover:bg-muted/50 transition-colors gap-2 ${isSelected ? 'border-amber-500/60 bg-amber-500/5' : ''}`}>
                         {/* Left Side: Controls + Station Info */}
                         <div className="flex items-start sm:items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                          {/* Radio + Checkbox + Favicon */}
+                          {/* Radio + Checkbox + Image */}
                           <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                            <RadioGroupItem 
-                              value={station._id} 
+                            <RadioGroupItem
+                              value={station._id}
                               id={`primary-${station._id}`}
                               data-testid={`radio-primary-${station._id}`}
                               className="h-4 w-4"
                             />
                             {isSelected && <Crown className="h-3 w-3 sm:h-4 sm:w-4 text-amber-600" />}
-                            {stationIndex !== 0 && (
+                            {!isSelected && (
                               <Checkbox
                                 checked={selectedStations.has(station._id)}
-                                onCheckedChange={() => {
-                                  toggleStationSelection(station._id);
-                                }}
+                                onCheckedChange={() => toggleStationSelection(station._id)}
                                 data-testid={`checkbox-station-${station._id}`}
                                 onClick={(e) => e.stopPropagation()}
                                 className="h-4 w-4"
                               />
                             )}
-                            {station.favicon && (
-                              <img 
-                                src={station.favicon} 
+                            {/* Image preview — show favicon if available */}
+                            {station.favicon ? (
+                              <img
+                                src={station.favicon}
                                 alt={`${station.name} logo`}
-                                className="w-6 h-6 sm:w-8 sm:h-8 rounded flex-shrink-0"
+                                className="w-6 h-6 sm:w-8 sm:h-8 rounded flex-shrink-0 object-cover"
                                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
                               />
+                            ) : (
+                              <div className={`w-6 h-6 sm:w-8 sm:h-8 rounded flex-shrink-0 flex items-center justify-center text-[8px] font-bold ${hasImage ? 'bg-green-100 text-green-700' : 'bg-muted text-muted-foreground'}`}>
+                                {hasImage ? '✓' : '?'}
+                              </div>
                             )}
                           </div>
                           {/* Station Name + URL */}
@@ -1054,16 +1069,21 @@ export default function AdminDuplicates() {
                                 DUP
                               </Badge>
                             )}
+                            {hasImage && (
+                              <Badge className="bg-green-600 text-white hover:bg-green-700 text-[10px] sm:text-xs px-1 sm:px-2">
+                                🖼 <span className="hidden sm:inline">Image</span>
+                              </Badge>
+                            )}
                             <Badge className="bg-blue-600 text-white hover:bg-blue-700 text-[10px] sm:text-xs px-1 sm:px-2">
                               {station.votes} votes
                             </Badge>
                           </div>
                           <div className="text-[10px] sm:text-xs text-muted-foreground whitespace-nowrap">
-                            {station.lastCheckOk ? "✅" : "❌"} <span className="hidden sm:inline">{station.lastCheckOk ? "Working" : "Offline"}</span>
+                            {station.lastCheckOk ? '✅' : '❌'} <span className="hidden sm:inline">{station.lastCheckOk ? 'Working' : 'Offline'}</span>
                           </div>
                         </div>
                       </div>
-                      {stationIndex < group.stations.length - 1 && <Separator className="my-1" />}
+                      {group.stations.indexOf(station) < group.stations.length - 1 && <Separator className="my-1" />}
                     </div>
                   );
                 })}

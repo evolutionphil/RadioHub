@@ -672,6 +672,43 @@ export default function AdminCountryLanguageMappings() {
     return map;
   }, [languages]);
 
+  // Detailed list of overrides shown in the "Clear overrides" confirmation
+  // dialog. Kept here (before the loading-guard early-return below) to
+  // satisfy React's Rules of Hooks — hooks must not be called after a
+  // conditional return.
+  const persistedOverrides = useMemo(() => {
+    if (!existingMappings) return [];
+    return existingMappings
+      .filter(m => {
+        const def = defaultsMap.get(m.countryCode);
+        return !!def && m.languageCode !== def;
+      })
+      .map(m => ({
+        countryCode: m.countryCode,
+        countryName: m.countryName || m.countryCode,
+        currentLanguageCode: m.languageCode,
+        defaultLanguageCode: defaultsMap.get(m.countryCode) || '',
+      }))
+      .sort((a, b) => a.countryName.localeCompare(b.countryName));
+  }, [existingMappings, defaultsMap]);
+
+  // Detailed list of every persisted mapping shown in the "Reset all mappings"
+  // confirmation dialog.
+  const persistedAllMappings = useMemo(() => {
+    if (!existingMappings) return [];
+    const countryNameMap = new Map<string, string>();
+    countries?.forEach((c) => countryNameMap.set(c.code, c.name));
+    return existingMappings
+      .map((m) => ({
+        countryCode: m.countryCode,
+        countryName:
+          countryNameMap.get(m.countryCode) || m.countryName || m.countryCode,
+        currentLanguageCode: m.languageCode,
+        defaultLanguageCode: defaultsMap.get(m.countryCode) || '',
+      }))
+      .sort((a, b) => a.countryName.localeCompare(b.countryName));
+  }, [existingMappings, countries, defaultsMap]);
+
   // Bulk save mutation
   const bulkSaveMutation = useMutation({
     mutationFn: async (mappings: Array<{ countryCode: string; countryName: string; languageCode: string }>) => {
@@ -1565,44 +1602,6 @@ export default function AdminCountryLanguageMappings() {
       const def = defaultsMap.get(m.countryCode);
       return !!def && m.languageCode !== def;
     }).length || 0;
-
-  // Detailed list of overrides shown in the "Clear overrides" confirmation
-  // dialog so admins can see exactly which countries will be reset and what
-  // language each one will fall back to. Sorted alphabetically by country
-  // name for predictable scanning.
-  const persistedOverrides = useMemo(() => {
-    if (!existingMappings) return [];
-    return existingMappings
-      .filter(m => {
-        const def = defaultsMap.get(m.countryCode);
-        return !!def && m.languageCode !== def;
-      })
-      .map(m => ({
-        countryCode: m.countryCode,
-        countryName: m.countryName || m.countryCode,
-        currentLanguageCode: m.languageCode,
-        defaultLanguageCode: defaultsMap.get(m.countryCode) || '',
-      }))
-      .sort((a, b) => a.countryName.localeCompare(b.countryName));
-  }, [existingMappings, defaultsMap]);
-
-  // Detailed list of every persisted mapping shown in the "Reset all mappings"
-  // confirmation dialog so admins can audit exactly what will be deleted and
-  // what each country will fall back to. Sorted alphabetically by country name.
-  const persistedAllMappings = useMemo(() => {
-    if (!existingMappings) return [];
-    const countryNameMap = new Map<string, string>();
-    countries?.forEach((c) => countryNameMap.set(c.code, c.name));
-    return existingMappings
-      .map((m) => ({
-        countryCode: m.countryCode,
-        countryName:
-          countryNameMap.get(m.countryCode) || m.countryName || m.countryCode,
-        currentLanguageCode: m.languageCode,
-        defaultLanguageCode: defaultsMap.get(m.countryCode) || '',
-      }))
-      .sort((a, b) => a.countryName.localeCompare(b.countryName));
-  }, [existingMappings, countries, defaultsMap]);
 
   const downloadOverridesCsv = () => {
     if (persistedOverrides.length === 0) return;
