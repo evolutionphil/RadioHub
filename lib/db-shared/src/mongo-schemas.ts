@@ -4194,6 +4194,7 @@ export interface IGscOAuthToken extends Document {
   accessToken?: string;
   expiryDate?: number;
   scope: string;
+  connectedEmail?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -4203,6 +4204,7 @@ const GscOAuthTokenSchema = new Schema<IGscOAuthToken>({
   accessToken: String,
   expiryDate: Number,
   scope: { type: String, default: 'https://www.googleapis.com/auth/webmasters.readonly' },
+  connectedEmail: String,
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 }, { collection: 'gsc_oauth_tokens' });

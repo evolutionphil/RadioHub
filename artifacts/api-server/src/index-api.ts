@@ -2,6 +2,13 @@ if (!process.env.FONTCONFIG_FILE || process.env.FONTCONFIG_FILE === '/dev/null')
   process.env.FONTCONFIG_FILE = process.cwd() + '/fontconfig.conf';
 }
 
+// Sync job runs many concurrent batches each subscribing to close events on
+// shared streams (logger/stdout). The default limit of 10 fires false-positive
+// MaxListenersExceededWarnings under burst concurrency; 30 is safe for a
+// single-pod deployment without hiding real leaks.
+import { EventEmitter } from 'events';
+EventEmitter.defaultMaxListeners = 30;
+
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import MongoStore from "connect-mongo";
@@ -844,11 +851,18 @@ app.use(session(sessionConfig));
 
       if (process.env.NODE_ENV !== 'development') {
         try {
-          const CacheManagerModule = (await import('./cache')).default;
-          const CLEANUP_CACHE_KEY = 'startup:description_cleanup:last_run';
-          const lastRun = await CacheManagerModule.get(CLEANUP_CACHE_KEY);
-          if (lastRun) {
-            logger.log('🧹 CLEANUP: Skipping (already ran within 24h)');
+          // Use MongoDB for 24h gate so it persists across restarts/redeploys.
+          // In-memory node-cache is cleared on every container restart, causing
+          // the 40k-station cursor to run on every Railway deploy (+80 MB RSS).
+          const mongoose = (await import('mongoose')).default;
+          const appState = mongoose.connection.collection('app_state');
+          const CLEANUP_KEY = 'description_cleanup_last_run';
+          const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+          const lastRunDoc = await appState.findOne({ _id: CLEANUP_KEY as any });
+          const lastRunMs = (lastRunDoc as any)?.runAt instanceof Date ? (lastRunDoc as any).runAt.getTime() : 0;
+
+          if (Date.now() - lastRunMs < TWENTY_FOUR_HOURS) {
+            logger.log('🧹 CLEANUP: Skipping (already ran within 24h — persisted in DB)');
           } else {
             const { Station } = await import('@workspace/db-shared/mongo-schemas');
             let cleanedCount = 0;
@@ -879,7 +893,11 @@ app.use(session(sessionConfig));
                 cleanedCount++;
               }
             }
-            await CacheManagerModule.set(CLEANUP_CACHE_KEY, Date.now(), { ttl: 86400 });
+            await appState.updateOne(
+              { _id: CLEANUP_KEY as any },
+              { $set: { runAt: new Date() } },
+              { upsert: true },
+            );
             if (cleanedCount > 0) logger.log(`🧹 CLEANUP: Cleaned placeholder prefixes from ${cleanedCount} stations`);
           }
         } catch (error: any) {
