@@ -422,6 +422,21 @@ app.get('/', (_req, res) => {
 app.use('/assets', express.static(path.join(distPublicPath, 'assets'), { maxAge: '1y', immutable: true }));
 app.use('/admin', express.static(distPublicPath, { index: false }));
 
+// Serve locally-processed station logos. When S3 is not configured, logo-processor.ts
+// writes WebP files to public/station-logos/ — this makes them reachable from both the
+// API domain (api.themegaradio.com/station-logos/...) and the admin SPA.
+const stationLogosPath = path.resolve(process.cwd(), 'public', 'station-logos');
+app.use('/station-logos', express.static(stationLogosPath, {
+  etag: true,
+  lastModified: true,
+  setHeaders: (res) => {
+    res.set({
+      'Cache-Control': 'public, max-age=31536000, immutable',
+      'Access-Control-Allow-Origin': '*',
+    });
+  },
+}));
+
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(distPublicPath, 'index.html'));
 });
