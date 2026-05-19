@@ -324,6 +324,8 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     }
     
     if (pathToUse === '/tv') return <LazyRoutes.TvLogin />;
+    if (pathToUse === '/activate/success') return <LazyRoutes.ActivateSuccessPage />;
+    if (pathToUse === '/activate') return <LazyRoutes.ActivatePage />;
     if (pathToUse === '/trending') return <LazyRoutes.TrendingStations />;
     if (pathToUse === '/test-user') return <div className="min-h-screen bg-[#0E0E0E] text-white flex items-center justify-center"><h1 className="text-2xl">Test Route Works!</h1></div>;
     if (pathToUse === '/request-station') return <LazyRoutes.RequestStation />;

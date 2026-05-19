@@ -1,7 +1,17 @@
 import { type Express } from "express";
-import { Station, SyncLog, User, Genre, Language, Country, Feedback, VisitorSession, StationDebugLog } from '@workspace/db-shared/mongo-schemas';
+import mongoose from 'mongoose';
+import { Station, SyncLog, User, Genre, Language, Country, Feedback, VisitorSession, StationDebugLog, TranslationKey } from '@workspace/db-shared/mongo-schemas';
 import CacheManager from '../cache';
 import { logger } from '../utils/logger';
+
+type HealthStatus = 'online' | 'stale' | 'offline' | 'active' | 'empty';
+
+interface DashboardHealth {
+  database: 'online' | 'offline';
+  radioBrowser: 'online' | 'stale' | 'offline';
+  translations: 'active' | 'empty';
+  lastSyncHoursAgo: number | null;
+}
 
 export function registerCacheDashboardRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
@@ -142,6 +152,30 @@ export function registerCacheDashboardRoutes(app: Express, deps: any) {
         });
       } catch (e) {}
 
+      // Real system health: DB connection state, freshness of the last sync
+      // run, and whether the translation table has been seeded. Counted as a
+      // dashboard sub-stat so the existing 5-min cache covers it too.
+      const health: DashboardHealth = await (async () => {
+        const dbState: 'online' | 'offline' =
+          mongoose.connection.readyState === 1 ? 'online' : 'offline';
+
+        let radioBrowser: 'online' | 'stale' | 'offline' = 'offline';
+        let lastSyncHoursAgo: number | null = null;
+        if (lastSyncLog?.createdAt) {
+          const ageHours = (Date.now() - new Date(lastSyncLog.createdAt).getTime()) / 3_600_000;
+          lastSyncHoursAgo = Math.round(ageHours * 10) / 10;
+          radioBrowser = ageHours < 25 ? 'online' : 'stale';
+        }
+
+        let translations: 'active' | 'empty' = 'empty';
+        try {
+          const count = await TranslationKey.estimatedDocumentCount();
+          translations = count > 0 ? 'active' : 'empty';
+        } catch {}
+
+        return { database: dbState, radioBrowser, translations, lastSyncHoursAgo };
+      })();
+
       const stats = {
         totalStations,
         totalCountries,
@@ -171,7 +205,8 @@ export function registerCacheDashboardRoutes(app: Express, deps: any) {
           lastSync: lastSyncLog ? new Date(lastSyncLog.createdAt) : null,
           lastSyncStatus: lastSyncLog?.status || 'unknown',
           isHealthy: isRecentSync && lastSyncLog?.status === 'completed'
-        }
+        },
+        health
       };
 
       await CacheManager.set(CACHE_KEY, stats, { ttl: 300 });

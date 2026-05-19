@@ -102,16 +102,18 @@ router.get('/web-vitals', async (req: Request, res: Response) => {
 
     // Extract the web vitals data
     const webVitalsData = data?.data?.viewer?.accounts?.[0]?.rumWebVitalsEventsAdaptiveGroups || [];
-    
-    // Calculate aggregate metrics across all data points
-    const aggregateMetrics = calculateAggregateMetrics(webVitalsData);
-    
+
+    // Calculate aggregate metrics (P50/P75/P95) per vital across all data points
+    const vitals = calculateWebVitals(webVitalsData);
+
     res.json({
       success: true,
       period: { start, end },
-      totalDataPoints: webVitalsData.length,
-      aggregate: aggregateMetrics,
-      details: webVitalsData,
+      totalSamples: vitals.totalSamples,
+      lcp: vitals.lcp,
+      inp: vitals.inp,
+      cls: vitals.cls,
+      lastUpdated: new Date().toISOString(),
       thresholds: {
         lcp: { good: 2500, needsImprovement: 4000 },
         inp: { good: 200, needsImprovement: 500 },
@@ -127,49 +129,58 @@ router.get('/web-vitals', async (req: Request, res: Response) => {
   }
 });
 
-// Helper function to calculate aggregate metrics
-function calculateAggregateMetrics(dataPoints: any[]) {
-  if (!dataPoints.length) {
-    return {
-      lcp: { p75: null, status: 'no_data' },
-      inp: { p75: null, status: 'no_data' },
-      cls: { p75: null, status: 'no_data' },
-      totalSamples: 0
-    };
-  }
+type VitalStatus = 'good' | 'needs_improvement' | 'poor' | 'no_data';
+interface VitalAggregate { p50: number | null; p75: number | null; p95: number | null; status: VitalStatus }
 
-  // Weight by sample count
+function emptyVital(): VitalAggregate {
+  return { p50: null, p75: null, p95: null, status: 'no_data' };
+}
+
+function weightedAverage(dataPoints: any[], field: string): number {
   let totalSamples = 0;
-  let weightedLcp = 0;
-  let weightedInp = 0;
-  let weightedCls = 0;
-  
+  let weighted = 0;
   for (const point of dataPoints) {
     const count = point.count || 1;
+    const value = point.quantiles?.[field];
+    if (typeof value !== 'number') continue;
     totalSamples += count;
-    weightedLcp += (point.quantiles?.lcpP75 || 0) * count;
-    weightedInp += (point.quantiles?.inpP75 || 0) * count;
-    weightedCls += (point.quantiles?.clsP75 || 0) * count;
+    weighted += value * count;
   }
-  
-  const avgLcp = totalSamples > 0 ? weightedLcp / totalSamples : 0;
-  const avgInp = totalSamples > 0 ? weightedInp / totalSamples : 0;
-  const avgCls = totalSamples > 0 ? weightedCls / totalSamples : 0;
-  
+  return totalSamples > 0 ? weighted / totalSamples : 0;
+}
+
+function classify(p75: number, goodMax: number, niMax: number): VitalStatus {
+  if (p75 <= goodMax) return 'good';
+  if (p75 <= niMax) return 'needs_improvement';
+  return 'poor';
+}
+
+function calculateWebVitals(dataPoints: any[]) {
+  if (!dataPoints.length) {
+    return { totalSamples: 0, lcp: emptyVital(), inp: emptyVital(), cls: emptyVital() };
+  }
+
+  const totalSamples = dataPoints.reduce((sum, p) => sum + (p.count || 1), 0);
+
+  // LCP / INP in milliseconds (rounded)
+  const lcpP50 = Math.round(weightedAverage(dataPoints, 'lcpP50'));
+  const lcpP75 = Math.round(weightedAverage(dataPoints, 'lcpP75'));
+  const lcpP95 = Math.round(weightedAverage(dataPoints, 'lcpP95'));
+
+  const inpP50 = Math.round(weightedAverage(dataPoints, 'inpP50'));
+  const inpP75 = Math.round(weightedAverage(dataPoints, 'inpP75'));
+  const inpP95 = Math.round(weightedAverage(dataPoints, 'inpP95'));
+
+  // CLS is a unitless score (3 decimal places)
+  const clsP50 = Math.round(weightedAverage(dataPoints, 'clsP50') * 1000) / 1000;
+  const clsP75 = Math.round(weightedAverage(dataPoints, 'clsP75') * 1000) / 1000;
+  const clsP95 = Math.round(weightedAverage(dataPoints, 'clsP95') * 1000) / 1000;
+
   return {
-    lcp: {
-      p75: Math.round(avgLcp),
-      status: avgLcp <= 2500 ? 'good' : avgLcp <= 4000 ? 'needs_improvement' : 'poor'
-    },
-    inp: {
-      p75: Math.round(avgInp),
-      status: avgInp <= 200 ? 'good' : avgInp <= 500 ? 'needs_improvement' : 'poor'
-    },
-    cls: {
-      p75: Math.round(avgCls * 1000) / 1000, // 3 decimal places
-      status: avgCls <= 0.1 ? 'good' : avgCls <= 0.25 ? 'needs_improvement' : 'poor'
-    },
-    totalSamples
+    totalSamples,
+    lcp: { p50: lcpP50, p75: lcpP75, p95: lcpP95, status: classify(lcpP75, 2500, 4000) },
+    inp: { p50: inpP50, p75: inpP75, p95: inpP95, status: classify(inpP75, 200, 500) },
+    cls: { p50: clsP50, p75: clsP75, p95: clsP95, status: classify(clsP75, 0.1, 0.25) },
   };
 }
 

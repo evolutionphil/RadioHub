@@ -1668,12 +1668,14 @@ const UserSchema = new Schema<IUser>({
   },
   subscription: {
     plan: { type: String, enum: ['none', 'remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'], default: 'none' },
-    platform: { type: String, enum: ['ios', 'android', 'tvos', 'macos', 'web', 'admin'] },
+    platform: { type: String, enum: ['ios', 'android', 'tvos', 'macos', 'web', 'admin', 'stripe'] },
     productId: String,
     transactionId: String,
     originalTransactionId: String,
     receipt: String,
     purchaseToken: String,
+    stripeCustomerId: String,
+    stripeSubscriptionId: String,
     expiresAt: { type: Date, default: null },
     startedAt: Date,
     isTrial: { type: Boolean, default: false },
@@ -4232,3 +4234,38 @@ const TvVersionConfigSchema = new Schema<ITvVersionConfig>({
 }, { collection: 'tv_version_config' });
 
 export const TvVersionConfig = mongoose.model<ITvVersionConfig>('TvVersionConfig', TvVersionConfigSchema);
+
+// ==================== TV Subscription Codes (Stripe account-linking flow) ====================
+
+export interface ITvSubscriptionCode {
+  code: string;
+  deviceId: string;
+  platform: 'tizen' | 'webos' | 'other';
+  status: 'pending' | 'completed' | 'expired';
+  userId?: mongoose.Types.ObjectId;
+  plan?: string;
+  stripeSessionId?: string;
+  expiresAt: Date;
+  createdAt: Date;
+  completedAt?: Date;
+}
+
+const TvSubscriptionCodeSchema = new Schema<ITvSubscriptionCode>({
+  code: { type: String, required: true },
+  deviceId: { type: String, required: true },
+  platform: { type: String, enum: ['tizen', 'webos', 'other'], default: 'other' },
+  status: { type: String, enum: ['pending', 'completed', 'expired'], default: 'pending' },
+  userId: { type: Schema.Types.ObjectId, ref: 'User' },
+  plan: String,
+  stripeSessionId: String,
+  expiresAt: { type: Date, required: true },
+  createdAt: { type: Date, default: Date.now },
+  completedAt: Date,
+});
+
+TvSubscriptionCodeSchema.index({ code: 1, status: 1 });
+TvSubscriptionCodeSchema.index({ deviceId: 1, createdAt: -1 });
+TvSubscriptionCodeSchema.index({ stripeSessionId: 1 }, { sparse: true });
+TvSubscriptionCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+export const TvSubscriptionCode = mongoose.model<ITvSubscriptionCode>('TvSubscriptionCode', TvSubscriptionCodeSchema);
