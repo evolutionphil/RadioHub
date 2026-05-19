@@ -205,6 +205,7 @@ interface OAuthStatus {
   connected: boolean;
   connectedAt: string | null;
   scope: string | null;
+  connectedEmail?: string | null;
 }
 
 const NOINDEX_REASON_LABEL: Record<Exclude<ServerNoindexReason, null>, string> = {
@@ -620,9 +621,17 @@ export default function GscInspectionPage() {
               Google Account Connection
             </CardTitle>
             <CardDescription className="text-gray-400 text-sm">
-              {oauthStatus?.connected
-                ? `Connected${oauthStatus.connectedAt ? ` on ${fmt(oauthStatus.connectedAt)}` : ''}. GSC API calls use your personal Google account.`
-                : oauthStatus?.hasEnvVars
+              {oauthStatus?.connected ? (
+                <span>
+                  {oauthStatus.connectedEmail ? (
+                    <>Connected as <span className="font-mono text-green-400">{oauthStatus.connectedEmail}</span></>
+                  ) : (
+                    'Connected'
+                  )}
+                  {oauthStatus.connectedAt ? ` · ${fmt(oauthStatus.connectedAt)}` : ''}
+                  {'. GSC API calls use your personal Google account.'}
+                </span>
+              ) : oauthStatus?.hasEnvVars
                 ? 'Connect your Google account to enable live URL Inspection (bypasses the service account "email not found" bug).'
                 : 'Set GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET in Railway env vars, then connect.'}
             </CardDescription>

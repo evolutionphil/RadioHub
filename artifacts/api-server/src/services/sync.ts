@@ -69,6 +69,11 @@ export async function fetchWithMirrorFallback<T = any>(
       logger.warn(
         `⚠️ [${context}] mirror=${mirror} failed (status=${err?.response?.status || 'n/a'} code=${err?.code || 'n/a'}), trying next…`,
       );
+      const attempt = RADIO_BROWSER_MIRRORS.indexOf(mirror);
+      if (attempt < RADIO_BROWSER_MIRRORS.length - 1) {
+        const delayMs = Math.min(500 * 2 ** attempt, 4000);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
     }
   }
   logger.error(

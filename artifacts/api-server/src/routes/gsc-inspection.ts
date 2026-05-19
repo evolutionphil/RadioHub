@@ -710,6 +710,7 @@ router.get('/oauth/status', async (_req: Request, res: Response) => {
     connected: Boolean(token?.refreshToken),
     connectedAt: token?.createdAt ?? null,
     scope: token?.scope ?? null,
+    connectedEmail: token?.connectedEmail ?? null,
   });
 });
 
@@ -764,12 +765,20 @@ export async function handleOAuthCallback(req: Request, res: Response): Promise<
       res.redirect('/admin/gsc-inspection?oauth_error=no_refresh_token');
       return;
     }
+    let connectedEmail: string | undefined;
+    try {
+      const infoClient = createOAuthClientFromEnv()!;
+      infoClient.setCredentials(tokens);
+      const tokenInfo = await infoClient.getTokenInfo(tokens.access_token!);
+      connectedEmail = (tokenInfo as any).email ?? undefined;
+    } catch { /* email is optional — don't fail the whole flow */ }
     await GscOAuthToken.deleteMany({});
     await GscOAuthToken.create({
       refreshToken: tokens.refresh_token,
       accessToken: tokens.access_token ?? undefined,
       expiryDate: tokens.expiry_date ?? undefined,
       scope: tokens.scope ?? 'https://www.googleapis.com/auth/webmasters.readonly',
+      connectedEmail,
     });
     invalidateOAuthCache();
     res.redirect('/admin/gsc-inspection?oauth_success=1');
