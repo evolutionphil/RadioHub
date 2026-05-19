@@ -4374,7 +4374,7 @@ ${keysText}`;
         const doc = await TranslationKey.findOneAndUpdate(
           { key },
           { $setOnInsert: { key, defaultValue: EN[key] ?? '', category: 'seo', isPlural: false, createdAt: new Date(), updatedAt: new Date() } },
-          { upsert: true, new: true },
+          { upsert: true, returnDocument: 'after' },
         ).lean();
         keyIdMap[key] = (doc as any)?._id;
       }
