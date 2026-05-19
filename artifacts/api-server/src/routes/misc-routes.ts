@@ -331,22 +331,71 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
-      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 100));
+      const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
       const skip = (page - 1) * limit;
-      const search = req.query.search as string;
+      const search = (req.query.search as string || '').trim();
+
+      const planRaw = typeof req.query.plan === 'string' ? req.query.plan : 'all';
+      const authRaw = typeof req.query.authMethod === 'string' ? req.query.authMethod : 'all';
+      const platformRaw = typeof req.query.platform === 'string' ? req.query.platform : 'all';
+      const sortByRaw = typeof req.query.sortBy === 'string' ? req.query.sortBy : 'createdAt';
+      const sortDirRaw = req.query.sortDir === 'asc' ? 'asc' : 'desc';
+
+      const PLAN_VALUES = new Set(['all', 'none', 'remove_ads', 'any_premium', 'premium_monthly', 'premium_yearly', 'premium_lifetime']);
+      const AUTH_VALUES = new Set(['all', 'email', 'google', 'facebook', 'apple']);
+      const PLATFORM_VALUES = new Set(['all', 'ios', 'android', 'tvos', 'macos', 'web', 'admin']);
+      const SORT_FIELDS: Record<string, string> = {
+        createdAt: 'createdAt', updatedAt: 'updatedAt',
+        name: 'fullName', email: 'email', followers: 'followersCount',
+      };
+
+      const planFilter = PLAN_VALUES.has(planRaw) ? planRaw : 'all';
+      const authFilter = AUTH_VALUES.has(authRaw) ? authRaw : 'all';
+      const platformFilter = PLATFORM_VALUES.has(platformRaw) ? platformRaw : 'all';
+      const sortField = SORT_FIELDS[sortByRaw] || 'createdAt';
+      const sortDir = sortDirRaw === 'asc' ? 1 : -1;
 
       const filter: any = {};
       if (search) {
         const safe = escapeRegex(search);
         filter.$or = [
           { email: { $regex: safe, $options: 'i' } },
-          { fullName: { $regex: safe, $options: 'i' } }
+          { fullName: { $regex: safe, $options: 'i' } },
         ];
+      }
+      if (planFilter === 'none') {
+        filter.$and = (filter.$and || []).concat([{
+          $or: [
+            { subscription: { $exists: false } }, { subscription: null },
+            { 'subscription.isActive': { $ne: true } }, { 'subscription.plan': 'none' },
+          ],
+        }]);
+      } else if (planFilter === 'any_premium') {
+        filter['subscription.isActive'] = true;
+        filter['subscription.plan'] = { $in: ['premium_monthly', 'premium_yearly', 'premium_lifetime'] };
+      } else if (planFilter !== 'all') {
+        filter['subscription.isActive'] = true;
+        filter['subscription.plan'] = planFilter;
+      }
+      if (authFilter === 'email') {
+        filter.$and = (filter.$and || []).concat([{
+          $or: [
+            { authProvider: { $exists: false } }, { authProvider: null },
+            { authProvider: '' }, { authProvider: { $regex: '^email$', $options: 'i' } },
+          ],
+        }]);
+      } else if (authFilter !== 'all') {
+        filter.authProvider = { $regex: `^${authFilter}$`, $options: 'i' };
+      }
+      if (platformFilter !== 'all') {
+        filter['subscription.platform'] = platformFilter;
       }
 
       const [users, totalCount] = await Promise.all([
-        User.find(filter).select('_id email fullName avatar profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive subscription').skip(skip).limit(limit).sort({ createdAt: -1 }).lean(),
-        User.countDocuments(filter)
+        User.find(filter)
+          .select('_id email fullName avatar profilePicture authProvider googleId followers followersCount createdAt updatedAt isActive subscription')
+          .skip(skip).limit(limit).sort({ [sortField]: sortDir }).lean(),
+        User.countDocuments(filter),
       ]);
 
       let favoriteMap: Record<string, number> = {};
