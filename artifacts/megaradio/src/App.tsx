@@ -188,6 +188,7 @@ function AdminRouterContent() {
         <Route path="/admin/seo-maintenance/runs/:id" component={LazyAdminRoutes.AdminSeoMaintenanceRun} />
         <Route path="/admin/seo-translations" component={LazyAdminRoutes.SeoTranslationsHub} />
         <Route path="/admin/semrush" component={LazyAdminRoutes.SemrushIssues} />
+        <Route path="/admin/tv-version" component={LazyAdminRoutes.TvVersion} />
         <Route path="/admin/coverage" component={LazyAdminRoutes.AdminCoverage} />
         <Route path="/admin/coverage/compare" component={LazyAdminRoutes.AdminCoverageCompare} />
         <Route path="/admin/coverage/:countryCode" component={LazyAdminRoutes.AdminCoverageCountry} />
