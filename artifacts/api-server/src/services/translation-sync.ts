@@ -20,7 +20,13 @@ export class TranslationSyncService {
   private static lastSyncTime: Date | null = null;
 
   static async scanFrontendForKeys(): Promise<ExtractedKey[]> {
-    const clientDir = path.join(process.cwd(), 'client', 'src');
+    // In the Docker image cwd=/app; source lives at artifacts/megaradio/src.
+    // Fall back to the legacy client/src path for any non-standard setups.
+    const candidateDirs = [
+      path.join(process.cwd(), 'artifacts', 'megaradio', 'src'),
+      path.join(process.cwd(), 'client', 'src'),
+    ];
+    const clientDir = candidateDirs.find((d) => fs.existsSync(d)) ?? candidateDirs[0];
     const extractedKeys: ExtractedKey[] = [];
     
     const scanDirectory = async (dir: string) => {

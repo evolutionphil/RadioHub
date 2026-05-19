@@ -429,6 +429,9 @@ export default function GscInspectionPage() {
       }
       return r.json();
     },
+    onSuccess: () => {
+      toast({ title: 'Inspection batch started', description: 'Running in background — status updates every 30 s in "Last refresh".' });
+    },
     onSettled: () => {
       queryClient.invalidateQueries({
         queryKey: ['/api/admin/gsc-inspection/status'],
@@ -1216,12 +1219,12 @@ export default function GscInspectionPage() {
                 <Button
                   size="sm"
                   className="bg-blue-600 hover:bg-blue-700"
-                  disabled={refreshBatch.isPending || !status?.configured}
+                  disabled={refreshBatch.isPending || status?.inspectionRunning || !status?.configured}
                   onClick={() => refreshBatch.mutate()}
                 >
                   <RefreshCcw className="w-4 h-4 mr-2" />
-                  {refreshBatch.isPending
-                    ? 'Refreshing…'
+                  {refreshBatch.isPending || status?.inspectionRunning
+                    ? 'Running…'
                     : `Run inspection batch (${status?.defaultBatchSize ?? 50})`}
                 </Button>
               </div>

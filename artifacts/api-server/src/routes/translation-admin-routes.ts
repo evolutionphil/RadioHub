@@ -4374,7 +4374,7 @@ ${keysText}`;
         const doc = await TranslationKey.findOneAndUpdate(
           { key },
           { $setOnInsert: { key, defaultValue: EN[key] ?? '', category: 'seo', isPlural: false, createdAt: new Date(), updatedAt: new Date() } },
-          { upsert: true, new: true },
+          { upsert: true, returnDocument: 'after' },
         ).lean();
         keyIdMap[key] = (doc as any)?._id;
       }
@@ -4553,6 +4553,68 @@ ${keysText}`;
     } catch (err: any) {
       logger.error('seo-translations/warm-all failed:', err?.message);
       res.status(500).json({ error: 'Warm-all failed: ' + (err?.message ?? 'unknown') });
+    }
+  });
+
+  // POST /api/admin/scan-frontend-strings
+  // Scans the frontend source for t('key', 'default') calls and upserts new TranslationKey documents.
+  app.post('/api/admin/scan-frontend-strings', deps.requireAdmin, async (_req: any, res: any) => {
+    try {
+      const { TranslationSyncService } = await import('../services/translation-sync');
+      const result = await TranslationSyncService.syncNewKeys();
+      res.json({
+        message: `Scan complete: ${result.added} new keys added, ${result.existing} already existed`,
+        added: result.added,
+        existing: result.existing,
+      });
+    } catch (err: any) {
+      logger.error('scan-frontend-strings failed:', err?.message);
+      if (err?.code === 'ENOENT') {
+        res.status(422).json({ error: 'Frontend source directory not found — this feature only works when source files are present (development builds).' });
+      } else {
+        res.status(500).json({ error: 'Scan failed: ' + (err?.message ?? 'unknown') });
+      }
+    }
+  });
+
+  // POST /api/admin/translation-keys/add-faq-keys
+  // Upserts all FAQ question/answer TranslationKey documents from the seo-shared FAQ schema.
+  app.post('/api/admin/translation-keys/add-faq-keys', deps.requireAdmin, async (_req: any, res: any) => {
+    try {
+      const { FAQ_PAGE_ITEMS } = await import('@workspace/seo-shared/faq-schema');
+      const { bumpTranslationVersion } = await import('../services/translation-version');
+
+      let added = 0;
+      let existing = 0;
+
+      for (const item of FAQ_PAGE_ITEMS as any[]) {
+        const pairs = [
+          { key: item.qKey, defaultValue: item.qFallback, description: 'FAQ page question' },
+          { key: item.aKey, defaultValue: item.aFallback, description: 'FAQ page answer' },
+        ];
+        for (const { key, defaultValue, description } of pairs) {
+          const exists = await TranslationKey.exists({ key });
+          if (!exists) {
+            await TranslationKey.create({ key, defaultValue, description, category: 'faq', isPlural: false });
+            added++;
+          } else {
+            existing++;
+          }
+        }
+      }
+
+      if (added > 0) {
+        await bumpTranslationVersion(`FAQ keys seeded: ${added} added`);
+      }
+
+      res.json({
+        message: `FAQ keys: ${added} added, ${existing} already existed`,
+        added,
+        existing,
+      });
+    } catch (err: any) {
+      logger.error('add-faq-keys failed:', err?.message);
+      res.status(500).json({ error: 'Add FAQ keys failed: ' + (err?.message ?? 'unknown') });
     }
   });
 }

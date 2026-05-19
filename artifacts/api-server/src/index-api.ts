@@ -392,6 +392,8 @@ app.use(compression({
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
+// text/csv uploads (e.g. SEMrush CSV import) — larger limit, separate from JSON budget
+app.use(express.text({ limit: '10mb', type: ['text/csv', 'text/plain'] }));
 
 // 2026-05-15: Replaced sendFile of /app/public/api-docs.html (which never
 // existed in the prod image — Railway logs were full of `ENOENT: no such

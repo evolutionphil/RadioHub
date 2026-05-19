@@ -62,8 +62,20 @@ export default function SemrushIssues() {
   });
 
   const importMutation = useMutation<{ count: number; message: string }, Error, string>({
-    mutationFn: (csv: string) =>
-      apiRequest("POST", "/api/admin/semrush/import", { body: { csv } }).then((r) => r.json()),
+    mutationFn: async (csv: string) => {
+      // Send as raw text/csv to bypass the 2 MB JSON body limit (CSVs can be 3-10 MB).
+      const r = await fetch("/api/admin/semrush/import", {
+        method: "POST",
+        headers: { "Content-Type": "text/csv" },
+        body: csv,
+        credentials: "include",
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error((j as any).error ?? `HTTP ${r.status}`);
+      }
+      return r.json();
+    },
     onSuccess: (data) => {
       toast({ title: "Import complete", description: `${data.count} issues imported` });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/semrush/summary"] });
