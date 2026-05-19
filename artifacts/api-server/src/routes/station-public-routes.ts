@@ -171,8 +171,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           }
           tvFilter['logoAssets.status'] = 'completed';
 
+          // Single sort field so {country,lastCheckOk,votes} compound index
+          // fully covers the query without a blocking in-memory SORT stage.
           const fastStations = await Station.find(tvFilter)
-            .sort({ votes: -1, clickCount: -1 })
+            .sort({ votes: -1 })
             .limit(Number(limit) * 2)
             .select(deps.TV_STATION_PROJECTION || {})
             .lean();
@@ -679,47 +681,56 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
   app.get("/api/stations/similar/:id", async (req, res) => {
     try {
       const { id } = req.params;
-      const { limit = 6 } = req.query;
-      const limitNum = Number(limit);
-
+      const limitNum = Math.min(Math.max(Number(req.query.limit ?? 6), 1), 20);
       const cacheKey = `similar_stations:${id}:${limitNum}`;
-      const cachedResult = await CacheManager.get(cacheKey);
-      if (cachedResult) return void res.json(cachedResult);
 
-      const sourceStation = await Station.findById(id).select('country tags').lean();
-      if (!sourceStation) return void res.status(404).json({ error: 'Station not found' });
+      // Single-flight: concurrent cold-misses for the same station coalesce
+      // into one DB call instead of spawning N parallel RecommendationEngine runs.
+      const result = await CacheManager.getOrSetSingleFlight<any[] | null>(cacheKey, async () => {
+        const sourceStation = await Station.findById(id).select('country tags').lean();
+        if (!sourceStation) return null; // null = not cached (cache miss signal)
 
-      const { performanceCache } = await import('../performance-cache');
-      const pool = performanceCache.getSimilarPool(sourceStation.country ?? '') || performanceCache.getGlobalPopularPool();
+        const { performanceCache: pc } = await import('../performance-cache');
+        const pool = pc.getSimilarPool(sourceStation.country ?? '') || pc.getGlobalPopularPool();
 
-      let resultStations: any[];
+        if (pool && pool.length > 0) {
+          return pool.filter((s: any) => s._id?.toString() !== id).slice(0, limitNum);
+        }
 
-      if (pool && pool.length > 0) {
-        resultStations = pool
-          .filter((s: any) => s._id?.toString() !== id)
-          .slice(0, limitNum);
-      } else {
-        const similarStations = await RecommendationEngine.getPersonalizedSimilarStations({
-          sourceStationId: id,
-          limit: limitNum
-        });
+        // Fast indexed fallback: country + lastCheckOk uses the compound index
+        // {country,lastCheckOk,votes} → 50-200ms vs RecommendationEngine's
+        // regex/collaborative queries that take 2-8s on a cold cache.
+        const country = sourceStation.country;
+        const stations = await Station.find(
+          country
+            ? { country, lastCheckOk: true, _id: { $ne: id } }
+            : { lastCheckOk: true, _id: { $ne: id } },
+        )
+          .sort({ votes: -1 })
+          .limit(limitNum * 4)
+          .select('_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets url url_resolved')
+          .maxTimeMS(3000)
+          .lean();
 
-        const stationIds = similarStations.map(s => s.stationId);
-        const stations = await Station.find({ _id: { $in: stationIds } }).lean();
+        // Lazy-populate the per-country pool so the next same-country request
+        // is served from memory without a DB round-trip.
+        if (country && stations.length > 0) {
+          pc.setSimilarPool(country, stations.slice(0, 30));
+        }
 
-        resultStations = similarStations
-          .map(sim => stations.find(s => s._id.toString() === sim.stationId))
-          .filter(Boolean);
-      }
+        return stations.slice(0, limitNum);
+      }, { ttl: 3600 });
 
-      await CacheManager.set(cacheKey, resultStations, { ttl: 3600 });
-      res.json(stripPlaceholders(resultStations));
+      if (result === null) return void res.status(404).json({ error: 'Station not found' });
+
+      // Let the Tizen app / CDN cache the response — similar stations change rarely.
+      res.set('Cache-Control', 'public, max-age=300, s-maxage=3600');
+      res.json(stripPlaceholders(result));
     } catch (error: any) {
       logger.error(`❌ /api/stations/similar/:id failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
       try {
-        const limitNum = Number(req.query.limit ?? 6);
-        stale = await CacheManager.get(`similar_stations:${req.params.id}:${limitNum}`);
+        stale = await CacheManager.get(`similar_stations:${req.params.id}:${Math.min(Math.max(Number(req.query.limit ?? 6), 1), 20)}`);
       } catch {}
       res.set('Cache-Control', 'no-store');
       res.json(stale ?? []);
