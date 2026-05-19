@@ -538,6 +538,7 @@ export class LogoProcessor {
         { _id: stationId },
         {
           $set: {
+            hasLogo: true,
             logoAssets: {
               ...logoAssets,
               status: 'completed',
@@ -587,6 +588,7 @@ export class LogoProcessor {
         { _id: stationId },
         {
           $set: {
+            hasLogo: false,
             'logoAssets.status': 'failed',
             'logoAssets.error': errorMsg,
             'logoAssets.failureType': failureType,
@@ -658,6 +660,7 @@ export class LogoProcessor {
         { _id: stationId },
         {
           $set: {
+            hasLogo: true,
             logoAssets: {
               ...logoAssets,
               status: 'completed',
@@ -678,6 +681,7 @@ export class LogoProcessor {
         { _id: stationId },
         {
           $set: {
+            hasLogo: false,
             'logoAssets.status': 'failed',
             'logoAssets.error': error.message?.substring(0, 200)
           }

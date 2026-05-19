@@ -841,12 +841,19 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       
       if (hasLogo && hasLogo !== 'all') {
         if (hasLogo === 'yes') {
-          filter.hasLogo = true;
+          // A station genuinely "has a logo" only when our processor completed
+          // and produced a real webp256 asset (S3 URL or local filename).
+          // The legacy `hasLogo` boolean is unreliable — it was set by a one-time
+          // migration that counted any non-empty `favicon` field as a logo.
+          filter['logoAssets.status'] = 'completed';
+          filter['logoAssets.webp256'] = { $exists: true, $nin: [null, ''] };
         } else if (hasLogo === 'no') {
           filter.$or = [
             ...(filter.$or || []),
-            { hasLogo: false },
-            { hasLogo: { $exists: false } },
+            { 'logoAssets.status': { $ne: 'completed' } },
+            { 'logoAssets.webp256': { $exists: false } },
+            { 'logoAssets.webp256': null },
+            { 'logoAssets.webp256': '' },
           ];
         }
       }
