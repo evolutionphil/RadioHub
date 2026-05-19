@@ -743,26 +743,25 @@ router.delete('/oauth/disconnect', async (_req: Request, res: Response) => {
  */
 export async function handleOAuthCallback(req: Request, res: Response): Promise<void> {
   const { code, error } = req.query as { code?: string; error?: string };
-  const adminBase = process.env.ADMIN_BASE_URL ?? 'https://themegaradio.com';
 
   if (error) {
-    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=${encodeURIComponent(String(error))}`);
+    res.redirect(`/admin/gsc-inspection?oauth_error=${encodeURIComponent(String(error))}`);
     return;
   }
   if (!code) {
-    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=missing_code`);
+    res.redirect('/admin/gsc-inspection?oauth_error=missing_code');
     return;
   }
   const client = createOAuthClientFromEnv();
   if (!client) {
-    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=env_missing`);
+    res.redirect('/admin/gsc-inspection?oauth_error=env_missing');
     return;
   }
   try {
     const redirectUri = `${process.env.API_BASE_URL ?? 'https://api.themegaradio.com'}/api/admin/gsc-inspection/oauth/callback`;
     const { tokens } = await client.getToken({ code, redirect_uri: redirectUri });
     if (!tokens.refresh_token) {
-      res.redirect(`${adminBase}/admin/gsc-inspection?oauth_error=no_refresh_token`);
+      res.redirect('/admin/gsc-inspection?oauth_error=no_refresh_token');
       return;
     }
     await GscOAuthToken.deleteMany({});
@@ -773,11 +772,11 @@ export async function handleOAuthCallback(req: Request, res: Response): Promise<
       scope: tokens.scope ?? 'https://www.googleapis.com/auth/webmasters.readonly',
     });
     invalidateOAuthCache();
-    res.redirect(`${adminBase}/admin/gsc-inspection?oauth_success=1`);
+    res.redirect('/admin/gsc-inspection?oauth_success=1');
   } catch (err: any) {
     logger.error('GSC OAuth callback error:', err?.message ?? err);
     res.redirect(
-      `${adminBase}/admin/gsc-inspection?oauth_error=${encodeURIComponent(err?.message ?? 'unknown')}`,
+      `/admin/gsc-inspection?oauth_error=${encodeURIComponent(err?.message ?? 'unknown')}`,
     );
   }
 }
