@@ -59,7 +59,8 @@ interface VerifyResult {
 }
 
 function PlanCard({ plan }: { plan: StripePlan }) {
-  const [editing, setEditing] = useState(false);
+  // Auto-open in edit mode when no price ID is set yet so the form is ready to fill.
+  const [editing, setEditing] = useState(!plan.stripePriceId);
   const [form, setForm] = useState({
     stripePriceId: plan.stripePriceId,
     label: plan.label,
@@ -283,10 +284,23 @@ function PlanCard({ plan }: { plan: StripePlan }) {
   );
 }
 
+// Default shape used when the DB hasn't seeded the plan yet.
+// The PUT endpoint uses upsert:true so saving any of these creates the record.
+const DEFAULT_PLANS: StripePlan[] = [
+  { planId: "premium_monthly",  label: "Monthly",  description: "Billed monthly, cancel anytime",       currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+  { planId: "premium_yearly",   label: "Annual",   description: "Best value — save vs monthly",          currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+  { planId: "premium_lifetime", label: "Lifetime", description: "One-time payment, never pay again",     currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+];
+
 export default function StripePlansPage() {
   const { data, isLoading } = useQuery<{ plans: StripePlan[] }>({
     queryKey: ["/api/admin/stripe-plans"],
   });
+
+  // Always show all 3 plans. Merge DB data over defaults so missing plans
+  // still show an editable card (PUT uses upsert:true — saves create the record).
+  const planMap = new Map((data?.plans || []).map(p => [p.planId, p]));
+  const plans = DEFAULT_PLANS.map(def => planMap.get(def.planId) ?? def);
 
   return (
     <div className="space-y-6 p-6">
@@ -314,12 +328,9 @@ export default function StripePlansPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {(data?.plans || []).map(plan => (
+          {plans.map(plan => (
             <PlanCard key={plan.planId} plan={plan} />
           ))}
-          {(!data?.plans || data.plans.length === 0) && (
-            <p className="text-gray-500 text-center py-8">No plans found. They will be auto-created on next server start.</p>
-          )}
         </div>
       )}
     </div>
