@@ -11,14 +11,26 @@ RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 WORKDIR /app
 
+# ── Step 1: copy only manifests so pnpm install is layer-cached ──────────────
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY tsconfig.base.json tsconfig.json ./
+COPY artifacts/api-server/package.json          ./artifacts/api-server/
+COPY artifacts/megaradio/package.json           ./artifacts/megaradio/
+COPY lib/db-shared/package.json                 ./lib/db-shared/
+COPY lib/seo-shared/package.json                ./lib/seo-shared/
+COPY lib/api-client-react/package.json          ./lib/api-client-react/
+COPY lib/api-zod/package.json                   ./lib/api-zod/
+COPY lib/api-spec/package.json                  ./lib/api-spec/
+COPY lib/db/package.json                        ./lib/db/
+COPY scripts/package.json                       ./scripts/
+
+RUN pnpm install --frozen-lockfile
+
+# ── Step 2: copy source (invalidates build layers only, not install) ──────────
 COPY artifacts ./artifacts
 COPY lib ./lib
 COPY scripts ./scripts
 COPY attached_assets ./attached_assets
-
-RUN pnpm install --frozen-lockfile
 
 # Build SPA (static assets) and the web server bundle
 ENV PORT=3000
