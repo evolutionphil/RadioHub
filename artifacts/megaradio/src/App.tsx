@@ -181,6 +181,10 @@ function AdminRouterContent() {
         <Route path="/admin/footer-social-media" component={LazyAdminRoutes.FooterSocialMedia} />
         <Route path="/admin/logos" component={LazyAdminRoutes.LogoManagement} />
         
+        {/* Stripe / Sales */}
+        <Route path="/admin/stripe-plans" component={LazyAdminRoutes.StripePlans} />
+        <Route path="/admin/sales" component={LazyAdminRoutes.SalesAnalytics} />
+
         {/* Users Management */}
         <Route path="/admin/users" component={LazyAdminRoutes.AdminUsers} />
         <Route path="/admin/iap-events" component={LazyAdminRoutes.AdminIapEvents} />

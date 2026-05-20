@@ -1,6 +1,6 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
-import { User, TvSubscriptionCode } from "@workspace/db-shared/mongo-schemas";
+import { User, TvSubscriptionCode, StripeSubscriptionPlan, StripeSaleEvent } from "@workspace/db-shared/mongo-schemas";
 import { logger } from "../utils/logger";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
@@ -172,15 +172,27 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         || (req as any).userId; // set by requireAuth Bearer path
       const { plan, tvCode } = req.body;
 
-      const isLifetime = plan === "premium_lifetime";
-      const priceId =
-        plan === "premium_monthly" ? process.env.STRIPE_PRICE_MONTHLY :
-        plan === "premium_yearly" ? process.env.STRIPE_PRICE_ANNUAL :
-        plan === "premium_lifetime" ? process.env.STRIPE_PRICE_LIFETIME :
-        null;
-
-      if (!priceId) {
+      const VALID_PLANS = ["premium_monthly", "premium_yearly", "premium_lifetime"];
+      if (!plan || !VALID_PLANS.includes(plan)) {
         return void res.status(400).json({ error: "Invalid plan. Supported: premium_monthly, premium_yearly, premium_lifetime" });
+      }
+      const isLifetime = plan === "premium_lifetime";
+
+      // Price ID: DB (admin-managed) takes precedence over env vars
+      let priceId: string | null = null;
+      try {
+        const planDoc = await StripeSubscriptionPlan.findOne({ planId: plan, isActive: true }).lean();
+        if (planDoc?.stripePriceId) priceId = planDoc.stripePriceId;
+      } catch {}
+      if (!priceId) {
+        priceId =
+          plan === "premium_monthly" ? process.env.STRIPE_PRICE_MONTHLY || null :
+          plan === "premium_yearly" ? process.env.STRIPE_PRICE_ANNUAL || null :
+          plan === "premium_lifetime" ? process.env.STRIPE_PRICE_LIFETIME || null :
+          null;
+      }
+      if (!priceId) {
+        return void res.status(503).json({ error: `No Stripe price configured for plan: ${plan}. Set it in admin → Stripe Plans.` });
       }
 
       // Validate the TV code if provided (so webhook can look it up)
@@ -315,6 +327,24 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           );
 
           logger.log(`[TV SUB] Subscription activated for user ${userId}, plan=${plan}, stripeSessionId=${session.id}`);
+
+          // Record sale event for revenue dashboard
+          try {
+            await StripeSaleEvent.create({
+              userId: userId || null,
+              plan,
+              stripeSessionId: session.id,
+              stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
+              amount: session.amount_total ?? 0,
+              currency: session.currency ?? "usd",
+              isLifetime: plan === "premium_lifetime",
+              tvCode: tvCode || undefined,
+              createdAt: new Date(),
+            });
+          } catch (saleErr: any) {
+            // Sale event write is best-effort — don't fail the webhook
+            logger.warn("[TV SUB] Failed to record sale event:", saleErr.message);
+          }
 
           // Activate the TV code so the device can poll and get the result
           if (tvCode) {

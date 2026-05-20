@@ -4235,6 +4235,36 @@ const TvVersionConfigSchema = new Schema<ITvVersionConfig>({
 
 export const TvVersionConfig = mongoose.model<ITvVersionConfig>('TvVersionConfig', TvVersionConfigSchema);
 
+// ==================== Stripe Subscription Plans (admin-managed) ====================
+
+export type StripePlanId = 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
+
+export interface IStripeSubscriptionPlan {
+  planId: StripePlanId;
+  stripePriceId: string;
+  label: string;
+  description: string;
+  currency: string;
+  amount: number;      // in smallest currency unit (e.g. cents)
+  isActive: boolean;
+  updatedAt: Date;
+}
+
+const StripeSubscriptionPlanSchema = new Schema<IStripeSubscriptionPlan>({
+  planId: { type: String, required: true, enum: ['premium_monthly', 'premium_yearly', 'premium_lifetime'], unique: true },
+  stripePriceId: { type: String, required: true },
+  label: { type: String, required: true },
+  description: { type: String, required: true },
+  currency: { type: String, default: 'usd' },
+  amount: { type: Number, default: 0 },
+  isActive: { type: Boolean, default: true },
+  updatedAt: { type: Date, default: Date.now },
+}, { collection: 'stripe_subscription_plans' });
+
+StripeSubscriptionPlanSchema.index({ planId: 1 }, { unique: true });
+
+export const StripeSubscriptionPlan = mongoose.model<IStripeSubscriptionPlan>('StripeSubscriptionPlan', StripeSubscriptionPlanSchema);
+
 // ==================== TV Subscription Codes (Stripe account-linking flow) ====================
 
 export interface ITvSubscriptionCode {
@@ -4269,3 +4299,37 @@ TvSubscriptionCodeSchema.index({ stripeSessionId: 1 }, { sparse: true });
 TvSubscriptionCodeSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const TvSubscriptionCode = mongoose.model<ITvSubscriptionCode>('TvSubscriptionCode', TvSubscriptionCodeSchema);
+
+// ==================== Stripe Sale Events (revenue tracking) ====================
+
+export interface IStripeSaleEvent {
+  userId?: mongoose.Types.ObjectId | null;
+  plan: string;
+  stripePriceId?: string;
+  stripeSessionId: string;
+  stripeCustomerId?: string;
+  amount: number;       // in smallest currency unit (e.g. cents)
+  currency: string;
+  isLifetime: boolean;
+  tvCode?: string;
+  createdAt: Date;
+}
+
+const StripeSaleEventSchema = new Schema<IStripeSaleEvent>({
+  userId: { type: Schema.Types.ObjectId, ref: 'User', default: null },
+  plan: { type: String, required: true },
+  stripePriceId: String,
+  stripeSessionId: { type: String, required: true, unique: true },
+  stripeCustomerId: String,
+  amount: { type: Number, default: 0 },
+  currency: { type: String, default: 'usd' },
+  isLifetime: { type: Boolean, default: false },
+  tvCode: String,
+  createdAt: { type: Date, default: Date.now },
+}, { collection: 'stripe_sale_events' });
+
+StripeSaleEventSchema.index({ createdAt: -1 });
+StripeSaleEventSchema.index({ userId: 1, createdAt: -1 });
+StripeSaleEventSchema.index({ plan: 1, createdAt: -1 });
+
+export const StripeSaleEvent = mongoose.model<IStripeSaleEvent>('StripeSaleEvent', StripeSaleEventSchema);

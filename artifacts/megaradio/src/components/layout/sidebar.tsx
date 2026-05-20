@@ -44,6 +44,8 @@ const navigation: NavigationItem[] = [
     children: [
       { name: "TV/App Version", href: "/admin/tv-version" },
       { name: "IAP Events", href: "/admin/iap-events" },
+      { name: "Stripe Plans", href: "/admin/stripe-plans" },
+      { name: "Sales Analytics", href: "/admin/sales" },
       { name: "Advertisements", href: "/admin/advertisements" },
     ],
   },

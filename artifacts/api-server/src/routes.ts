@@ -64,6 +64,8 @@ import { startGenreWhitelistRefreshLoop } from './seo/genre-whitelist-store';
 import { registerSilentPushRoutes } from './routes/silent-push-routes';
 import { registerMessagesRoutes } from './routes/messages-routes';
 import { registerStripeSubscriptionRoutes } from './routes/stripe-subscription-routes';
+import { registerStripePlanAdminRoutes } from './routes/stripe-plan-admin-routes';
+import { registerSalesAnalyticsRoutes } from './routes/sales-analytics-routes';
 
 function stripPlaceholders<T>(obj: T): T {
   if (!obj || typeof obj !== 'object') return obj;
@@ -970,6 +972,8 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerSilentPushRoutes(app, deps);
   registerMessagesRoutes(app, chatWss, deps);
   registerStripeSubscriptionRoutes(app, deps);
+  registerStripePlanAdminRoutes(app, deps);
+  registerSalesAnalyticsRoutes(app, deps);
 
   // === RETURN SERVER WITH WEBSOCKET REFERENCES ===
   const result = server as Server & { metadataWss: InstanceType<typeof WebSocketServer>, castWss: InstanceType<typeof WebSocketServer>, chatWss: InstanceType<typeof WebSocketServer> };

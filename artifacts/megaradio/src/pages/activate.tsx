@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,29 +7,32 @@ import { Loader2, Tv, CheckCircle, Zap, Crown } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 
-const PLANS = [
-  {
-    id: "premium_monthly",
-    label: "Monthly",
-    description: "Billed monthly, cancel anytime",
-    badge: null,
-  },
-  {
-    id: "premium_yearly",
-    label: "Annual",
-    description: "Best value — save vs monthly",
-    badge: "Best Value",
-  },
-  {
-    id: "premium_lifetime",
-    label: "Lifetime",
-    description: "One-time payment, never pay again",
-    badge: "One-Time",
-  },
+interface PlanInfo {
+  planId: string;
+  label: string;
+  description: string;
+  currency: string;
+  amount: number;
+}
+
+const PLAN_BADGE: Record<string, string | null> = {
+  premium_monthly: null,
+  premium_yearly: "Best Value",
+  premium_lifetime: "One-Time",
+};
+
+const FALLBACK_PLANS: PlanInfo[] = [
+  { planId: "premium_monthly", label: "Monthly", description: "Billed monthly, cancel anytime", currency: "usd", amount: 0 },
+  { planId: "premium_yearly", label: "Annual", description: "Best value — save vs monthly", currency: "usd", amount: 0 },
+  { planId: "premium_lifetime", label: "Lifetime", description: "One-time payment, never pay again", currency: "usd", amount: 0 },
 ];
 
+function fmtPrice(amount: number, currency: string): string {
+  if (!amount) return "";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency: currency.toUpperCase(), minimumFractionDigits: 2 }).format(amount / 100);
+}
+
 export default function ActivatePage() {
-  const [location] = useLocation();
   const { user, isLoading: authLoading } = useAuth();
 
   const params = new URLSearchParams(window.location.search);
@@ -38,15 +41,13 @@ export default function ActivatePage() {
   const [selectedPlan, setSelectedPlan] = useState<string>("premium_monthly");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [codeValid, setCodeValid] = useState<boolean | null>(null);
 
-  // Validate the TV code exists and is pending
-  useEffect(() => {
-    if (!tvCode) { setCodeValid(false); return; }
-    // We don't expose deviceId validation from the web side — just show the
-    // plan selector. The actual code is validated during checkout creation.
-    setCodeValid(true);
-  }, [tvCode]);
+  const { data: plansData } = useQuery<{ plans: PlanInfo[] }>({
+    queryKey: ["/api/subscription/plans"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const plans: PlanInfo[] = plansData?.plans?.length ? plansData.plans : FALLBACK_PLANS;
 
   async function handleCheckout() {
     setLoading(true);
@@ -114,21 +115,6 @@ export default function ActivatePage() {
     );
   }
 
-  if (codeValid === false) {
-    return (
-      <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center p-4">
-        <Card className="w-full max-w-md bg-[#1a1a1a] border-[#333] text-white">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl text-red-400">Invalid Code</CardTitle>
-            <CardDescription className="text-gray-400">
-              No activation code found. Please go to your TV and request a new code.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center p-4">
       <Card className="w-full max-w-lg bg-[#1a1a1a] border-[#333] text-white">
@@ -154,40 +140,45 @@ export default function ActivatePage() {
           )}
 
           <div className="space-y-3">
-            {PLANS.map((plan) => (
-              <button
-                key={plan.id}
-                onClick={() => setSelectedPlan(plan.id)}
-                className={`w-full rounded-lg border-2 p-4 text-left transition-colors ${
-                  selectedPlan === plan.id
-                    ? "border-[#FF6B35] bg-[#FF6B35]/10"
-                    : "border-[#333] bg-[#0E0E0E] hover:border-[#555]"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-white">{plan.label}</span>
-                      {plan.badge && (
-                        <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
-                          {plan.badge}
-                        </Badge>
+            {plans.map((plan) => {
+              const badge = PLAN_BADGE[plan.planId];
+              const price = fmtPrice(plan.amount, plan.currency);
+              return (
+                <button
+                  key={plan.planId}
+                  onClick={() => setSelectedPlan(plan.planId)}
+                  className={`w-full rounded-lg border-2 p-4 text-left transition-colors ${
+                    selectedPlan === plan.planId
+                      ? "border-[#FF6B35] bg-[#FF6B35]/10"
+                      : "border-[#333] bg-[#0E0E0E] hover:border-[#555]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold text-white">{plan.label}</span>
+                        {price && <span className="text-[#FF6B35] font-bold">{price}</span>}
+                        {badge && (
+                          <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30 text-xs">
+                            {badge}
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-gray-400 mt-0.5">{plan.description}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ${
+                      selectedPlan === plan.planId
+                        ? "border-[#FF6B35] bg-[#FF6B35]"
+                        : "border-[#555]"
+                    }`}>
+                      {selectedPlan === plan.planId && (
+                        <CheckCircle className="w-4 h-4 text-white m-auto" />
                       )}
                     </div>
-                    <p className="text-sm text-gray-400 mt-0.5">{plan.description}</p>
                   </div>
-                  <div className={`w-5 h-5 rounded-full border-2 flex-shrink-0 ${
-                    selectedPlan === plan.id
-                      ? "border-[#FF6B35] bg-[#FF6B35]"
-                      : "border-[#555]"
-                  }`}>
-                    {selectedPlan === plan.id && (
-                      <CheckCircle className="w-4 h-4 text-white m-auto" />
-                    )}
-                  </div>
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
 
           <div className="space-y-2 text-sm text-gray-400">
