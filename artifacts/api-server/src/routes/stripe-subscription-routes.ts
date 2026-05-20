@@ -172,9 +172,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         || (req as any).userId; // set by requireAuth Bearer path
       const { plan, tvCode } = req.body;
 
-      const VALID_PLANS = ["premium_monthly", "premium_yearly", "premium_lifetime"];
+      const VALID_PLANS = ["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"];
       if (!plan || !VALID_PLANS.includes(plan)) {
-        return void res.status(400).json({ error: "Invalid plan. Supported: premium_monthly, premium_yearly, premium_lifetime" });
+        return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_yearly, premium_lifetime" });
       }
       const isLifetime = plan === "premium_lifetime";
 
@@ -186,8 +186,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       } catch {}
       if (!priceId) {
         priceId =
-          plan === "premium_monthly" ? process.env.STRIPE_PRICE_MONTHLY || null :
-          plan === "premium_yearly" ? process.env.STRIPE_PRICE_ANNUAL || null :
+          plan === "remove_ads"       ? process.env.STRIPE_PRICE_REMOVE_ADS || null :
+          plan === "premium_monthly"  ? process.env.STRIPE_PRICE_MONTHLY || null :
+          plan === "premium_yearly"   ? process.env.STRIPE_PRICE_ANNUAL || null :
           plan === "premium_lifetime" ? process.env.STRIPE_PRICE_LIFETIME || null :
           null;
       }

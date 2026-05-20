@@ -22,20 +22,23 @@ interface StripePlan {
 }
 
 const PLAN_LABELS: Record<string, string> = {
-  premium_monthly: "Monthly",
-  premium_yearly: "Annual",
+  remove_ads:       "Remove Ads",
+  premium_monthly:  "Monthly",
+  premium_yearly:   "Annual",
   premium_lifetime: "Lifetime",
 };
 
 const PLAN_MODE: Record<string, string> = {
-  premium_monthly: "subscription",
-  premium_yearly: "subscription",
+  remove_ads:       "subscription",
+  premium_monthly:  "subscription",
+  premium_yearly:   "subscription",
   premium_lifetime: "one-time payment",
 };
 
 const ENV_VAR: Record<string, string> = {
-  premium_monthly: "STRIPE_PRICE_MONTHLY",
-  premium_yearly: "STRIPE_PRICE_ANNUAL",
+  remove_ads:       "STRIPE_PRICE_REMOVE_ADS",
+  premium_monthly:  "STRIPE_PRICE_MONTHLY",
+  premium_yearly:   "STRIPE_PRICE_ANNUAL",
   premium_lifetime: "STRIPE_PRICE_LIFETIME",
 };
 
@@ -287,9 +290,10 @@ function PlanCard({ plan }: { plan: StripePlan }) {
 // Default shape used when the DB hasn't seeded the plan yet.
 // The PUT endpoint uses upsert:true so saving any of these creates the record.
 const DEFAULT_PLANS: StripePlan[] = [
-  { planId: "premium_monthly",  label: "Monthly",  description: "Billed monthly, cancel anytime",       currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
-  { planId: "premium_yearly",   label: "Annual",   description: "Best value — save vs monthly",          currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
-  { planId: "premium_lifetime", label: "Lifetime", description: "One-time payment, never pay again",     currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+  { planId: "remove_ads",       label: "Remove Ads", description: "Ad-free listening, no premium extras", currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+  { planId: "premium_monthly",  label: "Monthly",    description: "Billed monthly, cancel anytime",       currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+  { planId: "premium_yearly",   label: "Annual",     description: "Best value — save vs monthly",         currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
+  { planId: "premium_lifetime", label: "Lifetime",   description: "One-time payment, never pay again",    currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
 ];
 
 export default function StripePlansPage() {
@@ -297,7 +301,7 @@ export default function StripePlansPage() {
     queryKey: ["/api/admin/stripe-plans"],
   });
 
-  // Always show all 3 plans. Merge DB data over defaults so missing plans
+  // Always show all 4 plans. Merge DB data over defaults so missing plans
   // still show an editable card (PUT uses upsert:true — saves create the record).
   const planMap = new Map((data?.plans || []).map(p => [p.planId, p]));
   const plans = DEFAULT_PLANS.map(def => planMap.get(def.planId) ?? def);
