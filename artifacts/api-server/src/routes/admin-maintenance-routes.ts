@@ -254,8 +254,14 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         const cleared = performanceCache.clearSeoCaches();
         res.json({
           success: true,
-          ...cleared,
           message: `Cleared ${cleared.seoHtmlCleared} SEO HTML entries and ${cleared.pageDataCleared} page-data entries.`,
+          result: {
+            timestamp: new Date().toISOString(),
+            serverCache: {
+              seoHtmlCleared: cleared.seoHtmlCleared,
+              pageDataCleared: cleared.pageDataCleared,
+            },
+          },
         });
       } catch (error: any) {
         logger.error(

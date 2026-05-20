@@ -110,6 +110,11 @@ const RESERVED_TOP_LEVEL = new Set([
   'messages',
   'analytics',
   'import-export',
+  // TV device pairing page — "tv" collides with a common genre slug so
+  // must be reserved or the middleware 301s /tv → /en/genres/tv.
+  'tv',
+  // Stripe TV subscription activation flow
+  'activate',
 ]);
 
 let countrySlugToRegion: Map<string, string> | null = null;

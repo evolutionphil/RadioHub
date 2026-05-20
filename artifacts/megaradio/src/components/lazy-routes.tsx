@@ -32,6 +32,10 @@ export const NotificationSettings = lazy(() => import("@/pages/notifications"));
 export const NotificationsView = lazy(() => import("@/pages/notifications-view"));
 export const MessagesPage = lazy(() => import("@/pages/messages"));
 
+// TV Subscription activation pages
+export const ActivatePage = lazy(() => import("@/pages/activate"));
+export const ActivateSuccessPage = lazy(() => import("@/pages/activate-success"));
+
 // Authentication pages
 export const Login = lazy(() => import("@/pages/login"));
 export const Signup = lazy(() => import("@/pages/signup"));

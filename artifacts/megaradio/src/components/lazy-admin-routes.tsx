@@ -42,3 +42,5 @@ export const TvVersion = lazy(() => import("@/pages/admin/tv-version"));
 export const AdminCoverage = lazy(() => import("@/pages/admin/coverage"));
 export const AdminCoverageCountry = lazy(() => import("@/pages/admin/coverage-country"));
 export const AdminCoverageCompare = lazy(() => import("@/pages/admin/coverage-compare"));
+export const StripePlans = lazy(() => import("@/pages/admin/stripe-plans"));
+export const SalesAnalytics = lazy(() => import("@/pages/admin/sales-analytics"));

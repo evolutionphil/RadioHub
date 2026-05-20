@@ -1009,56 +1009,6 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
-  // SEED TEST NOTIFICATIONS - Creates new_station notifications for top stations (for testing)
-  app.post("/api/admin/seed-notifications", requireAdmin, async (req, res) => {
-    try {
-      const topStations = await Station.find({})
-        .select('_id name favicon slug country')
-        .sort({ votes: -1 })
-        .limit(10)
-        .lean();
-      
-      const activeUsers = await User.find({}).select('_id').lean();
-      
-      let created = 0;
-      for (const station of topStations) {
-        for (const user of activeUsers) {
-          const existing = await UserNotification.findOne({
-            userId: user._id,
-            type: 'new_station',
-            'data.stationId': station._id
-          });
-          
-          if (!existing) {
-            const daysAgo = Math.floor(Math.random() * 9) + 1;
-            const notificationDate = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
-            
-            await UserNotification.create({
-              userId: user._id,
-              type: 'new_station',
-              title: `${station.name} Added`,
-              message: 'New radio station added. Click to listen!',
-              data: {
-                stationId: station._id,
-                stationSlug: station.slug,
-                stationFavicon: station.favicon,
-                stationCountry: station.country
-              },
-              read: false,
-              createdAt: notificationDate
-            });
-            created++;
-          }
-        }
-      }
-      
-      res.json({ success: true, created, stations: topStations.length, users: activeUsers.length });
-    } catch (error: any) {
-      console.error('Error seeding notifications:', error);
-      res.status(500).json({ error: 'Failed to seed notifications' });
-    }
-  });
-
   // STATION FAVICON UPLOAD - Direct multipart upload → AWS S3 via logoProcessor
   // POST /api/admin/stations/:id/upload-favicon (multipart/form-data, field: 'favicon')
   app.post(
