@@ -18,8 +18,10 @@ function getStripe(): Stripe | null {
 function buildPricePlanMap() {
   const monthly = process.env.STRIPE_PRICE_MONTHLY;
   const annual = process.env.STRIPE_PRICE_ANNUAL;
+  const lifetime = process.env.STRIPE_PRICE_LIFETIME;
   if (monthly) STRIPE_PRICE_TO_PLAN[monthly] = "premium_monthly";
   if (annual) STRIPE_PRICE_TO_PLAN[annual] = "premium_yearly";
+  if (lifetime) STRIPE_PRICE_TO_PLAN[lifetime] = "premium_lifetime";
 }
 
 buildPricePlanMap();
@@ -170,13 +172,15 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         || (req as any).userId; // set by requireAuth Bearer path
       const { plan, tvCode } = req.body;
 
+      const isLifetime = plan === "premium_lifetime";
       const priceId =
         plan === "premium_monthly" ? process.env.STRIPE_PRICE_MONTHLY :
         plan === "premium_yearly" ? process.env.STRIPE_PRICE_ANNUAL :
+        plan === "premium_lifetime" ? process.env.STRIPE_PRICE_LIFETIME :
         null;
 
       if (!priceId) {
-        return void res.status(400).json({ error: "Invalid plan. Supported: premium_monthly, premium_yearly" });
+        return void res.status(400).json({ error: "Invalid plan. Supported: premium_monthly, premium_yearly, premium_lifetime" });
       }
 
       // Validate the TV code if provided (so webhook can look it up)
@@ -191,7 +195,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         }
       }
 
-      const user = await User.findById(userId).select("email stripeCustomerId subscription").lean() as any;
+      const user = await User.findById(userId).select("email subscription").lean() as any;
       if (!user) {
         return void res.status(404).json({ error: "User not found" });
       }
@@ -204,8 +208,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         await User.updateOne({ _id: userId }, { $set: { "subscription.stripeCustomerId": customerId } });
       }
 
-      const mode = "subscription";
-      const session = await stripe.checkout.sessions.create({
+      // Lifetime = one-time payment; monthly/yearly = recurring subscription
+      const mode = isLifetime ? "payment" : "subscription";
+      const sessionParams: Stripe.Checkout.SessionCreateParams = {
         customer: customerId,
         mode,
         line_items: [{ price: priceId, quantity: 1 }],
@@ -216,10 +221,13 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           plan,
           tvCode: tvCode || "",
         },
-        subscription_data: {
+      };
+      if (!isLifetime) {
+        sessionParams.subscription_data = {
           metadata: { userId: String(userId), plan, tvCode: tvCode || "" },
-        },
-      });
+        };
+      }
+      const session = await stripe.checkout.sessions.create(sessionParams);
 
       logger.log(`[TV SUB] Checkout session ${session.id} created for user ${userId}, plan=${plan}, tvCode=${tvCode || "none"}`);
 

@@ -20,6 +20,12 @@ const PLANS = [
     description: "Best value — save vs monthly",
     badge: "Best Value",
   },
+  {
+    id: "premium_lifetime",
+    label: "Lifetime",
+    description: "One-time payment, never pay again",
+    badge: "One-Time",
+  },
 ];
 
 export default function ActivatePage() {
@@ -197,6 +203,12 @@ export default function ActivatePage() {
               <Zap className="w-4 h-4 text-[#FF6B35] flex-shrink-0" />
               <span>Works on Samsung TV, LG TV, iOS & Android</span>
             </div>
+            {selectedPlan === "premium_lifetime" && (
+              <div className="flex items-center gap-2 text-yellow-400">
+                <Zap className="w-4 h-4 flex-shrink-0" />
+                <span>One-time payment — no recurring charges ever</span>
+              </div>
+            )}
           </div>
 
           {error && (
