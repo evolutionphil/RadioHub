@@ -21,11 +21,12 @@ import {
   countrySlug,
   getRegionSlugForCountry,
 } from "@workspace/seo-shared/country-regions";
-import { Music, Globe } from "lucide-react";
+import { Music, Globe, Crown } from "lucide-react";
 import {
   buildDropdownKeyHandler as buildSharedDropdownKeyHandler,
   focusFirstInside as focusFirstInsideShared,
 } from "@/lib/dropdown-keyboard";
+import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 
 interface RadioHeaderProps {
   showSearch?: boolean;
@@ -185,6 +186,7 @@ export default function RadioHeader({
 
   const { playStation } = useGlobalPlayer();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { isPremium } = usePremiumStatus();
 
   // Fetch user notifications (with 30s polling for real-time message notifications)
   const { data: notificationsData, isLoading: notificationsLoading } = useQuery({
@@ -1006,7 +1008,18 @@ export default function RadioHeader({
                     )}
                   </button>
                   
-                  {/* 2. Country Selector - desktop only (xl+) - Figma: 147x38px, border-radius 5px */}
+                  {/* 2. Go Premium button — desktop, non-premium users only */}
+                  {!isPremium && (
+                    <Link
+                      href="/premium"
+                      className="hidden xl:flex items-center gap-1.5 px-3 h-[38px] rounded-md text-sm font-semibold text-white bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 transition-opacity flex-shrink-0"
+                    >
+                      <Crown className="w-3.5 h-3.5" />
+                      Premium
+                    </Link>
+                  )}
+
+                  {/* 3. Country Selector - desktop only (xl+) - Figma: 147x38px, border-radius 5px */}
                   <div className="hidden xl:block relative dropdown-container" ref={countryDropdownRef}>
                     <button 
                       ref={countryButtonDesktopRef}

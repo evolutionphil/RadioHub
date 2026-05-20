@@ -226,8 +226,13 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         customer: customerId,
         mode,
         line_items: [{ price: priceId, quantity: 1 }],
-        success_url: `${WEB_BASE_URL}/activate/success?code=${tvCode || ""}&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${WEB_BASE_URL}/activate?code=${tvCode || ""}`,
+        // TV flow: /activate/success?code=...  Web flow: /premium/success
+        success_url: tvCode
+          ? `${WEB_BASE_URL}/activate/success?code=${tvCode}&session_id={CHECKOUT_SESSION_ID}`
+          : `${WEB_BASE_URL}/premium/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: tvCode
+          ? `${WEB_BASE_URL}/activate?code=${tvCode}`
+          : `${WEB_BASE_URL}/premium`,
         metadata: {
           userId: String(userId),
           plan,
