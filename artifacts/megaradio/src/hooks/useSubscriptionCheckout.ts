@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/useAuth";
-import { apiRequest } from "@/lib/queryClient";
 
 interface CheckoutOptions {
   /** Called when the user is not logged in, before redirecting to login. */
@@ -19,6 +18,10 @@ interface CheckoutResult {
 /**
  * Handles the POST /api/subscription/checkout → Stripe redirect flow.
  * Used by PaywallModal, /premium, and /activate pages.
+ *
+ * Uses raw fetch (not apiRequest) so that JSON error bodies on 4xx/5xx
+ * responses are always readable. apiRequest throws on non-2xx, which would
+ * replace the real server error message with a generic "Network error".
  */
 export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutResult {
   const { user } = useAuth();
@@ -35,19 +38,34 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
     setLoading(true);
     setError(null);
     try {
-      const res = await apiRequest("POST", "/api/subscription/checkout", {
-        body: { plan, ...opts.extraBody },
+      const res = await fetch("/api/subscription/checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ plan, ...opts.extraBody }),
       });
-      const data: { checkoutUrl?: string; error?: string } = await res.json();
+
+      // Always try to parse JSON — the endpoint returns it on both success and error.
+      let data: { checkoutUrl?: string; error?: string } = {};
+      try {
+        data = await res.json();
+      } catch {
+        // Body is not JSON (e.g. proxy-level 502 with plain text body).
+        setError(`Server error (${res.status}). Please try again.`);
+        setLoading(false);
+        return;
+      }
+
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
         // Don't reset loading — the page is navigating away.
       } else {
-        setError(data.error || "Failed to start checkout");
+        setError(data.error || `Checkout failed (${res.status}). Please try again.`);
         setLoading(false);
       }
     } catch {
-      setError("Network error. Please try again.");
+      // Only reaches here on a genuine network failure (no connection, DNS, etc.).
+      setError("Network error. Please check your connection and try again.");
       setLoading(false);
     }
   }
