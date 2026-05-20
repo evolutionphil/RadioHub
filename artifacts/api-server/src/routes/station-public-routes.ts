@@ -23,6 +23,48 @@ function escapeRegex(input: any, maxLen: number = 80): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Synonym map: common non-English station/city names → English equivalents.
+// Keys are lower-case. Allows "Viyana FM" → finds "Vienna FM", etc.
+const SEARCH_SYNONYMS: Record<string, string> = {
+  // Turkish city names
+  viyana: 'vienna', münih: 'munich', londra: 'london', roma: 'rome',
+  venedik: 'venice', floransa: 'florence', napoli: 'naples',
+  barselona: 'barcelona', brüksel: 'brussels', moskova: 'moscow',
+  varşova: 'warsaw', prag: 'prague', budapeşte: 'budapest',
+  bükreş: 'bucharest', sofya: 'sofia', atina: 'athens',
+  lizbon: 'lisbon', kopenhag: 'copenhagen', stokholm: 'stockholm',
+  lahey: 'hague', zürih: 'zurich', cenevre: 'geneva',
+  // German city names
+  münchen: 'munich', köln: 'cologne', nürnberg: 'nuremberg',
+  zürich: 'zurich',
+  // Turkish country names
+  almanya: 'germany', avusturya: 'austria', ingiltere: 'england',
+  fransa: 'france', italya: 'italy', ispanya: 'spain',
+  hollanda: 'netherlands', belçika: 'belgium', portekiz: 'portugal',
+  lehistan: 'poland', rusya: 'russia', japonya: 'japan',
+  çin: 'china', hindistan: 'india', brezilya: 'brazil',
+  avustralya: 'australia', kanada: 'canada', meksika: 'mexico',
+};
+
+// Substitute synonyms word-by-word in a search term.
+// "Viyana FM" → "vienna FM" (synonym for "viyana" is "vienna").
+function applySynonyms(term: string): string {
+  return term
+    .split(/\s+/)
+    .map(w => {
+      const sub = SEARCH_SYNONYMS[w.toLowerCase()];
+      return sub ?? w;
+    })
+    .join(' ');
+}
+
+// Sanitise a raw user string for use in MongoDB $text search.
+// $text tokenises on whitespace/punctuation and ignores most special chars,
+// so we only strip characters that break the parser ($, ", \).
+function sanitiseForTextSearch(term: string): string {
+  return term.replace(/[$"\\]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+}
+
 // Helper: generate unique slug inline
 async function generateUniqueSlug(name: string, type: string, id: string): Promise<string> {
   const base = slugifyStationName(name);
@@ -1031,27 +1073,38 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       let isGenreSearch = false;
       let genreSearchTerm = '';
+      let isTextSearch = false;
 
       if (search) {
-        const searchTerm = (search as string).trim();
-        if (searchTerm.length >= 2) {
-          const escapedTerm = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          const flexibleTerm = escapedTerm.replace(/\s+/g, '\\s*');
-          const customBoundaryRegex = new RegExp(`(^|[^a-zA-Z0-9])${flexibleTerm}`, 'i');
-          const startsWithRegex = new RegExp(`^${flexibleTerm}`, 'i');
+        const rawTerm = (search as string).trim();
+        // Apply synonym substitution before anything else ("Viyana" → "vienna")
+        const expandedTerm = applySynonyms(rawTerm);
+        if (expandedTerm.length >= 3) {
+          // Use the existing { name, country, tags } $text index — ~50-100× faster
+          // than a regex full-scan on 200k+ stations.
+          const sanitised = sanitiseForTextSearch(expandedTerm);
+          if (sanitised.length >= 3) {
+            filter.$text = { $search: sanitised };
+            isTextSearch = true;
+          }
+        } else if (expandedTerm.length === 2) {
+          // 2-char fallback: starts-with regex on the name field only
+          // (short enough that the collection isn't too large to scan for prefix hits).
+          const escaped = escapeRegex(expandedTerm, 10);
+          filter.name = { $regex: new RegExp(`^${escaped}`, 'i') };
+        }
+
+        // Genre boost: if the raw term matches a known genre keyword, surface genre
+        // matches first (works for both text-search and short-term fallback paths).
+        if (expandedTerm.length >= 2) {
           const knownGenres = ['jazz', 'pop', 'rock', 'classical', 'news', 'talk', 'dance', 'electronic',
             'hiphop', 'country', 'oldies', 'hits', 'rnb', 'soul', 'blues', 'reggae',
             'metal', 'punk', 'alternative', 'indie', 'folk', 'world', 'latin'];
-          if (knownGenres.some(g => g === searchTerm.toLowerCase().replace(/[\s-]/g, ''))) {
+          const normalised = expandedTerm.toLowerCase().replace(/[\s-]/g, '');
+          if (knownGenres.some(g => g === normalised)) {
             isGenreSearch = true;
-            genreSearchTerm = escapedTerm;
+            genreSearchTerm = escapeRegex(expandedTerm, 80);
           }
-          filter.$or = [
-            { name: { $regex: customBoundaryRegex } },
-            { country: { $regex: startsWithRegex } },
-            { genre: { $regex: customBoundaryRegex } },
-            { tags: { $regex: customBoundaryRegex } }
-          ];
         }
       }
 
@@ -1070,48 +1123,50 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         });
       }
 
-      pipeline.push({
-        $addFields: {
-          hasValidFavicon: {
-            $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$favicon', ''] } } }, regex: '^(https?:\\/\\/.+|data:image\\/.+)', options: 'i' } }, 1, 0]
-          },
-          startsWithNumber: {
-            $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$name', ''] } } }, regex: '^[0-9]' } }, 1, 0]
-          }
-        }
-      });
+      // Computed fields added to every result
+      const addFieldsBase: any = {
+        hasValidFavicon: {
+          $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$favicon', ''] } } }, regex: '^(https?:\\/\\/.+|data:image\\/.+)', options: 'i' } }, 1, 0]
+        },
+        startsWithNumber: {
+          $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$name', ''] } } }, regex: '^[0-9]' } }, 1, 0]
+        },
+      };
+      // When using $text, include the relevance score as a computed field.
+      // It becomes the primary sort key so the most relevant station floats first.
+      if (isTextSearch) {
+        addFieldsBase.textScore = { $meta: 'textScore' };
+      }
+      pipeline.push({ $addFields: addFieldsBase });
 
-      let sortObj: any = isGenreSearch
-        ? { genreMatchScore: -1, hasValidFavicon: -1 }
-        : { hasValidFavicon: -1 };
+      // Build sort object: textScore → genreMatch → quality signals → requested order
+      let sortObj: any;
+      const textScorePrefix = isTextSearch ? { textScore: -1 } : {};
+      const genrePrefix = isGenreSearch ? { genreMatchScore: -1 } : {};
 
       switch (sort) {
         case 'az':
-          sortObj = isGenreSearch
-            ? { genreMatchScore: -1, startsWithNumber: 1, hasValidFavicon: -1, name: 1 }
-            : { startsWithNumber: 1, hasValidFavicon: -1, name: 1 };
+          sortObj = { ...textScorePrefix, ...genrePrefix, startsWithNumber: 1, hasValidFavicon: -1, name: 1 };
           break;
         case 'za':
-          sortObj = isGenreSearch
-            ? { genreMatchScore: -1, startsWithNumber: 1, hasValidFavicon: -1, name: -1 }
-            : { startsWithNumber: 1, hasValidFavicon: -1, name: -1 };
+          sortObj = { ...textScorePrefix, ...genrePrefix, startsWithNumber: 1, hasValidFavicon: -1, name: -1 };
           break;
         case 'newest':
-          sortObj = isGenreSearch
-            ? { genreMatchScore: -1, hasValidFavicon: -1, createdAt: -1 }
-            : { hasValidFavicon: -1, createdAt: -1 };
+          sortObj = { ...textScorePrefix, ...genrePrefix, hasValidFavicon: -1, createdAt: -1 };
           break;
         case 'oldest':
-          sortObj = isGenreSearch
-            ? { genreMatchScore: -1, hasValidFavicon: -1, createdAt: 1 }
-            : { hasValidFavicon: -1, createdAt: 1 };
+          sortObj = { ...textScorePrefix, ...genrePrefix, hasValidFavicon: -1, createdAt: 1 };
           break;
         default:
-          sortObj = isGenreSearch
-            ? { genreMatchScore: -1, hasValidFavicon: -1, votes: -1 }
-            : { hasValidFavicon: -1, votes: -1 };
+          sortObj = { ...textScorePrefix, ...genrePrefix, hasValidFavicon: -1, votes: -1 };
           break;
       }
+
+      // Sort before project so computed fields (textScore, genreMatchScore, hasValidFavicon)
+      // are still present when the sort runs. Project → skip → limit then trims the payload.
+      pipeline.push({ $sort: sortObj });
+      pipeline.push({ $skip: (Number(page) - 1) * Number(limit) });
+      pipeline.push({ $limit: Number(limit) });
 
       if (isTV) {
         pipeline.push(tvSlimProjection());
@@ -1126,10 +1181,6 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           }
         });
       }
-
-      pipeline.push({ $sort: sortObj });
-      pipeline.push({ $skip: (Number(page) - 1) * Number(limit) });
-      pipeline.push({ $limit: Number(limit) });
 
       // INCIDENT 2026-05-16 v11 — maxTimeMS reduced 20000 → 8000.
       // With socketTimeoutMS now 30s, a query that runs >8s would still

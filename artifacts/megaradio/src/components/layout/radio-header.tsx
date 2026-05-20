@@ -403,45 +403,38 @@ export default function RadioHeader({
     return hits;
   }, [debouncedSearchQuery, richCountries]);
 
-  // Search functionality
+  // Station search — AbortController cancels any in-flight request when the
+  // debounced term changes, preventing stale responses from overwriting fresh ones.
   useEffect(() => {
-    const performSearch = async () => {
-      const searchTerm = debouncedSearchQuery.trim();
-      
-      if (!searchTerm || searchTerm.length < 2) {
-        setFilteredStations([]);
+    const searchTerm = debouncedSearchQuery.trim();
+
+    if (!searchTerm || searchTerm.length < 2) {
+      setFilteredStations([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setIsSearching(true);
+
+    const params = new URLSearchParams({ search: searchTerm, limit: '20' });
+    fetch(`/api/stations?${params}`, { signal: controller.signal })
+      .then(res => {
+        if (!res.ok) throw new Error(`Search failed: ${res.status}`);
+        return res.json();
+      })
+      .then(data => {
+        setFilteredStations(data.stations ?? []);
+      })
+      .catch(err => {
+        // AbortError is expected when the effect re-runs — not a real error.
+        if (err.name !== 'AbortError') setFilteredStations([]);
+      })
+      .finally(() => {
         setIsSearching(false);
-        return;
-      }
-      
-      setIsSearching(true);
-      
-      try {
-        const params = new URLSearchParams({
-          search: searchTerm,
-          limit: '20'
-        });
-        
-        const response = await fetch(`/api/stations?${params}`);
-        if (!response.ok) {
-          throw new Error(`Search failed: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        if (data.stations) {
-          setFilteredStations(data.stations);
-        } else {
-          setFilteredStations([]);
-        }
-      } catch (error) {
-        // console.error('Search error:', error);
-        setFilteredStations([]);
-      } finally {
-        setIsSearching(false);
-      }
-    };
-    
-    performSearch();
+      });
+
+    return () => controller.abort();
   }, [debouncedSearchQuery]);
 
   // Close search and other modals when mobile menu opens
