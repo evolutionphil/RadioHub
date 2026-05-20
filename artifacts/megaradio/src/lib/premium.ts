@@ -10,18 +10,21 @@ export interface PlanInfo {
 }
 
 export const FALLBACK_PLANS: PlanInfo[] = [
-  { planId: "premium_yearly",   label: "Annual",   description: "Best value — save vs monthly",     currency: "eur", amount: 2999 },
-  { planId: "premium_lifetime", label: "Lifetime", description: "One-time payment, never pay again", currency: "eur", amount: 5999 },
-  { planId: "premium_monthly",  label: "Monthly",  description: "Billed monthly, cancel anytime",   currency: "eur", amount: 399  },
+  { planId: "remove_ads",      label: "Remove Ads", description: "Ad-free listening, no premium extras", currency: "eur", amount: 499  },
+  { planId: "premium_yearly",  label: "Annual",     description: "Best value — save vs monthly",         currency: "eur", amount: 2999 },
+  { planId: "premium_lifetime",label: "Lifetime",   description: "One-time payment, never pay again",    currency: "eur", amount: 5999 },
+  { planId: "premium_monthly", label: "Monthly",    description: "Billed monthly, cancel anytime",       currency: "eur", amount: 399  },
 ];
 
 export const PLAN_BADGE: Record<string, string | null> = {
+  remove_ads:       null,
   premium_yearly:   "Best Value",
   premium_lifetime: "One-Time",
   premium_monthly:  null,
 };
 
 export const PLAN_LABEL: Record<string, string> = {
+  remove_ads:       "Remove Ads",
   premium_monthly:  "Monthly",
   premium_yearly:   "Annual",
   premium_lifetime: "Lifetime",

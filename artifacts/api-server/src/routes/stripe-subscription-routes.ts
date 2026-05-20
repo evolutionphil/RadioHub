@@ -176,7 +176,6 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       if (!plan || !VALID_PLANS.includes(plan)) {
         return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_yearly, premium_lifetime" });
       }
-      const isLifetime = plan === "premium_lifetime";
 
       // Price ID: DB (admin-managed) takes precedence over env vars
       let priceId: string | null = null;
@@ -221,8 +220,19 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         await User.updateOne({ _id: userId }, { $set: { "subscription.stripeCustomerId": customerId } });
       }
 
-      // Lifetime = one-time payment; monthly/yearly = recurring subscription
-      const mode = isLifetime ? "payment" : "subscription";
+      // Auto-detect checkout mode from the Stripe price type.
+      // This lets admins configure remove_ads as either one-time or recurring
+      // without needing code changes, and avoids mode-mismatch 500s.
+      let stripePrice: Stripe.Price;
+      try {
+        stripePrice = await stripe.prices.retrieve(priceId);
+      } catch (priceErr: any) {
+        logger.error("[TV SUB] Failed to retrieve Stripe price:", priceErr.message);
+        return void res.status(503).json({ error: `Stripe price not found: ${priceId}. Check the price ID in admin → Stripe Plans.` });
+      }
+      const mode: "payment" | "subscription" =
+        stripePrice.type === "one_time" ? "payment" : "subscription";
+
       const sessionParams: Stripe.Checkout.SessionCreateParams = {
         customer: customerId,
         mode,
@@ -240,7 +250,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           tvCode: tvCode || "",
         },
       };
-      if (!isLifetime) {
+      if (mode === "subscription") {
         sessionParams.subscription_data = {
           metadata: { userId: String(userId), plan, tvCode: tvCode || "" },
         };
@@ -252,7 +262,12 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       res.json({ success: true, checkoutUrl: session.url });
     } catch (err: any) {
       logger.error("[TV SUB] Checkout error:", err.message);
-      res.status(500).json({ error: "Failed to create checkout session" });
+      // Surface Stripe API errors to the frontend so admins can diagnose
+      // misconfigured price IDs, mode mismatches, etc.
+      const userMessage = err?.type?.startsWith("Stripe")
+        ? `Stripe error: ${err.message}`
+        : "Failed to create checkout session";
+      res.status(500).json({ error: userMessage });
     }
   });
 
