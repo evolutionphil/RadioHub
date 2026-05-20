@@ -4237,7 +4237,7 @@ export const TvVersionConfig = mongoose.model<ITvVersionConfig>('TvVersionConfig
 
 // ==================== Stripe Subscription Plans (admin-managed) ====================
 
-export type StripePlanId = 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
+export type StripePlanId = 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
 
 export interface IStripeSubscriptionPlan {
   planId: StripePlanId;
@@ -4251,7 +4251,7 @@ export interface IStripeSubscriptionPlan {
 }
 
 const StripeSubscriptionPlanSchema = new Schema<IStripeSubscriptionPlan>({
-  planId: { type: String, required: true, enum: ['premium_monthly', 'premium_yearly', 'premium_lifetime'], unique: true },
+  planId: { type: String, required: true, enum: ['remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'], unique: true },
   stripePriceId: { type: String, required: true },
   label: { type: String, required: true },
   description: { type: String, required: true },

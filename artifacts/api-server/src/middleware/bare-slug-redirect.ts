@@ -115,6 +115,8 @@ const RESERVED_TOP_LEVEL = new Set([
   'tv',
   // Stripe TV subscription activation flow
   'activate',
+  // Web premium subscription page
+  'premium',
 ]);
 
 let countrySlugToRegion: Map<string, string> | null = null;
