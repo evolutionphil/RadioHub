@@ -1008,16 +1008,7 @@ export default function RadioHeader({
                     )}
                   </button>
                   
-                  {/* 2. Go Premium button — desktop, non-premium users only */}
-                  {!isPremium && (
-                    <Link
-                      href="/premium"
-                      className="hidden xl:flex items-center gap-1.5 px-3 h-[38px] rounded-md text-sm font-semibold text-white bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 transition-opacity flex-shrink-0"
-                    >
-                      <Crown className="w-3.5 h-3.5" />
-                      Premium
-                    </Link>
-                  )}
+                  {/* 2. Go Premium button — removed, /premium accessible via direct link only */}
 
                   {/* 3. Country Selector - desktop only (xl+) - Figma: 147x38px, border-radius 5px */}
                   <div className="hidden xl:block relative dropdown-container" ref={countryDropdownRef}>
