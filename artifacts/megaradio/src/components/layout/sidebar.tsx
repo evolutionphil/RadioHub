@@ -25,6 +25,7 @@ import {
   MapPin,
   Map,
   Eye,
+  CreditCard,
 } from "lucide-react";
 
 interface NavigationItem {
@@ -44,7 +45,6 @@ const navigation: NavigationItem[] = [
     children: [
       { name: "TV/App Version", href: "/admin/tv-version" },
       { name: "IAP Events", href: "/admin/iap-events" },
-      { name: "Stripe Plans", href: "/admin/stripe-plans" },
       { name: "Sales Analytics", href: "/admin/sales" },
       { name: "Advertisements", href: "/admin/advertisements" },
     ],
@@ -127,6 +127,14 @@ const navigation: NavigationItem[] = [
       { name: "Home Settings", href: "/admin/home-settings" },
       { name: "Social Media Links", href: "/admin/footer-social-media" },
       { name: "Database Management", href: "/admin/db-management" },
+      {
+        name: "Payment Gateway",
+        icon: CreditCard,
+        children: [
+          { name: "Stripe", href: "/admin/stripe-plans" },
+          { name: "Paddle", href: "/admin/paddle-plans" },
+        ],
+      },
     ],
   },
 ];
@@ -134,6 +142,26 @@ const navigation: NavigationItem[] = [
 interface SidebarProps {
   isMobileMenuOpen: boolean;
   setIsMobileMenuOpen: (open: boolean) => void;
+}
+
+// Recursively check if item or any descendant matches the active href.
+function hasActiveDescendant(item: NavigationItem, isActiveFn: (href?: string) => boolean): boolean {
+  if (item.href && isActiveFn(item.href)) return true;
+  return item.children?.some(c => hasActiveDescendant(c, isActiveFn)) ?? false;
+}
+
+// Collect names of ALL groups that contain the active route anywhere in their subtree.
+function getGroupsToAutoExpand(items: NavigationItem[], isActiveFn: (href?: string) => boolean): string[] {
+  const result: string[] = [];
+  for (const item of items) {
+    if (item.children) {
+      if (hasActiveDescendant(item, isActiveFn)) {
+        result.push(item.name);
+        result.push(...getGroupsToAutoExpand(item.children, isActiveFn));
+      }
+    }
+  }
+  return result;
 }
 
 export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: SidebarProps) {
@@ -151,76 +179,65 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
     return location === href || (href !== "/admin" && href !== "/" && location.startsWith(href));
   };
 
-  // Auto-expand the group containing the active route on first render.
-  // (useState initializer runs once, so this is safe.)
-  const activeGroupName = navigation.find(
-    (item) => item.children?.some((c) => isActiveLink(c.href)),
-  )?.name;
+  // Auto-expand every ancestor group of the active route.
+  const autoExpand = getGroupsToAutoExpand(navigation, isActiveLink);
+  const effectiveExpanded = Array.from(new Set([...expandedItems, ...autoExpand]));
 
-  // Ensure the active group is always expanded (merge with initialState).
-  const effectiveExpanded = activeGroupName && !expandedItems.includes(activeGroupName)
-    ? [...expandedItems, activeGroupName]
-    : expandedItems;
-
-  const renderItem = (item: NavigationItem, onLinkClick?: () => void) => {
+  // Render an item at a given nesting depth (0 = top-level group, 1 = inside group, 2 = inside sub-group).
+  const renderItem = (item: NavigationItem, depth: number, onLinkClick?: () => void): React.ReactNode => {
     const Icon = item.icon;
     const hasChildren = !!item.children?.length;
     const isExpanded = effectiveExpanded.includes(item.name);
     const isActive = isActiveLink(item.href);
-    const hasActiveChild = hasChildren && item.children!.some((c) => isActiveLink(c.href));
+    const hasActiveChild = hasActiveDescendant(item, isActiveLink);
 
     if (hasChildren) {
+      const isSubGroup = depth >= 1; // "Payment Gateway" style sub-group
+
       return (
         <div key={item.name}>
           <button
             onClick={() => toggleExpanded(item.name)}
             className={cn(
-              "w-full group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md text-left",
+              "w-full group flex items-center text-sm font-medium rounded-md text-left transition-colors",
+              isSubGroup
+                ? "min-h-[40px] px-2 py-2"
+                : "min-h-[48px] px-2 py-3",
               isExpanded || hasActiveChild
                 ? "bg-gray-100 text-gray-900"
                 : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
             )}
           >
-            {Icon && <Icon className="mr-3 w-5 h-5 shrink-0" />}
+            {Icon && depth === 0 && <Icon className="mr-3 w-5 h-5 shrink-0" />}
+            {Icon && depth >= 1 && <Icon className="mr-2 w-4 h-4 shrink-0 opacity-70" />}
             <span className="flex-1">{item.name}</span>
-            {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            {isExpanded
+              ? <ChevronDown className="w-4 h-4 shrink-0" />
+              : <ChevronRight className="w-4 h-4 shrink-0" />}
           </button>
 
           {isExpanded && (
-            <div className="ml-8 mt-1 space-y-1">
-              {item.children!.map((child) => (
-                <Link key={child.name} href={child.href!}>
-                  <span
-                    onClick={onLinkClick}
-                    className={cn(
-                      "group flex items-center min-h-[44px] px-2 py-2 text-sm font-medium rounded-md cursor-pointer",
-                      isActiveLink(child.href)
-                        ? "bg-primary text-white"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
-                    )}
-                  >
-                    {child.name}
-                  </span>
-                </Link>
-              ))}
+            <div className={cn("mt-1 space-y-1", depth === 0 ? "ml-8" : "ml-4")}>
+              {item.children!.map(child => renderItem(child, depth + 1, onLinkClick))}
             </div>
           )}
         </div>
       );
     }
 
+    // Leaf link
     return (
       <Link key={item.name} href={item.href!}>
         <span
           onClick={onLinkClick}
           className={cn(
-            "group flex items-center min-h-[48px] px-2 py-3 text-sm font-medium rounded-md cursor-pointer",
+            "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer transition-colors",
+            depth === 1 ? "min-h-[44px]" : "min-h-[38px]",
             isActive
               ? "bg-primary text-white"
               : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
           )}
         >
-          {Icon && <Icon className="mr-3 w-5 h-5 shrink-0" />}
           {item.name}
         </span>
       </Link>
@@ -234,7 +251,7 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
         <h1 className="text-xl font-bold text-gray-900">RadioHub Admin</h1>
       </div>
       <nav className="mt-8 flex-1 px-2 space-y-1 overflow-y-auto">
-        {navigation.map((item) => renderItem(item, onLinkClick))}
+        {navigation.map((item) => renderItem(item, 0, onLinkClick))}
       </nav>
     </>
   );
