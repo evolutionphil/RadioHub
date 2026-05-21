@@ -332,12 +332,16 @@ export interface IUser extends Document {
   };
   subscription?: {
     plan: 'none' | 'remove_ads' | 'premium_monthly' | 'premium_yearly' | 'premium_lifetime';
-    platform: 'ios' | 'android' | 'tvos' | 'macos' | 'web' | 'admin';
+    platform: 'ios' | 'android' | 'tvos' | 'macos' | 'web' | 'admin' | 'stripe' | 'paddle';
     productId?: string;
     transactionId?: string;
     originalTransactionId?: string;
     receipt?: string;
     purchaseToken?: string;
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    paddleCustomerId?: string;
+    paddleSubscriptionId?: string;
     expiresAt?: Date | null;
     startedAt?: Date;
     isTrial?: boolean;
@@ -1668,7 +1672,7 @@ const UserSchema = new Schema<IUser>({
   },
   subscription: {
     plan: { type: String, enum: ['none', 'remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'], default: 'none' },
-    platform: { type: String, enum: ['ios', 'android', 'tvos', 'macos', 'web', 'admin', 'stripe'] },
+    platform: { type: String, enum: ['ios', 'android', 'tvos', 'macos', 'web', 'admin', 'stripe', 'paddle'] },
     productId: String,
     transactionId: String,
     originalTransactionId: String,
@@ -1676,6 +1680,8 @@ const UserSchema = new Schema<IUser>({
     purchaseToken: String,
     stripeCustomerId: String,
     stripeSubscriptionId: String,
+    paddleCustomerId: String,
+    paddleSubscriptionId: String,
     expiresAt: { type: Date, default: null },
     startedAt: Date,
     isTrial: { type: Boolean, default: false },
@@ -4242,6 +4248,7 @@ export type StripePlanId = 'remove_ads' | 'premium_monthly' | 'premium_yearly' |
 export interface IStripeSubscriptionPlan {
   planId: StripePlanId;
   stripePriceId: string;
+  paddlePriceId?: string;
   label: string;
   description: string;
   currency: string;
@@ -4253,6 +4260,7 @@ export interface IStripeSubscriptionPlan {
 const StripeSubscriptionPlanSchema = new Schema<IStripeSubscriptionPlan>({
   planId: { type: String, required: true, enum: ['remove_ads', 'premium_monthly', 'premium_yearly', 'premium_lifetime'], unique: true },
   stripePriceId: { type: String, required: true },
+  paddlePriceId: { type: String },
   label: { type: String, required: true },
   description: { type: String, required: true },
   currency: { type: String, default: 'usd' },

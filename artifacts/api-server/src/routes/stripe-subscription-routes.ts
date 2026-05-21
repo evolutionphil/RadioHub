@@ -1,11 +1,42 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
+import { Paddle, Environment } from "@paddle/paddle-node-sdk";
 import { User, TvSubscriptionCode, StripeSubscriptionPlan, StripeSaleEvent } from "@workspace/db-shared/mongo-schemas";
 import { logger } from "../utils/logger";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const WEB_BASE_URL = process.env.WEB_BASE_URL || "https://www.themegaradio.com";
+
+// ── Paddle config ─────────────────────────────────────────────────────────────
+const PADDLE_API_KEY = process.env.PADDLE_API_KEY;
+const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET;
+// Set PAYMENT_PROVIDER=paddle to route new checkouts through Paddle.
+// Stripe remains active for existing subscribers and can be re-enabled by
+// switching back to PAYMENT_PROVIDER=stripe (or unsetting the variable).
+const PAYMENT_PROVIDER: "stripe" | "paddle" = (process.env.PAYMENT_PROVIDER as any) || "stripe";
+
+function getPaddle(): Paddle | null {
+  if (!PADDLE_API_KEY) return null;
+  return new Paddle(PADDLE_API_KEY, { environment: Environment.production });
+}
+
+// DB-first Paddle price ID lookup (mirrors Stripe's stripePriceId approach).
+// Falls back to env vars so Railway secrets still work as a safety net.
+async function getPaddlePriceId(plan: string): Promise<string | null> {
+  try {
+    const doc = await StripeSubscriptionPlan.findOne({ planId: plan as any, isActive: true }).lean();
+    if ((doc as any)?.paddlePriceId) return (doc as any).paddlePriceId as string;
+  } catch {}
+  // env var fallback
+  switch (plan) {
+    case "remove_ads":       return process.env.PADDLE_PRICE_REMOVE_ADS || null;
+    case "premium_monthly":  return process.env.PADDLE_PRICE_MONTHLY    || null;
+    case "premium_yearly":   return process.env.PADDLE_PRICE_ANNUAL     || null;
+    case "premium_lifetime": return process.env.PADDLE_PRICE_LIFETIME   || null;
+    default:                 return null;
+  }
+}
 
 // Stripe plan → IAP plan value mapping. Keys are the Stripe price IDs from env.
 const STRIPE_PRICE_TO_PLAN: Record<string, string> = {};
@@ -158,23 +189,80 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
     }
   });
 
-  // ── Create Stripe Checkout Session ─────────────────────────────────────────
-  // Called by the web /activate page after the user picks a plan.
-  // Requires the user to be logged in (session or Bearer token).
+  // ── Create Checkout Session (Stripe or Paddle) ────────────────────────────
+  // PAYMENT_PROVIDER env var selects which provider handles new checkouts.
+  // Stripe remains registered and available; switch back by unsetting the var.
   app.post("/api/subscription/checkout", requireAuth, async (req: Request, res: Response) => {
+    const userId = (req.session as any)?.user?.userId || (req as any).userId;
+    const { plan, tvCode } = req.body;
+
+    const VALID_PLANS = ["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"];
+    if (!plan || !VALID_PLANS.includes(plan)) {
+      return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_yearly, premium_lifetime" });
+    }
+
+    // Validate the TV code if provided
+    if (tvCode) {
+      const code = await TvSubscriptionCode.findOne({
+        code: tvCode,
+        status: "pending",
+        expiresAt: { $gt: new Date() },
+      });
+      if (!code) {
+        return void res.status(400).json({ error: "TV code is invalid or expired" });
+      }
+    }
+
+    // ── Paddle branch ────────────────────────────────────────────────────────
+    if (PAYMENT_PROVIDER === "paddle") {
+      try {
+        const paddle = getPaddle();
+        if (!paddle) {
+          return void res.status(503).json({ error: "Paddle is not configured on this server. Set PADDLE_API_KEY." });
+        }
+
+        const priceId = await getPaddlePriceId(plan);
+        if (!priceId) {
+          return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Set it in admin → Stripe Plans (Paddle Price ID field).` });
+        }
+
+        const transaction = await paddle.transactions.create({
+          items: [{ priceId, quantity: 1 }],
+          customData: {
+            userId: String(userId),
+            plan,
+            tvCode: tvCode || "",
+          },
+          // checkout.url is the post-payment redirect destination
+          checkout: {
+            url: tvCode
+              ? `${WEB_BASE_URL}/activate/success?code=${tvCode}`
+              : `${WEB_BASE_URL}/premium/success`,
+          },
+        });
+
+        const checkoutUrl = transaction.checkout?.url;
+        if (!checkoutUrl) {
+          logger.error("[PADDLE] Transaction created but no checkout.url returned:", transaction.id);
+          return void res.status(503).json({ error: "Paddle did not return a checkout URL. Check that prices are active." });
+        }
+
+        logger.log(`[PADDLE] Checkout txn ${transaction.id} for user ${userId}, plan=${plan}, tvCode=${tvCode || "none"}`);
+        return void res.json({ success: true, checkoutUrl });
+      } catch (err: any) {
+        logger.error("[PADDLE] Checkout error:", err.message);
+        const userMessage = err?.code
+          ? `Paddle error: ${err.message}`
+          : "Failed to create Paddle checkout session";
+        return void res.status(500).json({ error: userMessage });
+      }
+    }
+
+    // ── Stripe branch (default) ──────────────────────────────────────────────
     try {
       const stripe = getStripe();
       if (!stripe) {
-        return void res.status(503).json({ error: "Stripe is not configured on this server" });
-      }
-
-      const userId = (req.session as any)?.user?.userId
-        || (req as any).userId; // set by requireAuth Bearer path
-      const { plan, tvCode } = req.body;
-
-      const VALID_PLANS = ["remove_ads", "premium_monthly", "premium_yearly", "premium_lifetime"];
-      if (!plan || !VALID_PLANS.includes(plan)) {
-        return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_yearly, premium_lifetime" });
+        return void res.status(503).json({ error: "Stripe is not configured on this server. Set STRIPE_SECRET_KEY or switch PAYMENT_PROVIDER=paddle." });
       }
 
       // Price ID: DB (admin-managed) takes precedence over env vars
@@ -186,25 +274,13 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       if (!priceId) {
         priceId =
           plan === "remove_ads"       ? process.env.STRIPE_PRICE_REMOVE_ADS || null :
-          plan === "premium_monthly"  ? process.env.STRIPE_PRICE_MONTHLY || null :
-          plan === "premium_yearly"   ? process.env.STRIPE_PRICE_ANNUAL || null :
-          plan === "premium_lifetime" ? process.env.STRIPE_PRICE_LIFETIME || null :
+          plan === "premium_monthly"  ? process.env.STRIPE_PRICE_MONTHLY    || null :
+          plan === "premium_yearly"   ? process.env.STRIPE_PRICE_ANNUAL     || null :
+          plan === "premium_lifetime" ? process.env.STRIPE_PRICE_LIFETIME   || null :
           null;
       }
       if (!priceId) {
-        return void res.status(503).json({ error: `No Stripe price configured for plan: ${plan}. Set it in admin → Stripe Plans.` });
-      }
-
-      // Validate the TV code if provided (so webhook can look it up)
-      if (tvCode) {
-        const code = await TvSubscriptionCode.findOne({
-          code: tvCode,
-          status: "pending",
-          expiresAt: { $gt: new Date() },
-        });
-        if (!code) {
-          return void res.status(400).json({ error: "TV code is invalid or expired" });
-        }
+        return void res.status(503).json({ error: `No Stripe price configured for plan: ${plan}. Set it in admin → Stripe Plans, or switch to PAYMENT_PROVIDER=paddle.` });
       }
 
       const user = await User.findById(userId).select("email subscription").lean() as any;
@@ -220,15 +296,13 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         await User.updateOne({ _id: userId }, { $set: { "subscription.stripeCustomerId": customerId } });
       }
 
-      // Auto-detect checkout mode from the Stripe price type.
-      // This lets admins configure remove_ads as either one-time or recurring
-      // without needing code changes, and avoids mode-mismatch 500s.
+      // Auto-detect checkout mode from the Stripe price type to avoid mode-mismatch 500s.
       let stripePrice: Stripe.Price;
       try {
         stripePrice = await stripe.prices.retrieve(priceId);
       } catch (priceErr: any) {
-        logger.error("[TV SUB] Failed to retrieve Stripe price:", priceErr.message);
-        return void res.status(503).json({ error: `Stripe price not found: ${priceId}. Check the price ID in admin → Stripe Plans.` });
+        logger.error("[STRIPE] Failed to retrieve price:", priceErr.message);
+        return void res.status(503).json({ error: `Stripe price not found: ${priceId}. Check admin → Stripe Plans.` });
       }
       const mode: "payment" | "subscription" =
         stripePrice.type === "one_time" ? "payment" : "subscription";
@@ -237,18 +311,13 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         customer: customerId,
         mode,
         line_items: [{ price: priceId, quantity: 1 }],
-        // TV flow: /activate/success?code=...  Web flow: /premium/success
         success_url: tvCode
           ? `${WEB_BASE_URL}/activate/success?code=${tvCode}&session_id={CHECKOUT_SESSION_ID}`
           : `${WEB_BASE_URL}/premium/success?session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: tvCode
           ? `${WEB_BASE_URL}/activate?code=${tvCode}`
           : `${WEB_BASE_URL}/premium`,
-        metadata: {
-          userId: String(userId),
-          plan,
-          tvCode: tvCode || "",
-        },
+        metadata: { userId: String(userId), plan, tvCode: tvCode || "" },
       };
       if (mode === "subscription") {
         sessionParams.subscription_data = {
@@ -256,14 +325,10 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         };
       }
       const session = await stripe.checkout.sessions.create(sessionParams);
-
-      logger.log(`[TV SUB] Checkout session ${session.id} created for user ${userId}, plan=${plan}, tvCode=${tvCode || "none"}`);
-
+      logger.log(`[STRIPE] Checkout session ${session.id} for user ${userId}, plan=${plan}, tvCode=${tvCode || "none"}`);
       res.json({ success: true, checkoutUrl: session.url });
     } catch (err: any) {
-      logger.error("[TV SUB] Checkout error:", err.message);
-      // Surface Stripe API errors to the frontend so admins can diagnose
-      // misconfigured price IDs, mode mismatches, etc.
+      logger.error("[STRIPE] Checkout error:", err.message);
       const userMessage = err?.type?.startsWith("Stripe")
         ? `Stripe error: ${err.message}`
         : "Failed to create checkout session";
@@ -385,6 +450,121 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           }
         } catch (err: any) {
           logger.error("[TV SUB] Webhook processing error:", err.message);
+        }
+      }
+
+      res.status(200).json({ received: true });
+    }
+  );
+
+  // ── Paddle Webhook ─────────────────────────────────────────────────────────
+  // Handles transaction.completed (one-time payment and first subscription billing)
+  // and subscription.activated / subscription.updated for recurring plans.
+  app.post(
+    "/api/webhooks/paddle",
+    (req: Request, res: Response, next) => {
+      // Capture raw body for HMAC signature verification
+      if (req.headers["content-type"]?.includes("application/json")) {
+        let body = "";
+        req.setEncoding("utf8");
+        req.on("data", (chunk) => { body += chunk; });
+        req.on("end", () => { (req as any).rawBody = body; next(); });
+      } else {
+        next();
+      }
+    },
+    async (req: Request, res: Response) => {
+      const paddle = getPaddle();
+      if (!paddle) return void res.status(200).json({ received: true });
+
+      const sig = req.headers["paddle-signature"] as string;
+      const rawBody = (req as any).rawBody || "";
+
+      if (!PADDLE_WEBHOOK_SECRET) {
+        logger.warn("[PADDLE] PADDLE_WEBHOOK_SECRET not set — skipping signature check");
+      } else if (sig) {
+        try {
+          await paddle.webhooks.isSignatureValid(rawBody, PADDLE_WEBHOOK_SECRET, sig);
+        } catch (err: any) {
+          logger.warn("[PADDLE] Webhook signature invalid:", err.message);
+          return void res.status(400).json({ error: "Invalid signature" });
+        }
+      }
+
+      let event: any;
+      try {
+        event = JSON.parse(rawBody);
+      } catch {
+        return void res.status(400).json({ error: "Invalid JSON" });
+      }
+
+      const eventType: string = event?.event_type || "";
+      const txnData = event?.data || {};
+
+      if (eventType === "transaction.completed") {
+        const customData = txnData.custom_data || {};
+        const userId: string = customData.userId || "";
+        const plan: string = customData.plan || "";
+        const tvCode: string = customData.tvCode || "";
+
+        if (!userId || !plan) {
+          logger.warn("[PADDLE] transaction.completed missing userId/plan in custom_data");
+          return void res.status(200).json({ received: true });
+        }
+
+        try {
+          await User.updateOne(
+            { _id: userId },
+            {
+              $set: {
+                "subscription.plan": plan,
+                "subscription.platform": "paddle",
+                "subscription.paddleCustomerId": txnData.customer_id || undefined,
+                "subscription.paddleSubscriptionId": txnData.subscription_id || undefined,
+                "subscription.isActive": true,
+                "subscription.startedAt": new Date(),
+                "subscription.expiresAt": null,
+                "subscription.lastVerifiedAt": new Date(),
+              },
+            }
+          );
+
+          logger.log(`[PADDLE] Subscription activated: user=${userId}, plan=${plan}, txn=${txnData.id}`);
+
+          // Record sale event for revenue dashboard
+          try {
+            await StripeSaleEvent.create({
+              userId: userId || null,
+              plan,
+              stripeSessionId: txnData.id,     // reusing field — txn ID stored here
+              stripeCustomerId: txnData.customer_id || undefined,
+              amount: txnData.details?.totals?.total ? parseInt(txnData.details.totals.total, 10) : 0,
+              currency: txnData.currency_code || "eur",
+              isLifetime: plan === "premium_lifetime",
+              tvCode: tvCode || undefined,
+              createdAt: new Date(),
+            });
+          } catch (saleErr: any) {
+            logger.warn("[PADDLE] Failed to record sale event:", saleErr.message);
+          }
+
+          if (tvCode) {
+            await TvSubscriptionCode.updateMany(
+              { code: tvCode, status: "pending" },
+              {
+                $set: {
+                  status: "completed",
+                  userId,
+                  plan,
+                  stripeSessionId: txnData.id,
+                  completedAt: new Date(),
+                },
+              }
+            );
+            logger.log(`[PADDLE] TV code ${tvCode} marked completed`);
+          }
+        } catch (err: any) {
+          logger.error("[PADDLE] Webhook processing error:", err.message);
         }
       }
 
