@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
+import { Paddle, Environment } from "@paddle/paddle-node-sdk";
 import { StripeSubscriptionPlan, type StripePlanId } from "@workspace/db-shared/mongo-schemas";
 import { logger } from "../utils/logger";
 
@@ -85,10 +86,11 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "Invalid planId" });
       }
 
-      const { stripePriceId, label, description, currency, amount, isActive } = req.body;
+      const { stripePriceId, paddlePriceId, label, description, currency, amount, isActive } = req.body;
 
       const update: Partial<{
         stripePriceId: string;
+        paddlePriceId: string;
         label: string;
         description: string;
         currency: string;
@@ -98,6 +100,7 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
       }> = { updatedAt: new Date() };
 
       if (typeof stripePriceId === "string") update.stripePriceId = stripePriceId.trim();
+      if (typeof paddlePriceId === "string") update.paddlePriceId = paddlePriceId.trim();
       if (typeof label === "string") update.label = label.trim();
       if (typeof description === "string") update.description = description.trim();
       if (typeof currency === "string") update.currency = currency.toLowerCase().trim();
@@ -141,6 +144,33 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
       });
     } catch (err: any) {
       res.status(400).json({ valid: false, error: err?.message || "Price not found in Stripe" });
+    }
+  });
+
+  // ── Admin: verify a Paddle price ID against live Paddle ───────────────────
+  app.post("/api/admin/stripe-plans/verify-paddle-price", requireAdmin, async (req: Request, res: Response) => {
+    const paddleKey = process.env.PADDLE_API_KEY;
+    if (!paddleKey) {
+      return void res.status(503).json({ error: "PADDLE_API_KEY not configured" });
+    }
+    try {
+      const { priceId } = req.body;
+      if (!priceId || typeof priceId !== "string") {
+        return void res.status(400).json({ error: "priceId is required" });
+      }
+      const paddle = new Paddle(paddleKey, { environment: Environment.production });
+      const price = await paddle.prices.get(priceId);
+      const unitPrice = (price as any)?.unitPrice ?? (price as any)?.unit_price;
+      res.json({
+        valid: true,
+        currency: unitPrice?.currencyCode ?? null,
+        unitAmount: unitPrice?.amount ? parseInt(unitPrice.amount, 10) : null,
+        billingCycle: (price as any)?.billingCycle ?? null,
+        active: (price as any)?.status === "active",
+        name: (price as any)?.name ?? null,
+      });
+    } catch (err: any) {
+      res.status(400).json({ valid: false, error: err?.message || "Price not found in Paddle" });
     }
   });
 }

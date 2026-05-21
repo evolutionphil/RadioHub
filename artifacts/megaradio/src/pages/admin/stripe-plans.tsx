@@ -62,7 +62,6 @@ interface VerifyResult {
 }
 
 function PlanCard({ plan }: { plan: StripePlan }) {
-  // Auto-open in edit mode when no price ID is set yet so the form is ready to fill.
   const [editing, setEditing] = useState(!plan.stripePriceId);
   const [form, setForm] = useState({
     stripePriceId: plan.stripePriceId,
@@ -172,9 +171,9 @@ function PlanCard({ plan }: { plan: StripePlan }) {
                   </a>
                 )}
               </div>
-            </div>
-            <div className="col-span-2">
-              <p className="text-gray-500 text-xs">Railway env var: <code className="bg-gray-100 px-1 rounded">{ENV_VAR[plan.planId]}</code> (fallback if DB not set)</p>
+              <p className="text-gray-400 text-xs mt-0.5">
+                Railway fallback: <code className="bg-gray-100 px-1 rounded">{ENV_VAR[plan.planId]}</code>
+              </p>
             </div>
           </div>
         ) : (
@@ -287,8 +286,6 @@ function PlanCard({ plan }: { plan: StripePlan }) {
   );
 }
 
-// Default shape used when the DB hasn't seeded the plan yet.
-// The PUT endpoint uses upsert:true so saving any of these creates the record.
 const DEFAULT_PLANS: StripePlan[] = [
   { planId: "remove_ads",       label: "Remove Ads", description: "Ad-free listening, no premium extras", currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
   { planId: "premium_monthly",  label: "Monthly",    description: "Billed monthly, cancel anytime",       currency: "usd", amount: 0, isActive: true, stripePriceId: "", updatedAt: "" },
@@ -301,28 +298,26 @@ export default function StripePlansPage() {
     queryKey: ["/api/admin/stripe-plans"],
   });
 
-  // Always show all 4 plans. Merge DB data over defaults so missing plans
-  // still show an editable card (PUT uses upsert:true — saves create the record).
   const planMap = new Map((data?.plans || []).map(p => [p.planId, p]));
   const plans = DEFAULT_PLANS.map(def => planMap.get(def.planId) ?? def);
 
   return (
     <div className="space-y-6 p-6">
       <div>
-        <h1 className="text-3xl font-bold">Stripe Subscription Plans</h1>
+        <h1 className="text-3xl font-bold">Stripe Plans</h1>
         <p className="text-gray-500 mt-2">
-          Manage Stripe price IDs and display text for the TV/Web subscription flow.
+          Manage Stripe price IDs for the TV/Web subscription flow.
           These apply to Samsung TV, LG TV, and web — not iOS/Android (those use App Store IAP).
         </p>
       </div>
 
-      <Card className="border-blue-200 bg-blue-50">
-        <CardContent className="pt-4 text-sm text-blue-800 space-y-1">
+      <Card className="border-purple-200 bg-purple-50">
+        <CardContent className="pt-4 text-sm text-purple-800 space-y-1">
           <p><strong>How it works:</strong></p>
           <p>1. Create prices in your <a href="https://dashboard.stripe.com/prices" target="_blank" rel="noopener noreferrer" className="underline">Stripe dashboard</a></p>
-          <p>2. Paste each price ID below and click <strong>Verify</strong> — amount & currency auto-fill</p>
-          <p>3. Save · The TV activate page immediately uses the new prices</p>
-          <p className="text-blue-600 text-xs mt-2">Tip: Create prices in TRY, EUR, USD etc. matching your App Store pricing</p>
+          <p>2. Paste each <code className="bg-purple-100 px-1 rounded">price_xxx</code> ID below and click <strong>Verify</strong> — amount & currency auto-fill</p>
+          <p>3. Save · Active when <code className="bg-purple-100 px-1 rounded">PAYMENT_PROVIDER=stripe</code> (default)</p>
+          <p className="text-purple-600 text-xs mt-2">To switch to Paddle, see Settings → Payment Gateway → Paddle</p>
         </CardContent>
       </Card>
 
