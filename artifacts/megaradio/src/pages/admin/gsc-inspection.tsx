@@ -140,7 +140,6 @@ interface StatsResponse {
 }
 
 type ServerNoindexReason =
-  | 'langIneligible'
   | 'stationNoIndex'
   | 'numericSlug'
   | 'junk'
@@ -181,7 +180,7 @@ interface UrlsResponse {
 interface NoindexBreakdownResponse {
   total: number;
   breakdown: {
-    langIneligible: number;
+    langRedirected: number;
     numericSlug: number;
     stationNoIndex: number;
     junk: number;
@@ -195,7 +194,7 @@ interface NoindexBreakdownResponse {
     language: string;
     total: number;
     qualified: boolean;
-    ineligible: number;
+    redirected: number;
   }>;
   sampledStationUrls: number;
 }
@@ -209,14 +208,12 @@ interface OAuthStatus {
 }
 
 const NOINDEX_REASON_LABEL: Record<Exclude<ServerNoindexReason, null>, string> = {
-  langIneligible: 'Language not qualified',
   stationNoIndex: 'Station noIndex=true',
   numericSlug: 'Numeric-only slug',
   junk: 'Junk station',
 };
 
 const NOINDEX_REASON_CLS: Record<Exclude<ServerNoindexReason, null>, string> = {
-  langIneligible: 'bg-purple-700 hover:bg-purple-800',
   stationNoIndex: 'bg-rose-700 hover:bg-rose-800',
   numericSlug: 'bg-yellow-700 hover:bg-yellow-800',
   junk: 'bg-slate-700 hover:bg-slate-800',
@@ -232,7 +229,7 @@ function ServerNoindexBadge({ value }: { value?: ServerNoindex }) {
       </Badge>
     );
   }
-  const reason = value.reason ?? 'langIneligible';
+  const reason = value.reason ?? 'stationNoIndex';
   return (
     <Badge className={`${NOINDEX_REASON_CLS[reason]} text-white`}>
       <XCircle className="w-3 h-3 mr-1" />
@@ -798,9 +795,8 @@ export default function GscInspectionPage() {
                 <CardDescription className="text-gray-400">
                   Why the server is currently sending <code>noindex</code> for
                   URLs in the sitemap cache — distinct from Google's verdict
-                  above. <strong>langIneligible</strong> = URL's language not in
-                  the qualifiedLanguages set; this is the primary driver of the
-                  368-noindex incident.
+                  above. Language-ineligible variants now receive a{' '}
+                  <strong>301 redirect → /en</strong> instead of noindex.
                 </CardDescription>
               </div>
               <div className="text-right text-sm text-gray-400 shrink-0">
@@ -820,17 +816,17 @@ export default function GscInspectionPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-              <div className="rounded-md border border-purple-700/60 bg-purple-950/30 p-3">
-                <div className="text-xs text-purple-300">
-                  langIneligible
+              <div className="rounded-md border border-blue-700/60 bg-blue-950/30 p-3">
+                <div className="text-xs text-blue-300">
+                  langRedirected
                 </div>
-                <div className="text-xl font-bold text-purple-200">
+                <div className="text-xl font-bold text-blue-200">
                   {(
-                    noindexBreakdown?.breakdown.langIneligible ?? 0
+                    noindexBreakdown?.breakdown.langRedirected ?? 0
                   ).toLocaleString()}
                 </div>
-                <p className="text-[10px] text-purple-300/80 mt-1">
-                  Phase C: complete translations
+                <p className="text-[10px] text-blue-300/80 mt-1">
+                  301 → /en (not noindex)
                 </p>
               </div>
               <div className="rounded-md border border-rose-700/60 bg-rose-950/30 p-3">
@@ -890,7 +886,7 @@ export default function GscInspectionPage() {
                         Total URLs
                       </TableHead>
                       <TableHead className="text-gray-400 text-right">
-                        Ineligible
+                        Redirected
                       </TableHead>
                       <TableHead className="text-gray-400">
                         Qualified?
@@ -906,8 +902,8 @@ export default function GscInspectionPage() {
                         <TableCell className="text-right text-gray-300">
                           {row.total.toLocaleString()}
                         </TableCell>
-                        <TableCell className="text-right text-purple-300">
-                          {row.ineligible.toLocaleString()}
+                        <TableCell className="text-right text-blue-300">
+                          {row.redirected.toLocaleString()}
                         </TableCell>
                         <TableCell>
                           {row.qualified ? (

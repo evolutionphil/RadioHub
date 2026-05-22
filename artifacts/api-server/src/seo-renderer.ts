@@ -956,6 +956,7 @@ export class SeoRenderer {
     //    languages, which caused Google to crawl 57 variants per station and
     //    dump ~55 of them into "Crawled - currently not indexed".
     let stationIsJunkFlag = false;
+    let langRedirectUrl: string | null = null;
     if (pageType === 'station' && stationData && !stationNotFound) {
       try {
         const {
@@ -980,7 +981,9 @@ export class SeoRenderer {
         // legitimate numeric-callsign brands are not lost.
         const numericOnlySlug = !isJunk && isNumericOnlySlug(stationData.slug);
 
-        if (isJunk || langIneligible || numericOnlySlug) {
+        if (isJunk || numericOnlySlug) {
+          // Junk / numeric-only: serve noindex (junk will be upgraded to 410
+          // Gone by the HTTP layer via stationIsJunkFlag below).
           seoTags.robots = 'noindex, follow';
           seoTags.noIndex = true;
 
@@ -1005,6 +1008,14 @@ export class SeoRenderer {
               urlTranslations?.get(`${canonicalLang}:station`) || 'station';
             seoTags.canonical = `${domain}/${canonicalLang}/${translatedSegment}/${stationData.slug}`;
           }
+        } else if (langIneligible && stationData.slug) {
+          // Language-ineligible variant: 301 redirect to /en instead of
+          // serving 200+noindex. Eliminates crawl-budget waste from Google
+          // repeatedly visiting millions of language variants that can never
+          // be indexed (57 langs × 43K stations = potential millions of
+          // "Crawled - currently not indexed" entries in GSC).
+          const enSegment = urlTranslations?.get('en:station') || 'station';
+          langRedirectUrl = `${domain}/en/${enSegment}/${stationData.slug}`;
         }
 
         if (isJunk) {
@@ -1013,11 +1024,12 @@ export class SeoRenderer {
           // gone page must not expose alternates (Google policy).
           stationIsJunkFlag = true;
           seoTags.hreflangs = [];
-        } else {
+        } else if (!langIneligible) {
           // Hreflang alternates come from the SAME unified gate that the
           // sitemap uses — so the two surfaces advertise the exact same
           // (station × language) set. Passing `qualifiedLangs` here ensures
           // thin/partially-translated languages are excluded from both.
+          // Skip hreflangs for lang-ineligible URLs — they redirect away.
           seoTags.hreflangs = generateLanguageUrls(
             cleanPath,
             domain,
@@ -1238,6 +1250,9 @@ export class SeoRenderer {
         // index fast" — 301 + noindex leaves URLs in the crawl queue for
         // months.
         stationIsJunk: stationIsJunkFlag,
+        // Language-ineligible station variant: HTTP layer issues 301 → /en.
+        // Avoids burning crawl budget on millions of noindex variants.
+        ...(langRedirectUrl ? { redirectTo: langRedirectUrl } : {}),
       }
     };
     
