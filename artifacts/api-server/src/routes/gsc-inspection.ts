@@ -36,7 +36,6 @@ const router = Router();
  * server is currently serving the URL as indexable.
  */
 type ServerNoindexReason =
-  | 'langIneligible'
   | 'stationNoIndex'
   | 'numericSlug'
   | 'junk'
@@ -62,9 +61,11 @@ function computeServerNoindex(
   qualifiedLangs: Set<string>,
   stationBySlug: Map<string, { noIndex?: boolean; slug?: string; name?: string; url?: string; lastCheckOk?: boolean }>,
 ): { noindex: boolean; reason: ServerNoindexReason } {
-  // Gate 1: language qualification (the 368-noindex root cause)
+  // Gate 1 (legacy): previously language-ineligible pages were served as
+  // noindex. They now receive a 301 redirect to /en, so they are no longer
+  // a server-noindex signal — skip them here.
   if (!qualifiedLangs.has(language)) {
-    return { noindex: true, reason: 'langIneligible' };
+    return { noindex: false, reason: null };
   }
 
   // Gate 2: station-specific checks (genres / countries / static are
@@ -602,20 +603,23 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
       },
     ]);
 
-    let langIneligible = 0;
+    // langRedirected: URLs whose language is not qualified — previously served
+    // as noindex, now served as 301 redirect to /en. Not counted as
+    // server-noindex anymore; tracked separately for visibility.
+    let langRedirected = 0;
     let totalUrls = 0;
-    const byLanguage: Record<string, { total: number; qualified: boolean; ineligible: number }> = {};
+    const byLanguage: Record<string, { total: number; qualified: boolean; redirected: number }> = {};
 
     for (const row of byLangAgg as Array<{ _id: { language: string; group: string }; count: number }>) {
       const lang = row._id.language;
       totalUrls += row.count;
       if (!byLanguage[lang]) {
-        byLanguage[lang] = { total: 0, qualified: qualifiedLangs.has(lang), ineligible: 0 };
+        byLanguage[lang] = { total: 0, qualified: qualifiedLangs.has(lang), redirected: 0 };
       }
       byLanguage[lang].total += row.count;
       if (!qualifiedLangs.has(lang)) {
-        langIneligible += row.count;
-        byLanguage[lang].ineligible += row.count;
+        langRedirected += row.count;
+        byLanguage[lang].redirected += row.count;
       }
     }
 
@@ -639,7 +643,7 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
       const slug = extractStationSlugFromUrl(row.url);
       if (!slug) continue;
       // Only count URLs whose language IS qualified — otherwise it's
-      // already counted in langIneligible and we don't want double-counting.
+      // already counted in langRedirected and we don't want double-counting.
       if (!qualifiedLangs.has(row.language)) continue;
       if (isNumericOnlySlug(slug)) {
         numericSlugCount++;
@@ -666,14 +670,14 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
       }
     }
 
-    const serverNoindexTotal =
-      langIneligible + numericSlugCount + stationNoIndexCount + junkCount;
-    const indexable = Math.max(0, totalUrls - serverNoindexTotal);
+    // langRedirected URLs are no longer noindex — they get 301 → /en.
+    const serverNoindexTotal = numericSlugCount + stationNoIndexCount + junkCount;
+    const indexable = Math.max(0, totalUrls - serverNoindexTotal - langRedirected);
 
     res.json({
       total: totalUrls,
       breakdown: {
-        langIneligible,
+        langRedirected,
         numericSlug: numericSlugCount,
         stationNoIndex: stationNoIndexCount,
         junk: junkCount,
@@ -685,7 +689,7 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
       qualifiedLanguages: qualifiedLangsArr.sort(),
       byLanguage: Object.entries(byLanguage)
         .map(([language, info]) => ({ language, ...info }))
-        .sort((a, b) => b.ineligible - a.ineligible || b.total - a.total),
+        .sort((a, b) => b.redirected - a.redirected || b.total - a.total),
       sampledStationUrls: stationUrlSample.length,
     });
   } catch (err: any) {
