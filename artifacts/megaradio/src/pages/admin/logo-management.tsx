@@ -37,6 +37,34 @@ interface MissingLogoStation {
 
 type MissingFilter = 'any' | 'failed' | 'pending' | 'no_favicon';
 
+type FailureType = 'any' | 'http_error' | 'timeout' | 'invalid_format' | 'download_failed' | 'processing_failed' | 'unknown';
+
+interface FailedLogoRow {
+  _id: string;
+  name: string;
+  countryCode: string | null;
+  favicon: string | null;
+  error: string | null;
+  failureType: string;
+  lastAttempt: string | null;
+}
+
+interface FailedLogsResponse {
+  totalFailed: number;
+  countsByType: Record<string, number>;
+  rows: FailedLogoRow[];
+}
+
+interface StorageHealth {
+  s3Configured: boolean;
+  s3Reachable: boolean | null;
+  s3Count: number;
+  localCount: number;
+  mismatch: boolean;
+  sampleS3Url: string | null;
+  sampleLocalPath: string | null;
+}
+
 interface StationResult {
   stationId: string;
   stationName: string;
@@ -81,6 +109,46 @@ export default function LogoManagement() {
   const [missingPage, setMissingPage] = useState(1);
   const [missingFilter, setMissingFilter] = useState<MissingFilter>('any');
   const [missingCountry, setMissingCountry] = useState('');
+  const [failureFilter, setFailureFilter] = useState<FailureType>('any');
+
+  const { data: storageHealth } = useQuery<StorageHealth>({
+    queryKey: ['/api/admin/logos/storage-health'],
+    refetchInterval: 60_000,
+  });
+
+  const { data: failedLogs, refetch: refetchFailed } = useQuery<FailedLogsResponse>({
+    queryKey: ['/api/admin/logos/failed', failureFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams({ limit: '200' });
+      if (failureFilter !== 'any') params.set('failureType', failureFilter);
+      const r = await fetch(`/api/admin/logos/failed?${params}`);
+      if (!r.ok) throw new Error('Failed to load');
+      return r.json();
+    },
+  });
+
+  const retryOneMutation = useMutation({
+    mutationFn: async (stationId: string) => {
+      const r = await apiRequest('POST', `/api/admin/logos/retry/${stationId}`);
+      return r.json();
+    },
+    onSuccess: (data: any) => {
+      if (data?.success) {
+        toast({ title: 'Logo retried', description: 'Station logo reprocessed.' });
+      } else {
+        toast({
+          title: 'Retry failed',
+          description: data?.error || 'Unknown error',
+          variant: 'destructive',
+        });
+      }
+      refetchFailed();
+      refetchStats();
+    },
+    onError: (e: any) => {
+      toast({ title: 'Retry failed', description: e?.message || 'Network error', variant: 'destructive' });
+    },
+  });
 
   const { data: activeJobData } = useQuery<{ hasActiveJob: boolean; job?: LogoJob }>({
     queryKey: ['/api/admin/logos/active-job'],
@@ -273,6 +341,54 @@ export default function LogoManagement() {
             ? 'S3 configured — logos are uploaded to S3 and served from your bucket.'
             : 'S3 NOT configured (AWS_BUCKET_NAME / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY missing). Logos are saved to local disk only and will be lost on Railway redeploy. Set the env vars in Railway and run "Reprocess All Logos".'}
         </div>
+      )}
+
+      {storageHealth && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Image className="w-4 h-4" />
+              Storage Health (verified)
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Where processed logos actually live right now. A non-zero "Local" count when
+              S3 is configured means some stations have stale local-only logos that should be reprocessed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+            <div>
+              <p className="text-muted-foreground text-xs mb-0.5">Logos on S3</p>
+              <p className="text-xl font-bold text-blue-600">{storageHealth.s3Count.toLocaleString()}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs mb-0.5">Logos on Local Disk</p>
+              <p className={`text-xl font-bold ${storageHealth.localCount > 0 && storageHealth.s3Configured ? 'text-orange-600' : 'text-gray-700'}`}>
+                {storageHealth.localCount.toLocaleString()}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs mb-0.5">S3 reachable?</p>
+              <p className="text-sm font-medium">
+                {storageHealth.s3Reachable === true && <span className="text-green-600">Yes (HEAD 200)</span>}
+                {storageHealth.s3Reachable === false && <span className="text-red-600">No (HEAD failed)</span>}
+                {storageHealth.s3Reachable === null && <span className="text-gray-500">N/A (no S3 logos to probe)</span>}
+              </p>
+            </div>
+            <div>
+              <p className="text-muted-foreground text-xs mb-0.5">Mixed-mode?</p>
+              <p className="text-sm font-medium">
+                {storageHealth.mismatch
+                  ? <span className="text-orange-600">⚠️ Both S3 and local logos exist</span>
+                  : <span className="text-green-600">No</span>}
+              </p>
+            </div>
+            {storageHealth.sampleS3Url && (
+              <div className="col-span-2 md:col-span-4 text-xs text-gray-500 truncate">
+                Sample S3 URL: <a href={storageHealth.sampleS3Url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{storageHealth.sampleS3Url}</a>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
@@ -807,6 +923,120 @@ export default function LogoManagement() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* ── Failed Logos Audit Log ─────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <XCircle className="w-4 h-4 text-red-500" />
+            Failed Logos Audit Log
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Per-station error messages from the logo processor. Use this to debug recurring failure
+            patterns (e.g. CDN blocks, dead favicon URLs, unsupported image formats).
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {failedLogs && (
+            <div className="grid grid-cols-2 md:grid-cols-6 gap-2 text-xs">
+              <button
+                onClick={() => setFailureFilter('any')}
+                className={`rounded border p-2 text-left ${failureFilter === 'any' ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'}`}
+              >
+                <p className="text-gray-500">All failed</p>
+                <p className="text-lg font-bold">{failedLogs.totalFailed.toLocaleString()}</p>
+              </button>
+              <button
+                onClick={() => setFailureFilter('http_error')}
+                className={`rounded border p-2 text-left ${failureFilter === 'http_error' ? 'border-red-500 bg-red-50' : 'border-gray-200 hover:bg-gray-50'}`}
+              >
+                <p className="text-gray-500">HTTP error</p>
+                <p className="text-lg font-bold text-red-600">{(failedLogs.countsByType.http_error ?? 0).toLocaleString()}</p>
+              </button>
+              <button
+                onClick={() => setFailureFilter('timeout')}
+                className={`rounded border p-2 text-left ${failureFilter === 'timeout' ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:bg-gray-50'}`}
+              >
+                <p className="text-gray-500">Timeout</p>
+                <p className="text-lg font-bold text-orange-600">{(failedLogs.countsByType.timeout ?? 0).toLocaleString()}</p>
+              </button>
+              <button
+                onClick={() => setFailureFilter('invalid_format')}
+                className={`rounded border p-2 text-left ${failureFilter === 'invalid_format' ? 'border-yellow-500 bg-yellow-50' : 'border-gray-200 hover:bg-gray-50'}`}
+              >
+                <p className="text-gray-500">Invalid format</p>
+                <p className="text-lg font-bold text-yellow-700">{(failedLogs.countsByType.invalid_format ?? 0).toLocaleString()}</p>
+              </button>
+              <button
+                onClick={() => setFailureFilter('download_failed')}
+                className={`rounded border p-2 text-left ${failureFilter === 'download_failed' ? 'border-pink-500 bg-pink-50' : 'border-gray-200 hover:bg-gray-50'}`}
+              >
+                <p className="text-gray-500">Download failed</p>
+                <p className="text-lg font-bold text-pink-600">{(failedLogs.countsByType.download_failed ?? 0).toLocaleString()}</p>
+              </button>
+              <button
+                onClick={() => setFailureFilter('processing_failed')}
+                className={`rounded border p-2 text-left ${failureFilter === 'processing_failed' ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:bg-gray-50'}`}
+              >
+                <p className="text-gray-500">Processing failed</p>
+                <p className="text-lg font-bold text-purple-600">{(failedLogs.countsByType.processing_failed ?? 0).toLocaleString()}</p>
+              </button>
+            </div>
+          )}
+
+          <ScrollArea className="h-96 rounded border">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-100 border-b">
+                <tr>
+                  <th className="text-left p-2">Station</th>
+                  <th className="text-left p-2">Country</th>
+                  <th className="text-left p-2">Type</th>
+                  <th className="text-left p-2">Error</th>
+                  <th className="text-left p-2">Last attempt</th>
+                  <th className="text-right p-2">Retry</th>
+                </tr>
+              </thead>
+              <tbody>
+                {failedLogs?.rows.length === 0 && (
+                  <tr><td colSpan={6} className="text-center p-6 text-gray-400">No failed logos {failureFilter !== 'any' ? `with type "${failureFilter}"` : ''}</td></tr>
+                )}
+                {failedLogs?.rows.map(row => (
+                  <tr key={row._id} className="border-b hover:bg-gray-50">
+                    <td className="p-2 font-medium">
+                      {row.name}
+                      {row.favicon && (
+                        <a href={row.favicon} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-500">
+                          <ExternalLink className="w-3 h-3 inline" />
+                        </a>
+                      )}
+                    </td>
+                    <td className="p-2 text-gray-600">{row.countryCode || '—'}</td>
+                    <td className="p-2">
+                      <Badge variant="outline" className="text-[10px]">{row.failureType}</Badge>
+                    </td>
+                    <td className="p-2 text-gray-700 max-w-md truncate" title={row.error || ''}>
+                      {row.error || '—'}
+                    </td>
+                    <td className="p-2 text-gray-500">
+                      {row.lastAttempt ? new Date(row.lastAttempt).toLocaleString() : '—'}
+                    </td>
+                    <td className="p-2 text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={retryOneMutation.isPending}
+                        onClick={() => retryOneMutation.mutate(row._id)}
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </Button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </ScrollArea>
+        </CardContent>
+      </Card>
     </div>
   );
 }
