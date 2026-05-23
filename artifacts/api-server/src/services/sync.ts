@@ -447,8 +447,45 @@ export class SyncService {
         existingStations.map((s: any) => [s.stationuuid, { slug: s.slug, noIndex: s.noIndex }])
       );
 
+      // CONTENT-KEY DEDUP (2026-05-23): Radio-Browser occasionally re-issues a
+      // stationuuid when records are merged/split upstream. Without this guard,
+      // the same logical station (same name+url+country) gets inserted twice
+      // because the unique index is only on stationuuid. We look up incoming
+      // stations by (name, url, countryCode) and skip insertion if a row with
+      // identical content already exists. The pre-existing row keeps its old
+      // stationuuid — adopting the new uuid would orphan favorites/history
+      // that reference the original uuid.
+      const candidatesForContentCheck = nonBlacklistedBatch.filter(
+        s => !existingByUuid.has(s.stationuuid)
+      );
+      const contentKeyDupUuids = new Set<string>();
+      if (candidatesForContentCheck.length > 0) {
+        const contentQuery = candidatesForContentCheck.map(s => ({
+          name: (s.name || '').trim(),
+          url: (s.url || '').trim(),
+          countryCode: (s.countrycode || '').toUpperCase(),
+        }));
+        const contentDupes = await Station.find({ $or: contentQuery })
+          .select('name url countryCode')
+          .lean();
+        const contentKeySet = new Set(
+          contentDupes.map((s: any) =>
+            `${(s.name || '').trim()}|${(s.url || '').trim()}|${(s.countryCode || '').toUpperCase()}`
+          )
+        );
+        for (const s of candidatesForContentCheck) {
+          const k = `${(s.name || '').trim()}|${(s.url || '').trim()}|${(s.countrycode || '').toUpperCase()}`;
+          if (contentKeySet.has(k)) contentKeyDupUuids.add(s.stationuuid);
+        }
+        if (contentKeyDupUuids.size > 0) {
+          logger.log(`🔁 Batch ${Math.ceil((i + 1) / batchSize)}: Skipped ${contentKeyDupUuids.size} content-key duplicates (Radio-Browser uuid reshuffle)`);
+        }
+      }
+
       // Partition into new and existing
-      const newStations = nonBlacklistedBatch.filter(s => !existingByUuid.has(s.stationuuid));
+      const newStations = nonBlacklistedBatch.filter(
+        s => !existingByUuid.has(s.stationuuid) && !contentKeyDupUuids.has(s.stationuuid)
+      );
       const existingStationsToUpdate = nonBlacklistedBatch.filter(s => existingByUuid.has(s.stationuuid));
 
       // Insert new stations — auto-mark junk records with noIndex:true so

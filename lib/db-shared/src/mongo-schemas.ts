@@ -3989,6 +3989,7 @@ StationSchema.index({ tagsCheckedAt: 1 }, { sparse: true }); // admin tag-refres
 StationSchema.index({ state: 1 }, { sparse: true }); // US/CA state-level region pages
 StationSchema.index({ hasLogo: 1, lastCheckOk: 1 }); // sitemap "has-logo + working" filter
 StationSchema.index({ mediaGroupId: 1 }, { sparse: true }); // sibling-station lookup
+StationSchema.index({ name: 1, url: 1, countryCode: 1 }); // sync content-key dedup (Radio-Browser uuid reshuffle guard)
 
 // ---- User: gap-fill (existing covers slug, isPublicProfile + inline
 // uniques on email, username, googleId, facebookId, appleId).

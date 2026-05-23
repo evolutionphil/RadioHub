@@ -199,6 +199,148 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // Failed-logo audit log: per-station error message + failureType. Admin
+  // surfaces this at the bottom of /admin/logos so failures can be debugged
+  // without grepping production logs.
+  app.get("/api/admin/logos/failed", requireAdmin, async (req, res) => {
+    try {
+      const limit = Math.min(500, Math.max(1, parseInt((req.query.limit as string) || '200', 10)));
+      const failureType = String(req.query.failureType || 'any');
+
+      const filter: any = { 'logoAssets.status': 'failed' };
+      if (failureType !== 'any') {
+        filter['logoAssets.failureType'] = failureType;
+      }
+
+      const [rows, byType] = await Promise.all([
+        Station.find(filter)
+          .sort({ 'logoAssets.lastAttempt': -1 })
+          .limit(limit)
+          .select('_id name countryCode favicon logoAssets.error logoAssets.failureType logoAssets.lastAttempt')
+          .lean(),
+        Station.aggregate([
+          { $match: { 'logoAssets.status': 'failed' } },
+          { $group: { _id: '$logoAssets.failureType', count: { $sum: 1 } } },
+        ]).option({ maxTimeMS: 15000, allowDiskUse: true }),
+      ]);
+
+      const counts: Record<string, number> = {
+        http_error: 0,
+        timeout: 0,
+        invalid_format: 0,
+        download_failed: 0,
+        processing_failed: 0,
+        unknown: 0,
+      };
+      let totalFailed = 0;
+      for (const row of byType as Array<{ _id: string | null; count: number }>) {
+        const key = row._id ?? 'unknown';
+        counts[key] = (counts[key] ?? 0) + row.count;
+        totalFailed += row.count;
+      }
+
+      res.json({
+        totalFailed,
+        countsByType: counts,
+        rows: (rows as any[]).map(s => ({
+          _id: String(s._id),
+          name: s.name,
+          countryCode: s.countryCode || null,
+          favicon: s.favicon || null,
+          error: s.logoAssets?.error || null,
+          failureType: s.logoAssets?.failureType || 'unknown',
+          lastAttempt: s.logoAssets?.lastAttempt || null,
+        })),
+      });
+    } catch (error: any) {
+      console.error('Error listing failed logos:', error);
+      res.status(500).json({ error: 'Failed to list failed logos' });
+    }
+  });
+
+  // Storage health: shows whether processed logos are served from S3 or local
+  // disk. Important sanity check after any deploy that toggles AWS_* env vars.
+  app.get("/api/admin/logos/storage-health", requireAdmin, async (_req, res) => {
+    try {
+      const s3Configured = isS3Configured();
+      const [s3Count, localCount, sampleS3, sampleLocal] = await Promise.all([
+        Station.countDocuments({
+          'logoAssets.status': 'completed',
+          'logoAssets.webp256': { $regex: '^https://', $options: 'i' },
+        }),
+        Station.countDocuments({
+          'logoAssets.status': 'completed',
+          'logoAssets.webp256': { $exists: true, $nin: [null, ''] },
+          $nor: [{ 'logoAssets.webp256': { $regex: '^https://', $options: 'i' } }],
+        }),
+        Station.findOne({
+          'logoAssets.status': 'completed',
+          'logoAssets.webp256': { $regex: '^https://', $options: 'i' },
+        }).select('logoAssets.webp256').lean() as any,
+        Station.findOne({
+          'logoAssets.status': 'completed',
+          'logoAssets.webp256': { $exists: true, $nin: [null, ''] },
+          $nor: [{ 'logoAssets.webp256': { $regex: '^https://', $options: 'i' } }],
+        }).select('logoAssets.folder logoAssets.webp256').lean() as any,
+      ]);
+
+      let s3Reachable: boolean | null = null;
+      if (sampleS3?.logoAssets?.webp256) {
+        try {
+          const probe = await fetch(sampleS3.logoAssets.webp256, { method: 'HEAD' });
+          s3Reachable = probe.ok;
+        } catch {
+          s3Reachable = false;
+        }
+      }
+
+      res.json({
+        s3Configured,
+        s3Reachable,
+        s3Count,
+        localCount,
+        mismatch: s3Count > 0 && localCount > 0,
+        sampleS3Url: sampleS3?.logoAssets?.webp256 || null,
+        sampleLocalPath: sampleLocal?.logoAssets
+          ? `/station-logos/${sampleLocal.logoAssets.folder}/${sampleLocal.logoAssets.webp256}`
+          : null,
+      });
+    } catch (error: any) {
+      console.error('Error checking logo storage health:', error);
+      res.status(500).json({ error: 'Failed to check storage health' });
+    }
+  });
+
+  // Retry a single failed station's logo processing (called from the failed
+  // audit log "Retry" button).
+  app.post("/api/admin/logos/retry/:stationId", requireAdmin, async (req, res) => {
+    try {
+      const stationId = String(req.params.stationId);
+      const station = await Station.findById(stationId)
+        .select('_id name slug favicon logoAssets')
+        .lean() as any;
+      if (!station) {
+        return void res.status(404).json({ error: 'Station not found' });
+      }
+      if (!station.favicon) {
+        return void res.status(400).json({ error: 'Station has no favicon URL to process' });
+      }
+      const result = await logoProcessor.processFromUrl(
+        String(station._id),
+        station.slug || String(station._id),
+        station.favicon,
+      );
+      res.json({
+        success: result.success,
+        error: result.error || null,
+        failureType: result.failureType || null,
+      });
+    } catch (error: any) {
+      console.error('Logo retry failed:', error);
+      res.status(500).json({ error: error.message || 'Retry failed' });
+    }
+  });
+
   // Get list of optimized stations with pagination
   app.get("/api/admin/logos/optimized", requireAdmin, async (req, res) => {
     try {

@@ -919,6 +919,73 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // CONTENT-KEY DUPLICATE CLEANUP — finds stations that share (name, url,
+  // countryCode) but have different stationuuid (Radio-Browser uuid reshuffle
+  // duplicates from before the sync dedup guard landed). Without ?confirm=true
+  // the endpoint is a DRY RUN — it returns the duplicate clusters but does not
+  // touch any data. With ?confirm=true it keeps the row with the highest
+  // (votes + clickCount) and 410-marks the others by setting noIndex:true.
+  app.post('/api/admin/stations/dedup', requireAdmin, async (req, res) => {
+    try {
+      const confirm = String(req.query.confirm || '').toLowerCase() === 'true';
+      const clusters = await Station.aggregate([
+        {
+          $group: {
+            _id: {
+              name: { $trim: { input: '$name' } },
+              url: { $trim: { input: '$url' } },
+              countryCode: { $toUpper: { $ifNull: ['$countryCode', ''] } },
+            },
+            count: { $sum: 1 },
+            docs: {
+              $push: {
+                _id: '$_id',
+                stationuuid: '$stationuuid',
+                votes: { $ifNull: ['$votes', 0] },
+                clickCount: { $ifNull: ['$clickCount', 0] },
+                noIndex: { $ifNull: ['$noIndex', false] },
+              },
+            },
+          },
+        },
+        { $match: { count: { $gt: 1 } } },
+        { $limit: 5000 },
+      ]).option({ maxTimeMS: 30000, allowDiskUse: true });
+
+      let rowsMarked = 0;
+      if (confirm) {
+        const idsToMark: any[] = [];
+        for (const c of clusters as any[]) {
+          const sorted = [...c.docs].sort((a: any, b: any) =>
+            (b.votes + b.clickCount) - (a.votes + a.clickCount)
+          );
+          const losers = sorted.slice(1).filter((d: any) => !d.noIndex);
+          for (const l of losers) idsToMark.push(l._id);
+        }
+        if (idsToMark.length > 0) {
+          const result = await Station.updateMany(
+            { _id: { $in: idsToMark } },
+            { $set: { noIndex: true } },
+          );
+          rowsMarked = result.modifiedCount;
+        }
+      }
+
+      res.json({
+        confirm,
+        clustersFound: clusters.length,
+        rowsMarked,
+        message: confirm
+          ? `Marked ${rowsMarked} duplicate stations with noIndex:true (kept the highest-engagement row per cluster).`
+          : 'DRY RUN — pass ?confirm=true to actually mark duplicates. Each cluster keeps its highest-engagement row; others get noIndex:true (which 410-Gone redirects them out of the sitemap).',
+        sampleClusters: clusters.slice(0, 20),
+      });
+    } catch (error: any) {
+      logger.error('Station dedup failed:', error?.message ?? error);
+      res.status(500).json({ error: 'Dedup failed' });
+    }
+  });
+
   // TAGS-STATUS SUMMARY - Count stations stuck in the 30-day Radio-Browser
   // empty-tag cooldown (and the never-checked tagless bucket) so the admin UI
   // can surface a live KPI without applying the filter manually.

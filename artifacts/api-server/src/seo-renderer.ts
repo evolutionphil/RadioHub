@@ -2448,6 +2448,52 @@ export class SeoRenderer {
       }
     };
 
+    // Vision GO organization node — referenced by the Person schema below.
+    // @id uses visiongo.at (the parent company domain), not the radio app domain.
+    const visionGoOrgSchema = {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://visiongo.at/#organization",
+      "name": "Vision GO",
+      "url": "https://visiongo.at",
+      "description": "Vienna-based software studio building MegaRadio, ScanUp, eSIMfo, TaxiHub and Online Snake.",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Bäckerstraße 7",
+        "addressLocality": "Vienna",
+        "postalCode": "1010",
+        "addressCountry": "AT"
+      }
+    };
+
+    // Person schema — Muhammed Fatih Geyik, founder & lead developer.
+    // Invisible to site visitors; picked up by Google's Knowledge Graph and
+    // search-result entity cards when someone searches the founder's name.
+    const personSchema = {
+      "@context": "https://schema.org",
+      "@type": "Person",
+      "@id": "https://visiongo.at/#mfg-person",
+      "name": "Muhammed Fatih Geyik",
+      "givenName": "Muhammed Fatih",
+      "familyName": "Geyik",
+      "jobTitle": "Founder, Head of IT & Lead Developer",
+      "description": "Founder, Head of IT and lead software architect at Vision GO. Designs and builds the products MegaRadio, ScanUp, eSIMfo, TaxiHub and Online Snake.",
+      "worksFor": {
+        "@id": "https://visiongo.at/#organization"
+      },
+      "knowsAbout": [
+        "iOS", "Android", "Swift", "Kotlin", "TypeScript",
+        "Cloud Architecture", "GDPR", "Radio Streaming",
+        "SEO", "Mobile App Development", "Web Development",
+        "Node.js", "React", "MongoDB", "Docker"
+      ],
+      "knowsLanguage": ["de", "en", "tr"],
+      "nationality": {
+        "@type": "Country",
+        "name": "AT"
+      }
+    };
+
     // LOCALIZED: BreadcrumbList with proper translated paths.
     // Items come from the shared `computeBreadcrumbItems` helper so the
     // JSON-LD here and the visible `<nav class="breadcrumb">` rendered in
@@ -2874,6 +2920,14 @@ export class SeoRenderer {
     
     <script type="application/ld+json">
     ${jsonLd(organizationSchema)}
+    </script>
+
+    <script type="application/ld+json">
+    ${jsonLd(visionGoOrgSchema)}
+    </script>
+
+    <script type="application/ld+json">
+    ${jsonLd(personSchema)}
     </script>
     ${breadcrumbSchema ? `
     <script type="application/ld+json">
