@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { Paddle, Environment } from "@paddle/paddle-node-sdk";
 import { User, TvSubscriptionCode, StripeSubscriptionPlan, StripeSaleEvent } from "@workspace/db-shared/mongo-schemas";
 import { logger } from "../utils/logger";
+import { generateAuthToken } from "../middleware/auth";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -140,7 +141,13 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
       logger.log(`[TV SUB] Code ${code} generated for device ${deviceId} (${platform})`);
 
-      res.json({ success: true, code, expiresIn: 600 });
+      res.json({
+        success: true,
+        code,
+        activationUrl: `${WEB_BASE_URL}/activate?code=${code}`,
+        expiresIn: 600,
+        expiresAt: expiresAt.toISOString(),
+      });
     } catch (err: any) {
       logger.error("[TV SUB] Code generation error:", err.message);
       res.status(500).json({ error: "Failed to generate code" });
@@ -158,28 +165,54 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "deviceId query parameter is required" });
       }
 
+      // Wrong deviceId → 404 (no information leak about code existence)
       const tvCode = await TvSubscriptionCode.findOne({ code, deviceId });
-
       if (!tvCode) {
-        return void res.status(404).json({ status: "expired", message: "Code not found or expired" });
+        return void res.status(404).json({ status: "not_found" });
       }
-      if (tvCode.expiresAt < new Date() && tvCode.status === "pending") {
-        await TvSubscriptionCode.updateOne({ _id: tvCode._id }, { $set: { status: "expired" } });
-        return void res.status(404).json({ status: "expired", message: "Code expired, request a new one" });
-      }
-      if (tvCode.status === "completed" && tvCode.userId) {
-        const user = await User.findById(tvCode.userId).select("subscription").lean() as any;
-        const plan = user?.subscription?.plan || "none";
-        const normalized = normalizePlanForTv(plan);
-        return void res.json({
-          status: "completed",
-          plan,
-          ...normalized,
-          expiresAt: user?.subscription?.expiresAt ?? null,
-        });
-      }
+
+      // Auto-expire overdue pending codes and return 200 expired (not 404 —
+      // 404 causes TV to treat it as "still pending" and poll forever).
       if (tvCode.status === "expired") {
-        return void res.status(404).json({ status: "expired", message: "Code expired, request a new one" });
+        return void res.json({ status: "expired" });
+      }
+      if (tvCode.status === "pending" && tvCode.expiresAt < new Date()) {
+        await TvSubscriptionCode.updateOne({ _id: tvCode._id }, { $set: { status: "expired" } });
+        return void res.json({ status: "expired" });
+      }
+
+      // Activated — build full response including a TV auth token so the TV can
+      // auto-login the user without them entering credentials on the TV.
+      if (tvCode.status === "completed" && tvCode.userId) {
+        const user = await User.findById(tvCode.userId)
+          .select("_id email subscription")
+          .lean() as any;
+
+        const plan = user?.subscription?.plan || tvCode.plan || "none";
+        const normalized = normalizePlanForTv(plan);
+
+        // Mint a long-lived TV bearer token (90 days, same as mobile TV login)
+        let token: string | undefined;
+        try {
+          token = await generateAuthToken(String(tvCode.userId), "tv", "TV Subscription Activation");
+        } catch (tokenErr: any) {
+          logger.error("[TV SUB] Failed to generate auth token:", tokenErr.message);
+          // Don't fail the whole response — TV can still refresh later via /api/subscription/status
+        }
+
+        return void res.json({
+          status: "activated",
+          subscription: {
+            tier: normalized.tier,
+            plan: normalized.period ?? plan,
+            validUntil: user?.subscription?.expiresAt ?? null,
+          },
+          user: {
+            id: String(tvCode.userId),
+            email: user?.email ?? "",
+            token,
+          },
+        });
       }
 
       res.json({ status: "pending" });
