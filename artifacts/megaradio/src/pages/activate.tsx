@@ -1,9 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Tv, CheckCircle, Zap, Crown } from "lucide-react";
+import { Loader2, Tv, CheckCircle, Zap, Crown, AlertCircle } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { apiRequest } from "@/lib/queryClient";
 
@@ -47,6 +47,27 @@ export default function ActivatePage() {
     staleTime: 5 * 60 * 1000,
   });
 
+  // Idempotency: check whether this code has already been activated or expired
+  // before showing the checkout UI. Avoids a double-charge scenario.
+  const { data: codeStatus, isLoading: statusLoading } = useQuery<{
+    status: "pending" | "activated" | "expired" | "not_found";
+  }>({
+    queryKey: [`/api/subscription/tv/code/${tvCode}/status`, tvCode],
+    queryFn: async () => {
+      if (!tvCode || tvCode.length !== 6) return { status: "not_found" as const };
+      const res = await fetch(
+        `/api/subscription/tv/code/${tvCode}/status?deviceId=web-activate`,
+        { headers: { "Content-Type": "application/json" } }
+      );
+      // 404 = wrong deviceId — treat as not found
+      if (res.status === 404) return { status: "not_found" as const };
+      return res.json();
+    },
+    enabled: !!tvCode && tvCode.length === 6,
+    staleTime: 10_000,
+    retry: false,
+  });
+
   const plans: PlanInfo[] = plansData?.plans?.length ? plansData.plans : FALLBACK_PLANS;
 
   async function handleCheckout() {
@@ -69,10 +90,58 @@ export default function ActivatePage() {
     }
   }
 
-  if (authLoading) {
+  if (authLoading || (tvCode && statusLoading)) {
     return (
       <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center">
         <Loader2 className="w-8 h-8 text-white animate-spin" />
+      </div>
+    );
+  }
+
+  // Already activated — don't show checkout again
+  if (codeStatus?.status === "activated") {
+    return (
+      <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-[#1a1a1a] border-[#333] text-white text-center">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <CheckCircle className="w-12 h-12 text-green-400" />
+            </div>
+            <CardTitle className="text-xl text-green-400">Already Activated</CardTitle>
+            <CardDescription className="text-gray-400">
+              This code has already been used to activate a subscription. Your TV should update automatically.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full bg-[#FF6B35] hover:bg-[#e55a24] text-white" onClick={() => window.location.href = "/"}>
+              Go to Mega Radio
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // Expired — tell them to go back to the TV
+  if (codeStatus?.status === "expired" || codeStatus?.status === "not_found") {
+    return (
+      <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center p-4">
+        <Card className="w-full max-w-md bg-[#1a1a1a] border-[#333] text-white text-center">
+          <CardHeader>
+            <div className="flex justify-center mb-4">
+              <AlertCircle className="w-12 h-12 text-yellow-400" />
+            </div>
+            <CardTitle className="text-xl text-yellow-400">Code Expired</CardTitle>
+            <CardDescription className="text-gray-400">
+              This activation code has expired or is invalid. Open MegaRadio on your TV to get a new code.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button className="w-full bg-[#FF6B35] hover:bg-[#e55a24] text-white" onClick={() => window.location.href = "/"}>
+              Go to Mega Radio
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -221,7 +290,12 @@ export default function ActivatePage() {
           </Button>
 
           <p className="text-center text-xs text-gray-500">
-            Secure payment powered by Stripe. Cancel anytime.
+            Cancel anytime — manage your subscription at{" "}
+            <a href="/account" className="underline hover:text-gray-300">themegaradio.com/account</a>.
+          </p>
+          <p className="text-center text-xs text-gray-600">
+            By continuing you agree to our{" "}
+            <a href="/legal/terms" className="underline hover:text-gray-400">Subscription Terms</a>.
           </p>
         </CardContent>
       </Card>
