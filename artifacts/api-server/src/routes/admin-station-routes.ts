@@ -189,8 +189,9 @@ async function runAutoMergeAllJob(jobId: string): Promise<void> {
     },
     { $match: { count: { $gt: 1 } } },
     { $sort: { count: -1 } },
-    { $limit: 500 },
-  ]).option({ maxTimeMS: 20000, allowDiskUse: true })) as DuplicateGroup[];
+    // No limit — background job must process every duplicate group.
+    { $limit: 50000 },
+  ]).option({ maxTimeMS: 120000, allowDiskUse: true })) as DuplicateGroup[];
 
   job.progress.totalGroups = groups.length;
   job.progress.currentStep = job.dryRun
@@ -1406,6 +1407,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         ? Math.min(1, Math.max(0, thresholdRaw))
         : 0.85;
       const minLen = threshold >= 0.95 ? 1 : threshold >= 0.85 ? 3 : 4;
+      // Allow caller to raise/lower the cap. Default 10 000 so "Select All"
+      // in the admin UI captures every duplicate group in one request.
+      const limitRaw = parseInt(String(req.query.limit ?? '10000'), 10);
+      const groupLimit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50000) : 10000;
 
       const totalStations = await Station.estimatedDocumentCount();
 
@@ -1464,8 +1469,8 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         },
         { $match: { count: { $gt: 1 } } },
         { $sort: { count: -1 } },
-        { $limit: 500 },
-      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+        { $limit: groupLimit },
+      ]).option({ maxTimeMS: 60000, allowDiskUse: true });
 
       // Strip null/empty favicons so the frontend never tries to
       // `new URL("")` (the actual source of the Safari pattern-mismatch
@@ -1643,8 +1648,8 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         },
         { $match: { $expr: { $gt: [{ $size: '$variations' }, 1] } } },
         { $sort: { totalStations: -1 } },
-        { $limit: 500 },
-      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+        { $limit: 10000 },
+      ]).option({ maxTimeMS: 60000, allowDiskUse: true });
 
       const duplicates = groups.map((g: any) => {
         const lowerCity: string = g._id ?? '';
