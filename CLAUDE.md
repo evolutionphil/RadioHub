@@ -2,6 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL WORKFLOW RULE — Always open a PR after every push
+
+After **every** `git push`, immediately:
+1. Check if an open PR exists for the branch: `mcp__github__list_pull_requests` with `state: open` and `head: evolutionphil:<branch>`
+2. If **no open PR exists** → create one immediately with `mcp__github__create_pull_request` (draft is fine)
+3. Never skip this step, even if the branch already had a PR that was merged — a new push always needs a new PR
+
+This applies even if:
+- The push was a small fix
+- A previous PR on the same branch was already merged
+- The user didn't explicitly ask for a PR
+
+Railway deploys from `main`. Changes only reach production when a PR is merged. Without a PR the user cannot merge and the fix is never deployed.
+
+---
+
 ## Project Overview
 
 MegaRadio is a full-stack radio streaming platform organized as a **pnpm workspace monorepo**. The backend is an Express 5 API server backed by MongoDB; the frontend is a React SPA built with Vite. Both are deployed as separate Docker containers behind a shared reverse proxy.
