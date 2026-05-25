@@ -204,12 +204,13 @@ async function safeAudit(input: {
 // ── Route registration ────────────────────────────────────────────────
 
 export function registerGooglePlayRtdnRoutes(app: Express) {
-  // Accept any Content-Type — Pub/Sub push does not always send application/json
-  const jsonParser = express.json({ limit: "1mb", type: "*/*" });
+  // Capture raw body manually — Pub/Sub push behaviour varies and the global
+  // express.json() in index-*.ts may swallow / not match the request.
+  const rawParser = express.raw({ limit: "1mb", type: "*/*" });
 
   app.post(
     "/api/webhooks/google-play-rtdn",
-    jsonParser,
+    rawParser,
     async (req: Request, res: Response) => {
       const startedAt = Date.now();
       const ip =
@@ -248,10 +249,26 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
         }
       }
 
-      // ── 3. Parse Pub/Sub envelope ─────────────────────────────────
-      const envelope = req.body as PubSubEnvelope;
-      // DEBUG: log body structure to diagnose missing message.data
-      logger.warn(`[play-rtdn] BODY DEBUG — type=${typeof req.body} keys=${Object.keys(req.body ?? {}).join(',')} message_keys=${Object.keys((req.body as any)?.message ?? {}).join(',') || 'none'} data_present=${!!(req.body as any)?.message?.data}`);
+      // ── 3. Parse Pub/Sub envelope from raw Buffer ─────────────────
+      const contentType = (req.headers["content-type"] as string) || "(none)";
+      let rawBodyStr = "";
+      if (Buffer.isBuffer(req.body)) {
+        rawBodyStr = (req.body as Buffer).toString("utf8");
+      } else if (typeof req.body === "string") {
+        rawBodyStr = req.body;
+      } else if (req.body && typeof req.body === "object") {
+        rawBodyStr = JSON.stringify(req.body);
+      }
+      logger.warn(`[play-rtdn] BODY DEBUG — ctype=${contentType} bodyType=${typeof req.body} bufferLen=${Buffer.isBuffer(req.body) ? (req.body as Buffer).length : 'n/a'} rawLen=${rawBodyStr.length} preview=${rawBodyStr.slice(0, 200)}`);
+
+      let envelope: PubSubEnvelope;
+      try {
+        envelope = JSON.parse(rawBodyStr) as PubSubEnvelope;
+      } catch (err: any) {
+        logger.warn(`[play-rtdn] Failed to parse body as JSON: ${err?.message || err}`);
+        return void res.status(400).json({ error: "Invalid JSON body" });
+      }
+
       if (!envelope?.message?.data) {
         // If message exists but data is empty, it's a test notification ping — ack it
         if (envelope?.message && !envelope.message.data) {
