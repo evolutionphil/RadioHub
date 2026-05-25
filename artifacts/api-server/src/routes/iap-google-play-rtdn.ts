@@ -204,7 +204,8 @@ async function safeAudit(input: {
 // ── Route registration ────────────────────────────────────────────────
 
 export function registerGooglePlayRtdnRoutes(app: Express) {
-  const jsonParser = express.json({ limit: "1mb" });
+  // Accept any Content-Type — Pub/Sub push does not always send application/json
+  const jsonParser = express.json({ limit: "1mb", type: "*/*" });
 
   app.post(
     "/api/webhooks/google-play-rtdn",
