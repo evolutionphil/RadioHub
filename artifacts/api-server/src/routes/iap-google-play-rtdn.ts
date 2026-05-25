@@ -249,7 +249,14 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
 
       // ── 3. Parse Pub/Sub envelope ─────────────────────────────────
       const envelope = req.body as PubSubEnvelope;
+      // DEBUG: log body structure to diagnose missing message.data
+      logger.warn(`[play-rtdn] BODY DEBUG — type=${typeof req.body} keys=${Object.keys(req.body ?? {}).join(',')} message_keys=${Object.keys((req.body as any)?.message ?? {}).join(',') || 'none'} data_present=${!!(req.body as any)?.message?.data}`);
       if (!envelope?.message?.data) {
+        // If message exists but data is empty, it's a test notification ping — ack it
+        if (envelope?.message && !envelope.message.data) {
+          logger.warn("[play-rtdn] Test notification received (no data) — acking");
+          return void res.status(200).json({ ok: true, skipped: "test_notification" });
+        }
         logger.warn("[play-rtdn] Missing message.data in Pub/Sub envelope");
         return void res.status(400).json({ error: "Invalid Pub/Sub envelope" });
       }
