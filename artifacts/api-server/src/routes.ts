@@ -57,6 +57,7 @@ import { registerMiscRoutes } from './routes/misc-routes';
 import { registerIapValidationRoutes } from './routes/iap-validation-routes';
 import { registerAdminIapRoutes } from './routes/admin-iap-routes';
 import { registerAppleWebhookRoutes } from './routes/iap-apple-webhook';
+import { registerGooglePlayRtdnRoutes } from './routes/iap-google-play-rtdn';
 import { registerAdminMaintenanceRoutes } from './routes/admin-maintenance-routes';
 import { registerAdminPreferencesRoutes } from './routes/admin-preferences-routes';
 import { registerAdminCoverageDropSettingsRoutes } from './routes/admin-coverage-drop-settings-routes';
@@ -968,6 +969,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerIapValidationRoutes(app);
   registerAdminIapRoutes(app, deps);
   registerAppleWebhookRoutes(app);
+  registerGooglePlayRtdnRoutes(app);
   registerAdminMaintenanceRoutes(app, deps);
   registerAdminPreferencesRoutes(app, deps);
   registerAdminCoverageDropSettingsRoutes(app, deps);
