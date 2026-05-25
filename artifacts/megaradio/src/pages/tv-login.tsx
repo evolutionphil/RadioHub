@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,6 +18,28 @@ export default function TvLogin() {
   const isLoggedIn = isAuthenticated && !!user;
 
   console.log('[TV-LOGIN] 🖥️ render — authLoading:', authLoading, 'isAuthenticated:', isAuthenticated, 'user:', user?.email || '(null)', 'isLoggedIn:', isLoggedIn);
+
+  // Auto-fill code from ?code=XXXXXX URL parameter (TV QR flow)
+  const [autoActivatePending, setAutoActivatePending] = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlCode = params.get('code');
+    if (urlCode && /^\d{6}$/.test(urlCode)) {
+      console.log('[TV-LOGIN] 🔗 Auto-filling code from URL param');
+      setCode(urlCode);
+      setAutoActivatePending(true);
+    }
+  }, []);
+
+  // Auto-activate once auth resolves and user is logged in
+  useEffect(() => {
+    if (autoActivatePending && !authLoading && isLoggedIn && !isActivating && !activationResult) {
+      setAutoActivatePending(false);
+      handleActivate();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoActivatePending, authLoading, isLoggedIn, isActivating, activationResult]);
 
   const handleActivate = async () => {
     if (code.length !== 6 || isActivating) return;

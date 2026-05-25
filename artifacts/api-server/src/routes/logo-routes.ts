@@ -428,15 +428,40 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         totalToProcess: stationsNeedingProcessing
       });
       
+      // Only pick stations that genuinely haven't been attempted yet, or
+      // have a retryable pending state. Explicitly EXCLUDE 'processing' so
+      // stations that got stuck in that state from a previous crashed job
+      // are not re-fetched in an infinite loop.
+      // Permanent failures (http_error, invalid_format) are also excluded —
+      // a separate "retry" action handles those intentionally.
       const needsProcessingFilter = {
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         $or: [
           { 'logoAssets.status': { $exists: false } },
           { logoAssets: { $exists: false } },
           { 'logoAssets.status': 'pending' as const },
-          { 'logoAssets.status': 'processing' as const },
         ]
       };
+
+      // Rescue stations left in 'processing' by a previous crashed job:
+      // anything still 'processing' after 10 minutes is definitively stuck.
+      const staleProcessingCutoff = new Date(Date.now() - 10 * 60 * 1000);
+      const staleReset = await Station.updateMany(
+        {
+          'logoAssets.status': 'processing',
+          'logoAssets.lastAttempt': { $lt: staleProcessingCutoff },
+        },
+        {
+          $set: {
+            'logoAssets.status': 'failed',
+            'logoAssets.error': 'Processing timed out — reset by bulk job',
+            'logoAssets.failureType': 'processing_failed',
+          },
+        }
+      );
+      if (staleReset.modifiedCount > 0) {
+        logger.log(`🔧 Reset ${staleReset.modifiedCount} stale 'processing' stations to 'failed' before bulk run`);
+      }
       
       const MAX_RECENT_RESULTS = 50;
       const CONCURRENT_SIZE = 5;
@@ -498,14 +523,14 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               });
               
               const results = await Promise.allSettled(batchPromises);
-              for (const result of results) {
+              for (let ri = 0; ri < results.length; ri++) {
+                const result = results[ri];
                 totalProcessedOverall++;
                 job.processed = totalProcessedOverall;
                 if (result.status === 'fulfilled') {
-                  if (job.results.length >= MAX_RECENT_RESULTS) {
-                    job.results.shift();
-                  }
-                  job.results.push(result.value); if (job.results.length > LOGO_JOB_RESULTS_MAX) job.results.shift();
+                  if (job.results.length >= MAX_RECENT_RESULTS) job.results.shift();
+                  job.results.push(result.value);
+                  if (job.results.length > LOGO_JOB_RESULTS_MAX) job.results.shift();
                   if (result.value.status === 'success') {
                     totalSuccessful++;
                     job.successful = totalSuccessful;
@@ -514,14 +539,32 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                     job.failed = totalFailed;
                   }
                 } else {
+                  // Unhandled rejection — must reset station from 'processing'
+                  // to 'failed' so it is never re-fetched in an infinite loop.
                   totalFailed++;
                   job.failed = totalFailed;
+                  const stationId = batch[ri]?._id;
+                  if (stationId) {
+                    try {
+                      await Station.updateOne(
+                        { _id: stationId },
+                        {
+                          $set: {
+                            'logoAssets.status': 'failed',
+                            'logoAssets.error': result.reason?.message ?? 'Unhandled rejection',
+                            'logoAssets.failureType': 'processing_failed',
+                            'logoAssets.lastAttempt': new Date(),
+                          },
+                        }
+                      );
+                    } catch { /* best-effort */ }
+                  }
                 }
               }
               logoProcessingJobs.set(jobId, job);
               await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES_MS));
             }
-            
+
             if (roundNumber % 5 === 0) {
               const remaining = await Station.countDocuments(needsProcessingFilter);
               const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
@@ -682,14 +725,14 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               });
 
               const results = await Promise.allSettled(batchPromises);
-              for (const result of results) {
+              for (let ri = 0; ri < results.length; ri++) {
+                const result = results[ri];
                 totalProcessedOverall++;
                 job.processed = totalProcessedOverall;
                 if (result.status === 'fulfilled') {
-                  if (job.results.length >= MAX_RECENT_RESULTS) {
-                    job.results.shift();
-                  }
-                  job.results.push(result.value); if (job.results.length > LOGO_JOB_RESULTS_MAX) job.results.shift();
+                  if (job.results.length >= MAX_RECENT_RESULTS) job.results.shift();
+                  job.results.push(result.value);
+                  if (job.results.length > LOGO_JOB_RESULTS_MAX) job.results.shift();
                   if (result.value.status === 'success') {
                     totalSuccessful++;
                     job.successful = totalSuccessful;
@@ -700,6 +743,22 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                 } else {
                   totalFailed++;
                   job.failed = totalFailed;
+                  const stationId = batch[ri]?._id;
+                  if (stationId) {
+                    try {
+                      await Station.updateOne(
+                        { _id: stationId },
+                        {
+                          $set: {
+                            'logoAssets.status': 'failed',
+                            'logoAssets.error': result.reason?.message ?? 'Unhandled rejection',
+                            'logoAssets.failureType': 'processing_failed',
+                            'logoAssets.lastAttempt': new Date(),
+                          },
+                        }
+                      );
+                    } catch { /* best-effort */ }
+                  }
                 }
               }
               logoProcessingJobs.set(jobId, job);

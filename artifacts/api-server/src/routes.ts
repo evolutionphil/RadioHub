@@ -49,6 +49,7 @@ import { registerTvVersionRoutes } from './routes/tv-version-routes';
 import { registerTranslationKeyRoutes, seedSeoTranslationKeys } from './routes/translation-keys-routes';
 import { seedSearchPageTranslations } from './seo/search-page-translations-seed';
 import { seedPremiumTranslations } from './seo/premium-translations-seed';
+import { seedSubscriptionUiTranslations } from './seo/subscription-ui-translations-seed';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
@@ -931,6 +932,8 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // Backfill premium_* / onboarding_premium_* / code_* translation keys
   // used by the TV PremiumUpgrade + OnboardingPremium screens.
   void seedPremiumTranslations();
+  // Backfill subscription management UI keys (manage screen, status badges, past-due banner)
+  void seedSubscriptionUiTranslations();
   app.use('/api', apiKeyMiddleware);
   app.use('/api/admin/url-translations', urlTranslationsRouter);
   // Admin-only — performance routes include destructive ops (rebuild_indexes,
