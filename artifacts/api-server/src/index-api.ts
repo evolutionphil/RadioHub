@@ -390,6 +390,11 @@ app.use(compression({
   }
 }));
 
+// Google Play RTDN Pub/Sub push: must capture raw body BEFORE express.json()
+// because Pub/Sub pushes without a Content-Type header, and once express.json()
+// touches the request the stream is consumed even when parsing is skipped.
+app.use('/api/webhooks/google-play-rtdn', express.raw({ limit: '1mb', type: '*/*' }));
+
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 // text/csv uploads (e.g. SEMrush CSV import) — larger limit, separate from JSON budget

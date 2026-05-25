@@ -204,13 +204,11 @@ async function safeAudit(input: {
 // ── Route registration ────────────────────────────────────────────────
 
 export function registerGooglePlayRtdnRoutes(app: Express) {
-  // Capture raw body manually — Pub/Sub push behaviour varies and the global
-  // express.json() in index-*.ts may swallow / not match the request.
-  const rawParser = express.raw({ limit: "1mb", type: "*/*" });
+  // Raw-body capture is mounted in index-api.ts / index-web.ts BEFORE
+  // express.json(), so req.body is already a Buffer here.
 
   app.post(
     "/api/webhooks/google-play-rtdn",
-    rawParser,
     async (req: Request, res: Response) => {
       const startedAt = Date.now();
       const ip =
