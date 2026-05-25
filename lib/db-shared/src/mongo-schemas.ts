@@ -4009,6 +4009,7 @@ UserSchema.index({ status: 1 }); // active/suspended user filter
 UserSchema.index({ createdAt: -1 }); // admin "newest users" listing
 UserSchema.index({ 'subscription.plan': 1, 'subscription.isActive': 1 }); // premium-user lookups
 UserSchema.index({ 'subscription.expiresAt': 1 }, { sparse: true }); // subscription expiry sweeps
+UserSchema.index({ 'subscription.purchaseToken': 1 }, { sparse: true }); // Google Play RTDN webhook lookup
 
 // ---- UserSession: TTL on its own expiresAt field
 UserSessionSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
