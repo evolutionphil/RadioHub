@@ -343,9 +343,13 @@ export interface IUser extends Document {
     paddleCustomerId?: string;
     paddleSubscriptionId?: string;
     expiresAt?: Date | null;
+    renewsAt?: Date | null;
     startedAt?: Date;
     isTrial?: boolean;
     isActive: boolean;
+    /** Stripe-aligned subscription lifecycle status */
+    subscriptionStatus?: 'active' | 'past_due' | 'canceled' | 'trialing';
+    cancelAtPeriodEnd?: boolean;
     cancelledAt?: Date;
     lastVerifiedAt?: Date;
   };
@@ -1683,9 +1687,16 @@ const UserSchema = new Schema<IUser>({
     paddleCustomerId: String,
     paddleSubscriptionId: String,
     expiresAt: { type: Date, default: null },
+    renewsAt: { type: Date, default: null },
     startedAt: Date,
     isTrial: { type: Boolean, default: false },
     isActive: { type: Boolean, default: false },
+    subscriptionStatus: {
+      type: String,
+      enum: ['active', 'past_due', 'canceled', 'trialing'],
+      default: 'active',
+    },
+    cancelAtPeriodEnd: { type: Boolean, default: false },
     cancelledAt: Date,
     lastVerifiedAt: Date,
   },

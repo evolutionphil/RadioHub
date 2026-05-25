@@ -486,6 +486,33 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         }
       }
 
+      // ── Subscription lifecycle events ─────────────────────────────────────
+      // These keep User.subscription.subscriptionStatus in sync so
+      // GET /api/subscription/status never needs to call Stripe inline.
+      if (event.type === "customer.subscription.updated") {
+        try {
+          await handleStripeSubscriptionUpdated(event.data.object);
+        } catch (err: any) {
+          logger.error("[STRIPE WEBHOOK] subscription.updated error:", err.message);
+        }
+      }
+
+      if (event.type === "invoice.payment_failed") {
+        try {
+          await handleStripeInvoicePaymentFailed(event.data.object);
+        } catch (err: any) {
+          logger.error("[STRIPE WEBHOOK] invoice.payment_failed error:", err.message);
+        }
+      }
+
+      if (event.type === "customer.subscription.deleted") {
+        try {
+          await handleStripeSubscriptionDeleted(event.data.object);
+        } catch (err: any) {
+          logger.error("[STRIPE WEBHOOK] subscription.deleted error:", err.message);
+        }
+      }
+
       res.status(200).json({ received: true });
     }
   );
@@ -606,7 +633,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   );
 
   // ── Current subscription status ────────────────────────────────────────────
-  // Used by both TV and web to get the authenticated user's subscription.
+  // TV polls this every 5 minutes (silent background refresh). Must be <100 ms
+  // → read from DB only, never call Stripe API inline.
+  // Response shape matches the TV developer spec exactly.
   app.get("/api/subscription/status", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = (req.session as any)?.user?.userId || (req as any).userId;
@@ -617,20 +646,126 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       }
 
       const sub = user.subscription || {};
-      const plan: string = sub.plan || "none";
-      const normalized = normalizePlanForTv(plan);
+      const isPremium =
+        !!sub.isActive &&
+        sub.plan &&
+        sub.plan !== "none" &&
+        sub.plan !== "remove_ads";
 
-      res.json({
-        plan,
-        platform: sub.platform || null,
-        isActive: !!sub.isActive,
-        expiresAt: sub.expiresAt || null,
-        startedAt: sub.startedAt || null,
-        ...normalized,
-      });
+      if (!isPremium) {
+        return void res.json({ tier: "free", status: "active" });
+      }
+
+      // Normalise internal plan names → what the TV spec expects
+      const planLabel =
+        sub.plan === "premium_monthly" ? "monthly" :
+        sub.plan === "premium_yearly"  ? "annual"  :
+        sub.plan === "premium_lifetime"? "lifetime":
+        sub.plan;
+
+      // subscriptionStatus is populated by Stripe/Paddle webhook handlers.
+      // Fall back to 'active' for legacy rows that pre-date this field.
+      const VALID_STATUSES = ["active", "past_due", "canceled", "trialing"] as const;
+      const status: typeof VALID_STATUSES[number] =
+        VALID_STATUSES.includes(sub.subscriptionStatus)
+          ? sub.subscriptionStatus
+          : sub.isActive ? "active" : "canceled";
+
+      const cancelAtPeriodEnd = !!sub.cancelAtPeriodEnd;
+
+      const response: Record<string, unknown> = {
+        tier: "premium",
+        plan: planLabel,
+        status,
+        validUntil: sub.expiresAt ?? null,
+        cancelAtPeriodEnd,
+      };
+      // renewsAt only makes sense when subscription is not heading to cancellation
+      if (!cancelAtPeriodEnd && status !== "canceled") {
+        response.renewsAt = sub.renewsAt ?? sub.expiresAt ?? null;
+      }
+
+      res.json(response);
     } catch (err: any) {
       logger.error("[TV SUB] Status error:", err.message);
       res.status(500).json({ error: "Failed to fetch subscription status" });
     }
   });
+}
+
+// ── Stripe subscription lifecycle webhook helpers ─────────────────────────────
+// Exported so they can be called from the main webhook handler above.
+// These keep User.subscription in sync with Stripe's subscription state so
+// /api/subscription/status never needs to call Stripe inline.
+
+export async function handleStripeSubscriptionUpdated(sub: any): Promise<void> {
+  // sub is a Stripe.Subscription object (already parsed from raw body)
+  const stripeSubId: string | undefined = sub.id;
+  const userId: string | undefined = sub.metadata?.userId;
+  if (!stripeSubId) return;
+
+  const VALID = ["active", "past_due", "canceled", "trialing"];
+  const subscriptionStatus = VALID.includes(sub.status) ? sub.status : "active";
+  const cancelAtPeriodEnd = !!sub.cancel_at_period_end;
+  const isActive = ["active", "trialing", "past_due"].includes(sub.status);
+
+  // current_period_end is a Unix timestamp (seconds)
+  const periodEnd = sub.current_period_end
+    ? new Date(sub.current_period_end * 1000)
+    : null;
+
+  const update: Record<string, unknown> = {
+    "subscription.subscriptionStatus": subscriptionStatus,
+    "subscription.cancelAtPeriodEnd": cancelAtPeriodEnd,
+    "subscription.isActive": isActive,
+    "subscription.expiresAt": periodEnd,
+    "subscription.renewsAt": cancelAtPeriodEnd ? null : periodEnd,
+    "subscription.lastVerifiedAt": new Date(),
+  };
+
+  // Prefer userId from metadata for direct lookup; fall back to subscriptionId index
+  if (userId) {
+    await User.updateOne({ _id: userId }, { $set: update });
+  } else {
+    await User.updateOne(
+      { "subscription.stripeSubscriptionId": stripeSubId },
+      { $set: update }
+    );
+  }
+  logger.log(`[STRIPE WEBHOOK] subscription.updated ${stripeSubId} → status=${subscriptionStatus} cancelAtPeriodEnd=${cancelAtPeriodEnd}`);
+}
+
+export async function handleStripeInvoicePaymentFailed(invoice: any): Promise<void> {
+  const stripeSubId: string | undefined =
+    typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+  if (!stripeSubId) return;
+
+  await User.updateOne(
+    { "subscription.stripeSubscriptionId": stripeSubId },
+    { $set: { "subscription.subscriptionStatus": "past_due", "subscription.lastVerifiedAt": new Date() } }
+  );
+  logger.log(`[STRIPE WEBHOOK] invoice.payment_failed → sub ${stripeSubId} marked past_due`);
+}
+
+export async function handleStripeSubscriptionDeleted(sub: any): Promise<void> {
+  const stripeSubId: string | undefined = sub.id;
+  const userId: string | undefined = sub.metadata?.userId;
+  if (!stripeSubId) return;
+
+  const update = {
+    "subscription.subscriptionStatus": "canceled",
+    "subscription.isActive": false,
+    "subscription.cancelAtPeriodEnd": false,
+    "subscription.lastVerifiedAt": new Date(),
+  };
+
+  if (userId) {
+    await User.updateOne({ _id: userId }, { $set: update });
+  } else {
+    await User.updateOne(
+      { "subscription.stripeSubscriptionId": stripeSubId },
+      { $set: update }
+    );
+  }
+  logger.log(`[STRIPE WEBHOOK] subscription.deleted ${stripeSubId} → canceled`);
 }
