@@ -164,6 +164,17 @@ const PREMIUM_KEYS: PremiumKeyDef[] = [
     defaultValue: 'OR ENTER CODE',
     description: 'Separator label between QR scan and manual code entry',
   },
+  // ── TV Login page ─────────────────────────────────────────────────────────
+  {
+    key: 'tv_login_scan_qr',
+    defaultValue: 'Scan QR Code',
+    description: 'Button/label for QR code scanning on the TV login page',
+  },
+  {
+    key: 'tv_login_qr_or_code',
+    defaultValue: 'Scan the QR code or enter your TV code below',
+    description: 'Separator explaining the two login options on the TV login page',
+  },
 ];
 
 // ── Per-language translations ─────────────────────────────────────────────
@@ -200,6 +211,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Connection error',
     generate_new_code: 'Generate new code',
     or: 'OR ENTER CODE',
+    tv_login_scan_qr: 'Scan QR Code',
+    tv_login_qr_or_code: 'Scan the QR code or enter your TV code below',
   },
 
   tr: {
@@ -234,6 +247,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Bağlantı hatası',
     generate_new_code: 'Yeni kod oluştur',
     or: 'YA DA KODU GİR',
+    tv_login_scan_qr: 'QR Kodu Tara',
+    tv_login_qr_or_code: 'QR kodu tara veya TV kodunu aşağıya gir',
   },
 
   de: {
@@ -268,6 +283,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Verbindungsfehler',
     generate_new_code: 'Neuen Code generieren',
     or: 'ODER CODE EINGEBEN',
+    tv_login_scan_qr: 'QR-Code scannen',
+    tv_login_qr_or_code: 'QR-Code scannen oder TV-Code unten eingeben',
   },
 
   es: {
@@ -301,6 +318,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Error de conexión',
     generate_new_code: 'Generar nuevo código',
     or: 'O INGRESA EL CÓDIGO',
+    tv_login_scan_qr: 'Escanear código QR',
+    tv_login_qr_or_code: 'Escanea el QR o ingresa tu código de TV a continuación',
   },
 
   fr: {
@@ -335,6 +354,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Erreur de connexion',
     generate_new_code: 'Générer un nouveau code',
     or: 'OU ENTREZ LE CODE',
+    tv_login_scan_qr: 'Scanner le code QR',
+    tv_login_qr_or_code: 'Scannez le QR ou entrez votre code TV ci-dessous',
   },
 
   it: {
@@ -369,6 +390,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Errore di connessione',
     generate_new_code: 'Genera nuovo codice',
     or: 'OPPURE INSERISCI IL CODICE',
+    tv_login_scan_qr: 'Scansiona il codice QR',
+    tv_login_qr_or_code: 'Scansiona il QR o inserisci il tuo codice TV qui sotto',
   },
 
   pt: {
@@ -403,6 +426,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Erro de conexão',
     generate_new_code: 'Gerar novo código',
     or: 'OU INSERIR CÓDIGO',
+    tv_login_scan_qr: 'Digitalizar código QR',
+    tv_login_qr_or_code: 'Digitaliza o QR ou introduz o teu código de TV abaixo',
   },
 
   ar: {
@@ -437,6 +462,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'خطأ في الاتصال',
     generate_new_code: 'إنشاء رمز جديد',
     or: 'أو أدخل الرمز',
+    tv_login_scan_qr: 'مسح رمز QR',
+    tv_login_qr_or_code: 'امسح رمز QR أو أدخل رمز التلفزيون أدناه',
   },
 
   ru: {
@@ -471,6 +498,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'Ошибка соединения',
     generate_new_code: 'Сгенерировать новый код',
     or: 'ИЛИ ВВЕДИТЕ КОД',
+    tv_login_scan_qr: 'Сканировать QR-код',
+    tv_login_qr_or_code: 'Отсканируй QR-код или введи TV-код ниже',
   },
 
   ja: {
@@ -504,6 +533,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: '接続エラー',
     generate_new_code: '新しいコードを生成',
     or: 'またはコードを入力',
+    tv_login_scan_qr: 'QRコードをスキャン',
+    tv_login_qr_or_code: 'QRコードをスキャンするかTVコードを以下に入力',
   },
 
   ko: {
@@ -537,6 +568,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: '연결 오류',
     generate_new_code: '새 코드 생성',
     or: '또는 코드 입력',
+    tv_login_scan_qr: 'QR 코드 스캔',
+    tv_login_qr_or_code: 'QR 코드를 스캔하거나 TV 코드를 아래에 입력하세요',
   },
 
   zh: {
@@ -570,6 +603,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: '连接错误',
     generate_new_code: '生成新验证码',
     or: '或输入验证码',
+    tv_login_scan_qr: '扫描QR码',
+    tv_login_qr_or_code: '扫描QR码或在下方输入您的TV验证码',
   },
 
   hi: {
@@ -604,6 +639,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'कनेक्शन त्रुटि',
     generate_new_code: 'नया कोड जेनरेट करें',
     or: 'या कोड दर्ज करें',
+    tv_login_scan_qr: 'QR कोड स्कैन करें',
+    tv_login_qr_or_code: 'QR कोड स्कैन करें या नीचे अपना TV कोड दर्ज करें',
   },
 
   he: {
@@ -637,6 +674,8 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
     connection_error: 'שגיאת חיבור',
     generate_new_code: 'צור קוד חדש',
     or: 'או הזן קוד',
+    tv_login_scan_qr: 'סרוק קוד QR',
+    tv_login_qr_or_code: 'סרוק את קוד QR או הזן את קוד הטלוויזיה למטה',
   },
 };
 
