@@ -223,6 +223,8 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
         return void res.status(500).json({ error: "Webhook not configured" });
       }
       const providedToken = req.query.token as string | undefined;
+      // DEBUG: log token lengths and first 3 chars to diagnose mismatch (remove after fix)
+      logger.warn(`[play-rtdn] TOKEN DEBUG — provided len=${providedToken?.length ?? 0} first3=${(providedToken ?? '').slice(0,3)} | expected len=${expectedToken.length} first3=${expectedToken.slice(0,3)}`);
       if (!providedToken || providedToken !== expectedToken) {
         logger.warn(`[play-rtdn] Invalid or missing ?token ip=${ip}`);
         return void res.status(401).json({ error: "Unauthorized" });
