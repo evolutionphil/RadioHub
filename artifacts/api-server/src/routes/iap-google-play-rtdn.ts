@@ -223,8 +223,6 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
         return void res.status(500).json({ error: "Webhook not configured" });
       }
       const providedToken = req.query.token as string | undefined;
-      // DEBUG: log token lengths and first 3 chars to diagnose mismatch (remove after fix)
-      logger.warn(`[play-rtdn] TOKEN DEBUG — provided len=${providedToken?.length ?? 0} first3=${(providedToken ?? '').slice(0,3)} | expected len=${expectedToken.length} first3=${expectedToken.slice(0,3)}`);
       if (!providedToken || providedToken !== expectedToken) {
         logger.warn(`[play-rtdn] Invalid or missing ?token ip=${ip}`);
         return void res.status(401).json({ error: "Unauthorized" });
@@ -247,30 +245,47 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
         }
       }
 
-      // ── 3. Parse Pub/Sub envelope from raw Buffer ─────────────────
-      const contentType = (req.headers["content-type"] as string) || "(none)";
-      let rawBodyStr = "";
-      if (Buffer.isBuffer(req.body)) {
-        rawBodyStr = (req.body as Buffer).toString("utf8");
-      } else if (typeof req.body === "string") {
-        rawBodyStr = req.body;
-      } else if (req.body && typeof req.body === "object") {
-        rawBodyStr = JSON.stringify(req.body);
+      // ── 3. Read raw body directly from Node.js stream ────────────────
+      // Google Pub/Sub push sends requests with NO Content-Type and often no
+      // Content-Length header. Express body-parser middlewares (express.json,
+      // express.raw, etc.) all use the `content-length` / `transfer-encoding`
+      // headers to decide whether to read the stream — if absent they call
+      // next() immediately and req.body stays undefined.
+      // Reading from the raw Node.js stream bypasses this check entirely and
+      // captures every byte sent over the TCP connection regardless of headers.
+      let rawBody: Buffer;
+      if (Buffer.isBuffer(req.body) && (req.body as Buffer).length > 0) {
+        // Safety path: if an upstream middleware already captured bytes, use them
+        rawBody = req.body as Buffer;
+      } else {
+        rawBody = await new Promise<Buffer>((resolve, reject) => {
+          const chunks: Buffer[] = [];
+          req.on("data", (chunk: Buffer) => chunks.push(chunk));
+          req.on("end", () => resolve(Buffer.concat(chunks)));
+          req.on("error", reject);
+        });
       }
-      logger.warn(`[play-rtdn] BODY DEBUG — ctype=${contentType} bodyType=${typeof req.body} bufferLen=${Buffer.isBuffer(req.body) ? (req.body as Buffer).length : 'n/a'} rawLen=${rawBodyStr.length} preview=${rawBodyStr.slice(0, 200)}`);
 
+      // Empty body = Google Play Console "send test notification" ping
+      // (a bare HTTP POST with no payload used to verify endpoint reachability)
+      if (rawBody.length === 0) {
+        logger.log("[play-rtdn] Empty body (test ping from Google) — acking 200");
+        return void res.status(200).json({ ok: true, skipped: "test_ping" });
+      }
+
+      const rawBodyStr = rawBody.toString("utf8");
       let envelope: PubSubEnvelope;
       try {
         envelope = JSON.parse(rawBodyStr) as PubSubEnvelope;
       } catch (err: any) {
-        logger.warn(`[play-rtdn] Failed to parse body as JSON: ${err?.message || err}`);
+        logger.warn(`[play-rtdn] JSON parse failed: ${err?.message || err} — preview=${rawBodyStr.slice(0, 200)}`);
         return void res.status(400).json({ error: "Invalid JSON body" });
       }
 
       if (!envelope?.message?.data) {
-        // If message exists but data is empty, it's a test notification ping — ack it
+        // message present but no data = test notification with empty payload
         if (envelope?.message && !envelope.message.data) {
-          logger.warn("[play-rtdn] Test notification received (no data) — acking");
+          logger.log("[play-rtdn] Test notification (message with no data) — acking");
           return void res.status(200).json({ ok: true, skipped: "test_notification" });
         }
         logger.warn("[play-rtdn] Missing message.data in Pub/Sub envelope");

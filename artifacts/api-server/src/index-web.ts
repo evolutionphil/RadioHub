@@ -387,11 +387,6 @@ app.use(compression({
   }
 }));
 
-// Google Play RTDN Pub/Sub push: capture raw body BEFORE express.json()
-// (Pub/Sub pushes without Content-Type; the global JSON parser would otherwise
-// consume the request stream).
-app.use('/api/webhooks/google-play-rtdn', express.raw({ limit: '1mb', type: '*/*' }));
-
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 
