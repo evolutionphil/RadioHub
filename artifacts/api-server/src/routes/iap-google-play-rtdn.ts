@@ -127,6 +127,8 @@ interface DeveloperNotification {
   subscriptionNotification?: SubscriptionNotification;
   oneTimePurchaseNotification?: OneTimePurchaseNotification;
   voidedPurchaseNotification?: VoidedPurchaseNotification;
+  // Sent by Google Play Console "send test notification" button — shape: { version: "1.0" }
+  testNotification?: { version: string };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -274,22 +276,35 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
       }
 
       const rawBodyStr = rawBody.toString("utf8");
-      let envelope: PubSubEnvelope;
+      let parsed: any;
       try {
-        envelope = JSON.parse(rawBodyStr) as PubSubEnvelope;
+        parsed = JSON.parse(rawBodyStr);
       } catch (err: any) {
-        logger.warn(`[play-rtdn] JSON parse failed: ${err?.message || err} — preview=${rawBodyStr.slice(0, 200)}`);
-        return void res.status(400).json({ error: "Invalid JSON body" });
+        // Unparseable body — ack anyway so Pub/Sub doesn't retry forever
+        logger.warn(`[play-rtdn] JSON parse failed: ${err?.message || err} — len=${rawBody.length} preview=${rawBodyStr.slice(0, 300)}`);
+        return void res.status(200).json({ ok: true, skipped: "unparseable_body" });
       }
 
-      if (!envelope?.message?.data) {
-        // message present but no data = test notification with empty payload
-        if (envelope?.message && !envelope.message.data) {
-          logger.log("[play-rtdn] Test notification (message with no data) — acking");
-          return void res.status(200).json({ ok: true, skipped: "test_notification" });
-        }
-        logger.warn("[play-rtdn] Missing message.data in Pub/Sub envelope");
-        return void res.status(400).json({ error: "Invalid Pub/Sub envelope" });
+      // Support both Pub/Sub push envelope { message: { data: "base64", ... } }
+      // AND "unwrapped" delivery where the DeveloperNotification is sent directly
+      // (Pub/Sub subscription "wrap_message=false" option).
+      let envelope: PubSubEnvelope;
+      if (parsed?.message?.data) {
+        envelope = parsed as PubSubEnvelope;
+      } else if (parsed?.subscriptionNotification || parsed?.oneTimePurchaseNotification || parsed?.voidedPurchaseNotification || parsed?.testNotification) {
+        // Unwrapped DeveloperNotification at top level — fake an envelope so the rest of the
+        // handler works uniformly. Re-encode to base64 so decodeNotification() can decode it.
+        const fakeData = Buffer.from(JSON.stringify(parsed), "utf8").toString("base64");
+        envelope = {
+          message: { data: fakeData, messageId: "unwrapped", publishTime: new Date().toISOString() },
+          subscription: parsed?.subscription || "unwrapped",
+        };
+      } else {
+        // Unknown shape — log top-level keys for diagnosis, then ack so Pub/Sub stops retrying
+        const topKeys = parsed && typeof parsed === "object" ? Object.keys(parsed).join(",") : typeof parsed;
+        const msgKeys = parsed?.message && typeof parsed.message === "object" ? Object.keys(parsed.message).join(",") : "(no message)";
+        logger.warn(`[play-rtdn] Unrecognised payload shape — topKeys=[${topKeys}] messageKeys=[${msgKeys}] len=${rawBody.length} preview=${rawBodyStr.slice(0, 300)}`);
+        return void res.status(200).json({ ok: true, skipped: "unrecognised_shape" });
       }
 
       let notification: DeveloperNotification;
@@ -297,7 +312,13 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
         notification = decodeNotification(envelope.message.data);
       } catch (err: any) {
         logger.error("[play-rtdn] Failed to decode notification:", err?.message || err);
-        return void res.status(400).json({ error: "Failed to decode notification" });
+        return void res.status(200).json({ ok: true, skipped: "decode_failed" });
+      }
+
+      // Play Console "send test notification" — ack and stop
+      if ((notification as any).testNotification) {
+        logger.log(`[play-rtdn] Play Console test notification — acking package=${notification.packageName}`);
+        return void res.status(200).json({ ok: true, skipped: "test_notification" });
       }
 
       const messageId = envelope.message.messageId || "unknown";
