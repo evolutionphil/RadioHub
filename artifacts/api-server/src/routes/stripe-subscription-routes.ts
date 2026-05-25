@@ -81,6 +81,26 @@ function generateCode(): string {
 export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   const { requireAuth } = deps;
 
+  // ── CORS * for all TV-facing subscription endpoints ───────────────────────
+  // These endpoints are called from Samsung Tizen / LG WebOS native apps and
+  // from the web activation page on arbitrary preview origins. Bearer-token
+  // auth is used (no cookies), so ACAO: * is safe and required.
+  const TV_SUB_PATHS = [
+    "/api/subscription/tv/code",
+    "/api/subscription/tv/code/:code/status",
+    "/api/subscription/status",
+  ];
+  const setCorsStarHeaders = (_req: Request, res: Response, next: () => void) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    next();
+  };
+  for (const path of TV_SUB_PATHS) {
+    app.options(path, setCorsStarHeaders, (_req: Request, res: Response) => res.sendStatus(204));
+    app.use(path, setCorsStarHeaders);
+  }
+
   // ── TV device requests a 6-digit subscription PIN ──────────────────────────
   // Public (CORS *). The TV app shows this code and the user enters it on the
   // web activate page to link their subscription purchase.
