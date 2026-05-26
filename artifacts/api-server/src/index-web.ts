@@ -892,6 +892,12 @@ app.use('/api/stream', streamServiceProxy);
       </div>
     </div>
     ${prodTags.scripts || '<script type="module" src="/src/main.tsx"></script>'}
+    ${(() => {
+      const topGenres = seoData.pageData?.additionalData?.topGenres;
+      if (!topGenres || !Array.isArray(topGenres) || topGenres.length === 0) return '';
+      const safeJson = JSON.stringify({ genres: { data: topGenres } }).replace(/<\//g, '\\u003c/');
+      return `<script id="initial-data">window.__INITIAL_DATA__=${safeJson};</script>`;
+    })()}
     <script>
       window.performance = window.performance || {};
       window.performance.mark && window.performance.mark('body-start');
