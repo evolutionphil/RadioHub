@@ -962,7 +962,8 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
     // narrower Disallows correctly override the broad Allow: /api/.
     const robots = `User-agent: *
 Allow: /api/
-Allow: /assets/
+Allow: /assets/*.js
+Allow: /assets/*.css
 Disallow: /api/admin/
 Disallow: /api/auth/
 Disallow: /api/user/
@@ -999,7 +1000,8 @@ Allow: /
 
 User-agent: Baiduspider
 Allow: /api/
-Allow: /assets/
+Allow: /assets/*.js
+Allow: /assets/*.css
 Disallow: /api/admin/
 Disallow: /api/auth/
 Disallow: /api/user/
@@ -1030,7 +1032,8 @@ Allow: /
 
 User-agent: Sogou
 Allow: /api/
-Allow: /assets/
+Allow: /assets/*.js
+Allow: /assets/*.css
 Disallow: /api/admin/
 Disallow: /api/auth/
 Disallow: /api/user/
