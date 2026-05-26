@@ -811,9 +811,25 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
       const apiKeyDoc = await ApiKeyModel.findOne({ keyHash });
       if (!apiKeyDoc || apiKeyDoc.status !== 'active') return void res.status(401).json({ error: 'Invalid or inactive API key' });
-      const { logs, deviceId, platform } = req.body;
+      const { logs, deviceId, platform, appVersion, buildNumber, isCarPlayLog } = req.body;
       if (!logs || !Array.isArray(logs) || !deviceId || !platform) return void res.status(400).json({ error: 'logs, deviceId, and platform are required' });
-      res.json({ success: true, received: Math.min(logs.length, 100), note: 'db_logging_disabled' });
+      const capped = logs.slice(0, 100);
+      const hasCarPlay = isCarPlayLog === true || capped.some((l: any) => typeof l.message === 'string' && /carplay/i.test(l.message));
+      await AppLog.create({
+        deviceId,
+        platform,
+        appVersion: appVersion || 'unknown',
+        buildNumber: buildNumber || '',
+        apiKeyHash: keyHash,
+        isCarPlayLog: hasCarPlay,
+        logs: capped.map((l: any) => ({
+          level: l.level || 'info',
+          message: String(l.message || ''),
+          timestamp: l.timestamp || new Date().toISOString(),
+          data: l.data || {},
+        })),
+      });
+      res.json({ success: true, received: capped.length });
     } catch (error) {
       res.status(500).json({ error: 'Failed to process logs' });
     }
