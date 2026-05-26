@@ -30,15 +30,19 @@ function getCurrentLanguage(): string {
 export function getStationUrl(station: { _id?: string; slug?: string; name: string }): string {
   const currentLang = getCurrentLanguage();
   const langPrefix = currentLang ? `/${currentLang}` : '';
-  
-  // Always prefer slug-based URLs for SEO
-  if (station.slug) {
-    return `${langPrefix}/station/${station.slug}`;
-  }
-  
-  // Generate slug from name if no slug exists (should not happen with our data)
-  const generatedSlug = generateSlug(station.name);
-  return `${langPrefix}/station/${generatedSlug}`;
+
+  // Translate the "station" URL segment for non-English languages so internal
+  // links match the canonical URL (e.g. /bg/stantsiya/slug, /tr/istasyon/slug,
+  // /ar/mahta/slug). Without this every station card emitted /<lang>/station/<slug>
+  // which 301-redirected via url-redirect-middleware — Google saw both URLs,
+  // wasted crawl budget, and flagged the source as "Crawled - currently not indexed".
+  const stationSegment =
+    currentLang && currentLang !== 'en'
+      ? (URL_TRANSLATIONS[currentLang]?.station || 'station')
+      : 'station';
+
+  const slug = station.slug || generateSlug(station.name);
+  return `${langPrefix}/${stationSegment}/${slug}`;
 }
 
 // Generate SEO-friendly user profile URLs
@@ -120,11 +124,18 @@ export function extractStationIdFromUrl(url: string): string | null {
 }
 
 export function extractStationSlugFromUrl(url: string): string | null {
-  // Extract slug from /station/:slug format
-  const slugMatch = url.match(/\/station\/([^\/]+)/);
-  if (slugMatch) {
-    return slugMatch[1];
+  // Extract slug from /station/:slug or any localized /<station-translation>/:slug.
+  // Check English path first, then iterate URL_TRANSLATIONS for translated forms.
+  const englishMatch = url.match(/\/station\/([^\/]+)/);
+  if (englishMatch) return englishMatch[1];
+
+  for (const langTranslations of Object.values(URL_TRANSLATIONS)) {
+    const seg = langTranslations.station;
+    if (!seg) continue;
+    const re = new RegExp(`/${seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/([^/]+)`);
+    const m = url.match(re);
+    if (m) return m[1];
   }
-  
+
   return null;
 }

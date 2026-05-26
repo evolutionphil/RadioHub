@@ -1,5 +1,6 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 import { Translation, Station, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
+import { PrecomputedGenresService } from './services/precomputed-genres';
 
 // Lean document shapes returned by Mongoose `.lean()` for the queries in this
 // module. Mongoose 8's typings hand `.lean()` results back as `unknown` once
@@ -933,6 +934,16 @@ export class SeoRenderer {
       } catch (error: any) {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
       }
+      // Inject top genres so Googlebot sees real genre content in SSR HTML
+      // Uses the precomputed cache (no live DB hit on cache hit).
+      try {
+        const genresData = await PrecomputedGenresService.getGenres('global');
+        additionalData.topGenres = genresData.genres.slice(0, 24).map(g => ({
+          slug: g.slug,
+          name: g.name,
+          count: g.total_stations || g.stationCount || 0,
+        }));
+      } catch (_) { /* non-blocking — falls back to hardcoded genre list below */ }
     }
     
     // Generate enhanced SEO tags with additional context
@@ -1805,14 +1816,19 @@ export class SeoRenderer {
             <section class="popular-genres">
               <h2>${this.escapeHtml(getLocalizedText('popular_genres_title', 'Popular Radio Genres'))}</h2>
               <ul>
-                <li><a href="/${language}/genres/pop">${this.escapeHtml(getLocalizedText('genre_pop_radio', 'Pop Radio Stations'))}</a></li>
+                ${additionalData?.topGenres && additionalData.topGenres.length > 0
+                  ? (additionalData.topGenres as Array<{ slug: string; name: string; count: number }>).map(g =>
+                      `<li><a href="/${language}/genres/${this.escapeHtml(g.slug)}">${this.escapeHtml(g.name)}</a></li>`
+                    ).join('')
+                  : `<li><a href="/${language}/genres/pop">${this.escapeHtml(getLocalizedText('genre_pop_radio', 'Pop Radio Stations'))}</a></li>
                 <li><a href="/${language}/genres/rock">${this.escapeHtml(getLocalizedText('genre_rock_radio', 'Rock Radio Stations'))}</a></li>
                 <li><a href="/${language}/genres/jazz">${this.escapeHtml(getLocalizedText('genre_jazz_radio', 'Jazz Radio Stations'))}</a></li>
                 <li><a href="/${language}/genres/classical">${this.escapeHtml(getLocalizedText('genre_classical_radio', 'Classical Radio Stations'))}</a></li>
                 <li><a href="/${language}/genres/electronic">${this.escapeHtml(getLocalizedText('genre_electronic_radio', 'Electronic Radio Stations'))}</a></li>
                 <li><a href="/${language}/genres/country">${this.escapeHtml(getLocalizedText('genre_country_radio', 'Country Radio Stations'))}</a></li>
                 <li><a href="/${language}/genres/hip-hop">${this.escapeHtml(getLocalizedText('genre_hiphop_radio', 'Hip Hop Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/reggae">${this.escapeHtml(getLocalizedText('genre_reggae_radio', 'Reggae Radio Stations'))}</a></li>
+                <li><a href="/${language}/genres/reggae">${this.escapeHtml(getLocalizedText('genre_reggae_radio', 'Reggae Radio Stations'))}</a></li>`
+                }
               </ul>
             </section>
             

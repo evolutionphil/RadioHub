@@ -346,7 +346,7 @@ export default function RadioFrontend({
           handlePlay(selectedStation);
           setSearchQuery("");
           const stationPath = selectedStation.slug ? `/station/${selectedStation.slug}` : `/station/${selectedStation._id}`;
-          navigateWithLanguage(stationPath);
+          navigateTranslated(stationPath);
         }
         break;
       case 'Escape':
@@ -355,12 +355,12 @@ export default function RadioFrontend({
         setFocusedResultIndex(-1);
         break;
     }
-  }, [filteredStations, focusedResultIndex, navigateWithLanguage]);
+  }, [filteredStations, focusedResultIndex, navigateTranslated]);
 
   // DEFERRED: Genres only needed for dropdown, not LCP hero section
   // Deferring reduces critical request chain from 11.86s
   const [shouldLoadGenres, setShouldLoadGenres] = useState(false);
-  
+
   useEffect(() => {
     // Defer genres to after hero paint (not visible in LCP)
     if ('requestIdleCallback' in window) {
@@ -370,9 +370,18 @@ export default function RadioFrontend({
     }
   }, []);
 
+  // SSR-injected genres (from window.__INITIAL_DATA__) provide an immediate
+  // initialData so the Swiper renders on first paint without waiting for the
+  // deferred network request. Only applies when selectedCountry is 'all'
+  // (the global-only data we inject server-side).
+  const ssrGenres = selectedCountry === 'all'
+    ? (typeof window !== 'undefined' ? (window as any).__INITIAL_DATA__?.genres : undefined)
+    : undefined;
+
   const { data: genresResponse, isLoading: genresLoading } = useQuery({
     queryKey: ['/api/genres/precomputed', selectedCountry],
-    enabled: shouldLoadGenres, // DEFERRED: Load after hero paint
+    enabled: shouldLoadGenres || !ssrGenres, // skip defer if SSR data is available
+    initialData: ssrGenres,
     queryFn: async () => {
       // Use 7-day precomputed cache for genres
       const params = new URLSearchParams();
@@ -780,11 +789,14 @@ export default function RadioFrontend({
     stopStation();
   }, [stopStation]);
 
-  // Navigate to station function with language-aware routing
+  // Navigate to station function with language-aware routing.
+  // Uses navigateTranslated so the URL segment is translated (e.g. /tr/istasyon/x,
+  // /bg/stantsiya/x) — otherwise we emit /<lang>/station/x which 301-redirects
+  // and wastes Google crawl budget.
   const navigateToStation = useCallback((station: any) => {
     const stationPath = station.slug ? `/station/${station.slug}` : `/station/${station._id}`;
-    navigateWithLanguage(stationPath);
-  }, [navigateWithLanguage]);
+    navigateTranslated(stationPath);
+  }, [navigateTranslated]);
   
   // Player state helper
   const playerState = currentStation ? (isPlaying ? 'playing' : 'stopped') : 'stopped';
@@ -1032,7 +1044,7 @@ export default function RadioFrontend({
                                   handlePlay(station);
                                   setSearchQuery("");
                                   const stationPath = station.slug ? `/station/${station.slug}` : `/station/${station._id}`;
-                                  navigateWithLanguage(stationPath);
+                                  navigateTranslated(stationPath);
                                 }}
                               >
                                 {/* Station Image - Apple style */}

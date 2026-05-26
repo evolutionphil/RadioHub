@@ -88,7 +88,9 @@ export default function TvLogin() {
 
   const handleGoogleLogin = () => {
     const langPrefix = currentLanguage && currentLanguage !== 'en' ? `/${currentLanguage}` : '/en';
-    const returnUrl = `${langPrefix}/tv`;
+    // Preserve ?code= so auto-activate fires after OAuth redirect returns
+    const urlCode = new URLSearchParams(window.location.search).get('code');
+    const returnUrl = urlCode ? `${langPrefix}/tv?code=${urlCode}` : `${langPrefix}/tv`;
     const targetUrl = `/api/auth/google?returnTo=${encodeURIComponent(returnUrl)}`;
     console.log('[TV-LOGIN] 🟢 Google login button clicked');
     console.log('[TV-LOGIN] 🍪 cookie BEFORE redirect:', document.cookie || '(empty)');
@@ -141,7 +143,7 @@ export default function TvLogin() {
                   Google {t("tv_go_to_login")}
                 </button>
                 <a
-                  href={`${getLocalizedUrl("/login")}?returnTo=${encodeURIComponent(window.location.pathname)}`}
+                  href={`${getLocalizedUrl("/login")}?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`}
                   className="flex items-center gap-2 px-8 py-3 bg-[#FF4199] text-white rounded-[5px] font-sans font-bold text-[16px] hover:bg-[#e6388a] transition-colors"
                 >
                   <LogIn className="w-5 h-5" />
