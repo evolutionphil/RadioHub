@@ -941,13 +941,14 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   app.get('/api/admin/app-logs', requireAdmin, async (req, res) => {
     try {
-      const { platform, deviceId, page = '1', limit = '50' } = req.query;
+      const { platform, deviceId, isCarPlay, page = '1', limit = '50' } = req.query;
       const filter: any = {};
       if (platform) filter.platform = platform;
       if (deviceId) filter.deviceId = { $regex: escapeRegex(String(deviceId)), $options: 'i' };
+      if (isCarPlay !== undefined && isCarPlay !== '') filter.isCarPlayLog = isCarPlay === 'true';
       const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
       const [items, total] = await Promise.all([AppLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(Number(limit)).lean(), AppLog.countDocuments(filter)]);
-      res.json({ logs: items, total, page: Number(page), totalPages: Math.ceil(total / Number(limit)) });
+      res.json({ success: true, count: items.length, total, logs: items });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch logs' });
     }
@@ -955,8 +956,8 @@ export function registerMiscRoutes(app: Express, deps: any, options?: { apiOnly?
 
   app.get('/api/admin/app-logs/crashes', requireAdmin, async (req, res) => {
     try {
-      const crashes = await AppLog.find({ 'logs.message': 'APP_CRASH' }).sort({ createdAt: -1 }).limit(50).lean();
-      res.json({ crashes, total: crashes.length });
+      const crashes = await AppLog.find({ 'logs.message': { $regex: /APP_CRASH|crash/i } }).sort({ createdAt: -1 }).limit(50).lean();
+      res.json({ success: true, count: crashes.length, logs: crashes });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch crash logs' });
     }

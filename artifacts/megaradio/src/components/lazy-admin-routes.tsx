@@ -45,3 +45,4 @@ export const AdminCoverageCompare = lazy(() => import("@/pages/admin/coverage-co
 export const StripePlans = lazy(() => import("@/pages/admin/stripe-plans"));
 export const PaddlePlans = lazy(() => import("@/pages/admin/paddle-plans"));
 export const SalesAnalytics = lazy(() => import("@/pages/admin/sales-analytics"));
+export const AdminAppLogs = lazy(() => import("@/pages/admin/app-logs"));

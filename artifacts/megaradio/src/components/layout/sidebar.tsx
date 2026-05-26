@@ -115,6 +115,7 @@ const navigation: NavigationItem[] = [
       { name: "Station Analytics", href: "/admin/analytics" },
       { name: "Status Monitoring", href: "/admin/status-monitoring" },
       { name: "Error Logs", href: "/admin/error-logs" },
+      { name: "iOS / CarPlay Logs", href: "/admin/app-logs" },
       { name: "Feedback", href: "/admin/feedback" },
     ],
   },
