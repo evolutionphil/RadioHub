@@ -346,7 +346,7 @@ export default function RadioFrontend({
           handlePlay(selectedStation);
           setSearchQuery("");
           const stationPath = selectedStation.slug ? `/station/${selectedStation.slug}` : `/station/${selectedStation._id}`;
-          navigateWithLanguage(stationPath);
+          navigateTranslated(stationPath);
         }
         break;
       case 'Escape':
@@ -355,7 +355,7 @@ export default function RadioFrontend({
         setFocusedResultIndex(-1);
         break;
     }
-  }, [filteredStations, focusedResultIndex, navigateWithLanguage]);
+  }, [filteredStations, focusedResultIndex, navigateTranslated]);
 
   // DEFERRED: Genres only needed for dropdown, not LCP hero section
   // Deferring reduces critical request chain from 11.86s
@@ -789,11 +789,14 @@ export default function RadioFrontend({
     stopStation();
   }, [stopStation]);
 
-  // Navigate to station function with language-aware routing
+  // Navigate to station function with language-aware routing.
+  // Uses navigateTranslated so the URL segment is translated (e.g. /tr/istasyon/x,
+  // /bg/stantsiya/x) — otherwise we emit /<lang>/station/x which 301-redirects
+  // and wastes Google crawl budget.
   const navigateToStation = useCallback((station: any) => {
     const stationPath = station.slug ? `/station/${station.slug}` : `/station/${station._id}`;
-    navigateWithLanguage(stationPath);
-  }, [navigateWithLanguage]);
+    navigateTranslated(stationPath);
+  }, [navigateTranslated]);
   
   // Player state helper
   const playerState = currentStation ? (isPlaying ? 'playing' : 'stopped') : 'stopped';
@@ -1041,7 +1044,7 @@ export default function RadioFrontend({
                                   handlePlay(station);
                                   setSearchQuery("");
                                   const stationPath = station.slug ? `/station/${station.slug}` : `/station/${station._id}`;
-                                  navigateWithLanguage(stationPath);
+                                  navigateTranslated(stationPath);
                                 }}
                               >
                                 {/* Station Image - Apple style */}

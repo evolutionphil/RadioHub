@@ -61,7 +61,7 @@ const PAGE_STEP = 10;
 
 export default function SearchPage() {
   const { t } = useTranslation();
-  const { currentLanguage } = useSeoRouting();
+  const { currentLanguage, getLocalizedUrl } = useSeoRouting();
   const langPrefix = currentLanguage === "en" ? "" : `/${currentLanguage}`;
 
   const initialQuery =
@@ -173,13 +173,13 @@ export default function SearchPage() {
     for (const g of genres) {
       items.push({
         id: `genre-${g.slug}`,
-        href: `${langPrefix}/genres/${encodeURIComponent(g.slug)}`,
+        href: getLocalizedUrl(`/genres/${encodeURIComponent(g.slug)}`),
       });
     }
     for (const c of countryHits) {
       items.push({
         id: `country-${countrySlug(c.canonical)}`,
-        href: `${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`,
+        href: getLocalizedUrl(`/regions/${c.regionSlug}/${countrySlug(c.canonical)}`),
       });
     }
     stations.forEach((station, idx) => {
@@ -187,11 +187,11 @@ export default function SearchPage() {
       if (!slug) return;
       items.push({
         id: `station-${slug}-${idx}`,
-        href: `${langPrefix}/station/${slug}`,
+        href: getLocalizedUrl(`/station/${slug}`),
       });
     });
     return items;
-  }, [genres, countryHits, stations, langPrefix]);
+  }, [genres, countryHits, stations, getLocalizedUrl]);
 
   const [activeIndex, setActiveIndex] = useState(-1);
   const itemRefs = useRef<Map<string, HTMLAnchorElement | null>>(new Map());
@@ -564,7 +564,7 @@ export default function SearchPage() {
                     return (
                     <li key={g.slug}>
                       <Link
-                        href={`${langPrefix}/genres/${encodeURIComponent(g.slug)}`}
+                        href={getLocalizedUrl(`/genres/${encodeURIComponent(g.slug)}`)}
                         ref={setItemRef(id)}
                         id={id}
                         role="option"
@@ -607,7 +607,7 @@ export default function SearchPage() {
                     return (
                     <li key={c.canonical}>
                       <Link
-                        href={`${langPrefix}/regions/${c.regionSlug}/${countrySlug(c.canonical)}`}
+                        href={getLocalizedUrl(`/regions/${c.regionSlug}/${countrySlug(c.canonical)}`)}
                         ref={setItemRef(id)}
                         id={id}
                         role="option"
@@ -652,7 +652,7 @@ export default function SearchPage() {
                     return (
                       <li key={`${slug}-${idx}`}>
                         <Link
-                          href={`${langPrefix}/station/${slug}`}
+                          href={getLocalizedUrl(`/station/${slug}`)}
                           ref={setItemRef(id)}
                           id={id}
                           role="option"
