@@ -205,6 +205,7 @@ function AdminRouterContent() {
         
         {/* Error Monitoring */}
         <Route path="/admin/error-logs" component={LazyAdminRoutes.AdminErrorLogs} />
+        <Route path="/admin/app-logs" component={LazyAdminRoutes.AdminAppLogs} />
 
         
         <Route component={LazyRoutes.NotFound} />
