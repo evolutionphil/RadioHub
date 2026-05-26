@@ -8,7 +8,31 @@ import {
   PRODUCT_TO_PLAN,
   PLAN_FEATURES,
   type PremiumPlan,
+  verifyGoogleReceipt,
 } from "../services/iap-verify";
+
+// ── Idempotency: in-memory dedup for Pub/Sub at-least-once delivery ──
+// Pub/Sub guarantees "at least once" — duplicates arrive during retries.
+// We keep the last MAX_PROCESSED_IDS messageIds in memory.  On restart the
+// set is empty, but the downstream DB writes are idempotent (same $set
+// values applied twice = no change), so cross-restart duplicates are safe.
+const _processedIds = new Set<string>();
+const MAX_PROCESSED_IDS = 1000;
+
+function isAlreadyProcessed(id: string): boolean {
+  // "unwrapped" and "unknown" are synthetic ids we generate — never deduplicate them
+  if (!id || id === "unwrapped" || id === "unknown") return false;
+  return _processedIds.has(id);
+}
+
+function markProcessed(id: string): void {
+  if (!id || id === "unwrapped" || id === "unknown") return;
+  if (_processedIds.size >= MAX_PROCESSED_IDS) {
+    // Evict the oldest entry (insertion-order iteration)
+    _processedIds.delete(_processedIds.values().next().value as string);
+  }
+  _processedIds.add(id);
+}
 
 // =====================================================================
 // Google Play Real-Time Developer Notifications (RTDN) via Pub/Sub Push
@@ -325,9 +349,19 @@ export function registerGooglePlayRtdnRoutes(app: Express) {
       const eventTimeMs = Number(notification.eventTimeMillis || 0);
       const packageName = notification.packageName || "";
 
+      // ── Idempotency check ─────────────────────────────────────────────
+      if (isAlreadyProcessed(messageId)) {
+        logger.log(`[play-rtdn] Duplicate messageId=${messageId} — acking without re-processing`);
+        return void res.status(200).json({ ok: true, skipped: "duplicate_message" });
+      }
+
       logger.log(`[play-rtdn] Received messageId=${messageId} package=${packageName} ` +
         `sub=${!!notification.subscriptionNotification} otp=${!!notification.oneTimePurchaseNotification} ` +
         `voided=${!!notification.voidedPurchaseNotification}`);
+
+      // Mark processed now (before handler) so concurrent duplicates are
+      // also caught even if the handler is slow.
+      markProcessed(messageId);
 
       // ── 4. Route to correct handler ───────────────────────────────
       if (notification.subscriptionNotification) {
@@ -446,6 +480,30 @@ async function handleSubscriptionNotification(
 
   let auditPlan = plan ?? existingSub.plan ?? "";
   let isLifetime = false;
+
+  // ── Google Play API receipt verification ─────────────────────────────
+  // For active-state events (PURCHASED, RENEWED, RECOVERED, RESTARTED):
+  // verify the token with the Play Developer API to get the real expiresAt
+  // and confirm the purchase is genuine. Downgrades (CANCELED, REVOKED, etc.)
+  // are trusted from the RTDN alone — they reduce access, which is safe.
+  const isActiveEvent = [SUB_PURCHASED, SUB_RENEWED, SUB_RECOVERED, SUB_RESTARTED].includes(notificationType);
+  if (isActiveEvent) {
+    try {
+      const verified = await verifyGoogleReceipt(purchaseToken, subscriptionId);
+      if (verified.valid && verified.expiresAt) {
+        setOps["subscription.expiresAt"] = new Date(verified.expiresAt);
+        if (verified.originalTransactionId) {
+          setOps["subscription.transactionId"] = verified.originalTransactionId;
+        }
+        logger.log(`[play-rtdn] ✅ Google API verify OK type=${notificationType} expiresAt=${new Date(verified.expiresAt).toISOString()} user=${userId}`);
+      } else {
+        // API unavailable or token invalid — log but don't block (RTDN is authoritative)
+        logger.warn(`[play-rtdn] Google API verify soft-fail type=${notificationType} user=${userId}: ${!verified.valid ? verified.error : 'no expiresAt'}`);
+      }
+    } catch (err: any) {
+      logger.warn(`[play-rtdn] Google API verify threw type=${notificationType} user=${userId}: ${err?.message || err}`);
+    }
+  }
 
   switch (notificationType) {
     case SUB_RECOVERED:
