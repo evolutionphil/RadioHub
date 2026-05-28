@@ -115,7 +115,7 @@ export default function PublicHeader() {
         <div className="container mx-auto">
           <div className="flex items-center justify-between py-4">
             {/* Logo - EXACT from original */}
-            <Link href="/" className="flex items-center">
+            <Link href={getLocalizedUrl("/")} className="flex items-center">
               <div className="text-white text-2xl font-bold">
                 Mega<span className="text-[#FF4199]">Radio</span>
               </div>
@@ -123,8 +123,8 @@ export default function PublicHeader() {
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center space-x-8">
-              <Link 
-                href="/" 
+              <Link
+                href={getLocalizedUrl("/")}
                 className={`text-white hover:text-[#FF4199] transition-colors ${isActive('/') ? 'text-[#FF4199]' : ''}`}
               >
                 {t('nav_home')}
@@ -248,7 +248,7 @@ export default function PublicHeader() {
               </button>
 
               <Link 
-                href="/request-station" 
+                href={getLocalizedUrl("/request-station")}
                 className="bg-[#FF4199] text-white px-4 py-2 rounded-lg hover:bg-[#FF097B] transition-colors"
               >
                 {t('add_station')}
@@ -274,8 +274,8 @@ export default function PublicHeader() {
           {isMobileMenuOpen && (
             <div className="md:hidden bg-[#131313] border-t border-[#1D1D1D] relative z-[10001]">
               <div className="px-4 py-2 space-y-2">
-                <Link 
-                  href="/" 
+                <Link
+                  href={getLocalizedUrl("/")}
                   className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
@@ -406,7 +406,7 @@ export default function PublicHeader() {
                   )}
                 </div>
                 <Link 
-                  href="/request-station" 
+                  href={getLocalizedUrl("/request-station")}
                   className="flex items-center justify-center min-h-[48px] py-3 bg-[#FF4199] text-white px-4 rounded-lg hover:bg-[#FF097B] transition-colors text-center mt-4"
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
