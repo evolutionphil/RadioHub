@@ -25,7 +25,7 @@ export default function GenreDetail({
   selectedCountry?: string; 
   onCountryChange?: (country: string) => void; 
 }) {
-  const { cleanPath } = useSeoRouting();
+  const { cleanPath, getLocalizedUrl } = useSeoRouting();
   
   // Handle both language-prefixed and non-prefixed routes
   const [, paramsLang] = useRoute("/:lang/genres/:slug");  // For /at/genres/pop, /tr/genres/pop
@@ -166,7 +166,7 @@ export default function GenreDetail({
             {/* Breadcrumb Header - EXACT from original */}
             <div className="bg-[#151515] py-7 text-xl font-bold md:text-3xl">
               <div className="container mx-auto flex items-center text-white">
-                <Link href="/genres">{t('genres_breadcrumb', 'Genres')}</Link>
+                <Link href={getLocalizedUrl("/genres")}>{t('genres_breadcrumb', 'Genres')}</Link>
                 <div className="mx-4">
                   <svg width="11" height="20" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path

@@ -130,7 +130,7 @@ export default function PublicHeader() {
                 {t('nav_home')}
               </Link>
               <Link 
-                href="/genres" 
+                href={getLocalizedUrl("/genres")}
                 className={`text-white hover:text-[#FF4199] transition-colors ${isActive('/genres') ? 'text-[#FF4199]' : ''}`}
               >
                 {t('nav_genres')}
@@ -282,7 +282,7 @@ export default function PublicHeader() {
                   {t('nav_home')}
                 </Link>
                 <Link 
-                  href="/genres" 
+                  href={getLocalizedUrl("/genres")}
                   className={`flex items-center min-h-[48px] py-3 text-white hover:text-[#FF4199] transition-colors ${isActive('/genres') ? 'text-[#FF4199]' : ''}`}
                   onClick={() => setIsMobileMenuOpen(false)}
                 >
