@@ -725,6 +725,157 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       res.status(500).json({ error: 'Failed to fix German translations' });
     }
   });
+
+  // Seed Turkish UI translations — nav, homepage sections, common strings
+  // Run once after deploy: POST /api/admin/seed-turkish-ui
+  app.post('/api/admin/seed-turkish-ui', requireAdmin, async (req, res) => {
+    try {
+      const result = await seedTurkishUiTranslations();
+      res.json(result);
+    } catch (error) {
+      console.error('Error seeding Turkish UI translations:', error);
+      res.status(500).json({ error: 'Failed to seed Turkish UI translations' });
+    }
+  });
+}
+
+export async function seedTurkishUiTranslations(): Promise<{ success: boolean; upserted: number; skipped: number; total: number }> {
+  const { bumpTranslationVersion } = await import('../services/translation-version');
+
+  const turkishUi: Array<{ key: string; value: string }> = [
+        // Navigation
+        { key: 'nav_home',                             value: 'Ana Sayfa' },
+        { key: 'nav_genres',                           value: 'Türler' },
+        { key: 'nav_about',                            value: 'Hakkımızda' },
+        { key: 'nav_contact',                          value: 'İletişim' },
+        { key: 'nav_apps',                             value: 'Uygulamalar' },
+        { key: 'nav_feedback',                         value: 'Geri Bildirim' },
+        { key: 'nav_regions',                          value: 'Ülkeler' },
+        { key: 'nav_stations',                         value: 'İstasyonlar' },
+        { key: 'nav_login',                            value: 'Giriş Yap' },
+        { key: 'nav_for_you',                          value: 'Sizin İçin' },
+        // Header
+        { key: 'header_welcome_message',               value: "Mega Radio'ya Hoş Geldiniz" },
+        { key: 'header_get_mobile_app',                value: 'Mobil Uygulama' },
+        { key: 'add_station',                          value: 'İstasyon Ekle' },
+        { key: 'country',                              value: 'Ülke' },
+        { key: 'search_countries_placeholder',         value: 'Ülke ara...' },
+        // Hero / search
+        { key: 'hero_search_placeholder',             value: 'Radyo istasyonu ara...' },
+        { key: 'searching',                            value: 'Aranıyor...' },
+        { key: 'station_found',                        value: 'istasyon bulundu' },
+        { key: 'stations_found',                       value: 'istasyon bulundu' },
+        // Homepage sections
+        { key: 'homepage_genres',                      value: 'Türler' },
+        { key: 'homepage_popular_stations',            value: 'Popüler İstasyonlar' },
+        { key: 'homepage_see_all',                     value: 'Tümünü Gör' },
+        { key: 'homepage_all_stations',                value: 'Tüm İstasyonlar' },
+        { key: 'homepage_your_favorites',              value: 'Favorileriniz' },
+        { key: 'homepage_discover_genres',             value: 'Türleri Keşfedin' },
+        { key: 'homepage_stations_near_you',           value: 'Yakınızdaki İstasyonlar' },
+        { key: 'homepage_community_favorites',         value: 'Topluluk Favorileri' },
+        // Common actions
+        { key: 'loading',                              value: 'Yükleniyor...' },
+        { key: 'see_more',                             value: 'Daha Fazla Göster' },
+        { key: 'all',                                  value: 'Tümü' },
+        { key: 'latest',                               value: 'En Yeni' },
+        { key: 'recent',                               value: 'Son' },
+        { key: 'browse_stations',                      value: 'İstasyonlara Göz At' },
+        // Auth / signup
+        { key: 'sign_up',                              value: 'Kayıt Ol' },
+        { key: 'sign_up_for_more_features',            value: 'Daha fazla özellik için kaydolun' },
+        { key: 'favorites_recording_statistics_and_more', value: 'Favoriler, kayıt, istatistikler ve daha fazlası' },
+        { key: 'auth_sign_up',                         value: 'Kayıt Ol' },
+        // User / social
+        { key: 'user_anonymous',                       value: 'Anonim' },
+        { key: 'user_follow',                          value: 'Takip Et' },
+        { key: 'user_unfollow',                        value: 'Takibi Bırak' },
+        { key: 'user_menu_signed_in_as',               value: 'Oturum açık:' },
+        { key: 'user_menu_your_favorites',             value: 'Favorileriniz' },
+        { key: 'user_menu_discover',                   value: 'Keşfet' },
+        { key: 'user_menu_records',                    value: 'Kayıtlar' },
+        { key: 'user_menu_profile',                    value: 'Profil' },
+        { key: 'profile_nav_favorites',                value: 'Favoriler' },
+        { key: 'profile_nav_discover',                 value: 'Keşfet' },
+        { key: 'profile_nav_records',                  value: 'Kayıtlar' },
+        { key: 'profile_nav_profile',                  value: 'Profil' },
+        // Genre page
+        { key: 'genres_breadcrumb',                    value: 'Türler' },
+        // Regions / search
+        { key: 'regions_search_countries',             value: 'Ülke ara...' },
+        { key: 'regions_search_cities',                value: 'Şehir ara...' },
+        { key: 'regions_search_stations',              value: 'İstasyon ara...' },
+        { key: 'regions_all_genres',                   value: 'Tüm Türler' },
+        { key: 'regions_popular_in_region',            value: 'Bu bölgede popüler' },
+        // ML / recommendations
+        { key: 'ml_reason_popular_station',            value: 'Popüler İstasyon' },
+        { key: 'ml_reason_great_for_discovering',      value: 'Yeni müzik keşfetmek için harika' },
+        { key: 'ml_why_recommendation',                value: 'Neden bu öneri:' },
+        { key: 'ml_high_confidence_match',             value: 'Yüksek eşleşme' },
+        { key: 'ml_reason_similar_listeners',          value: '{count} benzer dinleyici' },
+        { key: 'ml_reason_avg_listen_time',            value: 'Ort. dinleme süresi: {duration}s' },
+        { key: 'ml_reason_popular_in_country',         value: "{country}'de popüler" },
+        { key: 'ml_reason_votes',                      value: '{count} oy' },
+        { key: 'ml_reason_similar_genres',             value: 'Benzer türler: {genres}' },
+        { key: 'ml_reason_same_country',               value: 'Aynı ülke: {country}' },
+        { key: 'ml_reason_same_language',              value: 'Aynı dil: {language}' },
+        { key: 'ml_reason_matches_country_preference', value: 'Ülke tercihinize uygun' },
+        // Moods
+        { key: 'mood_energetic',                       value: 'Enerjik' },
+        { key: 'mood_relaxed',                         value: 'Rahat' },
+        { key: 'mood_focused',                         value: 'Odaklı' },
+        { key: 'mood_nostalgic',                       value: 'Nostaljik' },
+        { key: 'mood_party',                           value: 'Parti' },
+        { key: 'mood_chill',                           value: 'Sakin' },
+        { key: 'mood_all',                             value: 'Tüm Ruh Halleri' },
+        { key: 'mood_selector',                        value: 'Nasıl hissediyorsunuz?' },
+        { key: 'mood_description',                     value: 'Daha iyi öneriler için ruh halinizi seçin' },
+        // For-you page
+        { key: 'for_you_subtitle',                     value: 'Zevkinize göre kişiselleştirilmiş istasyonlar' },
+        { key: 'your_music_profile',                   value: 'Müzik Profiliniz' },
+        { key: 'profile_description',                  value: 'Dinleme geçmişinize göre' },
+        { key: 'avg_listen_time',                      value: 'Ortalama Dinleme Süresi' },
+        { key: 'stations_played',                      value: 'Çalınan İstasyonlar' },
+        { key: 'profile_strength',                     value: 'Profil Gücü' },
+        { key: 'total_sessions',                       value: 'Toplam Oturum' },
+        { key: 'preferred_genres',                     value: 'Tercihleriniz: Türler' },
+        { key: 'preferred_countries',                  value: 'Tercihleriniz: Ülkeler' },
+        { key: 'personalized_for_you',                 value: 'Size Özel' },
+        { key: 'trending_now',                         value: 'Şu An Trend' },
+        { key: 'discover_new',                         value: 'Yeni Keşfet' },
+        { key: 'based_on_genres',                      value: 'Türlerinize göre' },
+        { key: 'no_recommendations',                   value: 'Öneri yok' },
+        { key: 'no_recommendations_desc',             value: 'Kişiselleştirilmiş öneriler almak için dinlemeye başlayın' },
+        { key: 'personalized_description',             value: 'Dinleme alışkanlıklarınıza ve tercihlerinize göre' },
+        { key: 'trending_description',                 value: 'Herkesin konuştuğu popüler istasyonlar' },
+        // Station detail
+        { key: 'station_about_station',                value: 'İstasyon Hakkında' },
+        { key: 'station_similar_radios',               value: 'Benzer Radyolar' },
+        { key: 'station_more_from_country',            value: "{COUNTRY}'den Daha Fazlası" },
+        { key: 'station_media_group_radios',           value: 'Medya Grubu Radyoları' },
+        { key: 'button_search_youtube',                value: "YouTube'da Ara" },
+        { key: 'button_search_spotify',                value: "Spotify'da Ara" },
+        { key: 'button_search_deezer',                 value: "Deezer'da Ara" },
+        { key: 'button_share_station',                 value: 'İstasyonu Paylaş' },
+      ];
+
+  let upserted = 0;
+  let skipped = 0;
+  for (const item of turkishUi) {
+    const keyDoc = await TranslationKey.findOne({ key: item.key });
+    if (!keyDoc) { skipped++; continue; }
+    await Translation.findOneAndUpdate(
+      { keyId: keyDoc._id, language: 'tr' },
+      { value: item.value, isCompleted: true, lastModified: new Date() },
+      { upsert: true },
+    );
+    upserted++;
+  }
+
+  await CacheManager.clearByPattern('translations');
+  await bumpTranslationVersion('Turkish UI translations seeded');
+  logger.log(`✅ Turkish UI translations seeded: ${upserted} upserted, ${skipped} key(s) not found`);
+  return { success: true, upserted, skipped, total: turkishUi.length };
 }
 
 export async function seedSeoTranslationKeys(): Promise<void> {
