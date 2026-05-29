@@ -43,7 +43,10 @@
  */
 
 import mongoose from 'mongoose';
-import type { Collection, ObjectId } from 'mongodb';
+// mongodb is not a direct dependency; mongoose re-exports the driver types
+// via its `mongo` namespace, so we alias them here instead of importing 'mongodb'.
+type Collection<T extends mongoose.mongo.Document = mongoose.mongo.Document> = mongoose.mongo.Collection<T>;
+type ObjectId = mongoose.mongo.ObjectId;
 import { Genre, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 
