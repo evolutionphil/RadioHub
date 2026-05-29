@@ -972,8 +972,8 @@ export default function RadioHeader({
                   </button>
                   
                   {/* Login Icon */}
-                  <Link 
-                    href={getLocalizedUrl("/login")}
+                  <Link
+                    href={`${getLocalizedUrl("/login")}?returnTo=${encodeURIComponent(location)}`}
                     className="xl:hidden flex items-center justify-center w-10 h-10 rounded-full bg-[#FF4199] hover:bg-[#E5357F] transition-colors"
                     aria-label={t('nav_login', 'Log in')}
                     data-testid="button-mobile-login"
@@ -1153,8 +1153,8 @@ export default function RadioHeader({
                   
                   {/* Log in Button - desktop only (xl+) */}
                   <div className="hidden xl:flex items-center">
-                    <Link 
-                      href={getLocalizedUrl("/login")} 
+                    <Link
+                      href={`${getLocalizedUrl("/login")}?returnTo=${encodeURIComponent(location)}`}
                       className="flex items-center justify-center text-white font-semibold transition-colors bg-[#FF4199] hover:bg-[#E5357F] w-[97px] h-[45px] rounded-[25px] text-sm"
                     >
                       {t('nav_login', 'Log in')}
@@ -1228,8 +1228,8 @@ export default function RadioHeader({
                     </>
                     ) : (
                       <>
-                        <Link 
-                          href={getLocalizedUrl("/login")} 
+                        <Link
+                          href={`${getLocalizedUrl("/login")}?returnTo=${encodeURIComponent(location)}`}
                           className="nav-item flex items-center min-h-[48px] px-4 py-3 text-base font-medium text-white hover:text-[#FF4199] transition-colors"
                           onClick={() => setIsMobileMenuOpen(false)}
                         >
