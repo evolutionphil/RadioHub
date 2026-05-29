@@ -822,6 +822,23 @@ ${keysText}`;
       for (const dup of duplicateStations) {
         if (dup.slug) performanceCache.invalidateStationCache(dup.slug);
       }
+      // Blacklist the merged-away duplicates by upstream UUID + URL so the next
+      // Radio-Browser sync never re-imports them. Without this the deleted
+      // duplicates reappear on the very next sync cycle.
+      if (duplicateStations.length > 0) {
+        const blacklistDocs = duplicateStations.map((dup: any) => ({
+          stationUuid: dup.stationuuid,
+          url: dup.url || `merged-dup-${String(dup._id)}`,
+          name: dup.name || primaryStation.name || 'merged-duplicate',
+          reason: 'Manual merge duplicate removal',
+          deletedBy: 'admin',
+        }));
+        try {
+          await BlacklistedStation.insertMany(blacklistDocs, { ordered: false });
+        } catch {
+          /* dup-key on already-blacklisted url/uuid is expected and safe */
+        }
+      }
       await Station.deleteMany({ _id: { $in: duplicateStationIds } });
       
       // logger.log(`✅ Successfully merged ${duplicateStationIds.length} duplicate stations`);

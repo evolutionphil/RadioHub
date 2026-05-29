@@ -708,9 +708,42 @@ export default function AdminDuplicates() {
             </p>
           </div>
           
+          {/* One-click clean-up: detects + merges + blacklists every duplicate
+              in a single background job, with the highest-voted row winning.
+              Blacklisting means merged duplicates never re-appear on the next
+              Radio-Browser sync. No prior "Detect" run is required. */}
+          <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 sm:p-4 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">One-Click: Merge ALL Duplicates</p>
+                <p className="text-xs text-muted-foreground">
+                  Detects every duplicate group, keeps the highest-voted station,
+                  merges votes, deletes the rest, and blacklists them so sync
+                  never re-imports them.
+                </p>
+              </div>
+              <Button
+                onClick={() => {
+                  if (window.confirm(
+                    'Merge ALL duplicate stations now?\n\nThe highest-voted station in each group is kept, its duplicates are deleted and blacklisted so they never re-sync. This cannot be undone.'
+                  )) {
+                    autoMergeAll(false);
+                  }
+                }}
+                variant="destructive"
+                disabled={isLoading}
+                size="sm"
+                className="flex items-center gap-2 text-xs sm:text-sm whitespace-nowrap"
+              >
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                Merge ALL Duplicates
+              </Button>
+            </div>
+          </div>
+
           <div className="flex flex-wrap gap-2">
-            <Button 
-              onClick={detectDuplicates} 
+            <Button
+              onClick={detectDuplicates}
               disabled={isLoading}
               className="flex items-center gap-2 text-xs sm:text-sm"
               size="sm"
@@ -718,7 +751,7 @@ export default function AdminDuplicates() {
               {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
               <span className="hidden sm:inline">Detect</span> Duplicates
             </Button>
-            
+
             {duplicates && (
               <>
                 {duplicates.duplicateGroups.length > 0 ? (

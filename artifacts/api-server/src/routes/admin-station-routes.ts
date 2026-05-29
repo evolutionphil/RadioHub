@@ -152,6 +152,7 @@ async function runAutoMergeAllJob(jobId: string): Promise<void> {
     url: string;
     votes: number;
     country: string;
+    stationuuid?: string;
   };
   type DuplicateGroup = {
     _id: { name: string; country: string };
@@ -166,6 +167,7 @@ async function runAutoMergeAllJob(jobId: string): Promise<void> {
         country: 1,
         url: 1,
         votes: 1,
+        stationuuid: 1,
         normalizedName: {
           $trim: { input: { $toLower: { $ifNull: ['$name', ''] } } },
         },
@@ -183,6 +185,7 @@ async function runAutoMergeAllJob(jobId: string): Promise<void> {
             url: '$url',
             votes: { $ifNull: ['$votes', 0] },
             country: '$country',
+            stationuuid: '$stationuuid',
           },
         },
       },
@@ -204,6 +207,21 @@ async function runAutoMergeAllJob(jobId: string): Promise<void> {
   let totalStationsToDelete = 0;
   let totalStationsDeleted = 0;
   let mergedGroups = 0;
+
+  // Collect all per-group decisions first, then apply them in a handful of
+  // bulk round-trips. The previous implementation issued 4 sequential DB
+  // calls PER GROUP (findByIdAndUpdate + findById + find + deleteMany), which
+  // made a full merge take many minutes on large catalogs ("500, 500 çok
+  // sürüyor"). Bulk ops collapse that to O(catalog/CHUNK) round-trips.
+  const voteUpdates: any[] = [];
+  const allLoserIds: mongoose.Types.ObjectId[] = [];
+  const blacklistDocs: Array<{
+    stationUuid?: string;
+    url: string;
+    name: string;
+    reason: string;
+    deletedBy: string;
+  }> = [];
 
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
@@ -227,26 +245,26 @@ async function runAutoMergeAllJob(jobId: string): Promise<void> {
       );
 
       if (!job.dryRun) {
-        type SlugOnly = { slug?: string | null };
-        await Station.findByIdAndUpdate(primary._id, { votes: totalVotes });
-        const primaryDoc = (await Station.findById(primary._id)
-          .select('slug')
-          .lean()) as SlugOnly | null;
-        if (primaryDoc?.slug) {
-          performanceCache.invalidateStationCache(primaryDoc.slug);
-        }
-        const dupDocs = (await Station.find({
-          _id: { $in: duplicates.map((d) => d._id) },
-        })
-          .select('slug')
-          .lean()) as SlugOnly[];
-        for (const d of dupDocs) {
-          if (d?.slug) performanceCache.invalidateStationCache(d.slug);
-        }
-        const delRes = await Station.deleteMany({
-          _id: { $in: duplicates.map((d) => d._id) },
+        voteUpdates.push({
+          updateOne: {
+            filter: { _id: primary._id },
+            update: { $set: { votes: totalVotes } },
+          },
         });
-        totalStationsDeleted += delRes?.deletedCount ?? duplicates.length;
+        for (const d of duplicates) {
+          allLoserIds.push(d._id);
+          // Blacklist losers by upstream UUID + URL so the next Radio-Browser
+          // sync never re-imports them. Without this, merged duplicates
+          // silently reappear on the very next sync cycle (Radio-Browser
+          // still serves the loser's stationuuid). Mirrors bulk-delete.
+          blacklistDocs.push({
+            stationUuid: d.stationuuid,
+            url: d.url || `merged-dup-${String(d._id)}`,
+            name: d.name || groupLabel,
+            reason: 'Auto-merge-all duplicate removal',
+            deletedBy: 'admin',
+          });
+        }
       }
 
       mergedGroups += 1;
@@ -276,10 +294,54 @@ async function runAutoMergeAllJob(jobId: string): Promise<void> {
     }
 
     job.progress.groupsProcessed = i + 1;
-    job.progress.percentage = Math.round(((i + 1) / Math.max(groups.length, 1)) * 100);
+    // Detection/planning pass caps at 60%; bulk apply fills the last 40%.
+    job.progress.percentage = job.dryRun
+      ? Math.round(((i + 1) / Math.max(groups.length, 1)) * 100)
+      : Math.round(((i + 1) / Math.max(groups.length, 1)) * 60);
     job.progress.currentStep = job.dryRun
       ? `Previewed ${i + 1}/${groups.length} groups`
-      : `Merged ${i + 1}/${groups.length} groups`;
+      : `Planned ${i + 1}/${groups.length} groups`;
+  }
+
+  // Apply the collected operations in bulk batches (live runs only).
+  if (!job.dryRun && allLoserIds.length > 0) {
+    const CHUNK = 1000;
+    try {
+      // 1. Merge vote totals onto the surviving primaries.
+      for (let i = 0; i < voteUpdates.length; i += CHUNK) {
+        await Station.bulkWrite(voteUpdates.slice(i, i + CHUNK), { ordered: false });
+      }
+      // 2. Blacklist losers so sync never re-imports them. insertMany with
+      //    ordered:false tolerates dup-key collisions with prior blacklisting.
+      for (let i = 0; i < blacklistDocs.length; i += CHUNK) {
+        try {
+          await BlacklistedStation.insertMany(blacklistDocs.slice(i, i + CHUNK), { ordered: false });
+        } catch {
+          /* dup-key on an already-blacklisted url/uuid is expected and safe */
+        }
+        job.progress.currentStep = `Blacklisting losers ${Math.min(i + CHUNK, blacklistDocs.length)}/${blacklistDocs.length}`;
+        job.progress.percentage = 60 + Math.round((Math.min(i + CHUNK, blacklistDocs.length) / Math.max(blacklistDocs.length, 1)) * 20);
+      }
+      // 3. Delete the loser rows.
+      for (let i = 0; i < allLoserIds.length; i += CHUNK) {
+        const slice = allLoserIds.slice(i, i + CHUNK);
+        const delRes = await Station.deleteMany({ _id: { $in: slice } });
+        totalStationsDeleted += delRes?.deletedCount ?? 0;
+        await UserFavorite.deleteMany({ stationId: { $in: slice.map(String) } });
+        job.progress.currentStep = `Deleting duplicates ${Math.min(i + CHUNK, allLoserIds.length)}/${allLoserIds.length}`;
+        job.progress.percentage = 80 + Math.round((Math.min(i + CHUNK, allLoserIds.length) / Math.max(allLoserIds.length, 1)) * 20);
+      }
+      // 4. Invalidate list caches once (per-slug invalidation would be tens of
+      //    thousands of extra calls; pattern-clear is O(1) here).
+      await CacheManager.clearByPattern('popular_stations');
+      await CacheManager.clearByPattern('stations');
+      await CacheManager.clearByPattern('community_favorites');
+      triggerGenreStationCountsRecompute('auto-merge-all');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push(`bulk-apply: ${msg}`);
+      logger.error(`❌ auto-merge-all job ${jobId} bulk-apply failed: ${msg}`);
+    }
   }
 
   job.status = 'completed';
