@@ -55,7 +55,7 @@ export function UserMenuDropdown() {
     mutationFn: () => apiRequest('POST', '/api/auth/logout'),
     onSuccess: () => {
       // Show logout notification
-      const userName = user?.fullName || user?.username || "User";
+      const userName = user?.fullName || user?.email?.split('@')[0] || "User";
       notificationService.logoutSuccess(userName);
       
       // Clear all cached data
@@ -124,7 +124,7 @@ export function UserMenuDropdown() {
             {/* User name - hidden on mobile, shown on desktop - EXACT from original */}
             <div className="hidden xl:flex items-center pr-4">
               <p className="cursor-pointer truncate text-base text-white font-medium relative after:absolute after:bottom-0 after:left-0 after:h-1.5 after:w-2/5 after:bg-[#FF4199] hover:after:w-full after:transition-all">
-                {user.fullName || user.username || 'User'}
+                {user.fullName || user.email?.split('@')[0] || 'User'}
               </p>
             </div>
             
@@ -133,13 +133,13 @@ export function UserMenuDropdown() {
               <img
                 className="h-10 w-10 rounded-full object-cover border-2 border-[#FF4199]/20 hover:border-[#FF4199]/40 transition-colors"
                 src={getAvatarUrl(user)}
-                alt={user.fullName || user.username || "User Avatar"}
+                alt={user.fullName || user.email?.split('@')[0] || "User Avatar"}
                 onError={(e) => {
                   const img = e.target as HTMLImageElement;
                   img.style.display = 'none';
                   const parent = img.parentElement;
                   if (parent) {
-                    parent.innerHTML = `<div class="h-10 w-10 rounded-full bg-[#FF4199] flex items-center justify-center text-white font-bold text-sm border-2 border-[#FF4199]/20 hover:border-[#FF4199]/40 transition-colors">${(user.fullName || user.username || 'U').charAt(0).toUpperCase()}</div>`;
+                    parent.innerHTML = `<div class="h-10 w-10 rounded-full bg-[#FF4199] flex items-center justify-center text-white font-bold text-sm border-2 border-[#FF4199]/20 hover:border-[#FF4199]/40 transition-colors">${(user.fullName || user.email?.split('@')[0] || 'U').charAt(0).toUpperCase()}</div>`;
                   }
                 }}
               />
@@ -164,7 +164,7 @@ export function UserMenuDropdown() {
           <div className="px-4 py-3">
             <p className="text-sm text-gray-300">{t('user_menu_signed_in_as')}</p>
             <p className="truncate text-sm font-medium text-white">
-              {user.fullName || user.username || 'User'}
+              {user.fullName || user.email?.split('@')[0] || 'User'}
             </p>
             <p className="truncate text-xs text-gray-400 mt-1">
               {user.email}

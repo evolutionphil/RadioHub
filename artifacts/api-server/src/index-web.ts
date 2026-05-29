@@ -962,13 +962,9 @@ app.use('/api/stream', streamServiceProxy);
         const forceNoIndex = stationNotFound || seoTags?.noIndex === true;
         if (forceNoIndex) {
           res.removeHeader('X-Robots-Tag');
+          // X-Robots-Tag header takes precedence over any conflicting in-body meta
+          // tag per Google/Bing spec — no fragile regex HTML rewrite needed.
           res.setHeader('X-Robots-Tag', 'noindex, follow');
-          if (stationNotFound && /<meta[^>]+name=["']robots["'][^>]+content=["']index/i.test(htmlContent)) {
-            htmlContent = htmlContent.replace(
-              /(<meta[^>]+name=["']robots["'][^>]+content=["'])[^"']*(["'][^>]*>)/i,
-              '$1noindex, follow$2'
-            );
-          }
         }
         res.status(stationNotFound ? 404 : 200).set({
           'Content-Type': 'text/html',

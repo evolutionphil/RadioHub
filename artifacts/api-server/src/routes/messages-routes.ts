@@ -4,10 +4,31 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import multer from "multer";
+import { rateLimit } from "express-rate-limit";
 import { type WebSocketServer, type WebSocket } from 'ws';
 import { DirectMessage, User, UserFollow, UserNotification } from '@workspace/db-shared/mongo-schemas';
 import { chatService } from "../services/chat-service";
 import { logger } from "../utils/logger";
+
+// 20 messages per minute per user — allows normal chat while blocking spam
+const messageSendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: (req: any) => req.session?.user?.userId || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many messages sent. Please slow down." },
+});
+
+// 10 image uploads per 5 minutes per user
+const imageUploadLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req: any) => req.session?.user?.userId || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many image uploads. Please wait a moment." },
+});
 
 // ─── In-memory WS ticket store (userId, expires in 60s) ───────────────────────
 const wsTickets = new Map<string, { userId: string; expiresAt: number }>();
@@ -282,19 +303,38 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     }
   });
 
-  app.post("/api/messages/upload-image", requireAuth, chatUpload.single('image'), (req: any, res) => {
+  app.post("/api/messages/upload-image", requireAuth, imageUploadLimiter, chatUpload.single('image'), async (req: any, res) => {
     try {
       if (!req.file) return void res.status(400).json({ error: 'No image uploaded' });
+
+      // Magic-byte validation — MIME header can be spoofed; file bytes cannot.
+      const fh = await fs.open(req.file.path, 'r');
+      const buf = Buffer.alloc(12);
+      await fh.read(buf, 0, 12, 0);
+      await fh.close();
+
+      const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+      const isPng  = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+      const isGif  = buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38;
+      const isWebP = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+                  && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50;
+
+      if (!isJpeg && !isPng && !isGif && !isWebP) {
+        await fs.unlink(req.file.path).catch(() => {});
+        return void res.status(400).json({ error: 'Invalid image format' });
+      }
+
       const imageUrl = `/uploads/chat/${req.file.filename}`;
       res.json({ imageUrl });
     } catch (error) {
+      if (req.file?.path) await fs.unlink(req.file.path).catch(() => {});
       logger.error("Chat image upload failed:", error);
       res.status(500).json({ error: "Upload failed" });
     }
   });
 
   // ── POST /api/messages/send ──────────────────────────────────────────────────
-  app.post("/api/messages/send", requireAuth, async (req, res) => {
+  app.post("/api/messages/send", requireAuth, messageSendLimiter, async (req, res) => {
     try {
       const fromUserId = getSessionUserId(req);
       if (!fromUserId) return void res.status(401).json({ error: "Not authenticated" });
