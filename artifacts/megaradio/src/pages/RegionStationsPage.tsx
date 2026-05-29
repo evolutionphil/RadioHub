@@ -309,22 +309,22 @@ export default function RegionStationsPage() {
             "item": baseUrl
           },
           {
-            "@type": "ListItem", 
+            "@type": "ListItem",
             "position": 2,
             "name": "Regions",
-            "item": `${baseUrl}/regions`
+            "item": `${baseUrl}${getLocalizedPath('/regions')}`
           },
           {
             "@type": "ListItem",
             "position": 3,
             "name": data.region.name,
-            "item": `${baseUrl}/regions/${data.region.slug}`
+            "item": `${baseUrl}${getLocalizedPath(`/regions/${data.region.slug}`)}`
           },
           {
             "@type": "ListItem",
             "position": 4,
             "name": data.country.name,
-            "item": `${baseUrl}/regions/${data.region.slug}/${data.country.slug}`
+            "item": `${baseUrl}${getLocalizedPath(`/regions/${data.region.slug}/${data.country.slug}`)}`
           },
           ...(data.city ? [{
             "@type": "ListItem",

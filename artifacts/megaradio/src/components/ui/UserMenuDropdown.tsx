@@ -5,6 +5,7 @@ import { Link } from 'wouter';
 import { useNotificationService } from '@/services/NotificationService';
 import { useTranslation } from '@/hooks/useTranslation';
 import { getAvatarUrl } from '@/lib/utils';
+import { getLocalizedPath } from '@/utils/slugs';
 import {
   buildDropdownKeyHandler,
   focusFirstInside,
@@ -173,21 +174,21 @@ export function UserMenuDropdown() {
           {/* Navigation Links */}
           <div className="py-1">
             <Link
-              href="/profile/favorites"
+              href={getLocalizedPath("/profile/favorites")}
               className="block px-4 py-2 text-sm text-gray-200 hover:bg-[#2F2F2F] hover:text-white transition-colors"
               onClick={() => setIsOpen(false)}
             >
               {t('user_menu_your_favorites', 'Your Favorites')}
             </Link>
             <Link
-              href="/profile/discover"
+              href={getLocalizedPath("/profile/discover")}
               className="block px-4 py-2 text-sm text-gray-200 hover:bg-[#2F2F2F] hover:text-white transition-colors"
               onClick={() => setIsOpen(false)}
             >
               {t('user_menu_discover', 'Discover')}
             </Link>
             <Link
-              href="/profile/settings"
+              href={getLocalizedPath("/profile/settings")}
               className="block px-4 py-2 text-sm text-gray-200 hover:bg-[#2F2F2F] hover:text-white transition-colors"
               onClick={() => setIsOpen(false)}
             >

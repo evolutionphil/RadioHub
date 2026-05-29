@@ -46,7 +46,7 @@ import { registerSemrushAdminRoutes } from './routes/semrush-admin-routes';
 import { registerUserAuthRoutes } from './routes/user-auth-routes';
 import { registerMobileTvRoutes } from './routes/mobile-tv-routes';
 import { registerTvVersionRoutes } from './routes/tv-version-routes';
-import { registerTranslationKeyRoutes, seedSeoTranslationKeys } from './routes/translation-keys-routes';
+import { registerTranslationKeyRoutes, seedSeoTranslationKeys, seedTurkishUiTranslations } from './routes/translation-keys-routes';
 import { seedSearchPageTranslations } from './seo/search-page-translations-seed';
 import { seedPremiumTranslations } from './seo/premium-translations-seed';
 import { seedSubscriptionUiTranslations } from './seo/subscription-ui-translations-seed';
@@ -935,6 +935,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   void seedPremiumTranslations();
   // Backfill subscription management UI keys (manage screen, status badges, past-due banner)
   void seedSubscriptionUiTranslations();
+  // Backfill Turkish UI translations (nav, homepage sections, common strings)
+  // Idempotent upserts — safe to run on every boot.
+  void seedTurkishUiTranslations().catch(() => {});
   app.use('/api', apiKeyMiddleware);
   app.use('/api/admin/url-translations', urlTranslationsRouter);
   // Admin-only — performance routes include destructive ops (rebuild_indexes,

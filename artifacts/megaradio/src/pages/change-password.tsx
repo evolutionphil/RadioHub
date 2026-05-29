@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { getLocalizedPath } from "@/utils/slugs";
 
 export default function ChangePassword() {
   const [passwordForm, setPasswordForm] = useState({
@@ -131,7 +132,7 @@ export default function ChangePassword() {
               </button>
 
               <Link
-                href="/profile"
+                href={getLocalizedPath("/profile")}
                 className="block text-center text-xl font-medium text-[#FFFFFF30] underline"
               >
                 Back to Profile
