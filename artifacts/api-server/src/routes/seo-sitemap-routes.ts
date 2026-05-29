@@ -981,7 +981,8 @@ Disallow: /api/analytics
 Disallow: /api/messages/
 Disallow: /api/cast/
 Disallow: /api/ml/
-Disallow: /api/image/
+Allow: /api/image/
+Allow: /api/og-image/
 Disallow: /api/internal/
 Disallow: /api/cache/
 Disallow: /api/logs/
@@ -1017,7 +1018,8 @@ Disallow: /api/analytics
 Disallow: /api/messages/
 Disallow: /api/cast/
 Disallow: /api/ml/
-Disallow: /api/image/
+Allow: /api/image/
+Allow: /api/og-image/
 Disallow: /api/internal/
 Disallow: /api/cache/
 Disallow: /api/logs/
@@ -1049,7 +1051,8 @@ Disallow: /api/analytics
 Disallow: /api/messages/
 Disallow: /api/cast/
 Disallow: /api/ml/
-Disallow: /api/image/
+Allow: /api/image/
+Allow: /api/og-image/
 Disallow: /api/internal/
 Disallow: /api/cache/
 Disallow: /api/logs/
