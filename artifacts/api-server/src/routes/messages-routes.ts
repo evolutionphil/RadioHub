@@ -303,12 +303,31 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     }
   });
 
-  app.post("/api/messages/upload-image", requireAuth, imageUploadLimiter, chatUpload.single('image'), (req: any, res) => {
+  app.post("/api/messages/upload-image", requireAuth, imageUploadLimiter, chatUpload.single('image'), async (req: any, res) => {
     try {
       if (!req.file) return void res.status(400).json({ error: 'No image uploaded' });
+
+      // Magic-byte validation — MIME header can be spoofed; file bytes cannot.
+      const fh = await fs.open(req.file.path, 'r');
+      const buf = Buffer.alloc(12);
+      await fh.read(buf, 0, 12, 0);
+      await fh.close();
+
+      const isJpeg = buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF;
+      const isPng  = buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47;
+      const isGif  = buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38;
+      const isWebP = buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46
+                  && buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50;
+
+      if (!isJpeg && !isPng && !isGif && !isWebP) {
+        await fs.unlink(req.file.path).catch(() => {});
+        return void res.status(400).json({ error: 'Invalid image format' });
+      }
+
       const imageUrl = `/uploads/chat/${req.file.filename}`;
       res.json({ imageUrl });
     } catch (error) {
+      if (req.file?.path) await fs.unlink(req.file.path).catch(() => {});
       logger.error("Chat image upload failed:", error);
       res.status(500).json({ error: "Upload failed" });
     }
