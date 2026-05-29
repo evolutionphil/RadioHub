@@ -857,6 +857,23 @@ export async function seedTurkishUiTranslations(): Promise<{ success: boolean; u
         { key: 'button_search_spotify',                value: "Spotify'da Ara" },
         { key: 'button_search_deezer',                 value: "Deezer'da Ara" },
         { key: 'button_share_station',                 value: 'İstasyonu Paylaş' },
+        // === 15 REQUIRED SEO KEYS (hasCompleteSeoTranslations gate) ===
+        // These must exist or /sitemap-main-tr.xml returns 410 Gone and Bing
+        // stops indexing /tr pages. Values match the hardcoded Turkish fallbacks
+        // already in seo-config.ts so output is consistent whether served from
+        // DB or the inline fallback table.
+        { key: 'default_station_about',               value: '{station_name} istasyonunu Mega Radio üzerinden ücretsiz dinle. 120+ ülkeden canlı radyo yayını.' },
+        { key: 'from',                                 value: 'dan' },
+        { key: 'genres',                               value: 'Türler' },
+        { key: 'station_additional_info',              value: "Mega Radio'da ücretsiz dinle. 60.000+ radyo istasyonu, 120+ ülke." },
+        { key: 'live_radio',                           value: 'canlı radyo' },
+        { key: 'online_radio',                         value: 'çevrimiçi radyo' },
+        { key: 'radio_streaming',                      value: 'radyo yayını' },
+        { key: 'hero_worlds_best_radio',               value: 'Mega Radio: 120 Ülkeden Ücretsiz Canlı Radyo Yayını' },
+        { key: 'hero_over_100_countries',              value: '120+ ülkeden 60.000+ radyo istasyonu' },
+        { key: 'hero_listen_everywhere',               value: 'Her yerde, her zaman ücretsiz dinle' },
+        { key: 'popular_genres_title',                 value: 'Popüler Radyo Türleri' },
+        { key: 'popular_countries_title',              value: 'Ülkelere Göre Radyo İstasyonları' },
       ];
 
   let upserted = 0;
@@ -882,6 +899,20 @@ export async function seedSeoTranslationKeys(): Promise<void> {
   const seoKeys = [
     { key: 'seo_from', defaultValue: 'from', category: 'seo' },
     { key: 'seo_listen_live_online', defaultValue: 'Listen Live Online', category: 'seo' },
+    // 15 keys required by hasCompleteSeoTranslations() for a language to qualify
+    // for the sitemap. Without these the sitemap returns 410 Gone for that language.
+    { key: 'default_station_about', defaultValue: 'Listen to {station_name} live on Mega Radio. Free live radio streaming from 120+ countries.', category: 'seo' },
+    { key: 'from', defaultValue: 'from', category: 'seo' },
+    { key: 'genres', defaultValue: 'Genres', category: 'seo' },
+    { key: 'station_additional_info', defaultValue: 'Listen free on Mega Radio. 60,000+ radio stations from 120+ countries.', category: 'seo' },
+    { key: 'live_radio', defaultValue: 'live radio', category: 'seo' },
+    { key: 'online_radio', defaultValue: 'online radio', category: 'seo' },
+    { key: 'radio_streaming', defaultValue: 'radio streaming', category: 'seo' },
+    { key: 'hero_worlds_best_radio', defaultValue: 'Mega Radio: Free Live Radio from 120 Countries', category: 'seo' },
+    { key: 'hero_over_100_countries', defaultValue: '60,000+ radio stations from 120+ countries', category: 'seo' },
+    { key: 'hero_listen_everywhere', defaultValue: 'Listen everywhere, anytime, for free', category: 'seo' },
+    { key: 'popular_genres_title', defaultValue: 'Popular Radio Genres', category: 'seo' },
+    { key: 'popular_countries_title', defaultValue: 'Radio Stations by Country', category: 'seo' },
   ];
 
   for (const item of seoKeys) {

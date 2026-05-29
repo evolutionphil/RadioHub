@@ -163,11 +163,11 @@ function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: 
   if (isImage) {
     return (
       <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
-        <div className="max-w-[70%]">
+        <div className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%]">
           <img
             src={msg.imageUrl}
             alt="Shared image"
-            className="rounded-2xl max-h-64 object-cover cursor-pointer"
+            className="rounded-2xl max-h-64 w-full object-cover cursor-pointer"
             style={{ borderBottomRightRadius: isOwn ? 4 : undefined, borderBottomLeftRadius: isOwn ? undefined : 4 }}
             onClick={() => window.open(msg.imageUrl, '_blank')}
           />
@@ -188,7 +188,7 @@ function Bubble({ msg, isOwn, isLast }: { msg: Message; isOwn: boolean; isLast: 
   return (
     <div className={`flex ${isOwn ? "justify-end" : "justify-start"} mb-1.5`}>
       <div
-        className="max-w-[70%] rounded-2xl px-4 py-2.5"
+        className="max-w-[85%] sm:max-w-[75%] md:max-w-[70%] rounded-2xl px-4 py-2.5"
         style={{
           background: isOwn ? "#FF4199" : "#2A2A2A",
           borderBottomRightRadius: isOwn ? 4 : undefined,
@@ -584,14 +584,13 @@ export default function MessagesPage() {
       `}</style>
 
       <div
-        className="-mx-2 -my-8 md:-mx-8 flex"
-        style={{ height: "calc(100vh - 70px)", overflow: "hidden" }}
+        className="-mx-2 -my-8 md:-mx-8 flex h-[calc(100vh-70px)] sm:h-[calc(100vh-80px)] lg:h-[calc(100vh-90px)] xl:h-[calc(100vh-105px)] overflow-hidden"
       >
         {/* ── Left: conversation list ──
             Mobile: full-width, hidden when chat is open
             Desktop (md+): fixed 260px, always visible  */}
         <div
-          className={`flex-col border-r flex-shrink-0 ${mobileView === 'list' ? 'flex' : 'hidden'} md:flex w-full md:w-[260px]`}
+          className={`flex-col border-r flex-shrink-0 ${mobileView === 'list' ? 'flex' : 'hidden'} sm:flex w-full sm:w-[280px] md:w-[300px]`}
           style={{ background: "#151515", borderColor: "#222" }}
         >
           {/* Header */}
@@ -719,7 +718,7 @@ export default function MessagesPage() {
             Mobile: full-width, hidden when list is showing
             Desktop (md+): flex-1, always visible  */}
         <div
-          className={`flex-col min-w-0 ${mobileView === 'chat' ? 'flex' : 'hidden'} md:flex flex-1`}
+          className={`flex-col min-w-0 ${mobileView === 'chat' ? 'flex' : 'hidden'} sm:flex flex-1`}
           style={{ background: "#0E0E0E" }}
         >
           {activeId ? (
@@ -797,7 +796,7 @@ export default function MessagesPage() {
               {/* Emoji picker */}
               {showEmoji && (
                 <div ref={emojiRef} className="flex-shrink-0 border-t" style={{ background: "#1A1A1A", borderColor: "#222" }}>
-                  <div className="grid grid-cols-8 gap-1 p-3 max-h-48 overflow-y-auto">
+                  <div className="grid grid-cols-6 sm:grid-cols-8 gap-1 p-3 max-h-48 overflow-y-auto">
                     {['😀','😂','🤣','😍','😘','🥰','😊','😎','🤩','🥺','😢','😭','😤','🤔','🤗','🤫','😴','🤮','🥳','😈','👿','💀','👻','🤡','💩','👍','👎','👏','🙌','🤝','❤️','🧡','💛','💚','💙','💜','🖤','💔','🔥','⭐','🎵','🎶','🎤','🎧','📻','📡','🌍','🌈'].map(e => (
                       <button
                         key={e}
@@ -814,7 +813,7 @@ export default function MessagesPage() {
               {/* Input */}
               <div
                 className="flex-shrink-0 flex items-center gap-1.5 px-2 py-2 border-t"
-                style={{ background: "#151515", borderColor: "#222" }}
+                style={{ background: "#151515", borderColor: "#222", paddingBottom: "max(8px, env(safe-area-inset-bottom))" }}
               >
                 <input type="file" ref={fileInputRef} accept="image/*" onChange={handleImageSelect} className="hidden" />
                 <button
@@ -862,8 +861,8 @@ export default function MessagesPage() {
               </div>
             </>
           ) : (
-            /* Desktop empty state — only shown on md+ (mobile always shows list or chat) */
-            <div className="flex-1 hidden md:flex flex-col items-center justify-center gap-4 opacity-40">
+            /* Empty state — only shown on sm+ when no conversation selected */
+            <div className="flex-1 hidden sm:flex flex-col items-center justify-center gap-4 opacity-40">
               <MessageCircle size={48} style={{ color: "#FF4199" }} />
               <div className="text-center">
                 <p className="text-white font-semibold text-base">Your Messages</p>

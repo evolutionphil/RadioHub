@@ -4,10 +4,31 @@ import crypto from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import multer from "multer";
+import { rateLimit } from "express-rate-limit";
 import { type WebSocketServer, type WebSocket } from 'ws';
 import { DirectMessage, User, UserFollow, UserNotification } from '@workspace/db-shared/mongo-schemas';
 import { chatService } from "../services/chat-service";
 import { logger } from "../utils/logger";
+
+// 20 messages per minute per user — allows normal chat while blocking spam
+const messageSendLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: (req: any) => req.session?.user?.userId || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many messages sent. Please slow down." },
+});
+
+// 10 image uploads per 5 minutes per user
+const imageUploadLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  max: 10,
+  keyGenerator: (req: any) => req.session?.user?.userId || req.ip,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many image uploads. Please wait a moment." },
+});
 
 // ─── In-memory WS ticket store (userId, expires in 60s) ───────────────────────
 const wsTickets = new Map<string, { userId: string; expiresAt: number }>();
@@ -282,7 +303,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
     }
   });
 
-  app.post("/api/messages/upload-image", requireAuth, chatUpload.single('image'), (req: any, res) => {
+  app.post("/api/messages/upload-image", requireAuth, imageUploadLimiter, chatUpload.single('image'), (req: any, res) => {
     try {
       if (!req.file) return void res.status(400).json({ error: 'No image uploaded' });
       const imageUrl = `/uploads/chat/${req.file.filename}`;
@@ -294,7 +315,7 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
   });
 
   // ── POST /api/messages/send ──────────────────────────────────────────────────
-  app.post("/api/messages/send", requireAuth, async (req, res) => {
+  app.post("/api/messages/send", requireAuth, messageSendLimiter, async (req, res) => {
     try {
       const fromUserId = getSessionUserId(req);
       if (!fromUserId) return void res.status(401).json({ error: "Not authenticated" });
