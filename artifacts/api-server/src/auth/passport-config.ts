@@ -70,13 +70,19 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       
       // Check if user already exists with this Google ID
       let user = await User.findOne({ googleId: profile.id });
-      
+
       if (user) {
         // Update last login AND avatar (always refresh from Google profile)
         const googleAvatar = profile.photos?.[0]?.value;
         user.lastLoginAt = new Date();
         if (googleAvatar && !user.avatar) {
           (user as any).avatar = googleAvatar;
+        }
+        // Backfill fullName from Google if DB record has none (handles accounts
+        // created before this guard existed, or where displayName was empty at
+        // registration time — avoids showing the generated user_<id> username).
+        if (!user.fullName && profile.displayName) {
+          user.fullName = profile.displayName;
         }
         await user.save();
         return done(null, user);
@@ -124,11 +130,15 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
         counter++;
       }
       
-      // Create new user
+      // Create new user — fullName prefers Google displayName, falls back to
+      // the email username part so we never end up with an empty fullName that
+      // forces the UI to show the generated user_<id> username string.
+      const emailForName = profile.emails?.[0]?.value || '';
+      const derivedFullName = profile.displayName || emailForName.split('@')[0] || '';
       const newUser = new User({
         googleId: profile.id,
-        email: profile.emails?.[0]?.value,
-        fullName: profile.displayName,
+        email: emailForName,
+        fullName: derivedFullName,
         avatar: profile.photos?.[0]?.value,
         username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         slug: userSlug, // Add automatic slug for Google users
@@ -165,47 +175,54 @@ if (process.env.FACEBOOK_APP_ID && process.env.FACEBOOK_APP_SECRET) {
       
       if (user) {
         user.lastLoginAt = new Date();
+        if (!user.fullName && profile.displayName) {
+          user.fullName = profile.displayName;
+        }
         await user.save();
         return done(null, user);
       }
 
       // Check if user exists with same email
       user = await User.findOne({ email: profile.emails?.[0]?.value });
-      
+
       if (user) {
         user.facebookId = profile.id;
         user.lastLoginAt = new Date();
+        if (!user.fullName && profile.displayName) {
+          user.fullName = profile.displayName;
+        }
         await user.save();
         return done(null, user);
       }
 
-      // Generate slug for new Facebook user  
+      // Generate slug for new Facebook user
       const generateSlugForOAuth = (displayName: string, email: string): string => {
         let slugSource = displayName || email.split('@')[0];
         return slugSource
           .toLowerCase()
-          .replace(/[^\w\s-]/g, '') 
-          .replace(/\s+/g, '-') 
-          .replace(/-+/g, '-') 
+          .replace(/[^\w\s-]/g, '')
+          .replace(/\s+/g, '-')
+          .replace(/-+/g, '-')
           .trim()
           .replace(/^-+|-+$/g, '');
       };
-      
+
       const baseSlug = generateSlugForOAuth(profile.displayName, profile.emails?.[0]?.value || '');
       let userSlug = baseSlug;
       let counter = 1;
-      
+
       // Check for slug uniqueness
       while (await User.findOne({ slug: userSlug })) {
         userSlug = `${baseSlug}-${counter}`;
         counter++;
       }
 
-      // Create new user
+      const fbEmail = profile.emails?.[0]?.value || '';
+      const fbFullName = profile.displayName || fbEmail.split('@')[0] || '';
       const newUser = new User({
         facebookId: profile.id,
-        email: profile.emails?.[0]?.value,
-        fullName: profile.displayName,
+        email: fbEmail,
+        fullName: fbFullName,
         avatar: profile.photos?.[0]?.value,
         username: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         slug: userSlug, // Add automatic slug for Facebook users
