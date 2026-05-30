@@ -21,7 +21,7 @@ import {
   countrySlug,
   getRegionSlugForCountry,
 } from "@workspace/seo-shared/country-regions";
-import { Music, Globe, Crown } from "lucide-react";
+import { Music, Globe, Crown, Heart, Compass, MessageCircle, MessageSquareWarning, LogOut } from "lucide-react";
 import {
   buildDropdownKeyHandler as buildSharedDropdownKeyHandler,
   focusFirstInside as focusFirstInsideShared,
@@ -1168,17 +1168,21 @@ export default function RadioHeader({
         </div>
       </nav>
 
-      {/* Mobile Menu - EXACT from original - Rendered via portal for absolute positioning */}
+      {/* Mobile Menu - Rendered via portal for absolute positioning */}
       {isMobileMenuOpen && typeof document !== 'undefined' && createPortal(
-          <div 
-            className="fixed inset-0 min-h-screen bg-[#0E0E0E]/95 backdrop-blur xl:hidden" 
-            style={{ 
-              zIndex: 45,
-              top: '70px',
-              left: 0,
-              right: 0,
-              bottom: 0
-            }}
+          <div
+            className="fixed inset-0 xl:hidden"
+            style={{ zIndex: 45, top: 0, left: 0, right: 0, bottom: 0 }}
+          >
+            {/* Backdrop — tap to close */}
+            <div
+              className="absolute inset-0 bg-black/60"
+              onClick={() => setIsMobileMenuOpen(false)}
+            />
+            {/* Drawer */}
+            <div
+              className="absolute left-0 right-0 bottom-0 bg-[#0E0E0E]/98 backdrop-blur overflow-y-auto"
+              style={{ top: typeof window !== 'undefined' ? (window.innerWidth >= 1024 ? 90 : window.innerWidth >= 768 ? 80 : 70) : 70 }}
           >
             <div className="pt-4 pb-3">
               <div className="space-y-1">
@@ -1246,6 +1250,7 @@ export default function RadioHeader({
                     )}
                 </div>
               </div>
+            </div>
             </div>
           </div>,
           document.body
@@ -1937,53 +1942,53 @@ export default function RadioHeader({
           )}
           data-testid="mobile-profile-dropdown"
         >
-          <Link 
+          <Link
             href={getLocalizedUrl("/profile/favorites")}
             onClick={() => setIsMobileProfileMenuOpen(false)}
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
-            <img src="/favorites.png" alt="Favorites" className="w-5 h-5 mr-3" />
+            <Heart className="w-5 h-5 mr-3 text-[#FF4199]" />
             <span className="text-white text-sm font-medium">Your Favorites</span>
           </Link>
-          
-          <Link 
+
+          <Link
             href={getLocalizedUrl("/profile/discover")}
             onClick={() => setIsMobileProfileMenuOpen(false)}
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
-            <img src="/discovery.png" alt="Discover" className="w-5 h-5 mr-3" />
+            <Compass className="w-5 h-5 mr-3 text-[#FF4199]" />
             <span className="text-white text-sm font-medium">Discover</span>
           </Link>
-          
-          <Link 
+
+          <Link
             href={getLocalizedUrl("/profile/settings")}
             onClick={() => setIsMobileProfileMenuOpen(false)}
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
-            <img src="/profile.png" alt="Profile" className="w-5 h-5 mr-3" />
+            <User className="w-5 h-5 mr-3 text-[#FF4199]" />
             <span className="text-white text-sm font-medium">Profile</span>
           </Link>
-          
-          <Link 
+
+          <Link
             href={getLocalizedUrl("/profile/messages")}
             onClick={() => setIsMobileProfileMenuOpen(false)}
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
-            <img src="/sms.png" alt="Messages" className="w-5 h-5 mr-3" />
+            <MessageCircle className="w-5 h-5 mr-3 text-[#FF4199]" />
             <span className="text-white text-sm font-medium">Messages</span>
           </Link>
-          
+
           <div className="border-t border-[#2D2D2D] my-1"></div>
-          
-          <Link 
+
+          <Link
             href={getLocalizedUrl("/feedback")}
             onClick={() => setIsMobileProfileMenuOpen(false)}
             className="flex items-center px-4 py-3 hover:bg-[#2D2D2D] transition-colors"
           >
-            <img src="/feedback.png" alt="Feedback" className="w-5 h-5 mr-3" />
+            <MessageSquareWarning className="w-5 h-5 mr-3 text-[#FF4199]" />
             <span className="text-white text-sm font-medium">Feedback</span>
           </Link>
-          
+
           <button
             onClick={() => {
               setIsMobileProfileMenuOpen(false);
@@ -1993,7 +1998,7 @@ export default function RadioHeader({
             }}
             className="flex items-center w-full px-4 py-3 hover:bg-[#2D2D2D] transition-colors text-left"
           >
-            <img src="/logout.png" alt="Logout" className="w-5 h-5 mr-3" />
+            <LogOut className="w-5 h-5 mr-3 text-gray-400" />
             <span className="text-white text-sm font-medium">Logout</span>
           </button>
         </div>,

@@ -584,7 +584,7 @@ export default function MessagesPage() {
       `}</style>
 
       <div
-        className="-mx-2 -my-8 md:-mx-8 flex h-[calc(100vh-70px)] sm:h-[calc(100vh-80px)] lg:h-[calc(100vh-90px)] xl:h-[calc(100vh-105px)] overflow-hidden"
+        className="-mx-2 -my-8 md:-mx-8 flex h-[calc(100dvh-70px)] sm:h-[calc(100dvh-80px)] lg:h-[calc(100dvh-90px)] xl:h-[calc(100dvh-105px)] overflow-hidden"
       >
         {/* ── Left: conversation list ──
             Mobile: full-width, hidden when chat is open
