@@ -588,35 +588,56 @@ const IntroductionContent = memo(() => (
 const AuthenticationContent = memo(() => (
   <div>
     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Authentication</h1>
-    <p className="text-lg text-slate-400 leading-relaxed mb-8">All API requests require authentication via an API key. Include your key in every request using one of these methods:</p>
-    <div className="space-y-4 mb-8">
+    <p className="text-slate-400 leading-relaxed mb-8 text-sm sm:text-base">All API requests require an API key. Include your key in every request using one of these methods:</p>
+    <div className="space-y-4 mb-10">
       {[
-        { title: "X-API-Key Header (Recommended)", code: `curl -H "X-API-Key: mr_your_api_key" ${BASE_URL}/api/stations` },
-        { title: "Authorization Bearer", code: `curl -H "Authorization: Bearer mr_your_api_key" ${BASE_URL}/api/stations` },
+        { title: "X-API-Key Header", subtitle: "Recommended", code: `curl -H "X-API-Key: mr_your_api_key" ${BASE_URL}/api/stations` },
+        { title: "Authorization Bearer", subtitle: "Alternative", code: `curl -H "Authorization: Bearer mr_your_api_key" ${BASE_URL}/api/stations` },
       ].map((m) => (
         <div key={m.title}>
-          <h3 className="text-white font-semibold mb-2">{m.title}</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-white font-semibold text-sm">{m.title}</h3>
+            <span className="text-[10px] text-slate-500 bg-white/[0.05] px-2 py-0.5 rounded-full">{m.subtitle}</span>
+          </div>
           <CodeBlock code={m.code} />
         </div>
       ))}
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Getting an API Key</h2>
-    <div className="space-y-6">
-      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Demo Key (Instant)</h3>
-        <p className="text-slate-400 mb-3">Get a temporary key instantly. Valid for 24 hours, limited to 10 req/min. One per IP address.</p>
-        <CodeBlock code={`curl -X GET ${BASE_URL}/api/api-keys/demo`} />
-      </div>
-      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Free Key (Register)</h3>
-        <p className="text-slate-400 mb-3">Register for a permanent key with higher limits. 60 req/min, 1,000 requests/day.</p>
-        <CodeBlock code={`curl -X POST ${BASE_URL}/api/api-keys/user/register \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "email": "dev@example.com",\n    "password": "securepassword",\n    "name": "Your Name",\n    "appName": "My Radio App",\n    "appDescription": "A radio streaming app"\n  }'`} />
-      </div>
-      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Developer Portal</h3>
-        <p className="text-slate-400 mb-3">Manage your API keys, view usage statistics, and upgrade your plan.</p>
-        <a href="/api-user" className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 font-medium transition-colors">
-          Open Developer Portal <ExternalLink className="w-4 h-4" />
+    <h2 className="text-xl font-bold text-white mb-5 flex items-center gap-2">
+      <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+      Getting an API Key
+    </h2>
+    <div className="space-y-4">
+      {[
+        {
+          title: "Demo Key",
+          badge: "Instant · 24h",
+          badgeColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+          desc: "Get a temporary key instantly. Valid for 24 hours, limited to 10 req/min. One per IP address.",
+          code: `curl -X GET ${BASE_URL}/api/api-keys/demo`,
+        },
+        {
+          title: "Free Key",
+          badge: "Register · Permanent",
+          badgeColor: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+          desc: "Register for a permanent key with higher limits. 60 req/min, 1,000 requests/day.",
+          code: `curl -X POST ${BASE_URL}/api/api-keys/user/register \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "email": "dev@example.com",\n    "password": "securepassword",\n    "name": "Your Name",\n    "appName": "My Radio App",\n    "appDescription": "A radio streaming app"\n  }'`,
+        },
+      ].map((tier) => (
+        <div key={tier.title} className="rounded-2xl bg-white/[0.025] border border-white/[0.07] p-5 hover:border-white/[0.12] transition-colors">
+          <div className="flex items-center gap-2.5 mb-3">
+            <h3 className="text-white font-semibold">{tier.title}</h3>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${tier.badgeColor}`}>{tier.badge}</span>
+          </div>
+          <p className="text-slate-400 text-sm mb-4 leading-relaxed">{tier.desc}</p>
+          <CodeBlock code={tier.code} />
+        </div>
+      ))}
+      <div className="rounded-2xl bg-white/[0.025] border border-white/[0.07] p-5 hover:border-white/[0.12] transition-colors">
+        <h3 className="text-white font-semibold mb-2">Developer Portal</h3>
+        <p className="text-slate-400 text-sm mb-4">Manage your API keys, view usage statistics, and upgrade your plan.</p>
+        <a href="/api-user" className="inline-flex items-center gap-2 text-[#FF4199] hover:text-[#FF4199]/80 font-medium transition-colors text-sm">
+          Open Developer Portal <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>
     </div>
@@ -626,44 +647,43 @@ const AuthenticationContent = memo(() => (
 const RateLimitsContent = memo(() => (
   <div>
     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Rate Limits</h1>
-    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+    <p className="text-slate-400 leading-relaxed mb-8 text-sm sm:text-base">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
+    <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto mb-8">
       <table className="w-full text-sm min-w-[480px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Plan</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Req/Min</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Daily</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Monthly</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Price</th>
+          {["Plan", "Req/Min", "Daily", "Monthly", "Price"].map(h => (
+            <th key={h} className="text-left px-5 py-3.5 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">{h}</th>
+          ))}
         </tr></thead>
-        <tbody>
+        <tbody className="divide-y divide-white/[0.04]">
           {[
             { plan: "Demo", rpm: "10", daily: "100", monthly: "500", price: "Free (24h)", color: "text-slate-300" },
             { plan: "Free", rpm: "60", daily: "1,000", monthly: "10,000", price: "Free", color: "text-emerald-400" },
             { plan: "Pro", rpm: "300", daily: "10,000", monthly: "100,000", price: "Contact us", color: "text-blue-400" },
-            { plan: "Internal", rpm: "Unlimited", daily: "Unlimited", monthly: "Unlimited", price: "--", color: "text-purple-400" },
-          ].map((r, i) => (
-            <tr key={r.plan} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-4 sm:px-5 py-3.5 font-semibold whitespace-nowrap ${r.color}`}>{r.plan}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.rpm}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.daily}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.monthly}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-400 whitespace-nowrap">{r.price}</td>
+            { plan: "Internal", rpm: "∞", daily: "∞", monthly: "∞", price: "—", color: "text-purple-400" },
+          ].map((r) => (
+            <tr key={r.plan} className="hover:bg-white/[0.02] transition-colors">
+              <td className={`px-5 py-3.5 font-bold whitespace-nowrap ${r.color}`}>{r.plan}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.rpm}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.daily}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.monthly}</td>
+              <td className="px-5 py-3.5 text-slate-400 whitespace-nowrap">{r.price}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Rate Limit Headers</h2>
-    <p className="text-slate-400 mb-4">Every API response includes these headers so you can track your usage:</p>
+    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+      <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+      Rate Limit Headers
+    </h2>
+    <p className="text-slate-400 mb-4 text-sm">Every API response includes these headers so you can track your usage:</p>
     <CodeBlock code={`X-RateLimit-Limit: 60          # Max requests per minute\nX-RateLimit-Remaining: 58      # Remaining requests this minute\nX-RateLimit-Reset: 45          # Seconds until window resets\nX-Daily-Remaining: 950         # Remaining daily quota`} lang="Response Headers" />
-    <div className="mt-6 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
-      <div className="flex gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-amber-200 font-medium text-sm">Rate Limit Exceeded</p>
-          <p className="text-amber-200/60 text-sm mt-1">When you exceed your rate limit, the API returns <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs">429 Too Many Requests</code>. Back off and retry after the reset window.</p>
-        </div>
+    <div className="mt-6 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 flex gap-3">
+      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+      <div>
+        <p className="text-amber-200 font-semibold text-sm mb-1">Rate Limit Exceeded</p>
+        <p className="text-amber-200/60 text-sm leading-relaxed">When you exceed your rate limit, the API returns <code className="bg-white/[0.07] px-1.5 py-0.5 rounded text-xs text-amber-300">429 Too Many Requests</code>. Back off and retry after the reset window.</p>
       </div>
     </div>
   </div>
@@ -672,34 +692,39 @@ const RateLimitsContent = memo(() => (
 const ErrorsContent = memo(() => (
   <div>
     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Error Handling</h1>
-    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+    <p className="text-slate-400 leading-relaxed mb-8 text-sm sm:text-base">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
+    <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto mb-8">
       <table className="w-full text-sm min-w-[400px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Code</th>
-          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Status</th>
-          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Description</th>
+          {["Code", "Status", "Description"].map(h => (
+            <th key={h} className="text-left px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">{h}</th>
+          ))}
         </tr></thead>
-        <tbody>
+        <tbody className="divide-y divide-white/[0.04]">
           {[
-            { code: "200", status: "OK", desc: "Request succeeded", color: "text-emerald-400" },
-            { code: "400", status: "Bad Request", desc: "Invalid parameters or missing required fields", color: "text-amber-400" },
-            { code: "401", status: "Unauthorized", desc: "Missing or invalid API key / auth token", color: "text-red-400" },
-            { code: "403", status: "Forbidden", desc: "API key lacks permission for this action", color: "text-red-400" },
-            { code: "404", status: "Not Found", desc: "Resource not found", color: "text-amber-400" },
-            { code: "429", status: "Too Many Requests", desc: "Rate limit or quota exceeded", color: "text-red-400" },
-            { code: "500", status: "Internal Error", desc: "Server error — please retry or contact support", color: "text-red-400" },
-          ].map((e, i) => (
-            <tr key={e.code} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-4 sm:px-5 py-3 font-mono font-bold whitespace-nowrap ${e.color}`}>{e.code}</td>
-              <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{e.status}</td>
-              <td className="px-4 sm:px-5 py-3 text-slate-400">{e.desc}</td>
+            { code: "200", status: "OK", desc: "Request succeeded", color: "text-emerald-400", bg: "bg-emerald-500/[0.08]" },
+            { code: "400", status: "Bad Request", desc: "Invalid parameters or missing required fields", color: "text-amber-400", bg: "bg-amber-500/[0.08]" },
+            { code: "401", status: "Unauthorized", desc: "Missing or invalid API key / auth token", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+            { code: "403", status: "Forbidden", desc: "API key lacks permission for this action", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+            { code: "404", status: "Not Found", desc: "Resource not found", color: "text-amber-400", bg: "bg-amber-500/[0.08]" },
+            { code: "429", status: "Too Many Requests", desc: "Rate limit or quota exceeded", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+            { code: "500", status: "Internal Error", desc: "Server error — please retry or contact support", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+          ].map((e) => (
+            <tr key={e.code} className="hover:bg-white/[0.02] transition-colors">
+              <td className="px-5 py-3 whitespace-nowrap">
+                <span className={`font-mono font-bold text-sm px-2 py-0.5 rounded ${e.bg} ${e.color}`}>{e.code}</span>
+              </td>
+              <td className="px-5 py-3 text-white font-medium whitespace-nowrap text-sm">{e.status}</td>
+              <td className="px-5 py-3 text-slate-400 text-sm">{e.desc}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Error Response Format</h2>
+    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+      <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+      Error Response Format
+    </h2>
     <CodeBlock code={`{\n  "error": "Station not found",\n  "statusCode": 404\n}`} lang="JSON" />
   </div>
 ));
@@ -3446,7 +3471,6 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
     () => isAdmin ? [...PUBLIC_NAV_SECTIONS, ...ADMIN_NAV_SECTIONS] : PUBLIC_NAV_SECTIONS,
     [isAdmin]
   );
-
   const filteredSections = useMemo(() => {
     if (!searchQuery) return allSections;
     const q = searchQuery.toLowerCase();
@@ -3458,68 +3482,86 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
 
   const content = (
     <>
-      <div className="p-4 border-b border-white/5">
-        <a href="/en" className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+      {/* Logo */}
+      <div className="p-5 border-b border-white/[0.06]">
+        <a href="/en" className="flex items-center gap-3 mb-5 group">
+          <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-[#FF4199] to-[#FF6B35] flex items-center justify-center shadow-[0_0_20px_rgba(255,65,153,0.3)] group-hover:shadow-[0_0_25px_rgba(255,65,153,0.45)] transition-shadow">
             <Radio className="w-4 h-4 text-white" />
           </div>
           <div>
             <div className="text-white font-bold text-sm leading-none">Mega Radio</div>
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">API Reference</div>
+            <div className="text-[9px] text-slate-500 uppercase tracking-[0.18em] mt-1">API Reference</div>
           </div>
         </a>
+        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search docs..."
-            className="w-full bg-white/5 border border-white/5 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+            placeholder="Search endpoints..."
+            className="w-full bg-white/[0.04] border border-white/[0.07] rounded-xl pl-9 pr-3 py-2.5 text-[13px] text-white placeholder:text-slate-600 focus:outline-none focus:border-[#FF4199]/40 focus:bg-white/[0.06] transition-all"
           />
         </div>
       </div>
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
         {filteredSections.map((section, idx) => {
           const isAdminSection = ADMIN_NAV_SECTIONS.some(s => s.id === section.id);
           const isFirstAdminSection = isAdminSection && (idx === 0 || !ADMIN_NAV_SECTIONS.some(s => s.id === filteredSections[idx - 1]?.id));
           return (
-            <div key={section.id} className="mb-3">
+            <div key={section.id} className="mb-2">
               {isFirstAdminSection && (
-                <div className="flex items-center gap-2 mx-3 mb-3 mt-2">
+                <div className="flex items-center gap-2 px-3 mb-3 mt-4">
                   <div className="flex-1 h-px bg-red-500/20" />
-                  <span className="text-[9px] uppercase tracking-widest text-red-500/60 font-bold px-1">Admin Only</span>
+                  <span className="text-[8px] uppercase tracking-[0.2em] text-red-500/50 font-bold px-1">Admin Only</span>
                   <div className="flex-1 h-px bg-red-500/20" />
                 </div>
               )}
-              <div className={`flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] font-semibold ${isAdminSection ? "text-red-500/60" : "text-slate-500"}`}>
-                <section.icon className="w-3.5 h-3.5" />
+              <div className={`flex items-center gap-2 px-3 py-2 text-[9px] uppercase tracking-[0.18em] font-bold ${isAdminSection ? "text-red-500/50" : "text-slate-600"}`}>
+                <section.icon className="w-3 h-3" />
                 {section.label}
               </div>
-              {section.items.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => { onNavigate(item.id); onMobileClose(); }}
-                  className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-colors ${
-                    activeId === item.id
-                      ? isAdminSection
-                        ? "bg-red-500/10 text-red-400 font-medium"
-                        : "bg-blue-500/10 text-blue-400 font-medium"
-                      : "text-slate-400 hover:text-white hover:bg-white/5"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {section.items.map((item) => {
+                const isActive = activeId === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { onNavigate(item.id); onMobileClose(); }}
+                    className={`relative w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${
+                      isActive
+                        ? isAdminSection
+                          ? "bg-red-500/[0.1] text-red-300 font-medium"
+                          : "bg-white/[0.07] text-white font-medium"
+                        : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    {isActive && (
+                      <span
+                        aria-hidden="true"
+                        className={`absolute left-0 top-1 bottom-1 w-0.5 rounded-full ${isAdminSection ? "bg-red-500" : "bg-gradient-to-b from-[#FF4199] to-[#FF6B35]"}`}
+                      />
+                    )}
+                    <span className="pl-1">{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
           );
         })}
       </nav>
-      <div className="p-4 border-t border-white/5">
-        <a href="/api-user" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 text-blue-400 text-sm font-medium hover:bg-blue-500/20 transition-colors">
-          <Shield className="w-4 h-4" />
+
+      {/* Footer */}
+      <div className="p-4 border-t border-white/[0.06]">
+        <a
+          href="/api-user"
+          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#FF4199]/[0.1] to-[#FF6B35]/[0.08] border border-[#FF4199]/20 text-sm font-medium text-white hover:from-[#FF4199]/[0.16] hover:to-[#FF6B35]/[0.12] transition-all"
+        >
+          <Shield className="w-4 h-4 text-[#FF4199]" />
           Developer Portal
-          <ArrowRight className="w-3.5 h-3.5 ml-auto" />
+          <ArrowRight className="w-3.5 h-3.5 ml-auto text-slate-500" />
         </a>
       </div>
     </>
@@ -3527,15 +3569,17 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
 
   return (
     <>
-      <aside className="hidden lg:flex flex-col w-[260px] h-screen sticky top-0 bg-[#0a0a14] border-r border-white/5 shrink-0">
+      <aside className="hidden lg:flex flex-col w-[265px] h-screen sticky top-0 bg-[#060810] border-r border-white/[0.06] shrink-0">
         {content}
       </aside>
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/60" onClick={onMobileClose} />
-          <aside className="absolute left-0 top-0 bottom-0 w-[280px] bg-[#0a0a14] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-end p-2 border-b border-white/5">
-              <button onClick={onMobileClose} className="p-2 text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onMobileClose} />
+          <aside className="absolute left-0 top-0 bottom-0 w-[280px] bg-[#060810] flex flex-col shadow-2xl border-r border-white/[0.06]">
+            <div className="flex items-center justify-end p-3 border-b border-white/[0.06]">
+              <button onClick={onMobileClose} className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-white/[0.06] transition-colors">
+                <X className="w-5 h-5" />
+              </button>
             </div>
             {content}
           </aside>
@@ -3547,11 +3591,14 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
 
 function AdminBanner() {
   return (
-    <div className="mb-8 flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/8 border border-red-500/20">
-      <Lock className="w-4 h-4 text-red-400 shrink-0" />
+    <div className="mb-8 relative overflow-hidden flex items-start gap-4 px-5 py-4 rounded-2xl bg-red-950/30 border border-red-500/25">
+      <div aria-hidden="true" className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
+      <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-red-500/15 border border-red-500/25 flex items-center justify-center">
+        <Lock className="w-4 h-4 text-red-400" />
+      </div>
       <div>
-        <p className="text-sm font-semibold text-red-300">Admin API — Private</p>
-        <p className="text-xs text-red-400/70 mt-0.5">These endpoints require an active admin session. Not exposed to public API key users.</p>
+        <p className="text-sm font-semibold text-red-300 mb-0.5">Admin API — Restricted Access</p>
+        <p className="text-xs text-red-400/60 leading-relaxed">These endpoints require an active admin session. Not accessible via public API keys.</p>
       </div>
     </div>
   );
@@ -3691,13 +3738,12 @@ export default function ApiDocs() {
   }, [activeId]);
 
   const ContentComponent = SECTION_CONTENT[activeId] || SECTION_CONTENT["introduction"];
-
   const allNavSections = isAdmin ? [...PUBLIC_NAV_SECTIONS, ...ADMIN_NAV_SECTIONS] : PUBLIC_NAV_SECTIONS;
   const breadcrumbSection = allNavSections.find((s) => s.items.some((i) => i.id === activeId));
   const breadcrumbItem = breadcrumbSection?.items.find((i) => i.id === activeId);
 
   return (
-    <div className="flex min-h-screen bg-[#0d0d1a] text-white">
+    <div className="flex min-h-screen bg-[#080810] text-white">
       <Sidebar
         activeId={activeId}
         onNavigate={handleNavigate}
@@ -3707,31 +3753,65 @@ export default function ApiDocs() {
         onMobileClose={() => setMobileOpen(false)}
         isAdmin={isAdmin}
       />
-      <main className="flex-1 min-w-0">
-        <header className="sticky top-0 z-10 bg-[#0d0d1a]/80 backdrop-blur-xl border-b border-white/5">
-          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-3">
-            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1.5 text-slate-400 hover:text-white shrink-0">
+
+      <main className="flex-1 min-w-0 flex flex-col">
+        {/* Top header bar */}
+        <header className="sticky top-0 z-10 bg-[#080810]/85 backdrop-blur-xl border-b border-white/[0.06]">
+          {/* Gradient accent line */}
+          <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FF4199]/25 to-transparent" />
+          <div className="flex items-center gap-3 px-4 sm:px-6 py-3.5">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="lg:hidden p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-white/[0.06] transition-colors shrink-0"
+              aria-label="Open navigation"
+            >
               <Menu className="w-5 h-5" />
             </button>
             {breadcrumbSection && breadcrumbItem && (
-              <div className="flex items-center gap-1.5 sm:gap-2 text-sm min-w-0 overflow-hidden">
-                <span className="text-slate-500 truncate hidden sm:inline">{breadcrumbSection.label}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0 hidden sm:inline" />
-                <span className="text-white font-medium truncate">{breadcrumbItem.label}</span>
+              <div className="flex items-center gap-2 text-sm min-w-0 overflow-hidden">
+                <span className="text-slate-600 truncate hidden sm:inline text-[13px]">{breadcrumbSection.label}</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-700 shrink-0 hidden sm:inline" />
+                <span className="text-slate-300 font-medium truncate text-[13px]">{breadcrumbItem.label}</span>
               </div>
             )}
-            <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
-              <a href="/api-user" className="text-xs text-slate-400 hover:text-white transition-colors hidden sm:inline">Dashboard</a>
-              <a href="/en" className="text-xs text-slate-400 hover:text-white transition-colors">← Radio</a>
+            <div className="ml-auto flex items-center gap-3 shrink-0">
+              <a href="/api-user" className="hidden sm:flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-white transition-colors">
+                <Shield className="w-3.5 h-3.5" />Dashboard
+              </a>
+              <div className="w-px h-4 bg-white/[0.1] hidden sm:block" />
+              <a href="/en" className="flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-white transition-colors">
+                <Radio className="w-3.5 h-3.5" />Radio
+              </a>
             </div>
           </div>
         </header>
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-          <ContentComponent />
+
+        {/* Content */}
+        <div className="flex-1 relative">
+          {/* Subtle ambient glows for main content area */}
+          <div aria-hidden="true" className="pointer-events-none fixed top-20 right-0 w-[600px] h-[600px] rounded-full bg-[#FF4199]/[0.03] blur-[150px]" />
+          <div aria-hidden="true" className="pointer-events-none fixed bottom-0 left-1/3 w-[500px] h-[500px] rounded-full bg-purple-600/[0.03] blur-[130px]" />
+
+          <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+            <ContentComponent />
+          </div>
         </div>
-        <footer className="border-t border-white/5 mt-16 sm:mt-20">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 text-center">
-            <p className="text-sm text-slate-500">Mega Radio API v1.0 -- Need help? Contact <a href="mailto:api@themegaradio.com" className="text-blue-400 hover:text-blue-300">api@themegaradio.com</a></p>
+
+        {/* Footer */}
+        <footer className="border-t border-white/[0.06] mt-8">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#FF4199] to-[#FF6B35] flex items-center justify-center">
+                <Radio className="w-3 h-3 text-white" />
+              </div>
+              <span className="text-sm text-slate-600">Mega Radio API v1.0</span>
+            </div>
+            <p className="text-xs text-slate-600">
+              Need help?{' '}
+              <a href="mailto:api@themegaradio.com" className="text-[#FF4199]/70 hover:text-[#FF4199] transition-colors">
+                api@themegaradio.com
+              </a>
+            </p>
           </div>
         </footer>
       </main>
