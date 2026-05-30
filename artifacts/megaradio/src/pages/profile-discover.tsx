@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useState, useMemo } from "react";
 import { useLocation, Link } from "wouter";
 import { Swiper, SwiperSlide } from 'swiper/react';
@@ -155,6 +155,7 @@ export default function ProfileDiscover() {
     },
     enabled: !!countryCode,
     staleTime: 7 * 24 * 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
   const popularStationsData = countryStationsData;
   const localStationsRaw = countryStationsData;
@@ -227,6 +228,7 @@ export default function ProfileDiscover() {
       return result.data || [];
     },
     staleTime: 7 * 24 * 60 * 60 * 1000,
+    placeholderData: keepPreviousData,
   });
   const similarLoading = globalStationsLoading;
 

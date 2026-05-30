@@ -3,7 +3,7 @@ import { useLocation } from "wouter";
 import { useState, useEffect, startTransition } from "react";
 import { Menu, X, Heart, Compass, User as UserIcon, MessageCircle, MessageSquareWarning, LogOut } from "lucide-react";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 function NavLink({ href, children, isActive }: { href: string; children: React.ReactNode; isActive: boolean }) {
   const [, navigate] = useLocation();
@@ -31,6 +31,8 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
+  const queryClient = useQueryClient();
+
   // Preload all profile sub-pages when ProfileLayout first mounts.
   // This prevents the React 18 "suspended during synchronous input" warning
   // that occurs when lazy-loaded components haven't been fetched yet at click time.
@@ -42,7 +44,24 @@ export default function ProfileLayout({ children }: ProfileLayoutProps) {
       import("@/pages/profile-settings"),
       import("@/pages/notifications-view"),
     ]);
-  }, []);
+
+    // Prefetch global stations so Discover page shows data instantly.
+    // The backend serves this from an in-memory precomputed cache (warm since
+    // the 4h cron), so the fetch is fast. staleTime matches the Discover page
+    // so TanStack Query reuses this cache entry when the user navigates there.
+    queryClient.prefetchQuery({
+      queryKey: ["/api/stations/global-100"],
+      queryFn: async () => {
+        const res = await fetch("/api/stations/precomputed?countryName=global&page=1&limit=100", {
+          credentials: "include",
+        });
+        if (!res.ok) return [];
+        const result = await res.json();
+        return result.data || [];
+      },
+      staleTime: 7 * 24 * 60 * 60 * 1000,
+    });
+  }, [queryClient]);
 
   const { data: unreadData } = useQuery<{ count: number }>({
     queryKey: ["/api/messages/unread-count"],
