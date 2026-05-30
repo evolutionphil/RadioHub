@@ -50,6 +50,7 @@ import { registerTranslationKeyRoutes, seedSeoTranslationKeys, seedTurkishUiTran
 import { seedSearchPageTranslations } from './seo/search-page-translations-seed';
 import { seedPremiumTranslations } from './seo/premium-translations-seed';
 import { seedSubscriptionUiTranslations } from './seo/subscription-ui-translations-seed';
+import { seedAllLanguagesSeoTranslations } from './seo/all-languages-seo-seed';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
@@ -926,10 +927,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.use('/api/user-engagement', userEngagementRouter);
   app.use('/api/api-keys', apiKeysRouter);
   seedDemoApiKey();
-  // seedSeoTranslationKeys must complete before seedTurkishUiTranslations so the
-  // TranslationKey documents exist when Turkish tries to upsert against them.
+  // seedSeoTranslationKeys must complete before the language seeders so that
+  // TranslationKey documents exist when upserts run against them.
   void seedSeoTranslationKeys()
-    .then(() => seedTurkishUiTranslations())
+    .then(() => Promise.all([seedTurkishUiTranslations(), seedAllLanguagesSeoTranslations()]))
     .catch(() => {});
   // Backfill in-page search_* translations for every SEO_LANGUAGES code.
   // Guarded by tests/search-translations-db-coverage.test.ts (task #298).
