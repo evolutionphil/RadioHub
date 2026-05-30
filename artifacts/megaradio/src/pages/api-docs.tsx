@@ -353,22 +353,22 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
   return (
     <div className="mt-6">
       <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">{title}</h4>
-      <div className="border border-white/5 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="border border-white/5 rounded-lg overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm min-w-[480px]">
           <thead><tr className="bg-white/[0.02]">
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Parameter</th>
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Type</th>
+            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Parameter</th>
+            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Type</th>
             <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Description</th>
           </tr></thead>
           <tbody>
             {params.map((p, i) => (
               <tr key={p.name} className={i % 2 === 0 ? "bg-transparent" : "bg-white/[0.01]"}>
-                <td className="px-4 py-3 font-mono text-[13px]">
+                <td className="px-4 py-3 font-mono text-[13px] whitespace-nowrap">
                   <span className="text-sky-400">{p.name}</span>
                   {p.required && <span className="ml-1.5 text-[10px] text-red-400 font-sans font-medium">required</span>}
                   {p.default && <span className="ml-1.5 text-[10px] text-slate-500 font-sans">= {p.default}</span>}
                 </td>
-                <td className="px-4 py-3 text-amber-300/80 font-mono text-[13px]">{p.type}</td>
+                <td className="px-4 py-3 text-amber-300/80 font-mono text-[13px] whitespace-nowrap">{p.type}</td>
                 <td className="px-4 py-3 text-slate-400">{p.description}</td>
               </tr>
             ))}
@@ -393,19 +393,19 @@ function AuthBadge({ level }: { level: AuthLevel }) {
 function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
   const authLevel = endpoint.auth ?? "api-key";
   return (
-    <div id={endpoint.id} className="scroll-mt-20 mb-12 rounded-xl border border-white/[0.06] bg-white/[0.015] p-6 hover:border-white/[0.1] transition-colors">
-      <div className="flex flex-wrap items-center gap-2.5 mb-3">
+    <div id={endpoint.id} className="scroll-mt-20 mb-10 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 sm:p-6 hover:border-white/[0.1] transition-colors">
+      <div className="flex flex-wrap items-start gap-2 mb-3">
         <MethodBadge method={endpoint.method} />
-        <code className="text-sm font-mono text-slate-300 bg-white/[0.06] px-3 py-1 rounded-md flex-1 min-w-0 truncate">{endpoint.path}</code>
+        <code className="text-xs sm:text-sm font-mono text-slate-300 bg-white/[0.06] px-2.5 sm:px-3 py-1 rounded-md flex-1 min-w-0 break-all">{endpoint.path}</code>
         <AuthBadge level={authLevel} />
       </div>
-      <h3 className="text-lg font-semibold text-white mb-2">{endpoint.title}</h3>
-      <p className="text-slate-400 leading-relaxed mb-6 text-[15px]">{endpoint.description}</p>
+      <h3 className="text-base sm:text-lg font-semibold text-white mb-2">{endpoint.title}</h3>
+      <p className="text-slate-400 leading-relaxed mb-5 text-sm sm:text-[15px]">{endpoint.description}</p>
       {endpoint.params && <ParamTable params={endpoint.params} title="Query Parameters" />}
       {endpoint.bodyParams && <ParamTable params={endpoint.bodyParams} title="Body Parameters" />}
       {endpoint.headers && <ParamTable params={endpoint.headers} title="Headers" />}
       {endpoint.notes && endpoint.notes.length > 0 && (
-        <div className="mt-4 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
+        <div className="mt-4 p-3 sm:p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
           <div className="flex gap-3">
             <AlertTriangle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
@@ -416,13 +416,13 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
           </div>
         </div>
       )}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div>
-          <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">Request</h4>
+          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Request</h4>
           <CodeTabs examples={endpoint.codeExamples} />
         </div>
         <div>
-          <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">Response</h4>
+          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Response</h4>
           <CodeBlock code={endpoint.responseExample} lang="JSON" />
         </div>
       </div>
@@ -432,11 +432,11 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
 
 const IntroductionContent = memo(() => (
   <div>
-    <div className="mb-12">
-      <h1 className="text-4xl font-bold text-white mb-4">Mega Radio API</h1>
-      <p className="text-lg text-slate-400 leading-relaxed max-w-2xl">Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences with our REST API.</p>
+    <div className="mb-10 sm:mb-12">
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Mega Radio API</h1>
+      <p className="text-base sm:text-lg text-slate-400 leading-relaxed max-w-2xl">Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences with our REST API.</p>
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-10 sm:mb-12">
       {[
         { icon: Radio, title: "40,000+ Stations", desc: "Global radio stations with metadata, logos, and stream URLs" },
         { icon: Zap, title: "Real-time Streaming", desc: "HLS and direct stream resolution with now-playing metadata" },
@@ -459,12 +459,12 @@ const IntroductionContent = memo(() => (
     <div className="mt-8">
       <h2 className="text-2xl font-bold text-white mb-4">Country Filter Formats</h2>
       <p className="text-slate-400 mb-4">The <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs text-sky-400">country</code> parameter accepts multiple formats across all endpoints:</p>
-      <div className="border border-white/5 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm min-w-[420px]">
           <thead><tr className="bg-white/[0.03]">
-            <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Format</th>
-            <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Example</th>
-            <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Resolves To</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Format</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Example</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Resolves To</th>
           </tr></thead>
           <tbody>
             {[
@@ -477,9 +477,9 @@ const IntroductionContent = memo(() => (
               { format: "ASCII variant", example: "turkiye, Turkiye", resolves: "Turkey" },
             ].map((r, i) => (
               <tr key={r.format} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-                <td className="px-5 py-3 text-white font-medium">{r.format}</td>
-                <td className="px-5 py-3 text-sky-400 font-mono text-[13px]">{r.example}</td>
-                <td className="px-5 py-3 text-slate-400">{r.resolves}</td>
+                <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{r.format}</td>
+                <td className="px-4 sm:px-5 py-3 text-sky-400 font-mono text-[13px] whitespace-nowrap">{r.example}</td>
+                <td className="px-4 sm:px-5 py-3 text-slate-400">{r.resolves}</td>
               </tr>
             ))}
           </tbody>
@@ -491,7 +491,7 @@ const IntroductionContent = memo(() => (
 
 const AuthenticationContent = memo(() => (
   <div>
-    <h1 className="text-4xl font-bold text-white mb-4">Authentication</h1>
+    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Authentication</h1>
     <p className="text-lg text-slate-400 leading-relaxed mb-8">All API requests require authentication via an API key. Include your key in every request using one of these methods:</p>
     <div className="space-y-4 mb-8">
       {[
@@ -529,16 +529,16 @@ const AuthenticationContent = memo(() => (
 
 const RateLimitsContent = memo(() => (
   <div>
-    <h1 className="text-4xl font-bold text-white mb-4">Rate Limits</h1>
-    <p className="text-lg text-slate-400 leading-relaxed mb-8">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden mb-8">
-      <table className="w-full text-sm">
+    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Rate Limits</h1>
+    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
+    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+      <table className="w-full text-sm min-w-[480px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Plan</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Requests/Min</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Daily Quota</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Monthly Quota</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Price</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Plan</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Req/Min</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Daily</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Monthly</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Price</th>
         </tr></thead>
         <tbody>
           {[
@@ -548,11 +548,11 @@ const RateLimitsContent = memo(() => (
             { plan: "Internal", rpm: "Unlimited", daily: "Unlimited", monthly: "Unlimited", price: "--", color: "text-purple-400" },
           ].map((r, i) => (
             <tr key={r.plan} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-5 py-3.5 font-semibold ${r.color}`}>{r.plan}</td>
-              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.rpm}</td>
-              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.daily}</td>
-              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.monthly}</td>
-              <td className="px-5 py-3.5 text-slate-400">{r.price}</td>
+              <td className={`px-4 sm:px-5 py-3.5 font-semibold whitespace-nowrap ${r.color}`}>{r.plan}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.rpm}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.daily}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.monthly}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-400 whitespace-nowrap">{r.price}</td>
             </tr>
           ))}
         </tbody>
@@ -575,14 +575,14 @@ const RateLimitsContent = memo(() => (
 
 const ErrorsContent = memo(() => (
   <div>
-    <h1 className="text-4xl font-bold text-white mb-4">Error Handling</h1>
-    <p className="text-lg text-slate-400 leading-relaxed mb-8">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden mb-8">
-      <table className="w-full text-sm">
+    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Error Handling</h1>
+    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
+    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+      <table className="w-full text-sm min-w-[400px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Code</th>
-          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Status</th>
-          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Description</th>
+          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Code</th>
+          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Status</th>
+          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Description</th>
         </tr></thead>
         <tbody>
           {[
@@ -592,18 +592,18 @@ const ErrorsContent = memo(() => (
             { code: "403", status: "Forbidden", desc: "API key lacks permission for this action", color: "text-red-400" },
             { code: "404", status: "Not Found", desc: "Resource not found", color: "text-amber-400" },
             { code: "429", status: "Too Many Requests", desc: "Rate limit or quota exceeded", color: "text-red-400" },
-            { code: "500", status: "Internal Error", desc: "Server error -- please retry or contact support", color: "text-red-400" },
+            { code: "500", status: "Internal Error", desc: "Server error — please retry or contact support", color: "text-red-400" },
           ].map((e, i) => (
             <tr key={e.code} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-5 py-3 font-mono font-bold ${e.color}`}>{e.code}</td>
-              <td className="px-5 py-3 text-white font-medium">{e.status}</td>
-              <td className="px-5 py-3 text-slate-400">{e.desc}</td>
+              <td className={`px-4 sm:px-5 py-3 font-mono font-bold whitespace-nowrap ${e.color}`}>{e.code}</td>
+              <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{e.status}</td>
+              <td className="px-4 sm:px-5 py-3 text-slate-400">{e.desc}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Error Response Format</h2>
+    <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Error Response Format</h2>
     <CodeBlock code={`{\n  "error": "Station not found",\n  "statusCode": 404\n}`} lang="JSON" />
   </div>
 ));
@@ -3320,7 +3320,7 @@ class MegaRadioClient(private val apiKey: String) {
 
   return (
     <div>
-      <h1 className="text-4xl font-bold text-white mb-4">{guide.title}</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">{guide.title}</h1>
       <p className="text-lg text-slate-400 leading-relaxed mb-8">Complete example showing how to integrate Mega Radio API into your {guide.lang} application.</p>
       <CodeBlock code={guide.code} lang={guide.lang} />
     </div>
@@ -3330,7 +3330,7 @@ class MegaRadioClient(private val apiKey: String) {
 function EndpointSection({ title, description, endpoints }: { title: string; description: string; endpoints: Endpoint[] }) {
   return (
     <div>
-      <h1 className="text-4xl font-bold text-white mb-4">{title}</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">{title}</h1>
       <p className="text-lg text-slate-400 leading-relaxed mb-10">{description}</p>
       {endpoints.map((ep) => <EndpointCard key={ep.id} endpoint={ep} />)}
     </div>
@@ -3613,28 +3613,28 @@ export default function ApiDocs() {
       />
       <main className="flex-1 min-w-0">
         <header className="sticky top-0 z-10 bg-[#0d0d1a]/80 backdrop-blur-xl border-b border-white/5">
-          <div className="flex items-center gap-3 px-6 py-3">
-            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1.5 text-slate-400 hover:text-white">
+          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-3">
+            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1.5 text-slate-400 hover:text-white shrink-0">
               <Menu className="w-5 h-5" />
             </button>
             {breadcrumbSection && breadcrumbItem && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-500">{breadcrumbSection.label}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                <span className="text-white font-medium">{breadcrumbItem.label}</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 text-sm min-w-0 overflow-hidden">
+                <span className="text-slate-500 truncate hidden sm:inline">{breadcrumbSection.label}</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0 hidden sm:inline" />
+                <span className="text-white font-medium truncate">{breadcrumbItem.label}</span>
               </div>
             )}
-            <div className="ml-auto flex items-center gap-3">
-              <a href="/api-user" className="text-xs text-slate-400 hover:text-white transition-colors">Dashboard</a>
-              <a href="/en" className="text-xs text-slate-400 hover:text-white transition-colors">Back to Radio</a>
+            <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+              <a href="/api-user" className="text-xs text-slate-400 hover:text-white transition-colors hidden sm:inline">Dashboard</a>
+              <a href="/en" className="text-xs text-slate-400 hover:text-white transition-colors">← Radio</a>
             </div>
           </div>
         </header>
-        <div className="max-w-4xl mx-auto px-6 py-10">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <ContentComponent />
         </div>
-        <footer className="border-t border-white/5 mt-20">
-          <div className="max-w-4xl mx-auto px-6 py-8 text-center">
+        <footer className="border-t border-white/5 mt-16 sm:mt-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 text-center">
             <p className="text-sm text-slate-500">Mega Radio API v1.0 -- Need help? Contact <a href="mailto:api@themegaradio.com" className="text-blue-400 hover:text-blue-300">api@themegaradio.com</a></p>
           </div>
         </footer>
