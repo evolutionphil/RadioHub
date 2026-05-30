@@ -38,12 +38,12 @@ interface NavSection {
   items: { id: string; label: string }[];
 }
 
-const METHOD_STYLES: Record<Method, { bg: string; text: string; border: string }> = {
-  GET: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
-  POST: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
-  PUT: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" },
-  DELETE: { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20" },
-  PATCH: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20" },
+const METHOD_STYLES: Record<Method, { bg: string; text: string; border: string; glow: string }> = {
+  GET:    { bg: "bg-emerald-500/[0.12]", text: "text-emerald-400", border: "border-emerald-500/30", glow: "shadow-[0_0_10px_rgba(52,211,153,0.15)]" },
+  POST:   { bg: "bg-blue-500/[0.12]",    text: "text-blue-400",    border: "border-blue-500/30",    glow: "shadow-[0_0_10px_rgba(96,165,250,0.15)]" },
+  PUT:    { bg: "bg-amber-500/[0.12]",   text: "text-amber-400",   border: "border-amber-500/30",   glow: "shadow-[0_0_10px_rgba(251,191,36,0.15)]" },
+  DELETE: { bg: "bg-red-500/[0.12]",     text: "text-red-400",     border: "border-red-500/30",     glow: "shadow-[0_0_10px_rgba(248,113,113,0.15)]" },
+  PATCH:  { bg: "bg-purple-500/[0.12]",  text: "text-purple-400",  border: "border-purple-500/30",  glow: "shadow-[0_0_10px_rgba(192,132,252,0.15)]" },
 };
 
 const AUTH_LEVEL_STYLES: Record<AuthLevel, { label: string; bg: string; text: string; border: string }> = {
@@ -306,23 +306,41 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000);
   }, [text]);
   return (
-    <button onClick={handleCopy} className="absolute top-3 right-3 p-1.5 rounded-md bg-white/5 hover:bg-white/10 transition-colors" aria-label="Copy">
-      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+    <button
+      onClick={handleCopy}
+      className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] transition-all text-[11px] font-medium"
+      aria-label={copied ? "Copied!" : "Copy code"}
+    >
+      {copied ? (
+        <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied</span></>
+      ) : (
+        <><Copy className="w-3 h-3 text-slate-400" /><span className="text-slate-400">Copy</span></>
+      )}
     </button>
   );
 }
 
 function MethodBadge({ method }: { method: Method }) {
   const s = METHOD_STYLES[method];
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold tracking-wider ${s.bg} ${s.text} border ${s.border}`}>{method}</span>;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold tracking-widest uppercase ${s.bg} ${s.text} border ${s.border} ${s.glow}`}>
+      {method}
+    </span>
+  );
 }
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
-    <div className="relative group rounded-lg bg-[#0d1117] border border-white/5 overflow-hidden">
-      {lang && <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-white/5 font-medium">{lang}</div>}
+    <div className="relative group rounded-xl bg-[#060912] border border-white/[0.07] overflow-hidden">
+      {lang && (
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.02]">
+          <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{lang}</span>
+        </div>
+      )}
       <CopyButton text={code} />
-      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed"><code className="text-slate-300 font-mono">{code}</code></pre>
+      <pre className="p-5 overflow-x-auto text-[13px] leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+        <code className="text-slate-300 font-mono">{code}</code>
+      </pre>
     </div>
   );
 }
@@ -332,17 +350,27 @@ function CodeTabs({ examples }: { examples: Partial<Record<CodeLang, string>> })
   const [active, setActive] = useState<CodeLang>(langs[0]);
   if (langs.length === 0) return null;
   return (
-    <div className="rounded-lg bg-[#0d1117] border border-white/5 overflow-hidden">
-      <div className="flex border-b border-white/5 overflow-x-auto">
+    <div className="rounded-xl bg-[#060912] border border-white/[0.07] overflow-hidden">
+      <div className="flex items-center gap-1 px-3 py-2.5 border-b border-white/[0.06] bg-white/[0.02] overflow-x-auto">
         {langs.map((lang) => (
-          <button key={lang} onClick={() => setActive(lang)} className={`px-4 py-2 text-xs font-medium whitespace-nowrap transition-colors ${active === lang ? "text-white bg-white/5 border-b-2 border-blue-400" : "text-slate-500 hover:text-slate-300"}`}>
+          <button
+            key={lang}
+            onClick={() => setActive(lang)}
+            className={`px-3 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-all ${
+              active === lang
+                ? "bg-gradient-to-r from-[#FF4199]/20 to-[#FF6B35]/20 text-white border border-[#FF4199]/30"
+                : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+            }`}
+          >
             {CODE_LANG_LABELS[lang]}
           </button>
         ))}
       </div>
       <div className="relative">
         <CopyButton text={examples[active] || ""} />
-        <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed"><code className="text-slate-300 font-mono">{examples[active]}</code></pre>
+        <pre className="p-5 overflow-x-auto text-[13px] leading-relaxed">
+          <code className="text-slate-300 font-mono">{examples[active]}</code>
+        </pre>
       </div>
     </div>
   );
@@ -352,24 +380,31 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
   if (!params.length) return null;
   return (
     <div className="mt-6">
-      <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">{title}</h4>
-      <div className="border border-white/5 rounded-lg overflow-hidden overflow-x-auto">
+      <h4 className="text-[11px] font-bold text-slate-400 mb-3 uppercase tracking-[0.15em] flex items-center gap-2">
+        <span className="w-3 h-px bg-gradient-to-r from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        {title}
+      </h4>
+      <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto">
         <table className="w-full text-sm min-w-[480px]">
-          <thead><tr className="bg-white/[0.02]">
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Parameter</th>
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Type</th>
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Description</th>
-          </tr></thead>
-          <tbody>
-            {params.map((p, i) => (
-              <tr key={p.name} className={i % 2 === 0 ? "bg-transparent" : "bg-white/[0.01]"}>
+          <thead>
+            <tr className="bg-white/[0.03]">
+              <th className="text-left px-4 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Parameter</th>
+              <th className="text-left px-4 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Type</th>
+              <th className="text-left px-4 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest">Description</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/[0.04]">
+            {params.map((p) => (
+              <tr key={p.name} className="hover:bg-white/[0.02] transition-colors">
                 <td className="px-4 py-3 font-mono text-[13px] whitespace-nowrap">
-                  <span className="text-sky-400">{p.name}</span>
-                  {p.required && <span className="ml-1.5 text-[10px] text-red-400 font-sans font-medium">required</span>}
-                  {p.default && <span className="ml-1.5 text-[10px] text-slate-500 font-sans">= {p.default}</span>}
+                  <span className="text-[#FF4199]">{p.name}</span>
+                  {p.required && <span className="ml-2 text-[9px] text-red-400/80 font-sans font-bold uppercase tracking-wider bg-red-500/10 px-1.5 py-0.5 rounded">req</span>}
+                  {p.default && <span className="ml-2 text-[11px] text-slate-600 font-sans">= {p.default}</span>}
                 </td>
-                <td className="px-4 py-3 text-amber-300/80 font-mono text-[13px] whitespace-nowrap">{p.type}</td>
-                <td className="px-4 py-3 text-slate-400">{p.description}</td>
+                <td className="px-4 py-3 font-mono text-[12px] whitespace-nowrap">
+                  <span className="text-amber-400/80 bg-amber-500/[0.06] px-1.5 py-0.5 rounded text-[11px]">{p.type}</span>
+                </td>
+                <td className="px-4 py-3 text-slate-400 text-[13px] leading-relaxed">{p.description}</td>
               </tr>
             ))}
           </tbody>
@@ -382,9 +417,8 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
 function AuthBadge({ level }: { level: AuthLevel }) {
   const s = AUTH_LEVEL_STYLES[level];
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase ${s.bg} ${s.text} border ${s.border}`}>
-      {level === "admin" && <Lock className="w-2.5 h-2.5" />}
-      {level === "user" && <Shield className="w-2.5 h-2.5" />}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest uppercase ${s.bg} ${s.text} border ${s.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${s.text} bg-current`} aria-hidden="true" />
       {s.label}
     </span>
   );
@@ -392,38 +426,65 @@ function AuthBadge({ level }: { level: AuthLevel }) {
 
 function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
   const authLevel = endpoint.auth ?? "api-key";
+  const method = endpoint.method;
+
   return (
-    <div id={endpoint.id} className="scroll-mt-20 mb-10 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 sm:p-6 hover:border-white/[0.1] transition-colors">
-      <div className="flex flex-wrap items-start gap-2 mb-3">
-        <MethodBadge method={endpoint.method} />
-        <code className="text-xs sm:text-sm font-mono text-slate-300 bg-white/[0.06] px-2.5 sm:px-3 py-1 rounded-md flex-1 min-w-0 break-all">{endpoint.path}</code>
-        <AuthBadge level={authLevel} />
-      </div>
-      <h3 className="text-base sm:text-lg font-semibold text-white mb-2">{endpoint.title}</h3>
-      <p className="text-slate-400 leading-relaxed mb-5 text-sm sm:text-[15px]">{endpoint.description}</p>
-      {endpoint.params && <ParamTable params={endpoint.params} title="Query Parameters" />}
-      {endpoint.bodyParams && <ParamTable params={endpoint.bodyParams} title="Body Parameters" />}
-      {endpoint.headers && <ParamTable params={endpoint.headers} title="Headers" />}
-      {endpoint.notes && endpoint.notes.length > 0 && (
-        <div className="mt-4 p-3 sm:p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-          <div className="flex gap-3">
-            <AlertTriangle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              {endpoint.notes.map((note, i) => (
-                <p key={i} className="text-blue-200/80 text-sm">{note}</p>
-              ))}
+    <div
+      id={endpoint.id}
+      className="scroll-mt-20 mb-8 relative group rounded-2xl border border-white/[0.07] bg-white/[0.025] hover:bg-white/[0.04] hover:border-white/[0.12] transition-all duration-300 overflow-hidden"
+    >
+      {/* Colored top accent strip */}
+      <div className={`h-px w-full bg-gradient-to-r ${
+        method === 'GET' ? 'from-emerald-500/40 via-emerald-500/10 to-transparent' :
+        method === 'POST' ? 'from-blue-500/40 via-blue-500/10 to-transparent' :
+        method === 'PUT' ? 'from-amber-500/40 via-amber-500/10 to-transparent' :
+        method === 'DELETE' ? 'from-red-500/40 via-red-500/10 to-transparent' :
+        'from-purple-500/40 via-purple-500/10 to-transparent'
+      }`} aria-hidden="true" />
+
+      <div className="p-5 sm:p-6">
+        {/* Header row */}
+        <div className="flex flex-wrap items-start gap-2.5 mb-4">
+          <MethodBadge method={endpoint.method} />
+          <code className="flex-1 min-w-0 text-xs sm:text-sm font-mono break-all px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.07] text-slate-200">
+            {endpoint.path}
+          </code>
+          <AuthBadge level={authLevel} />
+        </div>
+
+        <h3 className="text-base sm:text-lg font-semibold text-white mb-2">{endpoint.title}</h3>
+        <p className="text-slate-400 leading-relaxed text-sm sm:text-[15px] mb-5">{endpoint.description}</p>
+
+        {endpoint.params && <ParamTable params={endpoint.params} title="Query Parameters" />}
+        {endpoint.bodyParams && <ParamTable params={endpoint.bodyParams} title="Body Parameters" />}
+        {endpoint.headers && <ParamTable params={endpoint.headers} title="Headers" />}
+
+        {endpoint.notes && endpoint.notes.length > 0 && (
+          <div className="mt-5 p-4 rounded-xl bg-[#FF4199]/[0.05] border border-[#FF4199]/20">
+            <div className="flex gap-3">
+              <AlertTriangle className="w-4 h-4 text-[#FF4199]/80 shrink-0 mt-0.5" />
+              <div className="space-y-1.5">
+                {endpoint.notes.map((note, i) => (
+                  <p key={i} className="text-[#FF4199]/70 text-sm leading-relaxed">{note}</p>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div>
-          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Request</h4>
-          <CodeTabs examples={endpoint.codeExamples} />
-        </div>
-        <div>
-          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Response</h4>
-          <CodeBlock code={endpoint.responseExample} lang="JSON" />
+        )}
+
+        <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-[0.15em] flex items-center gap-2">
+              <span className="w-3 h-px bg-blue-500/50" aria-hidden="true" />Request
+            </h4>
+            <CodeTabs examples={endpoint.codeExamples} />
+          </div>
+          <div>
+            <h4 className="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-[0.15em] flex items-center gap-2">
+              <span className="w-3 h-px bg-emerald-500/50" aria-hidden="true" />Response
+            </h4>
+            <CodeBlock code={endpoint.responseExample} lang="JSON" />
+          </div>
         </div>
       </div>
     </div>
@@ -431,42 +492,77 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
 }
 
 const IntroductionContent = memo(() => (
-  <div>
-    <div className="mb-10 sm:mb-12">
-      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Mega Radio API</h1>
-      <p className="text-base sm:text-lg text-slate-400 leading-relaxed max-w-2xl">Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences with our REST API.</p>
+  <div className="relative">
+    {/* Ambient background orbs */}
+    <div aria-hidden="true" className="pointer-events-none absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-[#FF4199]/[0.06] blur-[120px]" />
+    <div aria-hidden="true" className="pointer-events-none absolute top-40 -left-20 w-[400px] h-[400px] rounded-full bg-purple-600/[0.05] blur-[100px]" />
+
+    {/* Hero */}
+    <div className="relative mb-12">
+      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-[11px] text-slate-400 font-medium mb-6">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+        v1.0 — REST API
+      </div>
+      <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+        <span className="text-white">Mega Radio </span>
+        <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#FF4199] to-[#FF6B35]">API</span>
+      </h1>
+      <p className="text-base sm:text-lg text-slate-400 leading-relaxed max-w-2xl">
+        Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences.
+      </p>
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-10 sm:mb-12">
+
+    {/* Stats cards */}
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-12">
       {[
-        { icon: Radio, title: "40,000+ Stations", desc: "Global radio stations with metadata, logos, and stream URLs" },
-        { icon: Zap, title: "Real-time Streaming", desc: "HLS and direct stream resolution with now-playing metadata" },
-        { icon: Globe, title: "57 Languages", desc: "Multilingual support with localized content and search" },
+        { icon: Radio, title: "40,000+", label: "Radio Stations", desc: "Global coverage with full metadata", color: "from-[#FF4199]/20 to-[#FF4199]/5", border: "border-[#FF4199]/20", iconColor: "text-[#FF4199]" },
+        { icon: Zap, title: "Real-time", label: "Streaming", desc: "HLS and direct stream resolution", color: "from-blue-500/20 to-blue-500/5", border: "border-blue-500/20", iconColor: "text-blue-400" },
+        { icon: Globe, title: "57", label: "Languages", desc: "Multilingual localized content", color: "from-purple-500/20 to-purple-500/5", border: "border-purple-500/20", iconColor: "text-purple-400" },
       ].map((f) => (
-        <div key={f.title} className="rounded-xl bg-white/[0.03] border border-white/5 p-5 hover:border-white/10 transition-colors">
-          <f.icon className="w-8 h-8 text-blue-400 mb-3" />
-          <h3 className="text-white font-semibold mb-1">{f.title}</h3>
-          <p className="text-sm text-slate-400">{f.desc}</p>
+        <div key={f.title} className={`relative rounded-2xl border ${f.border} bg-gradient-to-br ${f.color} p-5 overflow-hidden group hover:scale-[1.02] transition-transform duration-300`}>
+          <div aria-hidden="true" className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/[0.03] blur-xl" />
+          <f.icon className={`w-7 h-7 ${f.iconColor} mb-3`} />
+          <div className="text-2xl font-bold text-white mb-0.5">{f.title}</div>
+          <div className="text-sm font-semibold text-white/80 mb-1">{f.label}</div>
+          <p className="text-xs text-slate-400">{f.desc}</p>
         </div>
       ))}
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Base URL</h2>
-    <CodeBlock code={`${BASE_URL}/api`} lang="Base URL" />
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold text-white mb-4">Quick Start</h2>
-      <p className="text-slate-400 mb-4">Get a demo API key and make your first request in seconds:</p>
+
+    {/* Base URL */}
+    <div className="mb-8">
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        Base URL
+      </h2>
+      <CodeBlock code={`${BASE_URL}/api`} lang="Base URL" />
+    </div>
+
+    {/* Quick start */}
+    <div className="mb-8">
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        Quick Start
+      </h2>
+      <p className="text-slate-400 mb-4 text-sm">Get a demo API key and make your first request in seconds:</p>
       <CodeBlock code={`# 1. Get a free demo API key (valid 24h)\ncurl ${BASE_URL}/api/api-keys/demo\n\n# 2. Search for stations\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?search=jazz&limit=5"\n\n# 3. Get station details\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/bbc-radio-1"\n\n# 4. Get stations by country (supports English, native, ISO-2, ISO-3 codes)\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?country=Turkey&limit=10"\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?country=DE&limit=10"\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?country=AUT&limit=10"`} lang="Quick Start" />
     </div>
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold text-white mb-4">Country Filter Formats</h2>
-      <p className="text-slate-400 mb-4">The <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs text-sky-400">country</code> parameter accepts multiple formats across all endpoints:</p>
-      <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto">
+
+    {/* Country formats */}
+    <div>
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        Country Filter Formats
+      </h2>
+      <p className="text-slate-400 mb-4 text-sm">The <code className="bg-white/[0.07] px-1.5 py-0.5 rounded text-xs text-[#FF4199]">country</code> parameter accepts multiple formats across all endpoints:</p>
+      <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto">
         <table className="w-full text-sm min-w-[420px]">
           <thead><tr className="bg-white/[0.03]">
-            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Format</th>
-            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Example</th>
-            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Resolves To</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Format</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Example</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Resolves To</th>
           </tr></thead>
-          <tbody>
+          <tbody className="divide-y divide-white/[0.04]">
             {[
               { format: "English Name", example: "Germany", resolves: "Germany" },
               { format: "ISO-2 Code", example: "DE", resolves: "Germany" },
@@ -475,11 +571,11 @@ const IntroductionContent = memo(() => (
               { format: "Turkish Name", example: "Almanya", resolves: "Germany" },
               { format: "Case-insensitive", example: "turkey, TURKEY, Turkey", resolves: "Turkey" },
               { format: "ASCII variant", example: "turkiye, Turkiye", resolves: "Turkey" },
-            ].map((r, i) => (
-              <tr key={r.format} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-                <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{r.format}</td>
-                <td className="px-4 sm:px-5 py-3 text-sky-400 font-mono text-[13px] whitespace-nowrap">{r.example}</td>
-                <td className="px-4 sm:px-5 py-3 text-slate-400">{r.resolves}</td>
+            ].map((r) => (
+              <tr key={r.format} className="hover:bg-white/[0.02] transition-colors">
+                <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap text-sm">{r.format}</td>
+                <td className="px-4 sm:px-5 py-3 text-[#FF4199] font-mono text-[13px] whitespace-nowrap">{r.example}</td>
+                <td className="px-4 sm:px-5 py-3 text-slate-400 text-sm">{r.resolves}</td>
               </tr>
             ))}
           </tbody>
