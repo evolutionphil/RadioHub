@@ -1,9 +1,11 @@
 import * as React from "react";
 import { useState, useEffect, useCallback, memo, useMemo } from "react";
 import { useRoute, useLocation } from "wouter";
-import { Copy, Check, ChevronRight, Search, Radio, Zap, Shield, Globe, Tv, Cast, Code, BookOpen, AlertTriangle, Users, Heart, Menu, X, ExternalLink, ArrowRight, Bell, Clock, Music, MessageSquare } from "lucide-react";
+import { Copy, Check, ChevronRight, Search, Radio, Zap, Shield, Globe, Tv, Cast, Code, BookOpen, AlertTriangle, Users, Heart, Menu, X, ExternalLink, ArrowRight, Bell, Clock, Music, MessageSquare, Map, Cpu, User, CreditCard, Activity, Lock, Settings, BarChart2, Image, Languages } from "lucide-react";
+import { useAdminAuth } from "@/hooks/useAdminAuth";
 
-type Method = "GET" | "POST" | "PUT" | "DELETE";
+type Method = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+type AuthLevel = "public" | "api-key" | "user" | "admin";
 type CodeLang = "curl" | "javascript" | "python" | "swift" | "kotlin";
 
 interface Param {
@@ -20,6 +22,7 @@ interface Endpoint {
   path: string;
   title: string;
   description: string;
+  auth?: AuthLevel;
   params?: Param[];
   bodyParams?: Param[];
   headers?: Param[];
@@ -40,6 +43,14 @@ const METHOD_STYLES: Record<Method, { bg: string; text: string; border: string }
   POST: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
   PUT: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" },
   DELETE: { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20" },
+  PATCH: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20" },
+};
+
+const AUTH_LEVEL_STYLES: Record<AuthLevel, { label: string; bg: string; text: string; border: string }> = {
+  "public": { label: "PUBLIC", bg: "bg-emerald-500/8", text: "text-emerald-400", border: "border-emerald-500/20" },
+  "api-key": { label: "API KEY", bg: "bg-sky-500/8", text: "text-sky-400", border: "border-sky-500/20" },
+  "user": { label: "USER AUTH", bg: "bg-violet-500/8", text: "text-violet-400", border: "border-violet-500/20" },
+  "admin": { label: "ADMIN ONLY", bg: "bg-red-500/8", text: "text-red-400", border: "border-red-500/20" },
 };
 
 const CODE_LANG_LABELS: Record<CodeLang, string> = {
@@ -52,7 +63,7 @@ const CODE_LANG_LABELS: Record<CodeLang, string> = {
 
 const BASE_URL = "https://themegaradio.com";
 
-const NAV_SECTIONS: NavSection[] = [
+const PUBLIC_NAV_SECTIONS: NavSection[] = [
   {
     id: "overview",
     label: "Getting Started",
@@ -95,6 +106,28 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    id: "regions",
+    label: "Regions & Cities",
+    icon: Map,
+    items: [
+      { id: "list-regions", label: "List Regions" },
+      { id: "region-countries", label: "Region Countries" },
+      { id: "region-country-stations", label: "Country Stations" },
+      { id: "cities-global", label: "All Cities" },
+      { id: "cities-by-country", label: "Cities by Country" },
+    ],
+  },
+  {
+    id: "ml",
+    label: "ML & Personalization",
+    icon: Cpu,
+    items: [
+      { id: "ml-track", label: "Track Interaction" },
+      { id: "ml-profile", label: "User Profile" },
+      { id: "ml-recommendations", label: "Recommendations" },
+    ],
+  },
+  {
     id: "streaming",
     label: "Streaming",
     icon: Zap,
@@ -132,6 +165,29 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    id: "profiles",
+    label: "User Profiles",
+    icon: User,
+    items: [
+      { id: "public-profile", label: "Public Profile" },
+      { id: "profile-favorites", label: "Profile Favorites" },
+      { id: "popular-profiles", label: "Popular Profiles" },
+      { id: "follow-user", label: "Follow User" },
+      { id: "search-users", label: "Search Users" },
+    ],
+  },
+  {
+    id: "subscription",
+    label: "Subscriptions & IAP",
+    icon: CreditCard,
+    items: [
+      { id: "subscription-plans", label: "List Plans" },
+      { id: "subscription-status", label: "Subscription Status" },
+      { id: "iap-validate", label: "Validate IAP Receipt" },
+      { id: "tv-sub-code", label: "TV Subscription Code" },
+    ],
+  },
+  {
     id: "tv",
     label: "TV & Cast",
     icon: Tv,
@@ -161,11 +217,13 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
-    id: "misc",
-    label: "Misc",
-    icon: Music,
+    id: "utility",
+    label: "Utility",
+    icon: Activity,
     items: [
       { id: "translations", label: "App Translations" },
+      { id: "health", label: "Health Check" },
+      { id: "og-image", label: "OG Image Generation" },
     ],
   },
   {
@@ -180,6 +238,65 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+const ADMIN_NAV_SECTIONS: NavSection[] = [
+  {
+    id: "admin",
+    label: "Admin API",
+    icon: Lock,
+    items: [
+      { id: "admin-login", label: "Admin Login" },
+      { id: "admin-me", label: "Auth Status" },
+    ],
+  },
+  {
+    id: "admin-stations",
+    label: "Station Management",
+    icon: Settings,
+    items: [
+      { id: "admin-sync-run", label: "Trigger Sync" },
+      { id: "admin-sync-status", label: "Sync Status" },
+      { id: "admin-stations-list", label: "List Stations" },
+      { id: "admin-station-edit", label: "Edit Station" },
+      { id: "admin-station-delete", label: "Delete Station" },
+      { id: "admin-duplicates", label: "Detect Duplicates" },
+      { id: "admin-auto-merge", label: "Auto-Merge Duplicates" },
+    ],
+  },
+  {
+    id: "admin-logos",
+    label: "Logo Management",
+    icon: Image,
+    items: [
+      { id: "admin-logo-stats", label: "Logo Stats" },
+      { id: "admin-logo-missing", label: "Missing Logos" },
+      { id: "admin-logo-process", label: "Process All Logos" },
+    ],
+  },
+  {
+    id: "admin-users",
+    label: "User Management",
+    icon: Users,
+    items: [
+      { id: "admin-users-list", label: "List Users" },
+      { id: "admin-user-patch", label: "Patch User" },
+    ],
+  },
+  {
+    id: "admin-analytics",
+    label: "Analytics & SEO",
+    icon: BarChart2,
+    items: [
+      { id: "admin-sales", label: "Sales Analytics" },
+      { id: "admin-sitemap-rebuild", label: "Rebuild Sitemaps" },
+      { id: "admin-gsc-stats", label: "GSC Indexing Stats" },
+      { id: "admin-iap-events", label: "IAP Events Log" },
+      { id: "admin-push", label: "Send Silent Push" },
+    ],
+  },
+];
+
+const NAV_SECTIONS = PUBLIC_NAV_SECTIONS;
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -236,22 +353,22 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
   return (
     <div className="mt-6">
       <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">{title}</h4>
-      <div className="border border-white/5 rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="border border-white/5 rounded-lg overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm min-w-[480px]">
           <thead><tr className="bg-white/[0.02]">
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Parameter</th>
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Type</th>
+            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Parameter</th>
+            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Type</th>
             <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Description</th>
           </tr></thead>
           <tbody>
             {params.map((p, i) => (
               <tr key={p.name} className={i % 2 === 0 ? "bg-transparent" : "bg-white/[0.01]"}>
-                <td className="px-4 py-3 font-mono text-[13px]">
+                <td className="px-4 py-3 font-mono text-[13px] whitespace-nowrap">
                   <span className="text-sky-400">{p.name}</span>
                   {p.required && <span className="ml-1.5 text-[10px] text-red-400 font-sans font-medium">required</span>}
                   {p.default && <span className="ml-1.5 text-[10px] text-slate-500 font-sans">= {p.default}</span>}
                 </td>
-                <td className="px-4 py-3 text-amber-300/80 font-mono text-[13px]">{p.type}</td>
+                <td className="px-4 py-3 text-amber-300/80 font-mono text-[13px] whitespace-nowrap">{p.type}</td>
                 <td className="px-4 py-3 text-slate-400">{p.description}</td>
               </tr>
             ))}
@@ -262,20 +379,33 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
   );
 }
 
-function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
+function AuthBadge({ level }: { level: AuthLevel }) {
+  const s = AUTH_LEVEL_STYLES[level];
   return (
-    <div id={endpoint.id} className="scroll-mt-20 mb-12">
-      <div className="flex items-center gap-3 mb-3">
+    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase ${s.bg} ${s.text} border ${s.border}`}>
+      {level === "admin" && <Lock className="w-2.5 h-2.5" />}
+      {level === "user" && <Shield className="w-2.5 h-2.5" />}
+      {s.label}
+    </span>
+  );
+}
+
+function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
+  const authLevel = endpoint.auth ?? "api-key";
+  return (
+    <div id={endpoint.id} className="scroll-mt-20 mb-10 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 sm:p-6 hover:border-white/[0.1] transition-colors">
+      <div className="flex flex-wrap items-start gap-2 mb-3">
         <MethodBadge method={endpoint.method} />
-        <code className="text-sm font-mono text-slate-300 bg-white/5 px-3 py-1 rounded-md">{endpoint.path}</code>
+        <code className="text-xs sm:text-sm font-mono text-slate-300 bg-white/[0.06] px-2.5 sm:px-3 py-1 rounded-md flex-1 min-w-0 break-all">{endpoint.path}</code>
+        <AuthBadge level={authLevel} />
       </div>
-      <h3 className="text-xl font-semibold text-white mb-2">{endpoint.title}</h3>
-      <p className="text-slate-400 leading-relaxed mb-6">{endpoint.description}</p>
+      <h3 className="text-base sm:text-lg font-semibold text-white mb-2">{endpoint.title}</h3>
+      <p className="text-slate-400 leading-relaxed mb-5 text-sm sm:text-[15px]">{endpoint.description}</p>
       {endpoint.params && <ParamTable params={endpoint.params} title="Query Parameters" />}
       {endpoint.bodyParams && <ParamTable params={endpoint.bodyParams} title="Body Parameters" />}
       {endpoint.headers && <ParamTable params={endpoint.headers} title="Headers" />}
       {endpoint.notes && endpoint.notes.length > 0 && (
-        <div className="mt-4 p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
+        <div className="mt-4 p-3 sm:p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
           <div className="flex gap-3">
             <AlertTriangle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
@@ -286,13 +416,13 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
           </div>
         </div>
       )}
-      <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
         <div>
-          <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">Request</h4>
+          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Request</h4>
           <CodeTabs examples={endpoint.codeExamples} />
         </div>
         <div>
-          <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">Response</h4>
+          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Response</h4>
           <CodeBlock code={endpoint.responseExample} lang="JSON" />
         </div>
       </div>
@@ -302,11 +432,11 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
 
 const IntroductionContent = memo(() => (
   <div>
-    <div className="mb-12">
-      <h1 className="text-4xl font-bold text-white mb-4">Mega Radio API</h1>
-      <p className="text-lg text-slate-400 leading-relaxed max-w-2xl">Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences with our REST API.</p>
+    <div className="mb-10 sm:mb-12">
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Mega Radio API</h1>
+      <p className="text-base sm:text-lg text-slate-400 leading-relaxed max-w-2xl">Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences with our REST API.</p>
     </div>
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-12">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-10 sm:mb-12">
       {[
         { icon: Radio, title: "40,000+ Stations", desc: "Global radio stations with metadata, logos, and stream URLs" },
         { icon: Zap, title: "Real-time Streaming", desc: "HLS and direct stream resolution with now-playing metadata" },
@@ -329,12 +459,12 @@ const IntroductionContent = memo(() => (
     <div className="mt-8">
       <h2 className="text-2xl font-bold text-white mb-4">Country Filter Formats</h2>
       <p className="text-slate-400 mb-4">The <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs text-sky-400">country</code> parameter accepts multiple formats across all endpoints:</p>
-      <div className="border border-white/5 rounded-xl overflow-hidden">
-        <table className="w-full text-sm">
+      <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto">
+        <table className="w-full text-sm min-w-[420px]">
           <thead><tr className="bg-white/[0.03]">
-            <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Format</th>
-            <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Example</th>
-            <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Resolves To</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Format</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Example</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Resolves To</th>
           </tr></thead>
           <tbody>
             {[
@@ -347,9 +477,9 @@ const IntroductionContent = memo(() => (
               { format: "ASCII variant", example: "turkiye, Turkiye", resolves: "Turkey" },
             ].map((r, i) => (
               <tr key={r.format} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-                <td className="px-5 py-3 text-white font-medium">{r.format}</td>
-                <td className="px-5 py-3 text-sky-400 font-mono text-[13px]">{r.example}</td>
-                <td className="px-5 py-3 text-slate-400">{r.resolves}</td>
+                <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{r.format}</td>
+                <td className="px-4 sm:px-5 py-3 text-sky-400 font-mono text-[13px] whitespace-nowrap">{r.example}</td>
+                <td className="px-4 sm:px-5 py-3 text-slate-400">{r.resolves}</td>
               </tr>
             ))}
           </tbody>
@@ -361,7 +491,7 @@ const IntroductionContent = memo(() => (
 
 const AuthenticationContent = memo(() => (
   <div>
-    <h1 className="text-4xl font-bold text-white mb-4">Authentication</h1>
+    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Authentication</h1>
     <p className="text-lg text-slate-400 leading-relaxed mb-8">All API requests require authentication via an API key. Include your key in every request using one of these methods:</p>
     <div className="space-y-4 mb-8">
       {[
@@ -399,16 +529,16 @@ const AuthenticationContent = memo(() => (
 
 const RateLimitsContent = memo(() => (
   <div>
-    <h1 className="text-4xl font-bold text-white mb-4">Rate Limits</h1>
-    <p className="text-lg text-slate-400 leading-relaxed mb-8">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden mb-8">
-      <table className="w-full text-sm">
+    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Rate Limits</h1>
+    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
+    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+      <table className="w-full text-sm min-w-[480px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Plan</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Requests/Min</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Daily Quota</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Monthly Quota</th>
-          <th className="text-left px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider">Price</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Plan</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Req/Min</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Daily</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Monthly</th>
+          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Price</th>
         </tr></thead>
         <tbody>
           {[
@@ -418,11 +548,11 @@ const RateLimitsContent = memo(() => (
             { plan: "Internal", rpm: "Unlimited", daily: "Unlimited", monthly: "Unlimited", price: "--", color: "text-purple-400" },
           ].map((r, i) => (
             <tr key={r.plan} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-5 py-3.5 font-semibold ${r.color}`}>{r.plan}</td>
-              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.rpm}</td>
-              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.daily}</td>
-              <td className="px-5 py-3.5 text-slate-300 font-mono">{r.monthly}</td>
-              <td className="px-5 py-3.5 text-slate-400">{r.price}</td>
+              <td className={`px-4 sm:px-5 py-3.5 font-semibold whitespace-nowrap ${r.color}`}>{r.plan}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.rpm}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.daily}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.monthly}</td>
+              <td className="px-4 sm:px-5 py-3.5 text-slate-400 whitespace-nowrap">{r.price}</td>
             </tr>
           ))}
         </tbody>
@@ -445,14 +575,14 @@ const RateLimitsContent = memo(() => (
 
 const ErrorsContent = memo(() => (
   <div>
-    <h1 className="text-4xl font-bold text-white mb-4">Error Handling</h1>
-    <p className="text-lg text-slate-400 leading-relaxed mb-8">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden mb-8">
-      <table className="w-full text-sm">
+    <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Error Handling</h1>
+    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
+    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+      <table className="w-full text-sm min-w-[400px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Code</th>
-          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Status</th>
-          <th className="text-left px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Description</th>
+          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Code</th>
+          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Status</th>
+          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Description</th>
         </tr></thead>
         <tbody>
           {[
@@ -462,18 +592,18 @@ const ErrorsContent = memo(() => (
             { code: "403", status: "Forbidden", desc: "API key lacks permission for this action", color: "text-red-400" },
             { code: "404", status: "Not Found", desc: "Resource not found", color: "text-amber-400" },
             { code: "429", status: "Too Many Requests", desc: "Rate limit or quota exceeded", color: "text-red-400" },
-            { code: "500", status: "Internal Error", desc: "Server error -- please retry or contact support", color: "text-red-400" },
+            { code: "500", status: "Internal Error", desc: "Server error — please retry or contact support", color: "text-red-400" },
           ].map((e, i) => (
             <tr key={e.code} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-5 py-3 font-mono font-bold ${e.color}`}>{e.code}</td>
-              <td className="px-5 py-3 text-white font-medium">{e.status}</td>
-              <td className="px-5 py-3 text-slate-400">{e.desc}</td>
+              <td className={`px-4 sm:px-5 py-3 font-mono font-bold whitespace-nowrap ${e.color}`}>{e.code}</td>
+              <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{e.status}</td>
+              <td className="px-4 sm:px-5 py-3 text-slate-400">{e.desc}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Error Response Format</h2>
+    <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Error Response Format</h2>
     <CodeBlock code={`{\n  "error": "Station not found",\n  "statusCode": 404\n}`} lang="JSON" />
   </div>
 ));
@@ -1706,6 +1836,874 @@ const TV_CAST_ENDPOINTS: Endpoint[] = [
   },
 ];
 
+const REGIONS_ENDPOINTS: Endpoint[] = [
+  {
+    id: "list-regions",
+    method: "GET",
+    path: "/api/regions",
+    auth: "api-key",
+    title: "List Regions",
+    description: "Get all geographic regions (continents/macro-areas). Each region contains a list of countries.",
+    responseExample: `[
+  { "slug": "europe", "name": "Europe", "countryCount": 51 },
+  { "slug": "asia", "name": "Asia", "countryCount": 49 },
+  { "slug": "americas", "name": "Americas", "countryCount": 35 }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/regions"`,
+      javascript: `const regions = await fetch('${BASE_URL}/api/regions', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n}).then(r => r.json());`,
+    },
+  },
+  {
+    id: "region-countries",
+    method: "GET",
+    path: "/api/regions/:regionSlug",
+    auth: "api-key",
+    title: "Region Details & Countries",
+    description: "Get details for a specific region including the countries within it and their station counts.",
+    params: [
+      { name: "regionSlug", type: "string", required: true, description: "Region slug (e.g., 'europe', 'asia', 'americas')" },
+    ],
+    responseExample: `{
+  "slug": "europe",
+  "name": "Europe",
+  "countries": [
+    { "name": "Germany", "code": "DE", "stationCount": 3450 },
+    { "name": "France", "code": "FR", "stationCount": 2100 },
+    { "name": "Turkey", "code": "TR", "stationCount": 1850 }
+  ]
+}`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/regions/europe"`,
+      javascript: `const region = await fetch('${BASE_URL}/api/regions/europe', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n}).then(r => r.json());`,
+    },
+  },
+  {
+    id: "region-country-stations",
+    method: "GET",
+    path: "/api/regions/:regionSlug/:countrySlug",
+    auth: "api-key",
+    title: "Region Country Stations",
+    description: "Get stations in a specific country within a region, with optional city filtering.",
+    params: [
+      { name: "regionSlug", type: "string", required: true, description: "Region slug (e.g., 'europe')" },
+      { name: "countrySlug", type: "string", required: true, description: "Country slug (e.g., 'germany', 'turkey')" },
+      { name: "city", type: "string", description: "Filter by city name" },
+      { name: "limit", type: "number", default: "20", description: "Max stations to return" },
+      { name: "page", type: "number", default: "1", description: "Page number" },
+    ],
+    responseExample: `{
+  "country": "Germany",
+  "countryCode": "DE",
+  "region": "Europe",
+  "stations": [
+    {
+      "_id": "...",
+      "name": "Antenne Bayern",
+      "slug": "antenne-bayern",
+      "url": "https://...",
+      "favicon": "https://...",
+      "state": "Bavaria",
+      "votes": 12500
+    }
+  ],
+  "total": 3450,
+  "page": 1,
+  "pages": 173
+}`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/regions/europe/germany?limit=20"\n\n# With city filter\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/regions/europe/germany?city=Berlin&limit=10"`,
+      javascript: `const data = await fetch('${BASE_URL}/api/regions/europe/germany?limit=20', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n}).then(r => r.json());\nconst { stations, total } = data;`,
+    },
+  },
+  {
+    id: "cities-global",
+    method: "GET",
+    path: "/api/cities/global",
+    auth: "api-key",
+    title: "All Cities Globally",
+    description: "Get all cities that have radio stations, globally. Results are precomputed and cached. Useful for building city-based filtering UIs.",
+    responseExample: `[
+  { "city": "Berlin", "country": "Germany", "countryCode": "DE", "stationCount": 145 },
+  { "city": "Istanbul", "country": "Turkey", "countryCode": "TR", "stationCount": 210 },
+  { "city": "Paris", "country": "France", "countryCode": "FR", "stationCount": 180 }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/cities/global"`,
+      javascript: `const cities = await fetch('${BASE_URL}/api/cities/global', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n}).then(r => r.json());`,
+    },
+  },
+  {
+    id: "cities-by-country",
+    method: "GET",
+    path: "/api/cities/precomputed",
+    auth: "api-key",
+    title: "Cities by Country",
+    description: "Get cities for a specific country. Precomputed and cached per-country for fast response.",
+    params: [
+      { name: "country", type: "string", required: true, description: "Country name or code (all formats: ISO-2, ISO-3, English, native)" },
+    ],
+    responseExample: `[
+  { "city": "Munich", "stationCount": 52 },
+  { "city": "Berlin", "stationCount": 145 },
+  { "city": "Hamburg", "stationCount": 78 }
+]`,
+    codeExamples: {
+      curl: `curl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/cities/precomputed?country=DE"`,
+      javascript: `const cities = await fetch('${BASE_URL}/api/cities/precomputed?country=Germany', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n}).then(r => r.json());`,
+    },
+  },
+];
+
+const ML_ENDPOINTS: Endpoint[] = [
+  {
+    id: "ml-track",
+    method: "POST",
+    path: "/api/ml/track-interaction",
+    auth: "public",
+    title: "Track Interaction",
+    description: "Track a user's interaction with a station (play, skip, favorite) for the ML recommendation engine. Use a persistent `sessionId` across sessions for better personalization. No authentication required.",
+    bodyParams: [
+      { name: "sessionId", type: "string", required: true, description: "Persistent anonymous session ID (store in localStorage)" },
+      { name: "stationId", type: "string", required: true, description: "Station MongoDB ObjectId" },
+      { name: "interactionType", type: "string", required: true, description: "'play', 'skip', or 'favorite'" },
+      { name: "duration", type: "number", description: "Seconds listened (for 'play' interactions)" },
+    ],
+    responseExample: `{ "success": true }`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/ml/track-interaction" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "sessionId": "sess_abc123",\n    "stationId": "64a1b2c3d4e5f6a7b8c9d0e1",\n    "interactionType": "play",\n    "duration": 180\n  }'`,
+      javascript: `// Generate and persist session ID\nconst sessionId = localStorage.getItem('ml_session') || \`sess_\${crypto.randomUUID()}\`;\nlocalStorage.setItem('ml_session', sessionId);\n\n// Track play\nawait fetch('${BASE_URL}/api/ml/track-interaction', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({\n    sessionId,\n    stationId: station._id,\n    interactionType: 'play',\n    duration: 180\n  })\n});`,
+    },
+  },
+  {
+    id: "ml-profile",
+    method: "GET",
+    path: "/api/ml/user-profile/:sessionId",
+    auth: "public",
+    title: "ML User Profile",
+    description: "Get the ML-computed preference profile for a session. Returns top genres, countries, and languages derived from past interactions.",
+    params: [
+      { name: "sessionId", type: "string", required: true, description: "Session ID (URL path)" },
+    ],
+    responseExample: `{
+  "sessionId": "sess_abc123",
+  "topGenres": ["rock", "jazz", "classical"],
+  "topCountries": ["Germany", "United Kingdom"],
+  "topLanguages": ["english", "german"],
+  "totalInteractions": 47
+}`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/ml/user-profile/sess_abc123"`,
+      javascript: `const profile = await fetch(\`${BASE_URL}/api/ml/user-profile/\${sessionId}\`).then(r => r.json());`,
+    },
+  },
+  {
+    id: "ml-recommendations",
+    method: "GET",
+    path: "/api/ml/recommendations/:sessionId",
+    auth: "public",
+    title: "ML Recommendations",
+    description: "Get personalized station recommendations based on the session's interaction history. Uses collaborative filtering across genre, country, and language preferences.",
+    params: [
+      { name: "sessionId", type: "string", required: true, description: "Session ID (URL path)" },
+      { name: "limit", type: "number", default: "20", description: "Max recommendations to return" },
+    ],
+    responseExample: `{
+  "stations": [
+    {
+      "_id": "...",
+      "name": "Jazz FM",
+      "slug": "jazz-fm",
+      "genre": "jazz",
+      "country": "United Kingdom",
+      "score": 0.94
+    }
+  ],
+  "reasoning": "Based on your jazz and rock preferences"
+}`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/ml/recommendations/sess_abc123?limit=10"`,
+      javascript: `const { stations, reasoning } = await fetch(\n  \`${BASE_URL}/api/ml/recommendations/\${sessionId}?limit=10\`\n).then(r => r.json());`,
+    },
+  },
+];
+
+const PROFILE_ENDPOINTS: Endpoint[] = [
+  {
+    id: "public-profile",
+    method: "GET",
+    path: "/api/user/profile/:slug",
+    auth: "public",
+    title: "Public User Profile",
+    description: "Get a user's public profile by username/slug. Returns sanitized public-facing data — no email, no PII.",
+    params: [
+      { name: "slug", type: "string", required: true, description: "Username or user slug (URL path)" },
+    ],
+    responseExample: `{
+  "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
+  "fullName": "John Doe",
+  "username": "johndoe",
+  "avatar": "https://...",
+  "bio": "Radio lover",
+  "followersCount": 150,
+  "followingCount": 89,
+  "favoriteStationsCount": 24,
+  "joinedAt": "2024-01-15T00:00:00Z"
+}`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/user/profile/johndoe"`,
+      javascript: `const profile = await fetch('${BASE_URL}/api/user/profile/johndoe').then(r => r.json());`,
+    },
+  },
+  {
+    id: "profile-favorites",
+    method: "GET",
+    path: "/api/user/profile/:slug/favorites",
+    auth: "public",
+    title: "User Public Favorites",
+    description: "Get a user's favorite stations (public). Paginated.",
+    params: [
+      { name: "slug", type: "string", required: true, description: "Username (URL path)" },
+      { name: "page", type: "number", default: "1", description: "Page number" },
+      { name: "limit", type: "number", default: "20", description: "Stations per page" },
+    ],
+    responseExample: `{
+  "favorites": [
+    { "_id": "...", "name": "BBC Radio 1", "slug": "bbc-radio-1", "country": "United Kingdom" }
+  ],
+  "total": 24,
+  "page": 1,
+  "pages": 2
+}`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/user/profile/johndoe/favorites?page=1&limit=20"`,
+      javascript: `const { favorites, total } = await fetch(\n  '${BASE_URL}/api/user/profile/johndoe/favorites'\n).then(r => r.json());`,
+    },
+  },
+  {
+    id: "popular-profiles",
+    method: "GET",
+    path: "/api/profiles/popular",
+    auth: "public",
+    title: "Popular Profiles",
+    description: "Get trending user profiles — users with the most followers and recent activity. Good for a 'Discover People' feature.",
+    params: [
+      { name: "limit", type: "number", default: "20", description: "Number of profiles to return" },
+    ],
+    responseExample: `[
+  {
+    "_id": "...",
+    "username": "musiclover99",
+    "fullName": "Alex M.",
+    "avatar": "https://...",
+    "followersCount": 1240,
+    "favoriteStationsCount": 85
+  }
+]`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/profiles/popular?limit=10"`,
+      javascript: `const top = await fetch('${BASE_URL}/api/profiles/popular?limit=10').then(r => r.json());`,
+    },
+  },
+  {
+    id: "follow-user",
+    method: "POST",
+    path: "/api/follow/:userId",
+    auth: "user",
+    title: "Follow User",
+    description: "Follow another user. Requires authentication.",
+    params: [
+      { name: "userId", type: "string", required: true, description: "User ID to follow (URL path)" },
+    ],
+    responseExample: `{ "success": true, "following": true }`,
+    codeExamples: {
+      curl: `curl -X POST -H "Authorization: Bearer mrt_your_token" "${BASE_URL}/api/follow/USER_ID"`,
+      javascript: `await fetch('${BASE_URL}/api/follow/USER_ID', {\n  method: 'POST',\n  headers: { 'Authorization': 'Bearer mrt_your_token' }\n});`,
+    },
+  },
+  {
+    id: "search-users",
+    method: "GET",
+    path: "/api/users/search",
+    auth: "public",
+    title: "Search Users",
+    description: "Search public user profiles by username or name. Returns up to 50 results.",
+    params: [
+      { name: "q", type: "string", required: true, description: "Search query (username or name)" },
+      { name: "limit", type: "number", default: "20", description: "Results per page (max 50)" },
+    ],
+    responseExample: `[
+  {
+    "_id": "...",
+    "username": "johndoe",
+    "fullName": "John Doe",
+    "avatar": "https://..."
+  }
+]`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/users/search?q=john&limit=10"`,
+      javascript: `const users = await fetch('${BASE_URL}/api/users/search?q=john').then(r => r.json());`,
+    },
+  },
+];
+
+const SUBSCRIPTION_ENDPOINTS: Endpoint[] = [
+  {
+    id: "subscription-plans",
+    method: "GET",
+    path: "/api/subscription/plans",
+    auth: "public",
+    title: "List Subscription Plans",
+    description: "Get all available subscription plans (monthly, annual, lifetime, remove-ads). No authentication required.",
+    responseExample: `[
+  {
+    "_id": "...",
+    "name": "Monthly",
+    "plan": "monthly",
+    "price": 3.99,
+    "currency": "USD",
+    "interval": "month",
+    "features": ["Ad-free", "Premium stations", "Offline favorites"]
+  },
+  {
+    "_id": "...",
+    "name": "Annual",
+    "plan": "annual",
+    "price": 29.99,
+    "currency": "USD",
+    "interval": "year",
+    "savings": "37%"
+  },
+  {
+    "_id": "...",
+    "name": "Lifetime",
+    "plan": "lifetime",
+    "price": 59.99,
+    "currency": "USD",
+    "interval": "once"
+  }
+]`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/subscription/plans"`,
+      javascript: `const plans = await fetch('${BASE_URL}/api/subscription/plans').then(r => r.json());`,
+      swift: `let plans = try await URLSession.shared\n    .data(from: URL(string: "${BASE_URL}/api/subscription/plans")!)\n    .0`,
+      kotlin: `val response = client.newCall(\n    Request.Builder().url("${BASE_URL}/api/subscription/plans").build()\n).execute()`,
+    },
+  },
+  {
+    id: "subscription-status",
+    method: "GET",
+    path: "/api/subscription/status",
+    auth: "user",
+    title: "Get Subscription Status",
+    description: "Get the authenticated user's current subscription status, plan, and expiry.",
+    headers: [
+      { name: "Authorization", type: "string", required: true, description: "Bearer mrt_your_token" },
+    ],
+    responseExample: `{
+  "isActive": true,
+  "plan": "annual",
+  "expiresAt": "2027-03-15T00:00:00Z",
+  "platform": "ios",
+  "autoRenewing": true
+}`,
+    codeExamples: {
+      curl: `curl -H "Authorization: Bearer mrt_your_token" "${BASE_URL}/api/subscription/status"`,
+      javascript: `const status = await fetch('${BASE_URL}/api/subscription/status', {\n  headers: { 'Authorization': 'Bearer mrt_your_token' }\n}).then(r => r.json());`,
+      swift: `var request = URLRequest(url: URL(string: "${BASE_URL}/api/subscription/status")!)\nrequest.setValue("Bearer \\(token)", forHTTPHeaderField: "Authorization")\nlet (data, _) = try await URLSession.shared.data(for: request)`,
+    },
+  },
+  {
+    id: "iap-validate",
+    method: "POST",
+    path: "/api/iap/validate",
+    auth: "user",
+    title: "Validate IAP Receipt",
+    description: "Validate an Apple App Store or Google Play in-app purchase receipt server-side. On success, activates the user's subscription. On iOS, Apple verifies the receipt. On Android, Google Play API verifies the purchase token.",
+    headers: [
+      { name: "Authorization", type: "string", required: true, description: "Bearer mrt_your_token" },
+    ],
+    bodyParams: [
+      { name: "platform", type: "string", required: true, description: "'ios' or 'android'" },
+      { name: "receipt", type: "string", required: true, description: "iOS: base64 receipt data from SKPaymentTransaction. Android: purchaseToken string." },
+      { name: "productId", type: "string", required: true, description: "Product ID (e.g., 'com.megaradio.premium.monthly')" },
+      { name: "transactionId", type: "string", description: "iOS transaction ID. Android: orderId from purchase." },
+    ],
+    notes: [
+      "iOS: Pass the receipt from SKPaymentQueue transaction.payment.productIdentifier and transaction.transactionReceipt.",
+      "Android: Pass the purchaseToken from the BillingClient PurchaseResponseListener.",
+      "Server performs real-time verification against Apple/Google APIs. Do NOT trust client-supplied plan or expiry.",
+    ],
+    responseExample: `{
+  "success": true,
+  "subscription": {
+    "isActive": true,
+    "plan": "monthly",
+    "expiresAt": "2026-04-15T00:00:00Z",
+    "platform": "ios"
+  }
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/iap/validate" \\\n  -H "Authorization: Bearer mrt_your_token" \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "platform": "ios",\n    "receipt": "BASE64_RECEIPT_DATA",\n    "productId": "com.megaradio.premium.monthly",\n    "transactionId": "1000000123456789"\n  }'`,
+      swift: `let body: [String: Any] = [\n    "platform": "ios",\n    "receipt": receiptBase64,\n    "productId": transaction.payment.productIdentifier,\n    "transactionId": transaction.transactionIdentifier ?? ""\n]\nvar request = URLRequest(url: URL(string: "${BASE_URL}/api/iap/validate")!)\nrequest.httpMethod = "POST"\nrequest.setValue("Bearer \\(authToken)", forHTTPHeaderField: "Authorization")\nrequest.setValue("application/json", forHTTPHeaderField: "Content-Type")\nrequest.httpBody = try JSONSerialization.data(withJSONObject: body)`,
+      kotlin: `val body = JSONObject().apply {\n    put("platform", "android")\n    put("receipt", purchaseToken)\n    put("productId", productId)\n    put("transactionId", purchase.orderId)\n}\nval request = Request.Builder()\n    .url("${BASE_URL}/api/iap/validate")\n    .header("Authorization", "Bearer $authToken")\n    .post(body.toString().toRequestBody("application/json".toMediaType()))\n    .build()`,
+    },
+  },
+  {
+    id: "tv-sub-code",
+    method: "POST",
+    path: "/api/subscription/tv/code",
+    auth: "public",
+    title: "Generate TV Subscription Code",
+    description: "Generate a short code for activating a subscription on a TV. The user purchases on mobile then enters the code on TV to activate. Similar to the TV login code flow but for subscription activation.",
+    bodyParams: [
+      { name: "deviceId", type: "string", required: true, description: "TV device ID" },
+      { name: "platform", type: "string", default: "other", description: "TV platform: 'tizen', 'webos', or 'other'" },
+    ],
+    responseExample: `{
+  "code": "739412",
+  "expiresIn": 600
+}`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/subscription/tv/code" \\\n  -H "Content-Type: application/json" \\\n  -d '{"deviceId": "tv-device-xyz", "platform": "tizen"}'`,
+      javascript: `const { code } = await fetch('${BASE_URL}/api/subscription/tv/code', {\n  method: 'POST',\n  headers: { 'Content-Type': 'application/json' },\n  body: JSON.stringify({ deviceId: 'tv-device-xyz', platform: 'tizen' })\n}).then(r => r.json());`,
+    },
+  },
+];
+
+const HEALTH_ENDPOINTS: Endpoint[] = [
+  {
+    id: "health",
+    method: "GET",
+    path: "/api/health",
+    auth: "public",
+    title: "Health Check",
+    description: "Check API server health. Returns uptime, MongoDB connection state, and environment info. Useful for monitoring and load-balancer health checks. No authentication required.",
+    responseExample: `{
+  "status": "ok",
+  "uptime": 86400,
+  "mongodb": "connected",
+  "environment": "production",
+  "version": "1.0.0"
+}`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/api/health"`,
+      javascript: `const health = await fetch('${BASE_URL}/api/health').then(r => r.json());\nif (health.status !== 'ok') {\n  console.error('API is down!');\n}`,
+    },
+  },
+  {
+    id: "og-image",
+    method: "GET",
+    path: "/api/og-image/:stationSlug",
+    auth: "public",
+    title: "OG Image Generation",
+    description: "Generate Open Graph / social share images for radio stations on-the-fly. Returns a PNG image. Cached for 7 days. Use this URL in `<meta property='og:image'>` tags.",
+    params: [
+      { name: "stationSlug", type: "string", required: true, description: "Station slug (URL path)" },
+    ],
+    notes: [
+      "Returns image/png directly — not JSON.",
+      "Cached server-side for 7 days. Browser should also cache via Cache-Control header.",
+      "If the station is not found, returns a generic Mega Radio OG image.",
+    ],
+    responseExample: `<!-- Use in HTML head -->\n<meta property="og:image" content="${BASE_URL}/api/og-image/bbc-radio-1" />`,
+    codeExamples: {
+      curl: `curl -o og.png "${BASE_URL}/api/og-image/bbc-radio-1"`,
+      javascript: `// Use directly in og:image meta tags\nconst ogImageUrl = \`${BASE_URL}/api/og-image/\${station.slug}\`;\n\n// Or verify it exists\nconst res = await fetch(ogImageUrl);\nif (res.ok) console.log('Image ready:', res.headers.get('content-type'));`,
+    },
+  },
+  {
+    id: "ads-txt",
+    method: "GET",
+    path: "/ads.txt",
+    auth: "public",
+    title: "Ads.txt",
+    description: "Standard IAB ads.txt file for ad network authorization. Served at the root domain for ad network verification.",
+    responseExample: `google.com, pub-XXXXXXXXXXXXXXXX, DIRECT, f08c47fec0942fa0`,
+    codeExamples: {
+      curl: `curl "${BASE_URL}/ads.txt"`,
+    },
+  },
+];
+
+const ADMIN_ENDPOINTS: Endpoint[] = [
+  {
+    id: "admin-login",
+    method: "POST",
+    path: "/api/admin/login",
+    auth: "public",
+    title: "Admin Login",
+    description: "Authenticate as an administrator. Uses constant-time comparison to prevent timing attacks.",
+    bodyParams: [
+      { name: "username", type: "string", required: true, description: "Admin username" },
+      { name: "password", type: "string", required: true, description: "Admin password" },
+    ],
+    responseExample: `{ "success": true, "user": { "username": "admin", "role": "admin" } }`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/admin/login" \\\n  -H "Content-Type: application/json" \\\n  -d '{"username": "admin", "password": "secret"}'`,
+    },
+  },
+  {
+    id: "admin-me",
+    method: "GET",
+    path: "/api/admin/auth/me",
+    auth: "admin",
+    title: "Admin Auth Status",
+    description: "Check if the current admin session is valid.",
+    responseExample: `{ "authenticated": true, "user": { "username": "admin", "role": "admin" } }`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/auth/me"`,
+    },
+  },
+  {
+    id: "admin-sync-run",
+    method: "POST",
+    path: "/api/admin/sync/run-now",
+    auth: "admin",
+    title: "Trigger Radio-Browser Sync",
+    description: "Manually trigger a full sync from Radio-Browser. Fire-and-forget — returns 202 immediately. Poll /api/admin/sync/status for progress.",
+    responseExample: `{ "started": true, "jobId": "sync_1234567890" }`,
+    codeExamples: {
+      curl: `curl -X POST -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/sync/run-now"`,
+    },
+  },
+  {
+    id: "admin-sync-status",
+    method: "GET",
+    path: "/api/admin/sync/status",
+    auth: "admin",
+    title: "Sync Status",
+    description: "Poll the current Radio-Browser sync progress.",
+    responseExample: `{
+  "status": "running",
+  "processed": 12500,
+  "total": 43000,
+  "inserted": 230,
+  "updated": 450,
+  "skipped": 11820,
+  "startedAt": "2026-05-30T10:00:00Z"
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/sync/status"`,
+    },
+  },
+  {
+    id: "admin-stations-list",
+    method: "GET",
+    path: "/api/admin/stations",
+    auth: "admin",
+    title: "Admin: List Stations",
+    description: "Paginated admin station list with advanced filters. Includes stations with broken streams, missing logos, etc.",
+    params: [
+      { name: "page", type: "number", default: "1", description: "Page number" },
+      { name: "limit", type: "number", default: "50", description: "Per page (max 200)" },
+      { name: "search", type: "string", description: "Search by name" },
+      { name: "country", type: "string", description: "Filter by country" },
+      { name: "hasLogo", type: "string", description: "'yes', 'no', or 'all'" },
+      { name: "broken", type: "string", description: "Filter broken stations: 'only', 'exclude'" },
+    ],
+    responseExample: `{
+  "stations": [ /* full station objects with admin fields */ ],
+  "total": 43520,
+  "page": 1,
+  "pages": 871
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/stations?page=1&limit=50&hasLogo=no"`,
+    },
+  },
+  {
+    id: "admin-station-edit",
+    method: "PUT",
+    path: "/api/stations/:stationId",
+    auth: "admin",
+    title: "Admin: Edit Station",
+    description: "Update station metadata. Only admin can edit stations.",
+    bodyParams: [
+      { name: "name", type: "string", description: "Station name" },
+      { name: "url", type: "string", description: "Stream URL" },
+      { name: "country", type: "string", description: "Country name" },
+      { name: "genre", type: "string", description: "Primary genre" },
+      { name: "tags", type: "string", description: "Comma-separated tags" },
+      { name: "noIndex", type: "boolean", description: "Set true to de-index from search/sitemap" },
+    ],
+    responseExample: `{ "success": true, "station": { /* updated station */ } }`,
+    codeExamples: {
+      curl: `curl -X PUT "${BASE_URL}/api/stations/STATION_ID" \\\n  -H "Cookie: admin-session=..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"name": "Updated Name", "genre": "jazz"}'`,
+    },
+  },
+  {
+    id: "admin-station-delete",
+    method: "DELETE",
+    path: "/api/stations/:stationId",
+    auth: "admin",
+    title: "Admin: Delete Station",
+    description: "Permanently delete a station. Blacklists the stationuuid to prevent re-import from Radio-Browser on next sync.",
+    responseExample: `{ "success": true, "message": "Station deleted and blacklisted" }`,
+    codeExamples: {
+      curl: `curl -X DELETE -H "Cookie: admin-session=..." "${BASE_URL}/api/stations/STATION_ID"`,
+    },
+  },
+  {
+    id: "admin-duplicates",
+    method: "GET",
+    path: "/api/admin/stations/duplicates",
+    auth: "admin",
+    title: "Admin: Detect Duplicates",
+    description: "Find duplicate station groups by name similarity + country. Similarity threshold adjustable.",
+    params: [
+      { name: "threshold", type: "number", default: "0.85", description: "Name similarity threshold (0.5–1.0)" },
+    ],
+    responseExample: `{
+  "groups": [
+    {
+      "winner": { "_id": "...", "name": "Kral FM", "votes": 5000 },
+      "duplicates": [ { "_id": "...", "name": "Kral FM", "votes": 12 } ]
+    }
+  ],
+  "total": 142
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/stations/duplicates?threshold=0.85"`,
+    },
+  },
+  {
+    id: "admin-auto-merge",
+    method: "POST",
+    path: "/api/admin/auto-merge-all",
+    auth: "admin",
+    title: "Admin: Auto-Merge All Duplicates",
+    description: "Background job that merges all detected duplicate groups automatically. Returns a jobId to poll for progress.",
+    bodyParams: [
+      { name: "dryRun", type: "boolean", default: "false", description: "If true, simulates merge without writing to DB" },
+    ],
+    responseExample: `{ "jobId": "merge_1234567890", "status": "started" }`,
+    codeExamples: {
+      curl: `curl -X POST -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/auto-merge-all" \\\n  -H "Content-Type: application/json" -d '{"dryRun": true}'`,
+    },
+  },
+  {
+    id: "admin-logo-stats",
+    method: "GET",
+    path: "/api/admin/logos/stats",
+    auth: "admin",
+    title: "Admin: Logo Processing Stats",
+    description: "Get statistics on logo processing: total stations, completed logos, pending, failed, and by failure type.",
+    responseExample: `{
+  "total": 43520,
+  "completed": 38900,
+  "pending": 3200,
+  "failed": 1420,
+  "failureBreakdown": {
+    "http_error": 620,
+    "timeout": 380,
+    "invalid_format": 270,
+    "processing_failed": 150
+  }
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/logos/stats"`,
+    },
+  },
+  {
+    id: "admin-logo-missing",
+    method: "GET",
+    path: "/api/admin/logos/missing",
+    auth: "admin",
+    title: "Admin: List Stations Missing Logos",
+    description: "Paginated list of stations that don't have a processed logo yet.",
+    params: [
+      { name: "limit", type: "number", default: "100", description: "Max results" },
+      { name: "country", type: "string", description: "Filter by country" },
+    ],
+    responseExample: `{
+  "stations": [
+    { "_id": "...", "name": "Unknown FM", "favicon": "https://...", "country": "Turkey" }
+  ],
+  "total": 4620
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/logos/missing?country=Turkey"`,
+    },
+  },
+  {
+    id: "admin-logo-process",
+    method: "POST",
+    path: "/api/admin/logos/process-all",
+    auth: "admin",
+    title: "Admin: Process All Missing Logos",
+    description: "Enqueue all stations with missing logos for background logo processing (download → convert to WebP → upload to S3/local).",
+    responseExample: `{ "jobId": "logo_job_1234567890", "queued": 4620 }`,
+    codeExamples: {
+      curl: `curl -X POST -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/logos/process-all"`,
+    },
+  },
+  {
+    id: "admin-users-list",
+    method: "GET",
+    path: "/api/users",
+    auth: "admin",
+    title: "Admin: List All Users",
+    description: "Paginated list of all users with admin-visible fields including email, role, subscription status, and last login.",
+    params: [
+      { name: "page", type: "number", default: "1", description: "Page number" },
+      { name: "limit", type: "number", default: "50", description: "Per page" },
+      { name: "search", type: "string", description: "Search by name or email" },
+      { name: "role", type: "string", description: "Filter by role: 'user', 'admin', 'moderator'" },
+    ],
+    responseExample: `{
+  "users": [
+    {
+      "_id": "...",
+      "fullName": "John Doe",
+      "email": "john@example.com",
+      "role": "user",
+      "isActive": true,
+      "subscription": { "isActive": true, "plan": "annual" },
+      "lastLoginAt": "2026-05-29T18:00:00Z",
+      "createdAt": "2024-01-15T00:00:00Z"
+    }
+  ],
+  "total": 15420,
+  "page": 1
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/users?page=1&limit=50"`,
+    },
+  },
+  {
+    id: "admin-user-patch",
+    method: "PATCH",
+    path: "/api/admin/users/:id",
+    auth: "admin",
+    title: "Admin: Patch User",
+    description: "Update user role, status, or subscription. Admin only.",
+    bodyParams: [
+      { name: "role", type: "string", description: "'user', 'admin', 'moderator'" },
+      { name: "isActive", type: "boolean", description: "Activate or deactivate the account" },
+      { name: "isSuspended", type: "boolean", description: "Suspend the account" },
+    ],
+    responseExample: `{ "success": true, "user": { /* updated user */ } }`,
+    codeExamples: {
+      curl: `curl -X PATCH "${BASE_URL}/api/admin/users/USER_ID" \\\n  -H "Cookie: admin-session=..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"isSuspended": true}'`,
+    },
+  },
+  {
+    id: "admin-sales",
+    method: "GET",
+    path: "/api/admin/sales",
+    auth: "admin",
+    title: "Admin: Sales Analytics",
+    description: "Revenue analytics: MRR, ARPU, churn rate, subscription breakdowns by plan/platform, and 30/90-day revenue trends.",
+    params: [
+      { name: "period", type: "string", default: "30d", description: "Period: '7d', '30d', '90d', '1y'" },
+    ],
+    responseExample: `{
+  "mrr": 4250.00,
+  "arr": 51000.00,
+  "arpu": 3.99,
+  "churnRate": 0.034,
+  "activeSubscriptions": 1065,
+  "byPlan": {
+    "monthly": 420,
+    "annual": 380,
+    "lifetime": 265
+  },
+  "byPlatform": {
+    "ios": 620,
+    "android": 280,
+    "web": 165
+  },
+  "revenueByDay": [
+    { "date": "2026-05-30", "revenue": 142.50 }
+  ]
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/sales?period=30d"`,
+    },
+  },
+  {
+    id: "admin-sitemap-rebuild",
+    method: "POST",
+    path: "/api/admin/sitemap/rebuild",
+    auth: "admin",
+    title: "Admin: Rebuild Sitemaps",
+    description: "Force rebuild all language sitemaps immediately. Normally sitemaps self-update within 60 minutes. Use this for instant effect after a major content change.",
+    responseExample: `{ "success": true, "rebuiltAt": "2026-05-30T10:00:00Z", "languages": 57 }`,
+    codeExamples: {
+      curl: `curl -X POST -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/sitemap/rebuild"`,
+    },
+  },
+  {
+    id: "admin-gsc-stats",
+    method: "GET",
+    path: "/api/admin/gsc-inspection/stats",
+    auth: "admin",
+    title: "Admin: GSC Indexing Stats",
+    description: "Google Search Console URL inspection statistics: indexed, crawled-not-indexed, discovered-not-indexed, excluded counts.",
+    responseExample: `{
+  "indexed": 14250,
+  "crawledNotIndexed": 320,
+  "discoveredNotIndexed": 840,
+  "excluded": 120,
+  "total": 15530,
+  "lastUpdated": "2026-05-30T09:00:00Z"
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/gsc-inspection/stats"`,
+    },
+  },
+  {
+    id: "admin-iap-events",
+    method: "GET",
+    path: "/api/admin/iap-events",
+    auth: "admin",
+    title: "Admin: IAP Events Log",
+    description: "Paginated log of in-app purchase events from Apple and Google. Filter by platform, event type, date range.",
+    params: [
+      { name: "platform", type: "string", description: "'ios' or 'android'" },
+      { name: "eventType", type: "string", description: "Event type filter: 'purchase', 'renewal', 'cancellation', 'refund'" },
+      { name: "limit", type: "number", default: "50", description: "Per page" },
+      { name: "page", type: "number", default: "1", description: "Page number" },
+    ],
+    responseExample: `{
+  "events": [
+    {
+      "_id": "...",
+      "platform": "ios",
+      "eventType": "purchase",
+      "productId": "com.megaradio.premium.monthly",
+      "userId": "...",
+      "amount": 3.99,
+      "currency": "USD",
+      "receivedAt": "2026-05-30T10:00:00Z"
+    }
+  ],
+  "total": 8420
+}`,
+    codeExamples: {
+      curl: `curl -H "Cookie: admin-session=..." "${BASE_URL}/api/admin/iap-events?platform=ios&limit=50"`,
+    },
+  },
+  {
+    id: "admin-push",
+    method: "POST",
+    path: "/api/admin/push/silent",
+    auth: "admin",
+    title: "Admin: Send Silent Push",
+    description: "Send a silent push notification to a subset of users (by country, platform, or all). Used for cache invalidation and content refresh triggers.",
+    bodyParams: [
+      { name: "country", type: "string", description: "Target users in this country (omit for all)" },
+      { name: "platform", type: "string", description: "'ios' or 'android' (omit for both)" },
+      { name: "payload", type: "object", description: "Notification payload (sent as data-only push)" },
+    ],
+    responseExample: `{ "success": true, "sent": 4820 }`,
+    codeExamples: {
+      curl: `curl -X POST "${BASE_URL}/api/admin/push/silent" \\\n  -H "Cookie: admin-session=..." \\\n  -H "Content-Type: application/json" \\\n  -d '{"country": "Turkey", "platform": "ios", "payload": {"action": "refresh_popular"}}'`,
+    },
+  },
+];
+
 const MISC_ENDPOINTS: Endpoint[] = [
   {
     id: "translations",
@@ -2322,7 +3320,7 @@ class MegaRadioClient(private val apiKey: String) {
 
   return (
     <div>
-      <h1 className="text-4xl font-bold text-white mb-4">{guide.title}</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">{guide.title}</h1>
       <p className="text-lg text-slate-400 leading-relaxed mb-8">Complete example showing how to integrate Mega Radio API into your {guide.lang} application.</p>
       <CodeBlock code={guide.code} lang={guide.lang} />
     </div>
@@ -2332,14 +3330,15 @@ class MegaRadioClient(private val apiKey: String) {
 function EndpointSection({ title, description, endpoints }: { title: string; description: string; endpoints: Endpoint[] }) {
   return (
     <div>
-      <h1 className="text-4xl font-bold text-white mb-4">{title}</h1>
+      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">{title}</h1>
       <p className="text-lg text-slate-400 leading-relaxed mb-10">{description}</p>
       {endpoints.map((ep) => <EndpointCard key={ep.id} endpoint={ep} />)}
     </div>
   );
 }
 
-function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen, onMobileClose }: {
+function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen, onMobileClose, isAdmin }: {
+  isAdmin?: boolean;
   activeId: string;
   onNavigate: (id: string) => void;
   searchQuery: string;
@@ -2347,14 +3346,19 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
   mobileOpen: boolean;
   onMobileClose: () => void;
 }) {
+  const allSections = useMemo(
+    () => isAdmin ? [...PUBLIC_NAV_SECTIONS, ...ADMIN_NAV_SECTIONS] : PUBLIC_NAV_SECTIONS,
+    [isAdmin]
+  );
+
   const filteredSections = useMemo(() => {
-    if (!searchQuery) return NAV_SECTIONS;
+    if (!searchQuery) return allSections;
     const q = searchQuery.toLowerCase();
-    return NAV_SECTIONS.map((section) => ({
+    return allSections.map((section) => ({
       ...section,
       items: section.items.filter((item) => item.label.toLowerCase().includes(q) || section.label.toLowerCase().includes(q)),
     })).filter((s) => s.items.length > 0);
-  }, [searchQuery]);
+  }, [searchQuery, allSections]);
 
   const content = (
     <>
@@ -2380,27 +3384,40 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
         </div>
       </div>
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
-        {filteredSections.map((section) => (
-          <div key={section.id} className="mb-3">
-            <div className="flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] text-slate-500 font-semibold">
-              <section.icon className="w-3.5 h-3.5" />
-              {section.label}
+        {filteredSections.map((section, idx) => {
+          const isAdminSection = ADMIN_NAV_SECTIONS.some(s => s.id === section.id);
+          const isFirstAdminSection = isAdminSection && (idx === 0 || !ADMIN_NAV_SECTIONS.some(s => s.id === filteredSections[idx - 1]?.id));
+          return (
+            <div key={section.id} className="mb-3">
+              {isFirstAdminSection && (
+                <div className="flex items-center gap-2 mx-3 mb-3 mt-2">
+                  <div className="flex-1 h-px bg-red-500/20" />
+                  <span className="text-[9px] uppercase tracking-widest text-red-500/60 font-bold px-1">Admin Only</span>
+                  <div className="flex-1 h-px bg-red-500/20" />
+                </div>
+              )}
+              <div className={`flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] font-semibold ${isAdminSection ? "text-red-500/60" : "text-slate-500"}`}>
+                <section.icon className="w-3.5 h-3.5" />
+                {section.label}
+              </div>
+              {section.items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => { onNavigate(item.id); onMobileClose(); }}
+                  className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-colors ${
+                    activeId === item.id
+                      ? isAdminSection
+                        ? "bg-red-500/10 text-red-400 font-medium"
+                        : "bg-blue-500/10 text-blue-400 font-medium"
+                      : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
-            {section.items.map((item) => (
-              <button
-                key={item.id}
-                onClick={() => { onNavigate(item.id); onMobileClose(); }}
-                className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-colors ${
-                  activeId === item.id
-                    ? "bg-blue-500/10 text-blue-400 font-medium"
-                    : "text-slate-400 hover:text-white hover:bg-white/5"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        ))}
+          );
+        })}
       </nav>
       <div className="p-4 border-t border-white/5">
         <a href="/api-user" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 text-blue-400 text-sm font-medium hover:bg-blue-500/20 transition-colors">
@@ -2429,6 +3446,18 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
         </div>
       )}
     </>
+  );
+}
+
+function AdminBanner() {
+  return (
+    <div className="mb-8 flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/8 border border-red-500/20">
+      <Lock className="w-4 h-4 text-red-400 shrink-0" />
+      <div>
+        <p className="text-sm font-semibold text-red-300">Admin API — Private</p>
+        <p className="text-xs text-red-400/70 mt-0.5">These endpoints require an active admin session. Not exposed to public API key users.</p>
+      </div>
+    </div>
   );
 }
 
@@ -2493,12 +3522,55 @@ const SECTION_CONTENT: Record<string, () => React.JSX.Element> = {
   "msg-upload-image": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users." endpoints={MESSAGING_ENDPOINTS} />,
   "msg-websocket": () => <EndpointSection title="Messaging" description="Real-time direct messaging between users. Connect via WebSocket for live updates." endpoints={MESSAGING_ENDPOINTS} />,
 
-  translations: () => <EndpointSection title="Misc" description="Utility endpoints for app localization and other features." endpoints={MISC_ENDPOINTS} />,
+  translations: () => <EndpointSection title="Utility" description="App localization, health checks, and utility endpoints." endpoints={MISC_ENDPOINTS} />,
+  health: () => <EndpointSection title="Utility" description="Health checks, OG images, and utility endpoints." endpoints={HEALTH_ENDPOINTS} />,
+  "og-image": () => <EndpointSection title="Utility" description="OG image generation and ads.txt." endpoints={HEALTH_ENDPOINTS} />,
+
+  "list-regions": () => <EndpointSection title="Regions & Cities" description="Geographic browse endpoints. Explore stations by world region, country, and city." endpoints={REGIONS_ENDPOINTS} />,
+  "region-countries": () => <EndpointSection title="Regions & Cities" description="Browse countries within a region." endpoints={REGIONS_ENDPOINTS} />,
+  "region-country-stations": () => <EndpointSection title="Regions & Cities" description="Stations in a specific region + country." endpoints={REGIONS_ENDPOINTS} />,
+  "cities-global": () => <EndpointSection title="Regions & Cities" description="All cities with radio stations." endpoints={REGIONS_ENDPOINTS} />,
+  "cities-by-country": () => <EndpointSection title="Regions & Cities" description="Cities filtered by country." endpoints={REGIONS_ENDPOINTS} />,
+
+  "ml-track": () => <EndpointSection title="ML & Personalization" description="Track interactions and get personalized recommendations using collaborative filtering across 40,000+ stations." endpoints={ML_ENDPOINTS} />,
+  "ml-profile": () => <EndpointSection title="ML & Personalization" description="Get a session's preference profile." endpoints={ML_ENDPOINTS} />,
+  "ml-recommendations": () => <EndpointSection title="ML & Personalization" description="Personalized recommendations." endpoints={ML_ENDPOINTS} />,
+
+  "public-profile": () => <EndpointSection title="User Profiles" description="Public user profile endpoints. Follow users, view favorites, and discover popular listeners." endpoints={PROFILE_ENDPOINTS} />,
+  "profile-favorites": () => <EndpointSection title="User Profiles" description="A user's public favorite stations." endpoints={PROFILE_ENDPOINTS} />,
+  "popular-profiles": () => <EndpointSection title="User Profiles" description="Trending user profiles." endpoints={PROFILE_ENDPOINTS} />,
+  "follow-user": () => <EndpointSection title="User Profiles" description="Follow / unfollow users." endpoints={PROFILE_ENDPOINTS} />,
+  "search-users": () => <EndpointSection title="User Profiles" description="Search public user profiles." endpoints={PROFILE_ENDPOINTS} />,
+
+  "subscription-plans": () => <EndpointSection title="Subscriptions & IAP" description="Subscription plans, status, and in-app purchase validation for iOS and Android." endpoints={SUBSCRIPTION_ENDPOINTS} />,
+  "subscription-status": () => <EndpointSection title="Subscriptions & IAP" description="Current subscription status." endpoints={SUBSCRIPTION_ENDPOINTS} />,
+  "iap-validate": () => <EndpointSection title="Subscriptions & IAP" description="Validate Apple/Google IAP receipts." endpoints={SUBSCRIPTION_ENDPOINTS} />,
+  "tv-sub-code": () => <EndpointSection title="Subscriptions & IAP" description="TV subscription code pairing." endpoints={SUBSCRIPTION_ENDPOINTS} />,
 
   "guide-javascript": () => <GuidesContent guideId="guide-javascript" />,
   "guide-react-native": () => <GuidesContent guideId="guide-react-native" />,
   "guide-ios": () => <GuidesContent guideId="guide-ios" />,
   "guide-android": () => <GuidesContent guideId="guide-android" />,
+
+  "admin-login": () => <><AdminBanner /><EndpointSection title="Admin API" description="Admin authentication and management endpoints. Requires an active admin session." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-me": () => <><AdminBanner /><EndpointSection title="Admin API" description="Admin authentication." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-sync-run": () => <><AdminBanner /><EndpointSection title="Station Management" description="Sync and manage radio station data." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-sync-status": () => <><AdminBanner /><EndpointSection title="Station Management" description="Sync status polling." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-stations-list": () => <><AdminBanner /><EndpointSection title="Station Management" description="Admin station listing and management." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-station-edit": () => <><AdminBanner /><EndpointSection title="Station Management" description="Edit station metadata." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-station-delete": () => <><AdminBanner /><EndpointSection title="Station Management" description="Delete and blacklist stations." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-duplicates": () => <><AdminBanner /><EndpointSection title="Station Management" description="Detect duplicate stations." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-auto-merge": () => <><AdminBanner /><EndpointSection title="Station Management" description="Auto-merge all duplicate stations." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-logo-stats": () => <><AdminBanner /><EndpointSection title="Logo Management" description="Logo processing statistics." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-logo-missing": () => <><AdminBanner /><EndpointSection title="Logo Management" description="Stations missing logos." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-logo-process": () => <><AdminBanner /><EndpointSection title="Logo Management" description="Bulk logo processing." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-users-list": () => <><AdminBanner /><EndpointSection title="User Management" description="Admin user listing and management." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-user-patch": () => <><AdminBanner /><EndpointSection title="User Management" description="Update user roles and status." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-sales": () => <><AdminBanner /><EndpointSection title="Analytics" description="Revenue and subscription analytics." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-sitemap-rebuild": () => <><AdminBanner /><EndpointSection title="SEO & Sitemaps" description="Sitemap management." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-gsc-stats": () => <><AdminBanner /><EndpointSection title="SEO & Sitemaps" description="Google Search Console stats." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-iap-events": () => <><AdminBanner /><EndpointSection title="Analytics" description="IAP event logs." endpoints={ADMIN_ENDPOINTS} /></>,
+  "admin-push": () => <><AdminBanner /><EndpointSection title="Push Notifications" description="Silent push delivery." endpoints={ADMIN_ENDPOINTS} /></>,
 };
 
 export default function ApiDocs() {
@@ -2506,6 +3578,7 @@ export default function ApiDocs() {
   const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { isAdmin } = useAdminAuth();
 
   const activeId = params?.category || "introduction";
 
@@ -2523,7 +3596,8 @@ export default function ApiDocs() {
 
   const ContentComponent = SECTION_CONTENT[activeId] || SECTION_CONTENT["introduction"];
 
-  const breadcrumbSection = NAV_SECTIONS.find((s) => s.items.some((i) => i.id === activeId));
+  const allNavSections = isAdmin ? [...PUBLIC_NAV_SECTIONS, ...ADMIN_NAV_SECTIONS] : PUBLIC_NAV_SECTIONS;
+  const breadcrumbSection = allNavSections.find((s) => s.items.some((i) => i.id === activeId));
   const breadcrumbItem = breadcrumbSection?.items.find((i) => i.id === activeId);
 
   return (
@@ -2535,31 +3609,32 @@ export default function ApiDocs() {
         onSearchChange={setSearchQuery}
         mobileOpen={mobileOpen}
         onMobileClose={() => setMobileOpen(false)}
+        isAdmin={isAdmin}
       />
       <main className="flex-1 min-w-0">
         <header className="sticky top-0 z-10 bg-[#0d0d1a]/80 backdrop-blur-xl border-b border-white/5">
-          <div className="flex items-center gap-3 px-6 py-3">
-            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1.5 text-slate-400 hover:text-white">
+          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-3">
+            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1.5 text-slate-400 hover:text-white shrink-0">
               <Menu className="w-5 h-5" />
             </button>
             {breadcrumbSection && breadcrumbItem && (
-              <div className="flex items-center gap-2 text-sm">
-                <span className="text-slate-500">{breadcrumbSection.label}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-                <span className="text-white font-medium">{breadcrumbItem.label}</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 text-sm min-w-0 overflow-hidden">
+                <span className="text-slate-500 truncate hidden sm:inline">{breadcrumbSection.label}</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0 hidden sm:inline" />
+                <span className="text-white font-medium truncate">{breadcrumbItem.label}</span>
               </div>
             )}
-            <div className="ml-auto flex items-center gap-3">
-              <a href="/api-user" className="text-xs text-slate-400 hover:text-white transition-colors">Dashboard</a>
-              <a href="/en" className="text-xs text-slate-400 hover:text-white transition-colors">Back to Radio</a>
+            <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
+              <a href="/api-user" className="text-xs text-slate-400 hover:text-white transition-colors hidden sm:inline">Dashboard</a>
+              <a href="/en" className="text-xs text-slate-400 hover:text-white transition-colors">← Radio</a>
             </div>
           </div>
         </header>
-        <div className="max-w-4xl mx-auto px-6 py-10">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
           <ContentComponent />
         </div>
-        <footer className="border-t border-white/5 mt-20">
-          <div className="max-w-4xl mx-auto px-6 py-8 text-center">
+        <footer className="border-t border-white/5 mt-16 sm:mt-20">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 text-center">
             <p className="text-sm text-slate-500">Mega Radio API v1.0 -- Need help? Contact <a href="mailto:api@themegaradio.com" className="text-blue-400 hover:text-blue-300">api@themegaradio.com</a></p>
           </div>
         </footer>
