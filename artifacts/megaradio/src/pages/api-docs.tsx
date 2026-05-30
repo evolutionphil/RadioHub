@@ -38,12 +38,12 @@ interface NavSection {
   items: { id: string; label: string }[];
 }
 
-const METHOD_STYLES: Record<Method, { bg: string; text: string; border: string }> = {
-  GET: { bg: "bg-emerald-500/10", text: "text-emerald-400", border: "border-emerald-500/20" },
-  POST: { bg: "bg-blue-500/10", text: "text-blue-400", border: "border-blue-500/20" },
-  PUT: { bg: "bg-amber-500/10", text: "text-amber-400", border: "border-amber-500/20" },
-  DELETE: { bg: "bg-red-500/10", text: "text-red-400", border: "border-red-500/20" },
-  PATCH: { bg: "bg-purple-500/10", text: "text-purple-400", border: "border-purple-500/20" },
+const METHOD_STYLES: Record<Method, { bg: string; text: string; border: string; glow: string }> = {
+  GET:    { bg: "bg-emerald-500/[0.12]", text: "text-emerald-400", border: "border-emerald-500/30", glow: "shadow-[0_0_10px_rgba(52,211,153,0.15)]" },
+  POST:   { bg: "bg-blue-500/[0.12]",    text: "text-blue-400",    border: "border-blue-500/30",    glow: "shadow-[0_0_10px_rgba(96,165,250,0.15)]" },
+  PUT:    { bg: "bg-amber-500/[0.12]",   text: "text-amber-400",   border: "border-amber-500/30",   glow: "shadow-[0_0_10px_rgba(251,191,36,0.15)]" },
+  DELETE: { bg: "bg-red-500/[0.12]",     text: "text-red-400",     border: "border-red-500/30",     glow: "shadow-[0_0_10px_rgba(248,113,113,0.15)]" },
+  PATCH:  { bg: "bg-purple-500/[0.12]",  text: "text-purple-400",  border: "border-purple-500/30",  glow: "shadow-[0_0_10px_rgba(192,132,252,0.15)]" },
 };
 
 const AUTH_LEVEL_STYLES: Record<AuthLevel, { label: string; bg: string; text: string; border: string }> = {
@@ -306,23 +306,41 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000);
   }, [text]);
   return (
-    <button onClick={handleCopy} className="absolute top-3 right-3 p-1.5 rounded-md bg-white/5 hover:bg-white/10 transition-colors" aria-label="Copy">
-      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-slate-400" />}
+    <button
+      onClick={handleCopy}
+      className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-white/[0.06] hover:bg-white/[0.1] border border-white/[0.08] transition-all text-[11px] font-medium"
+      aria-label={copied ? "Copied!" : "Copy code"}
+    >
+      {copied ? (
+        <><Check className="w-3 h-3 text-emerald-400" /><span className="text-emerald-400">Copied</span></>
+      ) : (
+        <><Copy className="w-3 h-3 text-slate-400" /><span className="text-slate-400">Copy</span></>
+      )}
     </button>
   );
 }
 
 function MethodBadge({ method }: { method: Method }) {
   const s = METHOD_STYLES[method];
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold tracking-wider ${s.bg} ${s.text} border ${s.border}`}>{method}</span>;
+  return (
+    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[11px] font-bold tracking-widest uppercase ${s.bg} ${s.text} border ${s.border} ${s.glow}`}>
+      {method}
+    </span>
+  );
 }
 
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
-    <div className="relative group rounded-lg bg-[#0d1117] border border-white/5 overflow-hidden">
-      {lang && <div className="px-4 py-1.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-white/5 font-medium">{lang}</div>}
+    <div className="relative group rounded-xl bg-[#060912] border border-white/[0.07] overflow-hidden">
+      {lang && (
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/[0.06] bg-white/[0.02]">
+          <span className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold">{lang}</span>
+        </div>
+      )}
       <CopyButton text={code} />
-      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed"><code className="text-slate-300 font-mono">{code}</code></pre>
+      <pre className="p-5 overflow-x-auto text-[13px] leading-relaxed scrollbar-thin scrollbar-track-transparent scrollbar-thumb-white/10">
+        <code className="text-slate-300 font-mono">{code}</code>
+      </pre>
     </div>
   );
 }
@@ -332,17 +350,27 @@ function CodeTabs({ examples }: { examples: Partial<Record<CodeLang, string>> })
   const [active, setActive] = useState<CodeLang>(langs[0]);
   if (langs.length === 0) return null;
   return (
-    <div className="rounded-lg bg-[#0d1117] border border-white/5 overflow-hidden">
-      <div className="flex border-b border-white/5 overflow-x-auto">
+    <div className="rounded-xl bg-[#060912] border border-white/[0.07] overflow-hidden">
+      <div className="flex items-center gap-1 px-3 py-2.5 border-b border-white/[0.06] bg-white/[0.02] overflow-x-auto">
         {langs.map((lang) => (
-          <button key={lang} onClick={() => setActive(lang)} className={`px-4 py-2 text-xs font-medium whitespace-nowrap transition-colors ${active === lang ? "text-white bg-white/5 border-b-2 border-blue-400" : "text-slate-500 hover:text-slate-300"}`}>
+          <button
+            key={lang}
+            onClick={() => setActive(lang)}
+            className={`px-3 py-1.5 rounded-md text-[11px] font-medium whitespace-nowrap transition-all ${
+              active === lang
+                ? "bg-gradient-to-r from-[#FF4199]/20 to-[#FF6B35]/20 text-white border border-[#FF4199]/30"
+                : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+            }`}
+          >
             {CODE_LANG_LABELS[lang]}
           </button>
         ))}
       </div>
       <div className="relative">
         <CopyButton text={examples[active] || ""} />
-        <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed"><code className="text-slate-300 font-mono">{examples[active]}</code></pre>
+        <pre className="p-5 overflow-x-auto text-[13px] leading-relaxed">
+          <code className="text-slate-300 font-mono">{examples[active]}</code>
+        </pre>
       </div>
     </div>
   );
@@ -352,24 +380,31 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
   if (!params.length) return null;
   return (
     <div className="mt-6">
-      <h4 className="text-sm font-semibold text-slate-300 mb-3 uppercase tracking-wider">{title}</h4>
-      <div className="border border-white/5 rounded-lg overflow-hidden overflow-x-auto">
+      <h4 className="text-[11px] font-bold text-slate-400 mb-3 uppercase tracking-[0.15em] flex items-center gap-2">
+        <span className="w-3 h-px bg-gradient-to-r from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        {title}
+      </h4>
+      <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto">
         <table className="w-full text-sm min-w-[480px]">
-          <thead><tr className="bg-white/[0.02]">
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Parameter</th>
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider whitespace-nowrap">Type</th>
-            <th className="text-left px-4 py-2.5 text-slate-400 font-medium text-xs uppercase tracking-wider">Description</th>
-          </tr></thead>
-          <tbody>
-            {params.map((p, i) => (
-              <tr key={p.name} className={i % 2 === 0 ? "bg-transparent" : "bg-white/[0.01]"}>
+          <thead>
+            <tr className="bg-white/[0.03]">
+              <th className="text-left px-4 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Parameter</th>
+              <th className="text-left px-4 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Type</th>
+              <th className="text-left px-4 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest">Description</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-white/[0.04]">
+            {params.map((p) => (
+              <tr key={p.name} className="hover:bg-white/[0.02] transition-colors">
                 <td className="px-4 py-3 font-mono text-[13px] whitespace-nowrap">
-                  <span className="text-sky-400">{p.name}</span>
-                  {p.required && <span className="ml-1.5 text-[10px] text-red-400 font-sans font-medium">required</span>}
-                  {p.default && <span className="ml-1.5 text-[10px] text-slate-500 font-sans">= {p.default}</span>}
+                  <span className="text-[#FF4199]">{p.name}</span>
+                  {p.required && <span className="ml-2 text-[9px] text-red-400/80 font-sans font-bold uppercase tracking-wider bg-red-500/10 px-1.5 py-0.5 rounded">req</span>}
+                  {p.default && <span className="ml-2 text-[11px] text-slate-600 font-sans">= {p.default}</span>}
                 </td>
-                <td className="px-4 py-3 text-amber-300/80 font-mono text-[13px] whitespace-nowrap">{p.type}</td>
-                <td className="px-4 py-3 text-slate-400">{p.description}</td>
+                <td className="px-4 py-3 font-mono text-[12px] whitespace-nowrap">
+                  <span className="text-amber-400/80 bg-amber-500/[0.06] px-1.5 py-0.5 rounded text-[11px]">{p.type}</span>
+                </td>
+                <td className="px-4 py-3 text-slate-400 text-[13px] leading-relaxed">{p.description}</td>
               </tr>
             ))}
           </tbody>
@@ -382,9 +417,8 @@ function ParamTable({ params, title }: { params: Param[]; title: string }) {
 function AuthBadge({ level }: { level: AuthLevel }) {
   const s = AUTH_LEVEL_STYLES[level];
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-widest uppercase ${s.bg} ${s.text} border ${s.border}`}>
-      {level === "admin" && <Lock className="w-2.5 h-2.5" />}
-      {level === "user" && <Shield className="w-2.5 h-2.5" />}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[10px] font-bold tracking-widest uppercase ${s.bg} ${s.text} border ${s.border}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${s.text} bg-current`} aria-hidden="true" />
       {s.label}
     </span>
   );
@@ -392,38 +426,65 @@ function AuthBadge({ level }: { level: AuthLevel }) {
 
 function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
   const authLevel = endpoint.auth ?? "api-key";
+  const method = endpoint.method;
+
   return (
-    <div id={endpoint.id} className="scroll-mt-20 mb-10 rounded-xl border border-white/[0.06] bg-white/[0.015] p-4 sm:p-6 hover:border-white/[0.1] transition-colors">
-      <div className="flex flex-wrap items-start gap-2 mb-3">
-        <MethodBadge method={endpoint.method} />
-        <code className="text-xs sm:text-sm font-mono text-slate-300 bg-white/[0.06] px-2.5 sm:px-3 py-1 rounded-md flex-1 min-w-0 break-all">{endpoint.path}</code>
-        <AuthBadge level={authLevel} />
-      </div>
-      <h3 className="text-base sm:text-lg font-semibold text-white mb-2">{endpoint.title}</h3>
-      <p className="text-slate-400 leading-relaxed mb-5 text-sm sm:text-[15px]">{endpoint.description}</p>
-      {endpoint.params && <ParamTable params={endpoint.params} title="Query Parameters" />}
-      {endpoint.bodyParams && <ParamTable params={endpoint.bodyParams} title="Body Parameters" />}
-      {endpoint.headers && <ParamTable params={endpoint.headers} title="Headers" />}
-      {endpoint.notes && endpoint.notes.length > 0 && (
-        <div className="mt-4 p-3 sm:p-4 rounded-lg bg-blue-500/5 border border-blue-500/20">
-          <div className="flex gap-3">
-            <AlertTriangle className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-            <div className="space-y-1">
-              {endpoint.notes.map((note, i) => (
-                <p key={i} className="text-blue-200/80 text-sm">{note}</p>
-              ))}
+    <div
+      id={endpoint.id}
+      className="scroll-mt-20 mb-8 relative group rounded-2xl border border-white/[0.07] bg-white/[0.025] hover:bg-white/[0.04] hover:border-white/[0.12] transition-all duration-300 overflow-hidden"
+    >
+      {/* Colored top accent strip */}
+      <div className={`h-px w-full bg-gradient-to-r ${
+        method === 'GET' ? 'from-emerald-500/40 via-emerald-500/10 to-transparent' :
+        method === 'POST' ? 'from-blue-500/40 via-blue-500/10 to-transparent' :
+        method === 'PUT' ? 'from-amber-500/40 via-amber-500/10 to-transparent' :
+        method === 'DELETE' ? 'from-red-500/40 via-red-500/10 to-transparent' :
+        'from-purple-500/40 via-purple-500/10 to-transparent'
+      }`} aria-hidden="true" />
+
+      <div className="p-5 sm:p-6">
+        {/* Header row */}
+        <div className="flex flex-wrap items-start gap-2.5 mb-4">
+          <MethodBadge method={endpoint.method} />
+          <code className="flex-1 min-w-0 text-xs sm:text-sm font-mono break-all px-3 py-1.5 rounded-lg bg-white/[0.05] border border-white/[0.07] text-slate-200">
+            {endpoint.path}
+          </code>
+          <AuthBadge level={authLevel} />
+        </div>
+
+        <h3 className="text-base sm:text-lg font-semibold text-white mb-2">{endpoint.title}</h3>
+        <p className="text-slate-400 leading-relaxed text-sm sm:text-[15px] mb-5">{endpoint.description}</p>
+
+        {endpoint.params && <ParamTable params={endpoint.params} title="Query Parameters" />}
+        {endpoint.bodyParams && <ParamTable params={endpoint.bodyParams} title="Body Parameters" />}
+        {endpoint.headers && <ParamTable params={endpoint.headers} title="Headers" />}
+
+        {endpoint.notes && endpoint.notes.length > 0 && (
+          <div className="mt-5 p-4 rounded-xl bg-[#FF4199]/[0.05] border border-[#FF4199]/20">
+            <div className="flex gap-3">
+              <AlertTriangle className="w-4 h-4 text-[#FF4199]/80 shrink-0 mt-0.5" />
+              <div className="space-y-1.5">
+                {endpoint.notes.map((note, i) => (
+                  <p key={i} className="text-[#FF4199]/70 text-sm leading-relaxed">{note}</p>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
-      )}
-      <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <div>
-          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Request</h4>
-          <CodeTabs examples={endpoint.codeExamples} />
-        </div>
-        <div>
-          <h4 className="text-xs font-semibold text-slate-300 mb-3 uppercase tracking-wider">Response</h4>
-          <CodeBlock code={endpoint.responseExample} lang="JSON" />
+        )}
+
+        <div className="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-4">
+          <div>
+            <h4 className="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-[0.15em] flex items-center gap-2">
+              <span className="w-3 h-px bg-blue-500/50" aria-hidden="true" />Request
+            </h4>
+            <CodeTabs examples={endpoint.codeExamples} />
+          </div>
+          <div>
+            <h4 className="text-[10px] font-bold text-slate-500 mb-3 uppercase tracking-[0.15em] flex items-center gap-2">
+              <span className="w-3 h-px bg-emerald-500/50" aria-hidden="true" />Response
+            </h4>
+            <CodeBlock code={endpoint.responseExample} lang="JSON" />
+          </div>
         </div>
       </div>
     </div>
@@ -431,42 +492,77 @@ function EndpointCard({ endpoint }: { endpoint: Endpoint }) {
 }
 
 const IntroductionContent = memo(() => (
-  <div>
-    <div className="mb-10 sm:mb-12">
-      <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Mega Radio API</h1>
-      <p className="text-base sm:text-lg text-slate-400 leading-relaxed max-w-2xl">Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences with our REST API.</p>
+  <div className="relative">
+    {/* Ambient background orbs */}
+    <div aria-hidden="true" className="pointer-events-none absolute -top-20 -right-20 w-[500px] h-[500px] rounded-full bg-[#FF4199]/[0.06] blur-[120px]" />
+    <div aria-hidden="true" className="pointer-events-none absolute top-40 -left-20 w-[400px] h-[400px] rounded-full bg-purple-600/[0.05] blur-[100px]" />
+
+    {/* Hero */}
+    <div className="relative mb-12">
+      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.08] text-[11px] text-slate-400 font-medium mb-6">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
+        v1.0 — REST API
+      </div>
+      <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
+        <span className="text-white">Mega Radio </span>
+        <span className="bg-clip-text text-transparent bg-gradient-to-r from-[#FF4199] to-[#FF6B35]">API</span>
+      </h1>
+      <p className="text-base sm:text-lg text-slate-400 leading-relaxed max-w-2xl">
+        Access 40,000+ radio stations worldwide. Build radio apps, integrate live streaming, and create personalized listening experiences.
+      </p>
     </div>
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-10 sm:mb-12">
+
+    {/* Stats cards */}
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-12">
       {[
-        { icon: Radio, title: "40,000+ Stations", desc: "Global radio stations with metadata, logos, and stream URLs" },
-        { icon: Zap, title: "Real-time Streaming", desc: "HLS and direct stream resolution with now-playing metadata" },
-        { icon: Globe, title: "57 Languages", desc: "Multilingual support with localized content and search" },
+        { icon: Radio, title: "40,000+", label: "Radio Stations", desc: "Global coverage with full metadata", color: "from-[#FF4199]/20 to-[#FF4199]/5", border: "border-[#FF4199]/20", iconColor: "text-[#FF4199]" },
+        { icon: Zap, title: "Real-time", label: "Streaming", desc: "HLS and direct stream resolution", color: "from-blue-500/20 to-blue-500/5", border: "border-blue-500/20", iconColor: "text-blue-400" },
+        { icon: Globe, title: "57", label: "Languages", desc: "Multilingual localized content", color: "from-purple-500/20 to-purple-500/5", border: "border-purple-500/20", iconColor: "text-purple-400" },
       ].map((f) => (
-        <div key={f.title} className="rounded-xl bg-white/[0.03] border border-white/5 p-5 hover:border-white/10 transition-colors">
-          <f.icon className="w-8 h-8 text-blue-400 mb-3" />
-          <h3 className="text-white font-semibold mb-1">{f.title}</h3>
-          <p className="text-sm text-slate-400">{f.desc}</p>
+        <div key={f.title} className={`relative rounded-2xl border ${f.border} bg-gradient-to-br ${f.color} p-5 overflow-hidden group hover:scale-[1.02] transition-transform duration-300`}>
+          <div aria-hidden="true" className="absolute -top-4 -right-4 w-20 h-20 rounded-full bg-white/[0.03] blur-xl" />
+          <f.icon className={`w-7 h-7 ${f.iconColor} mb-3`} />
+          <div className="text-2xl font-bold text-white mb-0.5">{f.title}</div>
+          <div className="text-sm font-semibold text-white/80 mb-1">{f.label}</div>
+          <p className="text-xs text-slate-400">{f.desc}</p>
         </div>
       ))}
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Base URL</h2>
-    <CodeBlock code={`${BASE_URL}/api`} lang="Base URL" />
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold text-white mb-4">Quick Start</h2>
-      <p className="text-slate-400 mb-4">Get a demo API key and make your first request in seconds:</p>
+
+    {/* Base URL */}
+    <div className="mb-8">
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        Base URL
+      </h2>
+      <CodeBlock code={`${BASE_URL}/api`} lang="Base URL" />
+    </div>
+
+    {/* Quick start */}
+    <div className="mb-8">
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        Quick Start
+      </h2>
+      <p className="text-slate-400 mb-4 text-sm">Get a demo API key and make your first request in seconds:</p>
       <CodeBlock code={`# 1. Get a free demo API key (valid 24h)\ncurl ${BASE_URL}/api/api-keys/demo\n\n# 2. Search for stations\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?search=jazz&limit=5"\n\n# 3. Get station details\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/bbc-radio-1"\n\n# 4. Get stations by country (supports English, native, ISO-2, ISO-3 codes)\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?country=Turkey&limit=10"\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?country=DE&limit=10"\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/stations?country=AUT&limit=10"`} lang="Quick Start" />
     </div>
-    <div className="mt-8">
-      <h2 className="text-2xl font-bold text-white mb-4">Country Filter Formats</h2>
-      <p className="text-slate-400 mb-4">The <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs text-sky-400">country</code> parameter accepts multiple formats across all endpoints:</p>
-      <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto">
+
+    {/* Country formats */}
+    <div>
+      <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+        <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+        Country Filter Formats
+      </h2>
+      <p className="text-slate-400 mb-4 text-sm">The <code className="bg-white/[0.07] px-1.5 py-0.5 rounded text-xs text-[#FF4199]">country</code> parameter accepts multiple formats across all endpoints:</p>
+      <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto">
         <table className="w-full text-sm min-w-[420px]">
           <thead><tr className="bg-white/[0.03]">
-            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Format</th>
-            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Example</th>
-            <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Resolves To</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Format</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Example</th>
+            <th className="text-left px-4 sm:px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">Resolves To</th>
           </tr></thead>
-          <tbody>
+          <tbody className="divide-y divide-white/[0.04]">
             {[
               { format: "English Name", example: "Germany", resolves: "Germany" },
               { format: "ISO-2 Code", example: "DE", resolves: "Germany" },
@@ -475,11 +571,11 @@ const IntroductionContent = memo(() => (
               { format: "Turkish Name", example: "Almanya", resolves: "Germany" },
               { format: "Case-insensitive", example: "turkey, TURKEY, Turkey", resolves: "Turkey" },
               { format: "ASCII variant", example: "turkiye, Turkiye", resolves: "Turkey" },
-            ].map((r, i) => (
-              <tr key={r.format} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-                <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{r.format}</td>
-                <td className="px-4 sm:px-5 py-3 text-sky-400 font-mono text-[13px] whitespace-nowrap">{r.example}</td>
-                <td className="px-4 sm:px-5 py-3 text-slate-400">{r.resolves}</td>
+            ].map((r) => (
+              <tr key={r.format} className="hover:bg-white/[0.02] transition-colors">
+                <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap text-sm">{r.format}</td>
+                <td className="px-4 sm:px-5 py-3 text-[#FF4199] font-mono text-[13px] whitespace-nowrap">{r.example}</td>
+                <td className="px-4 sm:px-5 py-3 text-slate-400 text-sm">{r.resolves}</td>
               </tr>
             ))}
           </tbody>
@@ -492,35 +588,56 @@ const IntroductionContent = memo(() => (
 const AuthenticationContent = memo(() => (
   <div>
     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Authentication</h1>
-    <p className="text-lg text-slate-400 leading-relaxed mb-8">All API requests require authentication via an API key. Include your key in every request using one of these methods:</p>
-    <div className="space-y-4 mb-8">
+    <p className="text-slate-400 leading-relaxed mb-8 text-sm sm:text-base">All API requests require an API key. Include your key in every request using one of these methods:</p>
+    <div className="space-y-4 mb-10">
       {[
-        { title: "X-API-Key Header (Recommended)", code: `curl -H "X-API-Key: mr_your_api_key" ${BASE_URL}/api/stations` },
-        { title: "Authorization Bearer", code: `curl -H "Authorization: Bearer mr_your_api_key" ${BASE_URL}/api/stations` },
+        { title: "X-API-Key Header", subtitle: "Recommended", code: `curl -H "X-API-Key: mr_your_api_key" ${BASE_URL}/api/stations` },
+        { title: "Authorization Bearer", subtitle: "Alternative", code: `curl -H "Authorization: Bearer mr_your_api_key" ${BASE_URL}/api/stations` },
       ].map((m) => (
         <div key={m.title}>
-          <h3 className="text-white font-semibold mb-2">{m.title}</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-white font-semibold text-sm">{m.title}</h3>
+            <span className="text-[10px] text-slate-500 bg-white/[0.05] px-2 py-0.5 rounded-full">{m.subtitle}</span>
+          </div>
           <CodeBlock code={m.code} />
         </div>
       ))}
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Getting an API Key</h2>
-    <div className="space-y-6">
-      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Demo Key (Instant)</h3>
-        <p className="text-slate-400 mb-3">Get a temporary key instantly. Valid for 24 hours, limited to 10 req/min. One per IP address.</p>
-        <CodeBlock code={`curl -X GET ${BASE_URL}/api/api-keys/demo`} />
-      </div>
-      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Free Key (Register)</h3>
-        <p className="text-slate-400 mb-3">Register for a permanent key with higher limits. 60 req/min, 1,000 requests/day.</p>
-        <CodeBlock code={`curl -X POST ${BASE_URL}/api/api-keys/user/register \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "email": "dev@example.com",\n    "password": "securepassword",\n    "name": "Your Name",\n    "appName": "My Radio App",\n    "appDescription": "A radio streaming app"\n  }'`} />
-      </div>
-      <div className="rounded-xl bg-white/[0.03] border border-white/5 p-6">
-        <h3 className="text-lg font-semibold text-white mb-2">Developer Portal</h3>
-        <p className="text-slate-400 mb-3">Manage your API keys, view usage statistics, and upgrade your plan.</p>
-        <a href="/api-user" className="inline-flex items-center gap-2 text-blue-400 hover:text-blue-300 font-medium transition-colors">
-          Open Developer Portal <ExternalLink className="w-4 h-4" />
+    <h2 className="text-xl font-bold text-white mb-5 flex items-center gap-2">
+      <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+      Getting an API Key
+    </h2>
+    <div className="space-y-4">
+      {[
+        {
+          title: "Demo Key",
+          badge: "Instant · 24h",
+          badgeColor: "text-emerald-400 bg-emerald-500/10 border-emerald-500/20",
+          desc: "Get a temporary key instantly. Valid for 24 hours, limited to 10 req/min. One per IP address.",
+          code: `curl -X GET ${BASE_URL}/api/api-keys/demo`,
+        },
+        {
+          title: "Free Key",
+          badge: "Register · Permanent",
+          badgeColor: "text-blue-400 bg-blue-500/10 border-blue-500/20",
+          desc: "Register for a permanent key with higher limits. 60 req/min, 1,000 requests/day.",
+          code: `curl -X POST ${BASE_URL}/api/api-keys/user/register \\\n  -H "Content-Type: application/json" \\\n  -d '{\n    "email": "dev@example.com",\n    "password": "securepassword",\n    "name": "Your Name",\n    "appName": "My Radio App",\n    "appDescription": "A radio streaming app"\n  }'`,
+        },
+      ].map((tier) => (
+        <div key={tier.title} className="rounded-2xl bg-white/[0.025] border border-white/[0.07] p-5 hover:border-white/[0.12] transition-colors">
+          <div className="flex items-center gap-2.5 mb-3">
+            <h3 className="text-white font-semibold">{tier.title}</h3>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${tier.badgeColor}`}>{tier.badge}</span>
+          </div>
+          <p className="text-slate-400 text-sm mb-4 leading-relaxed">{tier.desc}</p>
+          <CodeBlock code={tier.code} />
+        </div>
+      ))}
+      <div className="rounded-2xl bg-white/[0.025] border border-white/[0.07] p-5 hover:border-white/[0.12] transition-colors">
+        <h3 className="text-white font-semibold mb-2">Developer Portal</h3>
+        <p className="text-slate-400 text-sm mb-4">Manage your API keys, view usage statistics, and upgrade your plan.</p>
+        <a href="/api-user" className="inline-flex items-center gap-2 text-[#FF4199] hover:text-[#FF4199]/80 font-medium transition-colors text-sm">
+          Open Developer Portal <ExternalLink className="w-3.5 h-3.5" />
         </a>
       </div>
     </div>
@@ -530,44 +647,43 @@ const AuthenticationContent = memo(() => (
 const RateLimitsContent = memo(() => (
   <div>
     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Rate Limits</h1>
-    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+    <p className="text-slate-400 leading-relaxed mb-8 text-sm sm:text-base">Rate limits protect the API from abuse and ensure fair usage. Limits vary by plan tier.</p>
+    <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto mb-8">
       <table className="w-full text-sm min-w-[480px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Plan</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Req/Min</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Daily</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Monthly</th>
-          <th className="text-left px-4 sm:px-5 py-3.5 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Price</th>
+          {["Plan", "Req/Min", "Daily", "Monthly", "Price"].map(h => (
+            <th key={h} className="text-left px-5 py-3.5 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">{h}</th>
+          ))}
         </tr></thead>
-        <tbody>
+        <tbody className="divide-y divide-white/[0.04]">
           {[
             { plan: "Demo", rpm: "10", daily: "100", monthly: "500", price: "Free (24h)", color: "text-slate-300" },
             { plan: "Free", rpm: "60", daily: "1,000", monthly: "10,000", price: "Free", color: "text-emerald-400" },
             { plan: "Pro", rpm: "300", daily: "10,000", monthly: "100,000", price: "Contact us", color: "text-blue-400" },
-            { plan: "Internal", rpm: "Unlimited", daily: "Unlimited", monthly: "Unlimited", price: "--", color: "text-purple-400" },
-          ].map((r, i) => (
-            <tr key={r.plan} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-4 sm:px-5 py-3.5 font-semibold whitespace-nowrap ${r.color}`}>{r.plan}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.rpm}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.daily}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.monthly}</td>
-              <td className="px-4 sm:px-5 py-3.5 text-slate-400 whitespace-nowrap">{r.price}</td>
+            { plan: "Internal", rpm: "∞", daily: "∞", monthly: "∞", price: "—", color: "text-purple-400" },
+          ].map((r) => (
+            <tr key={r.plan} className="hover:bg-white/[0.02] transition-colors">
+              <td className={`px-5 py-3.5 font-bold whitespace-nowrap ${r.color}`}>{r.plan}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.rpm}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.daily}</td>
+              <td className="px-5 py-3.5 text-slate-300 font-mono whitespace-nowrap">{r.monthly}</td>
+              <td className="px-5 py-3.5 text-slate-400 whitespace-nowrap">{r.price}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    <h2 className="text-2xl font-bold text-white mb-4">Rate Limit Headers</h2>
-    <p className="text-slate-400 mb-4">Every API response includes these headers so you can track your usage:</p>
+    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+      <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+      Rate Limit Headers
+    </h2>
+    <p className="text-slate-400 mb-4 text-sm">Every API response includes these headers so you can track your usage:</p>
     <CodeBlock code={`X-RateLimit-Limit: 60          # Max requests per minute\nX-RateLimit-Remaining: 58      # Remaining requests this minute\nX-RateLimit-Reset: 45          # Seconds until window resets\nX-Daily-Remaining: 950         # Remaining daily quota`} lang="Response Headers" />
-    <div className="mt-6 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
-      <div className="flex gap-3">
-        <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-        <div>
-          <p className="text-amber-200 font-medium text-sm">Rate Limit Exceeded</p>
-          <p className="text-amber-200/60 text-sm mt-1">When you exceed your rate limit, the API returns <code className="bg-white/5 px-1.5 py-0.5 rounded text-xs">429 Too Many Requests</code>. Back off and retry after the reset window.</p>
-        </div>
+    <div className="mt-6 p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 flex gap-3">
+      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+      <div>
+        <p className="text-amber-200 font-semibold text-sm mb-1">Rate Limit Exceeded</p>
+        <p className="text-amber-200/60 text-sm leading-relaxed">When you exceed your rate limit, the API returns <code className="bg-white/[0.07] px-1.5 py-0.5 rounded text-xs text-amber-300">429 Too Many Requests</code>. Back off and retry after the reset window.</p>
       </div>
     </div>
   </div>
@@ -576,34 +692,39 @@ const RateLimitsContent = memo(() => (
 const ErrorsContent = memo(() => (
   <div>
     <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-3 sm:mb-4">Error Handling</h1>
-    <p className="text-base sm:text-lg text-slate-400 leading-relaxed mb-6 sm:mb-8">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
-    <div className="border border-white/5 rounded-xl overflow-hidden overflow-x-auto mb-8">
+    <p className="text-slate-400 leading-relaxed mb-8 text-sm sm:text-base">The API uses conventional HTTP status codes. Errors include a JSON body with details.</p>
+    <div className="rounded-xl border border-white/[0.07] overflow-hidden overflow-x-auto mb-8">
       <table className="w-full text-sm min-w-[400px]">
         <thead><tr className="bg-white/[0.03]">
-          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Code</th>
-          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider whitespace-nowrap">Status</th>
-          <th className="text-left px-4 sm:px-5 py-3 text-slate-400 font-semibold text-xs uppercase tracking-wider">Description</th>
+          {["Code", "Status", "Description"].map(h => (
+            <th key={h} className="text-left px-5 py-3 text-slate-500 font-semibold text-[10px] uppercase tracking-widest whitespace-nowrap">{h}</th>
+          ))}
         </tr></thead>
-        <tbody>
+        <tbody className="divide-y divide-white/[0.04]">
           {[
-            { code: "200", status: "OK", desc: "Request succeeded", color: "text-emerald-400" },
-            { code: "400", status: "Bad Request", desc: "Invalid parameters or missing required fields", color: "text-amber-400" },
-            { code: "401", status: "Unauthorized", desc: "Missing or invalid API key / auth token", color: "text-red-400" },
-            { code: "403", status: "Forbidden", desc: "API key lacks permission for this action", color: "text-red-400" },
-            { code: "404", status: "Not Found", desc: "Resource not found", color: "text-amber-400" },
-            { code: "429", status: "Too Many Requests", desc: "Rate limit or quota exceeded", color: "text-red-400" },
-            { code: "500", status: "Internal Error", desc: "Server error — please retry or contact support", color: "text-red-400" },
-          ].map((e, i) => (
-            <tr key={e.code} className={i % 2 === 0 ? "" : "bg-white/[0.01]"}>
-              <td className={`px-4 sm:px-5 py-3 font-mono font-bold whitespace-nowrap ${e.color}`}>{e.code}</td>
-              <td className="px-4 sm:px-5 py-3 text-white font-medium whitespace-nowrap">{e.status}</td>
-              <td className="px-4 sm:px-5 py-3 text-slate-400">{e.desc}</td>
+            { code: "200", status: "OK", desc: "Request succeeded", color: "text-emerald-400", bg: "bg-emerald-500/[0.08]" },
+            { code: "400", status: "Bad Request", desc: "Invalid parameters or missing required fields", color: "text-amber-400", bg: "bg-amber-500/[0.08]" },
+            { code: "401", status: "Unauthorized", desc: "Missing or invalid API key / auth token", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+            { code: "403", status: "Forbidden", desc: "API key lacks permission for this action", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+            { code: "404", status: "Not Found", desc: "Resource not found", color: "text-amber-400", bg: "bg-amber-500/[0.08]" },
+            { code: "429", status: "Too Many Requests", desc: "Rate limit or quota exceeded", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+            { code: "500", status: "Internal Error", desc: "Server error — please retry or contact support", color: "text-red-400", bg: "bg-red-500/[0.08]" },
+          ].map((e) => (
+            <tr key={e.code} className="hover:bg-white/[0.02] transition-colors">
+              <td className="px-5 py-3 whitespace-nowrap">
+                <span className={`font-mono font-bold text-sm px-2 py-0.5 rounded ${e.bg} ${e.color}`}>{e.code}</span>
+              </td>
+              <td className="px-5 py-3 text-white font-medium whitespace-nowrap text-sm">{e.status}</td>
+              <td className="px-5 py-3 text-slate-400 text-sm">{e.desc}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </div>
-    <h2 className="text-xl sm:text-2xl font-bold text-white mb-4">Error Response Format</h2>
+    <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
+      <span className="w-1 h-5 rounded-full bg-gradient-to-b from-[#FF4199] to-[#FF6B35]" aria-hidden="true" />
+      Error Response Format
+    </h2>
     <CodeBlock code={`{\n  "error": "Station not found",\n  "statusCode": 404\n}`} lang="JSON" />
   </div>
 ));
@@ -3350,7 +3471,6 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
     () => isAdmin ? [...PUBLIC_NAV_SECTIONS, ...ADMIN_NAV_SECTIONS] : PUBLIC_NAV_SECTIONS,
     [isAdmin]
   );
-
   const filteredSections = useMemo(() => {
     if (!searchQuery) return allSections;
     const q = searchQuery.toLowerCase();
@@ -3362,68 +3482,86 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
 
   const content = (
     <>
-      <div className="p-4 border-b border-white/5">
-        <a href="/en" className="flex items-center gap-2 mb-4">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+      {/* Logo */}
+      <div className="p-5 border-b border-white/[0.06]">
+        <a href="/en" className="flex items-center gap-3 mb-5 group">
+          <div className="relative w-9 h-9 rounded-xl bg-gradient-to-br from-[#FF4199] to-[#FF6B35] flex items-center justify-center shadow-[0_0_20px_rgba(255,65,153,0.3)] group-hover:shadow-[0_0_25px_rgba(255,65,153,0.45)] transition-shadow">
             <Radio className="w-4 h-4 text-white" />
           </div>
           <div>
             <div className="text-white font-bold text-sm leading-none">Mega Radio</div>
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest mt-0.5">API Reference</div>
+            <div className="text-[9px] text-slate-500 uppercase tracking-[0.18em] mt-1">API Reference</div>
           </div>
         </a>
+        {/* Search */}
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search docs..."
-            className="w-full bg-white/5 border border-white/5 rounded-lg pl-9 pr-3 py-2 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+            placeholder="Search endpoints..."
+            className="w-full bg-white/[0.04] border border-white/[0.07] rounded-xl pl-9 pr-3 py-2.5 text-[13px] text-white placeholder:text-slate-600 focus:outline-none focus:border-[#FF4199]/40 focus:bg-white/[0.06] transition-all"
           />
         </div>
       </div>
-      <nav className="flex-1 overflow-y-auto p-3 space-y-1">
+
+      {/* Nav */}
+      <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
         {filteredSections.map((section, idx) => {
           const isAdminSection = ADMIN_NAV_SECTIONS.some(s => s.id === section.id);
           const isFirstAdminSection = isAdminSection && (idx === 0 || !ADMIN_NAV_SECTIONS.some(s => s.id === filteredSections[idx - 1]?.id));
           return (
-            <div key={section.id} className="mb-3">
+            <div key={section.id} className="mb-2">
               {isFirstAdminSection && (
-                <div className="flex items-center gap-2 mx-3 mb-3 mt-2">
+                <div className="flex items-center gap-2 px-3 mb-3 mt-4">
                   <div className="flex-1 h-px bg-red-500/20" />
-                  <span className="text-[9px] uppercase tracking-widest text-red-500/60 font-bold px-1">Admin Only</span>
+                  <span className="text-[8px] uppercase tracking-[0.2em] text-red-500/50 font-bold px-1">Admin Only</span>
                   <div className="flex-1 h-px bg-red-500/20" />
                 </div>
               )}
-              <div className={`flex items-center gap-2 px-3 py-1.5 text-[10px] uppercase tracking-[0.15em] font-semibold ${isAdminSection ? "text-red-500/60" : "text-slate-500"}`}>
-                <section.icon className="w-3.5 h-3.5" />
+              <div className={`flex items-center gap-2 px-3 py-2 text-[9px] uppercase tracking-[0.18em] font-bold ${isAdminSection ? "text-red-500/50" : "text-slate-600"}`}>
+                <section.icon className="w-3 h-3" />
                 {section.label}
               </div>
-              {section.items.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => { onNavigate(item.id); onMobileClose(); }}
-                  className={`w-full text-left px-3 py-1.5 rounded-md text-[13px] transition-colors ${
-                    activeId === item.id
-                      ? isAdminSection
-                        ? "bg-red-500/10 text-red-400 font-medium"
-                        : "bg-blue-500/10 text-blue-400 font-medium"
-                      : "text-slate-400 hover:text-white hover:bg-white/5"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
+              {section.items.map((item) => {
+                const isActive = activeId === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => { onNavigate(item.id); onMobileClose(); }}
+                    className={`relative w-full text-left px-3 py-2 rounded-lg text-[13px] transition-all duration-150 ${
+                      isActive
+                        ? isAdminSection
+                          ? "bg-red-500/[0.1] text-red-300 font-medium"
+                          : "bg-white/[0.07] text-white font-medium"
+                        : "text-slate-500 hover:text-slate-300 hover:bg-white/[0.04]"
+                    }`}
+                  >
+                    {isActive && (
+                      <span
+                        aria-hidden="true"
+                        className={`absolute left-0 top-1 bottom-1 w-0.5 rounded-full ${isAdminSection ? "bg-red-500" : "bg-gradient-to-b from-[#FF4199] to-[#FF6B35]"}`}
+                      />
+                    )}
+                    <span className="pl-1">{item.label}</span>
+                  </button>
+                );
+              })}
             </div>
           );
         })}
       </nav>
-      <div className="p-4 border-t border-white/5">
-        <a href="/api-user" className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-500/10 text-blue-400 text-sm font-medium hover:bg-blue-500/20 transition-colors">
-          <Shield className="w-4 h-4" />
+
+      {/* Footer */}
+      <div className="p-4 border-t border-white/[0.06]">
+        <a
+          href="/api-user"
+          className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-[#FF4199]/[0.1] to-[#FF6B35]/[0.08] border border-[#FF4199]/20 text-sm font-medium text-white hover:from-[#FF4199]/[0.16] hover:to-[#FF6B35]/[0.12] transition-all"
+        >
+          <Shield className="w-4 h-4 text-[#FF4199]" />
           Developer Portal
-          <ArrowRight className="w-3.5 h-3.5 ml-auto" />
+          <ArrowRight className="w-3.5 h-3.5 ml-auto text-slate-500" />
         </a>
       </div>
     </>
@@ -3431,15 +3569,17 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
 
   return (
     <>
-      <aside className="hidden lg:flex flex-col w-[260px] h-screen sticky top-0 bg-[#0a0a14] border-r border-white/5 shrink-0">
+      <aside className="hidden lg:flex flex-col w-[265px] h-screen sticky top-0 bg-[#060810] border-r border-white/[0.06] shrink-0">
         {content}
       </aside>
       {mobileOpen && (
         <div className="lg:hidden fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/60" onClick={onMobileClose} />
-          <aside className="absolute left-0 top-0 bottom-0 w-[280px] bg-[#0a0a14] flex flex-col shadow-2xl">
-            <div className="flex items-center justify-end p-2 border-b border-white/5">
-              <button onClick={onMobileClose} className="p-2 text-slate-400 hover:text-white"><X className="w-5 h-5" /></button>
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onMobileClose} />
+          <aside className="absolute left-0 top-0 bottom-0 w-[280px] bg-[#060810] flex flex-col shadow-2xl border-r border-white/[0.06]">
+            <div className="flex items-center justify-end p-3 border-b border-white/[0.06]">
+              <button onClick={onMobileClose} className="p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-white/[0.06] transition-colors">
+                <X className="w-5 h-5" />
+              </button>
             </div>
             {content}
           </aside>
@@ -3451,11 +3591,14 @@ function Sidebar({ activeId, onNavigate, searchQuery, onSearchChange, mobileOpen
 
 function AdminBanner() {
   return (
-    <div className="mb-8 flex items-center gap-3 px-4 py-3 rounded-xl bg-red-500/8 border border-red-500/20">
-      <Lock className="w-4 h-4 text-red-400 shrink-0" />
+    <div className="mb-8 relative overflow-hidden flex items-start gap-4 px-5 py-4 rounded-2xl bg-red-950/30 border border-red-500/25">
+      <div aria-hidden="true" className="absolute -right-8 -top-8 w-40 h-40 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
+      <div className="flex-shrink-0 w-9 h-9 rounded-xl bg-red-500/15 border border-red-500/25 flex items-center justify-center">
+        <Lock className="w-4 h-4 text-red-400" />
+      </div>
       <div>
-        <p className="text-sm font-semibold text-red-300">Admin API — Private</p>
-        <p className="text-xs text-red-400/70 mt-0.5">These endpoints require an active admin session. Not exposed to public API key users.</p>
+        <p className="text-sm font-semibold text-red-300 mb-0.5">Admin API — Restricted Access</p>
+        <p className="text-xs text-red-400/60 leading-relaxed">These endpoints require an active admin session. Not accessible via public API keys.</p>
       </div>
     </div>
   );
@@ -3595,13 +3738,12 @@ export default function ApiDocs() {
   }, [activeId]);
 
   const ContentComponent = SECTION_CONTENT[activeId] || SECTION_CONTENT["introduction"];
-
   const allNavSections = isAdmin ? [...PUBLIC_NAV_SECTIONS, ...ADMIN_NAV_SECTIONS] : PUBLIC_NAV_SECTIONS;
   const breadcrumbSection = allNavSections.find((s) => s.items.some((i) => i.id === activeId));
   const breadcrumbItem = breadcrumbSection?.items.find((i) => i.id === activeId);
 
   return (
-    <div className="flex min-h-screen bg-[#0d0d1a] text-white">
+    <div className="flex min-h-screen bg-[#080810] text-white">
       <Sidebar
         activeId={activeId}
         onNavigate={handleNavigate}
@@ -3611,31 +3753,65 @@ export default function ApiDocs() {
         onMobileClose={() => setMobileOpen(false)}
         isAdmin={isAdmin}
       />
-      <main className="flex-1 min-w-0">
-        <header className="sticky top-0 z-10 bg-[#0d0d1a]/80 backdrop-blur-xl border-b border-white/5">
-          <div className="flex items-center gap-2 sm:gap-3 px-3 sm:px-6 py-3">
-            <button onClick={() => setMobileOpen(true)} className="lg:hidden p-1.5 text-slate-400 hover:text-white shrink-0">
+
+      <main className="flex-1 min-w-0 flex flex-col">
+        {/* Top header bar */}
+        <header className="sticky top-0 z-10 bg-[#080810]/85 backdrop-blur-xl border-b border-white/[0.06]">
+          {/* Gradient accent line */}
+          <div aria-hidden="true" className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FF4199]/25 to-transparent" />
+          <div className="flex items-center gap-3 px-4 sm:px-6 py-3.5">
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="lg:hidden p-1.5 text-slate-500 hover:text-white rounded-lg hover:bg-white/[0.06] transition-colors shrink-0"
+              aria-label="Open navigation"
+            >
               <Menu className="w-5 h-5" />
             </button>
             {breadcrumbSection && breadcrumbItem && (
-              <div className="flex items-center gap-1.5 sm:gap-2 text-sm min-w-0 overflow-hidden">
-                <span className="text-slate-500 truncate hidden sm:inline">{breadcrumbSection.label}</span>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-600 shrink-0 hidden sm:inline" />
-                <span className="text-white font-medium truncate">{breadcrumbItem.label}</span>
+              <div className="flex items-center gap-2 text-sm min-w-0 overflow-hidden">
+                <span className="text-slate-600 truncate hidden sm:inline text-[13px]">{breadcrumbSection.label}</span>
+                <ChevronRight className="w-3.5 h-3.5 text-slate-700 shrink-0 hidden sm:inline" />
+                <span className="text-slate-300 font-medium truncate text-[13px]">{breadcrumbItem.label}</span>
               </div>
             )}
-            <div className="ml-auto flex items-center gap-2 sm:gap-3 shrink-0">
-              <a href="/api-user" className="text-xs text-slate-400 hover:text-white transition-colors hidden sm:inline">Dashboard</a>
-              <a href="/en" className="text-xs text-slate-400 hover:text-white transition-colors">← Radio</a>
+            <div className="ml-auto flex items-center gap-3 shrink-0">
+              <a href="/api-user" className="hidden sm:flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-white transition-colors">
+                <Shield className="w-3.5 h-3.5" />Dashboard
+              </a>
+              <div className="w-px h-4 bg-white/[0.1] hidden sm:block" />
+              <a href="/en" className="flex items-center gap-1.5 text-[12px] text-slate-500 hover:text-white transition-colors">
+                <Radio className="w-3.5 h-3.5" />Radio
+              </a>
             </div>
           </div>
         </header>
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
-          <ContentComponent />
+
+        {/* Content */}
+        <div className="flex-1 relative">
+          {/* Subtle ambient glows for main content area */}
+          <div aria-hidden="true" className="pointer-events-none fixed top-20 right-0 w-[600px] h-[600px] rounded-full bg-[#FF4199]/[0.03] blur-[150px]" />
+          <div aria-hidden="true" className="pointer-events-none fixed bottom-0 left-1/3 w-[500px] h-[500px] rounded-full bg-purple-600/[0.03] blur-[130px]" />
+
+          <div className="relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10 sm:py-12">
+            <ContentComponent />
+          </div>
         </div>
-        <footer className="border-t border-white/5 mt-16 sm:mt-20">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 text-center">
-            <p className="text-sm text-slate-500">Mega Radio API v1.0 -- Need help? Contact <a href="mailto:api@themegaradio.com" className="text-blue-400 hover:text-blue-300">api@themegaradio.com</a></p>
+
+        {/* Footer */}
+        <footer className="border-t border-white/[0.06] mt-8">
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-[#FF4199] to-[#FF6B35] flex items-center justify-center">
+                <Radio className="w-3 h-3 text-white" />
+              </div>
+              <span className="text-sm text-slate-600">Mega Radio API v1.0</span>
+            </div>
+            <p className="text-xs text-slate-600">
+              Need help?{' '}
+              <a href="mailto:api@themegaradio.com" className="text-[#FF4199]/70 hover:text-[#FF4199] transition-colors">
+                api@themegaradio.com
+              </a>
+            </p>
           </div>
         </footer>
       </main>
