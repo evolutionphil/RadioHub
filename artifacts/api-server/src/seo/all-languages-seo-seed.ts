@@ -1006,10 +1006,13 @@ export async function seedAllLanguagesSeoTranslations(): Promise<void> {
   const keyDocs = await TranslationKey.find({ key: { $in: keys } }).lean();
   const keyMap = new Map<string, string>(keyDocs.map((d: any) => [d.key, String(d._id)]));
 
+  // Warn but DO NOT abort if a key is missing — writing the keys that DO exist
+  // is strictly better than writing nothing. A single missing key must never
+  // stop all 56 languages from being seeded (this previously collapsed the
+  // sitemap to /en only).
   const missingKeys = keys.filter((k) => !keyMap.has(k));
   if (missingKeys.length > 0) {
-    logger.warn(`seedAllLanguagesSeoTranslations: ${missingKeys.length} TranslationKey docs not found — run seedSeoTranslationKeys first. Missing: ${missingKeys.join(', ')}`);
-    return;
+    logger.warn(`seedAllLanguagesSeoTranslations: ${missingKeys.length} TranslationKey docs not found (seeding the rest anyway). Missing: ${missingKeys.join(', ')}`);
   }
 
   let totalUpserted = 0;
