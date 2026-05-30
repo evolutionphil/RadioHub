@@ -140,6 +140,19 @@ export function decodeHtmlEntities(str: string): string {
   });
 }
 
+// OAuth users (Google, Apple, Facebook) get a synthetic username like
+// `user_1757414854761_ss3eg6yf0` to satisfy the unique-username constraint.
+// That value must never be shown — it is not a real handle the user chose.
+const GENERATED_USERNAME_RE = /^user_\d+_[a-z0-9]+$/i;
+
+export function getUserDisplayName(user: any): string {
+  if (!user) return "User";
+  if (user.fullName && user.fullName.trim()) return user.fullName;
+  if (user.username && !GENERATED_USERNAME_RE.test(user.username)) return user.username;
+  if (user.email) return user.email.split("@")[0];
+  return "User";
+}
+
 export function getAvatarUrl(user: any): string {
   if (!user) return `https://ui-avatars.com/api/?name=User&background=FF4199&color=fff&bold=true`;
   
