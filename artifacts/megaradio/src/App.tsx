@@ -184,6 +184,9 @@ function AdminRouterContent() {
         {/* Payment Gateway */}
         <Route path="/admin/stripe-plans" component={LazyAdminRoutes.StripePlans} />
         <Route path="/admin/paddle-plans" component={LazyAdminRoutes.PaddlePlans} />
+
+        {/* Developer API */}
+        <Route path="/admin/api-keys" component={LazyAdminRoutes.AdminApiKeys} />
         <Route path="/admin/sales" component={LazyAdminRoutes.SalesAnalytics} />
 
         {/* Users Management */}

@@ -26,6 +26,7 @@ import {
   Map,
   Eye,
   CreditCard,
+  Key,
 } from "lucide-react";
 
 interface NavigationItem {
@@ -117,6 +118,14 @@ const navigation: NavigationItem[] = [
       { name: "Error Logs", href: "/admin/error-logs" },
       { name: "iOS / CarPlay Logs", href: "/admin/app-logs" },
       { name: "Feedback", href: "/admin/feedback" },
+    ],
+  },
+
+  {
+    name: "Developer API",
+    icon: Key,
+    children: [
+      { name: "API Keys & Users", href: "/admin/api-keys" },
     ],
   },
 
