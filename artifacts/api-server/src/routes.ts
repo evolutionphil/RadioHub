@@ -9,6 +9,7 @@ import { registerCountryLanguageMappingRoutes } from './routes/country-language-
 import urlTranslationsRouter from './routes/url-translations';
 import performanceRouter from './routes/performance';
 import apiKeysRouter, { apiKeyMiddleware, seedDemoApiKey } from './routes/api-keys';
+import adminApiKeysRouter from './routes/admin-api-keys-routes';
 import { userEngagementRouter } from './routes/user-engagement';
 import indexnowMonitoringRouter from './routes/indexnow-monitoring';
 import gscInspectionRouter, { handleOAuthCallback } from './routes/gsc-inspection';
@@ -945,6 +946,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // Admin-only — performance routes include destructive ops (rebuild_indexes,
   // cache clear) plus expensive Cloudflare GraphQL fetches.
   app.use('/api/admin/performance', requireAdmin, performanceRouter);
+
+  // Admin-only — Developer API program visibility (registered developers,
+  // issued keys, per-key usage) and tier/status management.
+  app.use('/api/admin/api-keys', requireAdmin, adminApiKeysRouter);
   registerCountryLanguageMappingRoutes(app, requireAdmin);
 
   // === REGISTER ALL ROUTE MODULES ===
