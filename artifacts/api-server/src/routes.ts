@@ -47,6 +47,7 @@ import { registerSemrushAdminRoutes } from './routes/semrush-admin-routes';
 import { registerUserAuthRoutes } from './routes/user-auth-routes';
 import { registerMobileTvRoutes } from './routes/mobile-tv-routes';
 import { registerTvVersionRoutes } from './routes/tv-version-routes';
+import { registerTvTelemetryRoutes } from './routes/tv-telemetry-routes';
 import { registerTranslationKeyRoutes, seedSeoTranslationKeys, seedTurkishUiTranslations } from './routes/translation-keys-routes';
 import { seedSearchPageTranslations } from './seo/search-page-translations-seed';
 import { seedPremiumTranslations } from './seo/premium-translations-seed';
@@ -966,6 +967,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerUserAuthRoutes(app, deps);
   registerMobileTvRoutes(app, deps);
   registerTvVersionRoutes(app, deps);
+  registerTvTelemetryRoutes(app, deps);
   await registerTranslationKeyRoutes(app, deps);
   await registerSeoSitemapRoutes(app, deps, { apiOnly: isApiOnly });
   if (process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production') {

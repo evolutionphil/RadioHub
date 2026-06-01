@@ -4358,3 +4358,32 @@ StripeSaleEventSchema.index({ userId: 1, createdAt: -1 });
 StripeSaleEventSchema.index({ plan: 1, createdAt: -1 });
 
 export const StripeSaleEvent = mongoose.model<IStripeSaleEvent>('StripeSaleEvent', StripeSaleEventSchema);
+
+// ==================== TV Telemetry (daily aggregate) ====================
+
+export interface ITvTelemetryDaily {
+  _id: string; // "YYYY-MM-DD|plat|src|v"
+  day: string;
+  plat: string;
+  src: string;
+  v: string;
+  count: number;
+  uniqueDids: string[];
+  updatedAt: Date;
+}
+
+const TvTelemetryDailySchema = new Schema<ITvTelemetryDaily>({
+  _id: { type: String },
+  day: { type: String, required: true },
+  plat: { type: String, default: 'other' },
+  src: { type: String, default: 'remote' },
+  v: { type: String, default: '' },
+  count: { type: Number, default: 0 },
+  uniqueDids: [{ type: String }],
+  updatedAt: { type: Date, default: Date.now },
+}, { collection: 'tv_telemetry_daily', _id: false });
+
+TvTelemetryDailySchema.index({ day: -1 });
+TvTelemetryDailySchema.index({ day: -1, plat: 1, src: 1 });
+
+export const TvTelemetryDaily = mongoose.model<ITvTelemetryDaily>('TvTelemetryDaily', TvTelemetryDailySchema);
