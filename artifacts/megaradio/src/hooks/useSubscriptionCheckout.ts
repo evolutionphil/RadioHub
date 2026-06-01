@@ -15,7 +15,7 @@ interface CheckoutResult {
   checkout: (plan: string) => Promise<void>;
 }
 
-// Minimal Paddle.js v2 global type — only what we use.
+// Minimal Paddle.js v2 global type — only the fields we use.
 declare global {
   interface Window {
     Paddle?: {
@@ -23,7 +23,14 @@ declare global {
         token: string;
         eventCallback?: (event: { name: string; data?: unknown }) => void;
       }) => void;
-      Checkout: { open: (opts: { transactionId: string }) => void };
+      Checkout: {
+        open: (opts: {
+          items?: Array<{ priceId: string; quantity: number }>;
+          transactionId?: string;
+          customData?: Record<string, string>;
+          settings?: { successUrl?: string; displayMode?: string };
+        }) => void;
+      };
     };
   }
 }
@@ -52,8 +59,8 @@ function loadPaddleJs(): Promise<void> {
  * Used by PaywallModal, /premium, and /activate pages.
  *
  * - Stripe: server returns { checkoutUrl } → window.location redirect
- * - Paddle: server returns { transactionId, successUrl } → Paddle.js overlay;
- *           loading resets on checkout.closed; navigates to successUrl on checkout.completed
+ * - Paddle: server returns { paddleCheckout: { priceId, customData, successUrl } }
+ *           → Paddle.js opens overlay using items[] (no pre-created transaction needed)
  */
 export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutResult {
   const { user } = useAuth();
@@ -79,8 +86,11 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
 
       let data: {
         checkoutUrl?: string;
-        transactionId?: string;
-        successUrl?: string;
+        paddleCheckout?: {
+          priceId: string;
+          customData: Record<string, string>;
+          successUrl: string;
+        };
         error?: string;
       } = {};
       try {
@@ -91,8 +101,11 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
         return;
       }
 
-      // ── Paddle.js overlay checkout ──────────────────────────────────────────
-      if (data.transactionId) {
+      // ── Paddle.js items-based overlay checkout ──────────────────────────────
+      // The backend returns priceId + customData instead of pre-creating a
+      // transaction. Pre-created transactions are in "draft" status which
+      // Paddle's checkout page rejects with 404.
+      if (data.paddleCheckout) {
         const paddleToken = (import.meta.env as Record<string, string | undefined>).VITE_PADDLE_CLIENT_TOKEN;
         if (!paddleToken) {
           setError("Payment provider not configured. Please contact support.");
@@ -106,7 +119,7 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
           setLoading(false);
           return;
         }
-        const successUrl = data.successUrl ?? "/";
+        const { priceId, customData, successUrl } = data.paddleCheckout;
         window.Paddle!.Initialize({
           token: paddleToken,
           eventCallback: (event) => {
@@ -120,8 +133,12 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
             }
           },
         });
-        window.Paddle!.Checkout.open({ transactionId: data.transactionId });
-        // Keep loading=true while overlay is open; reset via eventCallback
+        window.Paddle!.Checkout.open({
+          items: [{ priceId, quantity: 1 }],
+          customData,
+          settings: { successUrl, displayMode: "overlay" },
+        });
+        // Keep loading=true while the overlay is open; reset via eventCallback
         return;
       }
 
