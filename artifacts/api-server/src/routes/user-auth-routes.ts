@@ -1751,6 +1751,16 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
   // User logout
   app.post("/api/auth/logout", async (req, res) => {
     try {
+      // Revoke any Bearer token that was used as a session-cookie fallback so
+      // it can't be replayed after the user explicitly signs out.
+      const bearerToken = (() => {
+        const h = req.headers['authorization'];
+        return h?.startsWith('Bearer ') ? h.slice(7) : null;
+      })();
+      if (bearerToken) {
+        AuthToken.updateOne({ token: bearerToken }, { $set: { isRevoked: true } }).catch(() => {});
+      }
+
       if (req.session) {
         req.session.destroy((err) => {
           if (err) {

@@ -77,9 +77,15 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
     setLoading(true);
     setError(null);
     try {
+      // Include OAuth Bearer fallback so checkout works even when the session
+      // cookie is blocked by strict browser cookie policies after OAuth login.
+      const bearerToken = (() => { try { return sessionStorage.getItem('_mrt_oat'); } catch { return null; } })();
       const res = await fetch("/api/subscription/checkout", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+        },
         credentials: "include",
         body: JSON.stringify({ plan, ...opts.extraBody }),
       });
