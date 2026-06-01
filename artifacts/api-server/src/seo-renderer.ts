@@ -988,13 +988,17 @@ export class SeoRenderer {
         const indexable = getIndexableLanguagesForStation(stationData, qualifiedLangs);
         const langIneligible =
           !isJunk && !isStationIndexableInLanguage(stationData, language, qualifiedLangs);
-        // Numeric-only slugs (e.g. `-911`, `1234`) → noindex but not 410, so
+        // Negative integer slugs (e.g. `-598`, `-2612`) are DB artifact IDs —
+        // never valid station callsigns. Treat as junk → 410. Positive integer
+        // slugs (e.g. `1234`) stay noindex-only in case they're callsign brands.
+        const negativeNumericSlug = !isJunk && /^-\d+$/.test((stationData.slug || '').trim());
+        // Numeric-only slugs (e.g. `1234`) → noindex but not 410, so
         // legitimate numeric-callsign brands are not lost.
-        const numericOnlySlug = !isJunk && isNumericOnlySlug(stationData.slug);
+        const numericOnlySlug = !isJunk && !negativeNumericSlug && isNumericOnlySlug(stationData.slug);
 
-        if (isJunk || numericOnlySlug) {
-          // Junk / numeric-only: serve noindex (junk will be upgraded to 410
-          // Gone by the HTTP layer via stationIsJunkFlag below).
+        if (isJunk || numericOnlySlug || negativeNumericSlug) {
+          // Junk / numeric-only: serve noindex (junk and negativeNumericSlug
+          // are upgraded to 410 Gone by the HTTP layer via stationIsJunkFlag).
           seoTags.robots = 'noindex, follow';
           seoTags.noIndex = true;
 
@@ -1029,7 +1033,7 @@ export class SeoRenderer {
           langRedirectUrl = `${domain}/en/${enSegment}/${stationData.slug}`;
         }
 
-        if (isJunk) {
+        if (isJunk || negativeNumericSlug) {
           // Signal to the HTTP layer to return 410 Gone instead of SSR'ing
           // the page. Also suppress ALL hreflang alternates — a noindex/
           // gone page must not expose alternates (Google policy).

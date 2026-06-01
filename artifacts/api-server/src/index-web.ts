@@ -768,6 +768,18 @@ app.use('/api/stream', streamServiceProxy);
         sendJunkGone(res);
         return;
       }
+      // Cache-hit redirect guard: if the renderer marked this URL as a
+      // language-ineligible redirect (e.g. /am/station/foo → /en/station/foo),
+      // honour the 301 even when stale noindex HTML is still in cache. Without
+      // this, cached noindex HTML is served indefinitely and Google keeps
+      // reporting the URL as "Crawled - currently not indexed".
+      if (cachedPage?.pageData?.redirectTo) {
+        const qIdx = req.originalUrl.indexOf('?');
+        const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+        res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+        res.redirect(301, cachedPage.pageData.redirectTo + queryString);
+        return;
+      }
       // Mirror <meta robots> on the X-Robots-Tag header so the two never
       // contradict (Google parks contradictions in "Crawled - not indexed").
       // pageData and seoHtml caches can diverge, so fall back to scanning the
