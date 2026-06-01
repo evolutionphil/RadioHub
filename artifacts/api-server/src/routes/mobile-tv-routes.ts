@@ -485,6 +485,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         success: true,
         code,
         expiresIn: 600,
+        expiresAt: expiresAt.toISOString(),
       });
     } catch (error: any) {
       console.error('[TV AUTH] Code generation error:', error.message);
@@ -502,7 +503,11 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.status(400).json({ error: 'deviceId query parameter is required' });
       }
 
-      const loginCode = await TvLoginCode.findOne({ code, deviceId });
+      // Sort by _id desc so that if an old expired document exists with the
+      // same 6-digit code (collision from a previous session), the NEWEST
+      // document is returned. Without this, findOne may return an already-
+      // expired doc and the TV sees "expired" immediately after code creation.
+      const loginCode = await TvLoginCode.findOne({ code, deviceId }).sort({ _id: -1 });
 
       if (!loginCode) {
         return void res.status(404).json({ status: 'expired', message: 'Code expired, request a new one' });
@@ -511,7 +516,9 @@ If you have any questions about this privacy policy or our data practices, pleas
       if (loginCode.expiresAt < new Date()) {
         loginCode.status = 'expired';
         await loginCode.save();
-        return void res.status(404).json({ status: 'expired', message: 'Code expired, request a new one' });
+        // Return 200 (not 404): some TV clients treat 404 as "network error"
+        // and keep polling indefinitely instead of showing "code expired" UI.
+        return void res.status(200).json({ status: 'expired', message: 'Code expired, request a new one' });
       }
 
       if (loginCode.status === 'activated' && loginCode.token && loginCode.userId) {

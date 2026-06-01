@@ -15,6 +15,10 @@ interface StationInfo {
   state?: string;
   tags?: string;
   language?: string;
+  votes?: number;
+  bitrate?: number;
+  codec?: string;
+  homepage?: string;
 }
 
 interface GenerationResult {
@@ -99,39 +103,44 @@ export async function generateStationDescription(
     // Build context for OpenAI
     const tags = station.tags?.split(',').map(t => t.trim()).filter(Boolean).join(', ') || 'General';
     const nativeCountry = station.country ? getNativeCountryName(station.country, language) : 'Unknown';
-    const location = station.state 
-      ? `${station.state}, ${nativeCountry}` 
+    const location = station.state
+      ? `${station.state}, ${nativeCountry}`
       : nativeCountry || 'Unknown';
-    
+
+    // Build unique technical facts from Radio-Browser metadata so each
+    // description gets station-specific anchors that differentiate it from
+    // cluster neighbours (e.g. all ProDJ stations from Russia).
+    const uniqueFacts: string[] = [];
+    if (station.votes && station.votes > 0) uniqueFacts.push(`Listener votes: ${station.votes}`);
+    if (station.bitrate && station.bitrate > 0) uniqueFacts.push(`Stream quality: ${station.bitrate} kbps ${station.codec || ''}`.trim());
+    if (station.homepage) uniqueFacts.push(`Official website: ${station.homepage}`);
+
     // Construct prompt - Generate BOTH full description AND meta description
     const prompt = `You MUST respond ONLY in ${languageName}. Do NOT use English. Generate BOTH a full description AND an SEO meta description for this radio station:
 
 Station Name: ${station.name}
 Country: ${nativeCountry} (${station.countryCode || 'N/A'})
-City/Region: ${station.state || 'Not specified'}
-Music Genres/Tags: ${tags}
+City/Region: ${location}
+Music Genres/Tags: ${tags}${uniqueFacts.length ? `\nStation Facts: ${uniqueFacts.join(' | ')}` : ''}
 Target Language: ${languageName} (respond ONLY in this language, NEVER in English)
 
 CRITICAL BRAND & NAME PRESERVATION:
-- ALWAYS keep "Mega Radio" as-is - DO NOT translate this brand name to any language
-- ALWAYS keep station name "${station.name}" as-is - DO NOT translate it to any language
-- DO NOT translate the platform name "Mega Radio" under any circumstances
-- DO NOT translate the station name "${station.name}" under any circumstances
+- ALWAYS keep station name "${station.name}" as-is - DO NOT translate it
 - Other brand names and proper nouns should also remain unchanged
 
 CRITICAL INSTRUCTIONS:
 1. You MUST write EVERYTHING in ${languageName} language ONLY
 2. If you have specific information about this exact station (${station.name} from ${nativeCountry}):
    PART 1 - Write a 200-300 word full description including:
-   - Brief introduction to the station
+   - Brief introduction to the station and its character
    - Music genres and programming style (based on tags: ${tags})
-   - Typical shows or schedule (if known, otherwise keep generic)
-   - History or local cultural context (if known)
-   - End with call-to-action to listen on "Mega Radio" (KEEP THIS NAME UNCHANGED)
-   
-   PART 2 - Write a 155-160 character SEO meta description that summarizes the station (preserving "Mega Radio")
+   - Typical listener audience or mood the station creates
+   - Any unique facts provided above (votes, bitrate, website)
+   - DO NOT end with a branded call-to-action — end naturally about the station itself
 
-3. If you DO NOT have specific information about this station, respond with EXACTLY this text: "NO_INFO_AVAILABLE"
+   PART 2 - Write a 150-160 character SEO meta description that summarizes the station uniquely
+
+3. If you DO NOT have specific information about this station, respond with EXACTLY: "NO_INFO_AVAILABLE"
 
 4. Be specific to ${nativeCountry} culture and radio scene.
 5. Make content SEO-friendly and engaging for listeners.
@@ -141,7 +150,7 @@ CRITICAL INSTRUCTIONS:
 Response format (separate with "==="):
 [FULL DESCRIPTION HERE - 200-300 words in ${languageName}]
 ===
-[SEO META DESCRIPTION - 155-160 characters in ${languageName}]`;
+[SEO META DESCRIPTION - 150-160 characters in ${languageName}]`;
 
     logger.log(`🤖 AI: Generating description for "${station.name}" (${station.countryCode}) in ${languageName}`);
     
@@ -216,56 +225,34 @@ Response format (separate with "==="):
       logger.log(`   Parsed META (${metaDescription.length} chars): ${metaDescription}`);
       
       // Generate engaging generic description based on available info
-      // Translate CTA to target language (only "Mega Radio" brand stays English)
-      const ctaTranslations: Record<string, string> = {
-        'de': 'Hören Sie es jetzt auf Mega Radio',
-        'fr': 'Écoutez maintenant sur Mega Radio',
-        'es': 'Escucha ahora en Mega Radio',
-        'it': 'Ascolta ora su Mega Radio',
-        'pt': 'Ouça agora na Mega Radio',
-        'tr': 'Şimdi Mega Radio\'da dinleyin',
-        'nl': 'Luister nu op Mega Radio',
-        'ru': 'Слушайте сейчас на Mega Radio',
-        'pl': 'Słuchaj teraz na Mega Radio',
-        'ar': 'استمع الآن على Mega Radio',
-        'he': 'האזינו כעת ל-Mega Radio',
-        'ja': 'Mega Radioで今すぐ聴く',
-        'zh': '立即在Mega Radio上收听',
-        'ko': 'Mega Radio에서 지금 들어보세요',
-      };
-      const cta = ctaTranslations[language] || `Listen now on Mega Radio`;
-      
-      const fallbackPrompt = `You MUST respond ONLY in ${languageName}. Write BOTH a full description AND an SEO meta description for a radio station in ${languageName} based only on this info:
+      const fallbackPrompt = `You MUST respond ONLY in ${languageName}. Write BOTH a full description AND an SEO meta description for a radio station based only on this info:
 Station: ${station.name}
 Country: ${station.country}
-Tags: ${tags}
+Tags: ${tags}${uniqueFacts.length ? `\nFacts: ${uniqueFacts.join(' | ')}` : ''}
 Response Language: ${languageName} (ONLY in this language, NEVER in English)
 
 CRITICAL PRESERVATION RULE:
 - DO NOT translate the station name "${station.name}" - keep it exactly as is
-- DO NOT translate "Mega Radio" - keep it exactly as is
 - Only translate the description text itself, NOT the station name
 
 Instructions for FULL DESCRIPTION (200-300 words in ${languageName}):
 - Include the station name "${station.name}" naturally (DO NOT translate it)
-- Mention the country/region
-- Reference the music genres/tags provided
-- Make it SEO-friendly and inviting
-- End with "${cta}"
+- Mention the country/region and music style
+- Reference the genres/tags provided
+- Weave in any unique facts (votes, bitrate, website) where natural
+- End naturally about the station — DO NOT end with a branded call-to-action
 - Be engaging for listeners
 - MUST be entirely in ${languageName} except for the station name
 
-Instructions for META DESCRIPTION (155-160 characters in ${languageName}):
-- Summarize the station
-- Include key genres/tags
-- Make it SEO-optimized
-- Exactly 155-160 characters
+Instructions for META DESCRIPTION (150-160 characters in ${languageName}):
+- Summarize the station uniquely — do NOT use generic radio phrases
+- Include key genres and location
 - MUST be entirely in ${languageName} except for the station name
 
 Response format (separate with "==="):
 [FULL DESCRIPTION - 200-300 words in ${languageName}]
 ===
-[SEO META - 155-160 characters in ${languageName}]`;
+[SEO META - 150-160 characters in ${languageName}]`;
       
       try {
         const fallbackCompletion = await openai.chat.completions.create({
