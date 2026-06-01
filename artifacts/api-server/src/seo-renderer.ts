@@ -1442,7 +1442,14 @@ export class SeoRenderer {
       baseSeoTags.description = getTranslation('faq_page_description');
       baseSeoTags.ogType = 'website';
     }
-    
+
+    // Station pages use the Open Graph `music.radio_station` object type.
+    // Previously fell back to `website`, which tells Facebook / Perplexity
+    // nothing about the content type and reduces entity-matching confidence.
+    if (pageType === 'station') {
+      baseSeoTags.ogType = 'music.radio_station';
+    }
+
     // Generate comprehensive hreflang tags for all pages with translated paths.
     // CRITICAL SEO FIX: Pass canonical URL for self-referential hreflang.
     // ARCHITECT P0 FIX (2026-04-30): non-station pages MUST advertise only the
