@@ -34,6 +34,7 @@ import {
 } from "../services/scheduled-genre-slug-cleanup";
 import { getGenreSlugCleanupAlertThreshold } from "../services/genre-slug-cleanup-notifier";
 import { logger } from "../utils/logger";
+import { buildTemplateDescription } from "../services/station-description-template";
 
 // SEO maintenance dashboard endpoints. Surface the health metrics the
 // Türkiye audit relies on (broken streams, missing tags, missing logos,
@@ -1179,6 +1180,272 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         );
         res.status(500).json({ error: "Failed to read history" });
       }
+    },
+  );
+
+  // -------------------------------------------------------------------------
+  // Description maintenance: strip branded suffix + fill template descriptions
+  // -------------------------------------------------------------------------
+
+  interface StripSuffixJobState {
+    jobId: string;
+    startedAt: Date;
+    finishedAt: Date | null;
+    processed: number;
+    modified: number;
+    isRunning: boolean;
+    lastError: string | null;
+  }
+
+  let activeStripSuffixJob: StripSuffixJobState | null = null;
+
+  const STRIP_SUFFIX_PATTERNS = [
+    /\s*Listen now on Mega Radio[!.]?\s*$/gi,
+    /\s*Listen to [^.!]*on Mega Radio[!.]?\s*$/gi,
+    /\s*Stream live on Mega Radio[!.]?\s*$/gi,
+    /\s*Available on Mega Radio[!.]?\s*$/gi,
+    /\s*Tune in on Mega Radio[!.]?\s*$/gi,
+    /\s*Hören Sie (?:es )?(?:jetzt )?(?:live )?(?:auf|bei) Mega Radio[!.]?\s*$/gi,
+    /\s*Jetzt auf Mega Radio hören[!.]?\s*$/gi,
+    /\s*[ÉE]coutez (?:maintenant )?sur Mega Radio[!.]?\s*$/gi,
+    /\s*Escucha (?:ahora )?en Mega Radio[!.]?\s*$/gi,
+    /\s*Ascolta (?:ora )?su Mega Radio[!.]?\s*$/gi,
+    /\s*Ou[çc]a (?:agora )?(?:na|no|em) Mega Radio[!.]?\s*$/gi,
+    /\s*[Şş]imdi Mega Radio['']da dinleyin[!.]?\s*$/gi,
+    /\s*Mega Radio['']da dinleyin[!.]?\s*$/gi,
+    /\s*Luister (?:nu )?op Mega Radio[!.]?\s*$/gi,
+    /\s*Слушайте (?:сейчас )?(?:на|по) Mega Radio[!.]?\s*$/gi,
+    /\s*Słuchaj (?:teraz )?(?:na|w) Mega Radio[!.]?\s*$/gi,
+    /\s*استمع الآن على Mega Radio[!.]?\s*$/gi,
+    /\s*استمع على Mega Radio[!.]?\s*$/gi,
+    /\s*האזינ[וה] (?:כעת )?ל-?Mega Radio[!.]?\s*$/gi,
+    /\s*Mega Radio[でに](?:今すぐ)?聴く[!！。]?\s*$/gi,
+    /\s*立即在Mega Radio上收听[!！。]?\s*$/gi,
+    /\s*在Mega Radio上收听[!！。]?\s*$/gi,
+    /\s*Mega Radio에서 (?:지금 )?들어보세요[!！。]?\s*$/gi,
+  ];
+
+  function stripDescriptionSuffix(text: string): { stripped: string; changed: boolean } {
+    let result = text;
+    for (const pattern of STRIP_SUFFIX_PATTERNS) {
+      const before = result;
+      result = result.replace(pattern, '');
+      pattern.lastIndex = 0;
+      if (result !== before) {
+        result = result.trimEnd();
+        break;
+      }
+    }
+    return { stripped: result, changed: result !== text };
+  }
+
+  app.post(
+    "/api/admin/maintenance/descriptions/strip-suffix",
+    requireAdmin,
+    (_req: Request, res: Response) => {
+      if (activeStripSuffixJob?.isRunning) {
+        return void res.status(409).json({ error: "already_running", job: activeStripSuffixJob });
+      }
+      const job: StripSuffixJobState = {
+        jobId: `strip-suffix-${Date.now()}`,
+        startedAt: new Date(),
+        finishedAt: null,
+        processed: 0,
+        modified: 0,
+        isRunning: true,
+        lastError: null,
+      };
+      activeStripSuffixJob = job;
+
+      (async () => {
+        try {
+          const cursor = Station.find({ descriptions: { $exists: true, $ne: {} } })
+            .select('descriptions')
+            .lean()
+            .cursor();
+          const BATCH = 500;
+          const bulk: any[] = [];
+
+          for await (const doc of cursor) {
+            job.processed++;
+            const descriptions: Record<string, any> = (doc as any).descriptions || {};
+            const updates: Record<string, string> = {};
+
+            for (const [lang, entry] of Object.entries(descriptions)) {
+              if (!entry || typeof entry !== 'object') continue;
+              if (typeof entry.full === 'string' && entry.full.length > 0) {
+                const { stripped, changed } = stripDescriptionSuffix(entry.full);
+                if (changed) updates[`descriptions.${lang}.full`] = stripped;
+              }
+              if (typeof entry.meta === 'string' && entry.meta.length > 0) {
+                const { stripped, changed } = stripDescriptionSuffix(entry.meta);
+                if (changed) updates[`descriptions.${lang}.meta`] = stripped;
+              }
+            }
+
+            if (Object.keys(updates).length > 0) {
+              job.modified++;
+              bulk.push({
+                updateOne: {
+                  filter: { _id: (doc as any)._id },
+                  update: { $set: updates },
+                },
+              });
+            }
+
+            if (bulk.length >= BATCH) {
+              await Station.bulkWrite(bulk, { ordered: false });
+              bulk.length = 0;
+            }
+          }
+
+          if (bulk.length > 0) {
+            await Station.bulkWrite(bulk, { ordered: false });
+          }
+        } catch (err: any) {
+          job.lastError = err?.message || String(err);
+          logger.error('[strip-suffix] crashed:', err);
+        } finally {
+          job.isRunning = false;
+          job.finishedAt = new Date();
+          logger.log(`[strip-suffix] done: processed=${job.processed} modified=${job.modified}`);
+        }
+      })();
+
+      res.json({ ok: true, job });
+    },
+  );
+
+  app.get(
+    "/api/admin/maintenance/descriptions/strip-suffix/status",
+    requireAdmin,
+    (_req: Request, res: Response) => {
+      res.json({ job: activeStripSuffixJob });
+    },
+  );
+
+  // Fill template descriptions for stations that have no English description.
+  // Uses buildTemplateDescription() (zero-cost, no AI) for all stations.
+  // Reports how many of the filled stations have votes >= 1000 so the admin
+  // knows which ones would benefit from an AI upgrade.
+
+  interface FillTemplatesJobState {
+    jobId: string;
+    startedAt: Date;
+    finishedAt: Date | null;
+    processed: number;
+    filled: number;
+    skipped: number;
+    aiReady: number;
+    isRunning: boolean;
+    lastError: string | null;
+  }
+
+  let activeFillTemplatesJob: FillTemplatesJobState | null = null;
+
+  app.post(
+    "/api/admin/maintenance/descriptions/fill-templates",
+    requireAdmin,
+    (_req: Request, res: Response) => {
+      if (activeFillTemplatesJob?.isRunning) {
+        return void res.status(409).json({ error: "already_running", job: activeFillTemplatesJob });
+      }
+      const job: FillTemplatesJobState = {
+        jobId: `fill-templates-${Date.now()}`,
+        startedAt: new Date(),
+        finishedAt: null,
+        processed: 0,
+        filled: 0,
+        skipped: 0,
+        aiReady: 0,
+        isRunning: true,
+        lastError: null,
+      };
+      activeFillTemplatesJob = job;
+
+      (async () => {
+        try {
+          // Find stations with no English description
+          const cursor = Station.find({
+            $or: [
+              { 'descriptions.en': { $exists: false } },
+              { 'descriptions.en.full': { $exists: false } },
+              { 'descriptions.en.full': '' },
+              { 'descriptions.en.full': null },
+            ],
+          })
+            .select('name country countryCode state tags language votes bitrate codec homepage slug')
+            .lean()
+            .cursor();
+
+          const BATCH = 500;
+          const bulk: any[] = [];
+
+          for await (const doc of cursor) {
+            job.processed++;
+            const s = doc as any;
+
+            try {
+              const { full, meta } = buildTemplateDescription({
+                name: s.name,
+                country: s.country,
+                countryCode: s.countryCode,
+                state: s.state,
+                tags: s.tags,
+                language: s.language,
+                votes: s.votes,
+                bitrate: s.bitrate,
+                codec: s.codec,
+                homepage: s.homepage,
+              });
+
+              if (!full) {
+                job.skipped++;
+                continue;
+              }
+
+              bulk.push({
+                updateOne: {
+                  filter: { _id: s._id },
+                  update: { $set: { 'descriptions.en.full': full, 'descriptions.en.meta': meta } },
+                },
+              });
+              job.filled++;
+              if (s.votes && s.votes >= 1000) {
+                job.aiReady++;
+              }
+            } catch {
+              job.skipped++;
+            }
+
+            if (bulk.length >= BATCH) {
+              await Station.bulkWrite(bulk, { ordered: false });
+              bulk.length = 0;
+            }
+          }
+
+          if (bulk.length > 0) {
+            await Station.bulkWrite(bulk, { ordered: false });
+          }
+        } catch (err: any) {
+          job.lastError = err?.message || String(err);
+          logger.error('[fill-templates] crashed:', err);
+        } finally {
+          job.isRunning = false;
+          job.finishedAt = new Date();
+          logger.log(`[fill-templates] done: processed=${job.processed} filled=${job.filled} skipped=${job.skipped} aiReady=${job.aiReady}`);
+        }
+      })();
+
+      res.json({ ok: true, job });
+    },
+  );
+
+  app.get(
+    "/api/admin/maintenance/descriptions/fill-templates/status",
+    requireAdmin,
+    (_req: Request, res: Response) => {
+      res.json({ job: activeFillTemplatesJob });
     },
   );
 }

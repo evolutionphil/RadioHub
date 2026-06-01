@@ -181,15 +181,20 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       const { code } = req.params;
       const { deviceId } = req.query as { deviceId?: string };
 
-      if (!deviceId) {
+      // The web activate page sends deviceId=web-activate because it doesn't
+      // know the TV's actual deviceId. In that case query by code only and
+      // return a status-only response (no auth token — the browser doesn't need it).
+      const webCaller = !deviceId || deviceId === 'web-activate';
+      if (!webCaller && !deviceId) {
         return void res.status(400).json({ error: "deviceId query parameter is required" });
       }
 
       // Sort by _id desc: if an old expired doc exists with the same code
       // (6-digit reuse across sessions), we get the newest one first.
-      const tvCode = await TvSubscriptionCode.findOne({ code, deviceId }).sort({ _id: -1 });
+      const filter = webCaller ? { code } : { code, deviceId: deviceId! };
+      const tvCode = await TvSubscriptionCode.findOne(filter).sort({ _id: -1 });
       if (!tvCode) {
-        return void res.status(404).json({ status: "not_found" });
+        return void res.status(200).json({ status: "not_found" });
       }
 
       // Auto-expire overdue pending codes and return 200 expired (not 404 —
@@ -204,7 +209,12 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
       // Activated — build full response including a TV auth token so the TV can
       // auto-login the user without them entering credentials on the TV.
+      // Web callers (web-activate page) only need the status field.
       if (tvCode.status === "completed" && tvCode.userId) {
+        if (webCaller) {
+          return void res.json({ status: "activated" });
+        }
+
         const user = await User.findById(tvCode.userId)
           .select("_id email subscription")
           .lean() as any;
