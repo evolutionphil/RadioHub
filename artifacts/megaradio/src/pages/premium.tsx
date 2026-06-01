@@ -73,7 +73,7 @@ const FAQ = [
   },
   {
     q: "What payment methods are accepted?",
-    a: "We accept all major credit and debit cards via Stripe. Payments are encrypted and processed securely — we never see your card details.",
+    a: "We accept all major credit and debit cards. Payments are encrypted and processed securely — we never see your card details.",
   },
 ];
 
@@ -247,7 +247,15 @@ export default function PremiumPage() {
     enabled: !isPremium,
   });
 
-  const rawPlans = plansData?.plans?.length ? plansData.plans : FALLBACK_PLANS;
+  // Use DB plans if available, but fill in fallback amounts for plans with amount=0
+  // (DB plans are seeded with amount=0 until admin sets them in the Paddle Plans admin page)
+  const rawPlans = plansData?.plans?.length
+    ? plansData.plans.map(p => {
+        if (p.amount > 0) return p;
+        const fb = FALLBACK_PLANS.find(f => f.planId === p.planId);
+        return fb ? { ...p, amount: fb.amount, currency: p.currency || fb.currency } : p;
+      })
+    : FALLBACK_PLANS;
   // Sort plans into our preferred display order
   const plans = PLAN_ORDER
     .map(id => rawPlans.find(p => p.planId === id))
@@ -388,7 +396,7 @@ export default function PremiumPage() {
           {/* Trust footnote */}
           <p className="text-center text-xs text-gray-600 mt-5">
             <Shield className="w-3 h-3 inline mr-1 opacity-60" />
-            Secure payment powered by Stripe · SSL encrypted · Cancel anytime
+            Secure payment · SSL encrypted · Cancel anytime
           </p>
         </section>
 
