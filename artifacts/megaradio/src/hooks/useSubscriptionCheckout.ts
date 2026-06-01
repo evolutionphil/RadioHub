@@ -71,7 +71,7 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
   async function checkout(plan: string) {
     if (!user) {
       opts.onUnauthenticated?.();
-      setLocation(`/login?redirect=${encodeURIComponent("/premium")}`);
+      setLocation(`/login?returnTo=${encodeURIComponent("/premium")}`);
       return;
     }
     setLoading(true);
