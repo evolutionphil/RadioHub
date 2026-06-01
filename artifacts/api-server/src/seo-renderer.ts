@@ -604,9 +604,9 @@ export class SeoRenderer {
           const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const topStations = await withSignal<LeanStationCard[]>(
             Station.find({
-              tags: { $regex: escapedTerm, $options: 'i' },
+              tags: { $regex: escapedTerm },
               slug: { $exists: true, $ne: '' },
-              $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+              noIndex: { $ne: true },
               votes: { $gt: 0 },
             })
               .sort({ votes: -1 })
@@ -778,12 +778,11 @@ export class SeoRenderer {
           // DALGA 2 W2.2: Fetch top 12 stations from this country for SSR flag + <img> grid
           try {
             const countryName = additionalData.regionName as string;
-            const escapedCountry = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const topStations = await withSignal<LeanStationCard[]>(
               Station.find({
-                country: { $regex: `^${escapedCountry}$`, $options: 'i' },
+                country: countryName,
                 slug: { $exists: true, $ne: '' },
-                $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+                noIndex: { $ne: true },
                 votes: { $gt: 0 },
               })
                 .sort({ votes: -1 })
@@ -1140,7 +1139,7 @@ export class SeoRenderer {
         const stateName: string = (stationData.state || '').toString().trim();
 
         const baseFilter: any = {
-          $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+          noIndex: { $ne: true },
           $and: [
             { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
             { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },

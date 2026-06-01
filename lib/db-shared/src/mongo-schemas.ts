@@ -1958,6 +1958,9 @@ StationSchema.index({ lastCheckOk: 1, hasLogo: -1, votes: -1 }); // Precomputed 
 // this 4-field index, Mongo falls back to the 3-field
 // `{country:1, lastCheckOk:1, votes:-1}` and re-sorts in memory.
 StationSchema.index({ country: 1, lastCheckOk: 1, hasLogo: -1, votes: -1 }); // Country + hasLogo+votes sort (covers precomputed-stations)
+StationSchema.index({ tagsCheckedAt: 1 }, { sparse: true }); // Tag-hydration job cooldown filter
+StationSchema.index({ favicon: 1 }, { sparse: true }); // Logo processor / sync favicon filter
+StationSchema.index({ geoLat: 1, geoLong: 1 }, { sparse: true }); // Geo endpoint filter
 
 // Debug log indexes
 StationDebugLogSchema.index({ stationId: 1 });
@@ -2695,6 +2698,7 @@ GscUrlInspectionSchema.index({ language: 1, group: 1, state: 1 });
 GscUrlInspectionSchema.index({ lastInspectedAt: 1, discoveredAt: -1 });
 // Task #266 — fast lookup of stuck rows by (state, notIndexedSince).
 GscUrlInspectionSchema.index({ state: 1, notIndexedSince: 1 });
+GscUrlInspectionSchema.index({ lastResubmitAt: 1 }, { sparse: true }); // Auto-resubmit retry filter
 
 const GscIndexingSnapshotSchema = new Schema<IGscIndexingSnapshot>({
   date: { type: Date, required: true },
