@@ -15,13 +15,45 @@ interface CheckoutResult {
   checkout: (plan: string) => Promise<void>;
 }
 
+// Minimal Paddle.js v2 global type — only what we use.
+declare global {
+  interface Window {
+    Paddle?: {
+      Initialize: (opts: {
+        token: string;
+        eventCallback?: (event: { name: string; data?: unknown }) => void;
+      }) => void;
+      Checkout: { open: (opts: { transactionId: string }) => void };
+    };
+  }
+}
+
+// Module-level dedup so multiple rapid calls share the same script load.
+let paddleScriptLoading: Promise<void> | null = null;
+
+function loadPaddleJs(): Promise<void> {
+  if (window.Paddle) return Promise.resolve();
+  if (paddleScriptLoading) return paddleScriptLoading;
+  paddleScriptLoading = new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.paddle.com/paddle/v2/paddle.js";
+    script.onload = () => resolve();
+    script.onerror = () => {
+      paddleScriptLoading = null;
+      reject(new Error("Failed to load Paddle.js"));
+    };
+    document.head.appendChild(script);
+  });
+  return paddleScriptLoading;
+}
+
 /**
- * Handles the POST /api/subscription/checkout → Stripe redirect flow.
+ * Handles checkout for both Stripe (redirect) and Paddle (Paddle.js overlay).
  * Used by PaywallModal, /premium, and /activate pages.
  *
- * Uses raw fetch (not apiRequest) so that JSON error bodies on 4xx/5xx
- * responses are always readable. apiRequest throws on non-2xx, which would
- * replace the real server error message with a generic "Network error".
+ * - Stripe: server returns { checkoutUrl } → window.location redirect
+ * - Paddle: server returns { transactionId, successUrl } → Paddle.js overlay;
+ *           loading resets on checkout.closed; navigates to successUrl on checkout.completed
  */
 export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutResult {
   const { user } = useAuth();
@@ -45,24 +77,63 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
         body: JSON.stringify({ plan, ...opts.extraBody }),
       });
 
-      // Always try to parse JSON — the endpoint returns it on both success and error.
-      let data: { checkoutUrl?: string; error?: string } = {};
+      let data: {
+        checkoutUrl?: string;
+        transactionId?: string;
+        successUrl?: string;
+        error?: string;
+      } = {};
       try {
         data = await res.json();
       } catch {
-        // Body is not JSON (e.g. proxy-level 502 with plain text body).
         setError(`Server error (${res.status}). Please try again.`);
         setLoading(false);
         return;
       }
 
+      // ── Paddle.js overlay checkout ──────────────────────────────────────────
+      if (data.transactionId) {
+        const paddleToken = (import.meta.env as Record<string, string | undefined>).VITE_PADDLE_CLIENT_TOKEN;
+        if (!paddleToken) {
+          setError("Payment provider not configured. Please contact support.");
+          setLoading(false);
+          return;
+        }
+        try {
+          await loadPaddleJs();
+        } catch {
+          setError("Failed to load payment widget. Please refresh and try again.");
+          setLoading(false);
+          return;
+        }
+        const successUrl = data.successUrl ?? "/";
+        window.Paddle!.Initialize({
+          token: paddleToken,
+          eventCallback: (event) => {
+            if (event.name === "checkout.closed") {
+              // User dismissed the overlay without completing payment
+              setLoading(false);
+            }
+            if (event.name === "checkout.completed") {
+              window.location.href = successUrl;
+              // Don't reset loading — page is navigating away
+            }
+          },
+        });
+        window.Paddle!.Checkout.open({ transactionId: data.transactionId });
+        // Keep loading=true while overlay is open; reset via eventCallback
+        return;
+      }
+
+      // ── Stripe redirect checkout ────────────────────────────────────────────
       if (data.checkoutUrl) {
         window.location.href = data.checkoutUrl;
         // Don't reset loading — the page is navigating away.
-      } else {
-        setError(data.error || `Checkout failed (${res.status}). Please try again.`);
-        setLoading(false);
+        return;
       }
+
+      setError(data.error || `Checkout failed (${res.status}). Please try again.`);
+      setLoading(false);
     } catch {
       // Only reaches here on a genuine network failure (no connection, DNS, etc.).
       setError("Network error. Please check your connection and try again.");
