@@ -71,6 +71,10 @@ export function initOAuthTokenExchange(): void {
         console.log('[AUTH] init — hydrating user from token-session response');
         await queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
         queryClient.setQueryData(['/api/auth/me'], { user: body.user, authenticated: true });
+        // Persist the auth token as a Bearer fallback so subsequent API
+        // requests succeed even when the session cookie is blocked by the
+        // browser (SameSite=None cookies dropped in strict privacy modes).
+        try { sessionStorage.setItem('_mrt_oat', authToken); } catch (_) {}
       } else {
         console.log('[AUTH] init — no user in body, invalidating /me');
         await queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});

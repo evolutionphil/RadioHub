@@ -57,7 +57,9 @@ export function UserMenuDropdown() {
       // Show logout notification
       const userName = user?.fullName || user?.email?.split('@')[0] || "User";
       notificationService.logoutSuccess(userName);
-      
+
+      // Clear OAuth fallback token so it can't be replayed post-logout
+      try { sessionStorage.removeItem('_mrt_oat'); } catch (_) {}
       // Clear all cached data
       queryClient.clear();
       // Delay redirect to allow notification to show
