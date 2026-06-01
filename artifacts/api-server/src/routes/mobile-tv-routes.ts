@@ -590,6 +590,20 @@ If you have any questions about this privacy policy or our data practices, pleas
       });
 
       if (!loginCode) {
+        // Idempotency: if the code was already activated by THIS user, return
+        // success so the web page doesn't show an error when the effect fires
+        // twice (StrictMode double-mount) or when the user refreshes.
+        const alreadyActivated = await TvLoginCode.findOne({ code, status: 'activated', userId: new mongoose.Types.ObjectId(userId) }).lean();
+        if (alreadyActivated) {
+          const deviceName = alreadyActivated.platform === 'tizen' ? 'Samsung TV' : alreadyActivated.platform === 'webos' ? 'LG TV' : 'TV';
+          const user = await User.findById(userId).select('fullName username').lean();
+          return void res.json({
+            success: true,
+            deviceName,
+            deviceId: alreadyActivated.deviceId,
+            message: `${deviceName} already logged in as ${(user as any)?.fullName || (user as any)?.username || 'user'}`,
+          });
+        }
         return void res.status(404).json({ success: false, message: 'Invalid code or code expired' });
       }
 
@@ -830,6 +844,169 @@ If you have any questions about this privacy policy or our data practices, pleas
     } catch (error: any) {
       logger.error('TV init error:', error);
       res.status(500).json({ error: 'Failed to fetch init data' });
+    }
+  });
+
+  // ── Cast endpoints ────────────────────────────────────────────────────────
+  // Shared auth helper: accepts session cookie OR Bearer token.
+  async function resolveCastUserId(req: any): Promise<string | null> {
+    const sessionUserId = req.session?.user?.userId;
+    if (sessionUserId) return sessionUserId;
+    const bearer = req.headers['authorization']?.startsWith('Bearer ')
+      ? req.headers['authorization'].slice(7) : null;
+    if (bearer) {
+      const tok = await AuthToken.findOne({ token: bearer, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
+      if (tok) return tok.userId.toString();
+    }
+    return null;
+  }
+
+  // TV polls for pending cast commands. Returns the oldest unconsumed command
+  // and marks it consumed so it won't be returned again.
+  app.get('/api/cast/poll', async (req: any, res) => {
+    try {
+      const userId = await resolveCastUserId(req);
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
+
+      const { deviceId, platform } = req.query as { deviceId?: string; platform?: string };
+      if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
+
+      // Update last-seen for this device (non-blocking)
+      UserDevice.updateOne(
+        { userId: new mongoose.Types.ObjectId(userId), deviceId },
+        { $set: { lastSeenAt: new Date(), ...(platform ? { platform } : {}) } }
+      ).catch(() => {});
+
+      const command = await CastCommand.findOneAndUpdate(
+        { userId: new mongoose.Types.ObjectId(userId), deviceId, consumed: false },
+        { $set: { consumed: true } },
+        { sort: { timestamp: 1 }, returnDocument: 'before' }
+      ).lean();
+
+      if (!command) return void res.json({});
+
+      res.json({
+        command: command.type,
+        station: command.station ?? null,
+        timestamp: command.timestamp,
+      });
+    } catch (err: any) {
+      logger.error('[cast/poll] error:', err.message);
+      res.status(500).json({ error: 'Failed to poll cast commands' });
+    }
+  });
+
+  // TV reports what it's currently playing so the phone UI can show it.
+  app.post('/api/cast/now-playing', async (req: any, res) => {
+    try {
+      const userId = await resolveCastUserId(req);
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
+
+      const { deviceId, platform = 'other', stationName, title, artist, isPlaying } = req.body;
+      if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
+
+      await CastNowPlaying.findOneAndUpdate(
+        { userId: new mongoose.Types.ObjectId(userId), deviceId },
+        {
+          $set: {
+            userId: new mongoose.Types.ObjectId(userId),
+            deviceId,
+            platform,
+            stationName: stationName ?? null,
+            title: title ?? null,
+            artist: artist ?? null,
+            isPlaying: isPlaying === true || isPlaying === 'true',
+            updatedAt: new Date(),
+          },
+        },
+        { upsert: true }
+      );
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      logger.error('[cast/now-playing] error:', err.message);
+      res.status(500).json({ error: 'Failed to update now-playing' });
+    }
+  });
+
+  // Phone reads what the TV is currently playing.
+  app.get('/api/cast/now-playing', async (req: any, res) => {
+    try {
+      const userId = await resolveCastUserId(req);
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
+
+      const { deviceId } = req.query as { deviceId?: string };
+      if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
+
+      const np = await CastNowPlaying.findOne(
+        { userId: new mongoose.Types.ObjectId(userId), deviceId }
+      ).lean();
+
+      res.json(np ?? { isPlaying: false });
+    } catch (err: any) {
+      logger.error('[cast/now-playing GET] error:', err.message);
+      res.status(500).json({ error: 'Failed to get now-playing' });
+    }
+  });
+
+  // Phone sends a cast command to a paired TV device.
+  app.post('/api/cast/command', async (req: any, res) => {
+    try {
+      const userId = await resolveCastUserId(req);
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
+
+      const { deviceId, type, station } = req.body;
+      if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
+
+      const VALID_TYPES = ['cast:play', 'cast:pause', 'cast:resume', 'cast:stop'];
+      if (!type || !VALID_TYPES.includes(type)) {
+        return void res.status(400).json({ error: `type must be one of: ${VALID_TYPES.join(', ')}` });
+      }
+
+      // Verify this device belongs to the calling user
+      const device = await UserDevice.findOne(
+        { userId: new mongoose.Types.ObjectId(userId), deviceId, isActive: true }
+      ).lean();
+      if (!device) {
+        return void res.status(404).json({ error: 'Device not found or not paired to this account' });
+      }
+
+      await CastCommand.create({
+        userId: new mongoose.Types.ObjectId(userId),
+        deviceId,
+        type,
+        station: station ?? undefined,
+        timestamp: Date.now(),
+        consumed: false,
+      });
+
+      res.json({ ok: true });
+    } catch (err: any) {
+      logger.error('[cast/command] error:', err.message);
+      res.status(500).json({ error: 'Failed to send cast command' });
+    }
+  });
+
+  // Phone lists its paired TV devices so the user can pick which TV to cast to.
+  app.get('/api/cast/devices', async (req: any, res) => {
+    try {
+      const userId = await resolveCastUserId(req);
+      if (!userId) return void res.status(401).json({ error: 'Authentication required' });
+
+      const devices = await UserDevice.find(
+        { userId: new mongoose.Types.ObjectId(userId), isActive: true }
+      ).sort({ lastSeenAt: -1 }).lean();
+
+      res.json({ devices: devices.map((d) => ({
+        deviceId: d.deviceId,
+        deviceName: d.deviceName,
+        platform: d.platform,
+        lastSeenAt: d.lastSeenAt,
+        pairedAt: d.pairedAt,
+      })) });
+    } catch (err: any) {
+      logger.error('[cast/devices] error:', err.message);
+      res.status(500).json({ error: 'Failed to list devices' });
     }
   });
 }
