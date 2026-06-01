@@ -290,29 +290,23 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Set it in admin → Stripe Plans (Paddle Price ID field).` });
         }
 
-        const returnUrl = tvCode
+        // Paddle.js items-based checkout: do NOT pre-create a transaction.
+        // Pre-created transactions start in "draft" status and Paddle's hosted
+        // checkout page returns 404 for them. Passing the priceId to Paddle.js
+        // directly lets Paddle.js create + complete the transaction in one step.
+        const successUrl = tvCode
           ? `${WEB_BASE_URL}/activate/success?code=${tvCode}`
           : `${WEB_BASE_URL}/premium/success`;
 
-        const transaction = await paddle.transactions.create({
-          items: [{ priceId, quantity: 1 }],
-          customData: {
-            userId: String(userId),
-            plan,
-            tvCode: tvCode || "",
+        logger.log(`[PADDLE] Returning priceId for Paddle.js checkout: user=${userId}, plan=${plan}, priceId=${priceId}`);
+        return void res.json({
+          success: true,
+          paddleCheckout: {
+            priceId,
+            customData: { userId: String(userId), plan, tvCode: tvCode || "" },
+            successUrl,
           },
-          // checkout.url in the REQUEST = post-payment return URL.
-          // checkout.url in the RESPONSE echoes back that same URL — it is NOT
-          // the Paddle-hosted checkout page. The actual checkout URL must be
-          // constructed from the transaction ID.
-          checkout: { url: returnUrl },
         });
-
-        // Paddle Billing v2: hosted checkout URL is always this format.
-        const checkoutUrl = `https://checkout.paddle.com/checkout/custom?_ptxn=${transaction.id}`;
-
-        logger.log(`[PADDLE] Checkout txn ${transaction.id} for user ${userId}, plan=${plan}, tvCode=${tvCode || "none"}, checkoutUrl=${checkoutUrl}`);
-        return void res.json({ success: true, checkoutUrl });
       } catch (err: any) {
         logger.error("[PADDLE] Checkout error:", err.message);
         const userMessage = err?.code

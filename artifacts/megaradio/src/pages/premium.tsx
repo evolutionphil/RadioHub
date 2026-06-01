@@ -469,7 +469,7 @@ export default function PremiumPage() {
             {!user && (
               <p className="mt-4 text-xs text-gray-600">
                 Already have an account?{" "}
-                <a href="/login" className="text-[#FF4199] hover:underline">Sign in</a>
+                <a href={`/login?returnTo=${encodeURIComponent("/premium")}`} className="text-[#FF4199] hover:underline">Sign in</a>
               </p>
             )}
           </div>
