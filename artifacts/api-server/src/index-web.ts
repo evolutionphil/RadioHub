@@ -949,6 +949,19 @@ app.use('/api/stream', streamServiceProxy);
           return;
         }
 
+        // Not-found station pages: deleted stations, renamed slugs, or
+        // country-code prefixed URLs (/bh/, /cz/, /ir/…) where the station
+        // no longer exists in MongoDB. Return 410 Gone — Google removes 410
+        // URLs from its crawl queue immediately, whereas 404 gets re-crawled
+        // for months before the URL is dropped from the index. DB errors do
+        // NOT set stationNotFound (they fall through to a placeholder), so
+        // transient outages are safe.
+        if (stationNotFound && seoData.pageData?.pageType === 'station') {
+          const { sendJunkGone } = await import('./seo/send-junk-gone');
+          sendJunkGone(res);
+          return;
+        }
+
         if (!stationNotFound) {
           performanceCache.setSeoHtml(cleanUrl, htmlContent);
         }
