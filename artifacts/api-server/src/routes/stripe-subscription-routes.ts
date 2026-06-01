@@ -185,8 +185,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "deviceId query parameter is required" });
       }
 
-      // Wrong deviceId → 404 (no information leak about code existence)
-      const tvCode = await TvSubscriptionCode.findOne({ code, deviceId });
+      // Sort by _id desc: if an old expired doc exists with the same code
+      // (6-digit reuse across sessions), we get the newest one first.
+      const tvCode = await TvSubscriptionCode.findOne({ code, deviceId }).sort({ _id: -1 });
       if (!tvCode) {
         return void res.status(404).json({ status: "not_found" });
       }
