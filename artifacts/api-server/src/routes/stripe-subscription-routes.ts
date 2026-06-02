@@ -287,7 +287,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
         const priceId = await getPaddlePriceId(plan);
         if (!priceId) {
-          return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Set it in admin → Stripe Plans (Paddle Price ID field).` });
+          return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Go to Admin → Paddle Plans and add the Paddle Price ID.` });
         }
 
         // Paddle.js items-based checkout: do NOT pre-create a transaction.
