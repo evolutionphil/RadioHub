@@ -1687,11 +1687,41 @@ export function registerUserAuthRoutes(app: Express, deps: any) {
   // Get current user (check authentication)
   app.get("/api/auth/me", async (req, res) => {
     try {
-      if (!req.session?.user?.userId && !(req as any).user) {
-        return void res.json({ user: null, authenticated: false });
+      let userId: string | undefined =
+        req.session?.user?.userId ||
+        (req as any).user?._id?.toString() ||
+        undefined;
+
+      // Bearer-token fallback: after OAuth login, the frontend stores the auth
+      // token in sessionStorage (_mrt_oat) and sends it as Authorization: Bearer
+      // on every request. When the session cookie is dropped (SameSite=None
+      // restrictions, cross-origin, strict privacy mode), we still authenticate
+      // the user so they're not unexpectedly logged out.
+      if (!userId) {
+        const authHeader = req.headers['authorization'];
+        const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (bearerToken && typeof bearerToken === 'string' && bearerToken.length >= 16 && bearerToken.length <= 512) {
+          try {
+            const tokenDoc = await AuthToken.findOne({
+              token: bearerToken,
+              isRevoked: false,
+              expiresAt: { $gt: new Date() },
+            }).lean();
+            if (tokenDoc) {
+              userId = tokenDoc.userId.toString();
+              // Restore session so future requests use the cookie instead of Bearer.
+              if (req.session) {
+                (req.session as any).user = { userId };
+                req.session.save(() => {});
+              }
+            }
+          } catch {}
+        }
       }
 
-      const userId = req.session?.user?.userId || (req as any).user?._id;
+      if (!userId) {
+        return void res.json({ user: null, authenticated: false });
+      }
 
       const [user, followingList, actualFollowersCount] = await Promise.all([
         User.findById(userId)

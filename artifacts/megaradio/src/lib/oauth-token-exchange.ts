@@ -56,9 +56,11 @@ export function initOAuthTokenExchange(): void {
       if (!res.ok) {
         const errBody = await res.text().catch(() => '(unreadable)');
         console.error('[AUTH] init — token-session FAILED:', res.status, errBody);
-        await queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
-        queryClient.setQueryData(['/api/auth/me'], { user: null, authenticated: false });
-        queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+        // Use fetchQuery (not invalidateQueries) so the /me refetch fires even
+        // when useAuth has enabled:false (set because ?auth_token was in the URL
+        // at module load time). This recovers the user from their active session
+        // cookie / Bearer token instead of leaving them stuck logged-out.
+        queryClient.fetchQuery({ queryKey: ['/api/auth/me'] }).catch(() => {});
         return;
       }
       let body: any = null;
@@ -76,16 +78,14 @@ export function initOAuthTokenExchange(): void {
         // browser (SameSite=None cookies dropped in strict privacy modes).
         try { sessionStorage.setItem('_mrt_oat', authToken); } catch (_) {}
       } else {
-        console.log('[AUTH] init — no user in body, invalidating /me');
-        await queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
-        queryClient.setQueryData(['/api/auth/me'], { user: null, authenticated: false });
-        queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+        console.log('[AUTH] init — no user in body, fetching /me to recover session');
+        // fetchQuery bypasses the enabled:false guard so the user is restored
+        // from their active session/Bearer token rather than stuck logged-out.
+        queryClient.fetchQuery({ queryKey: ['/api/auth/me'] }).catch(() => {});
       }
     })
     .catch((err) => {
       console.error('[AUTH] init — token-session fetch threw:', err);
-      queryClient.cancelQueries({ queryKey: ['/api/auth/me'] }).catch(() => {});
-      queryClient.setQueryData(['/api/auth/me'], { user: null, authenticated: false });
-      queryClient.invalidateQueries({ queryKey: ['/api/auth/me'] });
+      queryClient.fetchQuery({ queryKey: ['/api/auth/me'] }).catch(() => {});
     });
 }
