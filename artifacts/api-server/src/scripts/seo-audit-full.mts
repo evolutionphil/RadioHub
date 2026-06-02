@@ -38,10 +38,10 @@ const { values: args } = parseArgs({
   strict: false,
 });
 
-const SITE    = args.site!.replace(/\/$/, '');
-const API     = args.api!.replace(/\/$/, '');
-const OUTPUT  = args.output!;
-const DELAY   = parseInt(args.delay!, 10);
+const SITE    = String(args.site  ?? 'https://www.themegaradio.com').replace(/\/$/, '');
+const API     = String(args.api   ?? 'https://api.themegaradio.com').replace(/\/$/, '');
+const OUTPUT  = String(args.output ?? 'docs/seo-audit.md');
+const DELAY   = parseInt(String(args.delay ?? '300'), 10);
 
 const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
 
