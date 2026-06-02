@@ -16,10 +16,14 @@ const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET;
 // Stripe remains active for existing subscribers and can be re-enabled by
 // switching back to PAYMENT_PROVIDER=stripe (or unsetting the variable).
 const PAYMENT_PROVIDER: "stripe" | "paddle" = (process.env.PAYMENT_PROVIDER as any) || "stripe";
+// Set PADDLE_ENVIRONMENT=sandbox to use Paddle sandbox for testing.
+const PADDLE_ENV = process.env.PADDLE_ENVIRONMENT === "sandbox"
+  ? Environment.sandbox
+  : Environment.production;
 
 function getPaddle(): Paddle | null {
   if (!PADDLE_API_KEY) return null;
-  return new Paddle(PADDLE_API_KEY, { environment: Environment.production });
+  return new Paddle(PADDLE_API_KEY, { environment: PADDLE_ENV });
 }
 
 // DB-first Paddle price ID lookup (mirrors Stripe's stripePriceId approach).
