@@ -96,6 +96,7 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
           priceId: string;
           customData: Record<string, string>;
           successUrl: string;
+          clientToken?: string;
         };
         error?: string;
       } = {};
@@ -112,7 +113,11 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
       // transaction. Pre-created transactions are in "draft" status which
       // Paddle's checkout page rejects with 404.
       if (data.paddleCheckout) {
-        const paddleToken = (import.meta.env as Record<string, string | undefined>).VITE_PADDLE_CLIENT_TOKEN;
+        // Prefer the token returned by the server (no build-time env var needed).
+        // Fall back to the VITE_ build-time var for local dev.
+        const paddleToken =
+          data.paddleCheckout.clientToken ||
+          (import.meta.env as Record<string, string | undefined>).VITE_PADDLE_CLIENT_TOKEN;
         if (!paddleToken) {
           setError("Payment provider not configured. Please contact support.");
           setLoading(false);

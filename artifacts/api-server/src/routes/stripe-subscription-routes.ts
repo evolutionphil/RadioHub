@@ -305,6 +305,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
             priceId,
             customData: { userId: String(userId), plan, tvCode: tvCode || "" },
             successUrl,
+            // Include the client-side token so the frontend never needs to
+            // bake VITE_PADDLE_CLIENT_TOKEN into a build-time env var.
+            clientToken: process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN || "",
           },
         });
       } catch (err: any) {
