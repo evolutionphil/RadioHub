@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import mongoose from 'mongoose';
-import { TvLoginCode, UserDevice, CastCommand, CastNowPlaying, PushToken, AuthToken, User, CastSession, UserFollow, Station, Genre } from '@workspace/db-shared/mongo-schemas';
+import { TvLoginCode, UserDevice, CastCommand, CastNowPlaying, PushToken, AuthToken, User, CastSession, UserFollow, Station, Genre, TvTelemetry } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { TV_STATION_PROJECTION, tvSlimStation, tvSlimGenre } from './shared-utils';
 import { normalizeCountryFilter } from '../utils/normalize-country';
@@ -844,6 +844,33 @@ If you have any questions about this privacy policy or our data practices, pleas
     } catch (error: any) {
       logger.error('TV init error:', error);
       res.status(500).json({ error: 'Failed to fetch init data' });
+    }
+  });
+
+  // ─── TV Telemetry Beacon ─────────────────────────────────────────────────────
+  const VALID_SRC  = new Set(['remote', 'local']);
+  const VALID_PLAT = new Set(['tizen', 'webos', 'other']);
+  const RE_VERSION = /^[0-9.]{1,20}$/;
+  const RE_DID     = /^[a-z0-9-]{8,64}$/;
+
+  app.get('/api/tv/telemetry/open', async (req, res) => {
+    res.set('Access-Control-Allow-Origin', '*');
+    res.set('Cache-Control', 'no-store');
+    res.status(204).end();
+    try {
+      const src  = VALID_SRC.has(req.query.src as string)  ? req.query.src  as string : undefined;
+      const plat = VALID_PLAT.has(req.query.plat as string) ? req.query.plat as string : 'other';
+      const v    = RE_VERSION.test(req.query.v as string   ?? '') ? req.query.v  as string : undefined;
+      const app_ = RE_VERSION.test(req.query.app as string ?? '') ? req.query.app as string : undefined;
+      const did  = RE_DID.test(req.query.did as string     ?? '') ? req.query.did as string : undefined;
+      const country = (
+        (req.headers['cf-ipcountry'] as string) ||
+        (req.headers['x-country-code'] as string) ||
+        undefined
+      )?.slice(0, 2).toUpperCase() || undefined;
+      await new TvTelemetry({ src, v, plat, app: app_, did, country }).save();
+    } catch {
+      // non-fatal — telemetry loss is acceptable
     }
   });
 

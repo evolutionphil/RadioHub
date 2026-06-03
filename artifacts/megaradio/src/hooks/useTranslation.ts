@@ -448,6 +448,9 @@ export function useTranslation() {
     'tv_supported_devices': 'Supported devices: Samsung Smart TV (Tizen), LG Smart TV (webOS). Your TV stays connected to your account permanently — no need to reconnect.',
     'tv_step_web': 'Web / Mobile',
     'tv_step_tv': 'TV',
+    'tv_login_qr_or_code': 'Scan the QR code with your phone, or enter this code manually:',
+    'tv_login_scan_qr': 'Scan with your phone',
+    'or': 'OR',
   };
 
   // Translation function with proper priority handling
