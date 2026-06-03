@@ -175,18 +175,27 @@ export const DEFAULT_LANGUAGE = SEO_LANGUAGES.find(lang => lang.isDefault)?.code
 // Phase 2: Medium-priority languages (expand after Phase 1 validation)
 // Phase 3: All 57 languages (full global coverage)
 export const SITEMAP_PRIORITY_LANGUAGES = {
+  // Universal 14: the languages with COMPLETE translations that are indexable
+  // for every station regardless of country (mirrors UNIVERSAL_LANGUAGES in
+  // junk-station-rules.ts). These are the only languages we expose to Google.
+  // Publishing all 57 produced ~420K URLs where ~412K were "Crawled – currently
+  // not indexed" because the extra 43 languages have incomplete translations and
+  // their station pages were thin/duplicate. Restricting the sitemap to these 14
+  // concentrates crawl budget on pages Google will actually index.
+  universal14: ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'],
+
   // Phase 1: Core languages - highest traffic potential (9 languages)
   phase1: ['en', 'tr', 'es', 'de', 'fr', 'ar', 'pt', 'it', 'ru'],
-  
+
   // Phase 2: Secondary languages - significant markets (12 languages)
   phase2: ['nl', 'pl', 'sv', 'zh', 'ja', 'ko', 'hi', 'id', 'he', 'fa', 'uk', 'ro'],
-  
+
   // Phase 3: All remaining languages (36 languages) - complete global coverage
   phase3: SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.code),
 } as const;
 
 // Active sitemap language cohort (change this to roll out more languages)
-export const ACTIVE_SITEMAP_LANGUAGES = SITEMAP_PRIORITY_LANGUAGES.phase3;
+export const ACTIVE_SITEMAP_LANGUAGES = SITEMAP_PRIORITY_LANGUAGES.universal14;
 
 // Sitemap generation configuration
 export const SITEMAP_CONFIG = {
