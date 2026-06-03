@@ -4353,3 +4353,32 @@ StripeSaleEventSchema.index({ userId: 1, createdAt: -1 });
 StripeSaleEventSchema.index({ plan: 1, createdAt: -1 });
 
 export const StripeSaleEvent = mongoose.model<IStripeSaleEvent>('StripeSaleEvent', StripeSaleEventSchema);
+
+// ==================== TV Telemetry (CDN remote-update coverage tracking) ====================
+
+export interface ITvTelemetry {
+  ts: Date;
+  src: 'remote' | 'local' | string;
+  v?: string;
+  plat: 'tizen' | 'webos' | 'other';
+  app?: string;
+  did?: string;
+  country?: string;
+}
+
+const TvTelemetrySchema = new Schema<ITvTelemetry>({
+  ts:      { type: Date, default: Date.now },
+  src:     { type: String, enum: ['remote', 'local'], default: 'remote' },
+  v:       { type: String },
+  plat:    { type: String, enum: ['tizen', 'webos', 'other'], default: 'other' },
+  app:     { type: String },
+  did:     { type: String },
+  country: { type: String },
+}, { collection: 'tv_telemetry' });
+
+// TTL: auto-purge records older than 90 days
+TvTelemetrySchema.index({ ts: 1 }, { expireAfterSeconds: 90 * 24 * 3600 });
+TvTelemetrySchema.index({ v: 1, plat: 1, src: 1 });
+TvTelemetrySchema.index({ did: 1, ts: -1 }, { sparse: true });
+
+export const TvTelemetry = mongoose.model<ITvTelemetry>('TvTelemetry', TvTelemetrySchema);
