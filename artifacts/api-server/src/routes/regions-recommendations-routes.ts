@@ -550,9 +550,9 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
             .sort({ [sortBy as string]: order === 'desc' ? -1 : 1 })
             .skip(Number(offset))
             .limit(Number(limit))
-            .maxTimeMS(8000)
+            .maxTimeMS(15000)
             .lean(),
-          Station.countDocuments(stationFilter).maxTimeMS(8000)
+          Station.countDocuments(stationFilter).maxTimeMS(15000)
         ]);
         return {
           success: true,

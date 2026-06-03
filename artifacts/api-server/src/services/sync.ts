@@ -116,13 +116,24 @@ export class SyncService {
       logger.log('🔨 Ensuring database indexes...');
       await this.createIndexes();
 
-      // Fetch all stations from Radio Browser API
-      logger.log('📡 Fetching stations from Radio Browser API...');
-      const stations = await this.fetchAllStations();
-      logger.log(`📊 Fetched ${stations.length} stations from API`);
-
-      // Save/update stations incrementally (preserving custom data)
-      const result = await this.syncStationsIncrementally(stations, syncLog, blacklistedUuids, blacklistedUrls);
+      // Fetch and process stations page-by-page so we never hold all ~43K records
+      // in memory at once. Each 5K-station page is fully processed before the next
+      // is fetched — peak heap stays around one page (~10 MB) instead of the full
+      // catalog (~200+ MB) which was causing Railway OOM restarts.
+      logger.log('📡 Fetching + syncing stations from Radio Browser API (streaming)...');
+      const result = { processed: 0, inserted: 0, updated: 0, skipped: 0, blacklisted: 0, autoFlagged: 0 };
+      let totalFetched = 0;
+      for await (const pageStations of this.fetchStationPages()) {
+        totalFetched += pageStations.length;
+        const pageResult = await this.syncStationsIncrementally(pageStations, syncLog, blacklistedUuids, blacklistedUrls);
+        result.processed   += pageResult.processed;
+        result.inserted    += pageResult.inserted;
+        result.updated     += pageResult.updated;
+        result.skipped     += pageResult.skipped;
+        result.blacklisted += pageResult.blacklisted;
+        result.autoFlagged += pageResult.autoFlagged;
+      }
+      logger.log(`📊 Fetched + synced ${totalFetched} stations from API`);
 
       logger.log(`🚯 Auto-flagged ${result.autoFlagged} junk stations during ingest`);
       
@@ -292,7 +303,10 @@ export class SyncService {
     throw lastErr;
   }
 
-  private async fetchAllStations(): Promise<any[]> {
+  // Async generator that yields one page (~5 K stations) at a time.
+  // The caller processes each page before the next is fetched, so peak
+  // memory is O(one-page) instead of O(entire-catalog).
+  private async *fetchStationPages(): AsyncGenerator<any[]> {
     // INCIDENT 2026-05-15 v4: every recent force-sync reported the IDENTICAL
     // 998 processed / 934 updated / 64 skipped / 0 added — i.e. the loop ran
     // exactly ONE batch of ~1000 stations each time. Root cause: the
@@ -306,7 +320,9 @@ export class SyncService {
     // back smaller than the requested page size (end of catalog reached).
     const PAGE_SIZE = 5000;
     const MAX_PAGES = 100; // hard ceiling — 500K stations is well above the catalog
-    const all: any[] = [];
+    // seen lives here (not in the caller) so cross-page dedup still works,
+    // but only the Set itself (UUID strings ~= 4 MB) stays resident — not
+    // the full station objects.
     const seen = new Set<string>();
 
     for (let page = 0; page < MAX_PAGES; page++) {
@@ -338,7 +354,7 @@ export class SyncService {
       );
       // Filter + dedupe across pages (mirror occasionally returns dupes near
       // page boundaries when the underlying sort key isn't strictly unique).
-      let added = 0;
+      const pageStations: any[] = [];
       for (const station of rows) {
         if (
           station?.stationuuid &&
@@ -348,19 +364,14 @@ export class SyncService {
           !seen.has(station.stationuuid)
         ) {
           seen.add(station.stationuuid);
-          all.push(station);
-          added++;
+          pageStations.push(station);
         }
       }
-      logger.log(
-        `   ↳ kept ${added} new station(s) (total so far: ${all.length})`,
-      );
+      logger.log(`   ↳ kept ${pageStations.length} new station(s) this page`);
+      if (pageStations.length > 0) yield pageStations;
       // End of catalog: a short page means there is no next page.
       if (rows.length < PAGE_SIZE) break;
     }
-
-    logger.log(`📡 Radio-Browser fetch complete: ${all.length} unique stations`);
-    return all;
   }
 
   /**
