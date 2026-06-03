@@ -16,10 +16,14 @@ const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET;
 // Stripe remains active for existing subscribers and can be re-enabled by
 // switching back to PAYMENT_PROVIDER=stripe (or unsetting the variable).
 const PAYMENT_PROVIDER: "stripe" | "paddle" = (process.env.PAYMENT_PROVIDER as any) || "stripe";
+// Set PADDLE_ENVIRONMENT=sandbox to use Paddle sandbox for testing.
+const PADDLE_ENV = process.env.PADDLE_ENVIRONMENT === "sandbox"
+  ? Environment.sandbox
+  : Environment.production;
 
 function getPaddle(): Paddle | null {
   if (!PADDLE_API_KEY) return null;
-  return new Paddle(PADDLE_API_KEY, { environment: Environment.production });
+  return new Paddle(PADDLE_API_KEY, { environment: PADDLE_ENV });
 }
 
 // DB-first Paddle price ID lookup (mirrors Stripe's stripePriceId approach).
@@ -181,14 +185,20 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       const { code } = req.params;
       const { deviceId } = req.query as { deviceId?: string };
 
-      if (!deviceId) {
+      // The web activate page sends deviceId=web-activate because it doesn't
+      // know the TV's actual deviceId. In that case query by code only and
+      // return a status-only response (no auth token — the browser doesn't need it).
+      const webCaller = !deviceId || deviceId === 'web-activate';
+      if (!webCaller && !deviceId) {
         return void res.status(400).json({ error: "deviceId query parameter is required" });
       }
 
-      // Wrong deviceId → 404 (no information leak about code existence)
-      const tvCode = await TvSubscriptionCode.findOne({ code, deviceId });
+      // Sort by _id desc: if an old expired doc exists with the same code
+      // (6-digit reuse across sessions), we get the newest one first.
+      const filter = webCaller ? { code } : { code, deviceId: deviceId! };
+      const tvCode = await TvSubscriptionCode.findOne(filter).sort({ _id: -1 });
       if (!tvCode) {
-        return void res.status(404).json({ status: "not_found" });
+        return void res.status(200).json({ status: "not_found" });
       }
 
       // Auto-expire overdue pending codes and return 200 expired (not 404 —
@@ -203,7 +213,12 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
       // Activated — build full response including a TV auth token so the TV can
       // auto-login the user without them entering credentials on the TV.
+      // Web callers (web-activate page) only need the status field.
       if (tvCode.status === "completed" && tvCode.userId) {
+        if (webCaller) {
+          return void res.json({ status: "activated" });
+        }
+
         const user = await User.findById(tvCode.userId)
           .select("_id email subscription")
           .lean() as any;
@@ -276,32 +291,29 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
         const priceId = await getPaddlePriceId(plan);
         if (!priceId) {
-          return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Set it in admin → Stripe Plans (Paddle Price ID field).` });
+          return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Go to Admin → Paddle Plans and add the Paddle Price ID.` });
         }
 
-        const transaction = await paddle.transactions.create({
-          items: [{ priceId, quantity: 1 }],
-          customData: {
-            userId: String(userId),
-            plan,
-            tvCode: tvCode || "",
-          },
-          // checkout.url is the post-payment redirect destination
-          checkout: {
-            url: tvCode
-              ? `${WEB_BASE_URL}/activate/success?code=${tvCode}`
-              : `${WEB_BASE_URL}/premium/success`,
+        // Paddle.js items-based checkout: do NOT pre-create a transaction.
+        // Pre-created transactions start in "draft" status and Paddle's hosted
+        // checkout page returns 404 for them. Passing the priceId to Paddle.js
+        // directly lets Paddle.js create + complete the transaction in one step.
+        const successUrl = tvCode
+          ? `${WEB_BASE_URL}/activate/success?code=${tvCode}`
+          : `${WEB_BASE_URL}/premium/success`;
+
+        logger.log(`[PADDLE] Returning priceId for Paddle.js checkout: user=${userId}, plan=${plan}, priceId=${priceId}`);
+        return void res.json({
+          success: true,
+          paddleCheckout: {
+            priceId,
+            customData: { userId: String(userId), plan, tvCode: tvCode || "" },
+            successUrl,
+            // Include the client-side token so the frontend never needs to
+            // bake VITE_PADDLE_CLIENT_TOKEN into a build-time env var.
+            clientToken: process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN || "",
           },
         });
-
-        const checkoutUrl = transaction.checkout?.url;
-        if (!checkoutUrl) {
-          logger.error("[PADDLE] Transaction created but no checkout.url returned:", transaction.id);
-          return void res.status(503).json({ error: "Paddle did not return a checkout URL. Check that prices are active." });
-        }
-
-        logger.log(`[PADDLE] Checkout txn ${transaction.id} for user ${userId}, plan=${plan}, tvCode=${tvCode || "none"}`);
-        return void res.json({ success: true, checkoutUrl });
       } catch (err: any) {
         logger.error("[PADDLE] Checkout error:", err.message);
         const userMessage = err?.code

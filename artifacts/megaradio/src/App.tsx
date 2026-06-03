@@ -184,6 +184,9 @@ function AdminRouterContent() {
         {/* Payment Gateway */}
         <Route path="/admin/stripe-plans" component={LazyAdminRoutes.StripePlans} />
         <Route path="/admin/paddle-plans" component={LazyAdminRoutes.PaddlePlans} />
+
+        {/* Developer API */}
+        <Route path="/admin/api-keys" component={LazyAdminRoutes.AdminApiKeys} />
         <Route path="/admin/sales" component={LazyAdminRoutes.SalesAnalytics} />
 
         {/* Users Management */}
@@ -1134,6 +1137,10 @@ const SeoMainRouter = React.memo(() => {
       <Route path="/terms-and-conditions" component={PlayerWrapper} />
       <Route path="/login" component={PlayerWrapper} />
       <Route path="/tv" component={PlayerWrapper} />
+      <Route path="/activate" component={PlayerWrapper} />
+      <Route path="/activate/:rest*" component={PlayerWrapper} />
+      <Route path="/premium" component={PlayerWrapper} />
+      <Route path="/premium/:rest*" component={PlayerWrapper} />
       <Route path="/signup" component={PlayerWrapper} />
       <Route path="/forgot-password" component={PlayerWrapper} />
       <Route path="/auth/:rest*" component={PlayerWrapper} />

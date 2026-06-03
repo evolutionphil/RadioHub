@@ -12,7 +12,7 @@ const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStatio
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
-import { getImageUrl } from "@/lib/utils";
+import { getImageUrl, getUserDisplayName } from "@/lib/utils";
 import { getStationUrl } from "@/utils/slugs";
 import { HighlightMatch } from "@/components/HighlightMatch";
 import { getCountryCodeFromApiName, getLanguageForCountry } from "@workspace/seo-shared/seo-config";
@@ -1072,12 +1072,12 @@ export default function RadioHeader({
                   <Link 
                     href={getLocalizedUrl("/profile/favorites")}
                     className="hidden xl:flex items-center hover:opacity-80 transition-opacity cursor-pointer"
-                    title={user?.username || user?.fullName || "User"}
+                    title={getUserDisplayName(user)}
                   >
-                    {/* Username text - shown fully per global standards (Gmail, LinkedIn, Slack) - shows on xl+ (1280px+) */}
-                    {(user?.username || user?.fullName) && (
+                    {/* Display name - shown fully per global standards (Gmail, LinkedIn, Slack) - shows on xl+ (1280px+) */}
+                    {user && (
                       <p className="font-ubuntu font-bold text-[15px] text-white pr-4 overflow-hidden">
-                        {user?.username || user?.fullName}
+                        {getUserDisplayName(user)}
                       </p>
                     )}
                     {/* Avatar - 45x45px rounded-full per Figma */}

@@ -2,6 +2,18 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 
+// Bearer fallback: after OAuth token-session, the auth_token is stored in
+// sessionStorage so that authenticated endpoints work even when the session
+// cookie is dropped by strict browser cookie policies (SameSite=None blocked).
+function oauthBearerHeader(): Record<string, string> {
+  try {
+    const t = sessionStorage.getItem('_mrt_oat');
+    return t ? { Authorization: `Bearer ${t}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 export function resolveApiUrl(path: string): string {
   if (!API_BASE || !path.startsWith('/api')) return path;
   return `${API_BASE}${path}`;
@@ -87,6 +99,7 @@ export const getQueryFn: <T>(options: {
     const res = await fetch(url, {
       credentials: "include",
       signal,
+      headers: oauthBearerHeader(),
     });
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {

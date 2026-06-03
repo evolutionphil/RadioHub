@@ -913,6 +913,14 @@ export async function seedSeoTranslationKeys(): Promise<void> {
     { key: 'hero_listen_everywhere', defaultValue: 'Listen everywhere, anytime, for free', category: 'seo' },
     { key: 'popular_genres_title', defaultValue: 'Popular Radio Genres', category: 'seo' },
     { key: 'popular_countries_title', defaultValue: 'Radio Stations by Country', category: 'seo' },
+    // nav_* are required by REQUIRED_HOMEPAGE_SEO_KEYS but were never created
+    // here, so no language could ever pass hasCompleteSeoTranslations() and the
+    // sitemap collapsed to /en only. In production the frontend source is absent
+    // from the Docker image, so TranslationSyncService.scanForNewKeys cannot
+    // create them either — they MUST be seeded here.
+    { key: 'nav_genres', defaultValue: 'Genres', category: 'seo' },
+    { key: 'nav_regions', defaultValue: 'Regions', category: 'seo' },
+    { key: 'nav_stations', defaultValue: 'Stations', category: 'seo' },
   ];
 
   for (const item of seoKeys) {

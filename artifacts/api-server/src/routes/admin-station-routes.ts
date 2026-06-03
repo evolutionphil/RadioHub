@@ -2629,20 +2629,18 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           const updateChunkSize = 5000;
           for (let i = 0; i < filterModeIds.length; i += updateChunkSize) {
             const chunk = filterModeIds.slice(i, i + updateChunkSize);
-            const chunkResult: import('mongodb').UpdateResult =
-              await Station.updateMany(
-                {
-                  _id: {
-                    $in: chunk.map((id) => new mongoose.Types.ObjectId(id)),
-                  },
+            const chunkResult = await Station.updateMany(
+              {
+                _id: {
+                  $in: chunk.map((id) => new mongoose.Types.ObjectId(id)),
                 },
-                { $unset: { tagsCheckedAt: '' } },
-              );
+              },
+              { $unset: { tagsCheckedAt: '' } },
+            );
             cleared += chunkResult.modifiedCount ?? 0;
           }
         } else {
-          const updateResult: import('mongodb').UpdateResult =
-            await Station.updateMany(filter, { $unset: { tagsCheckedAt: '' } });
+          const updateResult = await Station.updateMany(filter, { $unset: { tagsCheckedAt: '' } });
           cleared = updateResult.modifiedCount ?? 0;
           matched = updateResult.matchedCount ?? cleared;
         }

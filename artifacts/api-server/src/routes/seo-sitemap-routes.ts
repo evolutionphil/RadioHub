@@ -981,7 +981,8 @@ Disallow: /api/analytics
 Disallow: /api/messages/
 Disallow: /api/cast/
 Disallow: /api/ml/
-Disallow: /api/image/
+Allow: /api/image/
+Allow: /api/og-image/
 Disallow: /api/internal/
 Disallow: /api/cache/
 Disallow: /api/logs/
@@ -1017,7 +1018,8 @@ Disallow: /api/analytics
 Disallow: /api/messages/
 Disallow: /api/cast/
 Disallow: /api/ml/
-Disallow: /api/image/
+Allow: /api/image/
+Allow: /api/og-image/
 Disallow: /api/internal/
 Disallow: /api/cache/
 Disallow: /api/logs/
@@ -1049,7 +1051,8 @@ Disallow: /api/analytics
 Disallow: /api/messages/
 Disallow: /api/cast/
 Disallow: /api/ml/
-Disallow: /api/image/
+Allow: /api/image/
+Allow: /api/og-image/
 Disallow: /api/internal/
 Disallow: /api/cache/
 Disallow: /api/logs/
@@ -1062,16 +1065,33 @@ Disallow: /*/messages
 Disallow: /*/profile
 Allow: /
 
+# AI training crawlers — consume bandwidth with near-zero referral value; block
 User-agent: GPTBot
-Allow: /
+Disallow: /
 
+User-agent: CCBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: cohere-ai
+Disallow: /
+
+User-agent: Meta-ExternalAgent
+Disallow: /
+
+User-agent: Diffbot
+Disallow: /
+
+# AI retrieval / search bots — surface content in AI answers and send traffic; allow
 User-agent: ChatGPT-User
 Allow: /
 
 User-agent: OAI-SearchBot
-Allow: /
-
-User-agent: CCBot
 Allow: /
 
 User-agent: anthropic-ai
@@ -1083,9 +1103,6 @@ Allow: /
 User-agent: ClaudeBot
 Allow: /
 
-User-agent: Bytespider
-Allow: /
-
 User-agent: PerplexityBot
 Allow: /
 
@@ -1095,15 +1112,6 @@ Allow: /
 User-agent: Applebot-Extended
 Allow: /
 
-User-agent: cohere-ai
-Allow: /
-
-User-agent: Google-Extended
-Allow: /
-
-User-agent: Meta-ExternalAgent
-Allow: /
-
 User-agent: Amazonbot
 Allow: /
 
@@ -1111,9 +1119,6 @@ User-agent: DuckAssistBot
 Allow: /
 
 User-agent: YouBot
-Allow: /
-
-User-agent: Diffbot
 Allow: /
 
 Sitemap: ${baseUrl}/sitemap-index.xml`;

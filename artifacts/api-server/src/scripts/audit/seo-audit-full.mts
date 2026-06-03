@@ -85,7 +85,7 @@ async function fetchJson<T = any>(url: string): Promise<T | null> {
   try {
     const r = await rateLimitedFetch(url);
     if (!r.ok) return null;
-    return await r.json();
+    return (await r.json()) as T;
   } catch {
     return null;
   }

@@ -69,9 +69,13 @@ function PlanCard({ plan }: { plan: PlanRecord }) {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PUT", `/api/admin/stripe-plans/${plan.planId}`, {
-        body: { paddlePriceId: form.paddlePriceId },
-      });
+      const body: Record<string, unknown> = { paddlePriceId: form.paddlePriceId };
+      // Include amount + currency from Paddle when verified, so /premium shows real prices
+      if (verifyResult?.valid && verifyResult.unitAmount && verifyResult.currency) {
+        body.amount = verifyResult.unitAmount;
+        body.currency = verifyResult.currency.toLowerCase();
+      }
+      const res = await apiRequest("PUT", `/api/admin/stripe-plans/${plan.planId}`, { body });
       return res.json();
     },
     onSuccess: () => {

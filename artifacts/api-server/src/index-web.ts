@@ -243,13 +243,13 @@ app.use((req, res, next) => {
   const isProduction = process.env.NODE_ENV === 'production';
   const cspDirectives = [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms https://analytics.ahrefs.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://www.gstatic.com https://adservice.google.com https://tpc.googlesyndication.com https://*.adtrafficquality.google https://partner.googleadservices.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com https://www.google.com https://flowalive-sdk.s3.eu-central-1.amazonaws.com",
-    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com",
+    "script-src 'self' 'unsafe-inline' https://www.googletagmanager.com https://www.clarity.ms https://scripts.clarity.ms https://analytics.ahrefs.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://pagead2.googlesyndication.com https://www.gstatic.com https://adservice.google.com https://tpc.googlesyndication.com https://*.adtrafficquality.google https://partner.googleadservices.com https://www.googleadservices.com https://googleads.g.doubleclick.net https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com https://www.google.com https://flowalive-sdk.s3.eu-central-1.amazonaws.com https://cdn.paddle.com https://public.profitwell.com",
+    "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com https://cdn.paddle.com",
     "font-src 'self' data: https://fonts.gstatic.com",
     "img-src 'self' data: https: blob:",
     "media-src 'self' https: blob:",
     "connect-src 'self' https: wss:",
-    "frame-src 'self' https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://*.adtrafficquality.google https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com",
+    "frame-src 'self' https://pagead2.googlesyndication.com https://tpc.googlesyndication.com https://googleads.g.doubleclick.net https://www.google.com https://*.adtrafficquality.google https://securepubads.g.doubleclick.net https://fundingchoicesmessages.google.com https://consent.google.com https://*.paddle.com",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
@@ -768,6 +768,18 @@ app.use('/api/stream', streamServiceProxy);
         sendJunkGone(res);
         return;
       }
+      // Cache-hit redirect guard: if the renderer marked this URL as a
+      // language-ineligible redirect (e.g. /am/station/foo → /en/station/foo),
+      // honour the 301 even when stale noindex HTML is still in cache. Without
+      // this, cached noindex HTML is served indefinitely and Google keeps
+      // reporting the URL as "Crawled - currently not indexed".
+      if (cachedPage?.pageData?.redirectTo) {
+        const qIdx = req.originalUrl.indexOf('?');
+        const queryString = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+        res.setHeader('Cache-Control', 'public, max-age=300, must-revalidate');
+        res.redirect(301, cachedPage.pageData.redirectTo + queryString);
+        return;
+      }
       // Mirror <meta robots> on the X-Robots-Tag header so the two never
       // contradict (Google parks contradictions in "Crawled - not indexed").
       // pageData and seoHtml caches can diverge, so fall back to scanning the
@@ -944,6 +956,19 @@ app.use('/api/stream', streamServiceProxy);
         if (stationIsJunk) {
           // Do NOT cache SSR HTML for junk URLs — shared helper keeps the
           // status/body/cache-control consistent with the cache-HIT branch.
+          const { sendJunkGone } = await import('./seo/send-junk-gone');
+          sendJunkGone(res);
+          return;
+        }
+
+        // Not-found station pages: deleted stations, renamed slugs, or
+        // country-code prefixed URLs (/bh/, /cz/, /ir/…) where the station
+        // no longer exists in MongoDB. Return 410 Gone — Google removes 410
+        // URLs from its crawl queue immediately, whereas 404 gets re-crawled
+        // for months before the URL is dropped from the index. DB errors do
+        // NOT set stationNotFound (they fall through to a placeholder), so
+        // transient outages are safe.
+        if (stationNotFound && seoData.pageData?.pageType === 'station') {
           const { sendJunkGone } = await import('./seo/send-junk-gone');
           sendJunkGone(res);
           return;

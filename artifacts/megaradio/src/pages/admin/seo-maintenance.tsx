@@ -93,6 +93,28 @@ interface BackfillJob {
   lastError: string | null;
 }
 
+interface StripSuffixJob {
+  jobId: string;
+  startedAt: string;
+  finishedAt: string | null;
+  processed: number;
+  modified: number;
+  isRunning: boolean;
+  lastError: string | null;
+}
+
+interface FillTemplatesJob {
+  jobId: string;
+  startedAt: string;
+  finishedAt: string | null;
+  processed: number;
+  filled: number;
+  skipped: number;
+  aiReady: number;
+  isRunning: boolean;
+  lastError: string | null;
+}
+
 interface ScheduledBackfillRunCountryLogos {
   countryCode: string;
   candidates: number;
@@ -677,6 +699,28 @@ export default function SeoMaintenancePage() {
         variant: "destructive",
       });
     },
+  });
+
+  const stripSuffixJobQuery = useQuery<{ job: StripSuffixJob | null }>({
+    queryKey: ["/api/admin/maintenance/descriptions/strip-suffix/status"],
+    refetchInterval: (q) => q.state.data?.job?.isRunning ? 2000 : false,
+  });
+
+  const startStripSuffix = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/maintenance/descriptions/strip-suffix", {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/maintenance/descriptions/strip-suffix/status"] }),
+    onError: (e: any) => toast({ title: "Suffix silme başarısız", description: e?.message || "Bilinmeyen hata", variant: "destructive" }),
+  });
+
+  const fillTemplatesJobQuery = useQuery<{ job: FillTemplatesJob | null }>({
+    queryKey: ["/api/admin/maintenance/descriptions/fill-templates/status"],
+    refetchInterval: (q) => q.state.data?.job?.isRunning ? 2000 : false,
+  });
+
+  const startFillTemplates = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/maintenance/descriptions/fill-templates", {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/admin/maintenance/descriptions/fill-templates/status"] }),
+    onError: (e: any) => toast({ title: "Template doldurma başarısız", description: e?.message || "Bilinmeyen hata", variant: "destructive" }),
   });
 
   const stats = statsQuery.data;
@@ -1907,6 +1951,95 @@ export default function SeoMaintenancePage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Strip branded suffix from descriptions */}
+      {(() => {
+        const suffixJob = stripSuffixJobQuery.data?.job;
+        return (
+          <Card className="bg-white">
+            <CardHeader>
+              <CardTitle className="text-base">Açıklama suffix temizle ("Listen now on Mega Radio!")</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-slate-600">
+                Tüm istasyonların açıklamalarındaki markalı "Listen now on Mega Radio!" ve çevirilerini siler.
+                İdempotent — birden fazla çalıştırılabilir. ~50.000 istasyon için birkaç dakika sürer.
+              </p>
+              <Button
+                onClick={() => startStripSuffix.mutate()}
+                disabled={startStripSuffix.isPending || suffixJob?.isRunning}
+              >
+                {suffixJob?.isRunning ? "Çalışıyor..." : startStripSuffix.isPending ? "Başlatılıyor..." : "Suffix temizle"}
+              </Button>
+              {suffixJob && (
+                <div className="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-1 mt-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={suffixJob.isRunning ? "default" : "secondary"}>
+                      {suffixJob.isRunning ? "ÇALIŞIYOR" : "TAMAMLANDI"}
+                    </Badge>
+                    <span className="text-xs text-slate-500">Job: {suffixJob.jobId}</span>
+                  </div>
+                  <div>Taranan: <strong>{suffixJob.processed.toLocaleString()}</strong></div>
+                  <div>Değiştirilen: <strong className="text-emerald-600">{suffixJob.modified.toLocaleString()}</strong></div>
+                  {suffixJob.finishedAt && (
+                    <div className="text-xs text-slate-500">Tamamlandı: {formatTs(suffixJob.finishedAt)}</div>
+                  )}
+                  {suffixJob.lastError && (
+                    <div className="text-xs text-rose-600 mt-1">Hata: {suffixJob.lastError}</div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
+
+      {/* Fill template descriptions */}
+      {(() => {
+        const tmplJob = fillTemplatesJobQuery.data?.job;
+        return (
+          <Card className="bg-white">
+            <CardHeader>
+              <CardTitle className="text-base">Template açıklama doldur (İngilizce eksik istasyonlar)</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <p className="text-sm text-slate-600">
+                İngilizce açıklaması olmayan istasyonlar için Radio-Browser verilerinden (votes, bitrate, codec, konum) sıfır maliyetli benzersiz açıklama üretir.
+                <strong className="text-amber-700"> votes ≥ 1000</strong> olan istasyonlar "AI Ready" olarak raporlanır — bunlar sonradan AI ile upgrade edilebilir.
+              </p>
+              <Button
+                onClick={() => startFillTemplates.mutate()}
+                disabled={startFillTemplates.isPending || tmplJob?.isRunning}
+              >
+                {tmplJob?.isRunning ? "Çalışıyor..." : startFillTemplates.isPending ? "Başlatılıyor..." : "Template açıklama doldur"}
+              </Button>
+              {tmplJob && (
+                <div className="border border-slate-200 rounded p-3 bg-slate-50 text-sm space-y-1 mt-3">
+                  <div className="flex items-center gap-2">
+                    <Badge variant={tmplJob.isRunning ? "default" : "secondary"}>
+                      {tmplJob.isRunning ? "ÇALIŞIYOR" : "TAMAMLANDI"}
+                    </Badge>
+                    <span className="text-xs text-slate-500">Job: {tmplJob.jobId}</span>
+                  </div>
+                  <div>Taranan (açıklamasız): <strong>{tmplJob.processed.toLocaleString()}</strong></div>
+                  <div>Dolduruldu: <strong className="text-emerald-600">{tmplJob.filled.toLocaleString()}</strong></div>
+                  <div>Atlanan (yetersiz veri): {tmplJob.skipped.toLocaleString()}</div>
+                  <div>
+                    AI Ready (votes ≥ 1000):{" "}
+                    <strong className="text-amber-600">{tmplJob.aiReady.toLocaleString()}</strong>
+                  </div>
+                  {tmplJob.finishedAt && (
+                    <div className="text-xs text-slate-500">Tamamlandı: {formatTs(tmplJob.finishedAt)}</div>
+                  )}
+                  {tmplJob.lastError && (
+                    <div className="text-xs text-rose-600 mt-1">Hata: {tmplJob.lastError}</div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
     </div>
   );
 }

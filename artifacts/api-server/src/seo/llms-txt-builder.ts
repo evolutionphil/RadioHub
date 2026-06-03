@@ -147,54 +147,67 @@ export async function buildLlmsTxtBody(baseUrl: string): Promise<string> {
   const lines: string[] = [];
   lines.push('# MegaRadio');
   lines.push('');
-  lines.push(`${cleanBase}/`);
+  lines.push(
+    '> MegaRadio is a free global radio streaming directory with 43,000+ live FM/AM and internet radio stations from 150+ countries, available in 57 languages. Stream any station directly in the browser with no signup required. Available on iOS, Android, Samsung TV, LG TV, and Apple TV.',
+  );
   lines.push('');
   lines.push(
-    '> MegaRadio is a free online radio directory streaming 60,000+ live FM/AM and internet stations from 120+ countries in 30+ languages. No signup, no app required — playback runs in the browser and on iOS/Android via the official mobile apps.',
+    'MegaRadio indexes stations from the Radio-Browser open database, augmented with AI-generated descriptions, verified stream URLs, and genre tagging. Station data is updated daily.',
   );
   lines.push('');
 
-  lines.push('## Sitemaps');
-  lines.push(`${cleanBase}/sitemap-index.xml`);
-  lines.push(`${cleanBase}/robots.txt`);
+  lines.push('## Browse');
+  lines.push(`- [All Stations](${cleanBase}/en/stations): Full directory of radio stations by country`);
+  lines.push(`- [Genres](${cleanBase}/en/genres): Browse stations by music genre or format`);
+  lines.push(`- [Top 100 Global](${cleanBase}/en/popular): Most-listened stations worldwide`);
+  lines.push(`- [Countries & Regions](${cleanBase}/en/regions): Station index by country and continent`);
   lines.push('');
 
-  lines.push('## Key sections');
-  lines.push(`${cleanBase}/en/stations`);
-  lines.push(`${cleanBase}/en/genres`);
-  lines.push(`${cleanBase}/en/regions`);
-  lines.push(`${cleanBase}/en/about`);
-  lines.push(`${cleanBase}/en/faq`);
-  lines.push(`${cleanBase}/en/contact`);
-  lines.push(`${cleanBase}/en/privacy-policy`);
-  lines.push(`${cleanBase}/en/terms-and-conditions`);
-  lines.push(`${cleanBase}/en/applications`);
+  lines.push('## Developer API');
+  lines.push(`- [API Documentation](${cleanBase}/api-docs): REST API for station metadata, stream URLs, genre listings, and country data`);
+  lines.push(`- [API Registration](${cleanBase}/api-user): Register for a free API key (free tier: 1,000 requests/day)`);
+  lines.push('');
+
+  lines.push('## Data & Discovery');
+  lines.push(`- [Sitemap Index](${cleanBase}/sitemap-index.xml): Full URL sitemap covering all stations, genres, and country pages in 57 languages`);
+  lines.push(`- [robots.txt](${cleanBase}/robots.txt): Crawl rules`);
+  lines.push('');
+
+  lines.push('## About');
+  lines.push(`- [About MegaRadio](${cleanBase}/en/about)`);
+  lines.push(`- [FAQ](${cleanBase}/en/faq)`);
+  lines.push(`- [Privacy Policy](${cleanBase}/en/privacy-policy)`);
+  lines.push(`- [Terms of Service](${cleanBase}/en/terms-and-conditions)`);
+  lines.push(`- [Contact](${cleanBase}/en/contact)`);
+  lines.push(`- [Apps](${cleanBase}/en/applications)`);
   lines.push('');
 
   if (qualifiedLangs.length > 1) {
     lines.push('## Localized entry points');
     for (const lang of qualifiedLangs) {
       if (lang === 'en') continue;
-      // v11: point AI bots at the canonical /lang/{stations-translated}
-      // (was /lang/radios which would 301 via STATION_LIST_ALIASES).
       const stationsSlug = URL_TRANSLATIONS[lang]?.stations || 'stations';
-      lines.push(`${cleanBase}/${lang}/${stationsSlug}`);
+      lines.push(`- [Stations in ${lang.toUpperCase()}](${cleanBase}/${lang}/${stationsSlug})`);
     }
     lines.push('');
   }
 
   if (topCountries.length > 0) {
-    lines.push('## Top countries');
+    lines.push('## Optional');
+    lines.push('');
+    lines.push('Top country directories:');
+    lines.push('');
     for (const { region, country } of topCountries) {
-      lines.push(`${cleanBase}/en/regions/${region}/${country}`);
+      lines.push(`- [${country}](${cleanBase}/en/regions/${region}/${country})`);
     }
     lines.push('');
   }
 
   if (topGenres.length > 0) {
-    lines.push('## Top genres');
+    lines.push('Top genre directories:');
+    lines.push('');
     for (const slug of topGenres) {
-      lines.push(`${cleanBase}/en/genres/${slug}`);
+      lines.push(`- [${slug}](${cleanBase}/en/genres/${slug})`);
     }
     lines.push('');
   }

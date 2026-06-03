@@ -9,6 +9,7 @@ import { registerCountryLanguageMappingRoutes } from './routes/country-language-
 import urlTranslationsRouter from './routes/url-translations';
 import performanceRouter from './routes/performance';
 import apiKeysRouter, { apiKeyMiddleware, seedDemoApiKey } from './routes/api-keys';
+import adminApiKeysRouter from './routes/admin-api-keys-routes';
 import { userEngagementRouter } from './routes/user-engagement';
 import indexnowMonitoringRouter from './routes/indexnow-monitoring';
 import gscInspectionRouter, { handleOAuthCallback } from './routes/gsc-inspection';
@@ -46,10 +47,12 @@ import { registerSemrushAdminRoutes } from './routes/semrush-admin-routes';
 import { registerUserAuthRoutes } from './routes/user-auth-routes';
 import { registerMobileTvRoutes } from './routes/mobile-tv-routes';
 import { registerTvVersionRoutes } from './routes/tv-version-routes';
+import { registerTvTelemetryRoutes } from './routes/tv-telemetry-routes';
 import { registerTranslationKeyRoutes, seedSeoTranslationKeys, seedTurkishUiTranslations } from './routes/translation-keys-routes';
 import { seedSearchPageTranslations } from './seo/search-page-translations-seed';
 import { seedPremiumTranslations } from './seo/premium-translations-seed';
 import { seedSubscriptionUiTranslations } from './seo/subscription-ui-translations-seed';
+import { seedAllLanguagesSeoTranslations } from './seo/all-languages-seo-seed';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
@@ -926,7 +929,11 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.use('/api/user-engagement', userEngagementRouter);
   app.use('/api/api-keys', apiKeysRouter);
   seedDemoApiKey();
-  seedSeoTranslationKeys();
+  // seedSeoTranslationKeys must complete before the language seeders so that
+  // TranslationKey documents exist when upserts run against them.
+  void seedSeoTranslationKeys()
+    .then(() => Promise.all([seedTurkishUiTranslations(), seedAllLanguagesSeoTranslations()]))
+    .catch(() => {});
   // Backfill in-page search_* translations for every SEO_LANGUAGES code.
   // Guarded by tests/search-translations-db-coverage.test.ts (task #298).
   void seedSearchPageTranslations();
@@ -935,14 +942,15 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   void seedPremiumTranslations();
   // Backfill subscription management UI keys (manage screen, status badges, past-due banner)
   void seedSubscriptionUiTranslations();
-  // Backfill Turkish UI translations (nav, homepage sections, common strings)
-  // Idempotent upserts — safe to run on every boot.
-  void seedTurkishUiTranslations().catch(() => {});
   app.use('/api', apiKeyMiddleware);
   app.use('/api/admin/url-translations', urlTranslationsRouter);
   // Admin-only — performance routes include destructive ops (rebuild_indexes,
   // cache clear) plus expensive Cloudflare GraphQL fetches.
   app.use('/api/admin/performance', requireAdmin, performanceRouter);
+
+  // Admin-only — Developer API program visibility (registered developers,
+  // issued keys, per-key usage) and tier/status management.
+  app.use('/api/admin/api-keys', requireAdmin, adminApiKeysRouter);
   registerCountryLanguageMappingRoutes(app, requireAdmin);
 
   // === REGISTER ALL ROUTE MODULES ===
@@ -959,6 +967,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerUserAuthRoutes(app, deps);
   registerMobileTvRoutes(app, deps);
   registerTvVersionRoutes(app, deps);
+  registerTvTelemetryRoutes(app, deps);
   await registerTranslationKeyRoutes(app, deps);
   await registerSeoSitemapRoutes(app, deps, { apiOnly: isApiOnly });
   if (process.env.ENABLE_EMBEDDED_PROXY === 'true' || process.env.NODE_ENV !== 'production') {

@@ -604,9 +604,9 @@ export class SeoRenderer {
           const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const topStations = await withSignal<LeanStationCard[]>(
             Station.find({
-              tags: { $regex: escapedTerm, $options: 'i' },
+              tags: { $regex: escapedTerm },
               slug: { $exists: true, $ne: '' },
-              $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+              noIndex: { $ne: true },
               votes: { $gt: 0 },
             })
               .sort({ votes: -1 })
@@ -778,12 +778,11 @@ export class SeoRenderer {
           // DALGA 2 W2.2: Fetch top 12 stations from this country for SSR flag + <img> grid
           try {
             const countryName = additionalData.regionName as string;
-            const escapedCountry = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             const topStations = await withSignal<LeanStationCard[]>(
               Station.find({
-                country: { $regex: `^${escapedCountry}$`, $options: 'i' },
+                country: countryName,
                 slug: { $exists: true, $ne: '' },
-                $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+                noIndex: { $ne: true },
                 votes: { $gt: 0 },
               })
                 .sort({ votes: -1 })
@@ -988,13 +987,17 @@ export class SeoRenderer {
         const indexable = getIndexableLanguagesForStation(stationData, qualifiedLangs);
         const langIneligible =
           !isJunk && !isStationIndexableInLanguage(stationData, language, qualifiedLangs);
-        // Numeric-only slugs (e.g. `-911`, `1234`) → noindex but not 410, so
+        // Negative integer slugs (e.g. `-598`, `-2612`) are DB artifact IDs —
+        // never valid station callsigns. Treat as junk → 410. Positive integer
+        // slugs (e.g. `1234`) stay noindex-only in case they're callsign brands.
+        const negativeNumericSlug = !isJunk && /^-\d+$/.test((stationData.slug || '').trim());
+        // Numeric-only slugs (e.g. `1234`) → noindex but not 410, so
         // legitimate numeric-callsign brands are not lost.
-        const numericOnlySlug = !isJunk && isNumericOnlySlug(stationData.slug);
+        const numericOnlySlug = !isJunk && !negativeNumericSlug && isNumericOnlySlug(stationData.slug);
 
-        if (isJunk || numericOnlySlug) {
-          // Junk / numeric-only: serve noindex (junk will be upgraded to 410
-          // Gone by the HTTP layer via stationIsJunkFlag below).
+        if (isJunk || numericOnlySlug || negativeNumericSlug) {
+          // Junk / numeric-only: serve noindex (junk and negativeNumericSlug
+          // are upgraded to 410 Gone by the HTTP layer via stationIsJunkFlag).
           seoTags.robots = 'noindex, follow';
           seoTags.noIndex = true;
 
@@ -1029,7 +1032,7 @@ export class SeoRenderer {
           langRedirectUrl = `${domain}/en/${enSegment}/${stationData.slug}`;
         }
 
-        if (isJunk) {
+        if (isJunk || negativeNumericSlug) {
           // Signal to the HTTP layer to return 410 Gone instead of SSR'ing
           // the page. Also suppress ALL hreflang alternates — a noindex/
           // gone page must not expose alternates (Google policy).
@@ -1136,7 +1139,7 @@ export class SeoRenderer {
         const stateName: string = (stationData.state || '').toString().trim();
 
         const baseFilter: any = {
-          $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
+          noIndex: { $ne: true },
           $and: [
             { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
             { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
@@ -1438,7 +1441,14 @@ export class SeoRenderer {
       baseSeoTags.description = getTranslation('faq_page_description');
       baseSeoTags.ogType = 'website';
     }
-    
+
+    // Station pages use the Open Graph `music.radio_station` object type.
+    // Previously fell back to `website`, which tells Facebook / Perplexity
+    // nothing about the content type and reduces entity-matching confidence.
+    if (pageType === 'station') {
+      baseSeoTags.ogType = 'music.radio_station';
+    }
+
     // Generate comprehensive hreflang tags for all pages with translated paths.
     // CRITICAL SEO FIX: Pass canonical URL for self-referential hreflang.
     // ARCHITECT P0 FIX (2026-04-30): non-station pages MUST advertise only the
