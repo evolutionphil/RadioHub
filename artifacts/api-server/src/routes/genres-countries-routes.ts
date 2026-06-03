@@ -769,9 +769,9 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
             .sort({ votes: -1 })
             .skip(skip)
             .limit(limit)
-            .maxTimeMS(8000)
+            .maxTimeMS(15000)
             .lean(),
-          Station.countDocuments(filter).maxTimeMS(8000)
+          Station.countDocuments(filter).maxTimeMS(15000)
         ]);
 
         return {

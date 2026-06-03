@@ -1944,6 +1944,7 @@ StationSchema.index({ name: 1 });
 StationSchema.index({ countryCode: 1 });
 StationSchema.index({ language: 1 });
 StationSchema.index({ tags: 1 });
+StationSchema.index({ genre: 1 }, { sparse: true }); // genre-page station lookup
 StationSchema.index({ votes: -1 });
 StationSchema.index({ clickCount: -1 });
 StationSchema.index({ updatedAt: -1 });
@@ -3995,8 +3996,7 @@ export const SharedComparisonPreset = mongoose.model<ISharedComparisonPreset>(
 // votes, clickCount, updatedAt, codec, slug, slugAliases, noIndex,
 // isFeatured, aiDescriptionSkipped, averageRating, logoAssets.status,
 // stationuuid, plus 3 hot compound indexes + 2dsphere on location).
-StationSchema.index({ favicon: 1 }, { sparse: true }); // logo-routes "has favicon" countDocuments
-StationSchema.index({ tagsCheckedAt: 1 }, { sparse: true }); // admin tag-refresh cooldown filter
+// favicon and tagsCheckedAt are already declared above in the main index block.
 StationSchema.index({ state: 1 }, { sparse: true }); // US/CA state-level region pages
 StationSchema.index({ hasLogo: 1, lastCheckOk: 1 }); // sitemap "has-logo + working" filter
 StationSchema.index({ mediaGroupId: 1 }, { sparse: true }); // sibling-station lookup
@@ -4281,8 +4281,7 @@ const StripeSubscriptionPlanSchema = new Schema<IStripeSubscriptionPlan>({
   isActive: { type: Boolean, default: true },
   updatedAt: { type: Date, default: Date.now },
 }, { collection: 'stripe_subscription_plans' });
-
-StripeSubscriptionPlanSchema.index({ planId: 1 }, { unique: true });
+// planId already has unique: true inline — no separate .index() call needed.
 
 export const StripeSubscriptionPlan = mongoose.model<IStripeSubscriptionPlan>('StripeSubscriptionPlan', StripeSubscriptionPlanSchema);
 

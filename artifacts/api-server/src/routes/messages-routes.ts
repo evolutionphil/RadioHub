@@ -10,11 +10,18 @@ import { DirectMessage, User, UserFollow, UserNotification } from '@workspace/db
 import { chatService } from "../services/chat-service";
 import { logger } from "../utils/logger";
 
+function normalizeIp(ip: string | undefined): string {
+  if (!ip) return 'unknown';
+  // Strip IPv4-mapped IPv6 prefix (::ffff:1.2.3.4 → 1.2.3.4) so express-rate-limit
+  // doesn't emit ERR_ERL_KEY_GEN_IPV6 for ordinary IPv4 connections arriving via IPv6.
+  return ip.startsWith('::ffff:') ? ip.slice(7) : ip;
+}
+
 // 20 messages per minute per user — allows normal chat while blocking spam
 const messageSendLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
-  keyGenerator: (req: any) => req.session?.user?.userId || req.ip,
+  keyGenerator: (req: any) => req.session?.user?.userId || normalizeIp(req.ip),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many messages sent. Please slow down." },
@@ -24,7 +31,7 @@ const messageSendLimiter = rateLimit({
 const imageUploadLimiter = rateLimit({
   windowMs: 5 * 60 * 1000,
   max: 10,
-  keyGenerator: (req: any) => req.session?.user?.userId || req.ip,
+  keyGenerator: (req: any) => req.session?.user?.userId || normalizeIp(req.ip),
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Too many image uploads. Please wait a moment." },
