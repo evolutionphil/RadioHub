@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 
 interface AdSenseUnitProps {
   adSlot?: string;
@@ -13,18 +14,19 @@ declare global {
   }
 }
 
-export default function AdSenseUnit({ 
+export default function AdSenseUnit({
   adSlot = "3609188113",
   adFormat = "auto",
   fullWidthResponsive = true,
-  className = ""
+  className = "",
 }: AdSenseUnitProps) {
+  const { isPremium } = usePremiumStatus();
   const containerRef = useRef<HTMLDivElement>(null);
   const pushedRef = useRef(false);
 
   useEffect(() => {
     pushedRef.current = false;
-    if (typeof window === "undefined" || !containerRef.current) return;
+    if (isPremium || typeof window === "undefined" || !containerRef.current) return;
 
     const container = containerRef.current;
     let cancelled = false;
@@ -33,9 +35,9 @@ export default function AdSenseUnit({
 
     const doPush = () => {
       if (cancelled || pushedRef.current) return;
-      const ins = container.querySelector('ins.adsbygoogle');
+      const ins = container.querySelector("ins.adsbygoogle");
       if (!ins) return;
-      if (ins.hasAttribute('data-adsbygoogle-status')) {
+      if (ins.hasAttribute("data-adsbygoogle-status")) {
         pushedRef.current = true;
         return;
       }
@@ -49,15 +51,12 @@ export default function AdSenseUnit({
 
     const tryWithRetry = () => {
       if (cancelled || pushedRef.current) return;
-
-      const ins = container.querySelector('ins.adsbygoogle');
-      if (ins?.hasAttribute('data-adsbygoogle-status')) {
+      const ins = container.querySelector("ins.adsbygoogle");
+      if (ins?.hasAttribute("data-adsbygoogle-status")) {
         pushedRef.current = true;
         return;
       }
-
       doPush();
-
       if (!pushedRef.current && retryCount < 20) {
         retryCount++;
         retryTimer = setTimeout(tryWithRetry, 500);
@@ -71,7 +70,7 @@ export default function AdSenseUnit({
           observer.disconnect();
         }
       },
-      { rootMargin: "300px" }
+      { rootMargin: "300px" },
     );
 
     observer.observe(container);
@@ -81,7 +80,9 @@ export default function AdSenseUnit({
       observer.disconnect();
       clearTimeout(retryTimer);
     };
-  }, [adSlot]);
+  }, [adSlot, isPremium]);
+
+  if (isPremium) return null;
 
   return (
     <div ref={containerRef} className={`adsense-container ${className}`}>

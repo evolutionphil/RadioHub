@@ -4,6 +4,7 @@ import { useState, useEffect, lazy, Suspense, memo, useCallback, useMemo } from 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import FavoriteButton from "@/components/ui/favorite-button";
@@ -169,6 +170,7 @@ export default function StationDetails() {
   });
   
   const { user, isAuthenticated } = useAuth();
+  const { isPremium } = usePremiumStatus();
   const { t, language } = useTranslation();
   const { toast } = useToast();
   const { currentStation, isPlaying, playStation, pauseStation, stopStation, stationMeta, hasError } = useGlobalPlayer();
@@ -964,10 +966,10 @@ export default function StationDetails() {
                 {/* Desktop Ad Space - Lazy loaded */}
                 <div className="mt-4 text-center sm:mt-0 hidden md:block">
                   <div className="mt-6">
-                    {advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
+                    {!isPremium && (advertisements && advertisements.some((ad: any) => ad.position === 'desktop_sidebar' && ad.isActive) ? (
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none animate-pulse" />}>
-                        <AdCarousel 
-                          ads={advertisements} 
+                        <AdCarousel
+                          ads={advertisements}
                           position="desktop_sidebar"
                           autoSwitchInterval={8000}
                           placeholderText={t('general_ad_space', 'Ad Space')}
@@ -977,7 +979,7 @@ export default function StationDetails() {
                       <Suspense fallback={<div className="bg-gray-800 rounded flex items-center justify-center text-gray-400 aspect-square h-56 flex-none animate-pulse" />}>
                         <AdSenseUnit adSlot="3609188113" adFormat="rectangle" className="min-h-[250px]" />
                       </Suspense>
-                    )}
+                    ))}
                   </div>
                 </div>
               </div>
@@ -1300,39 +1302,43 @@ export default function StationDetails() {
               </div>
             )}
 
-            {/* Middle Section Ad - Between Similar Radios and More from Country */}
-            <div className="py-6">
-              {advertisements && advertisements.some((ad: any) => ad.position === 'middle_section' && ad.isActive) ? (
-                <Suspense fallback={null}>
-                  <AdCarousel 
-                    ads={advertisements} 
-                    position="middle_section"
-                    autoSwitchInterval={8000}
-                  />
-                </Suspense>
-              ) : (
-                <Suspense fallback={null}>
-                  <AdSenseUnit adSlot="3609188113" adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />
-                </Suspense>
-              )}
-            </div>
+            {/* Middle Section Ad — hidden for premium users */}
+            {!isPremium && (
+              <div className="py-6">
+                {advertisements && advertisements.some((ad: any) => ad.position === 'middle_section' && ad.isActive) ? (
+                  <Suspense fallback={null}>
+                    <AdCarousel
+                      ads={advertisements}
+                      position="middle_section"
+                      autoSwitchInterval={8000}
+                    />
+                  </Suspense>
+                ) : (
+                  <Suspense fallback={null}>
+                    <AdSenseUnit adSlot="3609188113" adFormat="horizontal" className="max-w-[1206px] mx-auto min-h-[90px]" />
+                  </Suspense>
+                )}
+              </div>
+            )}
 
-            {/* Ad Section - Mobile Bottom Ad */}
-            <div className="md:hidden py-4">
-              {advertisements && advertisements.some((ad: any) => ad.position === 'mobile_bottom' && ad.isActive) ? (
-                <Suspense fallback={null}>
-                  <AdCarousel 
-                    ads={advertisements} 
-                    position="mobile_bottom"
-                    autoSwitchInterval={8000}
-                  />
-                </Suspense>
-              ) : (
-                <Suspense fallback={null}>
-                  <AdSenseUnit adSlot="3609188113" adFormat="auto" className="min-h-[100px]" />
-                </Suspense>
-              )}
-            </div>
+            {/* Mobile Bottom Ad — hidden for premium users */}
+            {!isPremium && (
+              <div className="md:hidden py-4">
+                {advertisements && advertisements.some((ad: any) => ad.position === 'mobile_bottom' && ad.isActive) ? (
+                  <Suspense fallback={null}>
+                    <AdCarousel
+                      ads={advertisements}
+                      position="mobile_bottom"
+                      autoSwitchInterval={8000}
+                    />
+                  </Suspense>
+                ) : (
+                  <Suspense fallback={null}>
+                    <AdSenseUnit adSlot="3609188113" adFormat="auto" className="min-h-[100px]" />
+                  </Suspense>
+                )}
+              </div>
+            )}
 
             {/* More from Country Section - Independent Loading with Skeleton */}
             {(loadingCountry || (filteredCountryStations && filteredCountryStations.length > 0)) && (station as any)?.country && (
