@@ -151,6 +151,11 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
               window.location.href = successUrl;
               // Don't reset loading — page is navigating away
             }
+            if (event.name === "checkout.error") {
+              console.error("[Paddle] checkout.error event:", event.data);
+              setError("Payment provider error. Please try again or contact support.");
+              setLoading(false);
+            }
           },
         });
         window.Paddle!.Checkout.open({
