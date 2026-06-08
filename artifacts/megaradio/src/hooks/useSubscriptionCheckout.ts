@@ -19,6 +19,9 @@ interface CheckoutResult {
 declare global {
   interface Window {
     Paddle?: {
+      Environment: {
+        set: (env: "sandbox" | "production") => void;
+      };
       Initialize: (opts: {
         token: string;
         eventCallback?: (event: { name: string; data?: unknown }) => void;
@@ -97,6 +100,7 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
           customData: Record<string, string>;
           successUrl: string;
           clientToken?: string;
+          environment?: "sandbox" | "production";
         };
         error?: string;
       } = {};
@@ -130,7 +134,12 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
           setLoading(false);
           return;
         }
-        const { priceId, customData, successUrl } = data.paddleCheckout;
+        const { priceId, customData, successUrl, environment } = data.paddleCheckout;
+        // Paddle.js v2 requires Environment.set() BEFORE Initialize() in sandbox mode.
+        // Omitting this call causes "Something went wrong" when using test_ tokens.
+        if (environment === "sandbox") {
+          window.Paddle!.Environment.set("sandbox");
+        }
         window.Paddle!.Initialize({
           token: paddleToken,
           eventCallback: (event) => {

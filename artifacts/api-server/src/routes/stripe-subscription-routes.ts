@@ -312,6 +312,10 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
             // Include the client-side token so the frontend never needs to
             // bake VITE_PADDLE_CLIENT_TOKEN into a build-time env var.
             clientToken: process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN || "",
+            // Tell the frontend which environment to pass to Paddle.Environment.set().
+            // Paddle.js v2 requires this call before Initialize() when using sandbox
+            // tokens — without it, a test_ token is treated as production and errors.
+            environment: process.env.PADDLE_ENVIRONMENT === "sandbox" ? "sandbox" : "production",
           },
         });
       } catch (err: any) {
