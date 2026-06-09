@@ -3,13 +3,14 @@ import { Station } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { sleep } from '../utils/event-loop-yield';
 import { trackOperation } from '../utils/operation-tracker';
+import { isJunkStation } from '../seo/junk-station-rules';
 
 const POPULAR_PROJECTION = {
   _id: 1, name: 1, url: 1, urlResolved: 1, favicon: 1, country: 1,
   countrycode: 1, state: 1, genre: 1, codec: 1, bitrate: 1,
   homepage: 1, tags: 1, slug: 1, hls: 1, votes: 1, clickCount: 1,
-  lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1,
-  isFeatured: 1, showInGlobalPopular: 1, hasLogo: 1
+  lastCheckOk: 1, lastCheckTime: 1, lastCheckOkTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1,
+  isFeatured: 1, showInGlobalPopular: 1, hasLogo: 1, noIndex: 1
 } as const;
 
 const PER_COUNTRY_LIMIT = 40;
@@ -53,7 +54,7 @@ export class PrecomputedPopularGlobalService {
       let featured: any[] = [];
       try {
         featured = await Station.aggregate([
-          { $match: { lastCheckOk: true, isFeatured: true, showInGlobalPopular: true } },
+          { $match: { lastCheckOk: true, isFeatured: true, showInGlobalPopular: true, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } } },
           { $sort: { votes: -1, clickCount: -1 } },
           { $project: POPULAR_PROJECTION },
           { $limit: maxLimit * 4 }
@@ -83,7 +84,7 @@ export class PrecomputedPopularGlobalService {
       for (const country of countries) {
         try {
           const batch = await Station.aggregate([
-            { $match: { country, lastCheckOk: true, isFeatured: { $ne: true } } },
+            { $match: { country, lastCheckOk: true, isFeatured: { $ne: true }, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } } },
             { $sort: { votes: -1, clickCount: -1 } },
             { $limit: PER_COUNTRY_LIMIT },
             { $project: POPULAR_PROJECTION }
@@ -103,7 +104,12 @@ export class PrecomputedPopularGlobalService {
         if (processed % 25 === 0) await sleep(20);
       }
 
-      const merged = trimPool([...featured, ...pool], targetPoolSize);
+      // Drop codec-suffix / test-feed / song-name junk that the DB-level
+      // noIndex filter can't catch (these stations resolve to 410 Gone on
+      // their station pages, so linking to them creates broken internal links).
+      const gated = trimPool([...featured, ...pool], targetPoolSize)
+        .filter((s) => !isJunkStation(s));
+      const merged = gated;
 
       const duration = Math.round((Date.now() - startTime) / 1000);
       logger.log(
