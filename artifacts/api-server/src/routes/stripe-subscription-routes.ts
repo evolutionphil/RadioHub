@@ -83,7 +83,26 @@ function generateCode(): string {
 }
 
 export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
-  const { requireAuth } = deps;
+  const { requireAuth, requireAdmin } = deps;
+
+  // Admin debug endpoint — shows Paddle config without exposing full secret
+  app.get("/api/admin/paddle/debug", requireAdmin, async (_req: Request, res: Response) => {
+    const apiKey = process.env.PADDLE_API_KEY || "";
+    const clientToken = process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN || "";
+    const plans: Record<string, string | null> = {};
+    for (const plan of ["premium_monthly", "premium_yearly", "premium_lifetime", "remove_ads"]) {
+      plans[plan] = await getPaddlePriceId(plan);
+    }
+    return void res.json({
+      PAYMENT_PROVIDER,
+      PADDLE_ENVIRONMENT: process.env.PADDLE_ENVIRONMENT || "production",
+      apiKeyConfigured: !!apiKey,
+      apiKeyPrefix: apiKey ? apiKey.slice(0, 16) + "..." : null,
+      clientTokenConfigured: !!clientToken,
+      clientTokenPrefix: clientToken ? clientToken.slice(0, 12) + "..." : null,
+      plans,
+    });
+  });
 
   // ── CORS * for all TV-facing subscription endpoints ───────────────────────
   // These endpoints are called from Samsung Tizen / LG WebOS native apps and
