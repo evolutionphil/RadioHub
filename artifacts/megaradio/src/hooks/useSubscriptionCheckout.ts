@@ -160,8 +160,9 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
               // Don't reset loading — page is navigating away
             }
             if (event.name === "checkout.error") {
+              const detail = (event.data as any)?.detail || (event.data as any)?.message || JSON.stringify(event.data);
               console.error("[Paddle] checkout.error event:", event.data);
-              setError("Payment provider error. Please try again or contact support.");
+              setError(`Payment error: ${detail}. Please try again or contact support.`);
               setLoading(false);
             }
           },

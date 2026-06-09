@@ -313,21 +313,6 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Go to Admin → Paddle Plans and add the Paddle Price ID.` });
         }
 
-        // Validate the price ID exists in the correct Paddle environment
-        // before sending it to the frontend. This surfaces "wrong price ID"
-        // as a clear server-side error instead of a silent 400 inside the overlay.
-        try {
-          await paddle.prices.get(priceId);
-        } catch (priceErr: any) {
-          const env = process.env.PADDLE_ENVIRONMENT === "sandbox" ? "SANDBOX" : "PRODUCTION";
-          logger.error(`[PADDLE] Price ID '${priceId}' not found in ${env} catalog:`, priceErr?.message);
-          return void res.status(503).json({
-            error: `Paddle price ID '${priceId}' not found in ${env} catalog. ` +
-              `Check Admin → Paddle Plans and make sure the price IDs come from the ` +
-              `${env} catalog at paddle.com (Catalog → Prices).`,
-          });
-        }
-
         // Paddle.js items-based checkout: do NOT pre-create a transaction.
         // Pre-created transactions start in "draft" status and Paddle's hosted
         // checkout page returns 404 for them. Passing the priceId to Paddle.js
