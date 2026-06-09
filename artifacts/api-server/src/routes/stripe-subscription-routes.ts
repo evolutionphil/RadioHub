@@ -83,7 +83,26 @@ function generateCode(): string {
 }
 
 export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
-  const { requireAuth } = deps;
+  const { requireAuth, requireAdmin } = deps;
+
+  // Admin debug endpoint — shows Paddle config without exposing full secret
+  app.get("/api/admin/paddle/debug", requireAdmin, async (_req: Request, res: Response) => {
+    const apiKey = process.env.PADDLE_API_KEY || "";
+    const clientToken = process.env.PADDLE_CLIENT_TOKEN || process.env.VITE_PADDLE_CLIENT_TOKEN || "";
+    const plans: Record<string, string | null> = {};
+    for (const plan of ["premium_monthly", "premium_yearly", "premium_lifetime", "remove_ads"]) {
+      plans[plan] = await getPaddlePriceId(plan);
+    }
+    return void res.json({
+      PAYMENT_PROVIDER,
+      PADDLE_ENVIRONMENT: process.env.PADDLE_ENVIRONMENT || "production",
+      apiKeyConfigured: !!apiKey,
+      apiKeyPrefix: apiKey ? apiKey.slice(0, 16) + "..." : null,
+      clientTokenConfigured: !!clientToken,
+      clientTokenPrefix: clientToken ? clientToken.slice(0, 12) + "..." : null,
+      plans,
+    });
+  });
 
   // ── CORS * for all TV-facing subscription endpoints ───────────────────────
   // These endpoints are called from Samsung Tizen / LG WebOS native apps and
@@ -292,6 +311,21 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         const priceId = await getPaddlePriceId(plan);
         if (!priceId) {
           return void res.status(503).json({ error: `No Paddle price configured for plan: ${plan}. Go to Admin → Paddle Plans and add the Paddle Price ID.` });
+        }
+
+        // Validate the price ID exists in the correct Paddle environment
+        // before sending it to the frontend. This surfaces "wrong price ID"
+        // as a clear server-side error instead of a silent 400 inside the overlay.
+        try {
+          await paddle.prices.get(priceId);
+        } catch (priceErr: any) {
+          const env = process.env.PADDLE_ENVIRONMENT === "sandbox" ? "SANDBOX" : "PRODUCTION";
+          logger.error(`[PADDLE] Price ID '${priceId}' not found in ${env} catalog:`, priceErr?.message);
+          return void res.status(503).json({
+            error: `Paddle price ID '${priceId}' not found in ${env} catalog. ` +
+              `Check Admin → Paddle Plans and make sure the price IDs come from the ` +
+              `${env} catalog at paddle.com (Catalog → Prices).`,
+          });
         }
 
         // Paddle.js items-based checkout: do NOT pre-create a transaction.
