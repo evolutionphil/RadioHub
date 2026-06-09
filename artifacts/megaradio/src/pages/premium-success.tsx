@@ -15,19 +15,19 @@ export default function PremiumSuccessPage() {
   // (webhook may arrive a few seconds after the Paddle redirect).
   useEffect(() => {
     let attempts = 0;
-    const maxAttempts = 10;
+    const maxAttempts = 20;
 
     async function poll() {
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       await queryClient.refetchQueries({ queryKey: ["/api/auth/me"] });
       const me = queryClient.getQueryData<any>(["/api/auth/me"]);
-      if (me?.subscription?.isActive) {
+      if (me?.user?.subscription?.isActive) {
         setVerified(true);
         return;
       }
       attempts++;
       if (attempts < maxAttempts) {
-        setTimeout(poll, 2000);
+        setTimeout(poll, 1500);
       } else {
         // After 20s still not active — webhook may be delayed; show neutral state
         setVerified(false);

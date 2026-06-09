@@ -156,6 +156,8 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
               setLoading(false);
             }
             if (event.name === "checkout.completed") {
+              // Mark premium BEFORE navigating so index.html skips the AdSense script load.
+              try { localStorage.setItem("_mrt_is_premium", "1"); } catch {}
               window.location.href = successUrl;
               // Don't reset loading — page is navigating away
             }
