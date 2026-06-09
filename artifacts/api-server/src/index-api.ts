@@ -390,7 +390,13 @@ app.use(compression({
   }
 }));
 
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({
+  limit: '2mb',
+  // Capture the raw body for webhook HMAC verification (Stripe/Paddle).
+  // Without this, the global JSON parser consumes the stream and webhook
+  // handlers that re-read req.on('data') hang until timeout.
+  verify: (req, _res, buf) => { (req as any).rawBody = buf.toString('utf8'); },
+}));
 app.use(express.urlencoded({ extended: false, limit: '2mb' }));
 // text/csv uploads (e.g. SEMrush CSV import) — larger limit, separate from JSON budget
 app.use(express.text({ limit: '10mb', type: ['text/csv', 'text/plain'] }));

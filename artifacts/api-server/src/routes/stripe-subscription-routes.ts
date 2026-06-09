@@ -445,25 +445,12 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   // content-type is application/json and express.raw() runs first.
   app.post(
     "/api/webhooks/stripe",
-    // Raw body needed for HMAC verification — do NOT parse as JSON
-    (req: Request, res: Response, next) => {
-      if (req.headers["content-type"] === "application/json") {
-        let body = "";
-        req.setEncoding("utf8");
-        req.on("data", (chunk) => { body += chunk; });
-        req.on("end", () => {
-          (req as any).rawBody = body;
-          next();
-        });
-      } else {
-        next();
-      }
-    },
     async (req: Request, res: Response) => {
       const stripe = getStripe();
       if (!stripe) return void res.status(200).json({ received: true });
 
       const sig = req.headers["stripe-signature"] as string;
+      // rawBody is captured by the global express.json() verify callback.
       const rawBody = (req as any).rawBody || "";
 
       if (!STRIPE_WEBHOOK_SECRET) {
@@ -592,23 +579,13 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   // and subscription.activated / subscription.updated for recurring plans.
   app.post(
     "/api/webhooks/paddle",
-    (req: Request, res: Response, next) => {
-      // Capture raw body for HMAC signature verification
-      if (req.headers["content-type"]?.includes("application/json")) {
-        let body = "";
-        req.setEncoding("utf8");
-        req.on("data", (chunk) => { body += chunk; });
-        req.on("end", () => { (req as any).rawBody = body; next(); });
-      } else {
-        next();
-      }
-    },
     async (req: Request, res: Response) => {
       const paddle = getPaddle();
       if (!paddle) return void res.status(200).json({ received: true });
 
       const sig = req.headers["paddle-signature"] as string;
-      const rawBody = (req as any).rawBody || "";
+      // rawBody is captured by the global express.json() verify callback.
+      const rawBody = (req as any).rawBody || JSON.stringify(req.body || {});
 
       if (!PADDLE_WEBHOOK_SECRET) {
         logger.warn("[PADDLE] PADDLE_WEBHOOK_SECRET not set — skipping signature check");
@@ -630,6 +607,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
       const eventType: string = event?.event_type || "";
       const txnData = event?.data || {};
+      logger.log(`[PADDLE] Webhook received: event_type=${eventType}, txn=${txnData?.id || "n/a"}`);
 
       if (eventType === "transaction.completed") {
         const customData = txnData.custom_data || {};
