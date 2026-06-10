@@ -228,11 +228,16 @@
     <script>
       (function () {
         function loadDeferredScripts() {
-          var ads = document.createElement('script');
-          ads.async = true;
-          ads.crossOrigin = 'anonymous';
-          ads.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434';
-          document.head.appendChild(ads);
+          // Skip AdSense entirely for premium users (flag set at checkout.completed).
+          var isPremium = false;
+          try { isPremium = localStorage.getItem('_mrt_is_premium') === '1'; } catch {}
+          if (!isPremium) {
+            var ads = document.createElement('script');
+            ads.async = true;
+            ads.crossOrigin = 'anonymous';
+            ads.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8771434485570434';
+            document.head.appendChild(ads);
+          }
 
           var cast = document.createElement('script');
           cast.async = true;

@@ -921,15 +921,23 @@ export class SeoRenderer {
     } else if (cleanPath === '/' || cleanPath === '') {
       pageType = 'home';
       try {
-        const popularStations = await withSignal(
-          Station.find({ votes: { $gt: 0 } })
+        const popularStations = await withSignal<LeanStationCard[]>(
+          Station.find({
+            votes: { $gt: 0 },
+            slug: { $exists: true, $ne: '' },
+            noIndex: { $ne: true },
+          })
             .sort({ votes: -1 })
-            .limit(10)
-            .select('name slug favicon logoAssets country tags votes')
+            .limit(24)
+            .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
             .lean(),
           signal
         );
-        additionalData.popularStations = popularStations;
+        // Apply the junk-station gate (same as genre/region SSR surfaces) so the
+        // homepage never internally links to stations that resolve to 410 Gone.
+        additionalData.popularStations = popularStations
+          .filter((s) => s.noIndex !== true && !isJunkStation(s))
+          .slice(0, 10);
       } catch (error: any) {
         if (error?.name === 'AbortError' || signal?.aborted) throw error;
       }
@@ -1804,15 +1812,14 @@ export class SeoRenderer {
                   // Prefix-all canonical: /<lang>/<localized-station>/<slug> for ALL languages including English
                   const stationSegment = urlTranslations?.get(`${language}:station`) || 'station';
                   const stationUrl = `/${language}/${stationSegment}/${slug}`;
-                  // pickLogoUrl: trim + http(s) scheme guard (architect P1) — never render broken src
-                  const logo = this.pickLogoUrl(station) || '/images/default-station.png';
+                  const logo = this.pickLogoUrl(station);
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
                   const altText = country ? `${stationName} — ${country}` : stationName;
                   return `
                     <li>
                       <a href="${stationUrl}">
-                        <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">
+                        ${logo ? `<img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">` : ''}
                         <h3>${stationName}</h3>
                       </a>
                     </li>
@@ -1865,17 +1872,31 @@ export class SeoRenderer {
             <section class="about-section">
               <h2>${this.escapeHtml(getLocalizedText('faq_about_megaradio', 'About Mega Radio'))}</h2>
               <p>${this.escapeHtml(getLocalizedText('faq_seo_intro', 'Mega Radio is your ultimate destination for discovering and streaming live radio stations from around the world. With over 60,000 free radio stations spanning 120+ countries, we deliver unlimited access to music, news, sports, and entertainment across every language and genre.'))}</p>
-              
-              <nav class="footer-links">
-                <ul>
-                  <li><a href="/${language}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
-                  <li><a href="/${language}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
-                  <li><a href="/${language}/privacy-policy">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
-                  <li><a href="/${language}/terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
-                  <li><a href="/${language}/applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
-                </ul>
-              </nav>
+              <p>${this.escapeHtml(getLocalizedText('faq_free_explanation', 'All radio stations on Mega Radio are completely free to listen to with no registration required. Simply open the app or website, choose a station, and start listening instantly on any device including desktop, mobile, smart TV, and tablet.'))}</p>
             </section>
+
+            <!-- FAQ Section -->
+            <section class="faq-section">
+              <h2>${this.escapeHtml(getLocalizedText('faq_section_title', 'Frequently Asked Questions'))}</h2>
+              <dl>
+                <dt>${this.escapeHtml(getLocalizedText('faq_q_what_is', 'What is Mega Radio?'))}</dt>
+                <dd>${this.escapeHtml(getLocalizedText('faq_a_what_is', 'Mega Radio is a free online radio platform that lets you stream live radio stations from around the world. You can listen to music, news, sports, talk shows, and more in dozens of languages — no subscription or account required.'))}</dd>
+                <dt>${this.escapeHtml(getLocalizedText('faq_q_how_many', 'How many radio stations are available?'))}</dt>
+                <dd>${this.escapeHtml(getLocalizedText('faq_a_how_many', 'Mega Radio provides access to over 60,000 live radio stations from more than 120 countries. Stations are continuously updated so you always have access to the latest broadcasts.'))}</dd>
+                <dt>${this.escapeHtml(getLocalizedText('faq_q_devices', 'What devices can I use to listen?'))}</dt>
+                <dd>${this.escapeHtml(getLocalizedText('faq_a_devices', 'You can listen on any web browser, as well as through dedicated apps for Android, iOS, Windows, and Smart TV platforms including Samsung and LG. All your favourite stations sync across devices automatically.'))}</dd>
+              </dl>
+            </section>
+
+            <nav class="footer-links">
+              <ul>
+                <li><a href="/${language}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
+                <li><a href="/${language}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
+                <li><a href="/${language}/privacy-policy">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
+                <li><a href="/${language}/terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
+                <li><a href="/${language}/applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
+              </ul>
+            </nav>
           </main>
         `;
         break;
@@ -2116,14 +2137,13 @@ export class SeoRenderer {
                   const stationSegment = urlTranslations?.get(`${language}:station`) || 'station';
                   const stationUrl = `/${language}/${stationSegment}/${slug}`;
                   const logo = this.pickLogoUrl(station);
-                  if (!logo) return '';
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
                   const altText = country ? `${stationName} — ${country}` : stationName;
                   return `
                     <li>
                       <a href="${stationUrl}">
-                        <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">
+                        ${logo ? `<img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">` : ''}
                         <h3>${stationName}</h3>
                       </a>
                     </li>`;
@@ -2186,6 +2206,16 @@ export class SeoRenderer {
               }
               return sections.join('\n');
             })()}
+            ${genreName ? `
+            <section class="genre-faq">
+              <h2>${this.escapeHtml(getLocalizedText('faq_section_title', 'Frequently Asked Questions'))}</h2>
+              <dl>
+                <dt>${this.escapeHtml(getLocalizedText('faq_q_genre_listen', `How do I listen to ${genreName} radio stations?`).replace(/\$\{genreName\}/g, genreName))}</dt>
+                <dd>${this.escapeHtml(getLocalizedText('faq_a_genre_listen', `Select any ${genreName} station from the list above to start streaming instantly. No download or account required — just click and listen for free on any device.`).replace(/\$\{genreName\}/g, genreName))}</dd>
+                <dt>${this.escapeHtml(getLocalizedText('faq_q_genre_free', `Are ${genreName} radio stations free?`).replace(/\$\{genreName\}/g, genreName))}</dt>
+                <dd>${this.escapeHtml(getLocalizedText('faq_a_genre_free', `Yes. All radio stations on Mega Radio, including ${genreName} stations, are completely free to listen to with no subscription or registration required.`).replace(/\$\{genreName\}/g, genreName))}</dd>
+              </dl>
+            </section>` : ''}
             <nav>
               <ul>
                 <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>

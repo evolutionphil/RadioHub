@@ -131,11 +131,10 @@ export const SEO_LANGUAGES: SeoLanguage[] = [
   { code: 'vi', name: 'Tiếng Việt', iso: 'vi-VN', enabled: true, isDefault: false },
   { code: 'id', name: 'Bahasa Indonesia', iso: 'id-ID', enabled: true, isDefault: false },
   { code: 'ms', name: 'Bahasa Melayu', iso: 'ms-MY', enabled: true, isDefault: false },
-  // BCP47 fix: Google explicitly recommends `fil` (Filipino) over `tl`
-  // (Tagalog) as the hreflang/lang tag — `tl` is the underlying language,
-  // `fil` is the standardized national variant. The URL path stays /tl/
-  // for backlink stability.
-  { code: 'tl', name: 'Filipino', iso: 'fil', enabled: true, isDefault: false },
+  // ISO 639-1 `tl` (Tagalog/Filipino) is the correct hreflang value per
+  // Google's hreflang spec which requires ISO 639-1 codes. The URL path
+  // stays /tl/ for backlink stability.
+  { code: 'tl', name: 'Filipino', iso: 'tl', enabled: true, isDefault: false },
   
   // Other major languages
   { code: 'he', name: 'עברית', iso: 'he-IL', enabled: true, isDefault: false },
