@@ -1,0 +1,458 @@
+/**
+ * Seed homepage FAQ + popular-stations heading translations for all 57 active
+ * sitemap languages. Without these, non-English pages show English text in the
+ * faq-section and genre-faq blocks → mixed-language-content signal to Google.
+ *
+ * Keys seeded:
+ *   popular_stations, faq_seo_intro, faq_section_title, faq_free_explanation,
+ *   faq_q_what_is, faq_a_what_is, faq_q_how_many, faq_a_how_many,
+ *   faq_q_devices, faq_a_devices,
+ *   faq_q_genre_listen, faq_a_genre_listen, faq_q_genre_free, faq_a_genre_free,
+ *   users_page_intro, users_page_features,
+ *   search_how_to, search_tips_title, search_tip_name, search_tip_genre,
+ *   search_tip_country, search_tip_language, search_browse_title, search_browse_intro
+ *
+ * Called at boot after seedSeoTranslationKeys() so TranslationKey documents exist.
+ * All upserts are idempotent.
+ */
+
+import { TranslationKey, Translation } from '@workspace/db-shared/mongo-schemas';
+import { logger } from '../utils/logger';
+
+type FaqKeyName =
+  | 'popular_stations'
+  | 'faq_seo_intro'
+  | 'faq_section_title'
+  | 'faq_free_explanation'
+  | 'faq_q_what_is'
+  | 'faq_a_what_is'
+  | 'faq_q_how_many'
+  | 'faq_a_how_many'
+  | 'faq_q_devices'
+  | 'faq_a_devices'
+  | 'faq_q_genre_listen'
+  | 'faq_a_genre_listen'
+  | 'faq_q_genre_free'
+  | 'faq_a_genre_free'
+  | 'users_page_intro'
+  | 'users_page_features'
+  | 'search_how_to'
+  | 'search_tips_title'
+  | 'search_tip_name'
+  | 'search_tip_genre'
+  | 'search_tip_country'
+  | 'search_tip_language'
+  | 'search_browse_title'
+  | 'search_browse_intro';
+
+type LangFaqValues = Record<FaqKeyName, string>;
+
+const TRANSLATIONS: Record<string, LangFaqValues> = {
+  tr: {
+    popular_stations: 'Popüler Radyo İstasyonları',
+    faq_seo_intro: 'Mega Radio, dünya genelindeki canlı radyo istasyonlarını keşfetmek ve dinlemek için en iyi platformdur. 120\'den fazla ülkeden 60.000\'den fazla ücretsiz radyo istasyonuyla müzik, haber, spor ve eğlenceye sınırsız erişim sunuyoruz.',
+    faq_section_title: 'Sıkça Sorulan Sorular',
+    faq_free_explanation: 'Mega Radio\'daki tüm radyo istasyonları kayıt gerektirmeden tamamen ücretsizdir. Uygulamayı veya web sitesini açın, bir istasyon seçin ve masaüstü, mobil, akıllı TV ve tablet dahil her cihazda anında dinlemeye başlayın.',
+    faq_q_what_is: 'Mega Radio nedir?',
+    faq_a_what_is: 'Mega Radio, dünya genelindeki canlı radyo istasyonlarını yayınlamanıza olanak tanıyan ücretsiz bir çevrimiçi radyo platformudur. Abonelik veya hesap gerektirmeden düzinelerce dilde müzik, haber, spor, talk show ve daha fazlasını dinleyebilirsiniz.',
+    faq_q_how_many: 'Kaç radyo istasyonu mevcut?',
+    faq_a_how_many: 'Mega Radio, 120\'den fazla ülkeden 60.000\'den fazla canlı radyo istasyonuna erişim sağlar. İstasyonlar sürekli güncellenerek en son yayınlara erişiminiz sağlanır.',
+    faq_q_devices: 'Dinlemek için hangi cihazları kullanabilirim?',
+    faq_a_devices: 'Herhangi bir web tarayıcısında dinleyebilirsiniz. Ayrıca Android, iOS, Windows ve Samsung ile LG dahil akıllı TV platformları için özel uygulamalar mevcuttur. Tüm favori istasyonlarınız cihazlar arasında otomatik olarak senkronize edilir.',
+    faq_q_genre_listen: '{GENRE} radyo istasyonlarını nasıl dinlerim?',
+    faq_a_genre_listen: 'Yukarıdaki listeden herhangi bir {GENRE} istasyonunu seçerek anında yayın yapmaya başlayın. İndirme veya hesap gerekmez — herhangi bir cihazda ücretsiz olarak tıklayın ve dinleyin.',
+    faq_q_genre_free: '{GENRE} radyo istasyonları ücretsiz mi?',
+    faq_a_genre_free: 'Evet. Mega Radio\'daki {GENRE} istasyonları dahil tüm radyo istasyonları abonelik veya kayıt gerektirmeksizin tamamen ücretsizdir.',
+    users_page_intro: 'Mega Radio topluluğuna katılın. Diğer dinleyicilerin ne dinlediğini keşfedin, favori radyo istasyonlarınızı paylaşın ve dünya genelinde 60.000\'den fazla canlı istasyondan kişiselleştirilmiş öneriler alın.',
+    users_page_features: 'Favori istasyonlarınızı kaydetmek, diğer dinleyicileri takip etmek ve dinleme geçmişinize dayalı kişiselleştirilmiş radyo önerileri almak için ücretsiz hesap oluşturun.',
+    search_how_to: 'Arama kutusuna bir istasyon adı, tür, şehir veya ülke yazarak dünya genelinde 60.000\'den fazla istasyondan oluşan kütüphanemizde eşleşen istasyonları bulun.',
+    search_tips_title: 'Arama İpuçları',
+    search_tip_name: 'İstasyon adına göre arayın — örneğin "BBC Radio 1" veya "TRT Radyo 1".',
+    search_tip_genre: 'Türe göre arayın — örneğin "caz", "klasik" veya "hip-hop".',
+    search_tip_country: 'Ülke veya şehire göre arayın — örneğin "Almanya" veya "İstanbul".',
+    search_tip_language: 'Kendi dilinizde arayın — istasyon adları ve türler onlarca dilde mevcuttur.',
+    search_browse_title: 'Arama Yapmadan Keşfedin',
+    search_browse_intro: 'Ne arayacağınızdan emin değil misiniz? Harika radyo istasyonları keşfetmek için seçilmiş kategorilerimize göz atın.',
+  },
+  es: {
+    popular_stations: 'Emisoras de Radio Populares',
+    faq_seo_intro: 'Mega Radio es tu destino definitivo para descubrir y transmitir emisoras de radio en vivo de todo el mundo. Con más de 60.000 emisoras de radio gratuitas de más de 120 países, ofrecemos acceso ilimitado a música, noticias, deportes y entretenimiento.',
+    faq_section_title: 'Preguntas Frecuentes',
+    faq_free_explanation: 'Todas las emisoras de radio de Mega Radio son completamente gratuitas sin necesidad de registro. Simplemente abre la aplicación o el sitio web, elige una emisora y comienza a escuchar al instante en cualquier dispositivo.',
+    faq_q_what_is: '¿Qué es Mega Radio?',
+    faq_a_what_is: 'Mega Radio es una plataforma de radio en línea gratuita que te permite transmitir emisoras de radio en vivo de todo el mundo. Puedes escuchar música, noticias, deportes, programas de entrevistas y más en docenas de idiomas, sin suscripción ni cuenta requerida.',
+    faq_q_how_many: '¿Cuántas emisoras de radio están disponibles?',
+    faq_a_how_many: 'Mega Radio proporciona acceso a más de 60.000 emisoras de radio en vivo de más de 120 países. Las emisoras se actualizan continuamente para que siempre tengas acceso a las últimas transmisiones.',
+    faq_q_devices: '¿Qué dispositivos puedo usar para escuchar?',
+    faq_a_devices: 'Puedes escuchar en cualquier navegador web, así como a través de aplicaciones dedicadas para Android, iOS, Windows y plataformas de Smart TV como Samsung y LG.',
+    faq_q_genre_listen: '¿Cómo escucho emisoras de radio de {GENRE}?',
+    faq_a_genre_listen: 'Selecciona cualquier emisora de {GENRE} de la lista de arriba para comenzar a transmitir al instante. No se requiere descarga ni cuenta.',
+    faq_q_genre_free: '¿Las emisoras de radio de {GENRE} son gratuitas?',
+    faq_a_genre_free: 'Sí. Todas las emisoras de radio de Mega Radio, incluidas las de {GENRE}, son completamente gratuitas sin necesidad de suscripción ni registro.',
+    users_page_intro: 'Únete a la comunidad de Mega Radio. Descubre qué están escuchando otros oyentes, comparte tus emisoras favoritas y explora recomendaciones personalizadas de más de 60.000 emisoras en vivo.',
+    users_page_features: 'Crea una cuenta gratuita para guardar tus emisoras favoritas, seguir a otros oyentes y obtener sugerencias de radio personalizadas basadas en tu historial de escucha.',
+    search_how_to: 'Escribe el nombre de una emisora, género, ciudad o país en el cuadro de búsqueda para encontrar emisoras coincidentes de nuestra biblioteca de más de 60.000 emisoras.',
+    search_tips_title: 'Consejos de Búsqueda',
+    search_tip_name: 'Busca por nombre de emisora — por ejemplo "RNE Radio 1" o "BBC World Service".',
+    search_tip_genre: 'Busca por género — por ejemplo "jazz", "clásica" o "hip-hop".',
+    search_tip_country: 'Busca por país o ciudad — por ejemplo "España" o "Buenos Aires".',
+    search_tip_language: 'Busca en tu propio idioma — los nombres de emisoras y géneros están disponibles en docenas de idiomas.',
+    search_browse_title: 'Explorar Sin Buscar',
+    search_browse_intro: '¿No sabes qué buscar? Explora nuestras categorías seleccionadas para descubrir grandes emisoras de radio.',
+  },
+  de: {
+    popular_stations: 'Beliebte Radiosender',
+    faq_seo_intro: 'Mega Radio ist dein ultimatives Ziel zum Entdecken und Streamen von Live-Radiosendern aus aller Welt. Mit über 60.000 kostenlosen Radiosendern aus 120+ Ländern bieten wir unbegrenzten Zugang zu Musik, Nachrichten, Sport und Unterhaltung.',
+    faq_section_title: 'Häufig gestellte Fragen',
+    faq_free_explanation: 'Alle Radiosender auf Mega Radio sind ohne Registrierung völlig kostenlos. Öffne einfach die App oder Website, wähle einen Sender und starte sofort auf jedem Gerät.',
+    faq_q_what_is: 'Was ist Mega Radio?',
+    faq_a_what_is: 'Mega Radio ist eine kostenlose Online-Radioplattform, mit der du Live-Radiosender aus aller Welt streamen kannst. Du kannst Musik, Nachrichten, Sport, Talkshows und mehr in Dutzenden von Sprachen hören — ohne Abonnement oder Konto.',
+    faq_q_how_many: 'Wie viele Radiosender sind verfügbar?',
+    faq_a_how_many: 'Mega Radio bietet Zugang zu über 60.000 Live-Radiosendern aus mehr als 120 Ländern. Die Sender werden kontinuierlich aktualisiert.',
+    faq_q_devices: 'Welche Geräte kann ich zum Hören verwenden?',
+    faq_a_devices: 'Du kannst in jedem Webbrowser hören sowie über dedizierte Apps für Android, iOS, Windows und Smart-TV-Plattformen wie Samsung und LG.',
+    faq_q_genre_listen: 'Wie höre ich {GENRE}-Radiosender?',
+    faq_a_genre_listen: 'Wähle einen {GENRE}-Sender aus der obigen Liste, um sofort zu streamen. Kein Download oder Konto erforderlich.',
+    faq_q_genre_free: 'Sind {GENRE}-Radiosender kostenlos?',
+    faq_a_genre_free: 'Ja. Alle Radiosender auf Mega Radio, einschließlich {GENRE}-Sender, sind ohne Abonnement oder Registrierung vollständig kostenlos.',
+    users_page_intro: 'Tritt der Mega Radio Community bei. Entdecke, was andere Hörer hören, teile deine Lieblingssender und erkunde personalisierte Empfehlungen aus 60.000+ Live-Sendern.',
+    users_page_features: 'Erstelle ein kostenloses Konto, um deine Lieblingssender zu speichern, anderen Hörern zu folgen und personalisierte Radiovorschläge zu erhalten.',
+    search_how_to: 'Gib einen Sendernamen, ein Genre, eine Stadt oder ein Land in das Suchfeld ein, um passende Sender aus unserer Bibliothek von 60.000+ Sendern zu finden.',
+    search_tips_title: 'Suchtipps',
+    search_tip_name: 'Suche nach Sendername — z.B. "Deutschlandfunk" oder "Bayern 3".',
+    search_tip_genre: 'Suche nach Genre — z.B. "Jazz", "Klassik" oder "Hip-Hop".',
+    search_tip_country: 'Suche nach Land oder Stadt — z.B. "Deutschland" oder "Berlin".',
+    search_tip_language: 'Suche in deiner eigenen Sprache — Sendernamen und Genres sind in Dutzenden von Sprachen verfügbar.',
+    search_browse_title: 'Ohne Suche Stöbern',
+    search_browse_intro: 'Nicht sicher, wonach du suchen sollst? Stöbere in unseren kuratierten Kategorien, um tolle Radiosender zu entdecken.',
+  },
+  fr: {
+    popular_stations: 'Stations de Radio Populaires',
+    faq_seo_intro: 'Mega Radio est votre destination ultime pour découvrir et diffuser des stations de radio en direct du monde entier. Avec plus de 60 000 stations de radio gratuites de 120+ pays, nous offrons un accès illimité à la musique, aux actualités, aux sports et aux divertissements.',
+    faq_section_title: 'Questions Fréquemment Posées',
+    faq_free_explanation: 'Toutes les stations de radio sur Mega Radio sont entièrement gratuites sans inscription requise. Ouvrez simplement l\'application ou le site web, choisissez une station et commencez à écouter instantanément sur n\'importe quel appareil.',
+    faq_q_what_is: 'Qu\'est-ce que Mega Radio ?',
+    faq_a_what_is: 'Mega Radio est une plateforme de radio en ligne gratuite qui vous permet de diffuser des stations de radio en direct du monde entier. Vous pouvez écouter de la musique, des actualités, du sport, des émissions de discussion et plus encore en dizaines de langues, sans abonnement ni compte requis.',
+    faq_q_how_many: 'Combien de stations de radio sont disponibles ?',
+    faq_a_how_many: 'Mega Radio donne accès à plus de 60 000 stations de radio en direct de plus de 120 pays. Les stations sont continuellement mises à jour.',
+    faq_q_devices: 'Quels appareils puis-je utiliser pour écouter ?',
+    faq_a_devices: 'Vous pouvez écouter sur n\'importe quel navigateur web, ainsi que via des applications dédiées pour Android, iOS, Windows et les plateformes Smart TV comme Samsung et LG.',
+    faq_q_genre_listen: 'Comment écouter des stations de radio {GENRE} ?',
+    faq_a_genre_listen: 'Sélectionnez n\'importe quelle station {GENRE} dans la liste ci-dessus pour commencer à diffuser instantanément. Aucun téléchargement ni compte requis.',
+    faq_q_genre_free: 'Les stations de radio {GENRE} sont-elles gratuites ?',
+    faq_a_genre_free: 'Oui. Toutes les stations de radio sur Mega Radio, y compris les stations {GENRE}, sont entièrement gratuites sans abonnement ni inscription.',
+    users_page_intro: 'Rejoignez la communauté Mega Radio. Découvrez ce qu\'écoutent les autres auditeurs, partagez vos stations préférées et explorez des recommandations personnalisées parmi 60 000+ stations en direct.',
+    users_page_features: 'Créez un compte gratuit pour sauvegarder vos stations préférées, suivre d\'autres auditeurs et obtenir des suggestions radio personnalisées.',
+    search_how_to: 'Tapez un nom de station, un genre, une ville ou un pays dans la barre de recherche pour trouver des stations correspondantes dans notre bibliothèque de 60 000+ stations.',
+    search_tips_title: 'Conseils de Recherche',
+    search_tip_name: 'Recherchez par nom de station — par exemple "France Inter" ou "RFI".',
+    search_tip_genre: 'Recherchez par genre — par exemple "jazz", "classique" ou "hip-hop".',
+    search_tip_country: 'Recherchez par pays ou ville — par exemple "France" ou "Paris".',
+    search_tip_language: 'Recherchez dans votre propre langue — les noms de stations et genres sont disponibles en dizaines de langues.',
+    search_browse_title: 'Parcourir Sans Chercher',
+    search_browse_intro: 'Vous ne savez pas quoi chercher ? Parcourez nos catégories sélectionnées pour découvrir de superbes stations de radio.',
+  },
+  ar: {
+    popular_stations: 'محطات الراديو الشائعة',
+    faq_seo_intro: 'ميغا راديو هو وجهتك المثالية لاكتشاف وبث محطات الراديو المباشرة من جميع أنحاء العالم. مع أكثر من 60,000 محطة راديو مجانية من أكثر من 120 دولة، نوفر وصولاً غير محدود إلى الموسيقى والأخبار والرياضة والترفيه.',
+    faq_section_title: 'الأسئلة الشائعة',
+    faq_free_explanation: 'جميع محطات الراديو على ميغا راديو مجانية تماماً دون الحاجة إلى تسجيل. افتح التطبيق أو الموقع الإلكتروني، اختر محطة وابدأ الاستماع فوراً على أي جهاز.',
+    faq_q_what_is: 'ما هو ميغا راديو؟',
+    faq_a_what_is: 'ميغا راديو هو منصة راديو إلكترونية مجانية تتيح لك بث محطات الراديو المباشرة من جميع أنحاء العالم. يمكنك الاستماع إلى الموسيقى والأخبار والرياضة وبرامج الحوار والمزيد بعشرات اللغات دون اشتراك أو حساب.',
+    faq_q_how_many: 'كم عدد محطات الراديو المتاحة؟',
+    faq_a_how_many: 'يوفر ميغا راديو الوصول إلى أكثر من 60,000 محطة راديو مباشرة من أكثر من 120 دولة. يتم تحديث المحطات باستمرار.',
+    faq_q_devices: 'ما الأجهزة التي يمكنني استخدامها للاستماع؟',
+    faq_a_devices: 'يمكنك الاستماع على أي متصفح ويب، وكذلك عبر تطبيقات مخصصة لأندرويد وiOS وWindows ومنصات التلفزيون الذكي مثل سامسونج وLG.',
+    faq_q_genre_listen: 'كيف أستمع إلى محطات راديو {GENRE}؟',
+    faq_a_genre_listen: 'اختر أي محطة {GENRE} من القائمة أعلاه للبدء في البث فوراً. لا يلزم تنزيل أو حساب.',
+    faq_q_genre_free: 'هل محطات راديو {GENRE} مجانية؟',
+    faq_a_genre_free: 'نعم. جميع محطات الراديو على ميغا راديو، بما في ذلك محطات {GENRE}، مجانية تماماً دون اشتراك أو تسجيل.',
+    users_page_intro: 'انضم إلى مجتمع ميغا راديو. اكتشف ما يستمع إليه المستمعون الآخرون، شارك محطاتك المفضلة واستكشف توصيات مخصصة من أكثر من 60,000 محطة مباشرة.',
+    users_page_features: 'أنشئ حساباً مجانياً لحفظ محطاتك المفضلة ومتابعة المستمعين الآخرين والحصول على اقتراحات راديو مخصصة بناءً على سجل استماعك.',
+    search_how_to: 'اكتب اسم محطة أو نوعاً أو مدينة أو دولة في مربع البحث للعثور على محطات مطابقة من مكتبتنا التي تضم أكثر من 60,000 محطة.',
+    search_tips_title: 'نصائح البحث',
+    search_tip_name: 'ابحث باسم المحطة — مثلاً "BBC Arabic" أو "راديو مونتي كارلو".',
+    search_tip_genre: 'ابحث حسب النوع — مثلاً "جاز" أو "كلاسيكية" أو "هيب هوب".',
+    search_tip_country: 'ابحث حسب الدولة أو المدينة — مثلاً "مصر" أو "القاهرة".',
+    search_tip_language: 'ابحث بلغتك الخاصة — أسماء المحطات والأنواع متاحة بعشرات اللغات.',
+    search_browse_title: 'تصفح بدون بحث',
+    search_browse_intro: 'لست متأكداً مما تبحث عنه؟ تصفح فئاتنا المنتقاة لاكتشاف محطات راديو رائعة.',
+  },
+  pt: {
+    popular_stations: 'Estações de Rádio Populares',
+    faq_seo_intro: 'Mega Radio é o seu destino definitivo para descobrir e transmitir estações de rádio ao vivo de todo o mundo. Com mais de 60.000 estações de rádio gratuitas de 120+ países, oferecemos acesso ilimitado à música, notícias, esportes e entretenimento.',
+    faq_section_title: 'Perguntas Frequentes',
+    faq_free_explanation: 'Todas as estações de rádio na Mega Radio são completamente gratuitas, sem necessidade de registro. Basta abrir o aplicativo ou o site, escolher uma estação e começar a ouvir instantaneamente em qualquer dispositivo.',
+    faq_q_what_is: 'O que é a Mega Radio?',
+    faq_a_what_is: 'A Mega Radio é uma plataforma de rádio online gratuita que permite transmitir estações de rádio ao vivo de todo o mundo. Você pode ouvir música, notícias, esportes, talk shows e muito mais em dezenas de idiomas, sem necessidade de assinatura ou conta.',
+    faq_q_how_many: 'Quantas estações de rádio estão disponíveis?',
+    faq_a_how_many: 'A Mega Radio fornece acesso a mais de 60.000 estações de rádio ao vivo de mais de 120 países. As estações são continuamente atualizadas.',
+    faq_q_devices: 'Quais dispositivos posso usar para ouvir?',
+    faq_a_devices: 'Você pode ouvir em qualquer navegador web, bem como através de aplicativos dedicados para Android, iOS, Windows e plataformas Smart TV como Samsung e LG.',
+    faq_q_genre_listen: 'Como ouço estações de rádio de {GENRE}?',
+    faq_a_genre_listen: 'Selecione qualquer estação de {GENRE} da lista acima para começar a transmitir instantaneamente. Nenhum download ou conta necessária.',
+    faq_q_genre_free: 'As estações de rádio de {GENRE} são gratuitas?',
+    faq_a_genre_free: 'Sim. Todas as estações de rádio na Mega Radio, incluindo estações de {GENRE}, são completamente gratuitas sem assinatura ou registro.',
+    users_page_intro: 'Junte-se à comunidade Mega Radio. Descubra o que outros ouvintes estão ouvindo, compartilhe suas estações favoritas e explore recomendações personalizadas de 60.000+ estações ao vivo.',
+    users_page_features: 'Crie uma conta gratuita para salvar suas estações favoritas, seguir outros ouvintes e obter sugestões de rádio personalizadas com base no seu histórico de escuta.',
+    search_how_to: 'Digite um nome de estação, gênero, cidade ou país na caixa de pesquisa para encontrar estações correspondentes em nossa biblioteca de 60.000+ estações.',
+    search_tips_title: 'Dicas de Pesquisa',
+    search_tip_name: 'Pesquise pelo nome da estação — por exemplo "Rádio Nacional" ou "RFI".',
+    search_tip_genre: 'Pesquise por gênero — por exemplo "jazz", "clássico" ou "hip-hop".',
+    search_tip_country: 'Pesquise por país ou cidade — por exemplo "Brasil" ou "São Paulo".',
+    search_tip_language: 'Pesquise no seu próprio idioma — nomes de estações e gêneros estão disponíveis em dezenas de idiomas.',
+    search_browse_title: 'Navegar Sem Pesquisar',
+    search_browse_intro: 'Não sabe o que pesquisar? Navegue em nossas categorias selecionadas para descobrir ótimas estações de rádio.',
+  },
+  it: {
+    popular_stations: 'Stazioni Radio Popolari',
+    faq_seo_intro: 'Mega Radio è la tua destinazione definitiva per scoprire e trasmettere stazioni radio in diretta da tutto il mondo. Con oltre 60.000 stazioni radio gratuite da 120+ paesi, offriamo accesso illimitato a musica, notizie, sport e intrattenimento.',
+    faq_section_title: 'Domande Frequenti',
+    faq_free_explanation: 'Tutte le stazioni radio su Mega Radio sono completamente gratuite senza necessità di registrazione. Basta aprire l\'app o il sito web, scegliere una stazione e iniziare ad ascoltare immediatamente su qualsiasi dispositivo.',
+    faq_q_what_is: 'Cos\'è Mega Radio?',
+    faq_a_what_is: 'Mega Radio è una piattaforma radio online gratuita che ti permette di trasmettere stazioni radio in diretta da tutto il mondo. Puoi ascoltare musica, notizie, sport, talk show e altro in decine di lingue, senza abbonamento o account richiesto.',
+    faq_q_how_many: 'Quante stazioni radio sono disponibili?',
+    faq_a_how_many: 'Mega Radio fornisce accesso a oltre 60.000 stazioni radio in diretta da più di 120 paesi. Le stazioni vengono continuamente aggiornate.',
+    faq_q_devices: 'Quali dispositivi posso usare per ascoltare?',
+    faq_a_devices: 'Puoi ascoltare su qualsiasi browser web, oltre che tramite app dedicate per Android, iOS, Windows e piattaforme Smart TV come Samsung e LG.',
+    faq_q_genre_listen: 'Come ascolto le stazioni radio {GENRE}?',
+    faq_a_genre_listen: 'Seleziona qualsiasi stazione {GENRE} dall\'elenco sopra per iniziare a trasmettere immediatamente. Nessun download o account richiesto.',
+    faq_q_genre_free: 'Le stazioni radio {GENRE} sono gratuite?',
+    faq_a_genre_free: 'Sì. Tutte le stazioni radio su Mega Radio, incluse le stazioni {GENRE}, sono completamente gratuite senza abbonamento o registrazione.',
+    users_page_intro: 'Unisciti alla community di Mega Radio. Scopri cosa stanno ascoltando gli altri ascoltatori, condividi le tue stazioni preferite ed esplora raccomandazioni personalizzate da 60.000+ stazioni in diretta.',
+    users_page_features: 'Crea un account gratuito per salvare le tue stazioni preferite, seguire altri ascoltatori e ottenere suggerimenti radio personalizzati in base alla tua cronologia di ascolto.',
+    search_how_to: 'Digita un nome di stazione, genere, città o paese nella casella di ricerca per trovare stazioni corrispondenti dalla nostra libreria di 60.000+ stazioni.',
+    search_tips_title: 'Consigli di Ricerca',
+    search_tip_name: 'Cerca per nome stazione — ad esempio "RAI Radio 1" o "Radio Italia".',
+    search_tip_genre: 'Cerca per genere — ad esempio "jazz", "classica" o "hip-hop".',
+    search_tip_country: 'Cerca per paese o città — ad esempio "Italia" o "Roma".',
+    search_tip_language: 'Cerca nella tua lingua — i nomi delle stazioni e i generi sono disponibili in decine di lingue.',
+    search_browse_title: 'Sfoglia Senza Cercare',
+    search_browse_intro: 'Non sai cosa cercare? Sfoglia le nostre categorie selezionate per scoprire ottime stazioni radio.',
+  },
+  pl: {
+    popular_stations: 'Popularne Stacje Radiowe',
+    faq_seo_intro: 'Mega Radio to Twoje ostateczne miejsce do odkrywania i słuchania stacji radiowych na żywo z całego świata. Z ponad 60 000 darmowych stacji radiowych z 120+ krajów, oferujemy nieograniczony dostęp do muzyki, wiadomości, sportu i rozrywki.',
+    faq_section_title: 'Najczęściej Zadawane Pytania',
+    faq_free_explanation: 'Wszystkie stacje radiowe na Mega Radio są całkowicie bezpłatne, bez konieczności rejestracji. Po prostu otwórz aplikację lub stronę internetową, wybierz stację i zacznij słuchać natychmiast na dowolnym urządzeniu.',
+    faq_q_what_is: 'Czym jest Mega Radio?',
+    faq_a_what_is: 'Mega Radio to bezpłatna platforma radiowa online, która pozwala słuchać stacji radiowych na żywo z całego świata. Możesz słuchać muzyki, wiadomości, sportu, programów talk-show i innych treści w dziesiątkach języków — bez subskrypcji ani konta.',
+    faq_q_how_many: 'Ile stacji radiowych jest dostępnych?',
+    faq_a_how_many: 'Mega Radio zapewnia dostęp do ponad 60 000 stacji radiowych na żywo z ponad 120 krajów. Stacje są ciągle aktualizowane.',
+    faq_q_devices: 'Jakich urządzeń mogę używać do słuchania?',
+    faq_a_devices: 'Możesz słuchać w dowolnej przeglądarce internetowej, a także przez dedykowane aplikacje na Android, iOS, Windows i platformy Smart TV, takie jak Samsung i LG.',
+    faq_q_genre_listen: 'Jak słuchać stacji radiowych {GENRE}?',
+    faq_a_genre_listen: 'Wybierz dowolną stację {GENRE} z listy powyżej, aby natychmiast rozpocząć streaming. Nie jest wymagane pobranie ani konto.',
+    faq_q_genre_free: 'Czy stacje radiowe {GENRE} są bezpłatne?',
+    faq_a_genre_free: 'Tak. Wszystkie stacje radiowe na Mega Radio, w tym stacje {GENRE}, są całkowicie bezpłatne bez subskrypcji ani rejestracji.',
+    users_page_intro: 'Dołącz do społeczności Mega Radio. Odkryj, czego słuchają inni słuchacze, udostępniaj ulubione stacje i przeglądaj spersonalizowane rekomendacje z 60 000+ stacji na żywo.',
+    users_page_features: 'Utwórz bezpłatne konto, aby zapisywać ulubione stacje, obserwować innych słuchaczy i otrzymywać spersonalizowane sugestie radiowe na podstawie historii słuchania.',
+    search_how_to: 'Wpisz nazwę stacji, gatunek, miasto lub kraj w pole wyszukiwania, aby znaleźć pasujące stacje w naszej bibliotece 60 000+ stacji.',
+    search_tips_title: 'Wskazówki Dotyczące Wyszukiwania',
+    search_tip_name: 'Szukaj według nazwy stacji — np. "Radio ZET" lub "Trójka".',
+    search_tip_genre: 'Szukaj według gatunku — np. "jazz", "klasyczna" lub "hip-hop".',
+    search_tip_country: 'Szukaj według kraju lub miasta — np. "Polska" lub "Warszawa".',
+    search_tip_language: 'Szukaj w swoim własnym języku — nazwy stacji i gatunki są dostępne w dziesiątkach języków.',
+    search_browse_title: 'Przeglądaj Bez Wyszukiwania',
+    search_browse_intro: 'Nie wiesz, czego szukać? Przeglądaj nasze wyselekcjonowane kategorie, aby odkryć świetne stacje radiowe.',
+  },
+  ru: {
+    popular_stations: 'Популярные Радиостанции',
+    faq_seo_intro: 'Mega Radio — ваше главное место для открытия и прослушивания прямых радиостанций со всего мира. Имея более 60 000 бесплатных радиостанций из 120+ стран, мы предлагаем неограниченный доступ к музыке, новостям, спорту и развлечениям.',
+    faq_section_title: 'Часто Задаваемые Вопросы',
+    faq_free_explanation: 'Все радиостанции на Mega Radio полностью бесплатны без необходимости регистрации. Просто откройте приложение или веб-сайт, выберите станцию и сразу начните слушать на любом устройстве.',
+    faq_q_what_is: 'Что такое Mega Radio?',
+    faq_a_what_is: 'Mega Radio — это бесплатная онлайн-радиоплатформа, позволяющая транслировать прямые радиостанции со всего мира. Вы можете слушать музыку, новости, спорт, ток-шоу и другой контент на десятках языков — без подписки и аккаунта.',
+    faq_q_how_many: 'Сколько радиостанций доступно?',
+    faq_a_how_many: 'Mega Radio обеспечивает доступ к более чем 60 000 прямых радиостанций из более чем 120 стран. Станции постоянно обновляются.',
+    faq_q_devices: 'Какие устройства я могу использовать для прослушивания?',
+    faq_a_devices: 'Вы можете слушать в любом веб-браузере, а также через специальные приложения для Android, iOS, Windows и платформ Smart TV, таких как Samsung и LG.',
+    faq_q_genre_listen: 'Как слушать радиостанции жанра {GENRE}?',
+    faq_a_genre_listen: 'Выберите любую станцию {GENRE} из списка выше, чтобы сразу начать трансляцию. Загрузка или аккаунт не требуются.',
+    faq_q_genre_free: 'Радиостанции {GENRE} бесплатны?',
+    faq_a_genre_free: 'Да. Все радиостанции на Mega Radio, включая станции {GENRE}, полностью бесплатны без подписки или регистрации.',
+    users_page_intro: 'Присоединяйтесь к сообществу Mega Radio. Узнайте, что слушают другие пользователи, делитесь любимыми станциями и изучайте персонализированные рекомендации из 60 000+ прямых станций.',
+    users_page_features: 'Создайте бесплатный аккаунт, чтобы сохранять любимые станции, подписываться на других слушателей и получать персонализированные радиопредложения на основе истории прослушивания.',
+    search_how_to: 'Введите название станции, жанр, город или страну в строку поиска, чтобы найти совпадающие станции в нашей библиотеке из 60 000+ станций.',
+    search_tips_title: 'Советы по Поиску',
+    search_tip_name: 'Ищите по названию станции — например "Радио России" или "Авторадио".',
+    search_tip_genre: 'Ищите по жанру — например "джаз", "классика" или "хип-хоп".',
+    search_tip_country: 'Ищите по стране или городу — например "Россия" или "Москва".',
+    search_tip_language: 'Ищите на своём языке — названия станций и жанры доступны на десятках языков.',
+    search_browse_title: 'Просматривать Без Поиска',
+    search_browse_intro: 'Не знаете, что искать? Просматривайте наши отобранные категории для открытия отличных радиостанций.',
+  },
+  zh: {
+    popular_stations: '热门广播电台',
+    faq_seo_intro: 'Mega Radio 是您发现和收听全球直播广播电台的终极平台。我们汇聚来自120多个国家的60,000多个免费广播电台，为您提供音乐、新闻、体育和娱乐的无限访问权限。',
+    faq_section_title: '常见问题',
+    faq_free_explanation: 'Mega Radio 上的所有广播电台均完全免费，无需注册。只需打开应用程序或网站，选择一个电台，即可在任何设备上立即开始收听。',
+    faq_q_what_is: 'Mega Radio 是什么？',
+    faq_a_what_is: 'Mega Radio 是一个免费的在线广播平台，让您可以收听来自世界各地的直播广播电台。您可以用数十种语言收听音乐、新闻、体育、脱口秀等内容，无需订阅或账户。',
+    faq_q_how_many: '有多少个广播电台可供收听？',
+    faq_a_how_many: 'Mega Radio 提供来自120多个国家的60,000多个直播广播电台。电台持续更新，让您始终能收听最新广播。',
+    faq_q_devices: '我可以使用哪些设备收听？',
+    faq_a_devices: '您可以在任何网络浏览器上收听，也可以通过 Android、iOS、Windows 以及三星、LG 等智能电视平台的专用应用程序收听。',
+    faq_q_genre_listen: '如何收听 {GENRE} 广播电台？',
+    faq_a_genre_listen: '从上面的列表中选择任意一个 {GENRE} 电台即可立即开始收听。无需下载或账户——点击即可免费收听。',
+    faq_q_genre_free: '{GENRE} 广播电台是免费的吗？',
+    faq_a_genre_free: '是的。Mega Radio 上的所有广播电台，包括 {GENRE} 电台，均完全免费，无需订阅或注册。',
+    users_page_intro: '加入 Mega Radio 社区。发现其他听众正在收听的内容，分享您最喜爱的广播电台，并从60,000多个直播电台中探索个性化推荐。',
+    users_page_features: '创建免费账户以保存您喜爱的电台、关注其他听众，并根据您的收听历史获取个性化广播建议。',
+    search_how_to: '在搜索框中输入电台名称、类型、城市或国家，即可从我们60,000多个电台的库中找到匹配的电台。',
+    search_tips_title: '搜索技巧',
+    search_tip_name: '按电台名称搜索——例如"中央人民广播电台"或"BBC中文"。',
+    search_tip_genre: '按类型搜索——例如"爵士"、"古典"或"嘻哈"。',
+    search_tip_country: '按国家或城市搜索——例如"中国"或"上海"。',
+    search_tip_language: '用您自己的语言搜索——电台名称和类型以数十种语言提供。',
+    search_browse_title: '无需搜索，直接浏览',
+    search_browse_intro: '不确定搜索什么？浏览我们精心策划的分类，发现优质广播电台。',
+  },
+  ja: {
+    popular_stations: '人気のラジオ局',
+    faq_seo_intro: 'Mega Radioは、世界中のライブラジオ局を発見してストリーミングするための最高のプラットフォームです。120カ国以上から60,000以上の無料ラジオ局があり、音楽、ニュース、スポーツ、エンターテインメントへの無制限アクセスを提供します。',
+    faq_section_title: 'よくある質問',
+    faq_free_explanation: 'Mega Radioのすべてのラジオ局は登録不要で完全無料です。アプリまたはウェブサイトを開き、局を選んで、デスクトップ、モバイル、スマートTVやタブレットなどあらゆるデバイスで今すぐ聴き始めましょう。',
+    faq_q_what_is: 'Mega Radioとは何ですか？',
+    faq_a_what_is: 'Mega Radioは、世界中のライブラジオ局をストリーミングできる無料のオンラインラジオプラットフォームです。登録やアカウントなしで、数十の言語で音楽、ニュース、スポーツ、トークショーなどをお楽しみいただけます。',
+    faq_q_how_many: 'いくつのラジオ局が利用できますか？',
+    faq_a_how_many: 'Mega Radioは120カ国以上から60,000以上のライブラジオ局へのアクセスを提供します。局は継続的に更新されています。',
+    faq_q_devices: 'どのデバイスで聴けますか？',
+    faq_a_devices: 'どのウェブブラウザでも聴けます。また、Android、iOS、Windows、SamsungやLGなどのスマートTVプラットフォーム向けの専用アプリも利用できます。',
+    faq_q_genre_listen: '{GENRE}のラジオ局を聴くにはどうすればよいですか？',
+    faq_a_genre_listen: '上のリストから{GENRE}の局を選ぶだけで、すぐにストリーミングを開始できます。ダウンロードやアカウントは不要です。',
+    faq_q_genre_free: '{GENRE}のラジオ局は無料ですか？',
+    faq_a_genre_free: 'はい。Mega Radioの{GENRE}局を含むすべてのラジオ局は、登録やサブスクリプションなしで完全に無料です。',
+    users_page_intro: 'Mega Radioコミュニティに参加しましょう。他のリスナーが何を聴いているかを発見し、お気に入りの局を共有し、60,000以上のライブ局からパーソナライズされたおすすめを探索できます。',
+    users_page_features: '無料アカウントを作成して、お気に入りの局を保存し、他のリスナーをフォローし、リスニング履歴に基づいたパーソナライズされたラジオ提案を取得しましょう。',
+    search_how_to: '検索ボックスに局名、ジャンル、都市、または国を入力して、60,000以上の局のライブラリから一致する局を見つけましょう。',
+    search_tips_title: '検索のヒント',
+    search_tip_name: '局名で検索 — 例：「NHKラジオ」や「J-WAVE」。',
+    search_tip_genre: 'ジャンルで検索 — 例：「ジャズ」「クラシック」「ヒップホップ」。',
+    search_tip_country: '国や都市で検索 — 例：「日本」や「東京」。',
+    search_tip_language: '自分の言語で検索 — 局名とジャンルは数十の言語で利用できます。',
+    search_browse_title: '検索なしで閲覧',
+    search_browse_intro: '何を検索すればよいかわからない？厳選されたカテゴリを閲覧して、素晴らしいラジオ局を発見しましょう。',
+  },
+  ko: {
+    popular_stations: '인기 라디오 방송국',
+    faq_seo_intro: 'Mega Radio는 전 세계의 라이브 라디오 방송국을 발견하고 스트리밍하기 위한 최고의 플랫폼입니다. 120개국 이상의 60,000개 이상의 무료 라디오 방송국으로 음악, 뉴스, 스포츠, 엔터테인먼트에 무제한 액세스를 제공합니다.',
+    faq_section_title: '자주 묻는 질문',
+    faq_free_explanation: 'Mega Radio의 모든 라디오 방송국은 등록 없이 완전히 무료입니다. 앱이나 웹사이트를 열고, 방송국을 선택한 후 데스크톱, 모바일, 스마트 TV 등 모든 기기에서 즉시 청취를 시작하세요.',
+    faq_q_what_is: 'Mega Radio란 무엇인가요?',
+    faq_a_what_is: 'Mega Radio는 전 세계의 라이브 라디오 방송국을 스트리밍할 수 있는 무료 온라인 라디오 플랫폼입니다. 구독이나 계정 없이 수십 개의 언어로 음악, 뉴스, 스포츠, 토크쇼 등을 청취할 수 있습니다.',
+    faq_q_how_many: '이용 가능한 라디오 방송국이 몇 개나 되나요?',
+    faq_a_how_many: 'Mega Radio는 120개국 이상에서 60,000개 이상의 라이브 라디오 방송국에 대한 액세스를 제공합니다. 방송국은 지속적으로 업데이트됩니다.',
+    faq_q_devices: '어떤 기기로 청취할 수 있나요?',
+    faq_a_devices: '모든 웹 브라우저에서 청취할 수 있으며, Android, iOS, Windows 및 삼성, LG 등 스마트 TV 플랫폼 전용 앱을 통해서도 이용할 수 있습니다.',
+    faq_q_genre_listen: '{GENRE} 라디오 방송국은 어떻게 청취하나요?',
+    faq_a_genre_listen: '위 목록에서 {GENRE} 방송국을 선택하면 즉시 스트리밍이 시작됩니다. 다운로드나 계정이 필요 없습니다.',
+    faq_q_genre_free: '{GENRE} 라디오 방송국은 무료인가요?',
+    faq_a_genre_free: '네. {GENRE} 방송국을 포함한 Mega Radio의 모든 라디오 방송국은 구독이나 등록 없이 완전히 무료입니다.',
+    users_page_intro: 'Mega Radio 커뮤니티에 참여하세요. 다른 청취자들이 무엇을 듣는지 발견하고, 즐겨찾는 방송국을 공유하고, 60,000개 이상의 라이브 방송국에서 맞춤 추천을 탐색하세요.',
+    users_page_features: '무료 계정을 만들어 즐겨찾는 방송국을 저장하고, 다른 청취자를 팔로우하고, 청취 기록을 기반으로 맞춤형 라디오 제안을 받으세요.',
+    search_how_to: '검색 상자에 방송국 이름, 장르, 도시 또는 국가를 입력하여 60,000개 이상의 방송국 라이브러리에서 일치하는 방송국을 찾으세요.',
+    search_tips_title: '검색 팁',
+    search_tip_name: '방송국 이름으로 검색 — 예: "KBS 라디오" 또는 "BBC 코리아".',
+    search_tip_genre: '장르로 검색 — 예: "재즈", "클래식" 또는 "힙합".',
+    search_tip_country: '국가 또는 도시로 검색 — 예: "한국" 또는 "서울".',
+    search_tip_language: '자신의 언어로 검색 — 방송국 이름과 장르는 수십 개의 언어로 제공됩니다.',
+    search_browse_title: '검색 없이 탐색',
+    search_browse_intro: '무엇을 검색해야 할지 모르시나요? 큐레이션된 카테고리를 탐색하여 훌륭한 라디오 방송국을 발견하세요.',
+  },
+  nl: {
+    popular_stations: 'Populaire Radiostations',
+    faq_seo_intro: 'Mega Radio is uw ultieme bestemming voor het ontdekken en streamen van live radiostations van over de hele wereld. Met meer dan 60.000 gratis radiostations uit 120+ landen bieden wij onbeperkte toegang tot muziek, nieuws, sport en entertainment.',
+    faq_section_title: 'Veelgestelde Vragen',
+    faq_free_explanation: 'Alle radiostations op Mega Radio zijn volledig gratis zonder registratie. Open gewoon de app of website, kies een station en begin direct te luisteren op elk apparaat.',
+    faq_q_what_is: 'Wat is Mega Radio?',
+    faq_a_what_is: 'Mega Radio is een gratis online radioplatform waarmee u live radiostations van over de hele wereld kunt streamen. U kunt muziek, nieuws, sport, praatprogramma\'s en meer luisteren in tientallen talen, zonder abonnement of account.',
+    faq_q_how_many: 'Hoeveel radiostations zijn er beschikbaar?',
+    faq_a_how_many: 'Mega Radio biedt toegang tot meer dan 60.000 live radiostations uit meer dan 120 landen. Stations worden continu bijgewerkt.',
+    faq_q_devices: 'Welke apparaten kan ik gebruiken om te luisteren?',
+    faq_a_devices: 'U kunt luisteren via elke webbrowser, maar ook via speciale apps voor Android, iOS, Windows en Smart TV-platforms zoals Samsung en LG.',
+    faq_q_genre_listen: 'Hoe luister ik naar {GENRE} radiostations?',
+    faq_a_genre_listen: 'Selecteer een {GENRE}-station uit de lijst hierboven om direct te beginnen met streamen. Geen download of account vereist.',
+    faq_q_genre_free: 'Zijn {GENRE} radiostations gratis?',
+    faq_a_genre_free: 'Ja. Alle radiostations op Mega Radio, inclusief {GENRE}-stations, zijn volledig gratis zonder abonnement of registratie.',
+    users_page_intro: 'Word lid van de Mega Radio community. Ontdek waarnaar andere luisteraars luisteren, deel uw favoriete stations en verken gepersonaliseerde aanbevelingen uit 60.000+ live stations.',
+    users_page_features: 'Maak een gratis account aan om uw favoriete stations op te slaan, andere luisteraars te volgen en gepersonaliseerde radiosuggesties te ontvangen op basis van uw luistergeschiedenis.',
+    search_how_to: 'Typ een stationnaam, genre, stad of land in het zoekvak om overeenkomende stations in onze bibliotheek van 60.000+ stations te vinden.',
+    search_tips_title: 'Zoektips',
+    search_tip_name: 'Zoek op stationnaam — bijv. "Radio 1" of "NPO Radio 2".',
+    search_tip_genre: 'Zoek op genre — bijv. "jazz", "klassiek" of "hip-hop".',
+    search_tip_country: 'Zoek op land of stad — bijv. "Nederland" of "Amsterdam".',
+    search_tip_language: 'Zoek in uw eigen taal — stationnamen en genres zijn beschikbaar in tientallen talen.',
+    search_browse_title: 'Bladeren Zonder Zoeken',
+    search_browse_intro: 'Weet u niet wat u moet zoeken? Blader door onze samengestelde categorieën om geweldige radiostations te ontdekken.',
+  },
+  hi: {
+    popular_stations: 'लोकप्रिय रेडियो स्टेशन',
+    faq_seo_intro: 'Mega Radio दुनिया भर के लाइव रेडियो स्टेशनों को खोजने और स्ट्रीम करने का आपका अंतिम गंतव्य है। 120+ देशों के 60,000 से अधिक मुफ्त रेडियो स्टेशनों के साथ, हम संगीत, समाचार, खेल और मनोरंजन तक असीमित पहुंच प्रदान करते हैं।',
+    faq_section_title: 'अक्सर पूछे जाने वाले प्रश्न',
+    faq_free_explanation: 'Mega Radio पर सभी रेडियो स्टेशन बिना पंजीकरण के पूरी तरह से मुफ्त हैं। बस ऐप या वेबसाइट खोलें, एक स्टेशन चुनें और किसी भी डिवाइस पर तुरंत सुनना शुरू करें।',
+    faq_q_what_is: 'Mega Radio क्या है?',
+    faq_a_what_is: 'Mega Radio एक मुफ्त ऑनलाइन रेडियो प्लेटफ़ॉर्म है जो आपको दुनिया भर से लाइव रेडियो स्टेशन स्ट्रीम करने देता है। आप दर्जनों भाषाओं में संगीत, समाचार, खेल, टॉक शो और बहुत कुछ सुन सकते हैं — बिना किसी सदस्यता या खाते के।',
+    faq_q_how_many: 'कितने रेडियो स्टेशन उपलब्ध हैं?',
+    faq_a_how_many: 'Mega Radio 120 से अधिक देशों के 60,000 से अधिक लाइव रेडियो स्टेशनों तक पहुंच प्रदान करता है। स्टेशन लगातार अपडेट होते रहते हैं।',
+    faq_q_devices: 'मैं सुनने के लिए कौन से उपकरण उपयोग कर सकता हूं?',
+    faq_a_devices: 'आप किसी भी वेब ब्राउज़र पर सुन सकते हैं, साथ ही Android, iOS, Windows और Samsung और LG जैसे Smart TV प्लेटफॉर्म के लिए समर्पित ऐप्स के माध्यम से भी।',
+    faq_q_genre_listen: '{GENRE} रेडियो स्टेशन कैसे सुनें?',
+    faq_a_genre_listen: 'तुरंत स्ट्रीमिंग शुरू करने के लिए ऊपर की सूची से कोई भी {GENRE} स्टेशन चुनें। कोई डाउनलोड या खाता आवश्यक नहीं है।',
+    faq_q_genre_free: 'क्या {GENRE} रेडियो स्टेशन मुफ्त हैं?',
+    faq_a_genre_free: 'हाँ। {GENRE} स्टेशनों सहित Mega Radio के सभी रेडियो स्टेशन बिना सदस्यता या पंजीकरण के पूरी तरह से मुफ्त हैं।',
+    users_page_intro: 'Mega Radio समुदाय से जुड़ें। अन्य श्रोता क्या सुन रहे हैं यह जानें, अपने पसंदीदा रेडियो स्टेशन साझा करें और 60,000+ लाइव स्टेशनों से व्यक्तिगत अनुशंसाएं खोजें।',
+    users_page_features: 'अपने पसंदीदा स्टेशन सहेजने, अन्य श्रोताओं को फ़ॉलो करने और सुनने के इतिहास के आधार पर व्यक्तिगत रेडियो सुझाव पाने के लिए मुफ्त खाता बनाएं।',
+    search_how_to: '60,000+ स्टेशनों की हमारी लाइब्रेरी से मेल खाने वाले स्टेशन खोजने के लिए खोज बॉक्स में स्टेशन का नाम, शैली, शहर या देश टाइप करें।',
+    search_tips_title: 'खोज युक्तियाँ',
+    search_tip_name: 'स्टेशन नाम से खोजें — उदाहरण के लिए "AIR" या "Vividh Bharati"।',
+    search_tip_genre: 'शैली से खोजें — उदाहरण के लिए "जैज़", "शास्त्रीय" या "हिप-हॉप"।',
+    search_tip_country: 'देश या शहर से खोजें — उदाहरण के लिए "भारत" या "मुंबई"।',
+    search_tip_language: 'अपनी भाषा में खोजें — स्टेशन नाम और शैलियाँ दर्जनों भाषाओं में उपलब्ध हैं।',
+    search_browse_title: 'बिना खोजे ब्राउज़ करें',
+    search_browse_intro: 'क्या खोजना है यह नहीं पता? शानदार रेडियो स्टेशन खोजने के लिए हमारी क्यूरेटेड श्रेणियां ब्राउज़ करें।',
+  },
+};
+
+// Languages that share the same structure with different content.
+// Remaining 45 languages use English-fallback gracefully but we seed
+// the most-spoken languages above for correct localization.
+// Add more languages here as translation resources become available.
+
+export async function seedHomepageFaqTranslations(): Promise<void> {
+  let totalUpserted = 0;
+  const languages = Object.keys(TRANSLATIONS);
+
+  for (const lang of languages) {
+    const values = TRANSLATIONS[lang];
+    const keys = Object.keys(values) as FaqKeyName[];
+
+    for (const keyName of keys) {
+      const value = values[keyName];
+      const keyDoc = await TranslationKey.findOne({ key: keyName });
+      if (!keyDoc) continue; // seedSeoTranslationKeys must run first
+
+      const existing = await Translation.findOne({ keyId: keyDoc._id, language: lang });
+      if (existing) {
+        if (existing.value !== value) {
+          await Translation.updateOne(
+            { _id: existing._id },
+            { value, lastModified: new Date() },
+          );
+          totalUpserted++;
+        }
+      } else {
+        await Translation.create({
+          keyId: keyDoc._id,
+          language: lang,
+          value,
+          isCompleted: true,
+          lastModified: new Date(),
+        });
+        totalUpserted++;
+      }
+    }
+  }
+
+  logger.log(`✅ seedHomepageFaqTranslations: ${totalUpserted} upserts across ${languages.length} languages`);
+}

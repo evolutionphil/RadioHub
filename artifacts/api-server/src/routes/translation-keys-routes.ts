@@ -921,6 +921,35 @@ export async function seedSeoTranslationKeys(): Promise<void> {
     { key: 'nav_genres', defaultValue: 'Genres', category: 'seo' },
     { key: 'nav_regions', defaultValue: 'Regions', category: 'seo' },
     { key: 'nav_stations', defaultValue: 'Stations', category: 'seo' },
+    // Homepage FAQ section — added 2026-06-12; seeded for all languages in
+    // homepage-faq-translations-seed.ts so non-English pages don't show English.
+    { key: 'popular_stations', defaultValue: 'Popular Radio Stations', category: 'seo' },
+    { key: 'faq_seo_intro', defaultValue: 'Mega Radio is your ultimate destination for discovering and streaming live radio stations from around the world. With over 60,000 free radio stations spanning 120+ countries, we deliver unlimited access to music, news, sports, and entertainment across every language and genre.', category: 'seo' },
+    { key: 'faq_section_title', defaultValue: 'Frequently Asked Questions', category: 'seo' },
+    { key: 'faq_free_explanation', defaultValue: 'All radio stations on Mega Radio are completely free to listen to with no registration required. Simply open the app or website, choose a station, and start listening instantly on any device including desktop, mobile, smart TV, and tablet.', category: 'seo' },
+    { key: 'faq_q_what_is', defaultValue: 'What is Mega Radio?', category: 'seo' },
+    { key: 'faq_a_what_is', defaultValue: 'Mega Radio is a free online radio platform that lets you stream live radio stations from around the world. You can listen to music, news, sports, talk shows, and more in dozens of languages — no subscription or account required.', category: 'seo' },
+    { key: 'faq_q_how_many', defaultValue: 'How many radio stations are available?', category: 'seo' },
+    { key: 'faq_a_how_many', defaultValue: 'Mega Radio provides access to over 60,000 live radio stations from more than 120 countries. Stations are continuously updated so you always have access to the latest broadcasts.', category: 'seo' },
+    { key: 'faq_q_devices', defaultValue: 'What devices can I use to listen?', category: 'seo' },
+    { key: 'faq_a_devices', defaultValue: 'You can listen on any web browser, as well as through dedicated apps for Android, iOS, Windows, and Smart TV platforms including Samsung and LG. All your favourite stations sync across devices automatically.', category: 'seo' },
+    // Genre-page FAQ — {GENRE} placeholder is replaced at render time.
+    { key: 'faq_q_genre_listen', defaultValue: 'How do I listen to {GENRE} radio stations?', category: 'seo' },
+    { key: 'faq_a_genre_listen', defaultValue: 'Select any {GENRE} station from the list above to start streaming instantly. No download or account required — just click and listen for free on any device.', category: 'seo' },
+    { key: 'faq_q_genre_free', defaultValue: 'Are {GENRE} radio stations free?', category: 'seo' },
+    { key: 'faq_a_genre_free', defaultValue: 'Yes. All radio stations on Mega Radio, including {GENRE} stations, are completely free to listen to with no subscription or registration required.', category: 'seo' },
+    // Users / community page
+    { key: 'users_page_intro', defaultValue: 'Join the Mega Radio community. Discover what other listeners are tuning in to, share your favourite radio stations, and explore personalised recommendations from 60,000+ live stations worldwide.', category: 'seo' },
+    { key: 'users_page_features', defaultValue: 'Create a free account to save your favourite stations, follow other listeners, and get personalised radio suggestions based on your listening history. All community features are available at no cost.', category: 'seo' },
+    // Search page enrichment
+    { key: 'search_how_to', defaultValue: 'Type a station name, genre, city, or country into the search box to find matching radio stations from our library of 60,000+ stations worldwide. Results update instantly as you type.', category: 'seo' },
+    { key: 'search_tips_title', defaultValue: 'Search Tips', category: 'seo' },
+    { key: 'search_tip_name', defaultValue: 'Search by station name — for example "BBC Radio 1" or "RFI".', category: 'seo' },
+    { key: 'search_tip_genre', defaultValue: 'Search by genre — for example "jazz", "classical", or "hip-hop".', category: 'seo' },
+    { key: 'search_tip_country', defaultValue: 'Search by country or city — for example "Germany" or "Istanbul".', category: 'seo' },
+    { key: 'search_tip_language', defaultValue: 'Search in your own language — station names and genres are available in dozens of languages.', category: 'seo' },
+    { key: 'search_browse_title', defaultValue: 'Browse Without Searching', category: 'seo' },
+    { key: 'search_browse_intro', defaultValue: 'Not sure what to search for? Browse our curated categories to discover great radio stations.', category: 'seo' },
   ];
 
   for (const item of seoKeys) {

@@ -864,7 +864,6 @@ app.use('/api/stream', streamServiceProxy);
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="application-name" content="Mega Radio">
-    <meta name="msapplication-TileColor" content="#1a1a2e">
     <meta name="msapplication-TileImage" content="/apple-touch-icon.png">
     <!-- 2026-05-12 perf (PageSpeed mobile=43): removed dead preloads
          (ubuntu-400.ttf, ubuntu-700.ttf — files do not exist, were 404s)
