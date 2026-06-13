@@ -518,7 +518,9 @@ export class SeoRenderer {
           }
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
-          // DB error — don't mark notFound (transient); still render placeholder
+          // DB error — transient; don't mark notFound so the URL stays in
+          // Google's crawl queue. Placeholder data is synthetic — flag it so
+          // the HTTP layer sets noindex, preventing indexing of empty content.
           const stationName = stationSlug
             .replace(/-/g, ' ')
             .replace(/\b\w/g, (l: string) => l.toUpperCase());
@@ -530,7 +532,8 @@ export class SeoRenderer {
             tags: '',
             url: '',
             favicon: '',
-            description: ''
+            description: '',
+            _dbError: true,
           };
         }
       }
@@ -975,6 +978,7 @@ export class SeoRenderer {
     //    dump ~55 of them into "Crawled - currently not indexed".
     let stationIsJunkFlag = false;
     let langRedirectUrl: string | null = null;
+    const stationDbErrorFlag = !!(stationData as any)?._dbError;
     if (pageType === 'station' && stationData && !stationNotFound) {
       try {
         const {
@@ -1275,6 +1279,8 @@ export class SeoRenderer {
         // Language-ineligible station variant: HTTP layer issues 301 → /en.
         // Avoids burning crawl budget on millions of noindex variants.
         ...(langRedirectUrl ? { redirectTo: langRedirectUrl } : {}),
+        // Transient DB error: placeholder data, must not be indexed.
+        ...(stationDbErrorFlag ? { stationDbError: true } : {}),
       }
     };
     

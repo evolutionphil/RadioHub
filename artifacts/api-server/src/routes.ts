@@ -938,7 +938,9 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       seedAllLanguagesSeoTranslations(),
       seedHomepageFaqTranslations(),
     ]))
-    .catch(() => {});
+    .catch((err: any) => {
+      logger.error('SEO translation seed failed — qualified-languages may be stale:', err?.message || err);
+    });
   // Backfill in-page search_* translations for every SEO_LANGUAGES code.
   // Guarded by tests/search-translations-db-coverage.test.ts (task #298).
   void seedSearchPageTranslations();

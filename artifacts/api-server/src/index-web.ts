@@ -692,6 +692,12 @@ app.use('/api/stream', streamServiceProxy);
     }
   }, 60_000);
 
+  // Pre-SSR language-ineligibility redirect: for non-universal language station
+  // URLs, do a single lean DB lookup to check eligibility and 301 to /en before
+  // the full SSR render runs. Saves 100–300ms per ineligible URL hit.
+  const { langIneligibilityRedirectMiddleware } = await import('./middleware/lang-ineligibility-redirect');
+  app.use(langIneligibilityRedirectMiddleware);
+
   app.use(async (req, res, next) => {
     const url = req.originalUrl;
     const userAgent = req.get('user-agent') || '';
@@ -818,7 +824,12 @@ app.use('/api/stream', streamServiceProxy);
       if (!responded && !res.headersSent) {
         responded = true;
         clearTimeout(reqTimeout);
-        logger.log(`⏰ SEO request timeout (15s), falling back to SPA: ${url}`);
+        logger.log(`⏰ SEO request timeout (15s), falling back to SPA (noindex): ${url}`);
+        // Serving the SPA shell as indexable on timeout causes Google to index
+        // an empty-content page. Set noindex so bots skip this response and
+        // retry; browsers ignore X-Robots-Tag and still get a working SPA.
+        res.setHeader('X-Robots-Tag', 'noindex, follow');
+        res.setHeader('Cache-Control', 'no-store');
         next();
       }
     }, 15000);
@@ -979,7 +990,11 @@ app.use('/api/stream', streamServiceProxy);
           return;
         }
 
-        if (!stationNotFound) {
+        // DB-error placeholder: station data is synthetic (transient DB
+        // failure). Do NOT cache; set noindex so Google doesn't index empty
+        // placeholder content — it will retry the URL later when DB is healthy.
+        const stationDbError = !!seoData.pageData?.stationDbError;
+        if (!stationNotFound && !stationDbError) {
           performanceCache.setSeoHtml(cleanUrl, htmlContent);
         }
         // Soft-404 guard (2026-05-15): when the SSR resolves to "not
@@ -989,7 +1004,7 @@ app.use('/api/stream', streamServiceProxy);
         // for notFound pages — Google sees a contradictory 404+indexable
         // signal and parks the URL as "soft 404". Force-rewrite the meta
         // tag in the rendered HTML so the two signals always agree.
-        const forceNoIndex = stationNotFound || seoTags?.noIndex === true;
+        const forceNoIndex = stationNotFound || stationDbError || seoTags?.noIndex === true;
         if (forceNoIndex) {
           res.removeHeader('X-Robots-Tag');
           // X-Robots-Tag header takes precedence over any conflicting in-body meta
@@ -998,7 +1013,7 @@ app.use('/api/stream', streamServiceProxy);
         }
         res.status(stationNotFound ? 404 : 200).set({
           'Content-Type': 'text/html',
-          'Cache-Control': stationNotFound
+          'Cache-Control': (stationNotFound || stationDbError)
             ? 'no-store'
             : 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
           'X-SEO-Cache': 'MISS'
@@ -1010,7 +1025,11 @@ app.use('/api/stream', streamServiceProxy);
         clearTimeout(reqTimeout);
         const errMsg = error?.message || '';
         const isOverload = errMsg === 'SEO_RENDER_OVERLOADED' || errMsg === 'SEO_RENDER_TIMEOUT';
-        logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), falling back to SPA: ${url} — ${errMsg}`);
+        logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), falling back to SPA (noindex): ${url} — ${errMsg}`);
+        // Same rationale as the timeout branch: SPA shell without real content
+        // must not be indexed. Bots will retry; browser users still get SPA.
+        res.setHeader('X-Robots-Tag', 'noindex, follow');
+        res.setHeader('Cache-Control', 'no-store');
         next();
       }
     }
