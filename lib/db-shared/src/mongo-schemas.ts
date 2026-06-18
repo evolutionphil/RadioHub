@@ -70,6 +70,7 @@ export interface IStation extends Document {
   mergedStationUuids?: string[]; // UUIDs of stations merged into this one
   slug?: string; // SEO-friendly URL slug
   slugAliases?: string[]; // Old slugs that 301-redirect to current slug
+  redirectToSlug?: string; // Frequency-format duplicate → canonical sibling slug (301)
   noIndex?: boolean; // Junk/thin station — exclude from sitemap & emit robots=noindex
   // Multi-language descriptions field - matches original repository pattern
   descriptions?: { [locale: string]: string };
@@ -1190,6 +1191,13 @@ const StationSchema = new Schema<IStation>({
   mergedStationUuids: [String], // UUIDs of stations merged into this one
   slug: { type: String, index: true, sparse: true }, // SEO-friendly URL slug
   slugAliases: { type: [String], default: [], index: true }, // Old slugs that should 301 → current slug
+  // Frequency-format duplicate canonicalization (2026-06-18): when this record
+  // is a near-duplicate of another station (same broadcaster, slug differs only
+  // by frequency punctuation e.g. "classical-95-9-wcri" vs "classical-959-wcri"),
+  // this points at the canonical sibling's slug. The SSR renderer 301s any
+  // request for this record's slug to the canonical localized URL. Set by the
+  // /api/admin/stations/dedup-frequency endpoint; preserved across sync.
+  redirectToSlug: { type: String, index: true, sparse: true },
   noIndex: { type: Boolean, default: false, index: true }, // Junk/thin station — exclude from sitemap & emit robots=noindex
   // Global playback cache fields - stores successful playback methods
   cachedPlaybackMethod: { type: String, enum: ['direct', 'proxy'] },

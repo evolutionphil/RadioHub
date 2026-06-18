@@ -1049,6 +1049,139 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     }
   });
 
+  // FREQUENCY-FORMAT DEDUP (2026-06-18) — collapse near-duplicate station
+  // records whose slugs differ ONLY in frequency punctuation onto a single
+  // canonical URL via a 301 (redirectToSlug), instead of leaving N competing
+  // 200s in Google's index. Example cluster (countryCode US):
+  //   classical-95-9-wcri  +  classical-959-wcri  →  keep highest-engagement,
+  //   point the other's redirectToSlug at it (+ noIndex + slugAlias).
+  //
+  // Non-destructive: no records are deleted, so a subsequent Radio-Browser
+  // sync (which keys on stationuuid) cannot resurrect a duplicate. `slug`,
+  // `noIndex` and `redirectToSlug` are all in sync's preserve list.
+  //
+  // DRY RUN by default; pass ?confirm=true to apply.
+  app.post('/api/admin/stations/dedup-frequency', requireAdmin, async (req, res) => {
+    try {
+      const { frequencyClusterKey } = await import('../seo/junk-station-rules');
+      const confirm = String(req.query.confirm || '').toLowerCase() === 'true';
+
+      type Doc = {
+        _id: any;
+        slug: string;
+        countryCode?: string;
+        votes?: number;
+        clickCount?: number;
+        lastCheckOk?: boolean;
+        noIndex?: boolean;
+        redirectToSlug?: string;
+      };
+
+      // Only slugs containing a digit-hyphen-digit can be the "punctuated"
+      // member of a frequency cluster. Pull those plus their normalized
+      // (hyphen-collapsed) sibling slugs so every cluster has all its members.
+      const punctuated: Doc[] = await Station.find(
+        { slug: { $regex: /[0-9]-[0-9]/ } },
+        { slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 },
+      )
+        .limit(100000)
+        .lean<Doc[]>();
+
+      // Compute each punctuated slug's normalized sibling (e.g.
+      // classical-95-9-wcri → classical-959-wcri) and fetch those records too.
+      const siblingSlugs = new Set<string>();
+      for (const d of punctuated) {
+        let n = d.slug;
+        let prev: string;
+        do { prev = n; n = n.replace(/(\d)-(\d)/g, '$1$2'); } while (n !== prev);
+        if (n !== d.slug) siblingSlugs.add(n);
+      }
+      let siblings: Doc[] = [];
+      if (siblingSlugs.size > 0) {
+        siblings = await Station.find(
+          { slug: { $in: Array.from(siblingSlugs) } },
+          { slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 },
+        )
+          .limit(100000)
+          .lean<Doc[]>();
+      }
+
+      // Cluster by (frequencyClusterKey, countryCode).
+      const clusters = new Map<string, Doc[]>();
+      const seenIds = new Set<string>();
+      for (const d of [...punctuated, ...siblings]) {
+        const idStr = String(d._id);
+        if (seenIds.has(idStr)) continue;
+        seenIds.add(idStr);
+        const key = frequencyClusterKey(d.slug);
+        if (!key) continue;
+        const cc = (d.countryCode || '').toUpperCase();
+        const ckey = `${key}|${cc}`;
+        const arr = clusters.get(ckey) || [];
+        arr.push(d);
+        clusters.set(ckey, arr);
+      }
+
+      const engagement = (d: Doc) => (d.votes || 0) + (d.clickCount || 0);
+      const dupClusters: Array<{ canonical: string; losers: string[]; docs: Doc[] }> = [];
+      for (const [, docs] of clusters) {
+        const distinctSlugs = new Set(docs.map(d => d.slug));
+        if (distinctSlugs.size < 2) continue; // not an actual duplicate set
+        const sorted = [...docs].sort((a, b) => {
+          const e = engagement(b) - engagement(a);
+          if (e !== 0) return e;
+          const h = (b.lastCheckOk ? 1 : 0) - (a.lastCheckOk ? 1 : 0);
+          if (h !== 0) return h;
+          return a.slug.length - b.slug.length; // shortest slug as final tiebreak
+        });
+        const canonical = sorted[0];
+        const losers = sorted.slice(1).filter(d => d.slug !== canonical.slug);
+        if (losers.length === 0) continue;
+        dupClusters.push({
+          canonical: canonical.slug,
+          losers: losers.map(l => l.slug),
+          docs: sorted,
+        });
+      }
+
+      let rowsRedirected = 0;
+      if (confirm) {
+        for (const c of dupClusters) {
+          const canonicalDoc = c.docs[0];
+          const loserDocs = c.docs.filter(d => d.slug !== c.canonical && d.redirectToSlug !== c.canonical);
+          if (loserDocs.length === 0) continue;
+          await Station.updateMany(
+            { _id: { $in: loserDocs.map(l => l._id) } },
+            { $set: { redirectToSlug: c.canonical, noIndex: true } },
+          );
+          // Belt-and-braces: register loser slugs as aliases on the canonical
+          // so the alias-301 path also resolves them if redirectToSlug is ever
+          // cleared.
+          await Station.updateOne(
+            { _id: canonicalDoc._id },
+            { $addToSet: { slugAliases: { $each: loserDocs.map(l => l.slug) } } },
+          );
+          rowsRedirected += loserDocs.length;
+        }
+        // Drop any cached SSR HTML so the new 301s take effect immediately.
+        try { (performanceCache as any).clearSeoHtml?.(); } catch { /* best-effort */ }
+      }
+
+      res.json({
+        confirm,
+        clustersFound: dupClusters.length,
+        rowsRedirected,
+        message: confirm
+          ? `Redirected ${rowsRedirected} frequency-duplicate stations (set redirectToSlug → canonical + noIndex). Re-run safe; idempotent.`
+          : 'DRY RUN — pass ?confirm=true to apply. Each cluster keeps its highest-engagement record; the others 301 to it via redirectToSlug.',
+        sampleClusters: dupClusters.slice(0, 25).map(c => ({ canonical: c.canonical, losers: c.losers })),
+      });
+    } catch (error: any) {
+      logger.error('Frequency dedup failed:', error?.message ?? error);
+      res.status(500).json({ error: 'Frequency dedup failed' });
+    }
+  });
+
   // TAGS-STATUS SUMMARY - Count stations stuck in the 30-day Radio-Browser
   // empty-tag cooldown (and the never-checked tagless bucket) so the admin UI
   // can surface a live KPI without applying the filter manually.

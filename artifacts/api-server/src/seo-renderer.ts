@@ -496,6 +496,38 @@ export class SeoRenderer {
             stationData = await withSignal(Station.findById(stationSlug).lean(), signal);
           }
 
+          // Frequency-format duplicate canonicalization (2026-06-18): if the
+          // resolved record is flagged as a near-duplicate of a canonical
+          // sibling (set by /api/admin/stations/dedup-frequency), 301 to the
+          // canonical localized URL instead of serving a competing 200. This
+          // collapses pairs like "classical-95-9-wcri" / "classical-959-wcri"
+          // onto a single indexable URL. Guard against self-redirect loops.
+          if (
+            stationData &&
+            (stationData as any).redirectToSlug &&
+            (stationData as any).redirectToSlug !== stationData.slug
+          ) {
+            const canonicalSlug = (stationData as any).redirectToSlug as string;
+            const englishCanonical = cleanPath.replace(
+              `/${stationSlug}`,
+              `/${canonicalSlug}`,
+            );
+            const canonicalPath = buildLocalizedUrl(
+              englishCanonical,
+              actualLanguage,
+              countryCode,
+              urlTranslations,
+            );
+            logger.log(`🔀 SEO FREQ-DUP 301: ${cleanPath} (${stationSlug}) → ${canonicalPath} (${canonicalSlug})`);
+            return {
+              language,
+              cleanPath,
+              seoTags: {},
+              translations: {},
+              pageData: { redirectTo: canonicalPath },
+            };
+          }
+
           // If station truly doesn't exist, mark notFound and synthesize minimal data so SSR
           // can still render a 404 body (avoids 500). Caller (index-web.ts) maps this to HTTP 404,
           // preventing Google soft-404 spam signals.

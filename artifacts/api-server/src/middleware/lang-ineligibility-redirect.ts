@@ -20,6 +20,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { Station } from '@workspace/db-shared/mongo-schemas';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { reverseTranslateUrl } from '@workspace/seo-shared/url-translations';
 
 // Universal 14 languages: always eligible for every station.
 const UNIVERSAL_14 = new Set([
@@ -91,6 +92,8 @@ export async function langIneligibilityRedirectMiddleware(
 
   const rawPath = req.path;
   if (!rawPath || rawPath === '/') return next();
+  // Never touch static-asset requests (e.g. /xx/something.js) — only HTML routes.
+  if (/\.[a-z0-9]{2,5}$/i.test(rawPath)) return next();
 
   let cleanPath: string;
   try {
@@ -100,24 +103,45 @@ export async function langIneligibilityRedirectMiddleware(
   }
 
   const parts = cleanPath.split('/').filter(Boolean);
-  // Station URLs always have exactly 3 parts: lang / station-segment / slug
-  if (parts.length !== 3) return next();
+  if (parts.length === 0) return next();
 
   const lang = parts[0].toLowerCase();
-  const segment = parts[1].toLowerCase();
-  const slug = parts[2].toLowerCase();
 
   // Only act on known language codes.
   if (!ENABLED_LANGS.has(lang)) return next();
 
-  // Universal-14: always eligible — no DB lookup needed.
+  // Universal-14: always eligible / always indexable — no redirect, no DB hit.
   if (UNIVERSAL_14.has(lang)) return next();
 
-  // Verify the middle segment is a station segment in some language.
   const segments = getStationSegments();
-  if (!segments.has(segment)) return next();
+  const isStationUrl = parts.length === 3 && segments.has(parts[1].toLowerCase());
 
-  // Non-universal language — check eligibility.
+  // BROWSE-PAGE REDIRECT (2026-06-18): for non-universal languages, every
+  // non-station page (homepage, genres, regions, search, about, faq, …) is
+  // a self-canonical 200 that is NOT in the sitemap — a duplicate-thin-content
+  // surface Google wastes crawl budget on. 301 these to the English
+  // equivalent. Station URLs fall through to the per-station eligibility check
+  // below (which may legitimately keep some non-universal variants indexable).
+  if (!isStationUrl) {
+    // Homepage `/{lang}` → `/en`
+    if (parts.length === 1) {
+      return send301(req, res, '/en');
+    }
+    // Reverse-translate the localized segments back to English and 301 to /en.
+    // Unknown segments (country/genre slugs) pass through unchanged.
+    let englishPath: string;
+    try {
+      englishPath = reverseTranslateUrl('/' + parts.slice(1).join('/'), lang);
+    } catch {
+      englishPath = '/' + parts.slice(1).join('/');
+    }
+    if (!englishPath.startsWith('/')) englishPath = '/' + englishPath;
+    return send301(req, res, `/en${englishPath}`);
+  }
+
+  // Station URL (exactly 3 parts, valid station segment) — check eligibility.
+  const segment = parts[1].toLowerCase();
+  const slug = parts[2].toLowerCase();
   try {
     const {
       getCachedQualifiedLanguages,
@@ -159,15 +183,7 @@ export async function langIneligibilityRedirectMiddleware(
 
     if (!isEligible) {
       // Redirect to English canonical — same target seo-renderer.ts would use.
-      const qIdx = req.originalUrl.indexOf('?');
-      const qs = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
-      const target = `/en/station/${slug}${qs}`;
-      res.set({
-        'Cache-Control': 'public, max-age=300, s-maxage=300',
-        'Location': target,
-      });
-      res.status(301).end();
-      return;
+      return send301(req, res, `/en/station/${slug}`);
     }
   } catch {
     // On any error (DB down, cache miss), pass through to SSR which handles
@@ -175,4 +191,16 @@ export async function langIneligibilityRedirectMiddleware(
   }
 
   return next();
+}
+
+function send301(req: Request, res: Response, target: string): void {
+  const qIdx = req.originalUrl.indexOf('?');
+  const qs = qIdx >= 0 ? req.originalUrl.substring(qIdx) : '';
+  res.set({
+    // Short cache so removing a redirect (e.g. a language becomes universal)
+    // clears from CDN/browser within minutes.
+    'Cache-Control': 'public, max-age=300, s-maxage=300',
+    'Location': target + qs,
+  });
+  res.status(301).end();
 }
