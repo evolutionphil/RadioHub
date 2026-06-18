@@ -69,6 +69,16 @@ export default function AdminDuplicates() {
   // Track manually selected primary stations per group (key: group name + country)
   const [selectedPrimaryStations, setSelectedPrimaryStations] = useState<{[groupKey: string]: string}>({});
 
+  // Frequency-format duplicate dedup (e.g. classical-95-9-wcri vs classical-959-wcri)
+  const [freqLoading, setFreqLoading] = useState(false);
+  const [freqResult, setFreqResult] = useState<{
+    confirm: boolean;
+    clustersFound: number;
+    rowsRedirected: number;
+    message: string;
+    sampleClusters: Array<{ canonical: string; losers: string[] }>;
+  } | null>(null);
+
   const activeIntervalsRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
 
   useEffect(() => {
@@ -673,6 +683,43 @@ export default function AdminDuplicates() {
     }
   };
 
+  // Frequency-format dedup: collapse station records whose slugs differ only in
+  // frequency punctuation (classical-95-9-wcri vs classical-959-wcri) onto one
+  // canonical URL via a 301. Dry-run first (confirm=false), then apply.
+  const runFreqDedup = async (confirm: boolean) => {
+    setFreqLoading(true);
+    try {
+      const response = await fetch(
+        `/api/admin/stations/dedup-frequency${confirm ? '?confirm=true' : ''}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' } },
+      );
+      const data = await response.json();
+      if (!response.ok || data.error) {
+        toast({
+          title: 'Frequency dedup failed',
+          description: data.error || `HTTP ${response.status}: ${response.statusText}`,
+          variant: 'destructive',
+        });
+        return;
+      }
+      setFreqResult(data);
+      toast({
+        title: confirm ? 'Frequency duplicates redirected' : 'Dry run complete',
+        description: confirm
+          ? `Redirected ${data.rowsRedirected} duplicate stations to their canonical URL.`
+          : `Found ${data.clustersFound} frequency-duplicate clusters. Review below, then Apply.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: `Frequency dedup error: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        variant: 'destructive',
+      });
+    } finally {
+      setFreqLoading(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
       <div className="text-center space-y-2">
@@ -791,6 +838,89 @@ export default function AdminDuplicates() {
               </>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Frequency-Format Duplicates (SEO) */}
+      <Card className="border-blue-500/40">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Merge className="h-5 w-5 text-blue-600" />
+            Frequency-Format Duplicates (SEO)
+          </CardTitle>
+          <CardDescription>
+            Collapses station records whose slugs differ only in frequency punctuation
+            (e.g. <code>classical-95-9-wcri</code> vs <code>classical-959-wcri</code>) onto a single
+            canonical URL with a 301. The highest-engagement record is kept; the others are
+            redirected to it (non-destructive — nothing is deleted, safe to re-run after a sync).
+            This fixes the "Crawled – currently not indexed" duplicate pages in Google Search Console.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => runFreqDedup(false)}
+              disabled={freqLoading}
+              variant="outline"
+              size="sm"
+              className="text-xs sm:text-sm"
+              data-testid="button-freq-dryrun"
+            >
+              {freqLoading ? <Loader2 className="h-4 w-4 animate-spin sm:mr-2" /> : <AlertTriangle className="h-4 w-4 sm:mr-2" />}
+              Preview (Dry Run)
+            </Button>
+            <Button
+              onClick={() => {
+                if (window.confirm(
+                  'Apply frequency-duplicate redirects now?\n\nThe highest-engagement station in each cluster is kept; the others are 301-redirected to it (redirectToSlug + noIndex). Non-destructive and reversible.'
+                )) {
+                  runFreqDedup(true);
+                }
+              }}
+              disabled={freqLoading || !freqResult || freqResult.clustersFound === 0}
+              variant="default"
+              size="sm"
+              className="text-xs sm:text-sm bg-blue-600 hover:bg-blue-700"
+              data-testid="button-freq-apply"
+              title={!freqResult ? 'Run a dry run first' : undefined}
+            >
+              {freqLoading ? <Loader2 className="h-4 w-4 animate-spin sm:mr-2" /> : <CheckCircle className="h-4 w-4 sm:mr-2" />}
+              Apply Redirects
+            </Button>
+          </div>
+
+          {freqResult && (
+            <div className="space-y-3">
+              <Alert>
+                <CheckCircle className="h-4 w-4" />
+                <AlertDescription>
+                  <span className="text-sm">{freqResult.message}</span>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Clusters: <strong>{freqResult.clustersFound}</strong>
+                    {freqResult.confirm && (
+                      <> · Redirected: <strong>{freqResult.rowsRedirected}</strong></>
+                    )}
+                  </div>
+                </AlertDescription>
+              </Alert>
+
+              {freqResult.sampleClusters.length > 0 && (
+                <div className="rounded border divide-y">
+                  <div className="px-3 py-2 text-xs font-semibold text-muted-foreground bg-muted/50">
+                    Sample clusters (kept → redirected)
+                  </div>
+                  {freqResult.sampleClusters.map((c, i) => (
+                    <div key={i} className="px-3 py-2 text-xs font-mono break-all">
+                      <span className="text-green-600 dark:text-green-400">👑 {c.canonical}</span>
+                      {c.losers.map((l) => (
+                        <div key={l} className="text-muted-foreground pl-5">↳ 301 ← {l}</div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

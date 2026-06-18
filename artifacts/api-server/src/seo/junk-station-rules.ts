@@ -250,6 +250,45 @@ export function frequencyPrefixBaseSlug(slug: string): string | null {
   return base;
 }
 
+/**
+ * Compute a frequency-normalized clustering key for a station slug so that
+ * near-duplicate records that differ ONLY in how a broadcast frequency is
+ * punctuated collapse to the same key. This is the GSC duplicate-content
+ * pattern where the same broadcaster has two DB records:
+ *
+ *   "classical-95-9-wcri"   and  "classical-959-wcri"
+ *   "wcbe-90-5-columbus-oh" and  "wcbe-905-columbus-oh"
+ *   "hot-91-1"              and  "hot-911"
+ *
+ * Normalization: collapse a hyphen sitting BETWEEN two digits ("95-9" → "959"),
+ * repeated so "100-7" → "1007" and "91-1" → "911". ONLY digit-digit hyphens are
+ * removed; word hyphens ("columbus-oh") and letter-digit hyphens ("radio-1")
+ * are preserved.
+ *
+ * IMPORTANT — we deliberately do NOT strip a trailing "-<n>" suffix. Doing so
+ * would wrongly cluster genuinely-distinct stations like "bbc-radio-1" (BBC
+ * Radio 1) and "bbc-radio-2" (BBC Radio 2) and 301 one onto the other. The
+ * cost is that frequency duplicates that ALSO carry a generateUniqueSlug
+ * collision suffix (e.g. "...-915-...-1") are not auto-clustered — an
+ * acceptable miss in exchange for never producing a wrong redirect.
+ *
+ * Returns null for empty/numeric-only slugs (handled separately as junk).
+ */
+export function frequencyClusterKey(slug?: string | null): string | null {
+  if (!slug || typeof slug !== 'string') return null;
+  let s = slug.trim().toLowerCase();
+  if (!s) return null;
+  // Numeric-only (incl. negative) slugs are junk, not cluster members.
+  if (/^-?\d+$/.test(s)) return null;
+  // Collapse digit-hyphen-digit repeatedly: 95-9 → 959, 100-7 → 1007.
+  let prev: string;
+  do {
+    prev = s;
+    s = s.replace(/(\d)-(\d)/g, '$1$2');
+  } while (s !== prev);
+  return s || null;
+}
+
 // -----------------------------------------------------------------------------
 // 3. Eligible languages per station
 // -----------------------------------------------------------------------------

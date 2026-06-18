@@ -53,6 +53,7 @@ import { seedSearchPageTranslations } from './seo/search-page-translations-seed'
 import { seedPremiumTranslations } from './seo/premium-translations-seed';
 import { seedSubscriptionUiTranslations } from './seo/subscription-ui-translations-seed';
 import { seedAllLanguagesSeoTranslations } from './seo/all-languages-seo-seed';
+import { seedHomepageFaqTranslations } from './seo/homepage-faq-translations-seed';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
@@ -932,8 +933,14 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // seedSeoTranslationKeys must complete before the language seeders so that
   // TranslationKey documents exist when upserts run against them.
   void seedSeoTranslationKeys()
-    .then(() => Promise.all([seedTurkishUiTranslations(), seedAllLanguagesSeoTranslations()]))
-    .catch(() => {});
+    .then(() => Promise.all([
+      seedTurkishUiTranslations(),
+      seedAllLanguagesSeoTranslations(),
+      seedHomepageFaqTranslations(),
+    ]))
+    .catch((err: any) => {
+      logger.error('SEO translation seed failed — qualified-languages may be stale:', err?.message || err);
+    });
   // Backfill in-page search_* translations for every SEO_LANGUAGES code.
   // Guarded by tests/search-translations-db-coverage.test.ts (task #298).
   void seedSearchPageTranslations();

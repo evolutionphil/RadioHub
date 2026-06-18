@@ -496,6 +496,38 @@ export class SeoRenderer {
             stationData = await withSignal(Station.findById(stationSlug).lean(), signal);
           }
 
+          // Frequency-format duplicate canonicalization (2026-06-18): if the
+          // resolved record is flagged as a near-duplicate of a canonical
+          // sibling (set by /api/admin/stations/dedup-frequency), 301 to the
+          // canonical localized URL instead of serving a competing 200. This
+          // collapses pairs like "classical-95-9-wcri" / "classical-959-wcri"
+          // onto a single indexable URL. Guard against self-redirect loops.
+          if (
+            stationData &&
+            (stationData as any).redirectToSlug &&
+            (stationData as any).redirectToSlug !== stationData.slug
+          ) {
+            const canonicalSlug = (stationData as any).redirectToSlug as string;
+            const englishCanonical = cleanPath.replace(
+              `/${stationSlug}`,
+              `/${canonicalSlug}`,
+            );
+            const canonicalPath = buildLocalizedUrl(
+              englishCanonical,
+              actualLanguage,
+              countryCode,
+              urlTranslations,
+            );
+            logger.log(`🔀 SEO FREQ-DUP 301: ${cleanPath} (${stationSlug}) → ${canonicalPath} (${canonicalSlug})`);
+            return {
+              language,
+              cleanPath,
+              seoTags: {},
+              translations: {},
+              pageData: { redirectTo: canonicalPath },
+            };
+          }
+
           // If station truly doesn't exist, mark notFound and synthesize minimal data so SSR
           // can still render a 404 body (avoids 500). Caller (index-web.ts) maps this to HTTP 404,
           // preventing Google soft-404 spam signals.
@@ -518,7 +550,9 @@ export class SeoRenderer {
           }
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
-          // DB error — don't mark notFound (transient); still render placeholder
+          // DB error — transient; don't mark notFound so the URL stays in
+          // Google's crawl queue. Placeholder data is synthetic — flag it so
+          // the HTTP layer sets noindex, preventing indexing of empty content.
           const stationName = stationSlug
             .replace(/-/g, ' ')
             .replace(/\b\w/g, (l: string) => l.toUpperCase());
@@ -530,7 +564,8 @@ export class SeoRenderer {
             tags: '',
             url: '',
             favicon: '',
-            description: ''
+            description: '',
+            _dbError: true,
           };
         }
       }
@@ -975,6 +1010,7 @@ export class SeoRenderer {
     //    dump ~55 of them into "Crawled - currently not indexed".
     let stationIsJunkFlag = false;
     let langRedirectUrl: string | null = null;
+    const stationDbErrorFlag = !!(stationData as any)?._dbError;
     if (pageType === 'station' && stationData && !stationNotFound) {
       try {
         const {
@@ -1275,6 +1311,8 @@ export class SeoRenderer {
         // Language-ineligible station variant: HTTP layer issues 301 → /en.
         // Avoids burning crawl budget on millions of noindex variants.
         ...(langRedirectUrl ? { redirectTo: langRedirectUrl } : {}),
+        // Transient DB error: placeholder data, must not be indexed.
+        ...(stationDbErrorFlag ? { stationDbError: true } : {}),
       }
     };
     
@@ -1794,9 +1832,9 @@ export class SeoRenderer {
             <nav class="main-navigation">
               <h2>${this.escapeHtml(getLocalizedText('explore_mega_radio', 'Explore Mega Radio'))}</h2>
               <ul>
-                <li><a href="/${language}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
-                <li><a href="/${language}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
-                <li><a href="/${language}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
                 <li><a href="/${language}/recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
                 <li><a href="/${language}/users">${this.escapeHtml(getLocalizedText('nav_users', 'Community'))}</a></li>
               </ul>
@@ -1833,46 +1871,58 @@ export class SeoRenderer {
             <section class="popular-genres">
               <h2>${this.escapeHtml(getLocalizedText('popular_genres_title', 'Popular Radio Genres'))}</h2>
               <ul>
-                ${additionalData?.topGenres && additionalData.topGenres.length > 0
-                  ? (additionalData.topGenres as Array<{ slug: string; name: string; count: number }>).map(g =>
-                      `<li><a href="/${language}/genres/${this.escapeHtml(g.slug)}">${this.escapeHtml(g.name)}</a></li>`
-                    ).join('')
-                  : `<li><a href="/${language}/genres/pop">${this.escapeHtml(getLocalizedText('genre_pop_radio', 'Pop Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/rock">${this.escapeHtml(getLocalizedText('genre_rock_radio', 'Rock Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/jazz">${this.escapeHtml(getLocalizedText('genre_jazz_radio', 'Jazz Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/classical">${this.escapeHtml(getLocalizedText('genre_classical_radio', 'Classical Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/electronic">${this.escapeHtml(getLocalizedText('genre_electronic_radio', 'Electronic Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/country">${this.escapeHtml(getLocalizedText('genre_country_radio', 'Country Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/hip-hop">${this.escapeHtml(getLocalizedText('genre_hiphop_radio', 'Hip Hop Radio Stations'))}</a></li>
-                <li><a href="/${language}/genres/reggae">${this.escapeHtml(getLocalizedText('genre_reggae_radio', 'Reggae Radio Stations'))}</a></li>`
-                }
+                ${(() => {
+                  const genSeg = urlTranslations?.get(`${language}:genres`) || 'genres';
+                  if (additionalData?.topGenres && additionalData.topGenres.length > 0) {
+                    return (additionalData.topGenres as Array<{ slug: string; name: string; count: number }>).map(g =>
+                      `<li><a href="/${language}/${genSeg}/${this.escapeHtml(g.slug)}">${this.escapeHtml(g.name)}</a></li>`
+                    ).join('');
+                  }
+                  return [
+                    ['pop',       getLocalizedText('genre_pop_radio',       'Pop Radio Stations')],
+                    ['rock',      getLocalizedText('genre_rock_radio',      'Rock Radio Stations')],
+                    ['jazz',      getLocalizedText('genre_jazz_radio',      'Jazz Radio Stations')],
+                    ['classical', getLocalizedText('genre_classical_radio', 'Classical Radio Stations')],
+                    ['electronic',getLocalizedText('genre_electronic_radio','Electronic Radio Stations')],
+                    ['country',   getLocalizedText('genre_country_radio',   'Country Radio Stations')],
+                    ['hip-hop',   getLocalizedText('genre_hiphop_radio',    'Hip Hop Radio Stations')],
+                    ['reggae',    getLocalizedText('genre_reggae_radio',    'Reggae Radio Stations')],
+                  ].map(([slug, label]) => `<li><a href="/${language}/${genSeg}/${slug}">${this.escapeHtml(label as string)}</a></li>`).join('');
+                })()}
               </ul>
             </section>
             
             <!-- Major Countries Links -->
             <section class="popular-countries">
               <h2>${this.escapeHtml(getLocalizedText('popular_countries_title', 'Radio Stations by Country'))}</h2>
-              <ul>
-                <li><a href="/${language}/regions/united-states">${this.escapeHtml(getLocalizedText('country_usa_radio', 'United States Radio'))}</a></li>
-                <li><a href="/${language}/regions/united-kingdom">${this.escapeHtml(getLocalizedText('country_uk_radio', 'United Kingdom Radio'))}</a></li>
-                <li><a href="/${language}/regions/germany">${this.escapeHtml(getLocalizedText('country_germany_radio', 'Germany Radio'))}</a></li>
-                <li><a href="/${language}/regions/france">${this.escapeHtml(getLocalizedText('country_france_radio', 'France Radio'))}</a></li>
-                <li><a href="/${language}/regions/canada">${this.escapeHtml(getLocalizedText('country_canada_radio', 'Canada Radio'))}</a></li>
-                <li><a href="/${language}/regions/australia">${this.escapeHtml(getLocalizedText('country_australia_radio', 'Australia Radio'))}</a></li>
-                <li><a href="/${language}/regions/brazil">${this.escapeHtml(getLocalizedText('country_brazil_radio', 'Brazil Radio'))}</a></li>
-                <li><a href="/${language}/regions/italy">${this.escapeHtml(getLocalizedText('country_italy_radio', 'Italy Radio'))}</a></li>
-                <li><a href="/${language}/regions/spain">${this.escapeHtml(getLocalizedText('country_spain_radio', 'Spain Radio'))}</a></li>
-                <li><a href="/${language}/regions/turkey">${this.escapeHtml(getLocalizedText('country_turkey_radio', 'Turkey Radio'))}</a></li>
-                <li><a href="/${language}/regions/japan">${this.escapeHtml(getLocalizedText('country_japan_radio', 'Japan Radio'))}</a></li>
-                <li><a href="/${language}/regions/india">${this.escapeHtml(getLocalizedText('country_india_radio', 'India Radio'))}</a></li>
-              </ul>
+              ${(() => {
+                const regSeg = urlTranslations?.get(`${language}:regions`) || 'regions';
+                const countries: Array<[string, string, string]> = [
+                  ['north-america', 'united-states',  getLocalizedText('country_usa_radio',       'United States Radio')],
+                  ['europe',        'united-kingdom',  getLocalizedText('country_uk_radio',        'United Kingdom Radio')],
+                  ['europe',        'germany',         getLocalizedText('country_germany_radio',   'Germany Radio')],
+                  ['europe',        'france',          getLocalizedText('country_france_radio',    'France Radio')],
+                  ['north-america', 'canada',          getLocalizedText('country_canada_radio',    'Canada Radio')],
+                  ['oceania',       'australia',       getLocalizedText('country_australia_radio', 'Australia Radio')],
+                  ['south-america', 'brazil',          getLocalizedText('country_brazil_radio',    'Brazil Radio')],
+                  ['europe',        'italy',           getLocalizedText('country_italy_radio',     'Italy Radio')],
+                  ['europe',        'spain',           getLocalizedText('country_spain_radio',     'Spain Radio')],
+                  ['asia',          'turkey',          getLocalizedText('country_turkey_radio',    'Turkey Radio')],
+                  ['asia',          'japan',           getLocalizedText('country_japan_radio',     'Japan Radio')],
+                  ['asia',          'india',           getLocalizedText('country_india_radio',     'India Radio')],
+                ];
+                return `<ul>${countries.map(([region, slug, label]) =>
+                  `<li><a href="/${language}/${regSeg}/${region}/${slug}">${this.escapeHtml(label)}</a></li>`
+                ).join('')}</ul>`;
+              })()}
             </section>
             
-            <!-- About Mega Radio -->
+            <!-- About Mega Radio — restored long-form platform description -->
             <section class="about-section">
               <h2>${this.escapeHtml(getLocalizedText('faq_about_megaradio', 'About Mega Radio'))}</h2>
               <p>${this.escapeHtml(getLocalizedText('faq_seo_intro', 'Mega Radio is your ultimate destination for discovering and streaming live radio stations from around the world. With over 60,000 free radio stations spanning 120+ countries, we deliver unlimited access to music, news, sports, and entertainment across every language and genre.'))}</p>
-              <p>${this.escapeHtml(getLocalizedText('faq_free_explanation', 'All radio stations on Mega Radio are completely free to listen to with no registration required. Simply open the app or website, choose a station, and start listening instantly on any device including desktop, mobile, smart TV, and tablet.'))}</p>
+              <p>${this.escapeHtml(getLocalizedText('faq_about_megaradio_text', 'Mega Radio stands as your ultimate destination for discovering and streaming live radio stations from every corner of the world, representing the cutting edge of internet radio streaming technology. As a leading online radio platform, we provide completely free, unlimited access to over 60,000 live radio stations spanning 120+ countries, delivering an unparalleled variety of music, news, sports commentary, talk shows, podcasts, and entertainment in virtually every language and genre imaginable. Our advanced web radio streaming infrastructure ensures crystal-clear audio quality and reliable connectivity, whether you\'re listening to pop radio from New York, classical broadcasts from Vienna, jazz stations from New Orleans, or electronic music from Berlin.'))}</p>
+              <p>${this.escapeHtml(getLocalizedText('faq_about_megaradio_features', 'Whether you\'re passionate about pop radio hits, rock stations, classical music, smooth jazz, electronic dance music, hip-hop, country, world music, news radio, or sports commentary, Mega Radio makes discovering your perfect live radio station absolutely effortless. Best of all, Mega Radio operates on a completely free model with zero registration requirements, no subscription fees, and no paywalls. Simply visit the website from any device, search for any station or genre, and start streaming live radio instantly.'))}</p>
             </section>
 
             <!-- FAQ Section -->
@@ -1890,11 +1940,11 @@ export class SeoRenderer {
 
             <nav class="footer-links">
               <ul>
-                <li><a href="/${language}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
-                <li><a href="/${language}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
-                <li><a href="/${language}/privacy-policy">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
-                <li><a href="/${language}/terms-and-conditions">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
-                <li><a href="/${language}/applications">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:about`) || 'about'}">${this.escapeHtml(getLocalizedText('nav_about', 'About Us'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:contact`) || 'contact'}">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:privacy-policy`) || 'privacy-policy'}">${this.escapeHtml(getLocalizedText('nav_privacy', 'Privacy Policy'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:terms-and-conditions`) || 'terms-and-conditions'}">${this.escapeHtml(getLocalizedText('nav_terms', 'Terms of Service'))}</a></li>
+                <li><a href="/${language}/${urlTranslations?.get(`${language}:applications`) || 'applications'}">${this.escapeHtml(getLocalizedText('nav_apps', 'Mobile Apps'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2210,17 +2260,17 @@ export class SeoRenderer {
             <section class="genre-faq">
               <h2>${this.escapeHtml(getLocalizedText('faq_section_title', 'Frequently Asked Questions'))}</h2>
               <dl>
-                <dt>${this.escapeHtml(getLocalizedText('faq_q_genre_listen', `How do I listen to ${genreName} radio stations?`).replace(/\$\{genreName\}/g, genreName))}</dt>
-                <dd>${this.escapeHtml(getLocalizedText('faq_a_genre_listen', `Select any ${genreName} station from the list above to start streaming instantly. No download or account required — just click and listen for free on any device.`).replace(/\$\{genreName\}/g, genreName))}</dd>
-                <dt>${this.escapeHtml(getLocalizedText('faq_q_genre_free', `Are ${genreName} radio stations free?`).replace(/\$\{genreName\}/g, genreName))}</dt>
-                <dd>${this.escapeHtml(getLocalizedText('faq_a_genre_free', `Yes. All radio stations on Mega Radio, including ${genreName} stations, are completely free to listen to with no subscription or registration required.`).replace(/\$\{genreName\}/g, genreName))}</dd>
+                <dt>${this.escapeHtml(getLocalizedText('faq_q_genre_listen', 'How do I listen to {GENRE} radio stations?').replace(/\{GENRE\}/g, genreName))}</dt>
+                <dd>${this.escapeHtml(getLocalizedText('faq_a_genre_listen', 'Select any {GENRE} station from the list above to start streaming instantly. No download or account required — just click and listen for free on any device.').replace(/\{GENRE\}/g, genreName))}</dd>
+                <dt>${this.escapeHtml(getLocalizedText('faq_q_genre_free', 'Are {GENRE} radio stations free?').replace(/\{GENRE\}/g, genreName))}</dt>
+                <dd>${this.escapeHtml(getLocalizedText('faq_a_genre_free', 'Yes. All radio stations on Mega Radio, including {GENRE} stations, are completely free to listen to with no subscription or registration required.').replace(/\{GENRE\}/g, genreName))}</dd>
               </dl>
             </section>` : ''}
             <nav>
               <ul>
-                <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>
-                <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
                 <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
@@ -2336,9 +2386,9 @@ export class SeoRenderer {
             })()}
             <nav>
               <ul>
-                <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'All Regions'))}</a></li>
-                <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'All Regions'))}</a></li>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
                 <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
@@ -2354,17 +2404,31 @@ export class SeoRenderer {
           content = `
           <main>
             <h1>${this.escapeHtml(h1Text)}</h1>
-            <section>
+            <section class="search-intro">
               <p>${this.escapeHtml(searchSeo.bodyIntro)}</p>
+              <p>${this.escapeHtml(getLocalizedText('search_how_to', 'Type a station name, genre, city, or country into the search box to find matching radio stations from our library of 60,000+ stations worldwide. Results update instantly as you type.'))}</p>
             </section>
-            <nav>
+            <section class="search-tips">
+              <h2>${this.escapeHtml(getLocalizedText('search_tips_title', 'Search Tips'))}</h2>
               <ul>
-                <li><a href="${langPrefix}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse Radio Genres'))}</a></li>
-                <li><a href="${langPrefix}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
-                <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li>${this.escapeHtml(getLocalizedText('search_tip_name', 'Search by station name — for example "BBC Radio 1" or "RFI".'))}</li>
+                <li>${this.escapeHtml(getLocalizedText('search_tip_genre', 'Search by genre — for example "jazz", "classical", or "hip-hop".'))}</li>
+                <li>${this.escapeHtml(getLocalizedText('search_tip_country', 'Search by country or city — for example "Germany" or "Istanbul".'))}</li>
+                <li>${this.escapeHtml(getLocalizedText('search_tip_language', 'Search in your own language — station names and genres are available in dozens of languages.'))}</li>
               </ul>
-            </nav>
+            </section>
+            <section class="search-browse">
+              <h2>${this.escapeHtml(getLocalizedText('search_browse_title', 'Browse Without Searching'))}</h2>
+              <p>${this.escapeHtml(getLocalizedText('search_browse_intro', 'Not sure what to search for? Browse our curated categories to discover great radio stations.'))}</p>
+              <nav>
+                <ul>
+                  <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse Radio Genres'))}</a></li>
+                  <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
+                  <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
+                  <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                </ul>
+              </nav>
+            </section>
           </main>
         `;
         }
@@ -2393,6 +2457,29 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Mega Radio'))}</a></li>
                 <li><a href="${langPrefix}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact Us'))}</a></li>
                 <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Browse Stations'))}</a></li>
+              </ul>
+            </nav>
+          </main>
+        `;
+        }
+        break;
+
+      case 'users':
+        {
+          const langPrefix = `/${language}`;
+          content = `
+          <main>
+            <h1>${this.escapeHtml(h1Text)}</h1>
+            <section class="users-intro">
+              <p>${this.escapeHtml(getLocalizedText('users_page_intro', 'Join the Mega Radio community. Discover what other listeners are tuning in to, share your favourite radio stations, and explore personalised recommendations from 60,000+ live stations worldwide.'))}</p>
+              <p>${this.escapeHtml(getLocalizedText('users_page_features', 'Create a free account to save your favourite stations, follow other listeners, and get personalised radio suggestions based on your listening history. All community features are available at no cost.'))}</p>
+            </section>
+            <nav>
+              <ul>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'Browse Stations'))}</a></li>
+                <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
+                <li><a href="${langPrefix}/recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
+                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2500,7 +2587,7 @@ export class SeoRenderer {
       "contactPoint": {
         "@type": "ContactPoint",
         "contactType": "Customer Service",
-        "availableLanguage": SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.name)
+        "availableLanguage": SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.code)
       }
     };
 
@@ -2578,11 +2665,11 @@ export class SeoRenderer {
       }
     }
 
-    // FAQPage Schema — only on the dedicated /faq page.
-    // Task #129: this used to fire on the homepage (which renders no Q&A),
-    // which Google flags as schema/visible-content mismatch. Questions and
-    // answers are now sourced from the shared FAQ_PAGE_ITEMS list so the
-    // JSON-LD always matches the visible <h2>+<p> blocks rendered above.
+    // FAQPage Schema — emitted on the dedicated /faq page (full FAQ_PAGE_ITEMS)
+    // AND on the homepage (3-question subset matching the visible .faq-section block).
+    // Genre pages also emit a 2-question FAQPage matching their .genre-faq block.
+    // Task #129 guard: schema must always match visible Q&A content to avoid
+    // Google's deceptive-markup penalty.
     let faqPageSchema: any = null;
     if (additionalData?.pageType === 'faq') {
       faqPageSchema = {
@@ -2596,6 +2683,61 @@ export class SeoRenderer {
             "text": getLocalizedText(item.aKey, item.aFallback),
           },
         })),
+      };
+    } else if (additionalData?.pageType === 'home') {
+      faqPageSchema = {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": getLocalizedText('faq_q_what_is', 'What is Mega Radio?'),
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": getLocalizedText('faq_a_what_is', 'Mega Radio is a free online radio platform that lets you stream live radio stations from around the world. You can listen to music, news, sports, talk shows, and more in dozens of languages — no subscription or account required.'),
+            },
+          },
+          {
+            "@type": "Question",
+            "name": getLocalizedText('faq_q_how_many', 'How many radio stations are available?'),
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": getLocalizedText('faq_a_how_many', 'Mega Radio provides access to over 60,000 live radio stations from more than 120 countries. Stations are continuously updated so you always have access to the latest broadcasts.'),
+            },
+          },
+          {
+            "@type": "Question",
+            "name": getLocalizedText('faq_q_devices', 'What devices can I use to listen?'),
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": getLocalizedText('faq_a_devices', 'You can listen on any web browser, as well as through dedicated apps for Android, iOS, Windows, and Smart TV platforms including Samsung and LG. All your favourite stations sync across devices automatically.'),
+            },
+          },
+        ],
+      };
+    } else if (additionalData?.pageType === 'genres' && additionalData?.genreName) {
+      const gn = additionalData.genreName as string;
+      faqPageSchema = {
+        "@context": "https://schema.org",
+        "@type": "FAQPage",
+        "mainEntity": [
+          {
+            "@type": "Question",
+            "name": getLocalizedText('faq_q_genre_listen', 'How do I listen to {GENRE} radio stations?').replace(/\{GENRE\}/g, gn),
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": getLocalizedText('faq_a_genre_listen', 'Select any {GENRE} station from the list above to start streaming instantly. No download or account required — just click and listen for free on any device.').replace(/\{GENRE\}/g, gn),
+            },
+          },
+          {
+            "@type": "Question",
+            "name": getLocalizedText('faq_q_genre_free', 'Are {GENRE} radio stations free?').replace(/\{GENRE\}/g, gn),
+            "acceptedAnswer": {
+              "@type": "Answer",
+              "text": getLocalizedText('faq_a_genre_free', 'Yes. All radio stations on Mega Radio, including {GENRE} stations, are completely free to listen to with no subscription or registration required.').replace(/\{GENRE\}/g, gn),
+            },
+          },
+        ],
       };
     }
 
