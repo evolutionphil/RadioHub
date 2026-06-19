@@ -1193,7 +1193,21 @@ Allow: /
 User-agent: YouBot
 Allow: /
 
-Sitemap: ${baseUrl}/sitemap-index.xml`;
+Sitemap: ${baseUrl}/sitemap-index.xml
+Sitemap: ${baseUrl}/sitemap-en.xml
+Sitemap: ${baseUrl}/sitemap-es.xml
+Sitemap: ${baseUrl}/sitemap-fr.xml
+Sitemap: ${baseUrl}/sitemap-de.xml
+Sitemap: ${baseUrl}/sitemap-pt.xml
+Sitemap: ${baseUrl}/sitemap-it.xml
+Sitemap: ${baseUrl}/sitemap-ru.xml
+Sitemap: ${baseUrl}/sitemap-ar.xml
+Sitemap: ${baseUrl}/sitemap-zh.xml
+Sitemap: ${baseUrl}/sitemap-tr.xml
+Sitemap: ${baseUrl}/sitemap-ja.xml
+Sitemap: ${baseUrl}/sitemap-ko.xml
+Sitemap: ${baseUrl}/sitemap-hi.xml
+Sitemap: ${baseUrl}/sitemap-he.xml`;
 
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Cache-Control', 'public, max-age=86400');
@@ -1866,6 +1880,137 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
     } catch (error) {
       console.error('❌ Error generating sitemap index:', error);
       res.status(500).send('Error generating sitemap index');
+    }
+  });
+
+  // ── Per-language sitemap index (GSC submission endpoint) ─────────────────
+  // /sitemap-en.xml, /sitemap-tr.xml, … → one sitemapindex per language.
+  // Users submit these directly to Google Search Console so each language's
+  // crawl budget is tracked independently. Contains main + genres + all
+  // station chunk sitemaps for a single language.
+  //
+  // Must be registered LAST so all specific routes above are tried first
+  // (e.g. /sitemap-index.xml, /sitemap-main-en.xml, /sitemap-news.xml …).
+  const UNIVERSAL14_SET = new Set(ACTIVE_SITEMAP_LANGUAGES as readonly string[]);
+  app.get("/sitemap-:lang.xml", async (req, res) => {
+    const lang = (req.params.lang || '').toLowerCase();
+
+    // Only serve the 14 universal languages; anything else (e.g. "index",
+    // "news", "images") should have been caught by a more-specific route
+    // above but gets 410 here as a safe fallback.
+    if (!UNIVERSAL14_SET.has(lang)) {
+      return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
+    }
+
+    const cacheControl = `public, max-age=${SITEMAP_CONFIG.indexCacheTtlSeconds}, s-maxage=${SITEMAP_CONFIG.indexCacheTtlSeconds}`;
+
+    try {
+      const baseUrl = getBaseUrl(req);
+
+      let state;
+      try { state = await getQualifiedLanguagesState(); }
+      catch (err) {
+        if (err instanceof QualifiedLanguagesUnavailableError) return send503QualifiedLangs(res, `sitemap-${lang}`);
+        throw err;
+      }
+      if (!state.languages.includes(lang)) {
+        return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
+      }
+
+      const { SitemapManifest } = await import('@workspace/db-shared/mongo-schemas');
+      const langManifests = await SitemapManifest.find({
+        status: 'active',
+        language: lang,
+        type: { $in: ['main', 'genres', 'stations'] },
+      })
+        .select('type language version chunks chunkCount totalUrls qualifiedLanguagesHash')
+        .lean();
+
+      if (langManifests.length === 0) {
+        res.setHeader('Content-Type', 'text/plain');
+        res.setHeader('Retry-After', '120');
+        res.setHeader('Cache-Control', 'no-store');
+        return void res.status(503).send('Sitemap manifest building — retry shortly');
+      }
+
+      // Per-type lookup with maxUpdatedAt computed from chunks
+      const byType = new Map<string, any>();
+      for (const m of langManifests as any[]) {
+        const dates = (m.chunks || [])
+          .map((c: any) => c.maxUpdatedAt)
+          .filter((d: any) => d instanceof Date);
+        const maxUpdatedAt = dates.length > 0
+          ? new Date(Math.max(...dates.map((d: Date) => d.getTime())))
+          : undefined;
+        byType.set(m.type, { ...m, maxUpdatedAt });
+      }
+
+      const manifestSig = langManifests
+        .map((m: any) => `${m.type}:${m.language}:${m.version}`)
+        .sort()
+        .join('|');
+      const etag = makeManifestEtag([
+        'lang-index',
+        lang,
+        state.hash,
+        crypto.createHash('sha256').update(manifestSig).digest('hex').slice(0, 16),
+      ]);
+      if (send304IfMatch(req, res, etag, cacheControl)) return;
+
+      const parts: string[] = [];
+      parts.push(`<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">`);
+
+      const emitLangEntry = (loc: string, lastmod?: string) => {
+        parts.push(`
+  <sitemap>
+    <loc>${escapeXml(loc)}</loc>${lastmod ? `
+    <lastmod>${lastmod}</lastmod>` : ''}
+  </sitemap>`);
+      };
+
+      // 1. Main pages (homepage, genres, regions, countries)
+      const mainM = byType.get('main');
+      if (mainM && mainM.chunkCount > 0) {
+        emitLangEntry(`${baseUrl}/sitemap-main-${lang}.xml`, formatLastmod(mainM.maxUpdatedAt));
+      }
+
+      // 2. Genre pages
+      const genresM = byType.get('genres');
+      if (genresM && genresM.chunkCount > 0) {
+        emitLangEntry(`${baseUrl}/sitemap-genres-${lang}.xml`, formatLastmod(genresM.maxUpdatedAt));
+      }
+
+      // 3. Station chunks (paginated)
+      const stationsM = byType.get('stations');
+      if (stationsM && Array.isArray(stationsM.chunks)) {
+        for (const chunk of stationsM.chunks) {
+          if (!chunk || chunk.urlCount === 0) continue;
+          if (
+            !Number.isInteger(chunk.chunk) ||
+            chunk.chunk < 1 ||
+            chunk.chunk > 9999
+          ) continue;
+          emitLangEntry(
+            `${baseUrl}/sitemap-stations-${lang}-${chunk.chunk}.xml`,
+            formatLastmod(chunk.maxUpdatedAt),
+          );
+        }
+      }
+
+      parts.push(`
+</sitemapindex>`);
+      const xml = parts.join('');
+
+      res.setHeader('Content-Type', 'application/xml');
+      res.setHeader('ETag', etag);
+      res.setHeader('Cache-Control', cacheControl);
+      res.send(xml);
+
+      logger.log(`✅ sitemap-${lang}.xml: main=${!!(mainM?.chunkCount > 0)} genres=${!!(genresM?.chunkCount > 0)} stationChunks=${stationsM?.chunks?.length ?? 0}`);
+    } catch (error) {
+      logger.error(`❌ Error generating sitemap-${lang}.xml:`, error);
+      res.status(500).send('Error generating sitemap');
     }
   });
 }
