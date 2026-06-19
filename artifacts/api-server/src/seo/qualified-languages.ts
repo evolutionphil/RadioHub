@@ -38,6 +38,7 @@ import crypto from 'crypto';
 import { performanceCache } from '../performance-cache';
 import {
   ACTIVE_SITEMAP_LANGUAGES,
+  SITEMAP_PRIORITY_LANGUAGES,
   hasCompleteSeoTranslations,
 } from '@workspace/seo-shared/seo-config';
 import { logger } from '../utils/logger';
@@ -203,6 +204,41 @@ async function loadTranslationsFromDb(
   }
 }
 
+// ---------------------------------------------------------------------------
+// GUARANTEED cohort — universal-14 are ALWAYS qualified
+// ---------------------------------------------------------------------------
+// The universal-14 languages are the product-defined "always complete" cohort:
+// every station carries per-station AI-translated meta (title/description/full)
+// in these 14, so every station detail page renders real localized content for
+// crawlers — the SEO-critical signal. They MUST stay indexable unconditionally.
+//
+// Previously the qualified set was `universal14.filter(hasCompleteSeoTranslations)`.
+// `hasCompleteSeoTranslations` requires EVERY key in REQUIRED_STATION_SEO_KEYS +
+// REQUIRED_HOMEPAGE_SEO_KEYS to be present and non-empty. If a single UI
+// translation key was missing for a language (or a newly-added required key had
+// not been backfilled yet — see the "TODO: Add remaining keys" note in
+// seo-config.ts), that ENTIRE language silently dropped out of the qualified set,
+// which (a) removed it from the sitemap and (b) made seo-renderer flag every
+// station page in that language as `langIneligible` and 301-redirect it to /en.
+// Net effect: the whole site collapsed to "/en only" in Search Console — the
+// exact symptom observed in GSC.
+//
+// We now GUARANTEE the universal-14 cohort (intersected with the active sitemap
+// cohort, so we never publish a language that isn't active) is always qualified.
+// The translation-completeness scan still runs and can ADD languages BEYOND the
+// universal-14 during a future phased rollout (phase2/phase3), but it can never
+// REMOVE one of the 14.
+const GUARANTEED_QUALIFIED_LANGUAGES: readonly string[] = (
+  SITEMAP_PRIORITY_LANGUAGES.universal14 as readonly string[]
+).filter((l) => (ACTIVE_SITEMAP_LANGUAGES as readonly string[]).includes(l));
+
+/** Union the always-qualified universal-14 cohort into a computed set. */
+function withGuaranteedLanguages(qualified: readonly string[]): string[] {
+  const result = new Set<string>(qualified);
+  for (const lang of GUARANTEED_QUALIFIED_LANGUAGES) result.add(lang);
+  return Array.from(result);
+}
+
 async function computeFromTranslations(): Promise<string[]> {
   const langs = ACTIVE_SITEMAP_LANGUAGES as unknown as string[];
 
@@ -223,7 +259,7 @@ async function computeFromTranslations(): Promise<string[]> {
   }
 
   if (misses.length === 0) {
-    return qualified;
+    return withGuaranteedLanguages(qualified);
   }
 
   // PASS 2: bounded-concurrency DB fallback for misses. INCIDENT 2026-05-15:
@@ -259,7 +295,7 @@ async function computeFromTranslations(): Promise<string[]> {
       `🔍 qualified-languages: compute scanned ${langs.length} langs (cache hits=${cacheHits}, db fallbacks=${dbFallbacks}) → qualified=${qualified.length}`,
     );
   }
-  return qualified;
+  return withGuaranteedLanguages(qualified);
 }
 
 async function loadLkg(): Promise<QualifiedLanguagesState | null> {
