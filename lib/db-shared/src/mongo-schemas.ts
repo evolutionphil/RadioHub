@@ -85,6 +85,12 @@ export interface IStation extends Document {
   aiDescriptionSkipped?: boolean; // Station was checked for AI description but had no info from OpenAI - don't recheck to save tokens
   tagsCheckedAt?: Date; // Last time we re-queried Radio-Browser for this station's tags (whether upstream returned tags or was empty) - used to skip re-querying empty-upstream stations for a cooldown window
   hasLogo?: boolean; // Pre-computed flag: true if station has a valid favicon/logo
+  // Logo enrichment (env-gated cron): scrapes the station's own homepage for an
+  // icon when no usable http favicon / completed logoAssets exist, then feeds it
+  // through the existing logo processor. Purely additive for Google Images.
+  logoEnrichmentAttemptedAt?: Date; // Last time the enrichment cron looked at this station
+  logoEnrichmentResult?: 'enriched' | 'icon_failed' | 'no_icon'; // Terminal: 'enriched'/'no_icon'; 'icon_failed' retried after cooldown
+  logoEnrichmentReason?: string; // Short diagnostic for the last attempt (truncated)
   createdAt: Date;
   updatedAt: Date;
 }
@@ -1211,6 +1217,10 @@ const StationSchema = new Schema<IStation>({
   aiDescriptionSkipped: { type: Boolean, default: false, index: true }, // Station was checked for AI description but had no info from OpenAI - don't recheck to save tokens
   tagsCheckedAt: { type: Date }, // Last time we re-queried Radio-Browser for this station's tags (whether upstream returned tags or was empty) - used to skip re-querying empty-upstream stations for a cooldown window
   hasLogo: { type: Boolean, default: false }, // Pre-computed flag: true if station has a valid favicon/logo - used for fast sorting in precomputed cache
+  // Logo enrichment (env-gated homepage-scrape cron) bookkeeping.
+  logoEnrichmentAttemptedAt: { type: Date },
+  logoEnrichmentResult: { type: String, enum: ['enriched', 'icon_failed', 'no_icon'] },
+  logoEnrichmentReason: String,
   // SEO FRESHNESS BUG FIX (2026-05-09): switched from manual `createdAt` /
   // `updatedAt` defaults (which only set on insert) to Mongoose's auto
   // `timestamps: true`. Root cause discovered during sitemap audit: 9938 of
@@ -4013,6 +4023,7 @@ StationSchema.index({ state: 1 }, { sparse: true }); // US/CA state-level region
 StationSchema.index({ hasLogo: 1, lastCheckOk: 1 }); // sitemap "has-logo + working" filter
 StationSchema.index({ mediaGroupId: 1 }, { sparse: true }); // sibling-station lookup
 StationSchema.index({ name: 1, url: 1, countryCode: 1 }); // sync content-key dedup (Radio-Browser uuid reshuffle guard)
+StationSchema.index({ logoEnrichmentAttemptedAt: 1 }, { sparse: true }); // logo-enrichment cron cooldown sweep
 
 // ---- User: gap-fill (existing covers slug, isPublicProfile + inline
 // uniques on email, username, googleId, facebookId, appleId).
