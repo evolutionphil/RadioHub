@@ -195,6 +195,28 @@ function getHstsHeader(): string {
   return hstsConfigs[hstsPhase] || hstsConfigs.confident;
 }
 
+// 410 Gone for static assets removed during monorepo migration.
+// Google may still have these URLs in its index from earlier crawls; 410
+// removes them from the crawl queue immediately (faster than waiting for 404
+// recrawl cycles that can take months).
+const GONE_ASSET_PATHS = new Set([
+  '/images/heroleft-300w.webp',
+  '/images/heroleft-500w.webp',
+  '/images/heroleft.png',
+  '/assets/fonts/ubuntu-400.ttf',
+  '/assets/fonts/ubuntu-700.ttf',
+  '/fonts/ubuntu-400.ttf',
+  '/fonts/ubuntu-700.ttf',
+]);
+app.get('/*path', (req, res, next) => {
+  if (GONE_ASSET_PATHS.has(req.path)) {
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
+    res.status(410).end();
+    return;
+  }
+  next();
+});
+
 // Country-prefix 301 redirect (Bing DALGA A) - run BEFORE everything else
 app.use((req, res, next) => {
   const m = req.path.match(/^\/([a-z]{2})(\/.*)?$/i);
@@ -350,7 +372,11 @@ app.use((req, res, next) => {
   req.setTimeout(30000, () => {
     if (!res.headersSent) {
       console.error(`⏰ Request timeout (30s): ${req.method} ${req.path}`);
-      res.status(504).send('Gateway Timeout');
+      // 503 + Retry-After: tells Googlebot to back off and retry rather than
+      // logging a 504 in GSC's "Server error (5xx)" bucket.
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Service temporarily unavailable — retry shortly');
     }
   });
   next();
@@ -743,7 +769,12 @@ app.use('/api/stream', streamServiceProxy);
     // and Railway sees no measurable load increase. Login/profile/settings
     // are filtered out by `isSeoEligiblePage === false` and still hit the
     // SPA fallback as before.
-    if (!isSeoEligiblePage) return next();
+    if (!isSeoEligiblePage) {
+      // Non-SEO SPA shells (profile, settings, admin, etc.) have no real
+      // content — mark noindex so Googlebot doesn't file them as soft-404s.
+      res.setHeader('X-Robots-Tag', 'noindex, follow');
+      return next();
+    }
 
     // Bot rate limiting only applies to actual bots — real users go straight
     // to the SSR pipeline below.
@@ -881,6 +912,14 @@ app.use('/api/stream', streamServiceProxy);
          and an unused preconnect to unpkg.com (Lighthouse flagged it). -->
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://api.ipify.org">
+    <!-- LCP: the header logo is above-the-fold on every page. The production
+         SSR head (served to 100% of traffic) previously shipped no image
+         preloads at all, so the logo was discovered late by the preload
+         scanner. Preload it with high priority. Matches the asset used by
+         radio-header.tsx (/header-logo-80w.webp, 2.6KB). -->
+    <link rel="preload" as="image" href="/header-logo-80w.webp" fetchpriority="high">
+    <link rel="preload" as="font" href="/fonts/ubuntu-600.woff2" type="font/woff2" crossorigin>
+    ${pageType === 'home' ? '<link rel="preload" as="image" imagesrcset="/images/hero-bg-430w.webp 430w, /images/hero-bg.webp 1920w" imagesizes="100vw" fetchpriority="high">' : ''}
     ${prodTags.styles}
     ${prodTags.preloads}
     <style>
@@ -984,7 +1023,9 @@ app.use('/api/stream', streamServiceProxy);
         // for months before the URL is dropped from the index. DB errors do
         // NOT set stationNotFound (they fall through to a placeholder), so
         // transient outages are safe.
-        if (stationNotFound && seoData.pageData?.pageType === 'station') {
+        if (stationNotFound) {
+          // Return 410 Gone for any not-found page regardless of pageType —
+          // Google de-indexes 410 immediately; 404 stays in the crawl queue for months.
           const { sendJunkGone } = await import('./seo/send-junk-gone');
           sendJunkGone(res);
           return;

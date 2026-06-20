@@ -9,16 +9,18 @@
  *   1. Parse the URL — must look like /{lang}/{station-segment}/{slug}
  *   2. Universal-14 languages (en, es, fr, de, pt, it, ru, ar, zh, tr, ja, ko,
  *      hi, he) are always eligible → pass through immediately (no DB hit).
- *   3. For all other languages: single lean DB query + cached qualified-languages
- *      check. If the station is ineligible → 301 to /en/{station}/{slug}.
+ *   3. For all other languages: 301 to the English canonical unconditionally.
+ *      These languages are never in the qualified-languages set and never in a
+ *      sitemap, so their pages can never be indexable — no DB lookup needed.
+ *      Station URLs → /en/station/{slug}; every other page → reverse-translated
+ *      /en path.
  *
  * The redirect target is always the English canonical, matching what
- * seo-renderer.ts would have issued anyway. SSR handles junk/noindex after
- * this middleware passes.
+ * seo-renderer.ts would have issued anyway. SSR handles junk/noindex (e.g. a
+ * junk station resolves to 410 Gone at the /en canonical) after this redirect.
  */
 
 import type { Request, Response, NextFunction } from 'express';
-import { Station } from '@workspace/db-shared/mongo-schemas';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import { reverseTranslateUrl } from '@workspace/seo-shared/url-translations';
 
@@ -58,30 +60,6 @@ function getStationSegments(): Set<string> {
   }
   return stationSegments;
 }
-
-// Minimal station projection needed for eligibility check.
-const STATION_PROJECTION = {
-  slug: 1,
-  name: 1,
-  url: 1,
-  country: 1,
-  countryCode: 1,
-  language: 1,
-  languageCodes: 1,
-  tags: 1,
-  bitrate: 1,
-  lastCheckOk: 1,
-  lastCheckOkTime: 1,
-  noIndex: 1,
-  descriptions: 1,
-} as const;
-
-// TTL for per-station eligibility cache: 5 minutes (matches SSR cache).
-const STATION_CACHE_TTL_MS = 5 * 60 * 1000;
-const stationEligibilityCache = new Map<
-  string,
-  { eligibleLangs: string[]; expiresAt: number }
->();
 
 export async function langIneligibilityRedirectMiddleware(
   req: Request,
@@ -139,58 +117,23 @@ export async function langIneligibilityRedirectMiddleware(
     return send301(req, res, `/en${englishPath}`);
   }
 
-  // Station URL (exactly 3 parts, valid station segment) — check eligibility.
-  const segment = parts[1].toLowerCase();
+  // Station URL (exactly 3 parts, valid station segment).
+  //
+  // SIMPLIFIED 2026-06-20: non-universal-14 languages are NEVER in the
+  // qualified-languages set (`qualifiedLangs ⊆ universal14`) and are never
+  // published in any sitemap, so a station page in one of these languages can
+  // NEVER be indexable. The previous per-station DB lookup + eligibility check
+  // was dead weight: `getIndexableLanguagesForStation(...) ∩ qualifiedLangs`
+  // can never contain a non-14 language, so the branch always resolved to
+  // "redirect to /en". Redirect unconditionally instead. This:
+  //   (a) removes a per-request Atlas lookup on a hot crawl path — that load
+  //       fed the GSC "Server error (5xx)" / soft-timeout buckets,
+  //   (b) guarantees no /am, /bn, /af, … station page ever renders, and
+  //   (c) emits a single clean hop to the English canonical.
+  // Junk stations resolve to 410 Gone at the /en canonical, so the "gone"
+  // signal is preserved exactly one hop downstream.
   const slug = parts[2].toLowerCase();
-  try {
-    const {
-      getCachedQualifiedLanguages,
-    } = await import('../seo/qualified-languages');
-    const {
-      isStationIndexableInLanguage,
-      isJunkStation,
-    } = await import('../seo/junk-station-rules');
-
-    const qualifiedLangs = await getCachedQualifiedLanguages();
-
-    // Check station-level eligibility (use per-slug cache to avoid redundant
-    // DB hits when the same station is requested in multiple languages).
-    const cacheKey = slug;
-    const now = Date.now();
-    let cached = stationEligibilityCache.get(cacheKey);
-    if (!cached || cached.expiresAt < now) {
-      const station = await Station.findOne({ slug }, STATION_PROJECTION).lean();
-      if (!station) return next(); // Not found — SSR handles 410
-      if (isJunkStation(station) || station.noIndex === true) return next(); // SSR handles 410
-
-      const { getIndexableLanguagesForStation } = await import('../seo/junk-station-rules');
-      const eligibleLangs = getIndexableLanguagesForStation(station, qualifiedLangs);
-      cached = { eligibleLangs, expiresAt: now + STATION_CACHE_TTL_MS };
-      stationEligibilityCache.set(cacheKey, cached);
-
-      // Prevent unbounded cache growth
-      if (stationEligibilityCache.size > 10_000) {
-        const oldest = stationEligibilityCache.keys().next().value;
-        if (oldest) stationEligibilityCache.delete(oldest);
-      }
-    }
-
-    const isEligible = isStationIndexableInLanguage(
-      { slug },
-      lang,
-      cached.eligibleLangs,
-    );
-
-    if (!isEligible) {
-      // Redirect to English canonical — same target seo-renderer.ts would use.
-      return send301(req, res, `/en/station/${slug}`);
-    }
-  } catch {
-    // On any error (DB down, cache miss), pass through to SSR which handles
-    // eligibility gracefully.
-  }
-
-  return next();
+  return send301(req, res, `/en/station/${slug}`);
 }
 
 function send301(req: Request, res: Response, target: string): void {

@@ -220,7 +220,15 @@ export function bareSlugRedirectMiddleware(
   }
 
   if (hasGenreSlug(slug)) {
-    const target = `/${lang}/genres/${slug}`;
+    // Use the language-localized "genres" segment so we 301 straight to the
+    // canonical URL in ONE hop — mirroring the country branch above. Hardcoding
+    // the English "genres" here produced a 2-hop chain for non-English langs
+    // (e.g. /tr/pop → /tr/genres/pop → /tr/turler/pop) because
+    // url-redirect-middleware then localizes the segment. Redirect chains waste
+    // crawl budget and link equity and surface as GSC "redirect error" /
+    // "page with redirect".
+    const genresSegment = translateUrlSegment('genres', lang);
+    const target = `/${lang}/${genresSegment}/${slug}`;
     return send301(req, res, target);
   }
 

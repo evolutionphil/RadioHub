@@ -1019,8 +1019,7 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
-Disallow: /*?*q=
-Disallow: /*?*utm_
+Disallow: /*?
 Allow: /
 
 User-agent: Baiduspider
@@ -1078,6 +1077,7 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
+Disallow: /*?
 Allow: /
 
 User-agent: Sogou
@@ -1135,6 +1135,7 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
+Disallow: /*?
 Allow: /
 
 # AI training crawlers — consume bandwidth with near-zero referral value; block
@@ -1362,7 +1363,14 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       logger.log(`✅ sitemap-main-${lang}.xml (${mainPages.length + topCountries.length} URLs) ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-main-${lang}.xml:`, error);
-      res.status(500).send('Error generating sitemap');
+      // Soft-fail (project rule: public reads must not hard-5xx). A transient
+      // Mongo/render error returns 503 + Retry-After so Googlebot retries and
+      // KEEPS the last good sitemap, instead of a hard 500 that GSC records as
+      // a sitemap error and that can drop already-indexed URLs (feeds the GSC
+      // "Server error (5xx)" bucket).
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Sitemap temporarily unavailable — retry shortly');
     }
   });
 
@@ -1515,7 +1523,14 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       logger.log(`✅ sitemap-stations-${lang}-${chunk}.xml (${stationCount}/${chunkInfo.stationIds.length}) ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-stations-${lang}-${chunk}.xml:`, error);
-      res.status(500).send('Error generating sitemap');
+      // Soft-fail (project rule: public reads must not hard-5xx). A transient
+      // Mongo/render error returns 503 + Retry-After so Googlebot retries and
+      // KEEPS the last good sitemap, instead of a hard 500 that GSC records as
+      // a sitemap error and that can drop already-indexed URLs (feeds the GSC
+      // "Server error (5xx)" bucket).
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Sitemap temporarily unavailable — retry shortly');
     }
   });
 
@@ -1632,7 +1647,14 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       logger.log(`✅ sitemap-genres-${lang}.xml (${genreCount}) ${Date.now() - startTime}ms`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-genres-${lang}.xml:`, error);
-      res.status(500).send('Error generating sitemap');
+      // Soft-fail (project rule: public reads must not hard-5xx). A transient
+      // Mongo/render error returns 503 + Retry-After so Googlebot retries and
+      // KEEPS the last good sitemap, instead of a hard 500 that GSC records as
+      // a sitemap error and that can drop already-indexed URLs (feeds the GSC
+      // "Server error (5xx)" bucket).
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Sitemap temporarily unavailable — retry shortly');
     }
   });
 
@@ -1879,7 +1901,9 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       logger.log(`✅ sitemap-index.xml: ${qualifiedLanguages.length} langs, ${totalChildSitemaps} station chunks, ${manifests.length} total entries`);
     } catch (error) {
       console.error('❌ Error generating sitemap index:', error);
-      res.status(500).send('Error generating sitemap index');
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Sitemap temporarily unavailable — retry shortly');
     }
   });
 
@@ -2010,7 +2034,14 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       logger.log(`✅ sitemap-${lang}.xml: main=${!!(mainM?.chunkCount > 0)} genres=${!!(genresM?.chunkCount > 0)} stationChunks=${stationsM?.chunks?.length ?? 0}`);
     } catch (error) {
       logger.error(`❌ Error generating sitemap-${lang}.xml:`, error);
-      res.status(500).send('Error generating sitemap');
+      // Soft-fail (project rule: public reads must not hard-5xx). A transient
+      // Mongo/render error returns 503 + Retry-After so Googlebot retries and
+      // KEEPS the last good sitemap, instead of a hard 500 that GSC records as
+      // a sitemap error and that can drop already-indexed URLs (feeds the GSC
+      // "Server error (5xx)" bucket).
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Sitemap temporarily unavailable — retry shortly');
     }
   });
 }
