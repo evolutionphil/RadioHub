@@ -1,4 +1,4 @@
-import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
 import { Translation, Station, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
 import { PrecomputedGenresService } from './services/precomputed-genres';
 
@@ -1420,6 +1420,13 @@ export class SeoRenderer {
       baseSeoTags.title = genreSeo.title;
       baseSeoTags.description = genreSeo.description;
       baseSeoTags.keywords = genreSeo.keywords;
+      // Mirror the localized genre title/description onto the social cards;
+      // otherwise twitter:/og: fell back to generic English defaults while the
+      // primary tags were localized. See SEO re-audit 2026-06-20, Finding E.
+      baseSeoTags.ogTitle = genreSeo.title;
+      baseSeoTags.ogDescription = genreSeo.description;
+      baseSeoTags.twitterTitle = genreSeo.title;
+      baseSeoTags.twitterDescription = genreSeo.description;
     }
     
     if (pageType === 'utility') {
@@ -1873,7 +1880,8 @@ export class SeoRenderer {
                   const logo = this.pickLogoUrl(station);
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
-                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
                   return `
                     <li>
                       <a href="${stationUrl}">
@@ -2219,7 +2227,8 @@ export class SeoRenderer {
                   const logo = this.pickLogoUrl(station);
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
-                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
                   return `
                     <li>
                       <a href="${stationUrl}">
@@ -2328,7 +2337,7 @@ export class SeoRenderer {
             ${flagSrc ? `
             <!-- DALGA 2 W2.2: Country flag — SEO image surface -->
             <figure class="country-flag">
-              <img src="${flagSrc}" alt="${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('country_flag', 'flag'))}" width="320" height="213" loading="eager" decoding="async">
+              <img src="${flagSrc}" alt="${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('country_flag', LOCALIZED_FLAG_WORD[language] || 'flag'))}" width="320" height="213" loading="eager" decoding="async">
               <figcaption>${this.escapeHtml(regionName)}</figcaption>
             </figure>
             ` : ''}
@@ -2350,7 +2359,8 @@ export class SeoRenderer {
                   if (!logo) return '';
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
-                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
                   return `
                     <li>
                       <a href="${stationUrl}">

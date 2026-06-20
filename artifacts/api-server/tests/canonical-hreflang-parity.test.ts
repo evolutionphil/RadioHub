@@ -20,13 +20,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildLocalizedUrl } from '../src/seo/url-helpers';
 import { FALLBACK_SEGMENT_TRANSLATIONS } from '@workspace/seo-shared/seo-config';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 
 const UNIVERSAL_14 = ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'];
 
 // Reproduces hreflang's segment resolution (generateLanguageUrls) with an
 // empty DB map so we can assert canonical parity against the same logic.
+// Precedence MUST match both resolvers exactly:
+//   DB map → FALLBACK_SEGMENT_TRANSLATIONS → URL_TRANSLATIONS → raw segment.
 function hreflangSegment(segment: string, lang: string): string {
-  return FALLBACK_SEGMENT_TRANSLATIONS[segment]?.[lang] || segment;
+  return (
+    FALLBACK_SEGMENT_TRANSLATIONS[segment]?.[lang] ||
+    URL_TRANSLATIONS[lang]?.[segment] ||
+    segment
+  );
 }
 
 test('canonical builder localizes `station` segment to match hreflang fallback (empty DB map)', () => {
@@ -52,6 +59,33 @@ test('canonical builder localizes `stations` segment to match hreflang fallback 
       canonical,
       `/${lang}/${encodeSeg(expectedSeg)}`,
       `canonical/hreflang segment mismatch for lang=${lang}`,
+    );
+  }
+});
+
+test('canonical builder localizes `genres` segment via URL_TRANSLATIONS fallback (empty DB map)', () => {
+  const emptyMap = new Map<string, string>();
+  for (const lang of UNIVERSAL_14) {
+    const canonical = buildLocalizedUrl('/genres/pop', lang, undefined, emptyMap);
+    const expectedSeg = hreflangSegment('genres', lang);
+    // Only the `genres` keyword is localized; the slug stays raw.
+    assert.equal(
+      canonical,
+      `/${lang}/${encodeSeg(expectedSeg)}/pop`,
+      `canonical/hreflang segment mismatch for genres lang=${lang}`,
+    );
+  }
+});
+
+test('canonical builder localizes `regions` segment via URL_TRANSLATIONS fallback (empty DB map)', () => {
+  const emptyMap = new Map<string, string>();
+  for (const lang of UNIVERSAL_14) {
+    const canonical = buildLocalizedUrl('/regions/europe', lang, undefined, emptyMap);
+    const expectedSeg = hreflangSegment('regions', lang);
+    assert.equal(
+      canonical,
+      `/${lang}/${encodeSeg(expectedSeg)}/europe`,
+      `canonical/hreflang segment mismatch for regions lang=${lang}`,
     );
   }
 });
