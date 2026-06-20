@@ -993,8 +993,10 @@ Disallow: /*/import-export
 Disallow: /*/analytics
 Disallow: /*/messages
 Disallow: /*/profile
-Disallow: /search
-Disallow: /*/search
+# /search is intentionally NOT disallowed: the SSR layer emits
+# "noindex, follow" on search pages, and Google can only honor that directive
+# if it is allowed to crawl the URL. A robots Disallow would instead leave
+# search URLs "indexed, though blocked by robots.txt". See re-audit 2026-06-20 Item 5.
 Disallow: /login
 Disallow: /*/login
 Disallow: /signup
@@ -1019,7 +1021,18 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
-Disallow: /*?
+# Narrowed from a blanket query-string block (which blocked ALL ?-URLs,
+# including the ?page=N pagination on the /stations catalog hub and listing
+# pages). Block only known tracking params so paginated/crawlable query URLs
+# stay reachable. See re-audit 2026-06-20 Item 5 + internal-linking Component (a).
+Disallow: /*?*utm_source=
+Disallow: /*?*utm_medium=
+Disallow: /*?*utm_campaign=
+Disallow: /*?*utm_term=
+Disallow: /*?*utm_content=
+Disallow: /*?*fbclid=
+Disallow: /*?*gclid=
+Disallow: /*?*ref=
 Allow: /
 
 User-agent: Baiduspider

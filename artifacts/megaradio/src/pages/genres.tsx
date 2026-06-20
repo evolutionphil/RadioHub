@@ -149,9 +149,13 @@ export default function GenresPage({
       {/* Header - Mobile: no background, compact spacing. Desktop: with background */}
       <div className="md:bg-[#151515] py-4 md:py-7 text-3xl font-bold">
         <div className="mx-auto w-full max-w-[1512px] px-5 md:px-[20px]">
-          <div className="mx-auto max-w-[1206px] w-full flex items-center text-white">
+          {/* Re-audit 2026-06-20 Item 6: was a plain <div>, leaving this page
+              with no <h1> on client navigation (the SSR genres index emits one
+              via getH1Text). Promote the existing localized title to the page
+              <h1>; classes/layout preserved so there's no visual change. */}
+          <h1 className="mx-auto max-w-[1206px] w-full flex items-center text-white">
             {t('genres')}
-          </div>
+          </h1>
         </div>
       </div>
 
