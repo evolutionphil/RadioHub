@@ -2588,7 +2588,14 @@ export class SeoRenderer {
         "@type": "ContactPoint",
         "contactType": "Customer Service",
         "availableLanguage": SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.code)
-      }
+      },
+      "sameAs": [
+        "https://www.facebook.com/megaradio",
+        "https://twitter.com/megaradio",
+        "https://www.instagram.com/megaradio",
+        "https://www.youtube.com/@megaradio",
+        "https://www.linkedin.com/company/megaradio",
+      ]
     };
 
     // Vision GO organization node — referenced by the Person schema below.

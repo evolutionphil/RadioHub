@@ -1019,8 +1019,7 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
-Disallow: /*?*q=
-Disallow: /*?*utm_
+Disallow: /*?
 Allow: /
 
 User-agent: Baiduspider
@@ -1078,6 +1077,7 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
+Disallow: /*?
 Allow: /
 
 User-agent: Sogou
@@ -1135,6 +1135,7 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
+Disallow: /*?
 Allow: /
 
 # AI training crawlers — consume bandwidth with near-zero referral value; block

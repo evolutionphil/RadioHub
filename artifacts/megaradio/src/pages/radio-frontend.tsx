@@ -923,25 +923,6 @@ export default function RadioFrontend({
             loading="lazy"
           />
           
-          {/* Hero Left Decorative Pattern - Pink dot halftone pattern.
-              The /images/heroleft-*.webp files were lost during the
-              monorepo migration, so the <img> hides itself on 404 to
-              avoid a broken-image icon in the hero. */}
-          <picture>
-            <source srcSet="/images/heroleft-300w.webp" media="(max-width: 640px)" type="image/webp" />
-            <source srcSet="/images/heroleft-500w.webp" media="(min-width: 641px)" type="image/webp" />
-            <img 
-              src="/images/heroleft-500w.webp" 
-              alt="" 
-              width="500"
-              height="460"
-              className="absolute left-0 bottom-0 w-[300px] sm:w-[400px] lg:w-[500px] h-auto pointer-events-none" 
-              style={{ opacity: 0.6, zIndex: 5 }}
-              aria-hidden="true"
-              loading="lazy"
-              onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-            />
-          </picture>
           
           <div className="mb-3 sm:mb-4 space-y-0.5 text-center md:space-y-1 relative z-20 w-full max-w-[600px] sm:max-w-[720px] md:max-w-[680px] lg:max-w-[1000px] mx-auto px-4 sm:px-6 md:px-8">
             {/* LCP OPTIMIZATION: Show hero text immediately with fallbacks, don't wait for translations */}

@@ -743,7 +743,12 @@ app.use('/api/stream', streamServiceProxy);
     // and Railway sees no measurable load increase. Login/profile/settings
     // are filtered out by `isSeoEligiblePage === false` and still hit the
     // SPA fallback as before.
-    if (!isSeoEligiblePage) return next();
+    if (!isSeoEligiblePage) {
+      // Non-SEO SPA shells (profile, settings, admin, etc.) have no real
+      // content — mark noindex so Googlebot doesn't file them as soft-404s.
+      res.setHeader('X-Robots-Tag', 'noindex, follow');
+      return next();
+    }
 
     // Bot rate limiting only applies to actual bots — real users go straight
     // to the SSR pipeline below.
@@ -887,6 +892,8 @@ app.use('/api/stream', streamServiceProxy);
          scanner. Preload it with high priority. Matches the asset used by
          radio-header.tsx (/header-logo-80w.webp, 2.6KB). -->
     <link rel="preload" as="image" href="/header-logo-80w.webp" fetchpriority="high">
+    <link rel="preload" as="font" href="/fonts/ubuntu-600.woff2" type="font/woff2" crossorigin>
+    ${pageType === 'home' ? '<link rel="preload" as="image" imagesrcset="/images/hero-bg-430w.webp 430w, /images/hero-bg.webp 1920w" imagesizes="100vw" fetchpriority="high">' : ''}
     ${prodTags.styles}
     ${prodTags.preloads}
     <style>
