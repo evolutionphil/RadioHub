@@ -1901,7 +1901,9 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       logger.log(`✅ sitemap-index.xml: ${qualifiedLanguages.length} langs, ${totalChildSitemaps} station chunks, ${manifests.length} total entries`);
     } catch (error) {
       console.error('❌ Error generating sitemap index:', error);
-      res.status(500).send('Error generating sitemap index');
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Sitemap temporarily unavailable — retry shortly');
     }
   });
 

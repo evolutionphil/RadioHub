@@ -195,6 +195,28 @@ function getHstsHeader(): string {
   return hstsConfigs[hstsPhase] || hstsConfigs.confident;
 }
 
+// 410 Gone for static assets removed during monorepo migration.
+// Google may still have these URLs in its index from earlier crawls; 410
+// removes them from the crawl queue immediately (faster than waiting for 404
+// recrawl cycles that can take months).
+const GONE_ASSET_PATHS = new Set([
+  '/images/heroleft-300w.webp',
+  '/images/heroleft-500w.webp',
+  '/images/heroleft.png',
+  '/assets/fonts/ubuntu-400.ttf',
+  '/assets/fonts/ubuntu-700.ttf',
+  '/fonts/ubuntu-400.ttf',
+  '/fonts/ubuntu-700.ttf',
+]);
+app.get('/*path', (req, res, next) => {
+  if (GONE_ASSET_PATHS.has(req.path)) {
+    res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
+    res.status(410).end();
+    return;
+  }
+  next();
+});
+
 // Country-prefix 301 redirect (Bing DALGA A) - run BEFORE everything else
 app.use((req, res, next) => {
   const m = req.path.match(/^\/([a-z]{2})(\/.*)?$/i);
@@ -350,7 +372,11 @@ app.use((req, res, next) => {
   req.setTimeout(30000, () => {
     if (!res.headersSent) {
       console.error(`⏰ Request timeout (30s): ${req.method} ${req.path}`);
-      res.status(504).send('Gateway Timeout');
+      // 503 + Retry-After: tells Googlebot to back off and retry rather than
+      // logging a 504 in GSC's "Server error (5xx)" bucket.
+      res.setHeader('Retry-After', '120');
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).send('Service temporarily unavailable — retry shortly');
     }
   });
   next();
@@ -997,7 +1023,9 @@ app.use('/api/stream', streamServiceProxy);
         // for months before the URL is dropped from the index. DB errors do
         // NOT set stationNotFound (they fall through to a placeholder), so
         // transient outages are safe.
-        if (stationNotFound && seoData.pageData?.pageType === 'station') {
+        if (stationNotFound) {
+          // Return 410 Gone for any not-found page regardless of pageType —
+          // Google de-indexes 410 immediately; 404 stays in the crawl queue for months.
           const { sendJunkGone } = await import('./seo/send-junk-gone');
           sendJunkGone(res);
           return;

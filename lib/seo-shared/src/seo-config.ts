@@ -1317,13 +1317,17 @@ export function generateLanguageUrls(
       return true;
     });
   
-  // x-default: only emit if English is in the allow-list (or no allow-list is
-  // set). For a station whose indexable set is [de, tr] we should NOT point
-  // x-default at /en/... because that URL is noindex for this station —
-  // fall back to the first allowed language instead.
-  if (!allowSet || allowSet.has('en')) {
-    // Architect P0 fix: strip trailing-slash so x-default never resolves to
-    // /en/ (which would 301 to /en) — must match the canonical slashless URL.
+  // x-default: ONLY emit from the English page, not from all 14 language
+  // variants. When every language variant declares x-default → /en/station/slug,
+  // Google receives 14 signals pointing at the English URL and treats it as the
+  // universal canonical, overriding the per-language self-canonicals and filing
+  // the other 13 variants as "Duplicate, Google chose different canonical."
+  // Emitting x-default only from the English page removes the competing signal:
+  // other languages keep their own self-canonical without pointing a "fallback"
+  // arrow at the English version.
+  // Guard: English must also be in the allow-list (not stripped for junk/noindex).
+  if (currentLanguage === 'en' && (!allowSet || allowSet.has('en'))) {
+    // Strip trailing-slash so x-default never resolves to /en/ (301 hop).
     const enPath = cleanPath === '/' || cleanPath === '' ? '' : cleanPath.replace(/\/+$/, '');
     return hreflangs.concat([
       {
