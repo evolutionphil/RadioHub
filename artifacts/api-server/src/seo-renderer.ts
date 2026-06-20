@@ -45,6 +45,7 @@ import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-se
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
+import { buildHomeSeo } from '@workspace/seo-shared/home-seo-templates';
 import { buildCommunityPageSeo } from '@workspace/seo-shared/community-page-seo-templates';
 import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
 import {
@@ -1465,6 +1466,27 @@ export class SeoRenderer {
       baseSeoTags.twitterDescription = genreSeo.description;
     }
     
+    if (pageType === 'home') {
+      // Item 2 (re-audit 2026-06-20): per-language home title/description.
+      // Previously the home <title>/<meta> came only from DB keys and fell
+      // back to ENGLISH for any language whose Translation rows were missing —
+      // duplicate English meta across all 14 locales on the most important
+      // page. buildHomeSeo applies dbTitle || per-lang template BEFORE the
+      // English FINAL_TITLE_FALLBACK at the foot of generateHtmlHead.
+      const homeSeo = buildHomeSeo(language, translations);
+      // Preserve the existing " | Mega Radio" branding rule (seo-config.ts home
+      // case) so <title> stays distinct from the bare-hero <h1>.
+      const branded = /\|\s*Mega\s*Radio\s*$/i.test(homeSeo.title)
+        ? homeSeo.title
+        : `${homeSeo.title} | Mega Radio`;
+      baseSeoTags.title = branded;
+      baseSeoTags.description = homeSeo.description;
+      baseSeoTags.ogTitle = branded;
+      baseSeoTags.ogDescription = homeSeo.description;
+      baseSeoTags.twitterTitle = branded;
+      baseSeoTags.twitterDescription = homeSeo.description;
+    }
+
     if (pageType === 'utility') {
       // 2026-05-12 SEO audit: see corresponding branch in determinePageType.
       // Utility surfaces (feedback / llms / notifications / profile) get a
@@ -1752,11 +1774,13 @@ export class SeoRenderer {
 
     switch (pageType) {
       case 'home':
-        // H1 = bare localized hero phrase. The <title> generated in
-        // seo-config.ts (home case) is augmented with a " | Mega Radio"
-        // brand suffix when it doesn't already contain the brand, so the
-        // two strings always differ even when meta_title is unset.
-        return getLocalizedText('hero_worlds_best_radio');
+        // H1 = bare localized hero phrase. DB key wins; else the per-language
+        // home template `hero` (Item 2 re-audit 2026-06-20) so the <h1> is
+        // localized for all 14 langs instead of falling back to the English
+        // FALLBACK_TEXTS value. The <title> carries a " | Mega Radio" brand
+        // suffix, so the two strings always differ.
+        return translations['hero_worlds_best_radio']?.trim()
+          || buildHomeSeo(language, translations).hero;
       
       case 'station':
         if (stationData) {
