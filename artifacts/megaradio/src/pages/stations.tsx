@@ -5,7 +5,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2, Crown, Sparkles, AlertTriangle, Tag } from "lucide-react";
+import { Plus, RefreshCw, Users, Merge, Check, X, ChevronDown, ChevronUp, Trash2, Crown, Sparkles, AlertTriangle, Tag, Database } from "lucide-react";
 import StationTable from "@/components/stations/station-table";
 import StationForm from "@/components/stations/station-form";
 import Filters from "@/components/stations/filters";
@@ -113,6 +113,7 @@ export default function Stations() {
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const [bulkAiJobId, setBulkAiJobId] = useState<string | null>(null);
   const [showAiDialog, setShowAiDialog] = useState(false);
+  const [showCoverageDialog, setShowCoverageDialog] = useState(false);
   const [generatingStationId, setGeneratingStationId] = useState<string | null>(null);
   const [generatingStationName, setGeneratingStationName] = useState<string>('');
   const [selectedStations, setSelectedStations] = useState<Set<string>>(new Set());
@@ -402,6 +403,24 @@ export default function Stations() {
       const status = query.state.data?.status;
       return status === 'running' ? 2000 : false; // Poll every 2s if running
     },
+  });
+
+  // Per-language AI description coverage (14 universal languages). Fetched only
+  // when the coverage dialog is open so we don't run 14 countDocuments scans on
+  // every page load.
+  const { data: coverageData, isFetching: coverageFetching, refetch: refetchCoverage } = useQuery<{
+    totalStations: number;
+    indexableStations: number;
+    languages: { language: string; withFull: number; withMeta: number; missingFull: number; pctFull: number }[];
+    generatedAt: string;
+  }>({
+    queryKey: ['/api/admin/stations/description-coverage'],
+    queryFn: async () => {
+      const response = await fetch('/api/admin/stations/description-coverage');
+      if (!response.ok) throw new Error('Failed to load coverage');
+      return response.json();
+    },
+    enabled: showCoverageDialog,
   });
 
   // Track progress for the bulk tag re-check job over SSE. The server
@@ -1266,7 +1285,7 @@ export default function Stations() {
                 <Sparkles className="w-4 h-4 mr-2" />
                 {aiJobStatus?.status === 'running' ? 'AI Generating...' : selectedStations.size > 0 ? `Bulk AI (${selectedStations.size})` : 'Bulk AI Descriptions'}
               </Button>
-              <Button 
+              <Button
                 variant="outline"
                 onClick={handleRefreshSkipped}
                 disabled={bulkAiMutation.isPending || aiJobStatus?.status === 'running'}
@@ -1276,6 +1295,16 @@ export default function Stations() {
               >
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Refresh Skipped
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => setShowCoverageDialog(true)}
+                className="w-full sm:w-auto"
+                title="Show per-language AI description coverage across all 14 universal languages"
+                data-testid="button-description-coverage"
+              >
+                <Database className="w-4 h-4 mr-2" />
+                Coverage
               </Button>
               <Button 
                 variant="outline"
@@ -2070,6 +2099,75 @@ export default function Stations() {
         onSubmit={handleFormSubmit}
         isLoading={createMutation.isPending || updateMutation.isPending}
       />
+
+      {/* Per-Language Description Coverage Dialog */}
+      <Dialog open={showCoverageDialog} onOpenChange={setShowCoverageDialog}>
+        <DialogContent className="sm:max-w-lg bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Database className="w-5 h-5 text-blue-500" />
+              AI Description Coverage
+            </DialogTitle>
+            <DialogDescription>
+              How many stations have a full + meta description in each of the 14 universal languages.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3">
+            {coverageData && (
+              <div className="text-sm text-gray-600">
+                Total stations: <strong>{coverageData.totalStations.toLocaleString()}</strong>
+                {' · '}Indexable: <strong>{coverageData.indexableStations.toLocaleString()}</strong>
+              </div>
+            )}
+
+            {coverageFetching ? (
+              <div className="flex items-center justify-center py-8 text-gray-500">
+                <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Computing coverage…
+              </div>
+            ) : coverageData ? (
+              <div className="max-h-[50vh] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-left text-gray-500 border-b">
+                    <tr>
+                      <th className="py-1.5 pr-2">Lang</th>
+                      <th className="py-1.5 pr-2 text-right">Full</th>
+                      <th className="py-1.5 pr-2 text-right">Meta</th>
+                      <th className="py-1.5 pr-2 text-right">Missing</th>
+                      <th className="py-1.5 pl-2 text-right">%</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {coverageData.languages.map((l) => (
+                      <tr key={l.language} className="border-b last:border-0">
+                        <td className="py-1.5 pr-2 font-mono uppercase">{l.language}</td>
+                        <td className="py-1.5 pr-2 text-right">{l.withFull.toLocaleString()}</td>
+                        <td className="py-1.5 pr-2 text-right">{l.withMeta.toLocaleString()}</td>
+                        <td className="py-1.5 pr-2 text-right text-amber-600">{l.missingFull.toLocaleString()}</td>
+                        <td className={`py-1.5 pl-2 text-right font-semibold ${l.pctFull >= 95 ? 'text-green-600' : l.pctFull >= 70 ? 'text-amber-600' : 'text-red-600'}`}>
+                          {l.pctFull}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-gray-500 text-sm">No coverage data.</div>
+            )}
+
+            <div className="flex justify-between items-center pt-2">
+              <span className="text-xs text-gray-400">
+                {coverageData ? `Generated ${new Date(coverageData.generatedAt).toLocaleTimeString()}` : ''}
+              </span>
+              <Button variant="outline" size="sm" onClick={() => refetchCoverage()} disabled={coverageFetching}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${coverageFetching ? 'animate-spin' : ''}`} />
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* AI Generation Progress Dialog */}
       <Dialog open={showAiDialog} onOpenChange={setShowAiDialog}>
