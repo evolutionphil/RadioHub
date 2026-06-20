@@ -701,6 +701,7 @@ app.use(session(sessionConfig));
           ['GSC inspection cron', async () => { (await import('./services/gsc-inspection')).gscInspectionService.initialize(); }],
           ['scheduled mapping-audit digest', async () => { (await import('./services/scheduled-mapping-audit-digest')).scheduledMappingAuditDigest.initialize(); }],
           ['scheduled stuck/resubmit digest', async () => { (await import('./services/scheduled-stuck-resubmit-digest')).scheduledStuckResubmitDigest.initialize(); }],
+          ['scheduled description fill', async () => { (await import('./services/scheduled-description-fill')).scheduledDescriptionFill.initialize(); }],
         ];
         for (const [name, fn] of inits) {
           try { await fn(); logger.log(`✅ SCHEDULER: ${name} initialized`); }
