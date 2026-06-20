@@ -927,6 +927,53 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     });
   });
 
+  // Per-language AI description coverage stats.
+  // Answers "do all stations actually have full+meta descriptions in each of
+  // the 14 universal languages?" with real numbers instead of guesses. For
+  // each language reports how many stations have a non-empty `full` and `meta`.
+  // Cached 5 min — these are 14 countDocuments scans over ~43K docs.
+  app.get("/api/admin/stations/description-coverage", requireAdmin, async (_req, res) => {
+    const CACHE_KEY = 'admin:description-coverage';
+    const cached = performanceCache.getQuick(CACHE_KEY);
+    if (cached) return void res.json(cached);
+
+    const UNIVERSAL_14 = ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'];
+
+    try {
+      const totalStations = await Station.countDocuments({});
+      const indexableStations = await Station.countDocuments({ noIndex: { $ne: true } });
+
+      const perLanguage = await Promise.all(
+        UNIVERSAL_14.map(async (lang) => {
+          // A language counts as "covered" only when BOTH full and meta are
+          // present and non-empty (mirrors the SSR render gate at
+          // seo-renderer.ts which only emits the rich body when full exists).
+          const withFull = await Station.countDocuments({
+            [`descriptions.${lang}.full`]: { $exists: true, $nin: [null, ''] },
+          });
+          const withMeta = await Station.countDocuments({
+            [`descriptions.${lang}.meta`]: { $exists: true, $nin: [null, ''] },
+          });
+          const pct = totalStations > 0 ? Math.round((withFull / totalStations) * 1000) / 10 : 0;
+          return { language: lang, withFull, withMeta, missingFull: totalStations - withFull, pctFull: pct };
+        }),
+      );
+
+      const payload = {
+        totalStations,
+        indexableStations,
+        languages: perLanguage,
+        generatedAt: new Date().toISOString(),
+      };
+
+      performanceCache.setQuick(CACHE_KEY, payload, 300);
+      res.json(payload);
+    } catch (err: any) {
+      logger.error('❌ description-coverage stats failed:', err?.message || err);
+      res.status(500).json({ error: 'Failed to compute coverage', detail: err?.message });
+    }
+  });
+
   // Pause AI description generation job
   app.post("/api/admin/stations/description-job/:jobId/pause", requireAdmin, async (req, res) => {
     const jobId = req.params.jobId;

@@ -558,6 +558,3 @@ export async function batchGenerateStationDescriptions(
   
   return results;
 }
-
-// Common languages for bulk translation (top 14 most spoken/important)
-const COMMON_LANGUAGES = ['en', 'es', 'fr', 'de', 'it', 'pt', 'tr', 'ru', 'ar', 'zh', 'ja', 'ko', 'he'];

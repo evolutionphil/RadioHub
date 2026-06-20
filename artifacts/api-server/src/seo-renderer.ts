@@ -1192,18 +1192,38 @@ export class SeoRenderer {
         if (selfId) baseFilter._id = { $ne: selfId };
         const projection = 'name slug favicon logoAssets country tags votes';
 
-        // INCIDENT 2026-05-14: station-page SSR cross-link Station.find
-        // calls disabled. Three concurrent unindexed/regex queries per
-        // request were stacking under load and pile-up timing out the
-        // entire SSR pipeline (resulting in the "Sender wird geladen…"
-        // hang on /sender/<slug>). Re-enable only after each query has
-        // a confirmed covering index (country path uses the existing
-        // country-popular index, genre path needs a tag-prefix index,
-        // city path needs a state-popular index).
-        void baseFilter;
-        void projection;
-        void signal;
-        const sameCountryQ: Promise<any[]> = Promise.resolve([]);
+        // INCIDENT 2026-05-14: all three station-page SSR cross-link queries
+        // were disabled because three CONCURRENT unindexed/regex Station.find
+        // calls per request stacked under load and pile-up timed out the SSR
+        // pipeline ("Sender wird geladen…" hang).
+        //
+        // RE-ENABLED 2026-06-20 — COUNTRY ONLY: the same-country query is now
+        // safe because (a) it runs ALONE (not concurrently with two siblings),
+        // (b) it is fully covered by the existing
+        // `{ country: 1, lastCheckOk: 1, votes: -1 }` index (mongo-schemas.ts),
+        // and (c) `withSignal` caps it at maxTimeMS so it can never hang the
+        // pipeline — a slow/aborted query just yields an empty section.
+        // Re-enabling this gives every station page 8 server-rendered internal
+        // links to neighbouring stations, fixing the "0 outbound links →
+        // thin/orphaned" signal that parked ~382K pages in GSC's
+        // "Crawled - currently not indexed" bucket.
+        //
+        // GENRE + CITY remain disabled ON PURPOSE: the genre query needs a
+        // contains-`$regex` over the comma-joined `tags` string (see line ~642),
+        // which a btree index cannot accelerate, and the city query has no
+        // `state` index. Adding indexes that wouldn't actually cover those
+        // queries is exactly the cargo-cult risk that caused the incident, so
+        // they stay off until backed by a precomputed cache.
+        const sameCountryQ: Promise<any[]> = country
+          ? withSignal<any[]>(
+              Station.find({ ...baseFilter, country })
+                .sort({ votes: -1 })
+                .limit(8)
+                .select(projection)
+                .lean(),
+              signal,
+            ).catch(() => [])
+          : Promise.resolve([]);
         const sameGenreQ: Promise<any[]> = Promise.resolve([]);
         const sameCityQ: Promise<any[]> = Promise.resolve([]);
 
