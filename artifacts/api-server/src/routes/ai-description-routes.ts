@@ -993,22 +993,42 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   app.post("/api/admin/stations/description-job/:jobId/cancel", requireAdmin, async (req, res) => {
     const jobId = req.params.jobId;
     const job = descriptionJobs.get(jobId);
-    
+
     if (!job) {
       return void res.status(404).json({ error: 'Job not found' });
     }
-    
+
     job.status = 'cancelled';
     job.completedAt = new Date();
     descriptionJobs.set(jobId, job);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       message: 'Job cancelled',
       processed: job.processed,
       successful: job.successful,
       failed: job.failed,
       skipped: job.skipped
     });
+  });
+
+  // ── Automated description fill (scheduled + manual trigger) ─────────────
+
+  app.get("/api/admin/description-fill/status", requireAdmin, async (_req, res) => {
+    const { scheduledDescriptionFill } = await import('../services/scheduled-description-fill');
+    res.json(scheduledDescriptionFill.getStatus());
+  });
+
+  app.post("/api/admin/description-fill/run", requireAdmin, async (_req, res) => {
+    const { scheduledDescriptionFill } = await import('../services/scheduled-description-fill');
+    const status = scheduledDescriptionFill.getStatus();
+    if (status.isRunning) {
+      return void res.status(409).json({ error: 'already_running', message: 'Description fill is already in progress' });
+    }
+    // Fire and forget — client polls /status for progress
+    scheduledDescriptionFill.runOnce('admin-trigger').catch((err) => {
+      logger.error('❌ Manual description fill failed:', err);
+    });
+    res.json({ success: true, message: 'Description fill started — poll /api/admin/description-fill/status for progress' });
   });
 }
