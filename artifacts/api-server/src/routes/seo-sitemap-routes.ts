@@ -1482,10 +1482,16 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>`);
 
-        // A4: image:image — verified hosts (S3 / themegaradio.com) preferred,
-        // otherwise fall back to /images/no-image.webp on our own domain so
-        // every station still gets a discoverable image entry.
-        const stationImg = pickStationImage(station, baseUrl);
+        // A4: image:image — verified hosts (S3 / themegaradio.com) only.
+        // SEO audit 2026-06, Finding C2: previously logo-less stations fell
+        // back to a shared `/images/no-image.webp`, so ~53.5% of station <url>
+        // entries pointed at ONE identical placeholder. Google can flag tens
+        // of thousands of duplicate image references as low-value; per its
+        // image-sitemap guidance, OMITTING the <image:image> is better than a
+        // mass-duplicated placeholder. The page still indexes — image:image is
+        // only a discovery hint. Drop the fallback so the entry is emitted
+        // exclusively for stations with a real, verified logo.
+        const stationImg = pickStationImage(station);
         if (stationImg) {
           const imgTitle = station.name ? `${station.name} logo` : 'Radio station logo';
           const imgCaption = station.name && station.country

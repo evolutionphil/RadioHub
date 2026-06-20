@@ -7,6 +7,8 @@
  * Task #127: extracted from `seo-renderer.ts` for soft-404 fixes.
  */
 
+import { FALLBACK_SEGMENT_TRANSLATIONS } from '@workspace/seo-shared/seo-config';
+
 /**
  * Build localized URL path using URL translations from the database.
  *
@@ -39,7 +41,19 @@ export function buildLocalizedUrl(
   // result is idempotent for safe characters since they encode to themselves.
   const translatedSegments = segments.map((segment) => {
     const key = `${languageCode}:${segment}`;
-    const translated = translationMap.get(key) || segment;
+    // Precedence MUST match hreflang's `generateLanguageUrls` exactly:
+    //   DB translation map → FALLBACK_SEGMENT_TRANSLATIONS → raw segment.
+    // Previously this only consulted the DB map then fell straight to the
+    // raw English segment, so when the `UrlTranslation` collection lacked a
+    // row for a `lang:station`/`lang:stations` pair the canonical emitted
+    // `/de/station/X` while hreflang emitted `/de/sender/X`. The canonical
+    // was then absent from its own hreflang set and Google discarded the
+    // whole cluster. Sharing the fallback table keeps the two in lockstep.
+    // See SEO audit 2026-06, Finding A.
+    const translated =
+      translationMap.get(key) ||
+      FALLBACK_SEGMENT_TRANSLATIONS[segment]?.[languageCode] ||
+      segment;
     // `encodeURIComponent` does NOT encode the URL "mark" characters
     // (`!*'()`), but Google's URL parser, our XML escaper, and the CDN
     // all treat apostrophes inconsistently — leaving `regio's` raw in a

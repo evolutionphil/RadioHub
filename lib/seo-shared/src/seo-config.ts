@@ -1073,7 +1073,13 @@ export function getLanguageFromPath(pathname: string): { language: string; clean
 // Fallback translations for common route segments across all languages
 // CRITICAL: All values MUST use ONLY Latin characters for SEO-safe URLs
 // Used when database translations are not available
-const FALLBACK_SEGMENT_TRANSLATIONS: Record<string, Record<string, string>> = {
+// Exported so the canonical builder (`buildLocalizedUrl` in
+// artifacts/api-server/src/seo/url-helpers.ts) can apply the EXACT same
+// fallback chain as hreflang generation below. Keeping a single shared
+// table is what prevents canonical ≠ hreflang divergence (which makes
+// Google discard the whole hreflang cluster). See SEO audit 2026-06,
+// Finding A.
+export const FALLBACK_SEGMENT_TRANSLATIONS: Record<string, Record<string, string>> = {
   'station': {
     'af': 'stasie',
     'am': 'ጣቢያ',

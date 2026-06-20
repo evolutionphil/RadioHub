@@ -1985,7 +1985,17 @@ export class SeoRenderer {
                   if (!logo) return '';
                   const name = this.escapeHtml(stationData.name || 'Radio Station');
                   const country = stationData.country ? this.escapeHtml(getLocalizedCountryName(stationData.country, language)) : '';
-                  const altText = country ? `${name} logo — ${country}` : `${name} logo`;
+                  // SEO audit 2026-06, Finding D: the alt text was hardcoded
+                  // English ("logo") on every localized SSR page, so Google
+                  // Images indexed English alt text on the /tr, /de, /ar …
+                  // variants. Reuse the same translation keys the React
+                  // component uses (present for all 14 languages) with {name}/
+                  // {country} interpolation; fall back to the English string.
+                  const interpAlt = (tmpl: string): string =>
+                    tmpl.replace(/\{name\}/gi, name).replace(/\{country\}/gi, country);
+                  const altText = country
+                    ? interpAlt(getLocalizedText('seo_station_logo_alt_with_country', `${name} logo — ${country}`))
+                    : interpAlt(getLocalizedText('seo_station_logo_alt', `${name} logo`));
                   const caption = country ? `${name} — ${country}` : name;
                   return `
                 <figure class="station-logo">
@@ -2775,7 +2785,12 @@ export class SeoRenderer {
       const stationSegmentForJsonLd = urlTranslations?.get(`${language}:station`) || 'station';
       const stationItems = additionalData.popularStations.map((station: any, index: number) => {
         const stationUrl = `${baseDomain}/${language}/${stationSegmentForJsonLd}/${station.slug || station._id}`;
-        const stationLogo = station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.favicon || `${baseDomain}/images/default-station.png`;
+        // SEO audit 2026-06, Finding C1: only emit a verified absolute image;
+        // omit `image` rather than ship the shared `default-station.png`
+        // placeholder (or a relative local-disk filename) to Google.
+        const stationLogoRaw =
+          station.logoAssets?.webp256 || station.logoAssets?.webp96 || station.favicon || '';
+        const stationLogo = /^https?:\/\//i.test(stationLogoRaw) ? stationLogoRaw : null;
         // 2026-05-12 SEO audit: every nested item in this ItemList was
         // emitting a full RadioStation entity, and Google evaluates each
         // one against LocalBusiness's required-field list (RadioStation
@@ -2821,7 +2836,7 @@ export class SeoRenderer {
             "@id": stationUrl,
             "name": station.name,
             "url": stationUrl,
-            "image": stationLogo,
+            ...(stationLogo && { "image": stationLogo }),
             ...(stationCountryForAddress && {
               "broadcaster": {
                 "@type": "Organization",
@@ -2897,7 +2912,21 @@ export class SeoRenderer {
     if (stationData) {
       const stationSegmentForRadioJsonLd = urlTranslations?.get(`${language}:station`) || 'station';
       const stationUrl = `${baseDomain}/${language}/${stationSegmentForRadioJsonLd}/${stationData.slug || stationData._id}`;
-      const stationLogo = stationData.logoAssets?.webp256 || stationData.logoAssets?.webp96 || stationData.favicon || `${baseDomain}/images/default-station.png`;
+      // SEO audit 2026-06, Finding C1: only treat an absolute (http) asset as a
+      // real station image. Previously this fell back to a shared
+      // `default-station.png` placeholder for the ~53.5% of stations with no
+      // logo, which made Google index one generic placeholder as the
+      // "official" image for tens of thousands of stations (or 404 if the
+      // asset was missing). Local-disk mode also stores RELATIVE filenames in
+      // logoAssets.webpNNN, so we additionally require an http(s) URL to avoid
+      // emitting an invalid relative `image`/`logo`. When no verified image
+      // exists we omit both properties (the image sitemap already does this).
+      const stationLogoRaw =
+        stationData.logoAssets?.webp256 ||
+        stationData.logoAssets?.webp96 ||
+        stationData.favicon ||
+        '';
+      const stationLogo = /^https?:\/\//i.test(stationLogoRaw) ? stationLogoRaw : null;
       
       // D-A1 FIX (2026-05-08): broadcastDisplayName is required for Google's
       // RadioStation rich result. broadcastFrequency is emitted as a
@@ -3008,8 +3037,7 @@ export class SeoRenderer {
         "broadcastDisplayName": stationData.name,
         "description": schemaDescriptionSource,
         "url": stationUrl,
-        "logo": stationLogo,
-        "image": stationLogo,
+        ...(stationLogo && { "logo": stationLogo, "image": stationLogo }),
         ...(stationData.homepage && { "sameAs": stationData.homepage }),
         ...(stationData.country && {
           "area": {
