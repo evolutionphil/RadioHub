@@ -3135,7 +3135,7 @@ export class SeoRenderer {
     <script type="application/ld+json">
     ${jsonLd(faqPageSchema)}
     </script>` : ''}
-    ${radioStationSchema ? `
+    ${radioStationSchema && seoTags?.noIndex !== true ? `
     <script type="application/ld+json">
     ${jsonLd(radioStationSchema)}
     </script>` : ''}
@@ -3143,7 +3143,7 @@ export class SeoRenderer {
     <script type="application/ld+json">
     ${jsonLd(collectionPageSchema)}
     </script>` : ''}
-    ${popularStationsSchema ? `
+    ${popularStationsSchema && seoTags?.noIndex !== true ? `
     <script type="application/ld+json">
     ${jsonLd(popularStationsSchema)}
     </script>` : ''}`;

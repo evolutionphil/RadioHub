@@ -881,6 +881,12 @@ app.use('/api/stream', streamServiceProxy);
          and an unused preconnect to unpkg.com (Lighthouse flagged it). -->
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://api.ipify.org">
+    <!-- LCP: the header logo is above-the-fold on every page. The production
+         SSR head (served to 100% of traffic) previously shipped no image
+         preloads at all, so the logo was discovered late by the preload
+         scanner. Preload it with high priority. Matches the asset used by
+         radio-header.tsx (/header-logo-80w.webp, 2.6KB). -->
+    <link rel="preload" as="image" href="/header-logo-80w.webp" fetchpriority="high">
     ${prodTags.styles}
     ${prodTags.preloads}
     <style>

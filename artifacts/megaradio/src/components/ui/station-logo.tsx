@@ -231,6 +231,7 @@ export function StationLogo({
       width={sizeConfig.px}
       height={sizeConfig.px}
       loading={priority ? 'eager' : 'lazy'}
+      fetchPriority={priority ? 'high' : undefined}
       decoding="async"
       onError={handleError}
       className={cn(
