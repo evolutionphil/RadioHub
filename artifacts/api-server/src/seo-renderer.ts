@@ -759,8 +759,14 @@ export class SeoRenderer {
         // Same light junk-gate the home/genre/region grids use so no link
         // points at a 410/noindex station (full per-language gate is overkill
         // here — Universal-14 stations are indexable in every one of the 14).
-        additionalData.catalogStations = (result?.stations || [])
+        const catalog = (result?.stations || [])
           .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
+        additionalData.catalogStations = catalog;
+        // Re-audit fix (HIGH): also expose the catalog as `popularStations` so
+        // the existing ItemList + CollectionPage JSON-LD path (which keys off
+        // popularStations) emits structured data for the hub. The body renders
+        // from catalogStations, so this only adds the schema — no double HTML.
+        additionalData.popularStations = catalog;
         additionalData.catalogPage = page;
         additionalData.catalogTotalPages = Math.min(result?.totalPages || 1, 50);
       } catch (error: any) {
@@ -2603,7 +2609,7 @@ export class SeoRenderer {
             <h1>${this.escapeHtml(h1Text || 'Radio Stations')}</h1>
             ${cats.length > 0 ? `
             <section class="popular-stations">
-              <h2>${this.escapeHtml(getLocalizedText('browse_all_stations', 'Browse All Radio Stations'))}</h2>
+              <h2>${this.escapeHtml(getLocalizedText('all_stations', LOCALIZED_RADIO_STATIONS[language] || 'Radio Stations'))}</h2>
               <ul class="popular-stations-list">
                 ${cats.map((station: any) => {
                   const slug = station.slug || station._id;
