@@ -812,12 +812,13 @@ export default function RadioHeader({
               {/* Logo - Figma specs: icon 50x50px, text 100.85x23.15px, left 61px (11px gap) */}
               <Link href={getLocalizedUrl("/")} className="not-active flex flex-shrink-0 items-center">
                 <div className="relative flex-shrink-0">
-                  <img 
+                  <img
                     className="w-8 h-8 md:w-10 md:h-10 lg:w-[50px] lg:h-[50px] flex-shrink-0 rounded-[6px] relative z-10"
-                    src="/images/logo-icon.webp"
+                    src="/header-logo-80w.webp"
                     width="50"
                     height="50"
-                    alt="Megaradio streaming service" 
+                    loading="eager"
+                    alt="Megaradio streaming service"
                     title="Megaradio - Listen to live stations worldwide"
                   />
                   {/* Pink glow effect - bottom right - HIDDEN on mobile/tablet, visible from xl+ */}
