@@ -1,5 +1,5 @@
 // SEO Configuration for multilingual support
-import { reverseTranslateUrl } from './url-translations';
+import { reverseTranslateUrl, URL_TRANSLATIONS } from './url-translations';
 
 /**
  * Word-boundary safe truncation for meta descriptions.
@@ -1079,6 +1079,66 @@ export function getLanguageFromPath(pathname: string): { language: string; clean
 // table is what prevents canonical ≠ hreflang divergence (which makes
 // Google discard the whole hreflang cluster). See SEO audit 2026-06,
 // Finding A.
+// Localized "logo" word for image alt text (station grid / detail logos).
+// Most Latin-script languages keep the loanword 'logo'; non-Latin scripts
+// use their native term. Covers the 14 universal langs (+ English default).
+// See SEO re-audit 2026-06-20, Finding D (image alt localization).
+export const LOCALIZED_LOGO_WORD: Record<string, string> = {
+  'en': 'logo',
+  'es': 'logo',
+  'fr': 'logo',
+  'de': 'logo',
+  'pt': 'logo',
+  'it': 'logo',
+  'tr': 'logo',
+  'ru': 'логотип',
+  'ar': 'شعار',
+  'zh': '标志',
+  'ja': 'ロゴ',
+  'ko': '로고',
+  'hi': 'लोगो',
+  'he': 'לוגו',
+};
+
+// Localized "flag" word for country flag image alt text. Covers the 14
+// universal langs (+ English default). See SEO re-audit 2026-06-20, Finding D.
+export const LOCALIZED_FLAG_WORD: Record<string, string> = {
+  'en': 'flag',
+  'tr': 'bayrağı',
+  'es': 'bandera',
+  'fr': 'drapeau',
+  'de': 'Flagge',
+  'pt': 'bandeira',
+  'it': 'bandiera',
+  'ru': 'флаг',
+  'ar': 'علم',
+  'zh': '国旗',
+  'ja': '国旗',
+  'ko': '국기',
+  'hi': 'झंडा',
+  'he': 'דגל',
+};
+
+// Localized "radio station" phrase for image titles/captions in the station
+// sitemap. Covers the 14 universal langs (+ English default).
+// See SEO re-audit 2026-06-20, Finding D.
+export const LOCALIZED_RADIO_STATION_WORD: Record<string, string> = {
+  'en': 'radio station',
+  'es': 'estación de radio',
+  'fr': 'station de radio',
+  'de': 'Radiosender',
+  'pt': 'estação de rádio',
+  'it': 'stazione radio',
+  'tr': 'radyo istasyonu',
+  'ru': 'радиостанция',
+  'ar': 'محطة إذاعية',
+  'zh': '广播电台',
+  'ja': 'ラジオ局',
+  'ko': '라디오 방송국',
+  'hi': 'रेडियो स्टेशन',
+  'he': 'תחנת רדיו',
+};
+
 export const FALLBACK_SEGMENT_TRANSLATIONS: Record<string, Record<string, string>> = {
   'station': {
     'af': 'stasie',
@@ -1282,7 +1342,17 @@ export function generateLanguageUrls(
           if (!translated && FALLBACK_SEGMENT_TRANSLATIONS[segment]) {
             translated = FALLBACK_SEGMENT_TRANSLATIONS[segment][lang.code];
           }
-          
+
+          // Final static fallback: the full URL_TRANSLATIONS table (same source the
+          // sitemap and inbound routing use) so canonical/hreflang localize EVERY
+          // route segment (genres, regions, country, ...) identically to the sitemap
+          // even when the DB UrlTranslation collection lacks the row. Without this,
+          // canonical emits raw English while the sitemap emits the localized form,
+          // discarding the hreflang cluster. See SEO re-audit 2026-06-20, Finding A.
+          if (!translated && URL_TRANSLATIONS[lang.code]) {
+            translated = URL_TRANSLATIONS[lang.code][segment];
+          }
+
           return translated || segment;
         });
         
@@ -1344,14 +1414,20 @@ export function generateLanguageUrls(
     ]);
   }
 
-  // No English in allow-list: point x-default at the first allowed language's
-  // URL (already built above). Falls back to current-language URL if the
-  // allow-list somehow yielded nothing above the duplicate filter.
-  const fallback = hreflangs[0];
-  if (fallback) {
-    return hreflangs.concat([
-      { lang: 'x-default', url: fallback.url, hreflang: 'x-default' },
-    ]);
+  // When English IS available, the English variant already emits the single
+  // x-default → /en URL; non-English variants must NOT emit a competing
+  // x-default (doing so pointed x-default at an arbitrary first-allowed
+  // language). Only when English is absent from this page's allow-list
+  // (e.g. a station not indexable in English) do we fall back to the first
+  // allowed language. See SEO re-audit 2026-06-20, Finding B.
+  const enInAllowSet = !allowSet || allowSet.has('en');
+  if (!enInAllowSet) {
+    const fallback = hreflangs[0];
+    if (fallback) {
+      return hreflangs.concat([
+        { lang: 'x-default', url: fallback.url, hreflang: 'x-default' },
+      ]);
+    }
   }
   return hreflangs;
 }
@@ -1413,8 +1489,28 @@ export function generateLocalizedStationTitle(station: any, language: string, tr
     }
   }
   
-  // Use DB key 'seo_listen_live_online' for "Listen Live" text, with fallback
-  const listenLiveText = translations['seo_listen_live_online'] || translations['listen_live'] || 'Listen Live';
+  // Use DB key 'seo_listen_live_online' for "Listen Live" text, with a
+  // per-language hardcoded fallback (mirrors the `fromFallbacks` pattern
+  // above). The DB keys are not guaranteed-seeded, so without this map the
+  // CTA stayed the literal English 'Listen Live' in all 14 universal langs.
+  // See SEO re-audit 2026-06-20, Finding C.
+  const listenLiveFallbacks: Record<string, string> = {
+    'en': 'Listen Live',
+    'tr': 'Canlı Dinle',
+    'es': 'Escuchar en Vivo',
+    'fr': 'Écouter en Direct',
+    'de': 'Live Hören',
+    'pt': 'Ouça ao Vivo',
+    'it': 'Ascolta in Diretta',
+    'ru': 'Слушать в Прямом Эфире',
+    'ar': 'استمع مباشرة',
+    'zh': '在线收听',
+    'ja': 'ライブ視聴',
+    'ko': '실시간 청취',
+    'hi': 'लाइव सुनें',
+    'he': 'האזנה חיה',
+  };
+  const listenLiveText = translations['seo_listen_live_online'] || translations['listen_live'] || listenLiveFallbacks[language] || 'Listen Live';
   
   // Use database translation for the page title format, fallback to default
   const pageTitle = translations['radio_playing_page.title'] || '{station_name}{country_part} — {listen_live}';

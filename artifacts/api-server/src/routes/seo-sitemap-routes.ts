@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { Station, Country, Genre, AuthToken, AppLog } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
-import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES, LOCALIZED_LOGO_WORD, LOCALIZED_RADIO_STATION_WORD } from '@workspace/seo-shared/seo-config';
 
 // Map a SEO language code (e.g. "nb") to its BCP47/hreflang tag (e.g. "nb-NO")
 // so XML sitemap alternates match the HTML <link rel="alternate"> tags emitted
@@ -993,8 +993,10 @@ Disallow: /*/import-export
 Disallow: /*/analytics
 Disallow: /*/messages
 Disallow: /*/profile
-Disallow: /search
-Disallow: /*/search
+# /search is intentionally NOT disallowed: the SSR layer emits
+# "noindex, follow" on search pages, and Google can only honor that directive
+# if it is allowed to crawl the URL. A robots Disallow would instead leave
+# search URLs "indexed, though blocked by robots.txt". See re-audit 2026-06-20 Item 5.
 Disallow: /login
 Disallow: /*/login
 Disallow: /signup
@@ -1019,7 +1021,18 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
-Disallow: /*?
+# Narrowed from a blanket query-string block (which blocked ALL ?-URLs,
+# including the ?page=N pagination on the /stations catalog hub and listing
+# pages). Block only known tracking params so paginated/crawlable query URLs
+# stay reachable. See re-audit 2026-06-20 Item 5 + internal-linking Component (a).
+Disallow: /*?*utm_source=
+Disallow: /*?*utm_medium=
+Disallow: /*?*utm_campaign=
+Disallow: /*?*utm_term=
+Disallow: /*?*utm_content=
+Disallow: /*?*fbclid=
+Disallow: /*?*gclid=
+Disallow: /*?*ref=
 Allow: /
 
 User-agent: Baiduspider
@@ -1493,10 +1506,12 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         // exclusively for stations with a real, verified logo.
         const stationImg = pickStationImage(station);
         if (stationImg) {
-          const imgTitle = station.name ? `${station.name} logo` : 'Radio station logo';
+          const logoWord = LOCALIZED_LOGO_WORD[lang] || 'logo';
+          const radioStationWord = LOCALIZED_RADIO_STATION_WORD[lang] || 'radio station';
+          const imgTitle = station.name ? `${station.name} ${logoWord}` : `${radioStationWord} ${logoWord}`;
           const imgCaption = station.name && station.country
-            ? `${station.name} — ${station.country} radio station logo`
-            : (station.name || 'Radio station logo');
+            ? `${station.name} — ${station.country} ${radioStationWord} ${logoWord}`
+            : (station.name || `${radioStationWord} ${logoWord}`);
           parts.push(`
     <image:image>
       <image:loc>${escapeXml(stationImg)}</image:loc>

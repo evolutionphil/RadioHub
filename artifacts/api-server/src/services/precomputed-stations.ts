@@ -459,6 +459,10 @@ export class PrecomputedStationsService {
       codec: 1,
       bitrate: 1,
       logoAssets: 1,
+      // Re-audit fix: project noIndex so downstream consumers (e.g. the
+      // /stations crawl hub) can exclude explicitly-noindexed stations. The
+      // $match below also drops them at source.
+      noIndex: 1,
     } as const;
 
     const trimPool = (pool: any[]): any[] => {
@@ -485,7 +489,7 @@ export class PrecomputedStationsService {
     for (const country of validCountries) {
       try {
         const batch = await Station.aggregate([
-          { $match: { country, lastCheckOk: true } },
+          { $match: { country, lastCheckOk: true, noIndex: { $ne: true } } },
           { $sort: { hasLogo: -1, votes: -1 } },
           { $limit: PER_COUNTRY_LIMIT },
           { $project: PROJECT },

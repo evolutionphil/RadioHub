@@ -702,6 +702,7 @@ app.use(session(sessionConfig));
           ['scheduled mapping-audit digest', async () => { (await import('./services/scheduled-mapping-audit-digest')).scheduledMappingAuditDigest.initialize(); }],
           ['scheduled stuck/resubmit digest', async () => { (await import('./services/scheduled-stuck-resubmit-digest')).scheduledStuckResubmitDigest.initialize(); }],
           ['scheduled description fill', async () => { (await import('./services/scheduled-description-fill')).scheduledDescriptionFill.initialize(); }],
+          ['scheduled logo enrichment', async () => { (await import('./services/scheduled-logo-enrichment')).scheduledLogoEnrichment.initialize(); }],
         ];
         for (const [name, fn] of inits) {
           try { await fn(); logger.log(`✅ SCHEDULER: ${name} initialized`); }

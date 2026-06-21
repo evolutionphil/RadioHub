@@ -236,10 +236,31 @@ class ScheduledDescriptionFill {
           noIndex: { $ne: true },
           aiDescriptionSkipped: { $ne: true },
           descriptions: { $exists: true, $type: 'object' },
+          // Item 4 (re-audit 2026-06-20): count only langs with a VALID `full`
+          // description (string, > 20 chars) rather than raw key count. A
+          // station can have all 14 KEYS present but with empty/short/placeholder
+          // `full` values (a failed or empty translation) — under the old
+          // key-count gate its $size was 14, so it escaped BOTH phases and stayed
+          // permanently incomplete. Counting valid entries re-queues it until
+          // every one of the 14 langs is real. (This also subsumes the old lower
+          // bound: a doc with keys but zero valid entries now matches too.)
           $expr: {
-            $and: [
-              { $gt: [{ $size: { $objectToArray: { $ifNull: ['$descriptions', {}] } } }, 0] },
-              { $lt: [{ $size: { $objectToArray: { $ifNull: ['$descriptions', {}] } } }, 14] },
+            $lt: [
+              {
+                $size: {
+                  $filter: {
+                    input: { $objectToArray: { $ifNull: ['$descriptions', {}] } },
+                    as: 'd',
+                    cond: {
+                      $and: [
+                        { $eq: [{ $type: '$$d.v.full' }, 'string'] },
+                        { $gt: [{ $strLenCP: { $ifNull: ['$$d.v.full', ''] } }, 20] },
+                      ],
+                    },
+                  },
+                },
+              },
+              14,
             ],
           },
         };

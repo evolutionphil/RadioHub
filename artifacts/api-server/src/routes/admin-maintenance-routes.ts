@@ -1448,4 +1448,95 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
       res.json({ job: activeFillTemplatesJob });
     },
   );
+
+  // -------------------------------------------------------------------------
+  // Logo enrichment: scrape station homepages for an icon to close the gap of
+  // stations that emit NO indexable image. Env-gated cron (default OFF); this
+  // manual trigger lets admins kick a (optionally country/limit-scoped) sweep
+  // on demand and watch progress. Mirrors the genre-slug-cleanup single-lock
+  // fire-and-forget pattern.
+  // -------------------------------------------------------------------------
+  app.post(
+    "/api/admin/maintenance/logo-enrichment/run",
+    requireAdmin,
+    async (req: Request, res: Response) => {
+      try {
+        const { scheduledLogoEnrichment } = await import(
+          "../services/scheduled-logo-enrichment"
+        );
+
+        if (scheduledLogoEnrichment.getStatus().isRunning) {
+          return void res.status(409).json({
+            error: "already_running",
+            status: scheduledLogoEnrichment.getStatus(),
+          });
+        }
+
+        // Optional { countryCode } slice — reject anything that isn't a
+        // 2-letter ISO code so we don't run an unintended global sweep.
+        const rawCountry = (req.body?.countryCode as string | undefined) ?? null;
+        let countryCode: string | undefined;
+        if (rawCountry !== null && rawCountry !== "") {
+          const normalized = String(rawCountry).trim().toUpperCase();
+          if (!/^[A-Z]{2}$/.test(normalized)) {
+            return void res.status(400).json({
+              error: "invalid_country_code",
+              message:
+                "countryCode must be a 2-letter ISO code (e.g. 'TR') or omitted.",
+            });
+          }
+          countryCode = normalized;
+        }
+
+        // Optional { limit } slice for safe manual testing.
+        let limit: number | undefined;
+        if (req.body?.limit !== undefined && req.body?.limit !== null && req.body?.limit !== "") {
+          const n = Number(req.body.limit);
+          if (!Number.isFinite(n) || n < 1) {
+            return void res.status(400).json({
+              error: "invalid_limit",
+              message: "limit must be a positive integer or omitted.",
+            });
+          }
+          limit = Math.floor(n);
+        }
+
+        // Fire-and-forget: runOnce resolves only when the full sweep finishes
+        // (potentially many minutes). The singleton lock prevents a second
+        // concurrent run; clients poll /status for progress.
+        scheduledLogoEnrichment
+          .runOnce("admin:manual", { countryCode, limit })
+          .catch((err) => {
+            logger.error("[logo-enrichment manual] crashed:", err);
+          });
+
+        res.json({ ok: true, status: scheduledLogoEnrichment.getStatus() });
+      } catch (err: any) {
+        logger.error(
+          "[logo-enrichment manual] failed to start:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/admin/maintenance/logo-enrichment/status",
+    requireAdmin,
+    async (_req: Request, res: Response) => {
+      try {
+        const { scheduledLogoEnrichment } = await import(
+          "../services/scheduled-logo-enrichment"
+        );
+        res.json({ status: scheduledLogoEnrichment.getStatus() });
+      } catch (err: any) {
+        logger.error(
+          "[logo-enrichment status] error:",
+          err?.message || err,
+        );
+        res.status(500).json({ error: err?.message || "internal_error" });
+      }
+    },
+  );
 }

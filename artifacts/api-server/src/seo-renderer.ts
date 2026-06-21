@@ -1,4 +1,4 @@
-import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
 import { Translation, Station, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
 import { PrecomputedGenresService } from './services/precomputed-genres';
 
@@ -45,6 +45,7 @@ import { buildCountrySeo, buildRegionSeo } from '@workspace/seo-shared/region-se
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
+import { buildHomeSeo } from '@workspace/seo-shared/home-seo-templates';
 import { buildCommunityPageSeo } from '@workspace/seo-shared/community-page-seo-templates';
 import { getLocalizedCountryName } from '@workspace/seo-shared/country-name-translations';
 import {
@@ -342,7 +343,18 @@ export class SeoRenderer {
     // Without this, /de/ cached in German would be served to Turkish users
     // Using cleanUrl prevents unbounded cache key cardinality from query params
     const normalizedLang = preferredLanguage?.toLowerCase();
-    const cacheKey = normalizedLang ? `${cleanUrl}|lang=${normalizedLang}` : cleanUrl;
+    // The /stations catalog hub renders a different slice of stations per
+    // `?page`, but the query string is stripped from cleanUrl above — so page 2
+    // would otherwise be served page 1's cached HTML. Fold the clamped page
+    // number into the cache key for that hub only (bounded cardinality: ≤50).
+    // See SEO re-audit 2026-06-20, internal-linking Component (a).
+    let pageSuffix = '';
+    if (cleanPath.startsWith('/stations')) {
+      const pm = url.match(/[?&]page=(\d+)/);
+      const pg = pm ? Math.min(Math.max(parseInt(pm[1], 10) || 1, 1), 50) : 1;
+      if (pg > 1) pageSuffix = `|page=${pg}`;
+    }
+    const cacheKey = (normalizedLang ? `${cleanUrl}|lang=${normalizedLang}` : cleanUrl) + pageSuffix;
     
     // Check cache for complete page data first
     const cachedPageData = performanceCache.getPageData(cacheKey);
@@ -731,6 +743,37 @@ export class SeoRenderer {
       }
     } else if (cleanPath.startsWith('/stations')) {
       pageType = 'stations';
+      // Crawlable catalog hub: turn the previously dead /stations page (which
+      // rendered only an <h1>) into a paginated, anchor-linked list of stations
+      // sourced ENTIRELY from the precomputed SWR cache — zero live queries, no
+      // regex (the 2026-05-14 incident pattern). This fans out thousands of
+      // internal in-edges to station detail pages across all 14 langs, the
+      // primary lever against the "Crawled – currently not indexed" backlog.
+      // See SEO re-audit 2026-06-20, internal-linking Component (a).
+      try {
+        const PAGE_SIZE = 60;
+        const pm2 = url.match(/[?&]page=(\d+)/);
+        const page = pm2 ? Math.min(Math.max(parseInt(pm2[1], 10) || 1, 1), 50) : 1;
+        const { PrecomputedStationsService } = await import('./services/precomputed-stations');
+        const result = await PrecomputedStationsService.getGlobalStations(page, PAGE_SIZE);
+        // Same light junk-gate the home/genre/region grids use so no link
+        // points at a 410/noindex station (full per-language gate is overkill
+        // here — Universal-14 stations are indexable in every one of the 14).
+        const catalog = (result?.stations || [])
+          .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
+        additionalData.catalogStations = catalog;
+        // Re-audit fix (HIGH): also expose the catalog as `popularStations` so
+        // the existing ItemList + CollectionPage JSON-LD path (which keys off
+        // popularStations) emits structured data for the hub. The body renders
+        // from catalogStations, so this only adds the schema — no double HTML.
+        additionalData.popularStations = catalog;
+        additionalData.catalogPage = page;
+        additionalData.catalogTotalPages = Math.min(result?.totalPages || 1, 50);
+      } catch (error: any) {
+        if (error?.name === 'AbortError' || signal?.aborted) throw error;
+        // Soft-fail: leave catalogStations undefined → the list section is
+        // omitted, H1 + nav still render. Public reads must never 500.
+      }
     } else if (
       cleanPath === '/feedback' || cleanPath.startsWith('/feedback/') ||
       cleanPath === '/llms' || cleanPath.startsWith('/llms/') ||
@@ -1420,8 +1463,36 @@ export class SeoRenderer {
       baseSeoTags.title = genreSeo.title;
       baseSeoTags.description = genreSeo.description;
       baseSeoTags.keywords = genreSeo.keywords;
+      // Mirror the localized genre title/description onto the social cards;
+      // otherwise twitter:/og: fell back to generic English defaults while the
+      // primary tags were localized. See SEO re-audit 2026-06-20, Finding E.
+      baseSeoTags.ogTitle = genreSeo.title;
+      baseSeoTags.ogDescription = genreSeo.description;
+      baseSeoTags.twitterTitle = genreSeo.title;
+      baseSeoTags.twitterDescription = genreSeo.description;
     }
     
+    if (pageType === 'home') {
+      // Item 2 (re-audit 2026-06-20): per-language home title/description.
+      // Previously the home <title>/<meta> came only from DB keys and fell
+      // back to ENGLISH for any language whose Translation rows were missing —
+      // duplicate English meta across all 14 locales on the most important
+      // page. buildHomeSeo applies dbTitle || per-lang template BEFORE the
+      // English FINAL_TITLE_FALLBACK at the foot of generateHtmlHead.
+      const homeSeo = buildHomeSeo(language, translations);
+      // Preserve the existing " | Mega Radio" branding rule (seo-config.ts home
+      // case) so <title> stays distinct from the bare-hero <h1>.
+      const branded = /\|\s*Mega\s*Radio\s*$/i.test(homeSeo.title)
+        ? homeSeo.title
+        : `${homeSeo.title} | Mega Radio`;
+      baseSeoTags.title = branded;
+      baseSeoTags.description = homeSeo.description;
+      baseSeoTags.ogTitle = branded;
+      baseSeoTags.ogDescription = homeSeo.description;
+      baseSeoTags.twitterTitle = branded;
+      baseSeoTags.twitterDescription = homeSeo.description;
+    }
+
     if (pageType === 'utility') {
       // 2026-05-12 SEO audit: see corresponding branch in determinePageType.
       // Utility surfaces (feedback / llms / notifications / profile) get a
@@ -1709,11 +1780,13 @@ export class SeoRenderer {
 
     switch (pageType) {
       case 'home':
-        // H1 = bare localized hero phrase. The <title> generated in
-        // seo-config.ts (home case) is augmented with a " | Mega Radio"
-        // brand suffix when it doesn't already contain the brand, so the
-        // two strings always differ even when meta_title is unset.
-        return getLocalizedText('hero_worlds_best_radio');
+        // H1 = bare localized hero phrase. DB key wins; else the per-language
+        // home template `hero` (Item 2 re-audit 2026-06-20) so the <h1> is
+        // localized for all 14 langs instead of falling back to the English
+        // FALLBACK_TEXTS value. The <title> carries a " | Mega Radio" brand
+        // suffix, so the two strings always differ.
+        return translations['hero_worlds_best_radio']?.trim()
+          || buildHomeSeo(language, translations).hero;
       
       case 'station':
         if (stationData) {
@@ -1873,7 +1946,8 @@ export class SeoRenderer {
                   const logo = this.pickLogoUrl(station);
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
-                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
                   return `
                     <li>
                       <a href="${stationUrl}">
@@ -2219,7 +2293,8 @@ export class SeoRenderer {
                   const logo = this.pickLogoUrl(station);
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
-                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
                   return `
                     <li>
                       <a href="${stationUrl}">
@@ -2328,7 +2403,7 @@ export class SeoRenderer {
             ${flagSrc ? `
             <!-- DALGA 2 W2.2: Country flag — SEO image surface -->
             <figure class="country-flag">
-              <img src="${flagSrc}" alt="${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('country_flag', 'flag'))}" width="320" height="213" loading="eager" decoding="async">
+              <img src="${flagSrc}" alt="${this.escapeHtml(regionName)} ${this.escapeHtml(getLocalizedText('country_flag', LOCALIZED_FLAG_WORD[language] || 'flag'))}" width="320" height="213" loading="eager" decoding="async">
               <figcaption>${this.escapeHtml(regionName)}</figcaption>
             </figure>
             ` : ''}
@@ -2350,7 +2425,8 @@ export class SeoRenderer {
                   if (!logo) return '';
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
-                  const altText = country ? `${stationName} — ${country}` : stationName;
+                  const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
                   return `
                     <li>
                       <a href="${stationUrl}">
@@ -2510,6 +2586,66 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
                 <li><a href="${langPrefix}/recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
                 <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+              </ul>
+            </nav>
+          </main>
+        `;
+        }
+        break;
+
+      case 'stations':
+        {
+          // Crawlable catalog hub (Component (a)). All localized URLs go through
+          // buildLocalizedUrl so the in-page links match the canonical/hreflang
+          // exactly (URL_TRANSLATIONS-localized segments + station-slug skip).
+          const cats = (additionalData?.catalogStations as any[] | undefined) || [];
+          const curPage = (additionalData?.catalogPage as number) || 1;
+          const totalPages = (additionalData?.catalogTotalPages as number) || 1;
+          const stationsBase = buildLocalizedUrl('/stations', language, undefined, urlTranslations);
+          const genresHref = buildLocalizedUrl('/genres', language, undefined, urlTranslations);
+          const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+          content = `
+          <main>
+            <h1>${this.escapeHtml(h1Text || 'Radio Stations')}</h1>
+            ${cats.length > 0 ? `
+            <section class="popular-stations">
+              <h2>${this.escapeHtml(getLocalizedText('all_stations', LOCALIZED_RADIO_STATIONS[language] || 'Radio Stations'))}</h2>
+              <ul class="popular-stations-list">
+                ${cats.map((station: any) => {
+                  const slug = station.slug || station._id;
+                  const stationUrl = buildLocalizedUrl(`/station/${slug}`, language, undefined, urlTranslations);
+                  const logo = this.pickLogoUrl(station);
+                  const stationName = this.escapeHtml(station.name || 'Radio Station');
+                  const country = station.country ? this.escapeHtml(station.country) : '';
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
+                  return `
+                    <li>
+                      <a href="${stationUrl}">
+                        ${logo ? `<img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">` : ''}
+                        <h3>${stationName}</h3>
+                      </a>
+                    </li>`;
+                }).join('')}
+              </ul>
+            </section>
+            ${totalPages > 1 ? `
+            <nav class="pagination" aria-label="${this.escapeHtml(getLocalizedText('pagination', 'Pagination'))}">
+              <ul>
+                ${Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => {
+                  if (n === curPage) {
+                    return `<li><span aria-current="page">${n}</span></li>`;
+                  }
+                  const href = n === 1 ? stationsBase : `${stationsBase}?page=${n}`;
+                  const rel = n === curPage - 1 ? ' rel="prev"' : n === curPage + 1 ? ' rel="next"' : '';
+                  return `<li><a href="${href}"${rel}>${n}</a></li>`;
+                }).join('')}
+              </ul>
+            </nav>` : ''}
+            ` : ''}
+            <nav>
+              <ul>
+                <li><a href="${genresHref}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
+                <li><a href="/${language}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2876,11 +3012,17 @@ export class SeoRenderer {
     // for a page we tell Google not to index is wasted markup.
     // Derive pageType from cleanPath (generateHtmlHead doesn't receive it
     // as a parameter; cleanPath is the canonical post-language strip).
-    const collectionPageType: 'genres' | 'regions' | 'stations' | null =
+    const collectionPageType: 'genres' | 'regions' | 'country' | 'stations' | null =
       cleanPath === '/genres' || cleanPath.startsWith('/genres/')
         ? 'genres'
         : cleanPath === '/regions' || cleanPath.startsWith('/regions/')
         ? 'regions'
+        // /country/<x> is the same logical page as /regions/<continent>/<country>
+        // (both render pageType='regions' + an ItemList of popular stations), so
+        // emit the same CollectionPage>ItemList wrapper for structured-data
+        // parity between the two URL shapes. See SEO re-audit 2026-06-20, Item 1.
+        : cleanPath === '/country' || cleanPath.startsWith('/country/')
+        ? 'country'
         : cleanPath === '/stations' || cleanPath.startsWith('/stations/')
         ? 'stations'
         : null;
@@ -2979,7 +3121,13 @@ export class SeoRenderer {
           .replace(/^\s*\[[^\]]*\]\s*/g, '')
           .replace(/\{STATION_NAME\}/g, stationData.name || '')
           .trim();
-        return candidate || `Listen to ${stationData.name} live online. Free radio streaming on Mega Radio.`;
+        // Item 3 (re-audit 2026-06-20): localize the synthetic fallback per PAGE
+        // language so a station without a per-language/base description doesn't
+        // ship English copy into the JSON-LD of a non-English page. Reuses the
+        // existing LOCALIZED_LISTEN_LIVE map (14 langs + English default).
+        if (candidate) return candidate;
+        const listenLive = LOCALIZED_LISTEN_LIVE[language] || LOCALIZED_LISTEN_LIVE.en;
+        return `${stationData.name} — ${listenLive} · Mega Radio`;
       })();
 
       // 2026-05-12 SEO audit (138 invalid items): switched primary type
@@ -3069,7 +3217,12 @@ export class SeoRenderer {
         },
         "keywords": stationKeywords,
         "isAccessibleForFree": true,
-        "inLanguage": stationData.language || language
+        // Item 3 (re-audit 2026-06-20): inLanguage must describe the language of
+        // the RENDERED content, i.e. the PAGE language (varies per /xx/ variant).
+        // stationData.language is a per-station value identical across all 14
+        // variants and frequently a full English name ("english") or garbage —
+        // invalid for BCP-47. Emit the clean page language code instead.
+        "inLanguage": language
       };
     }
     

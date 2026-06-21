@@ -8,6 +8,7 @@
  */
 
 import { FALLBACK_SEGMENT_TRANSLATIONS } from '@workspace/seo-shared/seo-config';
+import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 
 /**
  * Build localized URL path using URL translations from the database.
@@ -39,20 +40,40 @@ export function buildLocalizedUrl(
   // CDN sometimes rewrites or fragments — surfaced in GSC as soft-404s.
   // We encode at the per-segment level so `/` separators are preserved; the
   // result is idempotent for safe characters since they encode to themselves.
-  const translatedSegments = segments.map((segment) => {
+  // A station slug lives at the 2nd segment of `/station/*` or `/stations/*`.
+  // It is a unique identifier and must NEVER be translated — mirrors the
+  // `isStationSlug` skip in hreflang's `generateLanguageUrls`. Without this,
+  // a station whose slug coincidentally equals a localized route word (e.g. a
+  // station slugged `discover`/`trending`/`genres`) would have its slug
+  // translated in the canonical/sitemap but left raw in hreflang, re-creating
+  // the very canonical≠hreflang mismatch we're eliminating. See SEO re-audit
+  // 2026-06-20, Finding A (slug-collision hardening).
+  const isStationPath =
+    englishPath.includes('/station/') || englishPath.includes('/stations/');
+  const translatedSegments = segments.map((segment, index) => {
+    if (isStationPath && index === 1) {
+      // Skip translation; still percent-encode unsafe characters.
+      return encodeURIComponent(segment).replace(
+        /[!*'()]/g,
+        (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase(),
+      );
+    }
     const key = `${languageCode}:${segment}`;
     // Precedence MUST match hreflang's `generateLanguageUrls` exactly:
-    //   DB translation map → FALLBACK_SEGMENT_TRANSLATIONS → raw segment.
+    //   DB translation map → FALLBACK_SEGMENT_TRANSLATIONS →
+    //   URL_TRANSLATIONS → raw segment.
     // Previously this only consulted the DB map then fell straight to the
     // raw English segment, so when the `UrlTranslation` collection lacked a
     // row for a `lang:station`/`lang:stations` pair the canonical emitted
     // `/de/station/X` while hreflang emitted `/de/sender/X`. The canonical
     // was then absent from its own hreflang set and Google discarded the
-    // whole cluster. Sharing the fallback table keeps the two in lockstep.
-    // See SEO audit 2026-06, Finding A.
+    // whole cluster. The shared FALLBACK + URL_TRANSLATIONS chain keeps
+    // canonical / hreflang / sitemap in lockstep for EVERY route segment.
+    // See SEO audit 2026-06, Finding A (+ 2026-06-20 re-audit, Finding A).
     const translated =
       translationMap.get(key) ||
       FALLBACK_SEGMENT_TRANSLATIONS[segment]?.[languageCode] ||
+      URL_TRANSLATIONS[languageCode]?.[segment] ||
       segment;
     // `encodeURIComponent` does NOT encode the URL "mark" characters
     // (`!*'()`), but Google's URL parser, our XML escaper, and the CDN
