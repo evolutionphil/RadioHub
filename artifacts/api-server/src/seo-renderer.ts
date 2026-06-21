@@ -1350,7 +1350,25 @@ export class SeoRenderer {
       logger.log(`🎯 Using custom SEO metadata for ${dbPageType}/${routeKey}/${language}`);
       seoTags = this.applyCustomSeoMetadata(seoTags, customMetadata);
     }
-    
+
+    // For the /stations hub, each paginated variant serves a different slice
+    // of stations (60/page) — the canonical must include ?page=N so Google
+    // treats page 2 as its own URL, not a duplicate of page 1. Without this
+    // patch the base generateSeoTags() strips the query string from every
+    // canonical, collapsing all 50 hub pages into a single page-1 entry.
+    // We also append ?page=N to every hreflang alternate so the per-language
+    // pagination cluster is consistent.
+    const catalogPage = (additionalData?.catalogPage as number) || 1;
+    if (pageType === 'stations' && catalogPage > 1 && seoTags.canonical) {
+      seoTags.canonical = `${seoTags.canonical}?page=${catalogPage}`;
+      if (Array.isArray(seoTags.hreflangs)) {
+        seoTags.hreflangs = seoTags.hreflangs.map((h: { hreflang: string; url: string }) => ({
+          ...h,
+          url: `${h.url}?page=${catalogPage}`,
+        }));
+      }
+    }
+
     // Compile the static page data
     const pageData = {
       language,
