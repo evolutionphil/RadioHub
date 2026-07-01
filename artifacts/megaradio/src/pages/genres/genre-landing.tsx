@@ -117,14 +117,13 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  if (genreLoading) {
-    return (
-      <div className="min-h-screen bg-[#0D0D0D] text-white flex items-center justify-center">
-        <div className="text-xl">{t('genre_loading', 'Loading genre...') || 'Loading genre...'}</div>
-      </div>
-    );
-  }
-
+  // NOTE (2026-07-01, Ahrefs "H1 tag missing or empty"): we intentionally do NOT
+  // gate the whole page behind `genreLoading` any more. The heading below is the
+  // page's single <h1>; a full-page loading spinner meant a crawler that snapshot
+  // the rendered DOM before the genre query resolved saw ZERO <h1>. `genreName`
+  // already has a synchronous slug-derived fallback, so the header/H1 render
+  // immediately; only the station grid shows its own skeleton while it loads.
+  void genreLoading;
   const genreName = genre?.name || (slug ? slug.split('-').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') : '') || '';
 
   return (

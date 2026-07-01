@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useTranslation } from '@/hooks/useTranslation';
-import { generateSeoTags, getLanguageFromPath } from '@workspace/seo-shared/seo-config';
+import { generateSeoTags, getLanguageFromPath, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
@@ -139,15 +139,21 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
       document.title = seoTags.title;
     }
 
+    // Cap the meta description at <=160 chars (Google truncates ~155-160; Ahrefs
+    // flags "Meta description too long" above 160). The SSR head already truncates
+    // via truncateAtWordBoundary; mirror it here so the hydrated <meta> the crawler
+    // renders in the SPA never exceeds the limit either (word-boundary safe).
+    const cappedDescription = truncateAtWordBoundary(seoTags.description || '', 160);
+
     // Update or create meta description
-    updateMetaTag('description', seoTags.description);
+    updateMetaTag('description', cappedDescription);
 
     // Update or create canonical link
     updateLinkTag('canonical', seoTags.canonical);
 
     // Update Open Graph tags
     updateMetaProperty('og:title', seoTags.ogTitle || seoTags.title);
-    updateMetaProperty('og:description', seoTags.ogDescription || seoTags.description);
+    updateMetaProperty('og:description', seoTags.ogDescription || cappedDescription);
     updateMetaProperty('og:type', 'website');
     updateMetaProperty('og:url', seoTags.canonical);
     if (seoTags.ogImage) {
@@ -157,7 +163,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // Update Twitter tags
     updateMetaTag('twitter:card', 'summary_large_image');
     updateMetaTag('twitter:title', seoTags.twitterTitle || seoTags.title);
-    updateMetaTag('twitter:description', seoTags.twitterDescription || seoTags.description);
+    updateMetaTag('twitter:description', seoTags.twitterDescription || cappedDescription);
 
     // NOTE (2026-07-01): client-side hreflang + JSON-LD injection REMOVED.
     // The API server (seo-renderer.ts) renders a complete, correct SEO head on
