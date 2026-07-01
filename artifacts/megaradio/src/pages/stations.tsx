@@ -351,7 +351,12 @@ export default function Stations() {
   // Bulk AI description generation mutation
   const bulkAiMutation = useMutation({
     mutationFn: async ({ filterByCountry, skipExisting, limit, selectedStationIds, languages }: { filterByCountry?: string; skipExisting?: boolean; limit?: number; selectedStationIds?: string[]; languages?: string[] }) => {
-      const response = await fetch('/api/admin/stations/bulk-generate-descriptions', {
+      // Backend route is /generate-bulk-descriptions (ai-description-routes.ts).
+      // The old '/bulk-generate-descriptions' name never existed server-side, so
+      // Bulk AI 404'd → the SPA fallback returned index.html and the client threw
+      // "Unexpected token '<' … is not valid JSON". Request body/response contract
+      // is identical; only the path segment order was wrong.
+      const response = await fetch('/api/admin/stations/generate-bulk-descriptions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ filterByCountry, skipExisting, limit, selectedStationIds, languages: languages || Array.from(selectedLanguages) })
