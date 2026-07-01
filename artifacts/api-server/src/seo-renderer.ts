@@ -753,6 +753,15 @@ export class SeoRenderer {
           }
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
+          // The top-stations grid uses a live (unindexed) $regex on `tags` —
+          // the 2026-05-14 pile-up pattern. Under load it can hit its 4s
+          // maxTimeMS and throw here BEFORE `popularStations` is assigned.
+          // Record that the fetch FAILED (vs genuinely returning few stations)
+          // so the genre thin-gate below does not silently de-index a curated
+          // whitelisted genre on a transient Mongo slowdown.
+          if (additionalData.popularStations === undefined) {
+            additionalData.popularStationsFetchFailed = true;
+          }
         }
         }
       }
@@ -1217,7 +1226,12 @@ export class SeoRenderer {
     //      whole template on Google's low-quality list.
     if (pageType === 'genres' && additionalData?.genreSlug) {
       const popularStations = (additionalData?.popularStations as any[] | undefined) || [];
-      const tooThin = popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX;
+      // If the top-stations fetch FAILED (transient Mongo timeout), an empty
+      // grid is not evidence the genre is thin — do not de-index a curated
+      // whitelisted genre over a blip. A not-whitelisted genre is still caught
+      // by `genreNotWhitelisted` below, so this only protects trusted genres.
+      const fetchFailed = additionalData.popularStationsFetchFailed === true;
+      const tooThin = !fetchFailed && popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX;
       if (additionalData.genreNotWhitelisted || tooThin) {
         seoTags.robots = 'noindex, follow';
         seoTags.noIndex = true;
@@ -1231,7 +1245,7 @@ export class SeoRenderer {
       // the index immediately. We keep the softer noindex-200 path for
       // whitelisted-but-thin genres because real users typing the URL
       // still see a useful (though sparse) genre grid.
-      if (additionalData.genreNotWhitelisted && popularStations.length === 0) {
+      if (additionalData.genreNotWhitelisted && popularStations.length === 0 && !fetchFailed) {
         stationNotFound = true;
         additionalData.notFound = true;
       }

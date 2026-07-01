@@ -353,6 +353,15 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     // Austria radios with URL parameter support like GitHub example
     if (pathToUse === '/radios/austria') return <LazyRoutes.AustriaRadiosPage />;
 
+    // Bare /stations is the SEO-eligible public catalog hub (SSR renders a
+    // paginated station list). The SPA previously had no branch for it, so it
+    // hydrated to <NotFound/> — a 404 flash for users AND, worse, Googlebot's
+    // rendered view showed a 404 for a page we want indexed. Reuse the existing
+    // public Radios listing (the same station-grid UI as /radios) so the
+    // rendered page is real station content, not a 404. Must precede the
+    // '/stations/' detail check below.
+    if (pathToUse === '/stations') return <LazyRoutes.Radios selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
+
     // CRITICAL FIX: Station routing - handle BOTH English and translated paths
     // Support both /station/ and /stations/ formats without redirect (avoids losing country code)
     if (pathToUse.startsWith('/station/')) return <LazyRoutes.StationDetails />;
