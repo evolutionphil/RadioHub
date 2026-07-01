@@ -742,27 +742,36 @@ export class LogoProcessor {
       }
       
       lastResult = result;
-      
-      // Don't retry on invalid format - the content won't change
+
+      // Don't retry invalid-format via DIRECT — the bytes won't change on a
+      // re-fetch from the same IP. EXCEPTION: an HTML/error-page body (as
+      // opposed to an SVG or a corrupt image) is very often an anti-bot block
+      // that serves a real image to residential IPs. So when a proxy is
+      // configured and the failure looks like a block page, fall through to the
+      // proxy retry below instead of giving up.
       if (result.failureType === 'invalid_format') {
+        const looksLikeAntiBotBlock =
+          /html|error page|error response|access denied|not found|forbidden/i.test(result.error || '');
+        if (LOGO_FETCH_PROXY && looksLikeAntiBotBlock) break;
         return result;
       }
-      
+
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       }
     }
 
     // External-proxy fallback: if the direct download was blocked (HTTP 4xx/5xx),
-    // connection-refused, or timed out — and a residential proxy is configured —
-    // retry ONCE through it. This rescues favicons that 403 our datacenter IP but
-    // serve 200 to residential IPs (the "Ahrefs can fetch it but we can't" case).
-    // `invalid_format` is intentionally excluded: the bytes won't change via a
-    // different egress route, so proxying it would just waste metered bandwidth.
+    // connection-refused, timed out, or came back as an anti-bot HTML/error page
+    // — and a residential proxy is configured — retry ONCE through it. This
+    // rescues favicons that block/serve-an-error-page to our datacenter IP but
+    // return 200 + the real image to residential IPs ("Ahrefs can fetch it but
+    // we can't"). A genuine SVG/corrupt `invalid_format` returned early above and
+    // never reaches here, so we don't waste proxy bandwidth on unrecoverable ones.
     if (
       LOGO_FETCH_PROXY &&
       lastResult.failureType &&
-      (['http_error', 'download_failed', 'timeout'] as FailureType[]).includes(lastResult.failureType)
+      (['http_error', 'download_failed', 'timeout', 'invalid_format'] as FailureType[]).includes(lastResult.failureType)
     ) {
       logger.log(`🌐 PROXY retry (${lastResult.failureType}): ${url.substring(0, 60)}`);
       const proxied = await this.downloadImage(url, 1, true);
