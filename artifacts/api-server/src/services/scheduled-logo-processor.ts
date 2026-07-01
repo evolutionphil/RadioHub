@@ -37,6 +37,15 @@ class ScheduledLogoProcessor {
   private readonly DELAY_BETWEEN_ROUNDS_MS = 800;
   private readonly MAX_RUNTIME_MS = 4 * 60 * 60 * 1000; // 4h hard ceiling
   private readonly STALE_PROCESSING_MS = 60 * 60 * 1000; // 1h: revive crashed in-flight items
+  // Self-healing retry (2026-07-01): `http_error` and `invalid_format` failures
+  // were skipped FOREVER, so a transient outage, a proxy/UA 403 (the source
+  // host blocks our fetcher but returns 200 to Ahrefs/Google), or a favicon
+  // that changed after the failure left the station stuck on its external
+  // favicon permanently — re-running the cron never retried them (the "I ran it
+  // many times but it still isn't processed" symptom). Re-attempt these once
+  // every 30 days so the pipeline pulls them into S3 on its own. Genuinely-dead
+  // sources simply re-fail and wait another 30 days — no manual action needed.
+  private readonly RETRY_PERMANENT_FAILURE_MS = 30 * 24 * 60 * 60 * 1000; // 30d
 
   static getInstance(): ScheduledLogoProcessor {
     if (!ScheduledLogoProcessor.instance) {
@@ -107,6 +116,7 @@ class ScheduledLogoProcessor {
     // for more than STALE_PROCESSING_MS (a previous run crashed mid-item),
     // pick it up again. Otherwise we'd leak rows forever.
     const stalePivot = new Date(Date.now() - this.STALE_PROCESSING_MS);
+    const retryPivot = new Date(Date.now() - this.RETRY_PERMANENT_FAILURE_MS);
     const filter: any = {
       favicon: { $exists: true, $nin: ['', null, 'null'] },
       slug: { $exists: true, $ne: null },
@@ -116,6 +126,15 @@ class ScheduledLogoProcessor {
         {
           'logoAssets.status': 'failed',
           'logoAssets.failureType': { $nin: ['http_error', 'invalid_format'] },
+        },
+        // Self-healing: retry previously-"permanent" http_error / invalid_format
+        // failures once their last attempt is older than RETRY_PERMANENT_FAILURE_MS.
+        // Most are transient (proxy/UA 403, momentary downtime, changed favicon),
+        // so this eventually lands them in S3 with zero manual intervention.
+        {
+          'logoAssets.status': 'failed',
+          'logoAssets.failureType': { $in: ['http_error', 'invalid_format'] },
+          'logoAssets.lastAttempt': { $lt: retryPivot },
         },
         {
           'logoAssets.status': 'failed',
