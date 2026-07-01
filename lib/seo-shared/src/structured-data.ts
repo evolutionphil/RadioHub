@@ -203,44 +203,17 @@ export function generateRadioStationSchema(
     };
   }
 
-  // Use votes if available, otherwise fall back to clickCount
-  const metricValue = station.votes || station.clickCount || 0;
-  
-  if (metricValue > 0) {
-    // Calculate rating using logarithmic scale for realistic distribution
-    // This prevents inflated ratings for stations with thousands of votes/clicks
-    let ratingValue = 3.0; // Default baseline
-    
-    if (metricValue >= 5000) {
-      ratingValue = 5.0;      // Exceptional popularity
-    } else if (metricValue >= 2000) {
-      ratingValue = 4.8;      // Very high popularity
-    } else if (metricValue >= 1000) {
-      ratingValue = 4.5;      // High popularity
-    } else if (metricValue >= 500) {
-      ratingValue = 4.2;      // Good popularity
-    } else if (metricValue >= 200) {
-      ratingValue = 4.0;      // Moderate popularity
-    } else if (metricValue >= 100) {
-      ratingValue = 3.7;      // Decent popularity
-    } else if (metricValue >= 50) {
-      ratingValue = 3.5;      // Some popularity
-    } else if (metricValue >= 20) {
-      ratingValue = 3.2;      // Low popularity
-    } else if (metricValue >= 10) {
-      ratingValue = 3.0;      // Very low popularity
-    } else {
-      ratingValue = 2.5;      // Minimal popularity
-    }
-    
-    schema.aggregateRating = {
-      "@type": "AggregateRating",
-      "ratingValue": ratingValue,
-      "ratingCount": metricValue,
-      "bestRating": 5,
-      "worstRating": 1
-    };
-  }
+  // POLICY FIX (2026-07-01): removed the fabricated `aggregateRating`.
+  // It synthesised a star rating + review count purely from vote/click
+  // counts (e.g. 27,861 votes → "ratingCount 27861, ratingValue 5.0"),
+  // with NO genuine user reviews anywhere on the page. This:
+  //   1. violates Google's review-snippet policy (ratings must reflect real,
+  //      on-page user reviews) — a manual-action / structured-data-spam risk,
+  //   2. is invalid for rich results on RadioBroadcastService — Google Search
+  //      Console flagged it as "invalid object type for <parent_node>", and
+  //   3. produced the same fake 5-star data on every popular station.
+  // If real user ratings are added later, re-introduce aggregateRating from
+  // that genuine data (and surface the reviews visibly on the page).
 
   // 2026-05-12: bitrate/codec info goes into `additionalProperty` so we
   // don't pollute the Service node with encodingFormat (CreativeWork-only)
