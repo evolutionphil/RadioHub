@@ -1184,13 +1184,20 @@ export class SeoRenderer {
           );
         }
       } catch (e: any) {
-        // Non-fatal: if the rules module fails to load just leave robots as-is.
-        // BUT we log loudly — silently swallowing here previously hid a broken
-        // import path and caused station hreflang to skip the indexability gate.
+        // FAIL-CLOSED: if the indexability gate can't run we cannot verify the
+        // station is quality, so we must NOT leave the default `index, follow`
+        // (that would let junk/thin stations slip into the index — the exact
+        // problem this gate exists to prevent). Serve `noindex, follow` until
+        // the gate is healthy again; `follow` preserves crawl of internal links.
+        // The gate is a local static import, so a failure here means a broken
+        // build (loud + recoverable), not a per-request transient blip.
+        seoTags.robots = 'noindex, follow';
+        seoTags.noIndex = true;
+        seoTags.hreflangs = [];
         try {
           const { logger } = await import('./utils/logger');
           logger.warn(
-            `⚠️ seo-renderer: station indexability gate failed: ${e?.message || e}`,
+            `⚠️ seo-renderer: station indexability gate failed — failing CLOSED to noindex: ${e?.message || e}`,
           );
         } catch {}
       }
@@ -1851,13 +1858,19 @@ export class SeoRenderer {
       
       case 'station':
         if (stationData) {
-          // H1 = "{station_name} {country_part}" — drop the trailing
-          // " — Listen Live" CTA that the title carries. Keeps the
-          // station + location keywords for SEO while remaining distinct
-          // from <title>.
+          // H1 = the bare station name, to EXACTLY match the JS-rendered <h1>
+          // in the SPA (stations/[id].tsx renders `{station.name}` only). The
+          // SSR body is replaced by the SPA on load (it is not React-hydrated),
+          // so Googlebot's rendered view already indexes the bare-name h1; a
+          // richer SSR h1 ("{name} {country}") only appears to non-JS crawlers
+          // and site-audit tools as a raw-vs-rendered mismatch. Location
+          // keywords are retained in <title>, meta description, breadcrumbs and
+          // the "About {station}" <h2>, so keyword coverage is unaffected.
+          if (stationData.name && stationData.name.trim()) {
+            return this.escapeHtml(stationData.name.trim());
+          }
+          // Fallback only when the name is missing: derive from the title minus CTA.
           const fullTitle = generateLocalizedStationTitle(stationData, language, translations);
-          // generateLocalizedStationTitle format: `{name}{country_part} — {listen_live}`
-          // Trim everything from the last " — " onward.
           const dashIdx = fullTitle.lastIndexOf(' — ');
           const h1Source = dashIdx > 0 ? fullTitle.slice(0, dashIdx) : fullTitle;
           return this.escapeHtml(h1Source);

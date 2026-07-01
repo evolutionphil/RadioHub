@@ -372,11 +372,16 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       }
       
       if (searchQuery) {
-        const searchRegex = new RegExp(searchQuery, 'i');
-        allGenres = allGenres.filter(genre => 
-          searchRegex.test(genre.name) || 
-          searchRegex.test(genre.slug) || 
-          (genre.description && searchRegex.test(genre.description))
+        // Plain case-insensitive substring match (was `new RegExp(searchQuery)`
+        // built from raw user input — that threw on regex metacharacters like
+        // `[`/`(` (soft-failing the search to empty) and exposed a ReDoS vector
+        // via crafted catastrophic patterns run over every cached genre). A
+        // substring match is what this filter actually wants and is injection-safe.
+        const needle = searchQuery.toLowerCase();
+        allGenres = allGenres.filter(genre =>
+          genre.name?.toLowerCase().includes(needle) ||
+          genre.slug?.toLowerCase().includes(needle) ||
+          (genre.description && genre.description.toLowerCase().includes(needle))
         );
       }
       

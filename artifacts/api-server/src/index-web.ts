@@ -344,6 +344,17 @@ app.use((req, res, next) => {
     }
   }
 
+  // 4. Consolidate the legacy /pages/{privacy-policy,terms-and-conditions}
+  //    duplicates onto the canonical clean URL. Both path shapes render the
+  //    SAME component and each self-canonicals, so Google saw a duplicate-
+  //    content pair with split link equity. Redirect the /pages/ form → the
+  //    clean form (the one the sitemap advertises) so there is exactly one
+  //    indexable legal URL. Preserves an optional /{lang} prefix.
+  targetPath = targetPath.replace(
+    /^(\/[a-z]{2})?\/pages\/(privacy-policy|terms-and-conditions)$/,
+    (_m, lang, slug) => `${lang || ''}/${slug}`,
+  );
+
   const protocolChanged = targetProtocol !== originalProtocol;
   const hostChanged = targetHost !== originalHost;
   const pathChanged = targetPath !== originalPath;
