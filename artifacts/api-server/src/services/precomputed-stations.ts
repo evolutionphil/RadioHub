@@ -202,7 +202,14 @@ export class PrecomputedStationsService {
           votes: -1
         }
       },
-      { $limit: 1500 },
+      // ORPHAN FIX (2026-07-01): raised 1500 -> 3000. The region SSR country
+      // catalogue renders up to 50 pages x 60 = 3000 station links, but this
+      // cap only fed it 1500 — so every station ranked 1501+ in a high-volume
+      // country (DE, IN, TR, US ...) got ZERO internal inlinks and Ahrefs
+      // flagged it "Orphan page" (in sitemap, 0 href inlinks). 3000 exactly
+      // fills the existing 50-page catalogue, doubling tail coverage with no
+      // pagination/crawl-depth change. maxTimeMS + allowDiskUse unchanged.
+      { $limit: 3000 },
       {
         $project: {
           _id: 1,
@@ -228,7 +235,8 @@ export class PrecomputedStationsService {
       stations = await Station.aggregate([
         { $match: { country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, lastCheckOk: true } },
         { $sort: { hasLogo: -1, votes: -1 } },
-        { $limit: 1500 },
+        // ORPHAN FIX (2026-07-01): keep in sync with the primary aggregate cap above.
+        { $limit: 3000 },
         { $project: { _id: 1, slug: 1, name: 1, url: 1, url_resolved: 1, favicon: 1, country: 1, state: 1, votes: 1, hasLogo: 1, tags: 1, codec: 1, bitrate: 1, logoAssets: { webp96: 1, webp256: 1, folder: 1 } } }
       ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
     }
