@@ -157,10 +157,20 @@ export function useSeoRouting() {
   // ALL languages (including English) use /{lang}/* format for consistency
   const getLocalizedUrl = (path: string, targetLanguage?: string) => {
     const langToUse = targetLanguage || currentLanguage;
-    
+
     // Translate the path to the target language (English paths stay as-is)
     const translatedPath = langToUse !== 'en' ? translateUrl(path, langToUse) : path;
-    
+
+    // Root path fix (2026-07-01): `getLocalizedUrl("/")` used to return
+    // `/${lang}` + "/" = "/hi/" — a trailing-slash URL that the canonical
+    // middleware 301s to "/hi". The header/footer home logo is on EVERY page,
+    // so every page ended up linking to a redirect ("Page has links to 3xx" in
+    // Ahrefs). Return the bare canonical "/{lang}" for the root so the home
+    // link never redirects.
+    if (translatedPath === '/' || translatedPath === '') {
+      return `/${langToUse}`;
+    }
+
     // ALL languages use /{lang}/* format for SEO consistency
     // English: /en/radios, Turkish: /tr/radyolar, German: /de/radios
     return `/${langToUse}${translatedPath}`;

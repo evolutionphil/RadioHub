@@ -265,6 +265,27 @@ export default function LogoManagement() {
     }
   });
 
+  const retryAllFailedMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest('POST', '/api/admin/logos/retry-all-failed', {});
+      return response.json();
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        toast({
+          title: "Retrying all failed logos",
+          description: `Reset ${data.reset} failed logo(s) — reprocessing now (incl. http_error / invalid_format).`,
+        });
+        refetchStats();
+      } else {
+        toast({ title: data.message || "Info", variant: "destructive" });
+      }
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    }
+  });
+
   const cancelJobMutation = useMutation({
     mutationFn: async (jobId: string) => {
       const response = await apiRequest('POST', `/api/admin/logos/job/${jobId}/cancel`, {});
@@ -570,7 +591,21 @@ export default function LogoManagement() {
                   )}
                   Process Remaining ({stats?.stationsNeedingProcessing?.toLocaleString() ?? 0})
                 </Button>
-                <Button 
+                <Button
+                  variant="secondary"
+                  onClick={() => retryAllFailedMutation.mutate()}
+                  disabled={retryAllFailedMutation.isPending}
+                  title="Reset every FAILED station (including permanent http_error / invalid_format) and reprocess now — no 30-day wait. Does not touch completed logos."
+                  data-testid="button-retry-all-failed"
+                >
+                  {retryAllFailedMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                  )}
+                  Retry All Failed
+                </Button>
+                <Button
                   variant="destructive"
                   onClick={() => setShowReprocessConfirm(true)}
                   disabled={reprocessAllMutation.isPending}

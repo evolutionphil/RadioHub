@@ -5,6 +5,7 @@ import { normalizeCountryFilter } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
 import { PrecomputedStationsService } from "../services/precomputed-stations";
 import { logoProcessor } from "../services/logo-processor";
+import { scheduledLogoProcessor } from "../services/scheduled-logo-processor";
 import { isS3Configured } from "../services/s3-storage";
 import { IndexNowService } from "../services/indexnow";
 import { ObjectStorageService } from "../objectStorage";
@@ -593,12 +594,47 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     }
   });
   
+  // Retry EVERY failed station's logo right now — including the ones the
+  // nightly processor treats as "permanent" (http_error / invalid_format) and
+  // would otherwise only re-attempt after the 30-day self-healing window.
+  // `$unset`-ing logoAssets on the failed rows turns them back into
+  // "unprocessed", which the scheduled processor's filter picks up immediately;
+  // triggering runOnce sweeps them now (single-flight — no-op if a run is
+  // already in progress). Unlike /reprocess-all this does NOT touch already-
+  // completed logos, so it is cheap and safe to press repeatedly.
+  app.post("/api/admin/logos/retry-all-failed", requireAdmin, async (_req, res) => {
+    try {
+      const resetResult = await Station.updateMany(
+        {
+          favicon: { $exists: true, $nin: ['', null, 'null'] },
+          slug: { $exists: true, $ne: null },
+          'logoAssets.status': 'failed',
+        },
+        { $unset: { logoAssets: '' } },
+      );
+      const reset = (resetResult as any).modifiedCount ?? (resetResult as any).nModified ?? 0;
+
+      scheduledLogoProcessor.runOnce('admin:retry-all-failed').catch((err) => {
+        logger.error('❌ retry-all-failed sweep crashed:', err);
+      });
+
+      res.json({
+        success: true,
+        reset,
+        message: `Reset ${reset} failed logo(s) and started reprocessing now (incl. previously-permanent http_error / invalid_format failures).`,
+      });
+    } catch (error: any) {
+      logger.error('retry-all-failed failed:', error?.message ?? error);
+      res.status(500).json({ success: false, error: error?.message || 'retry-all-failed failed' });
+    }
+  });
+
   app.post("/api/admin/logos/reprocess-all", requireAdmin, async (req, res) => {
     try {
       for (const [id, job] of logoProcessingJobs.entries()) {
         if (job.status === 'running') {
-          return void res.json({ 
-            success: false, 
+          return void res.json({
+            success: false,
             message: 'A logo processing job is already running',
             jobId: id
           });
