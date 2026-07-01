@@ -68,7 +68,12 @@ export default function CountryCitiesPage() {
     const cityCount = data.cities.length;
     const totalStations = data.cities.reduce((sum, c) => sum + c.stationCount, 0);
     const title = `${country} Cities - ${cityCount} Cities, ${totalStations} Radio Stations | Mega Radio`;
-    const description = `Explore ${cityCount} cities and ${totalStations} live radio stations from ${country}. Browse local FM/AM stations from ${country}'s major cities online for free.`;
+    // Cap at <=160 chars (Ahrefs "Meta description too long"; this page sets the
+    // <meta> directly, bypassing SeoHead's truncation).
+    const rawDescription = `Explore ${cityCount} cities and ${totalStations} live radio stations from ${country}. Browse local FM/AM stations from ${country}'s major cities online for free.`;
+    const description = rawDescription.length > 160
+      ? rawDescription.slice(0, 160).replace(/\s+\S*$/, '')
+      : rawDescription;
     document.title = title;
     const descMeta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
     if (descMeta) descMeta.setAttribute('content', description);

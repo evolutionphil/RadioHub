@@ -254,7 +254,14 @@ export default function RegionStationsPage() {
     const tags = generateSeoTags();
     if (tags.title) document.title = tags.title;
     const descMeta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
-    if (descMeta && tags.description) descMeta.setAttribute('content', tags.description);
+    if (descMeta && tags.description) {
+      // Cap at <=160 chars (Ahrefs "Meta description too long"; set directly here,
+      // bypassing SeoHead's truncation).
+      const d = tags.description.length > 160
+        ? tags.description.slice(0, 160).replace(/\s+\S*$/, '')
+        : tags.description;
+      descMeta.setAttribute('content', d);
+    }
     const ogTitleMeta = document.querySelector('meta[property="og:title"]') as HTMLMetaElement | null;
     if (ogTitleMeta && tags.title) ogTitleMeta.setAttribute('content', tags.title);
     const ogDescMeta = document.querySelector('meta[property="og:description"]') as HTMLMetaElement | null;
