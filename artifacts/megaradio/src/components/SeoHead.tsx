@@ -1,20 +1,12 @@
 import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useTranslation } from '@/hooks/useTranslation';
-import { generateSeoTags, getLanguageFromPath, generateLanguageUrls } from '@workspace/seo-shared/seo-config';
+import { generateSeoTags, getLanguageFromPath } from '@workspace/seo-shared/seo-config';
 import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
 import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
 import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
 import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
 import { useQuery } from '@tanstack/react-query';
-import { 
-  generateOrganizationSchema, 
-  generateRadioStationSchema, 
-  generateWebSiteSchema,
-  generateBreadcrumbSchema,
-  type StructuredDataConfig 
-} from '@workspace/seo-shared/structured-data';
-import { generateFAQSchema, FAQ_PAGE_ITEMS, type FAQTranslatedItem } from '@workspace/seo-shared/faq-schema';
 
 interface SeoHeadProps {
   stationData?: {
@@ -167,68 +159,23 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     updateMetaTag('twitter:title', seoTags.twitterTitle || seoTags.title);
     updateMetaTag('twitter:description', seoTags.twitterDescription || seoTags.description);
 
-    // Update hreflang tags
-    updateHrefLangTags(seoTags.hreflangs || []);
-
-    // Generate and inject structured data
-    const schemas: StructuredDataConfig[] = [];
-    const domain = window.location.host;
-
-    // Always include organization schema - with language-specific translations
-    schemas.push(generateOrganizationSchema(domain, language, translations));
-
-    // Add WebSite schema with search functionality and language-specific translations
-    schemas.push(generateWebSiteSchema(domain, language, translations));
-
-    // Add page-specific structured data
-    if (pageType === 'station' && stationData) {
-      // Pass the current location and SEO description to preserve translated URLs and use correct language description
-      schemas.push(generateRadioStationSchema(stationData, domain, language, location, seoTags.description));
-      
-      // Add breadcrumb for station page with proper localized URLs
-      // Derive language code and segment from actual location path
-      // e.g. /de/sender/dance-wave → langCode='de', stationsSegment='sender'
-      const pathParts = location.split('/').filter(Boolean);
-      const langCode = pathParts[0] || language;
-      const homeUrl = `/${langCode}`;
-      // Strip the station slug from the URL to get the stations list URL
-      // e.g. /de/sender/dance-wave → /de/sender
-      const stationSegment = pathParts[1] || 'stations';
-      const stationsUrl = `/${langCode}/${stationSegment}`;
-      const stationUrl = location;
-      
-      const breadcrumbs = [
-        { name: translations?.['nav_home'] || 'Home', url: homeUrl },
-        { name: translations?.['nav_stations'] || 'Stations', url: stationsUrl },
-        { name: stationData.name, url: stationUrl }
-      ];
-      schemas.push(generateBreadcrumbSchema(breadcrumbs, domain));
-    }
-
-    // Add FAQ schema for the dedicated /faq page only.
-    // Task #129: previously the FAQPage JSON-LD lived on the homepage (which
-    // shows no Q&A) — Google flagged that as deceptive markup. The schema now
-    // matches the visible Q&A rendered server-side and client-side on /faq.
-    if (pageType === 'faq') {
-      const tr = (key: string, fb: string) => translations?.[key] || fb;
-      const faqItems = FAQ_PAGE_ITEMS.map((item: FAQTranslatedItem) => ({
-        question: tr(item.qKey, item.qFallback),
-        answer: tr(item.aKey, item.aFallback),
-      }));
-      schemas.push(generateFAQSchema(faqItems, domain));
-    }
-
-    // Task #164: the /about page previously emitted FAQPage JSON-LD
-    // (ABOUT_FAQ + MEGA_RADIO_FAQ — 19 questions) but the about page body
-    // does not render any of those questions/answers as visible Q&A. Google
-    // flags that schema/visible-content mismatch as deceptive markup, the
-    // same issue we fixed on the homepage in Task #129. Since the visible
-    // about page content is intro paragraphs + feature cards (not Q&A),
-    // the FAQ schema is removed here rather than synthesised. The dedicated
-    // /faq page still emits FAQPage JSON-LD that matches its visible Q&A.
-
-    // Update structured data in head
-    updateStructuredData(schemas);
+    // NOTE (2026-07-01): client-side hreflang + JSON-LD injection REMOVED.
+    // The API server (seo-renderer.ts) renders a complete, correct SEO head on
+    // EVERY response (SSR is served to all visitors, bots included): canonical,
+    // hreflang restricted to the station's indexable ≤14-language set, and all
+    // JSON-LD (Organization, WebSite, RadioBroadcastService, BreadcrumbList,
+    // FAQPage). This client component used to re-inject the same schemas plus
+    // hreflang for ALL 57 enabled languages (generateLanguageUrls with no
+    // allow-list), which produced on every page:
+    //   • 14 (server) + 57 (client) = 71 hreflang tags, 43 of them duplicates
+    //     advertising non-universal languages that 301 to /en, and
+    //   • two conflicting copies each of Organization / WebSite /
+    //     RadioBroadcastService / BreadcrumbList at the same @id.
+    // Google flagged the mess (duplicate entities, "no referring sitemap"
+    // orphans). The server is the single source of truth now; this component
+    // only keeps title/description/OG/Twitter/canonical fresh across in-app
+    // (wouter) navigations — Google re-fetches each URL server-side, so
+    // per-page hreflang/JSON-LD do not need client updates for indexing.
 
   }, [location, language, translations, stationData, pageType]);
 
@@ -271,44 +218,6 @@ function updateLinkTag(rel: string, href?: string) {
   link.href = href;
 }
 
-// S2 FIX (2026-05-08): scoped tag management. The previous implementation
-// removed EVERY `<link rel=alternate hreflang>` and EVERY `<script
-// type=application/ld+json>` from the document head on each render —
-// including the SSR-baked tags. Googlebot's WRS can snapshot the head
-// during the brief window between the wipe and the re-insert, recording
-// "no hreflang" and "no JSON-LD" for the page. We now mark client-managed
-// tags with a `data-managed="seo-head"` attribute so we only ever touch
-// our own tags and leave SSR output untouched on first paint.
-const MANAGED_ATTR = 'data-managed';
-const MANAGED_VALUE = 'seo-head';
-
-function updateHrefLangTags(hreflangs: Array<{ lang: string; url: string; hreflang: string }>) {
-  if (!hreflangs.length) return;
-  const existing = document.querySelectorAll(
-    `link[rel="alternate"][hreflang][${MANAGED_ATTR}="${MANAGED_VALUE}"]`,
-  );
-  existing.forEach(link => link.remove());
-  hreflangs.forEach(({ url, hreflang }) => {
-    const link = document.createElement('link');
-    link.rel = 'alternate';
-    link.hreflang = hreflang;
-    link.href = url;
-    link.setAttribute(MANAGED_ATTR, MANAGED_VALUE);
-    document.head.appendChild(link);
-  });
-}
-
-function updateStructuredData(schemas: StructuredDataConfig[]) {
-  if (!schemas.length) return;
-  const existing = document.querySelectorAll(
-    `script[type="application/ld+json"][${MANAGED_ATTR}="${MANAGED_VALUE}"]`,
-  );
-  existing.forEach(script => script.remove());
-  schemas.forEach(schema => {
-    const script = document.createElement('script');
-    script.type = 'application/ld+json';
-    script.setAttribute(MANAGED_ATTR, MANAGED_VALUE);
-    script.textContent = JSON.stringify(schema, null, 2);
-    document.head.appendChild(script);
-  });
-}
+// hreflang + JSON-LD are now owned exclusively by the server (seo-renderer.ts).
+// The client-side updateHrefLangTags / updateStructuredData helpers were removed
+// on 2026-07-01 — see the note in the effect above.

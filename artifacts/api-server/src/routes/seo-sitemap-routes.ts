@@ -1212,21 +1212,14 @@ Allow: /
 User-agent: YouBot
 Allow: /
 
-Sitemap: ${baseUrl}/sitemap-index.xml
-Sitemap: ${baseUrl}/sitemap-en.xml
-Sitemap: ${baseUrl}/sitemap-es.xml
-Sitemap: ${baseUrl}/sitemap-fr.xml
-Sitemap: ${baseUrl}/sitemap-de.xml
-Sitemap: ${baseUrl}/sitemap-pt.xml
-Sitemap: ${baseUrl}/sitemap-it.xml
-Sitemap: ${baseUrl}/sitemap-ru.xml
-Sitemap: ${baseUrl}/sitemap-ar.xml
-Sitemap: ${baseUrl}/sitemap-zh.xml
-Sitemap: ${baseUrl}/sitemap-tr.xml
-Sitemap: ${baseUrl}/sitemap-ja.xml
-Sitemap: ${baseUrl}/sitemap-ko.xml
-Sitemap: ${baseUrl}/sitemap-hi.xml
-Sitemap: ${baseUrl}/sitemap-he.xml`;
+# Advertise ONLY the master sitemap index. It already references every
+# per-language child sitemap (main + genres + station chunks for all 14
+# universal langs — see the /sitemap-index.xml route). Listing the
+# per-language sitemap-{lang}.xml entries here as well made Google
+# re-discover them as separate submitted sitemaps, which surface as
+# confusing "0 discovered URLs" index rows in Search Console. One entry
+# point keeps the Sitemaps report clean. (2026-07-01)
+Sitemap: ${baseUrl}/sitemap-index.xml`;
 
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Cache-Control', 'public, max-age=86400');
