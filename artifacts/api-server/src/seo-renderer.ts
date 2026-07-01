@@ -343,13 +343,18 @@ export class SeoRenderer {
     // Without this, /de/ cached in German would be served to Turkish users
     // Using cleanUrl prevents unbounded cache key cardinality from query params
     const normalizedLang = preferredLanguage?.toLowerCase();
-    // The /stations catalog hub renders a different slice of stations per
-    // `?page`, but the query string is stripped from cleanUrl above — so page 2
-    // would otherwise be served page 1's cached HTML. Fold the clamped page
-    // number into the cache key for that hub only (bounded cardinality: ≤50).
+    // The /stations catalog hub AND the /regions|/country country hubs render
+    // a different slice of stations per `?page`, but the query string is
+    // stripped from cleanUrl above — so page 2 would otherwise be served
+    // page 1's cached HTML. Fold the clamped page number into the cache key
+    // for those paginated hubs (bounded cardinality: ≤50 per URL).
     // See SEO re-audit 2026-06-20, internal-linking Component (a).
     let pageSuffix = '';
-    if (cleanPath.startsWith('/stations')) {
+    if (
+      cleanPath.startsWith('/stations') ||
+      cleanPath.startsWith('/regions') ||
+      cleanPath.startsWith('/country')
+    ) {
       const pm = url.match(/[?&]page=(\d+)/);
       const pg = pm ? Math.min(Math.max(parseInt(pm[1], 10) || 1, 1), 50) : 1;
       if (pg > 1) pageSuffix = `|page=${pg}`;
@@ -880,6 +885,34 @@ export class SeoRenderer {
               additionalData.countryCode = cc.toLowerCase();
             }
 
+            // ---- Full crawlable country catalogue (2026-07-01) ----------
+            // The 12-station "popular" grid above only links a country's TOP
+            // stations, leaving the long tail with zero internal in-links
+            // ("no referring page" → Crawled-not-indexed). Paginate the
+            // SWR-cached per-country list (up to 1500 live stations, 24h TTL)
+            // 60/page so EVERY station gets an in-link from its country hub.
+            // getCountryStationsByName reads from the precomputed cache and
+            // slices in memory — NO per-request deep-skip DB query, so it is
+            // incident-safe (2026-05-14 pile-up was concurrent unindexed
+            // Station.find). Since every station has a country, the country
+            // hub gives the whole catalogue a crawl path. Mirrors /stations.
+            try {
+              const CATALOG_PAGE_SIZE = 60;
+              const pm = url.match(/[?&]page=(\d+)/);
+              const page = pm ? Math.min(Math.max(parseInt(pm[1], 10) || 1, 1), 50) : 1;
+              const { PrecomputedStationsService } = await import('./services/precomputed-stations');
+              const countryCatalog = await PrecomputedStationsService.getCountryStationsByName(
+                countryName, page, CATALOG_PAGE_SIZE,
+              );
+              additionalData.catalogStations = (countryCatalog?.stations || [])
+                .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
+              additionalData.catalogPage = page;
+              additionalData.catalogTotalPages = Math.min(countryCatalog?.totalPages || 1, 50);
+            } catch (err: any) {
+              if (err?.name === 'AbortError' || signal?.aborted) throw err;
+              // Soft-fail: leave catalog unset → popular grid + nav still render.
+            }
+
             // ---- Region cross-link fetch (architect P1: B3) --------------
             // "Popular genres in <country>" + "Neighbouring countries
             // (same continent)". Server-rendered so crawlers walk between
@@ -1351,15 +1384,15 @@ export class SeoRenderer {
       seoTags = this.applyCustomSeoMetadata(seoTags, customMetadata);
     }
 
-    // For the /stations hub, each paginated variant serves a different slice
-    // of stations (60/page) — the canonical must include ?page=N so Google
-    // treats page 2 as its own URL, not a duplicate of page 1. Without this
-    // patch the base generateSeoTags() strips the query string from every
-    // canonical, collapsing all 50 hub pages into a single page-1 entry.
-    // We also append ?page=N to every hreflang alternate so the per-language
-    // pagination cluster is consistent.
+    // For the /stations hub AND the /regions|/country country hubs, each
+    // paginated variant serves a different slice of stations (60/page) — the
+    // canonical must include ?page=N so Google treats page 2 as its own URL,
+    // not a duplicate of page 1. Without this patch the base generateSeoTags()
+    // strips the query string from every canonical, collapsing all hub pages
+    // into a single page-1 entry. We also append ?page=N to every hreflang
+    // alternate so the per-language pagination cluster is consistent.
     const catalogPage = (additionalData?.catalogPage as number) || 1;
-    if (pageType === 'stations' && catalogPage > 1 && seoTags.canonical) {
+    if ((pageType === 'stations' || pageType === 'regions') && catalogPage > 1 && seoTags.canonical) {
       seoTags.canonical = `${seoTags.canonical}?page=${catalogPage}`;
       if (Array.isArray(seoTags.hreflangs)) {
         seoTags.hreflangs = seoTags.hreflangs.map((h: { hreflang: string; url: string }) => ({
@@ -2461,6 +2494,59 @@ export class SeoRenderer {
               </ul>
             </section>
             ` : ''}
+            ${(() => {
+              // ---- Full crawlable country catalogue + pagination ---------
+              // Every station has a country, so paginating the SWR-cached
+              // per-country list here (60/page, ≤50 pages) gives the entire
+              // long tail an internal in-link — the fix for "no referring
+              // page → Crawled-not-indexed" on deep stations. Data is set in
+              // the region fetch above via getCountryStationsByName (cache
+              // read, no per-request deep-skip DB query). Mirrors /stations.
+              const cats = (additionalData?.catalogStations as any[] | undefined) || [];
+              if (!cats.length) return '';
+              const curPage = (additionalData?.catalogPage as number) || 1;
+              const totalPages = (additionalData?.catalogTotalPages as number) || 1;
+              // Strip any existing query (the canonical already carries
+              // ?page=N on pages >1) so pagination hrefs never double up to
+              // "...?page=2?page=3".
+              const base = ((seoTags?.canonical && /^https?:\/\//i.test(seoTags.canonical))
+                ? seoTags.canonical
+                : buildLocalizedUrl(cleanPath || '/regions', language, undefined, urlTranslations)
+              ).split('?')[0];
+              const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+              return `
+            <section class="all-stations">
+              <h2>${this.escapeHtml(getLocalizedText('all_stations', LOCALIZED_RADIO_STATIONS[language] || 'Radio Stations'))}</h2>
+              <ul class="popular-stations-list">
+                ${cats.map((station: any) => {
+                  const slug = station.slug || station._id;
+                  const stationUrl = buildLocalizedUrl(`/station/${slug}`, language, undefined, urlTranslations);
+                  const logo = this.pickLogoUrl(station);
+                  const stationName = this.escapeHtml(station.name || 'Radio Station');
+                  const country = station.country ? this.escapeHtml(station.country) : '';
+                  const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
+                  return `
+                    <li>
+                      <a href="${stationUrl}">
+                        ${logo ? `<img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">` : ''}
+                        <h3>${stationName}</h3>
+                      </a>
+                    </li>`;
+                }).join('')}
+              </ul>
+              ${totalPages > 1 ? `
+              <nav class="pagination" aria-label="${this.escapeHtml(getLocalizedText('pagination', 'Pagination'))}">
+                <ul>
+                  ${Array.from({ length: totalPages }, (_, i) => i + 1).map((n) => {
+                    if (n === curPage) return `<li><span aria-current="page">${n}</span></li>`;
+                    const href = n === 1 ? base : `${base}?page=${n}`;
+                    const rel = n === curPage - 1 ? ' rel="prev"' : n === curPage + 1 ? ' rel="next"' : '';
+                    return `<li><a href="${href}"${rel}>${n}</a></li>`;
+                  }).join('')}
+                </ul>
+              </nav>` : ''}
+            </section>`;
+            })()}
             ${(() => {
               // ---- Cross-link sections (architect P1: B3) ----------------
               // "Popular genres in <country>" links to genre pages so
