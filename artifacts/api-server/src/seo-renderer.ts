@@ -135,7 +135,17 @@ export function getSeoRenderStats() {
   return { active: seoRenderActive, rejected: seoRenderRejected, eventLoopLag: eventLoopLagMs };
 }
 
-const DB_QUERY_TIMEOUT_MS = SEO_RENDER_TIMEOUT_MS - 500;
+// Decoupled from the render budget (2026-07-01). It used to be
+// SEO_RENDER_TIMEOUT_MS - 500 = 9500ms, meaning ONE slow enrichment query
+// (genre/region popular-stations, cross-links) could consume almost the whole
+// 10s render budget — pushing the render over SEO_RENDER_TIMEOUT, which falls
+// back to a NOINDEX SPA shell with no <h1> (the "H1 missing / not indexed"
+// symptom on genre/region pages). Cap every SSR query at 4s instead: the
+// critical, index-covered lookups (station/genre by slug, translations) return
+// in well under that, while a genuinely slow enrichment query now soft-fails to
+// an empty grid FAST, leaving ample budget for generateHtmlBody to still emit a
+// proper <h1>/<h2> and an indexable body.
+const DB_QUERY_TIMEOUT_MS = 4_000;
 
 function withSignal<T>(query: any, signal?: AbortSignal): Promise<T> {
   if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
