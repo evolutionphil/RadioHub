@@ -31,6 +31,19 @@ export type SafeUrlOutcome = SafeUrlResult | SafeUrlError;
 
 const ALLOWED_PORTS = new Set([80, 443]);
 
+// Well-known internal-service ports a PUBLIC host should never expose. Use this
+// as `blockedPorts` for outbound fetches to hosts that legitimately bind to
+// thousands of non-standard ports (radio streams AND station favicons — e.g.
+// icecast.walmradio.com:8443/classic.jpg). SSRF defence is unchanged: private/
+// loopback/link-local/CGNAT/metadata IPs are still rejected regardless of port,
+// so a permissive port policy cannot pivot into internal infrastructure.
+export const INTERNAL_SERVICE_PORTS: ReadonlySet<number> = new Set([
+  21, 22, 23, 25, 53, 110, 111, 135, 139, 143, 389, 445, 465, 587, 631, 636,
+  993, 995, 1433, 1521, 2049, 2375, 2376, 2379, 2380, 3306, 3389, 4444, 5432,
+  5672, 5984, 6379, 6380, 6443, 9092, 9200, 9300, 10250, 10255, 11211, 15672,
+  27017, 27018, 27019,
+]);
+
 const BLOCKED_HOSTNAMES = new Set([
   'localhost', 'localhost.localdomain', 'ip6-localhost', 'ip6-loopback',
   'metadata.google.internal', 'metadata',

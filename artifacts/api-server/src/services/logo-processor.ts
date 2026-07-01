@@ -7,7 +7,7 @@ import { promisify } from 'util';
 import { Station } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
-import { validateOutboundUrl } from '../utils/safe-fetch';
+import { validateOutboundUrl, INTERNAL_SERVICE_PORTS } from '../utils/safe-fetch';
 
 // INCIDENT 2026-05-15 v5: keep libvips cache lean — see og-image-generator
 // for full rationale. Logo processing runs in background batches and rarely
@@ -830,8 +830,14 @@ export class LogoProcessor {
       let response: any = null;
 
       for (let hop = 0; hop <= maxHops; hop++) {
-        // SSRF guard on EVERY hop (replit.md SSRF rule).
-        const guarded = await validateOutboundUrl(currentUrl, { allowHttp: true });
+        // SSRF guard on EVERY hop (replit.md SSRF rule). Allow non-standard
+        // ports (many favicons live on :8443, :8000, :8080 …) but still block
+        // internal-service ports + all private/metadata IPs — same policy the
+        // stream proxy uses. Fixes false "port-not-allowed" logo failures.
+        const guarded = await validateOutboundUrl(currentUrl, {
+          allowHttp: true,
+          blockedPorts: INTERNAL_SERVICE_PORTS,
+        });
         if (!guarded.ok) {
           return {
             buffer: null,

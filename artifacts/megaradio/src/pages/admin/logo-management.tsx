@@ -327,7 +327,13 @@ export default function LogoManagement() {
     }
   };
 
-  const progressPercent = jobStatus && jobStatus.total > 0 ? Math.round((jobStatus.processed / jobStatus.total) * 100) : 0;
+  // `total` is a snapshot taken when the job starts (count of stations needing
+  // processing). The worker keeps sweeping until the queue drains, so `processed`
+  // can exceed that initial estimate (transient re-queues / churn) — which used
+  // to render as ">100%" (e.g. 2529/1558 = 162%). Clamp the bar to 100% and show
+  // the effective total as max(total, processed) so the readout stays sensible.
+  const effectiveTotal = jobStatus ? Math.max(jobStatus.total, jobStatus.processed) : 0;
+  const progressPercent = effectiveTotal > 0 && jobStatus ? Math.min(100, Math.round((jobStatus.processed / effectiveTotal) * 100)) : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -538,7 +544,7 @@ export default function LogoManagement() {
 
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Progress: {jobStatus.processed} / {jobStatus.total}</span>
+                  <span>Progress: {jobStatus.processed} / {Math.max(jobStatus.total, jobStatus.processed)}</span>
                   <span>{progressPercent}%</span>
                 </div>
                 <Progress value={progressPercent} className="h-2" data-testid="progress-bar" />
