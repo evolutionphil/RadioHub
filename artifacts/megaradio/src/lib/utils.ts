@@ -114,7 +114,15 @@ export function normalizeFaviconUrl(favicon: string | undefined | null): string 
     normalizedUrl = `https://${normalizedUrl}`;
   }
 
-  if (normalizedUrl.startsWith('http:')) {
+  // Route BOTH http: and https: external favicons through the /api/image proxy.
+  // Emitting the raw external URL caused Ahrefs "Page has broken image": many
+  // favicon hosts 403 non-browser crawler UAs (or enforce hotlink protection),
+  // so the <img> failed for crawlers even though it renders fine in a browser.
+  // The proxy re-fetches with a desktop-browser User-Agent and serves the bytes
+  // from our own domain (CDN-cached 7d), so the image resolves 200 for crawlers
+  // too. NOTE: processed S3 logos never reach here — StationLogo resolves those
+  // via resolveLogoUrl; this normalizer only ever receives the external favicon.
+  if (normalizedUrl.startsWith('http://') || normalizedUrl.startsWith('https://')) {
     const encodedUrl = safeBase64Encode(normalizedUrl);
     return getStreamProxyUrl(`/api/image/${encodedUrl}`);
   }

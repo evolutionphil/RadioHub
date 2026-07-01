@@ -68,7 +68,12 @@ export default function CountryCitiesPage() {
     const cityCount = data.cities.length;
     const totalStations = data.cities.reduce((sum, c) => sum + c.stationCount, 0);
     const title = `${country} Cities - ${cityCount} Cities, ${totalStations} Radio Stations | Mega Radio`;
-    const description = `Explore ${cityCount} cities and ${totalStations} live radio stations from ${country}. Browse local FM/AM stations from ${country}'s major cities online for free.`;
+    // Cap at <=160 chars (Ahrefs "Meta description too long"; this page sets the
+    // <meta> directly, bypassing SeoHead's truncation).
+    const rawDescription = `Explore ${cityCount} cities and ${totalStations} live radio stations from ${country}. Browse local FM/AM stations from ${country}'s major cities online for free.`;
+    const description = rawDescription.length > 160
+      ? rawDescription.slice(0, 160).replace(/\s+\S*$/, '')
+      : rawDescription;
     document.title = title;
     const descMeta = document.querySelector('meta[name="description"]') as HTMLMetaElement | null;
     if (descMeta) descMeta.setAttribute('content', description);
@@ -84,10 +89,16 @@ export default function CountryCitiesPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white">
         <div className="container mx-auto px-4 py-8">
-          {/* Header skeleton */}
+          {/* Header — render the real <h1> from the URL slug immediately so the
+              page always exposes a single heading even before the API resolves
+              (Ahrefs "H1 tag missing or empty"; the SPA replaces the SSR body on
+              hydration, so a crawler snapshotting the loading state must still see
+              an <h1>). Swapped to the localized country name once data loads. */}
           <div className="flex items-center gap-4 mb-8">
             <div className="w-10 h-10 bg-slate-700 rounded-lg animate-pulse"></div>
-            <div className="w-64 h-8 bg-slate-700 rounded-lg animate-pulse"></div>
+            <h1 className="text-3xl md:text-4xl font-bold capitalize bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
+              {countrySlug.replace(/-/g, ' ')}
+            </h1>
           </div>
           
           {/* Search skeleton */}

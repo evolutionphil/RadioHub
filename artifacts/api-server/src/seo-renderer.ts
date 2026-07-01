@@ -1,5 +1,5 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
-import { Translation, Station, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
+import { Translation, Station, Genre, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
 import { PrecomputedGenresService } from './services/precomputed-genres';
 
 // Lean document shapes returned by Mongoose `.lean()` for the queries in this
@@ -658,6 +658,28 @@ export class SeoRenderer {
         if (!canonicalSlug) {
           // Not on the whitelist and not aliased — flag for noindex below.
           additionalData.genreNotWhitelisted = true;
+        } else {
+          // AUTHORITATIVE INDEX COUNT (2026-07-01, "Noindex page in sitemap" fix):
+          // the sitemap publishes a genre when the denormalised Genre.stationCount
+          // >= MIN_STATIONS_FOR_GENRE_INDEX (sitemap-manifest-builder.buildGenreChunks).
+          // The visible top-stations grid below uses a live, CASE-SENSITIVE $regex
+          // on `tags` that under-counts variant spellings ("J-Rock"/"jrock"/"J Rock"),
+          // so a genre could be IN the sitemap yet get noindex'ed here — Ahrefs then
+          // flags "Noindex page in sitemap". Read the SAME Genre.stationCount the
+          // sitemap trusts and use it for the index decision so the two surfaces
+          // never disagree.
+          try {
+            const genreDoc = await withSignal<{ stationCount?: number } | null>(
+              Genre.findOne({ slug: canonicalSlug }).select('stationCount').lean(),
+              signal,
+            );
+            if (genreDoc && typeof genreDoc.stationCount === 'number') {
+              additionalData.genreStationCount = genreDoc.stationCount;
+            }
+          } catch (e: any) {
+            if (e?.name === 'AbortError' || signal?.aborted) throw e;
+            // Non-fatal: fall back to the grid-count heuristic in the gate below.
+          }
         }
         // DALGA 2 W2.1: Fetch top 12 stations matching this genre for SSR <img> grid (image indexing)
         try {
@@ -1231,7 +1253,14 @@ export class SeoRenderer {
       // whitelisted genre over a blip. A not-whitelisted genre is still caught
       // by `genreNotWhitelisted` below, so this only protects trusted genres.
       const fetchFailed = additionalData.popularStationsFetchFailed === true;
-      const tooThin = !fetchFailed && popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX;
+      // Prefer the authoritative Genre.stationCount (the exact value the sitemap
+      // used to decide whether to publish this URL) so SSR and sitemap agree —
+      // no "Noindex page in sitemap". Only fall back to the live grid count (with
+      // transient-failure protection) when the authoritative count is unavailable.
+      const authoritativeCount = additionalData.genreStationCount;
+      const tooThin = typeof authoritativeCount === 'number'
+        ? authoritativeCount < MIN_STATIONS_FOR_GENRE_INDEX
+        : (!fetchFailed && popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX);
       if (additionalData.genreNotWhitelisted || tooThin) {
         seoTags.robots = 'noindex, follow';
         seoTags.noIndex = true;
@@ -1730,15 +1759,33 @@ export class SeoRenderer {
    * home popular-stations grid and station detail page (DALGA 1).
    */
   private pickLogoUrl(station: any): string | null {
-    const candidates = [
-      station?.logoAssets?.webp256,
-      station?.logoAssets?.webp96,
-      station?.favicon,
-    ];
-    for (const c of candidates) {
+    // 1) Prefer the processed logos — these live on our own S3 bucket, so they
+    //    always resolve 200 and need no proxy.
+    const s3Candidates = [station?.logoAssets?.webp256, station?.logoAssets?.webp96];
+    for (const c of s3Candidates) {
       if (typeof c === 'string') {
         const trimmed = c.trim();
         if (trimmed && /^https?:\/\//i.test(trimmed)) return trimmed;
+      }
+    }
+    // 2) Fallback: the station's RAW external favicon. Emitting it directly is
+    //    what triggered Ahrefs "Page has broken image" — a large share of favicon
+    //    hosts 403 non-browser crawler UAs (mangoradio.de, icecast.walmradio.com:8443,
+    //    …) even though the image is fine in a browser. Route it through our own
+    //    /api/image proxy: the proxy re-fetches with a desktop-browser User-Agent
+    //    (so it succeeds where the bot was 403'd) and serves the bytes from
+    //    themegaradio.com, so the <img> resolves 200 on our domain regardless of
+    //    the origin's bot policy. CDN-cached (s-maxage=7d), so no origin hammering.
+    const fav = station?.favicon;
+    if (typeof fav === 'string') {
+      const trimmed = fav.trim();
+      if (trimmed && /^https?:\/\//i.test(trimmed)) {
+        const encoded = Buffer.from(trimmed, 'utf8')
+          .toString('base64')
+          .replace(/\+/g, '-')
+          .replace(/\//g, '_')
+          .replace(/=+$/, '');
+        return `/api/image/${encoded}?w=256`;
       }
     }
     return null;
@@ -2343,7 +2390,7 @@ export class SeoRenderer {
                     <li><a href="/${language}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse All Radio Genres'))}</a></li>
                     <li><a href="/${language}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio Stations by Country'))}</a></li>
                     <li><a href="/${language}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Explore All Stations'))}</a></li>
-                    <li><a href="/${language}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                    <li><a href="/${language}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                   </ul>
                 </nav>
               </div>
@@ -2464,7 +2511,7 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2641,7 +2688,7 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'All Regions'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2677,7 +2724,7 @@ export class SeoRenderer {
                   <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse Radio Genres'))}</a></li>
                   <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
                   <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                  <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                  <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                 </ul>
               </nav>
             </section>
@@ -2705,7 +2752,7 @@ export class SeoRenderer {
             </section>${faqBlocks}
             <nav>
               <ul>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                 <li><a href="${langPrefix}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Mega Radio'))}</a></li>
                 <li><a href="${langPrefix}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact Us'))}</a></li>
                 <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Browse Stations'))}</a></li>
@@ -2731,7 +2778,7 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'Browse Stations'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
                 <li><a href="${langPrefix}/recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2791,7 +2838,7 @@ export class SeoRenderer {
             <nav>
               <ul>
                 <li><a href="${genresHref}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
-                <li><a href="/${language}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="/${language}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
