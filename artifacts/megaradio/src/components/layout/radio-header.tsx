@@ -818,6 +818,7 @@ export default function RadioHeader({
                     width="50"
                     height="50"
                     loading="eager"
+                    decoding="async"
                     alt="Megaradio streaming service"
                     title="Megaradio - Listen to live stations worldwide"
                   />
@@ -899,6 +900,10 @@ export default function RadioHeader({
                       <img
                         src={`https://flagcdn.com/w80/${selectedCountryCode.toLowerCase()}.png`}
                         alt={selectedCountry}
+                        width={24}
+                        height={24}
+                        loading="lazy"
+                        decoding="async"
                         style={{ width: '24px', height: '24px' }}
                         className="object-cover rounded-full"
                       />
@@ -964,6 +969,10 @@ export default function RadioHeader({
                       <img
                         src={`https://flagcdn.com/w80/${selectedCountryCode.toLowerCase()}.png`}
                         alt={selectedCountry}
+                        width={24}
+                        height={24}
+                        loading="lazy"
+                        decoding="async"
                         style={{ width: '24px', height: '24px' }}
                         className="object-cover rounded-full"
                       />
@@ -1033,6 +1042,10 @@ export default function RadioHeader({
                           <img
                             src={`https://flagcdn.com/w40/${selectedCountryCode.toLowerCase()}.png`}
                             alt={selectedCountry}
+                            width={24}
+                            height={24}
+                            loading="lazy"
+                            decoding="async"
                             style={{ width: '24px', height: '24px' }}
                             className="object-cover rounded-full"
                           />
@@ -1116,6 +1129,10 @@ export default function RadioHeader({
                           <img
                             src={`https://flagcdn.com/w40/${selectedCountryCode.toLowerCase()}.png`}
                             alt={selectedCountry}
+                            width={24}
+                            height={24}
+                            loading="lazy"
+                            decoding="async"
                             style={{ width: '24px', height: '24px' }}
                             className="object-cover rounded-full"
                           />

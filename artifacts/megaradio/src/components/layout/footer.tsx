@@ -235,10 +235,16 @@ export default function Footer() {
                       <Link to={getLocalizedUrl("/users")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_users', 'Listeners')}
                       </Link>
-                      <Link to={getLocalizedUrl("/pages/terms-and-conditions")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      {/* Link to the CANONICAL legal URLs (not the /pages/*
+                          duplicates). Both /terms-and-conditions and
+                          /pages/terms-and-conditions render the same component
+                          and each self-canonicals; the sitemap lists the clean
+                          form, so the footer must match it to avoid duplicate-
+                          content signals and split link equity. */}
+                      <Link to={getLocalizedUrl("/terms-and-conditions")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_terms', 'Terms and Co.')}
                       </Link>
-                      <Link to={getLocalizedUrl("/pages/privacy-policy")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/privacy-policy")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         {t('footer_privacy', 'Privacy')}
                       </Link>
                       <button

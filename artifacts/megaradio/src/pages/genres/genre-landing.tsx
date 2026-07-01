@@ -83,7 +83,7 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
   });
 
 
-  const { data: stationsResponse, isLoading: stationsLoading } = useQuery<{stations: any[], pagination: {total: number}}>({
+  const { data: stationsResponse, isLoading: stationsLoading } = useQuery<{stations: any[], total: number, page: number, pages: number}>({
     queryKey: [`/api/genres/${slug}/stations`, { page: currentPage, limit: stationsPerPage }, currentCountry, urlCountryCode],
     queryFn: async () => {
       const params = new URLSearchParams({
@@ -104,8 +104,12 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
   });
 
   const stations = stationsResponse?.stations || [];
-  const totalStations = stationsResponse?.pagination?.total || 0;
-  const totalPages = Math.ceil(totalStations / stationsPerPage);
+  // API /api/genres/:slug/stations returns { stations, total, page, pages } —
+  // there is no `pagination` wrapper, so the old `pagination?.total` read was
+  // always 0 and pagination never rendered (only the first page of stations was
+  // ever reachable). Read the flat `total`/`pages` fields the endpoint sends.
+  const totalStations = stationsResponse?.total ?? 0;
+  const totalPages = stationsResponse?.pages ?? Math.ceil(totalStations / stationsPerPage);
   
   // Handle page changes
   const handlePageChange = (page: number) => {
@@ -136,7 +140,12 @@ export default function GenreLanding({ selectedCountry, onCountryChange }: Genre
                 {t('genres', 'Genres')}
               </span>
               <span className="mx-3 text-[#777777]">&gt;</span>
-              <span className="capitalize">{genreName} Stations</span>
+              {/* Promoted from <span> to <h1> so the live genre page carries a
+                  single heading on client navigation (the SSR genre page emits
+                  one via getH1Text; the SPA was replacing it with a <span>).
+                  Tailwind preflight resets h1 font-size/weight/margin to inherit,
+                  so this is visually identical to the previous span. */}
+              <h1 className="capitalize">{genreName} Stations</h1>
             </div>
           </div>
         </div>

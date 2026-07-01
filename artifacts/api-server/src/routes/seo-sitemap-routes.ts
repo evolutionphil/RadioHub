@@ -1026,6 +1026,28 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
+Disallow: /dashboard
+Disallow: /*/dashboard
+Disallow: /feedback
+Disallow: /*/feedback
+Disallow: /station-requests
+Disallow: /*/station-requests
+Disallow: /station-submissions
+Disallow: /*/station-submissions
+Disallow: /status-monitoring
+Disallow: /*/status-monitoring
+Disallow: /sync
+Disallow: /*/sync
+Disallow: /change-password
+Disallow: /*/change-password
+Disallow: /forgot-password
+Disallow: /*/forgot-password
+Disallow: /tv-login
+Disallow: /*/tv-login
+Disallow: /settings
+Disallow: /messages
+Disallow: /analytics
+Disallow: /import-export
 # Narrowed from a blanket query-string block (which blocked ALL ?-URLs,
 # including the ?page=N pagination on the /stations catalog hub and listing
 # pages). Block only known tracking params so paginated/crawlable query URLs
@@ -1095,6 +1117,28 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
+Disallow: /dashboard
+Disallow: /*/dashboard
+Disallow: /feedback
+Disallow: /*/feedback
+Disallow: /station-requests
+Disallow: /*/station-requests
+Disallow: /station-submissions
+Disallow: /*/station-submissions
+Disallow: /status-monitoring
+Disallow: /*/status-monitoring
+Disallow: /sync
+Disallow: /*/sync
+Disallow: /change-password
+Disallow: /*/change-password
+Disallow: /forgot-password
+Disallow: /*/forgot-password
+Disallow: /tv-login
+Disallow: /*/tv-login
+Disallow: /settings
+Disallow: /messages
+Disallow: /analytics
+Disallow: /import-export
 Disallow: /*?
 Allow: /
 
@@ -1153,6 +1197,28 @@ Disallow: /favorites
 Disallow: /*/favorites
 Disallow: /request-station
 Disallow: /*/request-station
+Disallow: /dashboard
+Disallow: /*/dashboard
+Disallow: /feedback
+Disallow: /*/feedback
+Disallow: /station-requests
+Disallow: /*/station-requests
+Disallow: /station-submissions
+Disallow: /*/station-submissions
+Disallow: /status-monitoring
+Disallow: /*/status-monitoring
+Disallow: /sync
+Disallow: /*/sync
+Disallow: /change-password
+Disallow: /*/change-password
+Disallow: /forgot-password
+Disallow: /*/forgot-password
+Disallow: /tv-login
+Disallow: /*/tv-login
+Disallow: /settings
+Disallow: /messages
+Disallow: /analytics
+Disallow: /import-export
 Disallow: /*?
 Allow: /
 

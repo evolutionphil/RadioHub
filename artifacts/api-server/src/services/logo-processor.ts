@@ -7,7 +7,7 @@ import { promisify } from 'util';
 import { Station } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
 import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
-import { validateOutboundUrl } from '../utils/safe-fetch';
+import { validateOutboundUrl, INTERNAL_SERVICE_PORTS } from '../utils/safe-fetch';
 
 // INCIDENT 2026-05-15 v5: keep libvips cache lean — see og-image-generator
 // for full rationale. Logo processing runs in background batches and rarely
@@ -20,6 +20,37 @@ const inflate = promisify(zlib.inflate);
 
 const LOGO_SIZES = [256] as const;
 const LOGOS_DIR = path.join(process.cwd(), 'public', 'station-logos');
+
+// Optional external egress proxy for logo fetching (2026-07-01). Many favicon
+// hosts (Cloudflare-fronted sites, aggregator CDNs) return 403 to our
+// datacenter IP but 200 to residential IPs — which is exactly why Ahrefs can
+// fetch a favicon our processor could not. When LOGO_FETCH_PROXY_URL is set
+// (e.g. "http://user:pass@proxy-host:port" from a residential/rotating proxy),
+// downloadImageWithRetry retries a BLOCKED direct download through this proxy.
+// Direct is always tried first, so metered proxy bandwidth is only spent on the
+// stations that genuinely need it. Unset → behaviour is exactly as before.
+function parseLogoFetchProxy():
+  | { protocol: string; host: string; port: number; auth?: { username: string; password: string } }
+  | undefined {
+  const raw = (process.env.LOGO_FETCH_PROXY_URL || '').trim();
+  if (!raw) return undefined;
+  try {
+    const u = new URL(raw);
+    const cfg: { protocol: string; host: string; port: number; auth?: { username: string; password: string } } = {
+      protocol: (u.protocol.replace(':', '') || 'http'),
+      host: u.hostname,
+      port: u.port ? parseInt(u.port, 10) : (u.protocol === 'https:' ? 443 : 80),
+    };
+    if (u.username || u.password) {
+      cfg.auth = { username: decodeURIComponent(u.username), password: decodeURIComponent(u.password) };
+    }
+    return cfg;
+  } catch {
+    logger.warn('⚠️ LOGO_FETCH_PROXY_URL is set but is not a valid URL — ignoring');
+    return undefined;
+  }
+}
+const LOGO_FETCH_PROXY = parseLogoFetchProxy();
 
 type FailureType = 'http_error' | 'timeout' | 'invalid_format' | 'download_failed' | 'processing_failed';
 
@@ -711,17 +742,46 @@ export class LogoProcessor {
       }
       
       lastResult = result;
-      
-      // Don't retry on invalid format - the content won't change
+
+      // Don't retry invalid-format via DIRECT — the bytes won't change on a
+      // re-fetch from the same IP. EXCEPTION: an HTML/error-page body (as
+      // opposed to an SVG or a corrupt image) is very often an anti-bot block
+      // that serves a real image to residential IPs. So when a proxy is
+      // configured and the failure looks like a block page, fall through to the
+      // proxy retry below instead of giving up.
       if (result.failureType === 'invalid_format') {
+        const looksLikeAntiBotBlock =
+          /html|error page|error response|access denied|not found|forbidden/i.test(result.error || '');
+        if (LOGO_FETCH_PROXY && looksLikeAntiBotBlock) break;
         return result;
       }
-      
+
       if (attempt < maxRetries) {
         await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
       }
     }
-    
+
+    // External-proxy fallback: if the direct download was blocked (HTTP 4xx/5xx),
+    // connection-refused, timed out, or came back as an anti-bot HTML/error page
+    // — and a residential proxy is configured — retry ONCE through it. This
+    // rescues favicons that block/serve-an-error-page to our datacenter IP but
+    // return 200 + the real image to residential IPs ("Ahrefs can fetch it but
+    // we can't"). A genuine SVG/corrupt `invalid_format` returned early above and
+    // never reaches here, so we don't waste proxy bandwidth on unrecoverable ones.
+    if (
+      LOGO_FETCH_PROXY &&
+      lastResult.failureType &&
+      (['http_error', 'download_failed', 'timeout', 'invalid_format'] as FailureType[]).includes(lastResult.failureType)
+    ) {
+      logger.log(`🌐 PROXY retry (${lastResult.failureType}): ${url.substring(0, 60)}`);
+      const proxied = await this.downloadImage(url, 1, true);
+      if (proxied.buffer && proxied.buffer.length > 0) {
+        logger.log(`✅ PROXY SUCCESS: ${url.substring(0, 60)}`);
+        return proxied;
+      }
+      lastResult = proxied.failureType ? proxied : lastResult;
+    }
+
     return lastResult;
   }
 
@@ -766,17 +826,27 @@ export class LogoProcessor {
   /**
    * Download image from URL with proper HTTP validation
    */
-  private async downloadImage(url: string, attempt: number = 1): Promise<DownloadResult> {
+  private async downloadImage(url: string, attempt: number = 1, useProxy: boolean = false): Promise<DownloadResult> {
     try {
       const timeout = 5000 + (attempt * 3000); // 5s, 8s
+      // Route through the external residential proxy ONLY on the explicit
+      // proxy-retry pass (useProxy). `undefined` on the direct pass keeps
+      // axios's default behaviour byte-for-byte identical to before.
+      const proxy = (useProxy && LOGO_FETCH_PROXY) ? LOGO_FETCH_PROXY : undefined;
 
       let currentUrl = url;
       const maxHops = 3;
       let response: any = null;
 
       for (let hop = 0; hop <= maxHops; hop++) {
-        // SSRF guard on EVERY hop (replit.md SSRF rule).
-        const guarded = await validateOutboundUrl(currentUrl, { allowHttp: true });
+        // SSRF guard on EVERY hop (replit.md SSRF rule). Allow non-standard
+        // ports (many favicons live on :8443, :8000, :8080 …) but still block
+        // internal-service ports + all private/metadata IPs — same policy the
+        // stream proxy uses. Fixes false "port-not-allowed" logo failures.
+        const guarded = await validateOutboundUrl(currentUrl, {
+          allowHttp: true,
+          blockedPorts: INTERNAL_SERVICE_PORTS,
+        });
         if (!guarded.ok) {
           return {
             buffer: null,
@@ -798,6 +868,7 @@ export class LogoProcessor {
           maxBodyLength: 2 * 1024 * 1024,
           maxRedirects: 0, // we walk redirects manually so each hop is SSRF-checked
           decompress: true,
+          proxy, // external residential proxy on the proxy-retry pass, else undefined
           headers: {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',

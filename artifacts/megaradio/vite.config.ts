@@ -76,6 +76,15 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    // Target modern evergreen browsers only (all support native ESM, dynamic
+    // import, optional chaining, nullish coalescing). Output is behaviourally
+    // identical to the previous default ('modules') for these browsers but
+    // avoids legacy transpilation/helpers → smaller, faster-parsing bundles.
+    target: "es2020",
+    // Every target browser supports <link rel="modulepreload"> natively, so
+    // the injected polyfill + its synchronous shim is dead weight. Dropping it
+    // removes ~1 KB from the entry and one blocking micro-task at startup.
+    modulePreload: { polyfill: false },
     rollupOptions: {
       output: {
         // 2026-05-12 perf (PageSpeed mobile=43, TBT=1,120ms): the prior

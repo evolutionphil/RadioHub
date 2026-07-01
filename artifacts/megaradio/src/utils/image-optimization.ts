@@ -1,17 +1,24 @@
 import { getStreamProxyUrl } from '@/lib/utils';
 
-// Check if browser supports WebP format
+// Check if browser supports WebP format.
+// Memoized: WebP support cannot change during a page's lifetime, so the
+// canvas + toDataURL probe (which forces a layout/paint allocation) runs at
+// most once instead of on every getOptimizedImageSrc call — an INP win on
+// image-heavy list renders. Same return value, zero behavioural change.
+let _supportsWebPCache: boolean | undefined;
 export const supportsWebP = (): boolean => {
   if (typeof window === 'undefined') return false;
-  
+  if (_supportsWebPCache !== undefined) return _supportsWebPCache;
+
   try {
     const canvas = document.createElement('canvas');
     canvas.width = 1;
     canvas.height = 1;
-    return canvas.toDataURL('image/webp').indexOf('webp') !== -1;
+    _supportsWebPCache = canvas.toDataURL('image/webp').indexOf('webp') !== -1;
   } catch {
-    return false;
+    _supportsWebPCache = false;
   }
+  return _supportsWebPCache;
 };
 
 // Get optimized image URL with fallbacks

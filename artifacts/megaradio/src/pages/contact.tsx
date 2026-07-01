@@ -64,7 +64,10 @@ export function Contact() {
       </div>
       <div className="container mx-auto pb-10 text-white">
         <div className="w-sm mx-auto max-w-sm">
-          <h1 className="py-8 text-center text-2xl font-medium">{t('contact_happy_to_hear')}</h1>
+          {/* Demoted from a second <h1> to <h2>: a page must have one <h1>
+              (the page title above). Tailwind preflight keeps h2 font-size/
+              weight/margin at inherit, so this is visually identical. */}
+          <h2 className="py-8 text-center text-2xl font-medium">{t('contact_happy_to_hear')}</h2>
           <form onSubmit={submitForm} className="flex flex-col justify-center gap-6 pt-8">
             <div>
               <div className="relative">

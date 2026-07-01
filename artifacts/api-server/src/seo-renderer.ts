@@ -135,7 +135,17 @@ export function getSeoRenderStats() {
   return { active: seoRenderActive, rejected: seoRenderRejected, eventLoopLag: eventLoopLagMs };
 }
 
-const DB_QUERY_TIMEOUT_MS = SEO_RENDER_TIMEOUT_MS - 500;
+// Decoupled from the render budget (2026-07-01). It used to be
+// SEO_RENDER_TIMEOUT_MS - 500 = 9500ms, meaning ONE slow enrichment query
+// (genre/region popular-stations, cross-links) could consume almost the whole
+// 10s render budget — pushing the render over SEO_RENDER_TIMEOUT, which falls
+// back to a NOINDEX SPA shell with no <h1> (the "H1 missing / not indexed"
+// symptom on genre/region pages). Cap every SSR query at 4s instead: the
+// critical, index-covered lookups (station/genre by slug, translations) return
+// in well under that, while a genuinely slow enrichment query now soft-fails to
+// an empty grid FAST, leaving ample budget for generateHtmlBody to still emit a
+// proper <h1>/<h2> and an indexable body.
+const DB_QUERY_TIMEOUT_MS = 4_000;
 
 function withSignal<T>(query: any, signal?: AbortSignal): Promise<T> {
   if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
@@ -743,6 +753,15 @@ export class SeoRenderer {
           }
         } catch (error: any) {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
+          // The top-stations grid uses a live (unindexed) $regex on `tags` —
+          // the 2026-05-14 pile-up pattern. Under load it can hit its 4s
+          // maxTimeMS and throw here BEFORE `popularStations` is assigned.
+          // Record that the fetch FAILED (vs genuinely returning few stations)
+          // so the genre thin-gate below does not silently de-index a curated
+          // whitelisted genre on a transient Mongo slowdown.
+          if (additionalData.popularStations === undefined) {
+            additionalData.popularStationsFetchFailed = true;
+          }
         }
         }
       }
@@ -1174,13 +1193,20 @@ export class SeoRenderer {
           );
         }
       } catch (e: any) {
-        // Non-fatal: if the rules module fails to load just leave robots as-is.
-        // BUT we log loudly — silently swallowing here previously hid a broken
-        // import path and caused station hreflang to skip the indexability gate.
+        // FAIL-CLOSED: if the indexability gate can't run we cannot verify the
+        // station is quality, so we must NOT leave the default `index, follow`
+        // (that would let junk/thin stations slip into the index — the exact
+        // problem this gate exists to prevent). Serve `noindex, follow` until
+        // the gate is healthy again; `follow` preserves crawl of internal links.
+        // The gate is a local static import, so a failure here means a broken
+        // build (loud + recoverable), not a per-request transient blip.
+        seoTags.robots = 'noindex, follow';
+        seoTags.noIndex = true;
+        seoTags.hreflangs = [];
         try {
           const { logger } = await import('./utils/logger');
           logger.warn(
-            `⚠️ seo-renderer: station indexability gate failed: ${e?.message || e}`,
+            `⚠️ seo-renderer: station indexability gate failed — failing CLOSED to noindex: ${e?.message || e}`,
           );
         } catch {}
       }
@@ -1200,7 +1226,12 @@ export class SeoRenderer {
     //      whole template on Google's low-quality list.
     if (pageType === 'genres' && additionalData?.genreSlug) {
       const popularStations = (additionalData?.popularStations as any[] | undefined) || [];
-      const tooThin = popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX;
+      // If the top-stations fetch FAILED (transient Mongo timeout), an empty
+      // grid is not evidence the genre is thin — do not de-index a curated
+      // whitelisted genre over a blip. A not-whitelisted genre is still caught
+      // by `genreNotWhitelisted` below, so this only protects trusted genres.
+      const fetchFailed = additionalData.popularStationsFetchFailed === true;
+      const tooThin = !fetchFailed && popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX;
       if (additionalData.genreNotWhitelisted || tooThin) {
         seoTags.robots = 'noindex, follow';
         seoTags.noIndex = true;
@@ -1214,7 +1245,7 @@ export class SeoRenderer {
       // the index immediately. We keep the softer noindex-200 path for
       // whitelisted-but-thin genres because real users typing the URL
       // still see a useful (though sparse) genre grid.
-      if (additionalData.genreNotWhitelisted && popularStations.length === 0) {
+      if (additionalData.genreNotWhitelisted && popularStations.length === 0 && !fetchFailed) {
         stationNotFound = true;
         additionalData.notFound = true;
       }
@@ -1841,13 +1872,19 @@ export class SeoRenderer {
       
       case 'station':
         if (stationData) {
-          // H1 = "{station_name} {country_part}" — drop the trailing
-          // " — Listen Live" CTA that the title carries. Keeps the
-          // station + location keywords for SEO while remaining distinct
-          // from <title>.
+          // H1 = the bare station name, to EXACTLY match the JS-rendered <h1>
+          // in the SPA (stations/[id].tsx renders `{station.name}` only). The
+          // SSR body is replaced by the SPA on load (it is not React-hydrated),
+          // so Googlebot's rendered view already indexes the bare-name h1; a
+          // richer SSR h1 ("{name} {country}") only appears to non-JS crawlers
+          // and site-audit tools as a raw-vs-rendered mismatch. Location
+          // keywords are retained in <title>, meta description, breadcrumbs and
+          // the "About {station}" <h2>, so keyword coverage is unaffected.
+          if (stationData.name && stationData.name.trim()) {
+            return this.escapeHtml(stationData.name.trim());
+          }
+          // Fallback only when the name is missing: derive from the title minus CTA.
           const fullTitle = generateLocalizedStationTitle(stationData, language, translations);
-          // generateLocalizedStationTitle format: `{name}{country_part} — {listen_live}`
-          // Trim everything from the last " — " onward.
           const dashIdx = fullTitle.lastIndexOf(' — ');
           const h1Source = dashIdx > 0 ? fullTitle.slice(0, dashIdx) : fullTitle;
           return this.escapeHtml(h1Source);
