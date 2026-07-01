@@ -910,6 +910,10 @@ app.use('/api/stream', streamServiceProxy);
     <!-- 2026-05-12 perf (PageSpeed mobile=43): removed dead preloads
          (ubuntu-400.ttf, ubuntu-700.ttf — files do not exist, were 404s)
          and an unused preconnect to unpkg.com (Lighthouse flagged it). -->
+    <!-- flagcdn serves the country-flag hero on every region/country SSR page
+         (eager <img>, seo-renderer.ts:2467). preconnect (not just dns-prefetch)
+         warms the TLS+TCP handshake so the flag paints sooner. -->
+    <link rel="preconnect" href="https://flagcdn.com" crossorigin>
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://api.ipify.org">
     <!-- LCP: the header logo is above-the-fold on every page. The production
@@ -918,7 +922,13 @@ app.use('/api/stream', streamServiceProxy);
          scanner. Preload it with high priority. Matches the asset used by
          radio-header.tsx (/header-logo-80w.webp, 2.6KB). -->
     <link rel="preload" as="image" href="/header-logo-80w.webp" fetchpriority="high">
+    <!-- Preload the above-the-fold Ubuntu weights the SSR body actually renders:
+         400 (body), 600 (station-grid / sub-headings), 700 (H1/H2). Previously
+         only 600 was preloaded here, so headings and body text on the SSR path
+         (100% of SEO traffic) were discovered late and swapped in after FCP. -->
+    <link rel="preload" as="font" href="/fonts/ubuntu-400.woff2" type="font/woff2" crossorigin>
     <link rel="preload" as="font" href="/fonts/ubuntu-600.woff2" type="font/woff2" crossorigin>
+    <link rel="preload" as="font" href="/fonts/ubuntu-700.woff2" type="font/woff2" crossorigin>
     ${pageType === 'home' ? '<link rel="preload" as="image" imagesrcset="/images/hero-bg-430w.webp 430w, /images/hero-bg.webp 1920w" imagesizes="100vw" fetchpriority="high">' : ''}
     ${prodTags.styles}
     ${prodTags.preloads}

@@ -33,6 +33,9 @@
     <meta name="msapplication-TileImage" content="/apple-touch-icon.png">
     
     <!-- Core Web Vitals Performance Optimizations - No external font requests -->
+    <!-- flagcdn serves country flags in the header/region views — preconnect
+         warms TLS+TCP so the flag paints sooner (dns-prefetch alone only resolves DNS). -->
+    <link rel="preconnect" href="https://flagcdn.com" crossorigin>
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <!-- 🚀 PERF: Preconnect to API origin (3-service split) — saves ~300-1000ms TLS+TCP on first API call -->
     <link rel="preconnect" href="https://api.themegaradio.com" crossorigin>
@@ -44,9 +47,11 @@
     <link rel="preload" href="/images/hero-bg-430w.webp" as="image" type="image/webp" media="(max-width: 767px)" fetchpriority="high">
     <link rel="preload" href="/images/hero-bg.webp" as="image" type="image/webp" media="(min-width: 768px)" fetchpriority="high">
     
-    <!-- 🚀 Preload local Ubuntu fonts for critical weights used in rendering -->
+    <!-- 🚀 Preload local Ubuntu fonts for the above-the-fold weights: 400 (body),
+         600 (grid / sub-headings — was declared but preloaded nowhere), 700 (headings).
+         500 still loads via @font-face on demand; it is rarely above the fold. -->
     <link rel="preload" href="/fonts/ubuntu-400.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="preload" href="/fonts/ubuntu-500.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="/fonts/ubuntu-600.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/ubuntu-700.woff2" as="font" type="font/woff2" crossorigin>
     
     <!-- Critical above-the-fold CSS - INLINED -->
