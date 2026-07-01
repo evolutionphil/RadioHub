@@ -2343,7 +2343,7 @@ export class SeoRenderer {
                     <li><a href="/${language}/genres">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse All Radio Genres'))}</a></li>
                     <li><a href="/${language}/regions">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio Stations by Country'))}</a></li>
                     <li><a href="/${language}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Explore All Stations'))}</a></li>
-                    <li><a href="/${language}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                    <li><a href="/${language}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                   </ul>
                 </nav>
               </div>
@@ -2464,7 +2464,7 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'All Radio Genres'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2641,7 +2641,7 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'All Regions'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2677,7 +2677,7 @@ export class SeoRenderer {
                   <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Browse Radio Genres'))}</a></li>
                   <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:regions`) || 'regions'}">${this.escapeHtml(getLocalizedText('nav_regions', 'Radio by Country'))}</a></li>
                   <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'All Stations'))}</a></li>
-                  <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                  <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                 </ul>
               </nav>
             </section>
@@ -2705,7 +2705,7 @@ export class SeoRenderer {
             </section>${faqBlocks}
             <nav>
               <ul>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
                 <li><a href="${langPrefix}/about">${this.escapeHtml(getLocalizedText('nav_about', 'About Mega Radio'))}</a></li>
                 <li><a href="${langPrefix}/contact">${this.escapeHtml(getLocalizedText('nav_contact', 'Contact Us'))}</a></li>
                 <li><a href="${langPrefix}/stations">${this.escapeHtml(getLocalizedText('nav_stations', 'Browse Stations'))}</a></li>
@@ -2731,7 +2731,7 @@ export class SeoRenderer {
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:stations`) || 'stations'}">${this.escapeHtml(getLocalizedText('nav_stations', 'Browse Stations'))}</a></li>
                 <li><a href="${langPrefix}/${urlTranslations?.get(`${language}:genres`) || 'genres'}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
                 <li><a href="${langPrefix}/recommendations">${this.escapeHtml(getLocalizedText('nav_for_you', 'For You'))}</a></li>
-                <li><a href="${langPrefix}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="${langPrefix}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
@@ -2791,7 +2791,7 @@ export class SeoRenderer {
             <nav>
               <ul>
                 <li><a href="${genresHref}">${this.escapeHtml(getLocalizedText('nav_genres', 'Radio Genres'))}</a></li>
-                <li><a href="/${language}/">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
+                <li><a href="/${language}">${this.escapeHtml(getLocalizedText('nav_home', 'Home'))}</a></li>
               </ul>
             </nav>
           </main>
