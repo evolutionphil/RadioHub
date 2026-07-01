@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Link, useParams } from 'wouter';
+import { Link, useParams, useSearch } from 'wouter';
 import { ArrowLeft, Radio, Search, Filter, Globe, Users, MapPin, Building2 } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
 import { useGlobalPlayer } from '../hooks/useGlobalPlayer';
@@ -58,11 +58,20 @@ export default function RegionStationsPage() {
   };
   const { t } = useTranslation();
   const { currentStation, playStation } = useGlobalPlayer();
-  
+
+  // Honor the crawlable ?page=N the SSR country hub advertises. Without this,
+  // hydrating on /regions/.../<country>?page=2 would reset to offset 0 and
+  // clobber the SSR-rendered page-2 grid with page-1 content — making every
+  // paginated URL render identically after JS and defeating the crawl paths.
+  // Page size matches the SSR catalogue (60/page).
+  const search = useSearch();
+  const PAGE_SIZE = 60;
+  const initialPage = Math.max(1, parseInt(new URLSearchParams(search).get('page') || '1', 10) || 1);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [sortBy, setSortBy] = useState<'votes' | 'name'>('votes');
-  const [limit] = useState(50); // 50 stations per load
-  const [offset, setOffset] = useState(0);
+  const [limit] = useState(PAGE_SIZE);
+  const [offset, setOffset] = useState((initialPage - 1) * PAGE_SIZE);
   const [allStations, setAllStations] = useState<Station[]>([]); // Accumulate all loaded stations
   const [isLoadingMore, setIsLoadingMore] = useState(false); // Track load more state
   const [hasMore, setHasMore] = useState(true); // Track if more data available
