@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useRoute } from "wouter";
+import { useRoute, useSearch, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import type { StationWithCountry } from "@workspace/db-shared/schema";
 import { Link } from "wouter";
@@ -39,13 +39,25 @@ export default function GenreDetail({
   const urlCountryName = urlCountryCode ? getCountryFromCode(urlCountryCode) : null;
   
   const { t } = useTranslation();
-  const [page, setPage] = useState(1);
+  const search = useSearch();
+  const [, navigate] = useLocation();
+  const urlPage = Math.max(1, parseInt(new URLSearchParams(search).get('page') || '1', 10) || 1);
+  const [page, setPage] = useState(urlPage);
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("quality");
   const [currentCountryFilter, setCurrentCountryFilter] = useState(urlCountryName || selectedCountry || "all");
   
   const countryForFiltering = urlCountryName || currentCountryFilter || selectedCountry;
-  
+
+  // Build a URL for a given page number, preserving the current path
+  const buildPageHref = (p: number) => p === 1 ? window.location.pathname : `${window.location.pathname}?page=${p}`;
+
+  // Sync URL → state when the back/forward button changes ?page
+  useEffect(() => {
+    if (urlPage !== page) setPage(urlPage);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlPage]);
+
   if (!slug) {
     return <NotFound />;
   }
@@ -257,57 +269,63 @@ export default function GenreDetail({
                   </>
                 )}
 
-                {/* Pagination - EXACT styling from original */}
+                {/* Pagination — crawlable <a href> links so Googlebot can
+                    discover every page. SPA navigation is handled via onClick
+                    which updates the URL (pushState) without a full reload. */}
                 <div className="py-8 grid items-center justify-center">
                   {totalPages > 1 && (
                     <nav className="flex items-center gap-x-2.5" aria-label="Pagination">
-                      {/* Previous button */}
-                      <button
-                        type="button"
-                        className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#333333] disabled:hover:bg-[#292929]"
-                        disabled={page === 1}
-                        onClick={() => setPage(page - 1)}
-                        aria-label={`Go to previous page, page ${page - 1}`}
-                      >
-                        <ChevronRightIcon className="size-6" />
-                      </button>
+                      {/* Previous */}
+                      {page === 1 ? (
+                        <span className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center opacity-50 cursor-not-allowed" aria-disabled="true" aria-label="Previous page">
+                          <ChevronRightIcon className="size-6" />
+                        </span>
+                      ) : (
+                        <a
+                          href={buildPageHref(page - 1)}
+                          className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center hover:bg-[#333333]"
+                          onClick={(e) => { e.preventDefault(); navigate(buildPageHref(page - 1)); setPage(page - 1); }}
+                          rel="prev"
+                          aria-label={`Go to previous page, page ${page - 1}`}
+                        >
+                          <ChevronRightIcon className="size-6" />
+                        </a>
+                      )}
 
-                      {/* Page numbers - simplified version matching original logic */}
+                      {/* Page numbers */}
                       {(() => {
                         const maxVisiblePages = 3;
                         const halfWay = Math.floor(maxVisiblePages / 2);
                         let startPage = Math.max(page - halfWay, 1);
                         let endPage = Math.min(startPage + maxVisiblePages - 1, totalPages);
-                        
                         if (endPage - startPage + 1 < maxVisiblePages) {
                           startPage = Math.max(endPage - maxVisiblePages + 1, 1);
                         }
-                        
                         const visiblePages = Array.from({ length: endPage - startPage + 1 }, (_, i) => startPage + i);
                         const showLeftEllipsis = visiblePages[0] > 1;
                         const showRightEllipsis = visiblePages[visiblePages.length - 1] < totalPages;
-                        
+
                         return (
                           <>
                             {/* First page */}
                             {showLeftEllipsis && (
-                              <button
-                                type="button"
-                                className={`bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#333333] ${page === 1 ? 'bg-[#FF4199]' : ''}`}
-                                onClick={() => setPage(1)}
+                              <a
+                                href={buildPageHref(1)}
+                                className={`bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center hover:bg-[#333333] ${page === 1 ? 'bg-[#FF4199]' : ''}`}
+                                onClick={(e) => { e.preventDefault(); navigate(buildPageHref(1)); setPage(1); }}
                                 aria-current={page === 1 ? 'page' : undefined}
                                 aria-label="Go to page 1"
                               >
                                 1
-                              </button>
+                              </a>
                             )}
 
-                            {/* Left ellipsis */}
+                            {/* Left ellipsis — no direct href since the target is computed */}
                             {showLeftEllipsis && (
                               <button
                                 type="button"
                                 className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center hover:bg-[#333333] group"
-                                onClick={() => setPage(Math.max(1, visiblePages[0] - maxVisiblePages))}
+                                onClick={() => { const p = Math.max(1, visiblePages[0] - maxVisiblePages); navigate(buildPageHref(p)); setPage(p); }}
                                 aria-label="Previous set of pages"
                               >
                                 <span className="group-hover:hidden">•••</span>
@@ -315,18 +333,18 @@ export default function GenreDetail({
                               </button>
                             )}
 
-                            {/* Visible pages */}
+                            {/* Visible page numbers */}
                             {visiblePages.map((pageNum) => (
-                              <button
+                              <a
                                 key={pageNum}
-                                type="button"
-                                className={`bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#333333] ${page === pageNum ? 'bg-[#FF4199]' : ''}`}
-                                onClick={() => setPage(pageNum)}
+                                href={buildPageHref(pageNum)}
+                                className={`bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center hover:bg-[#333333] ${page === pageNum ? 'bg-[#FF4199]' : ''}`}
+                                onClick={(e) => { e.preventDefault(); navigate(buildPageHref(pageNum)); setPage(pageNum); }}
                                 aria-current={page === pageNum ? 'page' : undefined}
                                 aria-label={`Go to page ${pageNum}`}
                               >
                                 {pageNum}
-                              </button>
+                              </a>
                             ))}
 
                             {/* Right ellipsis */}
@@ -334,7 +352,7 @@ export default function GenreDetail({
                               <button
                                 type="button"
                                 className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center hover:bg-[#333333] group"
-                                onClick={() => setPage(Math.min(totalPages, visiblePages[visiblePages.length - 1] + maxVisiblePages))}
+                                onClick={() => { const p = Math.min(totalPages, visiblePages[visiblePages.length - 1] + maxVisiblePages); navigate(buildPageHref(p)); setPage(p); }}
                                 aria-label="Next set of pages"
                               >
                                 <span className="group-hover:hidden">•••</span>
@@ -344,30 +362,36 @@ export default function GenreDetail({
 
                             {/* Last page */}
                             {showRightEllipsis && (
-                              <button
-                                type="button"
-                                className={`bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#333333] ${page === totalPages ? 'bg-[#FF4199]' : ''}`}
-                                onClick={() => setPage(totalPages)}
+                              <a
+                                href={buildPageHref(totalPages)}
+                                className={`bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center hover:bg-[#333333] ${page === totalPages ? 'bg-[#FF4199]' : ''}`}
+                                onClick={(e) => { e.preventDefault(); navigate(buildPageHref(totalPages)); setPage(totalPages); }}
                                 aria-current={page === totalPages ? 'page' : undefined}
                                 aria-label={`Go to page ${totalPages}`}
                               >
                                 {totalPages}
-                              </button>
+                              </a>
                             )}
                           </>
                         );
                       })()}
 
-                      {/* Next button */}
-                      <button
-                        type="button"
-                        className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#333333] disabled:hover:bg-[#292929]"
-                        disabled={page === totalPages}
-                        onClick={() => setPage(page + 1)}
-                        aria-label={`Go to next page, page ${page + 1}`}
-                      >
-                        <ChevronRightIcon className="size-6 rotate-180" />
-                      </button>
+                      {/* Next */}
+                      {page === totalPages ? (
+                        <span className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center opacity-50 cursor-not-allowed" aria-disabled="true" aria-label="Next page">
+                          <ChevronRightIcon className="size-6 rotate-180" />
+                        </span>
+                      ) : (
+                        <a
+                          href={buildPageHref(page + 1)}
+                          className="bg-[#292929] h-9 min-w-12 px-2 rounded-md flex justify-center items-center hover:bg-[#333333]"
+                          onClick={(e) => { e.preventDefault(); navigate(buildPageHref(page + 1)); setPage(page + 1); }}
+                          rel="next"
+                          aria-label={`Go to next page, page ${page + 1}`}
+                        >
+                          <ChevronRightIcon className="size-6 rotate-180" />
+                        </a>
+                      )}
                     </nav>
                   )}
                 </div>

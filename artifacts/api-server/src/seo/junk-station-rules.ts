@@ -362,7 +362,23 @@ export function getEligibleLanguages(station: {
   languageCodes?: string;
   descriptions?: Record<string, { full?: string; meta?: string } | null | undefined> | null;
 }): string[] {
-  const set = new Set<string>(UNIVERSAL_LANGUAGES);
+  // QUALITY-CORE (2026-07-01): previously seeded with ALL 14 universal
+  // languages unconditionally, which minted 14 thin near-duplicate pages for
+  // every non-junk station (~60K stations × 14 ≈ 840K URLs) — the dominant
+  // "Crawled – currently not indexed" driver on a young, low-authority domain
+  // (GSC: 382K in that bucket, ~1 URL actually indexed). Indexing is now
+  // CONTENT-DRIVEN: English is always eligible (it is both the primary index
+  // target AND the /en canonical the lang-ineligibility middleware redirects
+  // every non-universal variant to). The other 13 universal languages become
+  // indexable for a station ONLY where it has genuine content for that
+  // language — its native country/broadcast language (added just below) or a
+  // language carrying a real full+meta description (description-fill output,
+  // added at the bottom). A station with no enrichment collapses from 14 thin
+  // pages to just its English (+ native) page; as description-fill enriches
+  // it, the remaining languages light up. This preserves the full English
+  // catalogue while starving Google's crawl budget of thin auto-variants.
+  // Reverting to the old behaviour = seed with UNIVERSAL_LANGUAGES again.
+  const set = new Set<string>(['en']);
 
   const cc = (station.countryCode || '').toLowerCase();
   if (cc && COUNTRY_TO_LANGUAGE[cc]) set.add(COUNTRY_TO_LANGUAGE[cc]);

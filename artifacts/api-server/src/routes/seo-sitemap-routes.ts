@@ -921,9 +921,14 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
     }
   });
 
-  if (options?.apiOnly) {
-    return;
-  }
+  // NOTE: the apiOnly early-return used to sit HERE, which skipped the
+  // /robots.txt route below. That made api.themegaradio.com/robots.txt return
+  // 404 (GSC "robots.txt could not be fetched" error) — and because
+  // index-api.ts removed its own fallback "Disallow: /" handler (S1 fix,
+  // 2026-05-08) on the assumption THIS handler would respond, the api host
+  // ended up with no robots.txt at all. /robots.txt and /llms.txt are safe and
+  // useful on the API host (they only advertise crawl directives + canonical
+  // entry points on themegaradio.com), so the guard now sits AFTER them.
 
   // Task #128: /llms.txt advertises crawl-friendly entry points to AI agents
   // and Google's LLM probes. Must be plain-text — without this route the SPA
@@ -1227,6 +1232,12 @@ Sitemap: ${baseUrl}/sitemap-he.xml`;
     res.setHeader('Cache-Control', 'public, max-age=86400');
     res.send(robots);
   });
+
+  // api-only deployments (api.themegaradio.com) serve /robots.txt + /llms.txt
+  // above, but NOT the SSR sitemap routes below (those belong to the web host).
+  if (options?.apiOnly) {
+    return;
+  }
 
   // The qualified-language cache has been hoisted to
   // `server/seo/qualified-languages.ts` so the SSR renderer can consult the
