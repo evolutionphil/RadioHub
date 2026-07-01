@@ -2440,15 +2440,20 @@ export class SeoRenderer {
                   const stationSegment = urlTranslations?.get(`${language}:station`) || 'station';
                   const stationUrl = `/${language}/${stationSegment}/${slug}`;
                   const logo = this.pickLogoUrl(station);
-                  if (!logo) return '';
                   const stationName = this.escapeHtml(station.name || 'Radio Station');
                   const country = station.country ? this.escapeHtml(station.country) : '';
                   const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
                   const altText = country ? `${stationName} — ${country} ${logoWord}` : `${stationName} ${logoWord}`;
+                  // Orphan-link fix (2026-07-01): previously `if (!logo) return ''`
+                  // silently dropped every logo-less station from the country
+                  // page — so those stations got ZERO internal in-links ("no
+                  // referring page" → Crawled-not-indexed). Always emit the
+                  // crawlable <a>; the logo <img> is optional (matches the genre
+                  // grid). Long-tail stations without a logo now get a link too.
                   return `
                     <li>
                       <a href="${stationUrl}">
-                        <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">
+                        ${logo ? `<img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="lazy" decoding="async">` : ''}
                         <h3>${stationName}</h3>
                       </a>
                     </li>`;
