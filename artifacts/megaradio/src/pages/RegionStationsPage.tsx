@@ -350,10 +350,15 @@ export default function RegionStationsPage() {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-800 text-white">
         <div className="container mx-auto px-4 py-8">
-          {/* Header skeleton */}
+          {/* Header — render the real <h1> from the URL slug immediately so the
+              page always exposes a heading even before the API resolves (Ahrefs
+              "H1 tag missing or empty"). Uses the city slug when present, else the
+              country slug; swapped to the localized name once data loads. */}
           <div className="flex items-center gap-4 mb-8">
             <div className="w-10 h-10 bg-slate-700 rounded-lg animate-pulse"></div>
-            <div className="w-64 h-8 bg-slate-700 rounded-lg animate-pulse"></div>
+            <h1 className="text-3xl md:text-4xl font-bold capitalize bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
+              {(citySlug || countrySlug || regionSlug).replace(/-/g, ' ')}
+            </h1>
           </div>
           
           {/* Filters skeleton */}
