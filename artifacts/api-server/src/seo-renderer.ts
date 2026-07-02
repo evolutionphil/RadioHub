@@ -678,7 +678,14 @@ export class SeoRenderer {
             }
           } catch (e: any) {
             if (e?.name === 'AbortError' || signal?.aborted) throw e;
-            // Non-fatal: fall back to the grid-count heuristic in the gate below.
+            // Non-fatal — but RECORD the failure: if this authoritative count
+            // is unavailable AND the live grid under-counts (its case-sensitive
+            // regex misses variant spellings), the thin-gate would noindex a
+            // sitemap-published genre on a transient DB blip, and that noindex
+            // HTML is cacheable for hours. The gate below treats a failed count
+            // fetch like a failed grid fetch: don't de-index a whitelisted
+            // genre on missing evidence.
+            additionalData.genreCountFetchFailed = true;
           }
         }
         // DALGA 2 W2.1: Fetch top 12 stations matching this genre for SSR <img> grid (image indexing)
@@ -1257,10 +1264,15 @@ export class SeoRenderer {
       // used to decide whether to publish this URL) so SSR and sitemap agree —
       // no "Noindex page in sitemap". Only fall back to the live grid count (with
       // transient-failure protection) when the authoritative count is unavailable.
+      // If the COUNT fetch itself failed transiently (genreCountFetchFailed), the
+      // grid heuristic is not trustworthy evidence either (its case-sensitive
+      // regex under-counts variant spellings) — don't de-index a whitelisted
+      // genre on missing evidence; the next uncached render re-evaluates.
       const authoritativeCount = additionalData.genreStationCount;
+      const countFetchFailed = additionalData.genreCountFetchFailed === true;
       const tooThin = typeof authoritativeCount === 'number'
         ? authoritativeCount < MIN_STATIONS_FOR_GENRE_INDEX
-        : (!fetchFailed && popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX);
+        : (!fetchFailed && !countFetchFailed && popularStations.length < MIN_STATIONS_FOR_GENRE_INDEX);
       if (additionalData.genreNotWhitelisted || tooThin) {
         seoTags.robots = 'noindex, follow';
         seoTags.noIndex = true;
@@ -1682,6 +1694,14 @@ export class SeoRenderer {
       baseSeoTags.ogType = 'website';
       // Search result pages should not be indexed (Google guidance) but should be crawlable for links
       baseSeoTags.robots = 'noindex, follow';
+      // AUDIT FIX (2026-07-02): the meta said noindex but the noIndex FLAG was
+      // never set, so (a) index-web's forceNoIndex didn't fire and the default
+      // `X-Robots-Tag: index, follow` header contradicted the meta on cache
+      // MISS, and (b) the hreflang block below still advertised all qualified
+      // alternates on a noindex page (Google: don't emit alternates for
+      // noindex). Set the flag AND suppress alternates, mirroring the utility-
+      // page branch. The hreflang generation below is skipped via noIndex.
+      baseSeoTags.noIndex = true;
     }
 
     if (pageType === 'faq') {
@@ -1731,14 +1751,43 @@ export class SeoRenderer {
     if (Array.isArray(allowedLanguages) && language && !allowedLanguages.includes(language)) {
       allowedLanguages = [...allowedLanguages, language];
     }
-    baseSeoTags.hreflangs = generateLanguageUrls(
-      cleanPath,
-      domain,
-      language,
-      urlTranslations,
-      baseSeoTags.canonical,
-      allowedLanguages,
-    );
+    // AUDIT FIX (2026-07-02): never advertise hreflang alternates on a page
+    // this function itself marked noindex (search, utility). Previously this
+    // assignment ran unconditionally and re-populated hreflangs AFTER the
+    // noindex branches, so noindex search pages advertised 14 alternates +
+    // x-default — contradictory signals Google parks as "crawled, not indexed".
+    // (Station-specific noindex/hreflang gating happens later in
+    // renderStaticPage and is unaffected.)
+    if (baseSeoTags.noIndex === true) {
+      baseSeoTags.hreflangs = [];
+    } else {
+      baseSeoTags.hreflangs = generateLanguageUrls(
+        cleanPath,
+        domain,
+        language,
+        urlTranslations,
+        baseSeoTags.canonical,
+        allowedLanguages,
+      );
+    }
+
+    // AUDIT FIX (2026-07-02, og:locale bloat): generateSeoTags builds
+    // og:locale:alternate from ALL 57 enabled SEO_LANGUAGES (56 alternates,
+    // ~3 KB of head on every page), while hreflang is correctly capped to the
+    // qualified/universal-14 set — and 40+ of those og locales point at
+    // language variants that 301 to /en. Facebook-only signal, but keep it
+    // consistent with hreflang: filter by the same allow-list (locale prefix
+    // before '_' is the language code, e.g. tr_TR→tr, zh_CN→zh, bare 'tl'→tl).
+    if (Array.isArray(baseSeoTags.ogLocaleAlternates)) {
+      if (baseSeoTags.noIndex === true) {
+        baseSeoTags.ogLocaleAlternates = [];
+      } else if (Array.isArray(allowedLanguages)) {
+        const allowSet = new Set(allowedLanguages.map((l) => l.toLowerCase()));
+        baseSeoTags.ogLocaleAlternates = baseSeoTags.ogLocaleAlternates.filter(
+          (locale: string) => allowSet.has(locale.split('_')[0].toLowerCase()),
+        );
+      }
+    }
 
     return baseSeoTags;
   }

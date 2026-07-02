@@ -810,13 +810,24 @@ app.use('/api/stream', streamServiceProxy);
     }
 
     const cleanUrl = url.split('?')[0].split('#')[0];
-    const cachedHtml = performanceCache.getSeoHtml(cleanUrl);
+    // PAGINATION CACHE KEY (2026-07-02 audit P1): the renderer keys its
+    // pageData cache with a `|page=N` suffix for paginated hubs, but this HTML
+    // cache keyed on the query-stripped cleanUrl only — so /en/stations?page=7
+    // HTML (canonical …?page=7) was cached under /en/stations and served for
+    // the sitemap-submitted page-1 URL ("sitemap URL canonicalizes to another
+    // URL"). Mirror the renderer's clamped suffix here. Suffixing purely on
+    // the ?page param (clamped 1..50) is safe for non-paginated pages too —
+    // worst case a duplicate cache slot, never wrong content.
+    const pageMatch = url.match(/[?&]page=(\d+)/);
+    const pageNum = pageMatch ? Math.min(Math.max(parseInt(pageMatch[1], 10) || 1, 1), 50) : 1;
+    const seoHtmlKey = pageNum > 1 ? `${cleanUrl}|page=${pageNum}` : cleanUrl;
+    const cachedHtml = performanceCache.getSeoHtml(seoHtmlKey);
     if (cachedHtml) {
       // Cache-HIT junk guard: a station URL whose pageData cache reports
       // stationIsJunk must serve 410 even if a stale SSR HTML is still in
       // cache from a previous deploy. The pageData cache uses the same key
       // and would have been (re)written as junk by the renderer.
-      const cachedPage: any = performanceCache.getPageData(cleanUrl);
+      const cachedPage: any = performanceCache.getPageData(seoHtmlKey);
       if (cachedPage?.pageData?.stationIsJunk) {
         const { sendJunkGone } = await import('./seo/send-junk-gone');
         sendJunkGone(res);
@@ -881,11 +892,18 @@ app.use('/api/stream', streamServiceProxy);
       const actualHost = req.get('host') || 'themegaradio.com';
       const ogImageDomain = actualHost.includes('replit') ? `https://${actualHost}` : productionDomain;
 
-      const cookieHeader = req.headers.cookie || '';
-      const preferredLanguageMatch = cookieHeader.match(/preferredLanguage=([a-z]{2,5}(?:-[a-z]{2})?)/i);
-      const preferredLanguage = preferredLanguageMatch ? preferredLanguageMatch[1].toLowerCase() : undefined;
-
-      const seoData = await seoRenderer.renderStaticPage(url, productionDomain, preferredLanguage);
+      // SEO-CACHE SAFETY (2026-07-02 audit P1): the preferredLanguage cookie
+      // used to override the URL-derived render language here (a TR-cookied
+      // visitor on /de/sender/x got Turkish HTML with a /tr canonical). But
+      // this response is cached PUBLICLY — origin seoHtml cache + CDN
+      // (s-maxage=86400) — keyed by URL only, and Cloudflare ignores Vary on
+      // HTML. One cookied visitor therefore poisoned the URL for every
+      // subsequent visitor INCLUDING Googlebot (wrong lang + wrong canonical =
+      // hreflang/canonical chaos in GSC). The URL is the single source of
+      // truth for SSR language; a user's preferred UI language is applied
+      // client-side after React mounts (the SPA replaces the SSR body anyway),
+      // so users lose nothing.
+      const seoData = await seoRenderer.renderStaticPage(url, productionDomain);
       // CRITICAL: seoData.seoTags is shared from a `useClones: false` cache and
       // is frozen on write — clone before overriding the domain so that this
       // request-specific value doesn't poison cached SEO data for others.
@@ -924,7 +942,9 @@ app.use('/api/stream', streamServiceProxy);
     <!-- flagcdn serves the country-flag hero on every region/country SSR page
          (eager <img>, seo-renderer.ts:2467). preconnect (not just dns-prefetch)
          warms the TLS+TCP handshake so the flag paints sooner. -->
-    <link rel="preconnect" href="https://flagcdn.com" crossorigin>
+    <!-- No \`crossorigin\`: flags are plain no-cors <img> fetches; a CORS-mode
+         preconnect would not be reused for them (wasted handshake). -->
+    <link rel="preconnect" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://api.ipify.org">
     <!-- LCP: the header logo is above-the-fold on every page. The production
@@ -938,6 +958,7 @@ app.use('/api/stream', streamServiceProxy);
          only 600 was preloaded here, so headings and body text on the SSR path
          (100% of SEO traffic) were discovered late and swapped in after FCP. -->
     <link rel="preload" as="font" href="/fonts/ubuntu-400.woff2" type="font/woff2" crossorigin>
+    <link rel="preload" as="font" href="/fonts/ubuntu-500.woff2" type="font/woff2" crossorigin>
     <link rel="preload" as="font" href="/fonts/ubuntu-600.woff2" type="font/woff2" crossorigin>
     <link rel="preload" as="font" href="/fonts/ubuntu-700.woff2" type="font/woff2" crossorigin>
     ${pageType === 'home' ? '<link rel="preload" as="image" imagesrcset="/images/hero-bg-430w.webp 430w, /images/hero-bg.webp 1920w" imagesizes="100vw" fetchpriority="high">' : ''}
@@ -1057,7 +1078,7 @@ app.use('/api/stream', streamServiceProxy);
         // placeholder content — it will retry the URL later when DB is healthy.
         const stationDbError = !!seoData.pageData?.stationDbError;
         if (!stationNotFound && !stationDbError) {
-          performanceCache.setSeoHtml(cleanUrl, htmlContent);
+          performanceCache.setSeoHtml(seoHtmlKey, htmlContent);
         }
         // Soft-404 guard (2026-05-15): when the SSR resolves to "not
         // found", we MUST emit noindex on BOTH the X-Robots-Tag header

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { SeoMetaTags } from '@workspace/seo-shared/seo-config';
+import { SeoMetaTags, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 
 interface SeoHeadProps {
   seoData: SeoMetaTags;
@@ -54,12 +54,14 @@ export function SeoHead({ seoData }: SeoHeadProps) {
       link.setAttribute('href', href);
     };
     
-    // Basic meta tags
-    updateMetaTag('description', seoData.description);
-    
+    // Basic meta tags — cap at <=160 chars to match the SSR head's truncation
+    // (Ahrefs "Meta description too long"); word-boundary safe.
+    const cappedDescription = truncateAtWordBoundary(seoData.description || '', 160);
+    updateMetaTag('description', cappedDescription);
+
     // Open Graph tags - ALL 4 REQUIRED properties
     updateMetaTag('', seoData.ogTitle || seoData.title, 'og:title');
-    updateMetaTag('', seoData.ogDescription || seoData.description, 'og:description');
+    updateMetaTag('', truncateAtWordBoundary(seoData.ogDescription || seoData.description || '', 160), 'og:description');
     
     // og:url - REQUIRED (fallback to canonical or current URL)
     const ogUrl = seoData.ogUrl || seoData.canonical || window.location.href;
