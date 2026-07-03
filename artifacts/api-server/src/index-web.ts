@@ -490,6 +490,30 @@ app.use('/station-images', express.static(imagesPath, { etag: true, lastModified
 
 const stationLogosPath = path.resolve(process.cwd(), "station-logos");
 app.use('/station-logos', express.static(stationLogosPath, { etag: true, lastModified: true, setHeaders: (res) => { res.set({ 'Cache-Control': 'public, max-age=31536000, immutable', 'X-Content-Type-Options': 'nosniff', 'Vary': 'Accept-Encoding' }); } }));
+// S3 fallback (2026-07-03 logo outage): production containers do NOT ship a
+// local station-logos/ directory — the S3 bucket is the real store, and the
+// frontend's <img srcSet> uses same-origin /station-logos/<folder>/<file>
+// paths. When express.static missed, the request fell through to the SPA
+// catch-all and answered 200 text/html, silently breaking EVERY station
+// logo. Nobody noticed for months because Cloudflare kept serving the old
+// immutable-cached bytes from edge; the first full cache purge exposed it
+// site-wide. Redirect misses to the bucket instead — same folder layout —
+// so the edge re-fills from S3. 302 + 1-day cache keeps us free to move
+// the bucket later without chasing pinned 301s.
+const STATION_LOGOS_S3_BASE =
+  process.env.STATION_LOGOS_BASE_URL ||
+  'https://megaradio-station-logos.s3.eu-north-1.amazonaws.com/station-logos';
+app.use('/station-logos', (req, res) => {
+  // Path shape gate: exactly folder/file with safe characters — no
+  // traversal, nothing smuggled into the bucket URL. Anything else is a
+  // genuine 404.
+  if (!/^\/[A-Za-z0-9][A-Za-z0-9._-]*\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(req.path) || req.path.includes('..')) {
+    res.status(404).set({ 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }).send('Not found');
+    return;
+  }
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.redirect(302, `${STATION_LOGOS_S3_BASE}${req.path}`);
+});
 
 const apiProxy = createProxyMiddleware({
   target: BACKEND_API_URL,
