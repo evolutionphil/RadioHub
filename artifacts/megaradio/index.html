@@ -243,7 +243,10 @@
           // Skip AdSense entirely for premium users (flag set at checkout.completed).
           var isPremium = false;
           try { isPremium = localStorage.getItem('_mrt_is_premium') === '1'; } catch {}
-          if (!isPremium) {
+          // ADMIN GATE (2026-07-04): never load AdSense on /admin — auto-ads
+          // vignettes were interrupting the dashboard.
+          var isAdminPage = window.location.pathname.indexOf('/admin') === 0;
+          if (!isPremium && !isAdminPage) {
             var ads = document.createElement('script');
             ads.async = true;
             ads.crossOrigin = 'anonymous';
