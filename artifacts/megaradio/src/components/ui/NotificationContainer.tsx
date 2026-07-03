@@ -77,7 +77,11 @@ export function NotificationContainer({
   return createPortal(
     <div
       className={cn(
-        'fixed z-[9999] pointer-events-none p-4 sm:p-6',
+        // WIDTH FIX (2026-07-04): a fixed-position element shrinks to its
+        // content, so the w-full/max-w-sm on NotificationItem resolved to
+        // min-content and toasts rendered as a one-word-per-line strip.
+        // Give the portal container an explicit width for items to fill.
+        'fixed z-[9999] pointer-events-none p-4 sm:p-6 w-full max-w-sm sm:max-w-md',
         positionClasses[position]
       )}
       aria-live="polite"

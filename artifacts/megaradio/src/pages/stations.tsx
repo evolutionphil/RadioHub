@@ -1233,13 +1233,9 @@ export default function Stations() {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3 flex-wrap">
               <CardTitle className="text-lg sm:text-xl">Station Management</CardTitle>
-              <TagsStatusBadge
-                onClick={() => {
-                  setShowDuplicates(false);
-                  setShowBlacklisted(false);
-                  handleFilterChange('tagsStatus', 'empty-cooldown');
-                }}
-              />
+              {/* "stuck on empty (cooldown)" badge removed (2026-07-04):
+                  purely informational cooldown counter the admin can't act
+                  on — clicking it only filtered, nothing ever "fixed". */}
               <NeverCheckedTagsBadge
                 onClick={() => {
                   setShowDuplicates(false);

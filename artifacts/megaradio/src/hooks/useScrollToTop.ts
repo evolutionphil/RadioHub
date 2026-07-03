@@ -9,12 +9,14 @@ export function useScrollToTop() {
   const [location] = useLocation();
 
   useEffect(() => {
-    // Scroll to top with smooth behavior when route changes
-    window.scrollTo({
-      top: 0,
-      left: 0,
-      behavior: 'smooth'
-    });
+    // INSTANT scroll (2026-07-04): the previous smooth scroll raced against
+    // async content rendering on route change — layout shifts cancelled the
+    // animation mid-flight and station detail pages regularly opened stuck
+    // at the previous page's scroll depth. Instant reset is deterministic;
+    // also reset both scrolling elements for cross-browser safety.
+    window.scrollTo(0, 0);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   }, [location]);
 }
 
