@@ -74,6 +74,36 @@ const MONGO_MODEL_NAMES = [
 const mongoMockExports: Record<string, unknown> = {};
 for (const name of MONGO_MODEL_NAMES) mongoMockExports[name] = NULL_MODEL;
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
+// 2026-07-03: mongo-schemas grew new exports (IndexNowSubmissionUrls,
+// GenreCount, MediaGroup, normalizeGenreSlug, ...) AFTER this mock's model
+// list was written, and the SSR import graph (seo-renderer -> services/
+// indexnow.ts et al.) now imports some of them at module level. Any missing
+// named export kills the WHOLE suite at module-instantiation ("does not
+// provide an export named ..." -> every test hookFailed/SyntaxError), which
+// is exactly how these suites silently rotted to 0 passing. Mirror EVERY
+// runtime export of mongo-schemas: models default to NULL_MODEL, the few
+// non-model exports get workable stand-ins below.
+const SUPPLEMENTAL_MONGO_EXPORT_NAMES = [
+  'AdminSetting', 'AdminSettingHistory', 'Ads', 'AuthEventLog',
+  'ClearedOverridesAuditLog', 'Codec', 'CountryLanguageMapping',
+  'CoverageBackfillRun', 'CoverageBackfillStatus', 'EnhancedLanguage',
+  'GenreCount', 'GenreMergeAuditLog', 'GenreStationCountsRun',
+  'GenreWhitelistPushLog', 'GscIndexingSnapshot', 'GscOAuthToken',
+  'GscUrlInspection', 'IndexNowSubmissionUrls', 'LaravelPage', 'MediaGroup',
+  'Page', 'SemrushIssue', 'SharedComparisonPreset', 'SitemapUrlSnapshot',
+  'StationEngagement', 'StationErrorLog', 'StationPlaybackCache',
+  'StationRequest', 'StationSubmission', 'StripeSaleEvent',
+  'StripeSubscriptionPlan', 'TvSubscriptionCode', 'TvTelemetry',
+  'TvTelemetryDaily', 'TvVersionConfig', 'UserProfile', 'UserSession',
+  'VisitorSession',
+] as const;
+for (const name of SUPPLEMENTAL_MONGO_EXPORT_NAMES) {
+  if (!(name in mongoMockExports)) mongoMockExports[name] = NULL_MODEL;
+}
+mongoMockExports.INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = 30;
+mongoMockExports.ADMIN_SETTING_HISTORY_RETENTION_PER_KEY = 20;
+mongoMockExports.normalizeGenreSlug = (raw: string) =>
+  String(raw ?? '').toLowerCase().trim().replace(/\s+/g, '-');
 
 mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: mongoMockExports,
@@ -184,22 +214,12 @@ const BREADCRUMB_EMISSION_SURFACES: SchemaEmissionSurface[] = [
       `additionalData?.pageType !== "home"`,
     ],
   },
-  {
-    fileUrl: new URL(
-      '../../megaradio/src/components/SeoHead.tsx',
-      import.meta.url,
-    ),
-    label: 'megaradio client (SeoHead.tsx)',
-    // Client doesn't write the `"@type": "BreadcrumbList"` literal — it
-    // calls the shared `generateBreadcrumbSchema(...)` builder. So the call
-    // site IS the emission point we must guard.
-    emissionPatterns: [/\bgenerateBreadcrumbSchema\s*\(/g],
-    // Client only emits BreadcrumbList for station detail pages today.
-    allowedGuards: [
-      `pageType === 'station'`,
-      `pageType === "station"`,
-    ],
-  },
+  // 2026-07-01: the megaradio client surface (SeoHead.tsx) was REMOVED from
+  // this list on purpose — client-side JSON-LD injection was deleted
+  // entirely (it duplicated the server-rendered entities and re-advertised
+  // all 57 languages via hreflang). The server is the single emission
+  // surface now; if a client emission ever reappears, add the surface back
+  // here WITH its guard so the visible-content contract keeps holding.
 ];
 
 test('source-scan: every BreadcrumbList JSON-LD emission lives behind a known pageType guard', () => {

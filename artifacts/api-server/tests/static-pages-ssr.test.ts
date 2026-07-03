@@ -91,6 +91,36 @@ const MONGO_MODEL_NAMES = [
 const mongoMockExports: Record<string, unknown> = {};
 for (const name of MONGO_MODEL_NAMES) mongoMockExports[name] = NULL_MODEL;
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
+// 2026-07-03: mongo-schemas grew new exports (IndexNowSubmissionUrls,
+// GenreCount, MediaGroup, normalizeGenreSlug, ...) AFTER this mock's model
+// list was written, and the SSR import graph (seo-renderer -> services/
+// indexnow.ts et al.) now imports some of them at module level. Any missing
+// named export kills the WHOLE suite at module-instantiation ("does not
+// provide an export named ..." -> every test hookFailed/SyntaxError), which
+// is exactly how these suites silently rotted to 0 passing. Mirror EVERY
+// runtime export of mongo-schemas: models default to NULL_MODEL, the few
+// non-model exports get workable stand-ins below.
+const SUPPLEMENTAL_MONGO_EXPORT_NAMES = [
+  'AdminSetting', 'AdminSettingHistory', 'Ads', 'AuthEventLog',
+  'ClearedOverridesAuditLog', 'Codec', 'CountryLanguageMapping',
+  'CoverageBackfillRun', 'CoverageBackfillStatus', 'EnhancedLanguage',
+  'GenreCount', 'GenreMergeAuditLog', 'GenreStationCountsRun',
+  'GenreWhitelistPushLog', 'GscIndexingSnapshot', 'GscOAuthToken',
+  'GscUrlInspection', 'IndexNowSubmissionUrls', 'LaravelPage', 'MediaGroup',
+  'Page', 'SemrushIssue', 'SharedComparisonPreset', 'SitemapUrlSnapshot',
+  'StationEngagement', 'StationErrorLog', 'StationPlaybackCache',
+  'StationRequest', 'StationSubmission', 'StripeSaleEvent',
+  'StripeSubscriptionPlan', 'TvSubscriptionCode', 'TvTelemetry',
+  'TvTelemetryDaily', 'TvVersionConfig', 'UserProfile', 'UserSession',
+  'VisitorSession',
+] as const;
+for (const name of SUPPLEMENTAL_MONGO_EXPORT_NAMES) {
+  if (!(name in mongoMockExports)) mongoMockExports[name] = NULL_MODEL;
+}
+mongoMockExports.INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = 30;
+mongoMockExports.ADMIN_SETTING_HISTORY_RETENTION_PER_KEY = 20;
+mongoMockExports.normalizeGenreSlug = (raw: string) =>
+  String(raw ?? '').toLowerCase().trim().replace(/\s+/g, '-');
 
 mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: mongoMockExports,
@@ -158,9 +188,21 @@ before(async () => {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// The renderer HTML-escapes every emitted value (escapeHtml — an XSS guard,
+// not a bug), so `&` in a template legitimately renders as `&amp;`. Decode
+// the extracted markup before comparing against the raw template strings.
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'");
+}
+
 function extractTitle(html: string): string | null {
   const m = /<title>([\s\S]*?)<\/title>/.exec(html);
-  return m ? m[1] : null;
+  return m ? decodeHtmlEntities(m[1]) : null;
 }
 
 function extractMetaDescription(html: string): string | null {
@@ -168,7 +210,7 @@ function extractMetaDescription(html: string): string | null {
   // standalone description meta. og:description / twitter:description live
   // on different `property=` / `name=` attributes and won't match.
   const m = /<meta\s+name="description"\s+content="([^"]*)"/.exec(html);
-  return m ? m[1] : null;
+  return m ? decodeHtmlEntities(m[1]) : null;
 }
 
 /**

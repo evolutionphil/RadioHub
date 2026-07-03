@@ -82,6 +82,36 @@ const MONGO_MODEL_NAMES = [
 const mongoMockExports: Record<string, unknown> = {};
 for (const name of MONGO_MODEL_NAMES) mongoMockExports[name] = NULL_MODEL;
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
+// 2026-07-03: mongo-schemas grew new exports (IndexNowSubmissionUrls,
+// GenreCount, MediaGroup, normalizeGenreSlug, ...) AFTER this mock's model
+// list was written, and the SSR import graph (seo-renderer -> services/
+// indexnow.ts et al.) now imports some of them at module level. Any missing
+// named export kills the WHOLE suite at module-instantiation ("does not
+// provide an export named ..." -> every test hookFailed/SyntaxError), which
+// is exactly how these suites silently rotted to 0 passing. Mirror EVERY
+// runtime export of mongo-schemas: models default to NULL_MODEL, the few
+// non-model exports get workable stand-ins below.
+const SUPPLEMENTAL_MONGO_EXPORT_NAMES = [
+  'AdminSetting', 'AdminSettingHistory', 'Ads', 'AuthEventLog',
+  'ClearedOverridesAuditLog', 'Codec', 'CountryLanguageMapping',
+  'CoverageBackfillRun', 'CoverageBackfillStatus', 'EnhancedLanguage',
+  'GenreCount', 'GenreMergeAuditLog', 'GenreStationCountsRun',
+  'GenreWhitelistPushLog', 'GscIndexingSnapshot', 'GscOAuthToken',
+  'GscUrlInspection', 'IndexNowSubmissionUrls', 'LaravelPage', 'MediaGroup',
+  'Page', 'SemrushIssue', 'SharedComparisonPreset', 'SitemapUrlSnapshot',
+  'StationEngagement', 'StationErrorLog', 'StationPlaybackCache',
+  'StationRequest', 'StationSubmission', 'StripeSaleEvent',
+  'StripeSubscriptionPlan', 'TvSubscriptionCode', 'TvTelemetry',
+  'TvTelemetryDaily', 'TvVersionConfig', 'UserProfile', 'UserSession',
+  'VisitorSession',
+] as const;
+for (const name of SUPPLEMENTAL_MONGO_EXPORT_NAMES) {
+  if (!(name in mongoMockExports)) mongoMockExports[name] = NULL_MODEL;
+}
+mongoMockExports.INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = 30;
+mongoMockExports.ADMIN_SETTING_HISTORY_RETENTION_PER_KEY = 20;
+mongoMockExports.normalizeGenreSlug = (raw: string) =>
+  String(raw ?? '').toLowerCase().trim().replace(/\s+/g, '-');
 
 mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: mongoMockExports,
@@ -208,22 +238,22 @@ const FAQ_EMISSION_SURFACES: FaqEmissionSurface[] = [
     fileUrl: new URL('../src/seo-renderer.ts', import.meta.url),
     label: 'api-server SSR (seo-renderer.ts)',
     emissionPatterns: [/["']@type["']\s*:\s*["']FAQPage["']/g],
-    // SSR guards FAQ JSON-LD with `additionalData?.pageType === 'faq'`.
-    allowedGuards: [`pageType === 'faq'`, `pageType === "faq"`],
+    // SSR now has THREE intentional FAQPage surfaces (this list rotted while
+    // a broken module mock kept the whole suite failing at import time):
+    //   • /faq            — full FAQ_PAGE_ITEMS       (`pageType === 'faq'`)
+    //   • homepage        — 3-question subset matching the visible
+    //                       .faq-section block         (`pageType === 'home'`)
+    //   • genre detail    — 2-question genre subset matching .genre-faq
+    //                       (`pageType === 'genres' && additionalData?.genreName`)
+    allowedGuards: [
+      `pageType === 'faq'`, `pageType === "faq"`,
+      `pageType === 'home'`, `pageType === "home"`,
+      `pageType === 'genres'`, `pageType === "genres"`,
+    ],
   },
-  {
-    fileUrl: new URL(
-      '../../megaradio/src/components/SeoHead.tsx',
-      import.meta.url,
-    ),
-    label: 'megaradio client (SeoHead.tsx)',
-    // Client doesn't write `"@type": "FAQPage"` literally — it calls the
-    // shared `generateFAQSchema(...)` builder which emits the FAQPage
-    // node. So the call site IS the emission point we must guard.
-    emissionPatterns: [/\bgenerateFAQSchema\s*\(/g],
-    // Client guards FAQ JSON-LD with `pageType === 'faq'`.
-    allowedGuards: [`pageType === 'faq'`, `pageType === "faq"`],
-  },
+  // 2026-07-01: the megaradio client surface (SeoHead.tsx) was removed —
+  // client-side JSON-LD injection was deleted entirely (server is the single
+  // emission surface). If a client emission reappears, re-add the surface.
 ];
 
 test('source-scan: every FAQPage JSON-LD emission lives behind a known pageType guard', () => {
@@ -403,7 +433,11 @@ for (const surface of FAQ_EMITTING_PAGE_TYPES) {
 //    (FAQPage on /about) where the schema leaked onto pages with no Q&A.
 // ---------------------------------------------------------------------------
 
-const NON_FAQ_PAGE_TYPES = ['home', 'about', 'contact', 'genres', 'regions', 'stations', 'search'];
+// 'home' emits an intentional 3-question FAQPage subset (matching the visible
+// .faq-section block) and genre DETAIL pages emit a 2-question subset — both
+// added after this list was written. 'genres' stays here because the LISTING
+// page (no genreName) must still not emit FAQ.
+const NON_FAQ_PAGE_TYPES = ['about', 'contact', 'genres', 'regions', 'stations', 'search'];
 
 for (const pageType of NON_FAQ_PAGE_TYPES) {
   test(`pageType="${pageType}" must NOT emit FAQPage JSON-LD (regression guard for Tasks #129/#164)`, () => {

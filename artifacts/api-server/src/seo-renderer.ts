@@ -1356,12 +1356,28 @@ export class SeoRenderer {
         // thin/orphaned" signal that parked ~382K pages in GSC's
         // "Crawled - currently not indexed" bucket.
         //
-        // GENRE + CITY remain disabled ON PURPOSE: the genre query needs a
+        // GENRE remains disabled ON PURPOSE: the genre query needs a
         // contains-`$regex` over the comma-joined `tags` string (see line ~642),
-        // which a btree index cannot accelerate, and the city query has no
-        // `state` index. Adding indexes that wouldn't actually cover those
-        // queries is exactly the cargo-cult risk that caused the incident, so
-        // they stay off until backed by a precomputed cache.
+        // which a btree index cannot accelerate. It stays off until backed by
+        // a precomputed cache.
+        //
+        // CITY RE-ENABLED 2026-07-03: the original disable reason ("no state
+        // index") no longer holds — `StationSchema.index({ state: 1 },
+        // { sparse: true })` exists (mongo-schemas.ts ~4022, added for the
+        // US/CA state region pages). The query below is an exact-equality
+        // match on that indexed field (NO regex), withSignal-capped, and
+        // soft-fails to [] — none of the 2026-05-14 incident ingredients.
+        //
+        // PUBLISHER ADDED 2026-07-03 (radio.at parity, "Zugehörige Sender"):
+        // sister channels of the same brand (e.g. "kronehit", "kronehit
+        // dance"). Matched via a CASE-SENSITIVE ANCHORED PREFIX regex on the
+        // indexed `name` field — Mongo turns `^literal` case-sensitive
+        // regexes into a btree range scan on `{ name: 1 }` (docs: "prefix
+        // expressions"), so unlike the incident queries this IS
+        // index-covered. Case-insensitive or unanchored variants would NOT
+        // be; do not "improve" this into `$options: 'i'`. Generic first
+        // tokens ("Radio …", "FM …") are blacklisted so we never fan out a
+        // pseudo-family of thousands of unrelated "Radio X" stations.
         const sameCountryQ: Promise<any[]> = country
           ? withSignal<any[]>(
               Station.find({ ...baseFilter, country })
@@ -1373,17 +1389,56 @@ export class SeoRenderer {
             ).catch(() => [])
           : Promise.resolve([]);
         const sameGenreQ: Promise<any[]> = Promise.resolve([]);
-        const sameCityQ: Promise<any[]> = Promise.resolve([]);
+        const sameCityQ: Promise<any[]> = stateName
+          ? withSignal<any[]>(
+              Station.find({ ...baseFilter, state: stateName })
+                .sort({ votes: -1 })
+                .limit(6)
+                .select(projection)
+                .lean(),
+              signal,
+            ).catch(() => [])
+          : Promise.resolve([]);
+        const GENERIC_BRAND_TOKENS = new Set([
+          'radio', 'radyo', 'rádio', 'rádió', 'радио', 'estación', 'estacion',
+          'the', 'la', 'el', 'los', 'las', 'le', 'les', 'die', 'der', 'das',
+          'mega', 'super', 'top', 'hit', 'hits', 'best', 'new', 'big', 'my',
+          'web', 'online', 'free', 'live', 'station', 'music', 'musica', 'musik',
+        ]);
+        const brandToken: string = (() => {
+          const first = String(stationData.name || '').trim().split(/\s+/)[0] || '';
+          // Strip punctuation for the generic-token / length checks but keep
+          // the ORIGINAL casing for the anchored prefix (case-sensitive =
+          // index-friendly).
+          const cleaned = first.replace(/[^\p{L}\p{N}]+/gu, '');
+          if (cleaned.length < 4) return '';
+          if (GENERIC_BRAND_TOKENS.has(cleaned.toLowerCase())) return '';
+          return first;
+        })();
+        const samePublisherQ: Promise<any[]> = brandToken
+          ? withSignal<any[]>(
+              Station.find({
+                ...baseFilter,
+                name: { $regex: `^${brandToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` },
+              })
+                .sort({ votes: -1 })
+                .limit(7)
+                .select(projection)
+                .lean(),
+              signal,
+            ).catch(() => [])
+          : Promise.resolve([]);
 
-        const [sameCountry, sameGenre, sameCity] = await Promise.all([
+        const [sameCountry, sameGenre, sameCity, samePublisher] = await Promise.all([
           sameCountryQ.catch(() => []),
           sameGenreQ.catch(() => []),
           sameCityQ.catch(() => []),
+          samePublisherQ.catch(() => []),
         ]);
 
-        // Deduplicate across the three lists so the same station never
-        // shows up twice. Country list wins (broadest), then genre, then
-        // city. Final caps: 8/8/6.
+        // Deduplicate across the lists so the same station never shows up
+        // twice. Publisher wins (most specific — sister channels), then
+        // city, then genre, then country (broadest). Final caps: 6/6/8/8.
         const seen = new Set<string>();
         const dedupe = (arr: any[], cap: number) => {
           const out: any[] = [];
@@ -1398,12 +1453,14 @@ export class SeoRenderer {
         };
 
         additionalData.crossLinks = {
-          sameCountry: dedupe(sameCountry as any[], 8),
-          sameGenre: dedupe(sameGenre as any[], 8),
+          samePublisher: dedupe(samePublisher as any[], 6),
           sameCity: dedupe(sameCity as any[], 6),
+          sameGenre: dedupe(sameGenre as any[], 8),
+          sameCountry: dedupe(sameCountry as any[], 8),
           countryName: country || '',
           genreName: primaryTag,
           cityName: stateName,
+          publisherBrand: brandToken,
         };
       } catch (e: any) {
         if (e?.name === 'AbortError' || signal?.aborted) throw e;
@@ -2341,6 +2398,22 @@ export class SeoRenderer {
                 <!-- Station Details -->
                 <section class="station-details">
                   <h2>${this.escapeHtml(getLocalizedText('station_information', 'Station Information'))}</h2>
+                  ${(() => {
+                    // Visible listener rating (radio.at parity). Google's review
+                    // snippet policy requires the aggregate rating to be VISIBLE
+                    // on the page, not just in JSON-LD — this line is the visible
+                    // counterpart of the AggregateRating emitted in the head.
+                    // Same gate as the schema: >=3 REAL ratings collected through
+                    // our own /api/stations/:id/rate widget (never derived from
+                    // Radio-Browser `votes`, which are one-way likes, not stars).
+                    const rc = Number((stationData as any).totalRatings || 0);
+                    const ra = Number((stationData as any).averageRating || 0);
+                    if (rc < 3 || !(ra >= 1 && ra <= 5)) return '';
+                    const rounded = (Math.round(ra * 10) / 10).toFixed(1);
+                    const label = this.escapeHtml(getLocalizedText('listener_rating', 'Listener rating'));
+                    return `
+                  <p class="station-rating"><strong>${label}:</strong> ★ ${rounded} / 5 · ${rc}</p>`;
+                  })()}
                   ${stationData.country ? `
                   <p><strong>${this.escapeHtml(getLocalizedText('country', 'Country'))}:</strong> ${this.escapeHtml(getLocalizedCountryName(stationData.country, language))}</p>
                   ` : ''}
@@ -2391,6 +2464,22 @@ export class SeoRenderer {
                     return `<li><a href="${url}">${name}</a></li>`;
                   };
                   const sections: string[] = [];
+                  if (xl.samePublisher?.length) {
+                    // radio.at parity ("Zugehörige Sender"): sister channels
+                    // of the same brand family, matched by name prefix in
+                    // renderStaticPage. Rendered FIRST — most specific rail.
+                    const brand = xl.publisherBrand
+                      ? this.escapeHtml(String(xl.publisherBrand))
+                      : '';
+                    const heading = brand
+                      ? `${this.escapeHtml(getLocalizedText('same_publisher_stations', 'More channels from'))} ${brand}`
+                      : this.escapeHtml(getLocalizedText('related_stations', 'Related stations'));
+                    sections.push(`
+                <section class="related-stations related-stations--publisher">
+                  <h2>${heading}</h2>
+                  <ul>${xl.samePublisher.map(renderItem).join('')}</ul>
+                </section>`);
+                  }
                   if (xl.sameCountry?.length) {
                     const localizedCountry = xl.countryName
                       ? this.escapeHtml(getLocalizedCountryName(xl.countryName, language))
@@ -3293,6 +3382,20 @@ export class SeoRenderer {
     // RadioStation Schema for individual station pages
     // Prefix-all canonical + localized station segment for ALL languages (DALGA 2 W2.3 fix)
     let radioStationSchema: any = null;
+    // Rich-result companions (2026-07-03, radio.at parity):
+    //  • localRadioStationSchema — compact RadioStation (LocalBusiness subtype)
+    //    carrying the REAL AggregateRating. Google's review-snippet rich result
+    //    only supports LocalBusiness-family types, NOT BroadcastService, so the
+    //    stars can never come from radioStationSchema alone. Emitted ONLY when
+    //    ≥3 genuine ratings exist (collected via our own star widget) — never
+    //    fabricated from Radio-Browser `votes` (one-way likes, not stars; the
+    //    fabricated-rating cleanup of 2026-05 must not regress).
+    //  • stationWebPageSchema — WebPage with SpeakableSpecification pointing at
+    //    the SSR body's <h1> and .station-intro (voice-assistant / AI-answer
+    //    surface). speakable is only valid on Article/WebPage, hence the
+    //    separate entity.
+    let localRadioStationSchema: any = null;
+    let stationWebPageSchema: any = null;
     if (stationData) {
       const stationSegmentForRadioJsonLd = urlTranslations?.get(`${language}:station`) || 'station';
       const stationUrl = `${baseDomain}/${language}/${stationSegmentForRadioJsonLd}/${stationData.slug || stationData._id}`;
@@ -3419,6 +3522,22 @@ export class SeoRenderer {
         stationAdditionalProps.push({ "@type": "PropertyValue", "name": "codec", "value": String(stationData.codec).toUpperCase() });
       }
 
+      // REAL listener ratings only (see localRadioStationSchema note above).
+      // Denormalized onto the Station doc by POST /api/stations/:id/rate
+      // (translation-admin-routes.ts → calculateStationRatingStats).
+      const realRatingCount = Number((stationData as any).totalRatings || 0);
+      const realRatingAvg = Number((stationData as any).averageRating || 0);
+      const aggregateRatingSchema =
+        realRatingCount >= 3 && realRatingAvg >= 1 && realRatingAvg <= 5
+          ? {
+              "@type": "AggregateRating",
+              "ratingValue": Math.round(realRatingAvg * 10) / 10,
+              "ratingCount": realRatingCount,
+              "bestRating": 5,
+              "worstRating": 1,
+            }
+          : null;
+
       radioStationSchema = {
         "@context": "https://schema.org",
         "@type": "RadioBroadcastService",
@@ -3464,8 +3583,60 @@ export class SeoRenderer {
         // stationData.language is a per-station value identical across all 14
         // variants and frequently a full English name ("english") or garbage —
         // invalid for BCP-47. Emit the clean page language code instead.
-        "inLanguage": language
+        "inLanguage": language,
+        // aggregateRating IS schema.org-valid on Service (RadioBroadcastService
+        // extends Service). The rich-result-eligible copy lives on the
+        // LocalBusiness entity below; this one keeps the primary entity
+        // self-consistent for validators/AI crawlers.
+        ...(aggregateRatingSchema && { "aggregateRating": aggregateRatingSchema }),
       };
+
+      // Compact LocalBusiness entity: the review-snippet (SERP stars) carrier.
+      // Mirrors radio.at's station markup 1:1 (name, image, url, address,
+      // aggregateRating). Distinct @id + distinct @type from the
+      // RadioBroadcastService entity, so this is NOT the duplicate-entity
+      // pattern cleaned up on 2026-07-01 (that was two IDENTICAL types at the
+      // same @id). Requires a country for the LocalBusiness `address`
+      // recommendation — stations without one skip the entity.
+      if (aggregateRatingSchema && stationData.country && !stationData.notFound) {
+        localRadioStationSchema = {
+          "@context": "https://schema.org",
+          "@type": "RadioStation",
+          "@id": `${stationUrl}#localbusiness`,
+          "name": stationData.name,
+          "description": schemaDescriptionSource,
+          "url": stationUrl,
+          ...(stationLogo && { "image": stationLogo }),
+          "address": {
+            "@type": "PostalAddress",
+            "addressCountry":
+              (stationData.countryCode && String(stationData.countryCode).toUpperCase())
+              || stationData.country,
+            ...(stationData.state && { "addressLocality": stationData.state }),
+          },
+          "aggregateRating": aggregateRatingSchema,
+          ...(stationData.homepage && { "sameAs": stationData.homepage }),
+        };
+      }
+
+      // Speakable WebPage (voice assistants / AI answers — radio.at parity).
+      // cssSelector targets exist in the SSR body: the <h1> and the
+      // .station-intro sentence rendered in generateHtmlBody case 'station'.
+      if (!stationData.notFound) {
+        stationWebPageSchema = {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          "@id": `${stationUrl}#webpage`,
+          "name": stationData.name,
+          "url": stationUrl,
+          "inLanguage": language,
+          "speakable": {
+            "@type": "SpeakableSpecification",
+            "cssSelector": ["h1", ".station-intro"],
+          },
+          "mainEntity": { "@id": `${stationUrl}#radiostation` },
+        };
+      }
     }
     
     // SAFETY NET: cap every <meta name="description"> / og:description /
@@ -3588,6 +3759,14 @@ export class SeoRenderer {
     ${radioStationSchema && seoTags?.noIndex !== true ? `
     <script type="application/ld+json">
     ${jsonLd(radioStationSchema)}
+    </script>` : ''}
+    ${localRadioStationSchema && seoTags?.noIndex !== true ? `
+    <script type="application/ld+json">
+    ${jsonLd(localRadioStationSchema)}
+    </script>` : ''}
+    ${stationWebPageSchema && seoTags?.noIndex !== true ? `
+    <script type="application/ld+json">
+    ${jsonLd(stationWebPageSchema)}
     </script>` : ''}
     ${collectionPageSchema ? `
     <script type="application/ld+json">
