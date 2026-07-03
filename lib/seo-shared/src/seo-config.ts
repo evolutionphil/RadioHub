@@ -1444,6 +1444,13 @@ export interface SeoMetaTags {
   ogSiteName?: string;
   ogLocale?: string;
   ogLocaleAlternates?: string[];
+  /**
+   * Structured noindex flag. `robots` carries the rendered directive string;
+   * this flag lets downstream layers (hreflang suppression, X-Robots-Tag
+   * mirroring in index-web, cache guards) branch without string-parsing it.
+   * Keep the two in sync whenever robots is set to a noindex value.
+   */
+  noIndex?: boolean;
   twitterTitle?: string;
   twitterDescription?: string;
   twitterImage?: string;

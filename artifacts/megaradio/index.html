@@ -6,10 +6,13 @@
     <title>Mega Radio - Listen to Free Live Radio Online</title>
     <meta name="description" content="Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free." />
     
-    <!-- SEO Meta Tags -->
-    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
-    <meta name="googlebot" content="index, follow" />
-    <meta name="bingbot" content="index, follow" />
+    <!-- SEO: intentionally NO <meta name="robots"> in the static SPA shell.
+         Every indexable page gets its robots directives from the SSR head
+         (seo-renderer.ts); this shell is only ever served raw on fallback
+         paths (timeout/overload/non-eligible routes) which send
+         `X-Robots-Tag: noindex` — a baked-in "index, follow" meta here
+         contradicted that header on every fallback response. -->
+
     <meta name="yandex-verification" content="57c83c6ab08ec3ba" />
     <!-- Canonical tag dynamically set by SeoHead component -->
     
@@ -35,7 +38,10 @@
     <!-- Core Web Vitals Performance Optimizations - No external font requests -->
     <!-- flagcdn serves country flags in the header/region views — preconnect
          warms TLS+TCP so the flag paints sooner (dns-prefetch alone only resolves DNS). -->
-    <link rel="preconnect" href="https://flagcdn.com" crossorigin>
+    <!-- NOTE: no `crossorigin` — flags load via plain <img> (no-cors); a
+         crossorigin preconnect warms a CORS connection browsers won't reuse
+         for no-cors image fetches, wasting the handshake entirely. -->
+    <link rel="preconnect" href="https://flagcdn.com">
     <link rel="dns-prefetch" href="https://flagcdn.com">
     <!-- 🚀 PERF: Preconnect to API origin (3-service split) — saves ~300-1000ms TLS+TCP on first API call -->
     <link rel="preconnect" href="https://api.themegaradio.com" crossorigin>
@@ -51,6 +57,9 @@
          600 (grid / sub-headings — was declared but preloaded nowhere), 700 (headings).
          500 still loads via @font-face on demand; it is rarely above the fold. -->
     <link rel="preload" href="/fonts/ubuntu-400.woff2" as="font" type="font/woff2" crossorigin>
+    <!-- 500 is above-the-fold too: station-card titles render font-medium
+         (station-card.tsx), the primary grid on home/genre/region views. -->
+    <link rel="preload" href="/fonts/ubuntu-500.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/ubuntu-600.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="/fonts/ubuntu-700.woff2" as="font" type="font/woff2" crossorigin>
     

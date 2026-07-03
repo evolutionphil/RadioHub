@@ -134,7 +134,13 @@ class ScheduledLogoProcessor {
         {
           'logoAssets.status': 'failed',
           'logoAssets.failureType': { $in: ['http_error', 'invalid_format'] },
-          'logoAssets.lastAttempt': { $lt: retryPivot },
+          // Include legacy failure docs written before `lastAttempt` existed:
+          // without the $exists:false arm they matched NO branch and stayed
+          // stuck un-retried forever — the exact symptom self-healing targets.
+          $or: [
+            { 'logoAssets.lastAttempt': { $lt: retryPivot } },
+            { 'logoAssets.lastAttempt': { $exists: false } },
+          ],
         },
         {
           'logoAssets.status': 'failed',

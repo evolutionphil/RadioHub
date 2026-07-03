@@ -194,9 +194,196 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
     }
   }
 
+  // ---- /api/image result cache + per-URL coalescing (2026-07-02 audit P1) --
+  // The proxy used to recompute fetch+Sharp for EVERY request. /api/image URLs
+  // have no file extension, so default CDN rules often do not cache them, and
+  // the SSR station grids emit up to ~72 proxied favicons per page — a cold
+  // crawl produced unbounded concurrent upstream fetches (they ran BEFORE the
+  // Sharp slot gate) and queue-full 500s, re-breaking the very images this
+  // proxy exists to fix. A small LRU of finished outputs plus per-key
+  // coalescing bounds both: duplicate concurrent requests collapse into one
+  // upstream fetch + one Sharp job, and repeat hits are served from memory.
+  // Sizing: 500 entries × ~10-50 kB (256px webp/avif) ≈ ≤25 MB worst case.
+  type ImageProxyCacheEntry =
+    | { ok: true; buffer: Buffer; contentType: string; expiresAt: number | null }
+    | { ok: false; status: number; error: string; expiresAt: number };
+  const IMAGE_RESULT_CACHE_MAX = 500;
+  const IMAGE_NEGATIVE_TTL_MS = 5 * 60 * 1000; // dead favicon: retry after 5 min
+  const IMAGE_TRANSIENT_TTL_MS = 15 * 1000;    // queue-full: retry after 15 s
+  const imageResultCache = new Map<string, ImageProxyCacheEntry>(); // Map = insertion-ordered LRU
+  const imageInflight = new Map<string, Promise<ImageProxyCacheEntry>>();
+
+  function imageCacheGet(key: string): ImageProxyCacheEntry | undefined {
+    const entry = imageResultCache.get(key);
+    if (!entry) return undefined;
+    if (entry.expiresAt !== null && Date.now() > entry.expiresAt) {
+      imageResultCache.delete(key);
+      return undefined;
+    }
+    // LRU touch: re-insert so the key moves to the tail (most recent).
+    imageResultCache.delete(key);
+    imageResultCache.set(key, entry);
+    return entry;
+  }
+
+  function imageCacheSet(key: string, entry: ImageProxyCacheEntry): void {
+    if (imageResultCache.size >= IMAGE_RESULT_CACHE_MAX) {
+      const oldest = imageResultCache.keys().next().value;
+      if (oldest !== undefined) imageResultCache.delete(oldest);
+    }
+    imageResultCache.set(key, entry);
+  }
+
+  /**
+   * Fetch + validate + resize one image. Runs at most once per cache key at a
+   * time (coalesced by imageInflight). Returns a cacheable entry instead of
+   * writing to `res`, so concurrent waiters can all serve the same result.
+   *
+   * Also hardens two gaps the inline version had:
+   *  - redirects are followed MANUALLY (≤3 hops) with the SSRF guard re-run on
+   *    every hop — a favicon that 302s into 169.254.169.254/localhost no longer
+   *    bypasses validation (the old `redirect: 'follow'` did);
+   *  - the body read has a hard 10s deadline, so a slow-drip origin cannot
+   *    hold sockets open indefinitely (the 8s abort only covered headers).
+   */
+  async function computeOptimizedImage(
+    startUrl: string,
+    targetWidth: number,
+    targetHeight: number,
+    useAVIF: boolean,
+  ): Promise<ImageProxyCacheEntry> {
+    const fail = (status: number, error: string, transient = false): ImageProxyCacheEntry => ({
+      ok: false,
+      status,
+      error,
+      expiresAt: Date.now() + (transient ? IMAGE_TRANSIENT_TTL_MS : IMAGE_NEGATIVE_TTL_MS),
+    });
+
+    const fetch = (await import('node-fetch')).default;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    let response: any = null;
+    try {
+      let currentUrl = startUrl;
+      for (let hop = 0; hop <= 3; hop++) {
+        const guarded = await validateOutboundUrl(currentUrl, {
+          allowHttp: true,
+          blockedPorts: STREAM_BLOCKED_PORTS,
+        });
+        if (!guarded.ok) return fail(400, 'URL not allowed');
+        response = await fetch(currentUrl, {
+          method: 'GET',
+          signal: controller.signal as any,
+          redirect: 'manual',
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Cache-Control': 'no-cache',
+            'Connection': 'close'
+          }
+        });
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get('location');
+          try { (response.body as any)?.destroy?.(); } catch {}
+          if (!location || hop === 3) return fail(404, 'Image not accessible');
+          currentUrl = new URL(location, currentUrl).toString();
+          continue;
+        }
+        break;
+      }
+    } catch {
+      return fail(404, 'Image not accessible');
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    if (!response || !response.ok) {
+      try { (response?.body as any)?.destroy?.(); } catch {}
+      return fail(404, 'Image not found or inaccessible');
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('text/html') || contentType.includes('text/xml') ||
+        contentType.includes('application/json') || contentType.includes('application/xml')) {
+      try { (response.body as any)?.destroy?.(); } catch {}
+      return fail(404, 'Not an image');
+    }
+
+    const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+    if (contentLength > MAX_IMAGE_DOWNLOAD_BYTES) {
+      try { (response.body as any)?.destroy?.(); } catch {}
+      return fail(413, 'Image too large');
+    }
+
+    let imageBuffer: Buffer | null = null;
+    try {
+      const chunks: Buffer[] = [];
+      let totalSize = 0;
+      const bodyDeadline = Date.now() + 10_000;
+      for await (const chunk of response.body as any) {
+        if (Date.now() > bodyDeadline) throw new Error('body-read-deadline');
+        totalSize += chunk.length;
+        if (totalSize > MAX_IMAGE_DOWNLOAD_BYTES) {
+          throw new Error('Image exceeds size limit');
+        }
+        chunks.push(Buffer.from(chunk));
+      }
+      imageBuffer = Buffer.concat(chunks);
+    } catch {
+      try { (response.body as any)?.destroy?.(); } catch {}
+      return fail(413, 'Image too large or download failed');
+    }
+
+    if (!imageBuffer || imageBuffer.length < 8) {
+      return fail(404, 'Empty or invalid image');
+    }
+
+    const header = imageBuffer.slice(0, 16).toString('hex');
+    const headerStr = imageBuffer.slice(0, 5).toString('ascii');
+    const isLikelyImage = (
+      header.startsWith('89504e47') ||    // PNG
+      header.startsWith('ffd8ff') ||      // JPEG
+      header.startsWith('47494638') ||    // GIF
+      header.startsWith('52494646') ||    // WEBP (RIFF)
+      header.startsWith('424d') ||        // BMP
+      header.startsWith('00000') ||       // ICO / AVIF
+      headerStr.startsWith('<?xml') ||    // SVG
+      headerStr.startsWith('<svg')         // SVG
+    );
+    if (!isLikelyImage && (headerStr.startsWith('<!DOC') || headerStr.startsWith('<html') || headerStr.startsWith('<HTML'))) {
+      return fail(404, 'HTML page returned instead of image');
+    }
+
+    try {
+      await acquireSharpSlot();
+    } catch {
+      // Queue full — transient: short negative TTL so the next crawl retry
+      // succeeds once the queue drains, instead of hammering a full queue.
+      return fail(503, 'Image processing queue full', true);
+    }
+    try {
+      const sharp = (await import('sharp')).default;
+      const pipeline = sharp(imageBuffer, { limitInputPixels: 50_000_000 })
+        .resize(targetWidth, targetHeight, { fit: 'cover', position: 'center' });
+      const optimizedImage = useAVIF
+        ? await pipeline.avif({ quality: 75, effort: 2 }).toBuffer()
+        : await pipeline.webp({ quality: 80, effort: 3 }).toBuffer();
+      return {
+        ok: true,
+        buffer: optimizedImage,
+        contentType: useAVIF ? 'image/avif' : 'image/webp',
+        expiresAt: null,
+      };
+    } catch {
+      return fail(404, 'Image format not supported');
+    } finally {
+      releaseSharpSlot();
+    }
+  }
+
   // IMAGE PROXY: Serves optimized, resized images with WebP conversion
   app.get("/api/image/*path", async (req, res) => {
-    let slotAcquired = false;
     try {
       const rawParam = (req.params as any).path ?? (req.params as any)[0];
       const urlPath = Array.isArray(rawParam) ? rawParam.join('/') : (rawParam ?? '');
@@ -256,122 +443,49 @@ export function registerStreamProxyRoutes(app: Express, deps: any) {
         return void res.status(200).end();
       }
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
-      let response;
-      try {
-        const fetch = (await import('node-fetch')).default;
-        response = await fetch(originalUrl, {
-          method: 'GET',
-          signal: controller.signal,
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Cache-Control': 'no-cache',
-            'Connection': 'close'
-          }
-        });
-      } catch (fetchError: any) {
-        return void res.status(404).json({ error: 'Image not accessible' });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      if (!response.ok) {
-        try { (response.body as any)?.destroy?.(); } catch {}
-        return void res.status(404).json({ error: 'Image not found or inaccessible' });
-      }
-
-      const contentType = response.headers.get('content-type') || '';
-      if (contentType.includes('text/html') || contentType.includes('text/xml') || 
-          contentType.includes('application/json') || contentType.includes('application/xml')) {
-        try { (response.body as any)?.destroy?.(); } catch {}
-        return void res.status(404).json({ error: 'Not an image' });
-      }
-
-      const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
-      if (contentLength > MAX_IMAGE_DOWNLOAD_BYTES) {
-        try { (response.body as any)?.destroy?.(); } catch {}
-        return void res.status(413).json({ error: 'Image too large' });
-      }
-
-      let imageBuffer: Buffer | null = null;
-      try {
-        const chunks: Buffer[] = [];
-        let totalSize = 0;
-        for await (const chunk of response.body as any) {
-          totalSize += chunk.length;
-          if (totalSize > MAX_IMAGE_DOWNLOAD_BYTES) {
-            throw new Error('Image exceeds size limit');
-          }
-          chunks.push(Buffer.from(chunk));
-        }
-        imageBuffer = Buffer.concat(chunks);
-      } catch (bufferError: any) {
-        return void res.status(413).json({ error: 'Image too large or download failed' });
-      }
-
-      if (!imageBuffer || imageBuffer.length < 8) {
-        return void res.status(404).json({ error: 'Empty or invalid image' });
-      }
-
-      const header = imageBuffer.slice(0, 16).toString('hex');
-      const headerStr = imageBuffer.slice(0, 5).toString('ascii');
-      const isLikelyImage = (
-        header.startsWith('89504e47') ||    // PNG
-        header.startsWith('ffd8ff') ||      // JPEG
-        header.startsWith('47494638') ||    // GIF
-        header.startsWith('52494646') ||    // WEBP (RIFF)
-        header.startsWith('424d') ||        // BMP
-        header.startsWith('00000') ||       // ICO / AVIF
-        headerStr.startsWith('<?xml') ||    // SVG
-        headerStr.startsWith('<svg')         // SVG
-      );
-
-      if (!isLikelyImage && (headerStr.startsWith('<!DOC') || headerStr.startsWith('<html') || headerStr.startsWith('<HTML'))) {
-        imageBuffer = null;
-        return void res.status(404).json({ error: 'HTML page returned instead of image' });
-      }
-
-      await acquireSharpSlot();
-      slotAcquired = true;
-
-      const sharp = (await import('sharp')).default;
-      
+      // Result cache + coalescing: serve finished outputs from memory and
+      // collapse concurrent identical requests into a single upstream
+      // fetch + Sharp job (see computeOptimizedImage above).
       const useAVIF = acceptHeader.includes('image/avif');
-      const outputContentType = useAVIF ? 'image/avif' : 'image/webp';
-      
-      let optimizedImage: Buffer;
-      try {
-        const pipeline = sharp(imageBuffer, { limitInputPixels: 50_000_000 })
-          .resize(targetWidth, targetHeight, { fit: 'cover', position: 'center' });
-        optimizedImage = useAVIF
-          ? await pipeline.avif({ quality: 75, effort: 2 }).toBuffer()
-          : await pipeline.webp({ quality: 80, effort: 3 }).toBuffer();
-      } catch (sharpError: any) {
-        imageBuffer = null;
-        return void res.status(404).json({ error: 'Image format not supported' });
+      const cacheKey = `${originalUrl}|${targetWidth}x${targetHeight}|${useAVIF ? 'avif' : 'webp'}`;
+
+      const sendEntry = (entry: ImageProxyCacheEntry): void => {
+        if (!entry.ok) {
+          // Short public TTL so the CDN absorbs repeated crawler hits on dead
+          // favicons instead of every retry reaching the origin.
+          res.setHeader('Cache-Control', 'public, max-age=300');
+          res.status(entry.status).json({ error: entry.error });
+          return;
+        }
+        res.setHeader('Content-Type', entry.contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
+        res.setHeader('Vary', 'Accept');
+        res.setHeader('Content-Length', entry.buffer.length);
+        res.setHeader('Content-Encoding', 'identity');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.send(entry.buffer);
+      };
+
+      const cached = imageCacheGet(cacheKey);
+      if (cached) return void sendEntry(cached);
+
+      let inflight = imageInflight.get(cacheKey);
+      if (!inflight) {
+        inflight = computeOptimizedImage(originalUrl, targetWidth, targetHeight, useAVIF)
+          .then((entry) => {
+            imageCacheSet(cacheKey, entry);
+            return entry;
+          })
+          .finally(() => { imageInflight.delete(cacheKey); });
+        imageInflight.set(cacheKey, inflight);
       }
-
-      imageBuffer = null;
-
-      res.setHeader('Content-Type', outputContentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
-      res.setHeader('Vary', 'Accept');
-      res.setHeader('Content-Length', optimizedImage.length);
-      res.setHeader('Content-Encoding', 'identity');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      
-      res.send(optimizedImage);
-
+      const entry = await inflight;
+      return void sendEntry(entry);
     } catch (error) {
       if (!res.headersSent) {
+        res.setHeader('Cache-Control', 'public, max-age=300');
         res.status(500).json({ error: 'Image proxy failed' });
       }
-    } finally {
-      if (slotAcquired) releaseSharpSlot();
     }
   });
 

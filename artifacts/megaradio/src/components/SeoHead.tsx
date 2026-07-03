@@ -153,7 +153,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
 
     // Update Open Graph tags
     updateMetaProperty('og:title', seoTags.ogTitle || seoTags.title);
-    updateMetaProperty('og:description', seoTags.ogDescription || cappedDescription);
+    updateMetaProperty('og:description', truncateAtWordBoundary(seoTags.ogDescription || seoTags.description || '', 160));
     updateMetaProperty('og:type', 'website');
     updateMetaProperty('og:url', seoTags.canonical);
     if (seoTags.ogImage) {
@@ -163,7 +163,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // Update Twitter tags
     updateMetaTag('twitter:card', 'summary_large_image');
     updateMetaTag('twitter:title', seoTags.twitterTitle || seoTags.title);
-    updateMetaTag('twitter:description', seoTags.twitterDescription || cappedDescription);
+    updateMetaTag('twitter:description', truncateAtWordBoundary(seoTags.twitterDescription || seoTags.description || '', 160));
 
     // NOTE (2026-07-01): client-side hreflang + JSON-LD injection REMOVED.
     // The API server (seo-renderer.ts) renders a complete, correct SEO head on
