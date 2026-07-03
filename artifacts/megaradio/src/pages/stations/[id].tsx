@@ -495,10 +495,18 @@ export default function StationDetails() {
   };
 
   // Get user's existing rating - with structured cache key
+  // BUG FIX (2026-07-03): the endpoint identifies the caller via
+  // ?userId=/?sessionId= query params; without them it always returned
+  // { rating: null }, so the star widget never pre-filled a returning
+  // visitor's previous rating. Send the same persistent identity the
+  // submit path uses (localStorage radio_session_id + logged-in userId).
   const { data: existingUserRating } = useQuery({
-    queryKey: ['/api/stations', station?._id, 'user-rating'],
+    queryKey: ['/api/stations', station?._id, 'user-rating', user?._id ?? 'anon'],
     queryFn: async () => {
-      const response = await fetch(`/api/stations/${station?._id}/user-rating`);
+      const params = new URLSearchParams();
+      if (user?._id) params.set('userId', user._id);
+      params.set('sessionId', generateSessionId());
+      const response = await fetch(`/api/stations/${station?._id}/user-rating?${params.toString()}`);
       if (!response.ok) return null;
       return response.json();
     },
@@ -1065,7 +1073,30 @@ export default function StationDetails() {
                       );
                     })()}
                   </div>
-                  
+
+                  {/* Listener rating (2026-07-03): interactive 1-5 star widget.
+                      The backend (POST /api/stations/:id/rate) + StarRating
+                      component existed but the widget was never rendered, so
+                      no real ratings were being collected. Real ratings feed
+                      the visible SSR rating line + AggregateRating JSON-LD
+                      (emitted only at >=3 ratings) — never derived from
+                      Radio-Browser votes. `key` remounts the widget once the
+                      visitor's previous rating loads (StarRating seeds its
+                      internal state from initialRating on mount only). */}
+                  <div className="py-2" data-testid="station-rating-widget">
+                    <StarRating
+                      key={`${station._id}-${userRating?.rating ?? existingUserRating?.rating?.rating ?? 0}`}
+                      stationId={station._id}
+                      initialRating={userRating?.rating ?? existingUserRating?.rating?.rating ?? 0}
+                      initialComment={existingUserRating?.rating?.comment ?? ''}
+                      averageRating={(ratingStats ?? ratingsData?.stats)?.averageRating ?? 0}
+                      totalRatings={(ratingStats ?? ratingsData?.stats)?.totalRatings ?? 0}
+                      onRatingSubmit={submitRating}
+                      showStats={true}
+                      editable={true}
+                    />
+                  </div>
+
                   <div className="flex flex-wrap items-center gap-2 md:gap-3 py-3">
                     {/* Country Flag - Figma: 20x20, perfectly circular, no border - only show if countryCode exists */}
                     {station.countryCode && station.countryCode.trim() !== '' && (

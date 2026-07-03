@@ -78,6 +78,36 @@ const MONGO_MODEL_NAMES = [
 const mongoMockExports: Record<string, unknown> = {};
 for (const name of MONGO_MODEL_NAMES) mongoMockExports[name] = NULL_MODEL;
 mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
+// 2026-07-03: mongo-schemas grew new exports (IndexNowSubmissionUrls,
+// GenreCount, MediaGroup, normalizeGenreSlug, ...) AFTER this mock's model
+// list was written, and the SSR import graph (seo-renderer -> services/
+// indexnow.ts et al.) now imports some of them at module level. Any missing
+// named export kills the WHOLE suite at module-instantiation ("does not
+// provide an export named ..." -> every test hookFailed/SyntaxError), which
+// is exactly how these suites silently rotted to 0 passing. Mirror EVERY
+// runtime export of mongo-schemas: models default to NULL_MODEL, the few
+// non-model exports get workable stand-ins below.
+const SUPPLEMENTAL_MONGO_EXPORT_NAMES = [
+  'AdminSetting', 'AdminSettingHistory', 'Ads', 'AuthEventLog',
+  'ClearedOverridesAuditLog', 'Codec', 'CountryLanguageMapping',
+  'CoverageBackfillRun', 'CoverageBackfillStatus', 'EnhancedLanguage',
+  'GenreCount', 'GenreMergeAuditLog', 'GenreStationCountsRun',
+  'GenreWhitelistPushLog', 'GscIndexingSnapshot', 'GscOAuthToken',
+  'GscUrlInspection', 'IndexNowSubmissionUrls', 'LaravelPage', 'MediaGroup',
+  'Page', 'SemrushIssue', 'SharedComparisonPreset', 'SitemapUrlSnapshot',
+  'StationEngagement', 'StationErrorLog', 'StationPlaybackCache',
+  'StationRequest', 'StationSubmission', 'StripeSaleEvent',
+  'StripeSubscriptionPlan', 'TvSubscriptionCode', 'TvTelemetry',
+  'TvTelemetryDaily', 'TvVersionConfig', 'UserProfile', 'UserSession',
+  'VisitorSession',
+] as const;
+for (const name of SUPPLEMENTAL_MONGO_EXPORT_NAMES) {
+  if (!(name in mongoMockExports)) mongoMockExports[name] = NULL_MODEL;
+}
+mongoMockExports.INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = 30;
+mongoMockExports.ADMIN_SETTING_HISTORY_RETENTION_PER_KEY = 20;
+mongoMockExports.normalizeGenreSlug = (raw: string) =>
+  String(raw ?? '').toLowerCase().trim().replace(/\s+/g, '-');
 
 mock.module('@workspace/db-shared/mongo-schemas', {
   namedExports: mongoMockExports,
@@ -136,9 +166,9 @@ function escapeHtml(input: string): string {
     .replace(/'/g, '&#x27;');
 }
 
-function extractRadioStationSchema(head: string): any {
+function extractJsonLdBlocks(head: string): any[] {
   const re = /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/g;
-  const matches: any[] = [];
+  const blocks: any[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(head)) !== null) {
     const raw = m[1].trim();
@@ -151,23 +181,37 @@ function extractRadioStationSchema(head: string): any {
         `Failed to JSON.parse a JSON-LD block: ${(err as Error).message}\n---\n${raw.slice(0, 200)}`,
       );
     }
-    const blocks = Array.isArray(parsed) ? parsed : [parsed];
-    for (const b of blocks) {
-      // The per-station RadioStation block has a top-level @id ending in
-      // `#radiostation`. The popular-stations ItemList wraps RadioStation
-      // children inline but never as a top-level block, so this filter
-      // isolates the schema we care about.
-      if (
-        b &&
-        b['@type'] === 'RadioStation' &&
-        typeof b['@id'] === 'string' &&
-        b['@id'].endsWith('#radiostation')
-      ) {
-        matches.push(b);
-      }
-    }
+    for (const b of Array.isArray(parsed) ? parsed : [parsed]) blocks.push(b);
   }
-  return matches;
+  return blocks;
+}
+
+function extractRadioStationSchema(head: string): any {
+  // 2026-07-03 refresh: the primary per-station entity switched from
+  // RadioStation → RadioBroadcastService on 2026-05-12 (validators reject
+  // BroadcastService-only fields on the LocalBusiness subtype); this suite
+  // had rotted against the old shape while a broken module mock kept every
+  // test dying at import time. The block keeps its `#radiostation` @id.
+  return extractJsonLdBlocks(head).filter(
+    (b) =>
+      b &&
+      b['@type'] === 'RadioBroadcastService' &&
+      typeof b['@id'] === 'string' &&
+      b['@id'].endsWith('#radiostation'),
+  );
+}
+
+function extractLocalBusinessSchema(head: string): any {
+  // Compact RadioStation (LocalBusiness subtype) companion — the
+  // review-snippet carrier added 2026-07-03. Only emitted when the station
+  // has >=3 REAL listener ratings and a country.
+  return extractJsonLdBlocks(head).filter(
+    (b) =>
+      b &&
+      b['@type'] === 'RadioStation' &&
+      typeof b['@id'] === 'string' &&
+      b['@id'].endsWith('#localbusiness'),
+  );
 }
 
 const DOMAIN = 'https://themegaradio.com';
@@ -177,33 +221,45 @@ const DOMAIN = 'https://themegaradio.com';
 //    the known per-station block. Mirrors the FAQPage/BreadcrumbList scans.
 // ===========================================================================
 
-test('source-scan: per-station RadioStation JSON-LD lives behind the `if (stationData)` guard', () => {
+test('source-scan: per-station RadioBroadcastService + LocalBusiness JSON-LD live behind the `if (stationData)` guard', () => {
   const fileUrl = new URL('../src/seo-renderer.ts', import.meta.url);
   const src = readFileSync(fileURLToPath(fileUrl), 'utf8');
 
-  // Match the literal block declaration we expect — the per-station emission
-  // assigns to `radioStationSchema`. The ItemList's inline RadioStation
-  // children use a different pattern (`"@type": "RadioStation"` inside a
-  // ListItem map) and are intentionally excluded.
-  const declPattern = /radioStationSchema\s*=\s*\{[\s\S]*?["']@type["']\s*:\s*["']RadioStation["']/g;
-  let count = 0;
-  let m: RegExpExecArray | null;
-  while ((m = declPattern.exec(src)) !== null) {
-    count += 1;
-    const ctx = src.slice(Math.max(0, m.index - 4000), m.index);
-    assert.ok(
-      ctx.includes('if (stationData)'),
-      `RadioStation schema declaration at offset ${m.index} is not guarded by ` +
-        '`if (stationData)`. New per-station RadioStation emissions must ' +
-        'assert stationData is present and add visible-body coverage in this test — see Task #372.',
+  // 2026-07-03: two per-station emissions exist now —
+  //   1. `radioStationSchema` (primary, @type RadioBroadcastService since
+  //      2026-05-12), and
+  //   2. `localRadioStationSchema` (compact @type RadioStation /
+  //      LocalBusiness companion carrying the real AggregateRating).
+  // Both assignments must sit inside the `if (stationData)` block. The
+  // lookback window is wide because the block spans ~250 lines of
+  // frequency-parsing / description-sourcing code before the assignments.
+  const scan = (name: string, typeLiteral: string) => {
+    const declPattern = new RegExp(
+      `(?<![A-Za-z0-9_])${name}\\s*=\\s*\\{[\\s\\S]{0,2000}?["']@type["']\\s*:\\s*["']${typeLiteral}["']`,
+      'g',
     );
-  }
-  assert.equal(
-    count,
-    1,
-    `Expected exactly one per-station RadioStation schema declaration in seo-renderer.ts, found ${count}. ` +
-      'If the emission moved or new ones were added, update this scan and add visible-body coverage.',
-  );
+    let count = 0;
+    let m: RegExpExecArray | null;
+    while ((m = declPattern.exec(src)) !== null) {
+      count += 1;
+      const ctx = src.slice(Math.max(0, m.index - 20000), m.index);
+      assert.ok(
+        ctx.includes('if (stationData)'),
+        `${name} declaration at offset ${m.index} is not guarded by ` +
+          '`if (stationData)`. New per-station emissions must ' +
+          'assert stationData is present and add visible-body coverage in this test — see Task #372.',
+      );
+    }
+    assert.equal(
+      count,
+      1,
+      `Expected exactly one ${name} declaration (@type ${typeLiteral}) in seo-renderer.ts, found ${count}. ` +
+        'If the emission moved or new ones were added, update this scan and add visible-body coverage.',
+    );
+  };
+
+  scan('radioStationSchema', 'RadioBroadcastService');
+  scan('localRadioStationSchema', 'RadioStation');
 });
 
 // ===========================================================================
@@ -392,31 +448,107 @@ for (const c of STATION_CASES) {
         'Translated country names must match the visible "Country: ..." line — see Task #372.',
     );
 
-    // -- genre tags --------------------------------------------------------
+    // -- keywords (tags) ----------------------------------------------------
+    // 2026-05-12: `genre` is not a valid Service property; tags ship as
+    // Thing-level `keywords` instead. Same visible-content contract: every
+    // keyword must appear verbatim in the body's "Genres: ..." line.
     assert.ok(
-      schema.genre !== undefined,
-      `${c.label}: schema.genre must be present (string or array of strings)`,
+      Array.isArray(schema.keywords) && schema.keywords.length > 0,
+      `${c.label}: schema.keywords must be a non-empty array (got ${JSON.stringify(schema.keywords)})`,
     );
-    const genreValues: string[] = Array.isArray(schema.genre)
-      ? schema.genre.filter((g: unknown): g is string => typeof g === 'string')
-      : typeof schema.genre === 'string'
-        ? [schema.genre]
-        : [];
-    assert.ok(
-      genreValues.length > 0,
-      `${c.label}: schema.genre yielded no string values to verify (got ${JSON.stringify(schema.genre)})`,
-    );
-    for (const g of genreValues) {
-      const trimmed = g.trim();
-      if (!trimmed) continue;
+    for (const g of schema.keywords as string[]) {
+      const trimmed = String(g).trim();
+      if (!trimmed || trimmed === 'Music') continue; // "Music" is the empty-tags default, not body copy
       assert.ok(
         body.includes(escapeHtml(trimmed)),
-        `${c.label}: RadioStation.genre value "${trimmed}" not found verbatim in body. ` +
+        `${c.label}: keywords value "${trimmed}" not found verbatim in body. ` +
           'Genre tags in JSON-LD must match the visible "Genres: ..." line — see Task #372.',
       );
     }
   });
 }
+
+// ===========================================================================
+// 1b. Real-rating companions (2026-07-03): with >=3 genuine listener ratings
+//     the head must emit (a) aggregateRating on the RadioBroadcastService,
+//     (b) the compact RadioStation/LocalBusiness carrier, and (c) the
+//     speakable WebPage; the body must show the rating line. Below the
+//     threshold NONE of the rating markup may appear (fabricated-rating
+//     regression guard).
+// ===========================================================================
+
+function renderStationPage(stationData: any) {
+  const renderer = new SeoRenderer();
+  const cleanPath = `/station/${stationData.slug}`;
+  const seoTags = {
+    title: `${stationData.name} — Listen Live | Mega Radio`,
+    description: 'd',
+    canonical: `${DOMAIN}/en${cleanPath}`,
+    domain: DOMAIN,
+  };
+  const head = renderer.generateHtmlHead(
+    seoTags, 'en', {}, cleanPath, stationData, new Map(), { pageType: 'station' },
+  );
+  const body = renderer.generateHtmlBody({
+    pageType: 'station', language: 'en', translations: {}, seoTags,
+    stationData, additionalData: { pageType: 'station' },
+    urlTranslations: new Map(), cleanPath,
+  });
+  return { head, body };
+}
+
+test('station with >=3 real ratings emits AggregateRating + LocalBusiness carrier + visible rating line', () => {
+  const { head, body } = renderStationPage({
+    _id: 's-rated', name: 'Rated FM', slug: 'rated-fm', country: 'Germany',
+    countryCode: 'DE', tags: 'pop', description: 'Great music from Berlin.',
+    averageRating: 4.25, totalRatings: 12,
+  });
+
+  const [service] = extractRadioStationSchema(head);
+  assert.ok(service, 'RadioBroadcastService block missing');
+  assert.equal(service.aggregateRating?.['@type'], 'AggregateRating');
+  assert.equal(service.aggregateRating.ratingValue, 4.3); // rounded to 1 decimal
+  assert.equal(service.aggregateRating.ratingCount, 12);
+
+  const locals = extractLocalBusinessSchema(head);
+  assert.equal(locals.length, 1, 'expected exactly one RadioStation #localbusiness block');
+  assert.equal(locals[0].aggregateRating.ratingValue, 4.3);
+  assert.equal(locals[0].address?.addressCountry, 'DE');
+
+  // Google review-snippet policy: the aggregate rating must be VISIBLE.
+  assert.ok(
+    body.includes('★ 4.3 / 5 · 12'),
+    'visible rating line "★ 4.3 / 5 · 12" missing from station body',
+  );
+
+  // Speakable WebPage companion targets selectors that exist in the body.
+  const webpages = extractJsonLdBlocks(head).filter(
+    (b) => b && b['@type'] === 'WebPage' && b.speakable,
+  );
+  assert.equal(webpages.length, 1, 'expected exactly one speakable WebPage block');
+  for (const sel of webpages[0].speakable.cssSelector as string[]) {
+    if (sel.startsWith('.')) {
+      assert.ok(
+        body.includes(`class="${sel.slice(1)}"`),
+        `speakable cssSelector "${sel}" has no matching class in the rendered body`,
+      );
+    }
+  }
+});
+
+test('station below the 3-rating threshold must NOT emit any rating markup', () => {
+  const { head, body } = renderStationPage({
+    _id: 's-unrated', name: 'Fresh FM', slug: 'fresh-fm', country: 'Germany',
+    countryCode: 'DE', tags: 'pop', description: 'Great music from Berlin.',
+    averageRating: 5, totalRatings: 2, votes: 4821, // votes must NEVER leak into stars
+  });
+
+  const [service] = extractRadioStationSchema(head);
+  assert.ok(service, 'RadioBroadcastService block missing');
+  assert.equal(service.aggregateRating, undefined, 'aggregateRating leaked below threshold');
+  assert.equal(extractLocalBusinessSchema(head).length, 0, '#localbusiness block leaked below threshold');
+  assert.ok(!body.includes('★'), 'visible rating line leaked below threshold');
+});
 
 // ===========================================================================
 // 2. Negative control: pages without stationData must NOT emit a
