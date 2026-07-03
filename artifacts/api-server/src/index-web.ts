@@ -880,9 +880,17 @@ app.use('/api/stream', streamServiceProxy);
         res.removeHeader('X-Robots-Tag');
         res.setHeader('X-Robots-Tag', 'noindex, follow');
       }
+      // DEPLOY-STALENESS FIX (2026-07-04): browser max-age dropped 3600 -> 60.
+      // HTML references hashed /assets chunks that exist only for the CURRENT
+      // build; a browser holding HTML for an hour after a deploy requests
+      // dead chunk URLs, gets the SPA shell as text/html and dynamic import
+      // dies ("Failed to fetch dynamically imported module" -> blank page).
+      // 60s means browsers revalidate against the (purgeable) edge within a
+      // minute of a deploy+purge. s-maxage stays 86400 -- the edge is ours
+      // to purge on every deploy.
       res.status(200).set({
         'Content-Type': 'text/html',
-        'Cache-Control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
+        'Cache-Control': 'public, max-age=60, s-maxage=86400, stale-while-revalidate=3600',
         'X-SEO-Cache': 'HIT'
       }).send(cachedHtml);
       return;
@@ -1120,9 +1128,11 @@ app.use('/api/stream', streamServiceProxy);
         }
         res.status(stationNotFound ? 404 : 200).set({
           'Content-Type': 'text/html',
+          // DEPLOY-STALENESS FIX (2026-07-04): browser max-age 60 (see the
+          // cache-HIT branch above for the full rationale).
           'Cache-Control': (stationNotFound || stationDbError)
             ? 'no-store'
-            : 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=3600',
+            : 'public, max-age=60, s-maxage=86400, stale-while-revalidate=3600',
           'X-SEO-Cache': 'MISS'
         }).send(htmlContent);
       }
