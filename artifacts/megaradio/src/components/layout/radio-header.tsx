@@ -329,16 +329,27 @@ export default function RadioHeader({
     return getCountryCodeFromApiName(selectedCountry);
   }, [selectedCountry]);
 
-  // Filter countries based on search
+  // Filter countries based on search.
+  // SEARCH FOLD (2026-07-04): diacritic-insensitive matching so 'turk' finds
+  // 'Türkiye', 'cote' finds 'Côte d'Ivoire', etc. NFD strips combining marks;
+  // the explicit Turkish dotless-i mappings cover the one case NFD doesn't.
+  const foldForSearch = (v: string): string =>
+    v
+      .toLowerCase()
+      .replace(/\u0131/g, 'i') // dotless i
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
   const filteredCountries = useMemo(() => {
     if (!countries) return [];
-    
+
     if (!countrySearchQuery.trim()) {
       return countries; // Show all countries when no search query
     }
-    
-    return countries.filter((country) => 
-      country.name?.toLowerCase().includes(countrySearchQuery.toLowerCase())
+
+    const q = foldForSearch(countrySearchQuery.trim());
+    return countries.filter((country) =>
+      foldForSearch(country.name || '').includes(q)
     );
   }, [countries, countrySearchQuery]);
 
