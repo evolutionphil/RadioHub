@@ -450,7 +450,13 @@ export function registerRegionsRecommendationsRoutes(app: Express, deps: any) {
   });
 
   // Get stations by region/country/city
-  app.get('/api/regions/:regionSlug/:countrySlug/{:citySlug}/stations', async (req, res) => {
+  // EXPRESS 5 OPTIONAL-PARAM FIX (2026-07-04): the optional group must
+  // include the leading slash — `{/:citySlug}` — or the slash stays
+  // REQUIRED and the no-city form only matches with a double slash
+  // (`/france//stations`). The old `/{:citySlug}/` pattern made
+  // /api/regions/europe/france/stations return 404, which the SPA surfaced
+  // as "Bölgeler yüklenemedi" on every country-stations page.
+  app.get('/api/regions/:regionSlug/:countrySlug{/:citySlug}/stations', async (req, res) => {
     try {
       const { regionSlug, countrySlug, citySlug } = req.params;
       const { limit = 50, offset = 0, sortBy = 'votes', order = 'desc' } = req.query;

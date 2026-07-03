@@ -39,7 +39,11 @@ export function registerCacheDashboardRoutes(app: Express, deps: any) {
     'tv', 'dashboard', 'countries', 'cities', 'similar', 'search'
   ]);
 
-  app.delete("/api/cache/clear/{:pattern}", requireAdmin, async (req, res) => {
+  // EXPRESS 5 OPTIONAL-PARAM FIX (2026-07-04): same class as the regions
+  // route — `/{:pattern}` keeps the slash required, so the pattern-less
+  // /api/cache/clear only matched WITH a trailing slash. `{/:pattern}`
+  // makes both forms work (the handler already 400s on a missing pattern).
+  app.delete("/api/cache/clear{/:pattern}", requireAdmin, async (req, res) => {
     try {
       const { pattern } = req.params;
       if (!pattern) {
