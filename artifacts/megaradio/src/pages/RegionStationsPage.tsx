@@ -364,7 +364,18 @@ export default function RegionStationsPage() {
           <div className="flex items-center gap-4 mb-8">
             <div className="w-10 h-10 bg-slate-700 rounded-lg animate-pulse"></div>
             <h1 className="text-3xl md:text-4xl font-bold capitalize bg-gradient-to-r from-pink-400 to-purple-400 bg-clip-text text-transparent">
-              {(citySlug || countrySlug || regionSlug).replace(/-/g, ' ')}
+              {/* CRASH GUARD (2026-07-04): on LOCALIZED region URLs
+                  (/tr/bolgeler/...) wouter's useParams doesn't match the
+                  English route pattern, so all three slugs can be undefined --
+                  `.replace` on undefined threw during this loading render and
+                  took down the whole React tree (blank app until reload).
+                  Fall back to the URL's own country segment, then to ''. */}
+              {(citySlug || countrySlug || regionSlug ||
+                decodeURIComponent(
+                  (typeof window !== 'undefined'
+                    ? window.location.pathname.split('/').filter(Boolean).slice(-2, -1)[0]
+                    : '') || '',
+                )).replace(/-/g, ' ')}
             </h1>
           </div>
           
