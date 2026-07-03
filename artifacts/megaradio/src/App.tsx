@@ -362,6 +362,13 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     // '/stations/' detail check below.
     if (pathToUse === '/stations') return <LazyRoutes.Radios selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
 
+    // A-Z station index pages (/stations/a … /stations/0-9 and the singular
+    // reverse-translated form). SSR renders the crawlable letter list; on
+    // hydration the SPA shows the same station-grid UI as the /stations hub.
+    // Must precede the station-detail checks below or the letter would be
+    // treated as a (nonexistent) station slug and hydrate to a 404.
+    if (pathToUse.match(/^\/stations?\/(?:0-9|[a-z])$/)) return <LazyRoutes.Radios selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
+
     // CRITICAL FIX: Station routing - handle BOTH English and translated paths
     // Support both /station/ and /stations/ formats without redirect (avoids losing country code)
     if (pathToUse.startsWith('/station/')) return <LazyRoutes.StationDetails />;

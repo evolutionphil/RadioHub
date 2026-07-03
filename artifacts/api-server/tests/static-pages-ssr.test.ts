@@ -40,6 +40,8 @@ interface FakeQuery<T> extends PromiseLike<T> {
   sort: (..._args: unknown[]) => FakeQuery<T>;
   populate: (..._args: unknown[]) => FakeQuery<T>;
   limit: (..._args: unknown[]) => FakeQuery<T>;
+  skip: (..._args: unknown[]) => FakeQuery<T>;
+  maxTimeMS: (..._args: unknown[]) => FakeQuery<T>;
   setOptions: (..._args: unknown[]) => FakeQuery<T>;
   lean: () => Promise<T>;
 }
@@ -49,6 +51,10 @@ function fakeQuery<T>(value: T): FakeQuery<T> {
     sort: () => q,
     populate: () => q,
     limit: () => q,
+    // The A-Z index letter query (Task #11) paginates with .skip() and caps
+    // with .maxTimeMS() — both must be chainable on the fake.
+    skip: () => q,
+    maxTimeMS: () => q,
     // `withSignal()` wraps mongoose queries with `query.setOptions(...)` to
     // attach the AbortSignal — must be present on the fake or every
     // mocked Translation.find() call throws and gets swallowed by error
@@ -65,7 +71,7 @@ const NULL_MODEL = {
   find: () => fakeQuery([]),
   findOne: () => fakeQuery(null),
   findById: () => fakeQuery(null),
-  countDocuments: async () => 0,
+  countDocuments: () => fakeQuery(0),
   aggregate: () => ({
     allowDiskUse: () => Promise.resolve([]),
     exec: async () => [],
@@ -365,4 +371,135 @@ test('per-language about/contact/applications templates differ from English (no 
     `STATIC_PAGE_SEO_TEMPLATES has non-English entries identical to English ` +
       `— that's the silent-fallback regression Task #309 fixed:\n  ${offenders.join('\n  ')}`,
   );
+});
+
+// ---------------------------------------------------------------------------
+// A-Z station index pages (Task #11, 2026-07-03): /stations/<a-z|0-9>.
+// Rendered end-to-end through the mocked renderer: the Station model mock
+// returns an empty list (the soft-fail path), which must still produce a
+// letter-suffixed <title>/H1, the canonical on the PLURAL letter URL, and
+// the full 27-link A-Z rail — the crawl surface the feature exists for.
+// ---------------------------------------------------------------------------
+
+test('A-Z letter page /en/stations/a: letter-suffixed title, canonical, 27-link rail', async () => {
+  const renderer = new SeoRenderer();
+  const result = await renderer.renderStaticPage(
+    '/en/stations/a',
+    'https://themegaradio.com',
+  );
+
+  assert.equal(result.language, 'en');
+  assert.equal(result.cleanPath, '/stations/a', 'cleanPath must be normalized to the plural form');
+
+  const seoTags = result.seoTags as any;
+  assert.ok(
+    String(seoTags.title || '').includes('— A'),
+    `letter page <title> must carry the letter label, got ${JSON.stringify(seoTags.title)}`,
+  );
+  assert.ok(
+    String(seoTags.canonical || '').endsWith('/en/stations/a'),
+    `canonical must be the plural letter URL, got ${JSON.stringify(seoTags.canonical)}`,
+  );
+  // Every hreflang alternate must keep the letter key untranslated.
+  if (Array.isArray(seoTags.hreflangs)) {
+    for (const alt of seoTags.hreflangs) {
+      assert.match(
+        String(alt.url),
+        /\/a$/,
+        `hreflang ${alt.hreflang} must end with the raw letter, got ${alt.url}`,
+      );
+    }
+  }
+
+  const pageData = (result as any).pageData ?? {};
+  assert.equal(pageData.azLetter, 'a', 'additionalData.azLetter must reach pageData');
+
+  const body = renderer.generateHtmlBody({
+    pageType: 'stations',
+    language: result.language,
+    translations: result.translations,
+    seoTags: result.seoTags,
+    additionalData: pageData,
+    urlTranslations: result.urlTranslations,
+    cleanPath: result.cleanPath,
+  } as any);
+
+  assert.ok(body.includes('class="az-index"'), 'body must render the A-Z rail');
+  assert.ok(
+    body.includes('<span aria-current="page">A</span>'),
+    'current letter must render as a non-link current marker',
+  );
+  // All other keys are links; spot-check a letter, the 0-9 bucket and count.
+  // Scope the count to the rail itself — the breadcrumb also links the page.
+  const railStart = body.indexOf('class="az-index"');
+  const rail = body.slice(railStart, body.indexOf('</nav>', railStart));
+  assert.ok(rail.includes('href="/en/stations/b"'), 'rail must link sibling letters');
+  assert.ok(rail.includes('href="/en/stations/0-9"'), 'rail must link the 0-9 bucket');
+  const railLinks = (rail.match(/href="\/en\/stations\/(?:0-9|[a-z])"/g) || []).length;
+  assert.equal(railLinks, 26, 'rail must link the 26 non-current keys');
+  assert.match(
+    body,
+    /<h1>[^<]*— A<\/h1>/,
+    'H1 must carry the letter label so letter pages are not a duplicate-H1 cluster',
+  );
+});
+
+test('A-Z letter page localizes the stations segment: /tr/istasyonlar/m', async () => {
+  const renderer = new SeoRenderer();
+  const result = await renderer.renderStaticPage(
+    '/tr/istasyonlar/m',
+    'https://themegaradio.com',
+  );
+
+  assert.equal(result.language, 'tr');
+  assert.equal(result.cleanPath, '/stations/m');
+  const seoTags = result.seoTags as any;
+  assert.ok(
+    String(seoTags.canonical || '').endsWith('/tr/istasyonlar/m'),
+    `canonical must stay on the localized plural segment, got ${JSON.stringify(seoTags.canonical)}`,
+  );
+
+  const body = renderer.generateHtmlBody({
+    pageType: 'stations',
+    language: result.language,
+    translations: result.translations,
+    seoTags: result.seoTags,
+    additionalData: (result as any).pageData ?? {},
+    urlTranslations: result.urlTranslations,
+    cleanPath: result.cleanPath,
+  } as any);
+
+  assert.ok(
+    body.includes('href="/tr/istasyonlar/a"'),
+    'rail links must use the localized stations segment',
+  );
+  assert.ok(body.includes('<span aria-current="page">M</span>'));
+});
+
+test('stations hub /en/stations still renders and now carries the A-Z rail', async () => {
+  const renderer = new SeoRenderer();
+  const result = await renderer.renderStaticPage(
+    '/en/stations',
+    'https://themegaradio.com',
+  );
+  assert.equal(result.cleanPath, '/stations');
+  const seoTags = result.seoTags as any;
+  assert.ok(
+    !String(seoTags.title || '').includes('— A'),
+    'hub title must NOT carry a letter label',
+  );
+
+  const body = renderer.generateHtmlBody({
+    pageType: 'stations',
+    language: result.language,
+    translations: result.translations,
+    seoTags: result.seoTags,
+    additionalData: (result as any).pageData ?? {},
+    urlTranslations: result.urlTranslations,
+    cleanPath: result.cleanPath,
+  } as any);
+
+  assert.ok(body.includes('class="az-index"'), 'hub must render the A-Z rail');
+  const railLinks = (body.match(/href="\/en\/stations\/(?:0-9|[a-z])"/g) || []).length;
+  assert.equal(railLinks, 27, 'hub rail must link all 27 keys (none is current)');
 });

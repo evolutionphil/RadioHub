@@ -4,6 +4,7 @@ import { SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from '@workspace/seo-shared/seo-co
 import { logger } from './utils/logger';
 import { performanceCache } from './performance-cache';
 import { getCanonicalStationSlug, isSlugExistenceReady } from './seo/slug-existence';
+import { AZ_KEY_RE } from './seo/az-station-index';
 
 /**
  * 301 Redirect Middleware for Translated URL Patterns (single-hop edition)
@@ -379,7 +380,19 @@ export async function urlRedirectMiddleware(req: Request, res: Response, next: N
     // singular so /it/stazioni/X, /it/radio/X, /it/stations/X all reach
     // /it/stazione/X in this single pass.
     // Only applies to 3+ segment paths (detail pages with a slug).
-    if (segments.length >= 3) {
+    if (segments.length === 3 && AZ_KEY_RE.test(segments[2])) {
+      // A-Z index exemption (Task #11, 2026-07-03): /lang/{station-word}/{a-z|0-9}
+      // is the letter-index LISTING page, not a station-detail URL. Its
+      // canonical middle segment is the LIST form (plural — same segment the
+      // sitemap emits for /stations), so /en/station/a, /en/radios/a and
+      // /tr/istasyon/m all 301 to /en/stations/a, /tr/istasyonlar/m instead
+      // of being collapsed onto the detail singular (which would render a
+      // station-not-found page for the "slug" `a`).
+      const listInfo = STATION_LIST_ALIASES.get(lang);
+      if (listInfo && listInfo.aliases.has(segments[1])) {
+        segments[1] = listInfo.canonical;
+      }
+    } else if (segments.length >= 3) {
       const aliasInfo = STATION_DETAIL_ALIASES.get(lang);
       if (aliasInfo && aliasInfo.aliases.has(segments[1])) {
         segments[1] = aliasInfo.canonical;

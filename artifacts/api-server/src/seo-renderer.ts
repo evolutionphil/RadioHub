@@ -1,6 +1,7 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
 import { Translation, Station, Genre, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
 import { PrecomputedGenresService } from './services/precomputed-genres';
+import { AZ_INDEX_KEYS, azDisplayLabel, azSlugBounds, matchAzIndexPath } from './seo/az-station-index';
 
 // Lean document shapes returned by Mongoose `.lean()` for the queries in this
 // module. Mongoose 8's typings hand `.lean()` results back as `unknown` once
@@ -401,6 +402,13 @@ export class SeoRenderer {
       }
     }
     
+    // A-Z station index (Task #11, 2026-07-03): /stations/a … /stations/0-9.
+    // Detect BEFORE localizedPath so canonical/hreflang derive from the
+    // normalized plural form even when the reverse translation produced the
+    // singular (/station/a) — both middleware and sitemap emit the plural.
+    const azLetter = matchAzIndexPath(cleanPath);
+    if (azLetter) cleanPath = `/stations/${azLetter}`;
+
     // Build localized URL path for canonical URL
     // This translates English paths like /genres to language-specific paths like /zhanret (Albanian)
     const localizedPath = buildLocalizedUrl(cleanPath, actualLanguage, countryCode, urlTranslations);
@@ -437,8 +445,11 @@ export class SeoRenderer {
       return { isStation: false };
     };
     
-    // Enhanced page type detection with more specific routing
-    const stationCheck = isStationPath(cleanPath);
+    // Enhanced page type detection with more specific routing.
+    // A-Z index paths look exactly like /stations/<slug> so they must skip
+    // the station-detail detection — cleanPath was normalized above and the
+    // /stations branch below handles the letter listing.
+    const stationCheck = azLetter ? { isStation: false as const } : isStationPath(cleanPath);
     let stationNotFound = false;
     if (stationCheck.isStation) {
       pageType = 'station';
@@ -793,6 +804,61 @@ export class SeoRenderer {
           }
         }
         }
+      }
+    } else if (azLetter) {
+      // A-Z letter index (Task #11, 2026-07-03): /stations/<a-z|0-9> lists
+      // EVERY indexable station whose slug starts with the letter — unlike
+      // the hub below (top-2000 precomputed pool), this walks the whole
+      // catalogue so the entire long tail gets a crawlable in-link. The
+      // filter is a pure string range on the unique {slug:1} index (see
+      // azSlugBounds) and the sort rides the same index — no regex, no
+      // in-memory sort (2026-05-14 incident rule). Results are cached 6h
+      // per (letter, page) behind single-flight so at most 27×50 distinct
+      // queries exist and concurrent cold misses coalesce.
+      pageType = 'stations';
+      additionalData.azLetter = azLetter;
+      try {
+        const PAGE_SIZE = 60;
+        const pmAz = url.match(/[?&]page=(\d+)/);
+        const page = pmAz ? Math.min(Math.max(parseInt(pmAz[1], 10) || 1, 1), 50) : 1;
+        const { gte, lt } = azSlugBounds(azLetter);
+        const { CacheManager } = await import('./cache');
+        const azData = await CacheManager.getOrSetSingleFlight(
+          `az-index:${azLetter}:${page}`,
+          async () => {
+            const docs = await Station.find(
+              { slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } },
+              { slug: 1, name: 1, country: 1, votes: 1, favicon: 1, logo: 1, logoAssets: 1, hasLogo: 1, tags: 1, noIndex: 1 },
+            )
+              .sort({ slug: 1 })
+              .skip((page - 1) * PAGE_SIZE)
+              .limit(PAGE_SIZE)
+              .maxTimeMS(8000)
+              .lean();
+            // Range-only predicate → index-bounded count on {slug:1}. The
+            // junk/noIndex fraction is not subtracted (that would force a
+            // doc scan); totalPages is therefore a slight over-estimate,
+            // clamped to 50 like the hub.
+            const total = await Station.countDocuments({ slug: { $gte: gte, $lt: lt } }).maxTimeMS(8000);
+            return { docs, total };
+          },
+          { ttl: 21600 },
+        );
+        const catalog = ((azData?.docs as any[]) || [])
+          .filter((s: any) => s && s.slug && s.noIndex !== true && !isJunkStation(s));
+        additionalData.catalogStations = catalog;
+        // Mirror the hub: expose as popularStations too so the existing
+        // ItemList + CollectionPage JSON-LD path emits structured data.
+        additionalData.popularStations = catalog;
+        additionalData.catalogPage = page;
+        additionalData.catalogTotalPages = Math.min(
+          Math.max(Math.ceil(((azData?.total as number) || 0) / PAGE_SIZE), 1),
+          50,
+        );
+      } catch (error: any) {
+        if (error?.name === 'AbortError' || signal?.aborted) throw error;
+        // Soft-fail: H1 + A-Z nav still render, list section is omitted.
+        // Public reads must never 500.
       }
     } else if (cleanPath.startsWith('/stations')) {
       pageType = 'stations';
@@ -1701,6 +1767,19 @@ export class SeoRenderer {
       baseSeoTags.description = communitySeo.description;
       if (communitySeo.keywords) baseSeoTags.keywords = communitySeo.keywords;
       baseSeoTags.ogType = 'website';
+
+      // A-Z letter pages (Task #11): every letter needs a UNIQUE title and
+      // description or all 27 pages become a duplicate-title cluster. Insert
+      // the letter label before the "| Mega Radio" brand suffix when present.
+      if (pageType === 'stations' && additionalData?.azLetter) {
+        const disp = azDisplayLabel(String(additionalData.azLetter));
+        const t = String(baseSeoTags.title || '');
+        const brandIdx = t.lastIndexOf(' | ');
+        baseSeoTags.title = brandIdx > 0
+          ? `${t.slice(0, brandIdx)} — ${disp}${t.slice(brandIdx)}`
+          : `${t} — ${disp}`;
+        baseSeoTags.description = `${String(baseSeoTags.description || '').replace(/\.?\s*$/, '')} — ${disp}.`;
+      }
     }
 
     if (pageType === 'about' || pageType === 'contact' || pageType === 'applications') {
@@ -2935,9 +3014,32 @@ export class SeoRenderer {
           const stationsBase = buildLocalizedUrl('/stations', language, undefined, urlTranslations);
           const genresHref = buildLocalizedUrl('/genres', language, undefined, urlTranslations);
           const logoWord = getLocalizedText('seo_logo_word', LOCALIZED_LOGO_WORD[language] || 'logo');
+          // A-Z index (Task #11): letter pages get a letter-suffixed H1 and
+          // paginate under their own base URL; the hub and every letter page
+          // render the same 27-link A-Z rail so crawlers reach the full
+          // catalogue from any of them.
+          const azLetterKey = (additionalData?.azLetter as string | undefined) || '';
+          const azH1 = azLetterKey
+            ? `${h1Text || 'Radio Stations'} — ${azDisplayLabel(azLetterKey)}`
+            : (h1Text || 'Radio Stations');
+          const paginationBase = azLetterKey
+            ? buildLocalizedUrl(`/stations/${azLetterKey}`, language, undefined, urlTranslations)
+            : stationsBase;
+          const azNav = `
+            <nav class="az-index" aria-label="${this.escapeHtml(getLocalizedText('stations_az_nav', 'Radio stations A to Z'))}">
+              <ul>
+                ${AZ_INDEX_KEYS.map((k) => {
+                  const label = this.escapeHtml(azDisplayLabel(k));
+                  if (k === azLetterKey) return `<li><span aria-current="page">${label}</span></li>`;
+                  const href = buildLocalizedUrl(`/stations/${k}`, language, undefined, urlTranslations);
+                  return `<li><a href="${href}">${label}</a></li>`;
+                }).join('')}
+              </ul>
+            </nav>`;
           content = `
           <main>
-            <h1>${this.escapeHtml(h1Text || 'Radio Stations')}</h1>
+            <h1>${this.escapeHtml(azH1)}</h1>
+            ${azNav}
             ${cats.length > 0 ? `
             <section class="popular-stations">
               <h2>${this.escapeHtml(getLocalizedText('all_stations', LOCALIZED_RADIO_STATIONS[language] || 'Radio Stations'))}</h2>
@@ -2966,7 +3068,7 @@ export class SeoRenderer {
                   if (n === curPage) {
                     return `<li><span aria-current="page">${n}</span></li>`;
                   }
-                  const href = n === 1 ? stationsBase : `${stationsBase}?page=${n}`;
+                  const href = n === 1 ? paginationBase : `${paginationBase}?page=${n}`;
                   const rel = n === curPage - 1 ? ' rel="prev"' : n === curPage + 1 ? ' rel="next"' : '';
                   return `<li><a href="${href}"${rel}>${n}</a></li>`;
                 }).join('')}

@@ -24,6 +24,7 @@ import {
   decodeSegmentSafe,
 } from '../seo/url-helpers';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { AZ_KEY_RE } from '../seo/az-station-index';
 import {
   isSlugExistenceReady as defaultIsSlugExistenceReady,
   hasStationSlug as defaultHasStationSlug,
@@ -301,6 +302,13 @@ export function createSlugShape404Middleware(
       if (slug2 !== undefined) {
         if (!SAFE_REGION_SLUG_RE.test(slug2)) {
           invalid = true;
+        } else if (AZ_KEY_RE.test(slug2) && slug3 === undefined) {
+          // A-Z letter index listing (Task #11, 2026-07-03):
+          // /stations/a … /stations/0-9 (and localized forms) are listing
+          // pages, not station slugs — they must never hit the station
+          // existence gate. The redirect middleware canonicalizes the
+          // singular family to the plural before this runs, but exempt
+          // both so a direct hit can't false-404 either form.
         } else if (
           stationPluralRe.test(family) &&
           OBJECT_ID_RE.test(slug2)
