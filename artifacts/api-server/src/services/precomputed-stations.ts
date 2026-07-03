@@ -225,7 +225,13 @@ export class PrecomputedStationsService {
           tags: 1,
           codec: 1,
           bitrate: 1,
-          logoAssets: { webp96: 1, webp256: 1, folder: 1 }
+          // LOGO OUTAGE FIX (2026-07-03): `status` MUST be projected — the
+          // frontend StationLogo gates the S3 asset path on
+          // `logoAssets.status === 'completed'` and silently falls back to
+          // the (mostly dead) favicon proxy without it. The global pool
+          // projects the full object; this country projection dropping
+          // `status` made every country view render placeholder icons.
+          logoAssets: { webp48: 1, webp96: 1, webp256: 1, folder: 1, status: 1 }
         }
       }
     ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
@@ -237,7 +243,9 @@ export class PrecomputedStationsService {
         { $sort: { hasLogo: -1, votes: -1 } },
         // ORPHAN FIX (2026-07-01): keep in sync with the primary aggregate cap above.
         { $limit: 3000 },
-        { $project: { _id: 1, slug: 1, name: 1, url: 1, url_resolved: 1, favicon: 1, country: 1, state: 1, votes: 1, hasLogo: 1, tags: 1, codec: 1, bitrate: 1, logoAssets: { webp96: 1, webp256: 1, folder: 1 } } }
+        // LOGO OUTAGE FIX (2026-07-03): keep in sync with the primary
+        // projection above — `status` is required by the frontend gate.
+        { $project: { _id: 1, slug: 1, name: 1, url: 1, url_resolved: 1, favicon: 1, country: 1, state: 1, votes: 1, hasLogo: 1, tags: 1, codec: 1, bitrate: 1, logoAssets: { webp48: 1, webp96: 1, webp256: 1, folder: 1, status: 1 } } }
       ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
     }
 

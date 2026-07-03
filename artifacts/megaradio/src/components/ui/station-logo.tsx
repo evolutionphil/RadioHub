@@ -87,12 +87,27 @@ function resolveLogoUrl(folder: string, value: string): string {
   return `${_API_ORIGIN}/station-logos/${folder}/${value}`;
 }
 
+// LOGO OUTAGE FIX (2026-07-03): the per-country precomputed pools projected
+// logoAssets WITHOUT `status` for months, so the strict
+// `status === 'completed'` gate silently skipped the S3 assets and dropped
+// every country view onto the (mostly dead) favicon-proxy path → placeholder
+// icons site-wide. The projection is fixed server-side, but its SWR caches
+// serve stale data for up to 7 days — treat a MISSING status as completed
+// when concrete asset filenames exist (pending/failed jobs don't have them);
+// an explicit non-completed status still blocks as before.
+function logoAssetsUsable(assets: Station['logoAssets']): boolean {
+  if (!assets?.folder) return false;
+  if (assets.status === 'completed') return true;
+  return assets.status === undefined && !!(assets.webp48 || assets.webp96 || assets.webp256);
+}
+
 function getLogoUrl(station: Station, preferredSize: 48 | 96 | 256 = 96): string {
-  if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
-    const sizeKey = `webp${preferredSize}` as keyof typeof station.logoAssets;
-    const value = (station.logoAssets[sizeKey] || station.logoAssets.webp96 || station.logoAssets.webp256) as string | undefined;
+  const assets = station.logoAssets;
+  if (assets && logoAssetsUsable(assets) && assets.folder) {
+    const sizeKey = `webp${preferredSize}` as keyof typeof assets;
+    const value = (assets[sizeKey] || assets.webp96 || assets.webp256) as string | undefined;
     if (value) {
-      return resolveLogoUrl(station.logoAssets.folder, value);
+      return resolveLogoUrl(assets.folder, value);
     }
   }
 
@@ -136,7 +151,7 @@ export function StationLogo({
   const sources = useMemo(() => {
     const list: string[] = [];
     
-    if (station.logoAssets?.status === 'completed' && station.logoAssets.folder) {
+    if (logoAssetsUsable(station.logoAssets) && station.logoAssets?.folder) {
       const preferred = station.logoAssets[preferredAssetSize as keyof typeof station.logoAssets] as string | undefined;
       const fallback = (station.logoAssets.webp96 || station.logoAssets.webp256 || station.logoAssets.webp48) as string | undefined;
       const value = preferred || fallback;
@@ -180,8 +195,8 @@ export function StationLogo({
   const srcSet = useMemo(() => {
     if (
       sourceIndex !== 0 ||
-      station.logoAssets?.status !== 'completed' ||
-      !station.logoAssets.folder
+      !logoAssetsUsable(station.logoAssets) ||
+      !station.logoAssets?.folder
     ) {
       return undefined;
     }
