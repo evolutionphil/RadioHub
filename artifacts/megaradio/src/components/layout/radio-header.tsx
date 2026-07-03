@@ -315,13 +315,25 @@ export default function RadioHeader({
 
   // Convert string array to objects format expected by the frontend
   // Memoized to prevent recalculation on every render
-  const countries = useMemo(() => 
-    countriesRaw.map((countryName) => ({
-      name: countryName,
-      code: getCountryCode(countryName)
-    })),
-    [countriesRaw]
-  );
+  // DROPDOWN RENDER FIX (2026-07-04): the raw list can contain duplicate
+  // names (e.g. "Sao Tome And Principe" twice) and getCountryCode's
+  // first-two-letters fallback collides for unmapped names ("The Central
+  // African Republic" -> 'th' = Thailand's real ISO code). Both fed
+  // duplicate React keys / element ids in the dropdown lists, which broke
+  // React's list reconciliation: the typed filter computed correctly but
+  // the DOM kept showing a stale, garbage subset. Dedupe here (by trimmed
+  // name) and use index-scoped keys below.
+  const countries = useMemo(() => {
+    const seen = new Set<string>();
+    const out: Array<{ name: string; code: string }> = [];
+    for (const raw of countriesRaw) {
+      const name = String(raw ?? '').trim();
+      if (!name || seen.has(name)) continue;
+      seen.add(name);
+      out.push({ name, code: getCountryCode(name) });
+    }
+    return out;
+  }, [countriesRaw]);
   
   // Get selected country code directly from seo-config (no need to wait for countries API)
   const selectedCountryCode = useMemo(() => {
@@ -1599,11 +1611,12 @@ export default function RadioHeader({
                 <span className="block truncate text-white">{t('nav_global', 'Global')}</span>
               </div>
               {filteredCountries.map((country, index: number) => {
-                const itemId = `country-${country.code || country.name}`;
+                // Unique per row even when ISO-code fallbacks collide.
+                const itemId = `country-${index}-${country.code || country.name}`;
                 const isActive = activeCountryId === itemId;
                 return (
                 <div 
-                  key={`mobile-portal-${country.name || index}`}
+                  key={`mobile-portal-${index}-${country.name}`}
                   ref={setCountryItemRef(itemId)}
                   id={`header-country-auth-${itemId}`}
                   role="option"
@@ -1722,12 +1735,13 @@ export default function RadioHeader({
                 </span>
                 <span className="flex-1 min-w-0 truncate text-white font-medium">{t('nav_global', 'Global')}</span>
               </div>
-              {filteredCountries.map((country) => {
-                const itemId = `country-${country.code || country.name}`;
+              {filteredCountries.map((country, index: number) => {
+                // Unique per row even when ISO-code fallbacks collide.
+                const itemId = `country-${index}-${country.code || country.name}`;
                 const isActive = activeCountryId === itemId;
                 return (
                 <div 
-                  key={country.code || country.name}
+                  key={`unauth-${index}-${country.name}`}
                   ref={setCountryItemRef(itemId)}
                   id={`header-country-unauth-${itemId}`}
                   role="option"
