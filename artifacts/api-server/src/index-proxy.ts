@@ -68,6 +68,25 @@ app.get('/healthz', (_req, res) => {
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+// GSC crawl-stats fix (2026-07-04): Googlebot-Image kept crawling old
+// stream.themegaradio.com/api/image/<b64> proxied-favicon URLs it discovered
+// from years-old page generations; the mostly-dead upstreams 5XX'd and
+// Search Console flagged the host with "high failure rate" (95% of a
+// ~6-req/day trickle). There is nothing indexable on this host -- audio
+// proxying and image proxying only -- so tell every crawler to stay away.
+// The canonical, indexable station logos live on the S3 bucket and the main
+// host; blocking this host costs zero image-SEO.
+app.get('/robots.txt', (_req, res) => {
+  res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
+  res.send('User-agent: *\nDisallow: /\n');
+});
+// Belt-and-braces for URLs Google already knows: explicit noindex on every
+// response from this service.
+app.use((_req, res, next) => {
+  res.setHeader('X-Robots-Tag', 'noindex, nofollow');
+  next();
+});
+
 registerStreamProxyRoutes(app, { requireAdmin: (_req: any, _res: any, next: any) => next() });
 
 app.use((_req, res) => {
