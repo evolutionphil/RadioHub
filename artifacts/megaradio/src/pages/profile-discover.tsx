@@ -13,6 +13,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { Shuffle, ChevronLeft, ChevronRight } from "lucide-react";
 import { COUNTRY_TO_LANGUAGE } from "@workspace/seo-shared/seo-config";
+import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
 
 // Genre background gradients - same as homepage
 const getRandomImage = (index: number) => {
@@ -146,7 +147,12 @@ export default function ProfileDiscover() {
     queryKey: ["/api/stations/country", countryCode],
     queryFn: async () => {
       if (!countryCode) return [];
-      const response = await fetch(`/api/stations/precomputed?countryName=${countryCode}&page=1&limit=50`, {
+      // EMPTY-SECTION FIX (2026-07-04): this sent countryName=TR (an ISO
+      // CODE) to an endpoint that expects a country NAME — the aggregate
+      // matched country:'TR', found nothing, and "Popular Radio Stations"
+      // rendered permanently empty. The endpoint has a countryCode param
+      // that resolves codes properly; use it.
+      const response = await fetch(`/api/stations/precomputed?countryCode=${countryCode}&page=1&limit=50`, {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch country stations");
@@ -219,14 +225,10 @@ export default function ProfileDiscover() {
   // Stations", and "Surprise Me". Single 100-station fetch instead of three.
   const { data: globalStationsRaw = [], isLoading: globalStationsLoading } = useQuery<any[]>({
     queryKey: ["/api/stations/global-100"],
-    queryFn: async () => {
-      const response = await fetch("/api/stations/precomputed?countryName=global&page=1&limit=100", {
-        credentials: "include",
-      });
-      if (!response.ok) throw new Error("Failed to fetch stations");
-      const result = await response.json();
-      return result.data || [];
-    },
+    // PERF (2026-07-04): served from the shared page-1 pool — if the user
+    // navigated here from home, the global list is already in memory and
+    // this costs ZERO network (the old dedicated fetch was ~5s cold).
+    queryFn: async () => (await getPrecomputedStationsSlice('global', 100)) as any[],
     staleTime: 7 * 24 * 60 * 60 * 1000,
     placeholderData: keepPreviousData,
   });

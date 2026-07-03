@@ -99,6 +99,21 @@ export default function Footer() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isLanguageDropdownOpen]);
   
+  // LABEL SANITIZER (2026-07-04): the Turkish translation rows for the
+  // footer_* keys were machine-generated with the KEY PREFIX translated into
+  // the value ("footer_company" -> "Altbilgi Şirket" = lit. "Footer Company",
+  // "footer_all_regions" -> "Alt Menü Tüm Bölgeler"). Until the DB rows are
+  // cleaned, strip those artifact prefixes at render time and fix the one
+  // value where stripping isn't enough. No-op for healthy translations.
+  const FOOTER_LABEL_FIXES: Record<string, string> = {
+    'Alt Menü Telif Hakkı': 'Tüm hakları saklıdır',
+  };
+  const ft = (key: string, fallback: string): string => {
+    const v = t(key, fallback);
+    if (FOOTER_LABEL_FIXES[v]) return FOOTER_LABEL_FIXES[v];
+    return v.replace(/^(Altbilgi|Alt ?Menü)\s+/u, '');
+  };
+
   // Fetch footer social media links. staleTime added (PageSpeed 2026-07-03):
   // the footer is lazy-mounted under Suspense in more than one wrapper, and
   // with the default staleTime of 0 every remount refetched the same static
@@ -213,17 +228,17 @@ export default function Footer() {
                 ) : (
                   <>
                     <div className="text-sm sm:text-base font-medium mb-2 text-white">
-                      {t('footer_company', 'Company')}
+                      {ft('footer_company', 'Company')}
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/about")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_about_us', 'About Us')}
+                      <Link to={getLocalizedUrl("/about")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_about_us', 'About Us')}
                       </Link>
-                      <Link to={getLocalizedUrl("/applications")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_applications', 'Applications')}
+                      <Link to={getLocalizedUrl("/applications")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_applications', 'Applications')}
                       </Link>
-                      <Link to={getLocalizedUrl("/contact")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_contact', 'Contact')}
+                      <Link to={getLocalizedUrl("/contact")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_contact', 'Contact')}
                       </Link>
                       {/* Internal-link boost: Semrush flagged ~60+ localized
                           URLs (per the May 2026 audit) for /lang/recommendations
@@ -233,11 +248,11 @@ export default function Footer() {
                           footer is intentionally hidden on profile/admin/
                           standalone views), which should clear the warning
                           on the next crawl. */}
-                      <Link to={getLocalizedUrl("/recommendations")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_recommendations', 'Recommendations')}
+                      <Link to={getLocalizedUrl("/recommendations")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_recommendations', 'Recommendations')}
                       </Link>
-                      <Link to={getLocalizedUrl("/users")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_users', 'Listeners')}
+                      <Link to={getLocalizedUrl("/users")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_users', 'Listeners')}
                       </Link>
                       {/* Link to the CANONICAL legal URLs (not the /pages/*
                           duplicates). Both /terms-and-conditions and
@@ -245,18 +260,18 @@ export default function Footer() {
                           and each self-canonicals; the sitemap lists the clean
                           form, so the footer must match it to avoid duplicate-
                           content signals and split link equity. */}
-                      <Link to={getLocalizedUrl("/terms-and-conditions")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_terms', 'Terms and Co.')}
+                      <Link to={getLocalizedUrl("/terms-and-conditions")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_terms', 'Terms and Co.')}
                       </Link>
-                      <Link to={getLocalizedUrl("/privacy-policy")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_privacy', 'Privacy')}
+                      <Link to={getLocalizedUrl("/privacy-policy")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_privacy', 'Privacy')}
                       </Link>
                       <button
                         type="button"
-                        className="inline-flex items-center min-h-[44px] text-left bg-transparent border-0 p-0 m-0 cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
+                        className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-left bg-transparent border-0 p-0 m-0 cursor-pointer text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors"
                         onClick={() => setShowAddStationModal(true)}
                       >
-                        {t('footer_add_station', 'Add Your Station')}
+                        {ft('footer_add_station', 'Add Your Station')}
                       </button>
                     </div>
                   </>
@@ -277,29 +292,29 @@ export default function Footer() {
                 ) : (
                   <>
                     <div className="text-sm sm:text-base font-medium mb-2 text-white">
-                      {t('footer_regions', 'Regions')}
+                      {ft('footer_regions', 'Regions')}
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/regions")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_all_regions', 'All Regions')}
+                      <Link to={getLocalizedUrl("/regions")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_all_regions', 'All Regions')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/north-america/united-states")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_united_states', 'United States')}
+                      <Link to={getLocalizedUrl("/regions/north-america/united-states")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_united_states', 'United States')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/germany")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_germany', 'Germany')}
+                      <Link to={getLocalizedUrl("/regions/europe/germany")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_germany', 'Germany')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/turkey")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                      <Link to={getLocalizedUrl("/regions/europe/turkey")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
                         Türkiye
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/austria")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_austria', 'Austria')}
+                      <Link to={getLocalizedUrl("/regions/europe/austria")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_austria', 'Austria')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/united-kingdom")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_united_kingdom', 'United Kingdom')}
+                      <Link to={getLocalizedUrl("/regions/europe/united-kingdom")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_united_kingdom', 'United Kingdom')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/france")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_france', 'France')}
+                      <Link to={getLocalizedUrl("/regions/europe/france")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_france', 'France')}
                       </Link>
                     </div>
                   </>
@@ -323,11 +338,11 @@ export default function Footer() {
                       &nbsp;
                     </div>
                     <div className="grid grid-cols-1 gap-1.5 sm:gap-2">
-                      <Link to={getLocalizedUrl("/regions/europe/spain")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_spain', 'Spain')}
+                      <Link to={getLocalizedUrl("/regions/europe/spain")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_spain', 'Spain')}
                       </Link>
-                      <Link to={getLocalizedUrl("/regions/europe/italy")} className="inline-flex items-center min-h-[44px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
-                        {t('footer_italy', 'Italy')}
+                      <Link to={getLocalizedUrl("/regions/europe/italy")} className="inline-flex items-center min-h-[44px] md:min-h-[30px] text-xs sm:text-sm text-gray-100 hover:text-[#FF4199] transition-colors">
+                        {ft('footer_italy', 'Italy')}
                       </Link>
                     </div>
                   </>
@@ -343,7 +358,7 @@ export default function Footer() {
                 {translationsLoading ? (
                   <div className="animate-pulse bg-gray-700 rounded h-5 w-28"></div>
                 ) : (
-                  t('footer_social_media', 'Share Mega Radio')
+                  ft('footer_social_media', 'Share Mega Radio')
                 )}
               </div>
               <div className="flex gap-2 sm:gap-3 flex-wrap justify-center md:justify-end">
@@ -438,7 +453,7 @@ export default function Footer() {
             <div className="animate-pulse bg-gray-700 rounded h-4 w-48"></div>
           ) : (
             <p className="text-xs sm:text-sm text-center text-[#9B9B9B]">
-              © {new Date().getFullYear()} {t('footer_copyright', 'All rights reserved')} Megaradio
+              © {new Date().getFullYear()} Megaradio · {ft('footer_copyright', 'All rights reserved')}
             </p>
           )}
         </div>

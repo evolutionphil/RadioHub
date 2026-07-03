@@ -429,6 +429,21 @@ export function registerMessagesRoutes(app: Express, chatWss: WebSocketServer, d
             },
             { upsert: true }
           );
+          // WEB PUSH (2026-07-04): also notify the recipient's browser when
+          // they're not viewing the conversation — until now new messages
+          // produced only an in-app socket event + DB row, so users away
+          // from the tab never saw anything on their PC. Fire-and-forget;
+          // sendToUserAllChannels covers web push AND mobile push tokens.
+          void import('../services/pushNotificationService')
+            .then(({ PushNotificationService }) =>
+              PushNotificationService.sendToUserAllChannels(targetId.toString(), {
+                title: sender?.fullName || sender?.username || 'Mega Radio',
+                body: content.trim().substring(0, 120),
+                url: '/profile/messages',
+                tag: `dm-${fromUserId}`,
+              } as any),
+            )
+            .catch(() => {});
           chatService.sendToUser(targetId.toString(), {
             type: "notification:new_message",
             fromUser: { _id: fromUserId, username: sender?.username, fullName: sender?.fullName, avatar: sender?.avatar || sender?.profileImageUrl },

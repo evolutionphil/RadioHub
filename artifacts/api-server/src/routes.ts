@@ -58,6 +58,7 @@ import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { registerStreamProxyRoutes } from './routes/stream-proxy-routes';
 import { registerRegionsRecommendationsRoutes } from './routes/regions-recommendations-routes';
 import { registerMiscRoutes } from './routes/misc-routes';
+import { registerWebPushRoutes } from './routes/web-push-routes';
 import { registerIapValidationRoutes } from './routes/iap-validation-routes';
 import { registerAdminIapRoutes } from './routes/admin-iap-routes';
 import { registerAppleWebhookRoutes } from './routes/iap-apple-webhook';
@@ -984,6 +985,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     console.log('🚫 Stream proxy routes DISABLED — use stream.themegaradio.com');
   }
   registerRegionsRecommendationsRoutes(app, deps);
+  registerWebPushRoutes(app, deps);
   registerMiscRoutes(app, deps, { apiOnly: isApiOnly });
   registerIapValidationRoutes(app);
   registerAdminIapRoutes(app, deps);
