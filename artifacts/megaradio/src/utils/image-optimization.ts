@@ -159,6 +159,19 @@ export const enhanceImage = (img: HTMLImageElement) => {
   if (img.src && !img.dataset.optimized) {
     const optimizedSrc = getOptimizedImageSrc(img.src);
     if (optimizedSrc !== img.src) {
+      // Self-heal (PageSpeed 2026-07-03): the proxied variant 404s when the
+      // upstream image is dead or unsupported — previously that left a
+      // BROKEN image where the original src still rendered fine, plus a
+      // console error per image in Lighthouse's Best Practices audit.
+      // Restore the original URL once if the proxied one fails to load.
+      const originalSrc = img.src;
+      img.addEventListener(
+        'error',
+        () => {
+          if (img.src !== originalSrc) img.src = originalSrc;
+        },
+        { once: true },
+      );
       img.src = optimizedSrc;
     }
     img.dataset.optimized = 'true';

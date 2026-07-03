@@ -362,6 +362,13 @@ function PublicRouter({ selectedCountry, onCountryChange }: { selectedCountry?: 
     // '/stations/' detail check below.
     if (pathToUse === '/stations') return <LazyRoutes.Radios selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
 
+    // A-Z station index pages (/stations/a … /stations/0-9 and the singular
+    // reverse-translated form). SSR renders the crawlable letter list; on
+    // hydration the SPA shows the same station-grid UI as the /stations hub.
+    // Must precede the station-detail checks below or the letter would be
+    // treated as a (nonexistent) station slug and hydrate to a 404.
+    if (pathToUse.match(/^\/stations?\/(?:0-9|[a-z])$/)) return <LazyRoutes.Radios selectedCountry={selectedCountry} onCountryChange={onCountryChange} />;
+
     // CRITICAL FIX: Station routing - handle BOTH English and translated paths
     // Support both /station/ and /stations/ formats without redirect (avoids losing country code)
     if (pathToUse.startsWith('/station/')) return <LazyRoutes.StationDetails />;
@@ -1272,11 +1279,22 @@ function App() {
     }
   }, []);
 
-  // 🚀 PRELOAD: Eagerly load common route chunks after initial render.
-  // Preloading starts at 500ms so chunks are ready before any user interaction,
-  // ensuring useDeferredValue + Suspense can defer without showing a flash.
+  // 🚀 PRELOAD: Eagerly load common route chunks so Suspense navigation has
+  // no flash — but only AFTER the first user interaction (PageSpeed 2026-07-03).
+  // The previous unconditional 500ms timer fetched ~40 chunks during initial
+  // load; on slow 4G those requests competed with the hero image and the
+  // station APIs for bandwidth, inflating LCP/SI (mobile perf score 50).
+  // First interaction is the earliest moment a navigation can possibly
+  // happen, so warming there keeps the same no-flash behavior for real users
+  // while first paint (and Lighthouse, which never interacts) pays nothing.
+  // Respect Data Saver: skip preloading entirely.
   useEffect(() => {
+    if ((navigator as any).connection?.saveData) return;
+    let done = false;
     const preloadRoutes = () => {
+      if (done) return;
+      done = true;
+      events.forEach(([target, ev]) => target.removeEventListener(ev, preloadRoutes));
       Promise.allSettled([
         // Most-visited pages (load first)
         import("@/pages/stations/[id]"),
@@ -1295,8 +1313,19 @@ function App() {
         import("@/pages/auth/signup"),
       ]);
     };
-    const timer = setTimeout(preloadRoutes, 500);
-    return () => clearTimeout(timer);
+    const events: Array<[EventTarget, string]> = [
+      [window, 'pointerdown'],
+      [window, 'keydown'],
+      [window, 'touchstart'],
+      [window, 'wheel'],
+      [window, 'scroll'],
+    ];
+    events.forEach(([target, ev]) =>
+      target.addEventListener(ev, preloadRoutes, { once: true, passive: true } as AddEventListenerOptions),
+    );
+    return () => {
+      events.forEach(([target, ev]) => target.removeEventListener(ev, preloadRoutes));
+    };
   }, []);
   
   // Update HTML lang attribute dynamically based on URL

@@ -43,6 +43,7 @@ import CacheManager, { CacheKeys } from "../cache";
 import { getBaseUrl } from "./shared-utils";
 import { loadSitemapTranslations } from "../utils/sitemap-translations";
 import { sendSitemapGone } from "../seo/send-sitemap-gone";
+import { AZ_INDEX_KEYS } from "../seo/az-station-index";
 import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from "@workspace/seo-shared/country-regions";
 import {
   getCachedQualifiedLanguages,
@@ -492,8 +493,22 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       };
       
       const fullDomain = getProductionDomain(req.get('host'));
-      
+
       const seoData = await seoRenderer.renderStaticPage(url, fullDomain);
+      // PageSpeed 2026-07-03: the SPA's SeoPageWrapper consumes ONLY
+      // seoTags from this payload, but the full render result also carries
+      // the whole translations dictionary, urlTranslations map and pageData
+      // station lists (~100 KB JSON for /en). slim=1 strips those for the
+      // client-side navigation path; the admin seo-preview keeps the full
+      // response by simply not passing the flag.
+      if (String(req.query.slim || '') === '1') {
+        res.json({
+          language: (seoData as any).language,
+          cleanPath: (seoData as any).cleanPath,
+          seoTags: (seoData as any).seoTags,
+        });
+        return;
+      }
       res.json(seoData);
     } catch (error) {
       console.error('SEO Page Data error:', error);
@@ -1370,7 +1385,11 @@ Sitemap: ${baseUrl}/sitemap-index.xml`;
       const mainPages = ['', '/stations', '/genres', '/about', '/regions',
         '/regions/europe', '/regions/asia', '/regions/africa',
         '/regions/north-america', '/regions/south-america', '/regions/oceania',
-        '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications'];
+        '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications',
+        // A-Z station index pages (Task #11, 2026-07-03). The letter key is
+        // never translated (buildLocalizedUrl skips the second segment of
+        // /stations paths), so these localize to /tr/istasyonlar/a etc.
+        ...AZ_INDEX_KEYS.map((k) => `/stations/${k}`)];
 
       // topCountries was computed above for ETag/cache-key purposes; reuse it.
 

@@ -10,6 +10,20 @@ interface SeoPageWrapperProps {
   pageType?: string;
 }
 
+// PageSpeed 2026-07-03: when the server SSR-rendered this page it already
+// injected the full <head> (title/meta/canonical/hreflang/JSON-LD) AND
+// window.__INITIAL_TRANSLATIONS__ — re-fetching /api/seo/page-data for the
+// SAME url only re-applied identical tags at the cost of a ~100 KB JSON
+// response in the critical window. Capture the SSR'd pathname once; the
+// fetch is skipped ONLY while the user is still on that exact first page.
+// The first client-side navigation releases the guard permanently (so
+// navigating away and back re-fetches and canonical/hreflang stay correct).
+const initialSsrPath: string | null =
+  typeof window !== 'undefined' && window.__INITIAL_TRANSLATIONS__?.meta_title
+    ? window.location.pathname
+    : null;
+let leftInitialSsrPage = false;
+
 export function SeoPageWrapper({ children, pageType = 'home' }: SeoPageWrapperProps) {
   const { currentLanguage, cleanPath } = useSeoRouting();
   const [location] = useLocation();
@@ -33,11 +47,19 @@ export function SeoPageWrapper({ children, pageType = 'home' }: SeoPageWrapperPr
     return { title: preTitle, description: preDesc };
   });
 
-  // Fetch SEO data from server using FULL URL with country code
+  // Release the SSR guard permanently on the first client-side navigation.
+  if (initialSsrPath && fullUrl !== initialSsrPath) leftInitialSsrPage = true;
+  const ssrHeadAlreadyCorrect =
+    !!initialSsrPath && !leftInitialSsrPage && fullUrl === initialSsrPath;
+
+  // Fetch SEO data from server using FULL URL with country code.
+  // slim=1: only seoTags is consumed here, so ask the server to drop the
+  // translations/urlTranslations/pageData bulk (~100 KB → a few KB).
   const { data: seoData } = useQuery({
     queryKey: ['/api/seo/page-data', fullUrl, currentLanguage],
+    enabled: !ssrHeadAlreadyCorrect,
     queryFn: async () => {
-      const response = await fetch(`/api/seo/page-data?url=${encodeURIComponent(fullUrl)}`);
+      const response = await fetch(`/api/seo/page-data?url=${encodeURIComponent(fullUrl)}&slim=1`);
       return response.json();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes

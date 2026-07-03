@@ -48,12 +48,15 @@ test('computeMainSitemapUrls covers all static pages plus top-country pairs', ()
     baseUrl: 'https://example.com',
   });
 
-  // 16 static pages + 2 top-country region pages = 18.
-  assert.equal(urls.length, 18);
+  // 16 static pages + 27 A-Z station index pages (Task #11, 2026-07-03)
+  // + 2 top-country region pages = 45.
+  assert.equal(urls.length, 45);
   assert.ok(urls.includes('https://example.com/en'));
   assert.ok(urls.includes('https://example.com/en/regions/europe/germany'));
   assert.ok(urls.includes('https://example.com/en/regions/asia/japan'));
   assert.ok(urls.includes('https://example.com/en/faq'));
+  assert.ok(urls.includes('https://example.com/en/stations/a'));
+  assert.ok(urls.includes('https://example.com/en/stations/0-9'));
 
   // Sorted output for deterministic snapshots/diffs.
   const sorted = [...urls].sort();

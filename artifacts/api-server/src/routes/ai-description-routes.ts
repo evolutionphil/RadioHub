@@ -595,20 +595,21 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
   // Bulk generate descriptions
   app.post("/api/admin/stations/generate-bulk-descriptions", requireAdmin, async (req, res) => {
     try {
-      const { 
-        limit = 10, 
-        skip: initialSkip = 0, 
-        languages, 
-        filterByCountry, 
+      const {
+        limit,
+        skip: initialSkip = 0,
+        languages,
+        filterByCountry,
         skipExisting = true,
-        selectedStationIds 
+        selectedStationIds
       } = req.body;
-      
+
       const jobId = `bulk-desc-${Date.now()}`;
-      
+
+      const hasExplicitSelection = !!(selectedStationIds && selectedStationIds.length > 0);
       let query: any = {};
-      
-      if (selectedStationIds && selectedStationIds.length > 0) {
+
+      if (hasExplicitSelection) {
         const mongoose = await import('mongoose');
         query = {
           _id: { $in: selectedStationIds.map((id: string) => new mongoose.default.Types.ObjectId(id)) }
@@ -616,9 +617,20 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       } else if (filterByCountry) {
         query = { countryCode: filterByCountry };
       }
-      
+
       const totalStations = await Station.countDocuments(query);
-      const stationsToProcess = Math.min(limit, totalStations - initialSkip);
+      // When the admin explicitly selects stations, the selection IS the work
+      // list. The previous `limit = 10` destructuring default silently
+      // truncated any selection to 10 (the Bulk AI dialog sends no limit —
+      // `limit: undefined` is dropped by JSON.stringify), so a 479-station
+      // selection processed 10 and stopped. An explicit numeric limit still
+      // wins when provided; the safety default of 10 now applies only to
+      // unselected whole-catalog / country-filter runs, where an unbounded
+      // job could burn the OpenAI budget by accident.
+      const effectiveLimit = (typeof limit === 'number' && limit > 0)
+        ? limit
+        : (hasExplicitSelection ? totalStations : 10);
+      const stationsToProcess = Math.min(effectiveLimit, totalStations - initialSkip);
       
       descriptionJobs.set(jobId, {
         jobId,

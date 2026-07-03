@@ -32,6 +32,7 @@ import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from '
 import { getIndexableLanguagesForStation } from './junk-station-rules';
 import { isWhitelistedGenreSlug, MIN_STATIONS_FOR_GENRE_INDEX } from './genre-whitelist';
 import { RESERVED_GENRE_SLUGS } from './reserved-genre-slugs';
+import { AZ_INDEX_KEYS } from './az-station-index';
 import { canonicalizeCountry, countrySlug, getRegionSlugForCountry } from '@workspace/seo-shared/country-regions';
 
 // Re-export so other modules importing from the manifest builder still
@@ -566,7 +567,11 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
 const MAIN_STATIC_PAGES = ['', '/stations', '/genres', '/about', '/regions',
   '/regions/europe', '/regions/asia', '/regions/africa',
   '/regions/north-america', '/regions/south-america', '/regions/oceania',
-  '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications'];
+  '/faq', '/contact', '/privacy-policy', '/terms-and-conditions', '/applications',
+  // A-Z station index pages (Task #11, 2026-07-03) — mirrors mainPages in
+  // routes/seo-sitemap-routes.ts and STATIC_MAIN_PAGES in
+  // services/sitemap-diff-indexnow.ts.
+  ...AZ_INDEX_KEYS.map((k) => `/stations/${k}`)];
 
 const TOP_COUNTRIES_LIMIT = 30;
 

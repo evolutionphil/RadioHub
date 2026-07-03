@@ -2,10 +2,12 @@ import { useEffect } from 'react';
 import { useLocation } from 'wouter';
 import { useTranslation } from '@/hooks/useTranslation';
 import { generateSeoTags, getLanguageFromPath, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
-import { buildGenreSeo } from '@workspace/seo-shared/genre-seo-templates';
-import { buildSearchSeo } from '@workspace/seo-shared/search-seo-templates';
-import { buildLegalSeo } from '@workspace/seo-shared/legal-seo-templates';
-import { buildStaticPageSeo } from '@workspace/seo-shared/static-page-seo-templates';
+// PageSpeed 2026-07-03: the four per-language template registries below
+// (genre/search/legal/static) are ~127 KB raw / ~40 KB gz of pure data that
+// used to load statically with this component — putting them in the HOME
+// page's critical chain even though home/station pages never touch them.
+// They are now dynamic-imported inside the effect, per pageType branch, so
+// only the page family that actually needs its registry downloads it.
 import { useQuery } from '@tanstack/react-query';
 
 interface SeoHeadProps {
@@ -59,6 +61,14 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // Update HTML lang attribute
     document.documentElement.lang = language;
 
+    // The template overrides below need lazily-imported registries, so the
+    // whole tag-application runs as an async pass. `cancelled` prevents a
+    // stale run (route/language changed mid-import) from clobbering the
+    // head with outdated tags. The SSR-injected head remains in place until
+    // the pass applies, so nothing user-visible flashes.
+    let cancelled = false;
+    const applySeoTags = async () => {
+
     // Use translations object directly - it's already in the correct format
     const translationMap: Record<string, string> = translations || {};
 
@@ -74,6 +84,8 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // page (it doesn't know about `genreName`), so React would otherwise overwrite the
     // SSR-localized title/description with generic English/generic listing meta after mount.
     if (pageType === 'genres' && genreName) {
+      const { buildGenreSeo } = await import('@workspace/seo-shared/genre-seo-templates');
+      if (cancelled) return;
       const genreSeo = buildGenreSeo(genreName, language, translationMap);
       seoTags.title = genreSeo.title;
       seoTags.description = genreSeo.description;
@@ -91,6 +103,8 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // localised. buildSearchSeo emits the per-language template when DB keys
     // are missing in the requested language.
     if (pageType === 'search') {
+      const { buildSearchSeo } = await import('@workspace/seo-shared/search-seo-templates');
+      if (cancelled) return;
       const searchSeo = buildSearchSeo(language, translationMap);
       seoTags.title = searchSeo.title;
       seoTags.description = searchSeo.description;
@@ -108,6 +122,8 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // localised. buildLegalSeo emits the per-language template when DB keys
     // are missing in the requested language.
     if (pageType === 'terms' || pageType === 'privacy') {
+      const { buildLegalSeo } = await import('@workspace/seo-shared/legal-seo-templates');
+      if (cancelled) return;
       const legalSeo = buildLegalSeo(pageType, language, translationMap);
       seoTags.title = legalSeo.title;
       seoTags.description = legalSeo.description;
@@ -125,6 +141,8 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // localised. buildStaticPageSeo emits the per-language template when DB keys
     // are missing in the requested language.
     if (pageType === 'about' || pageType === 'contact' || pageType === 'applications') {
+      const { buildStaticPageSeo } = await import('@workspace/seo-shared/static-page-seo-templates');
+      if (cancelled) return;
       const staticSeo = buildStaticPageSeo(pageType, language, translationMap);
       seoTags.title = staticSeo.title;
       seoTags.description = staticSeo.description;
@@ -133,6 +151,10 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
       seoTags.twitterTitle = staticSeo.title;
       seoTags.twitterDescription = staticSeo.description;
     }
+
+    // A stale pass (deps changed while a registry import was in flight)
+    // must not write outdated tags over the newer pass's output.
+    if (cancelled) return;
 
     // Update title
     if (seoTags.title) {
@@ -183,6 +205,11 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     // (wouter) navigations — Google re-fetches each URL server-side, so
     // per-page hreflang/JSON-LD do not need client updates for indexing.
 
+    };
+    void applySeoTags();
+    return () => {
+      cancelled = true;
+    };
   }, [location, language, translations, stationData, pageType]);
 
   return null; // This component only manages head tags

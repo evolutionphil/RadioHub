@@ -65,7 +65,13 @@ export function TranslationPreloader() {
       // 2. Async background loading of other common languages (deferred to idle)
       // OPTIMIZED: Use requestIdleCallback instead of setTimeout to avoid Main Thread blocking
       const scheduleBackgroundLoad = () => {
-        const backgroundLanguages = ['en', 'de'].filter(lang => lang !== detectedLanguage);
+        // PageSpeed 2026-07-03: 'de' was hardcoded here as a speculative
+        // "likely switch" preload, so EVERY /en visit also downloaded the
+        // full German dictionary (24 KB, and a 7s request in the Lighthouse
+        // trace) that almost no visitor ever uses. Only English — the
+        // language switcher's default target — is worth warming; a real
+        // language switch fetches its dictionary on demand.
+        const backgroundLanguages = ['en'].filter(lang => lang !== detectedLanguage);
         
         backgroundLanguages.forEach((lang) => {
           // Use requestIdleCallback for non-blocking background loads

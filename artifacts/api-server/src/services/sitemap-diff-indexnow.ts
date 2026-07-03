@@ -32,6 +32,7 @@ import {
 import { IndexNowService } from './indexnow';
 import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from '../seo/qualified-languages';
 import { getIndexableLanguagesForStation } from '../seo/junk-station-rules';
+import { AZ_INDEX_KEYS } from '../seo/az-station-index';
 
 // Mirror the route's MAIN_STATIC_PAGES list (kept in sync with
 // `MAIN_STATIC_PAGES` in `seo/sitemap-manifest-builder.ts` and the
@@ -53,6 +54,8 @@ const STATIC_MAIN_PAGES = [
   '/privacy-policy',
   '/terms-and-conditions',
   '/applications',
+  // A-Z station index pages (Task #11, 2026-07-03).
+  ...AZ_INDEX_KEYS.map((k) => `/stations/${k}`),
 ];
 
 const HOST = 'themegaradio.com';

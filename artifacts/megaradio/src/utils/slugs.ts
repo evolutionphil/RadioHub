@@ -2,19 +2,56 @@
 // RESTORED: Simple version without localStorage country detection (working version from 10+ days ago)
 
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
-export { slugifyStationName } from '@workspace/seo-shared/slug-utils';
-import { slugifyStationName } from '@workspace/seo-shared/slug-utils';
+
+// PageSpeed 2026-07-03: @workspace/seo-shared/slug-utils statically pulls the
+// `transliteration` package — 185 KB raw / 58 KB gz that loaded in the home
+// page's critical chain (station-card imports this module for getStationUrl).
+// generateSlug is only a FALLBACK for the rare station/user without a `slug`
+// field (every API station has one), so the transliterator is now loaded
+// lazily in the background on first use. Until it arrives, a lightweight
+// sanitiser that mirrors slugifyStationName's Latin path handles the
+// fallback; non-Latin names get the same 'station-unknown' placeholder
+// slugifyStationName itself uses for untransliterable input.
+let realSlugify: ((name: string, idFallback?: string) => string) | null = null;
+let realSlugifyLoading: Promise<void> | null = null;
+function ensureRealSlugify(): void {
+  if (realSlugify || realSlugifyLoading) return;
+  realSlugifyLoading = import('@workspace/seo-shared/slug-utils')
+    .then((m) => {
+      realSlugify = m.slugifyStationName;
+    })
+    .catch(() => {
+      realSlugifyLoading = null; // allow retry on next call
+    });
+}
+
+/** Mirrors slugifyStationName()'s sanitisation for Latin input. */
+function fallbackSlugify(name: string): string {
+  if (!name || typeof name !== 'string') return 'station-unknown';
+  const slug = name
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '') // strip combining accents (é → e)
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  if (!slug || /^\d+$/.test(slug)) return 'station-unknown';
+  return slug;
+}
 
 /**
  * Generate a URL slug from a station or user name.
  *
- * Delegates to slugifyStationName() from @workspace/seo-shared so that
- * non-Latin scripts (Arabic, Cyrillic, Thai, CJK, Hangul, etc.) are
- * transliterated rather than stripped — the old regex-only path produced
- * empty strings that became numeric-only `-<id>` slugs and got noindex'd.
+ * Delegates to slugifyStationName() from @workspace/seo-shared (lazily
+ * loaded, see above) so that non-Latin scripts (Arabic, Cyrillic, Thai,
+ * CJK, Hangul, etc.) are transliterated rather than stripped — the old
+ * regex-only path produced empty strings that became numeric-only `-<id>`
+ * slugs and got noindex'd.
  */
 export function generateSlug(stationName: string): string {
-  return slugifyStationName(stationName);
+  if (realSlugify) return realSlugify(stationName);
+  ensureRealSlugify();
+  return fallbackSlugify(stationName);
 }
 
 // Get current language from URL path
