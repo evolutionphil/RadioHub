@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
 
 /**
  * RecommendationsPrefetcher
@@ -54,36 +55,25 @@ export function RecommendationsPrefetcher() {
       // 1. Mood pool (200-station global cache, drives every mood card).
       queryClient.prefetchQuery({
         queryKey: ['/api/stations/precomputed', 'global', 200, 'mood-pool'],
-        queryFn: async () => {
-          const r = await fetch('/api/stations/precomputed?countryName=global&page=1&limit=200');
-          if (!r.ok) throw new Error('prefetch mood-pool failed');
-          const j = await r.json();
-          return j.data || [];
-        },
+        // PageSpeed 2026-07-03: all four prefetches below share ONE
+        // limit=200 network request via getPrecomputedStationsSlice —
+        // the server slices the same cached pool, so the rows are
+        // identical to the previous per-limit fetches.
+        queryFn: async () => getPrecomputedStationsSlice('global', 200),
         staleTime: SEVEN_DAYS_MS,
       });
 
       // 2. Trending (50 stations, /api/stations/trending key).
       queryClient.prefetchQuery({
         queryKey: ['/api/stations/trending', selectedCountry],
-        queryFn: async () => {
-          const r = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=50`);
-          if (!r.ok) throw new Error('prefetch trending failed');
-          const j = await r.json();
-          return j.data || [];
-        },
+        queryFn: async () => getPrecomputedStationsSlice(countryParam, 50),
         staleTime: SEVEN_DAYS_MS,
       });
 
       // 3. Discovery (100 stations, /api/stations/discovery key).
       queryClient.prefetchQuery({
         queryKey: ['/api/stations/discovery', selectedCountry],
-        queryFn: async () => {
-          const r = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=100`);
-          if (!r.ok) throw new Error('prefetch discovery failed');
-          const j = await r.json();
-          return j.data || [];
-        },
+        queryFn: async () => getPrecomputedStationsSlice(countryParam, 100),
         staleTime: SEVEN_DAYS_MS,
       });
 
@@ -91,12 +81,7 @@ export function RecommendationsPrefetcher() {
       //    picked — first thing the user sees).
       queryClient.prefetchQuery({
         queryKey: ['/api/stations/default-recommendations', selectedCountry],
-        queryFn: async () => {
-          const r = await fetch(`/api/stations/precomputed?countryName=${countryParam}&page=1&limit=12`);
-          if (!r.ok) throw new Error('prefetch default failed');
-          const j = await r.json();
-          return j.data || [];
-        },
+        queryFn: async () => getPrecomputedStationsSlice(countryParam, 12),
         staleTime: SEVEN_DAYS_MS,
       });
     };

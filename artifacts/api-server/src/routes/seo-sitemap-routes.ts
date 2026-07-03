@@ -493,8 +493,22 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       };
       
       const fullDomain = getProductionDomain(req.get('host'));
-      
+
       const seoData = await seoRenderer.renderStaticPage(url, fullDomain);
+      // PageSpeed 2026-07-03: the SPA's SeoPageWrapper consumes ONLY
+      // seoTags from this payload, but the full render result also carries
+      // the whole translations dictionary, urlTranslations map and pageData
+      // station lists (~100 KB JSON for /en). slim=1 strips those for the
+      // client-side navigation path; the admin seo-preview keeps the full
+      // response by simply not passing the flag.
+      if (String(req.query.slim || '') === '1') {
+        res.json({
+          language: (seoData as any).language,
+          cleanPath: (seoData as any).cleanPath,
+          seoTags: (seoData as any).seoTags,
+        });
+        return;
+      }
       res.json(seoData);
     } catch (error) {
       console.error('SEO Page Data error:', error);

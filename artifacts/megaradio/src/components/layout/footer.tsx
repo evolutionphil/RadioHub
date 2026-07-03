@@ -99,9 +99,13 @@ export default function Footer() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isLanguageDropdownOpen]);
   
-  // Fetch footer social media links
+  // Fetch footer social media links. staleTime added (PageSpeed 2026-07-03):
+  // the footer is lazy-mounted under Suspense in more than one wrapper, and
+  // with the default staleTime of 0 every remount refetched the same static
+  // link list — two identical requests per page load in the Lighthouse trace.
   const { data: socialLinks = [] } = useQuery<FooterSocialLink[]>({
     queryKey: ["/api/footer-social-media"],
+    staleTime: 30 * 60 * 1000,
   });
   
   // Modal states

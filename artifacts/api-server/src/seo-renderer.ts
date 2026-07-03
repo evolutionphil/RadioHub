@@ -2228,14 +2228,30 @@ export class SeoRenderer {
     
     switch (pageType) {
       case 'home':
+        // LCP fix (PageSpeed 2026-07-03): the SSR body is what paints first
+        // (React later repaints over it — see replit.md, body is replaced not
+        // hydrated). Without the hero image here, the page's largest paint
+        // was the REACT-rendered hero at ~8s on mobile (after the JS + API
+        // waterfall), which is exactly what Lighthouse reported as LCP 8.4s.
+        // Rendering the SAME <picture> markup the SPA hero uses (identical
+        // URLs, classes and intrinsic size, styled by the same .hero-container
+        // rules in the render-blocking stylesheet) makes the hero paint with
+        // first contentful paint; when React repaints an identical-size image
+        // from cache it produces no larger paint, so the early LCP stands.
         content = `
           <main>
-            <div class="hero-section text-center">
-              <p class="text-md font-medium">${this.escapeHtml(getLocalizedText('hero_over_100_countries', '60,000+ radio stations from 120+ countries'))}</p>
-              <h1 class="text-xl font-bold sm:text-3xl lg:text-[44px]">${this.escapeHtml(h1Text)}</h1>
-              <h2 class="text-lg sm:text-2xl">${this.escapeHtml(getLocalizedText('hero_listen_everywhere', 'Listen everywhere, anytime, for free'))}</h2>
+            <div class="hero-container overflow-visible">
+              <picture>
+                <source media="(min-width: 768px)" srcset="/images/hero-bg.webp" type="image/webp">
+                <img src="/images/hero-bg-430w.webp" alt="" class="absolute inset-0 w-full h-full object-cover pointer-events-none z-0" aria-hidden="true" fetchpriority="high" decoding="async" width="1920" height="600">
+              </picture>
+              <div class="hero-section text-center relative z-10">
+                <p class="text-md font-medium">${this.escapeHtml(getLocalizedText('hero_over_100_countries', '60,000+ radio stations from 120+ countries'))}</p>
+                <h1 class="text-xl font-bold sm:text-3xl lg:text-[44px]">${this.escapeHtml(h1Text)}</h1>
+                <h2 class="text-lg sm:text-2xl">${this.escapeHtml(getLocalizedText('hero_listen_everywhere', 'Listen everywhere, anytime, for free'))}</h2>
+              </div>
             </div>
-            
+
             <!-- SEO Opening Paragraph - Uses H1 Keywords -->
             <section class="intro-section">
               <p>${this.escapeHtml(getLocalizedText('seo_opening_paragraph', `${h1Text} - your gateway to unlimited radio streaming worldwide. Discover and listen to free live radio stations, music, news, sports, and entertainment from every corner of the globe. With thousands of online radio broadcasts available 24/7, you can enjoy crystal-clear audio streaming on any device, completely free of charge.`).replace('{h1}', h1Text))}</p>

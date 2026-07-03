@@ -70,6 +70,7 @@ import RecentlyPlayedSection from "@/components/RecentlyPlayedSection";
 const PageSocialShare = lazy(() => import("@/components/social/PageSocialShare").then(m => ({ default: m.PageSocialShare })));
 import { SeoHead } from "@/components/SeoHead";
 import { logger } from '@/lib/logger';
+import { getPrecomputedStationsSlice } from '@/lib/precomputed-pool';
 import 'swiper/css';
 import 'swiper/css/free-mode';
 import 'swiper/css/navigation';
@@ -715,17 +716,12 @@ export default function RadioFrontend({
     queryKey: ['/api/stations/popular', selectedCountry, 'initial'],
     enabled: shouldLoadDiscoverableGenres, // DEFERRED
     queryFn: async () => {
-      const params = new URLSearchParams();
-      params.append('countryName', selectedCountry === 'all' ? 'global' : selectedCountry);
-      params.append('page', '1');
-      params.append('limit', '12'); // Load 12 for 3x4 grid display
-      const url = `/api/stations/precomputed?${params}`;
-      logger.log(`🎯 Popular Stations API Call: ${url} (selectedCountry: ${selectedCountry})`);
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch popular stations');
-      const result = await response.json();
-      const stations = result.data || [];
-      logger.log(`✅ Popular Stations Response: ${stations.length} stations`, stations.map((s: any) => s.name).slice(0, 5));
+      // PageSpeed 2026-07-03: served from the shared page-1 pool
+      // (one limit=200 request per country) instead of a dedicated
+      // limit=12 request — identical rows, one fewer ~5s mobile fetch.
+      const countryName = selectedCountry === 'all' ? 'global' : selectedCountry;
+      const stations = (await getPrecomputedStationsSlice(countryName, 12)) as any[];
+      logger.log(`✅ Popular Stations (pooled): ${stations.length} stations`, stations.map((s: any) => s.name).slice(0, 5));
       return stations;
     },
     staleTime: 7 * 24 * 60 * 60 * 1000, // Cache for 7 days

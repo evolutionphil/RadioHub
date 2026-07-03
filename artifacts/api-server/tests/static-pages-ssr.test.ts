@@ -503,3 +503,30 @@ test('stations hub /en/stations still renders and now carries the A-Z rail', asy
   const railLinks = (body.match(/href="\/en\/stations\/(?:0-9|[a-z])"/g) || []).length;
   assert.equal(railLinks, 27, 'hub rail must link all 27 keys (none is current)');
 });
+
+// ---------------------------------------------------------------------------
+// LCP hero (PageSpeed 2026-07-03): the SSR home body must paint the SAME
+// hero <picture> the SPA renders, or mobile LCP regresses back to the
+// React-mount repaint (~8s on slow 4G, Lighthouse perf 50).
+// ---------------------------------------------------------------------------
+
+test('home SSR body renders the LCP hero picture with fetchpriority=high', async () => {
+  const renderer = new SeoRenderer();
+  const result = await renderer.renderStaticPage('/en', 'https://themegaradio.com');
+  const body = renderer.generateHtmlBody({
+    pageType: 'home',
+    language: result.language,
+    translations: result.translations,
+    seoTags: result.seoTags,
+    additionalData: (result as any).pageData ?? {},
+    urlTranslations: result.urlTranslations,
+    cleanPath: result.cleanPath,
+  } as any);
+
+  assert.ok(body.includes('class="hero-container overflow-visible"'), 'hero container missing');
+  assert.ok(body.includes('srcset="/images/hero-bg.webp"'), 'desktop hero source missing');
+  assert.ok(body.includes('src="/images/hero-bg-430w.webp"'), 'mobile hero img missing');
+  assert.ok(body.includes('fetchpriority="high"'), 'hero must keep fetchpriority=high');
+  assert.ok(/width="1920" height="600"/.test(body), 'hero must keep intrinsic dimensions (CLS)');
+  assert.ok(/<h1[^>]*>/.test(body), 'home H1 must survive inside the hero overlay');
+});
