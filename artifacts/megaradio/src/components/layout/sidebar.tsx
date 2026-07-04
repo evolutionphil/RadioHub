@@ -241,14 +241,15 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
         <span
           onClick={onLinkClick}
           className={cn(
-            "group flex items-center px-2 py-2 text-sm font-medium rounded-md cursor-pointer transition-colors",
-            depth === 1 ? "min-h-[44px]" : "min-h-[38px]",
+            "group relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium cursor-pointer transition-all",
+            depth === 1 ? "min-h-[42px]" : "min-h-[38px]",
             isActive
-              ? "bg-primary text-white"
-              : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+              ? "bg-primary text-white shadow-sm shadow-primary/30"
+              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900",
           )}
         >
-          {item.name}
+          {Icon && <Icon className={cn("w-4 h-4 shrink-0", isActive ? "opacity-100" : "opacity-60")} />}
+          <span className="truncate">{item.name}</span>
         </span>
       </Link>
     );
@@ -257,10 +258,15 @@ export default function Sidebar({ isMobileMenuOpen, setIsMobileMenuOpen }: Sideb
   const NavContent = ({ onLinkClick }: { onLinkClick?: () => void }) => (
     <>
       <div className="flex items-center flex-shrink-0 px-4">
-        <Radio className="w-8 h-8 text-primary mr-3" />
-        <h1 className="text-xl font-bold text-gray-900">RadioHub Admin</h1>
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 mr-3">
+          <Radio className="w-5 h-5 text-primary" />
+        </span>
+        <div className="leading-tight">
+          <h1 className="text-base font-bold text-gray-900">RadioHub</h1>
+          <p className="text-[11px] font-medium uppercase tracking-wider text-gray-400">Admin</p>
+        </div>
       </div>
-      <nav className="mt-8 flex-1 px-2 space-y-1 overflow-y-auto">
+      <nav className="mt-6 flex-1 px-3 space-y-1 overflow-y-auto">
         {navigation.map((item) => renderItem(item, 0, onLinkClick))}
       </nav>
     </>
