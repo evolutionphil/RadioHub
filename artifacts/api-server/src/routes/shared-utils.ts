@@ -6,6 +6,12 @@ export const slugGenerationJobs = new Map<string, {
   progress: { current: number; total: number };
   startedAt: Date;
   completedAt?: Date;
+  // STALE-JOB FIX (2026-07-04): the loop bumps updatedAt on every progress
+  // tick. This map is in-memory, so a 'running' job whose process died
+  // mid-run (e.g. a deploy) can never advance — job-status must treat a
+  // running job with no recent heartbeat as stale instead of reporting it
+  // as live forever (the "Working: 23%" ghost that survived 8 deploys).
+  updatedAt?: Date;
   error?: string;
   message?: string;
 }>();

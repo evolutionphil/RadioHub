@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "./StatCard";
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { 
@@ -302,193 +303,28 @@ export default function AdminDashboard() {
       </div>
 
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Active Users (Now)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold text-green-600">{stats?.activeVisitors || 0}</div>
-              <Users className="w-6 h-6 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Visitors Today
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{stats?.todayVisitors || 0}</div>
-              <Activity className="w-6 h-6 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Visitors This Week
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{stats?.weekVisitors || 0}</div>
-              <TrendingUp className="w-6 h-6 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Registered Users
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{stats?.totalUsers || 0}</div>
-              <Users className="w-6 h-6 text-indigo-500" />
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard label="Active Users (Now)" value={stats?.activeVisitors || 0} icon={Users} accent="green" />
+        <StatCard label="Visitors Today" value={stats?.todayVisitors || 0} icon={Activity} accent="blue" />
+        <StatCard label="Visitors This Week" value={stats?.weekVisitors || 0} icon={TrendingUp} accent="purple" />
+        <StatCard label="Registered Users" value={stats?.totalUsers || 0} icon={Users} accent="indigo" />
       </div>
 
       {/* Secondary Stats Row */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Stations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{stats?.totalStations?.toLocaleString() || 0}</div>
-              <Radio className="w-6 h-6 text-blue-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Countries
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{stats?.totalCountries || 0}</div>
-              <Globe className="w-6 h-6 text-green-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Languages
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{Array.isArray(languages) ? languages.length : 0}</div>
-              <Languages className="w-6 h-6 text-purple-500" />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Genres
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center justify-between">
-              <div className="text-2xl font-bold">{stats?.totalGenres || 0}</div>
-              <Music className="w-6 h-6 text-orange-500" />
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard label="Total Stations" value={stats?.totalStations?.toLocaleString() || 0} icon={Radio} accent="blue" />
+        <StatCard label="Countries" value={stats?.totalCountries || 0} icon={Globe} accent="green" />
+        <StatCard label="Languages" value={Array.isArray(languages) ? languages.length : 0} icon={Languages} accent="purple" />
+        <StatCard label="Genres" value={stats?.totalGenres || 0} icon={Music} accent="orange" />
       </div>
 
       {/* Station Quality Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Stations Online
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold text-green-600">{stats?.workingStations || 0}</span>
-                <CheckCircle className="w-6 h-6 text-green-500" />
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-green-500 h-2 rounded-full transition-all"
-                  style={{ width: `${stats?.workingPercentage || 0}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">{stats?.workingPercentage || 0}% working</p>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <StatCard label="Stations Online" value={(stats?.workingStations || 0).toLocaleString()} icon={CheckCircle} accent="green" caption={`${stats?.workingPercentage || 0}% working`} progress={stats?.workingPercentage || 0} />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              With Favicons
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold text-blue-600">{stats?.stationsWithFavicon || 0}</span>
-                <Image className="w-6 h-6 text-blue-500" />
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-blue-500 h-2 rounded-full transition-all"
-                  style={{ width: `${stats?.faviconPercentage || 0}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">{stats?.faviconPercentage || 0}% have logos</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="With Favicons" value={(stats?.stationsWithFavicon || 0).toLocaleString()} icon={Image} accent="blue" caption={`${stats?.faviconPercentage || 0}% have logos`} progress={stats?.faviconPercentage || 0} />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              With Descriptions
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-3xl font-bold text-purple-600">{stats?.stationsWithDesc || 0}</span>
-                <FileText className="w-6 h-6 text-purple-500" />
-              </div>
-              <div className="w-full bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-purple-500 h-2 rounded-full transition-all"
-                  style={{ width: `${stats?.descriptionPercentage || 0}%` }}
-                />
-              </div>
-              <p className="text-xs text-muted-foreground">{stats?.descriptionPercentage || 0}% with AI descriptions</p>
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard label="With Descriptions" value={(stats?.stationsWithDesc || 0).toLocaleString()} icon={FileText} accent="purple" caption={`${stats?.descriptionPercentage || 0}% with AI descriptions`} progress={stats?.descriptionPercentage || 0} />
 
         <Card data-testid="card-auto-flagged">
           <CardHeader className="pb-2">
