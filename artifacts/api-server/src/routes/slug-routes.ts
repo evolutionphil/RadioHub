@@ -38,15 +38,31 @@ export function registerSlugRoutes(app: Express, deps: any) {
   // Admin endpoint for job status (with real-time tracking)
   app.get("/api/admin/station-slugs/job-status", requireAdmin, async (req, res) => {
     try {
-      // Find the most recent running or recent job
-      let mostRecentJob = null;
-      for (const [jobId, job] of slugGenerationJobs.entries()) {
+      // Find the most recent job, but auto-expire ghost 'running' jobs whose
+      // background loop died (in-memory map survives, the loop does not).
+      // A live job heartbeats updatedAt every 100 items; no beat for 90s ->
+      // stale. This is what killed the permanent "Working: 23%" display.
+      const STALE_MS = 90_000;
+      const now = Date.now();
+      let mostRecentJob: any = null;
+      for (const [, job] of slugGenerationJobs.entries()) {
+        if (job.status === 'running') {
+          const beat = (job.updatedAt || job.startedAt).getTime();
+          if (now - beat > STALE_MS) {
+            job.status = 'failed';
+            job.completedAt = new Date();
+            job.error = 'Job interrupted (server restart or timeout)';
+            job.message = 'Generation was interrupted — please run it again.';
+          }
+        }
         if (!mostRecentJob || job.startedAt > mostRecentJob.startedAt) {
           mostRecentJob = job;
         }
       }
-      
-      // Return the most recent job or null if none exists
+
+      // Only surface a job the UI should act on: a live running one, or the
+      // most recent terminal result. A stale->failed job returns as failed
+      // (UI shows the Generate button again) instead of a frozen progress bar.
       res.json(mostRecentJob);
     } catch (error: any) {
       logger.error(`Error fetching job status: ${error.message}`);
@@ -143,6 +159,7 @@ export function registerSlugRoutes(app: Express, deps: any) {
         status: 'running' as const,
         progress: { current: 0, total: totalToProcess },
         startedAt,
+        updatedAt: startedAt,
         message: regenerateAll 
           ? `Complete regeneration for ALL ${stationsWithoutSlugs} stations, ${genresWithoutSlugs} genres, and ${usersWithoutSlugs} users`
           : `Optimized slug generation for ${stationsWithoutSlugs} stations, ${genresWithoutSlugs} genres, and ${usersWithoutSlugs} users without slugs`
@@ -267,6 +284,7 @@ export function registerSlugRoutes(app: Express, deps: any) {
                   const currentJob = slugGenerationJobs.get(jobId);
                   if (currentJob) {
                     currentJob.progress.current = totalProcessed;
+                    currentJob.updatedAt = new Date();
                     slugGenerationJobs.set(jobId, currentJob);
                   }
                   logger.log(`📈 Station Progress: ${totalProcessed}/${totalToProcess} processed (${Math.round(totalProcessed/totalToProcess*100)}%)`);
@@ -343,6 +361,7 @@ export function registerSlugRoutes(app: Express, deps: any) {
                   const currentJob = slugGenerationJobs.get(jobId);
                   if (currentJob) {
                     currentJob.progress.current = totalProcessed;
+                    currentJob.updatedAt = new Date();
                     slugGenerationJobs.set(jobId, currentJob);
                   }
                   logger.log(`📈 Genre Progress: ${totalProcessed}/${totalToProcess} processed (${Math.round(totalProcessed/totalToProcess*100)}%)`);
@@ -428,6 +447,7 @@ export function registerSlugRoutes(app: Express, deps: any) {
                   const currentJob = slugGenerationJobs.get(jobId);
                   if (currentJob) {
                     currentJob.progress.current = totalProcessed;
+                    currentJob.updatedAt = new Date();
                     slugGenerationJobs.set(jobId, currentJob);
                   }
                   logger.log(`📈 User Progress: ${totalProcessed}/${totalToProcess} processed (${Math.round(totalProcessed/totalToProcess*100)}%)`);

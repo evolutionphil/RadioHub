@@ -278,7 +278,12 @@ export default function AdminStationSlugs() {
                   ) : (
                     <>
                       <Hash className="w-4 h-4 mr-2" />
-                      🚀 Generate ALL Slugs (Working: 23% Complete!)
+                      {/* LABEL FIX (2026-07-04): this was a hardcoded
+                          "(Working: 23% Complete!)" placeholder that lied on
+                          every load. Reflect real coverage instead. */}
+                      {slugStats && slugStats.stationsWithoutSlugs === 0
+                        ? 'Regenerate All Slugs'
+                        : `Generate Slugs${slugStats ? ` (${slugStats.stationsWithoutSlugs.toLocaleString()} missing)` : ''}`}
                     </>
                   )}
                 </Button>
