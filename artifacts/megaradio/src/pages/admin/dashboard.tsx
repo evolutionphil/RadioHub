@@ -182,7 +182,7 @@ export default function AdminDashboard() {
       title: "Database Languages", 
       description: "View real languages from station data",
       icon: Database,
-      href: "/admin/real-languages",
+      href: "/admin/translation-languages",
       color: "bg-indigo-500"
     },
     {
@@ -229,26 +229,43 @@ export default function AdminDashboard() {
     }
   ];
 
+  // REAL activity feed (2026-07-04): replaced the fabricated "5 minutes ago"
+  // placeholder rows with events derived from live data already on this page
+  // — last Radio-Browser sync, last logo/tag backfill run, last auto-flag
+  // sweep. Only rows with a real timestamp are shown.
+  const relTime = (iso?: string | null): string => {
+    if (!iso) return '';
+    const d = new Date(iso).getTime();
+    if (Number.isNaN(d)) return '';
+    const mins = Math.max(0, Math.round((Date.now() - d) / 60000));
+    if (mins < 1) return 'just now';
+    if (mins < 60) return `${mins} min ago`;
+    const hrs = Math.round(mins / 60);
+    if (hrs < 24) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+    const days = Math.round(hrs / 24);
+    return `${days} day${days === 1 ? '' : 's'} ago`;
+  };
+  const lastBackfill = backfillRunsData?.runs?.[0];
   const recentActivity = [
-    { 
-      action: "Station Sync Completed", 
-      time: "5 minutes ago",
-      status: "success",
-      details: `${stats?.totalStations || 0} stations synchronized`
+    stats?.syncStatus?.lastSync && {
+      action: 'Radio-Browser Sync',
+      time: relTime(stats.syncStatus.lastSync),
+      status: stats.syncStatus.lastSyncStatus === 'failed' ? 'error' : 'success',
+      details: `${(stats?.totalStations || 0).toLocaleString()} stations · ${stats.syncStatus.lastSyncStatus || 'ok'}`,
     },
-    { 
-      action: "Translation Update", 
-      time: "1 hour ago",
-      status: "info",
-      details: `${Array.isArray(languages) ? languages.length : 0} languages configured`
+    lastBackfill && {
+      action: 'Logo & Tag Backfill',
+      time: relTime(lastBackfill.startedAt),
+      status: lastBackfill.status === 'failed' ? 'error' : lastBackfill.status === 'running' ? 'info' : 'success',
+      details: `Backfill · ${lastBackfill.status}`,
     },
-    { 
-      action: "Performance Check", 
-      time: "2 hours ago",
-      status: "success",
-      details: "All systems operational"
-    }
-  ];
+    autoFlaggedReport?.lastCompleted && {
+      action: 'Auto-flag Sweep',
+      time: relTime(autoFlaggedReport.lastCompleted.completedAt ?? autoFlaggedReport.lastCompleted.startedAt),
+      status: 'success',
+      details: `${autoFlaggedReport.lastCompleted.autoFlagged} flagged`,
+    },
+  ].filter(Boolean) as Array<{ action: string; time: string; status: string; details: string }>;
 
   if (isLoading) {
     return (
@@ -699,13 +716,16 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
+              {recentActivity.length === 0 && (
+                <p className="text-sm text-muted-foreground">No recent activity yet.</p>
+              )}
               {recentActivity.map((activity, index) => (
                 <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-gray-50">
                   <div className={`p-1 rounded-full ${
-                    activity.status === 'success' ? 'bg-green-100' : 'bg-blue-100'
+                    activity.status === 'success' ? 'bg-green-100' : activity.status === 'error' ? 'bg-red-100' : 'bg-blue-100'
                   }`}>
                     <CheckCircle className={`w-3 h-3 ${
-                      activity.status === 'success' ? 'text-green-600' : 'text-blue-600'
+                      activity.status === 'success' ? 'text-green-600' : activity.status === 'error' ? 'text-red-600' : 'text-blue-600'
                     }`} />
                   </div>
                   <div className="flex-1">

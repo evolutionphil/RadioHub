@@ -1,38 +1,12 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Settings2, Music, Share2 } from "lucide-react";
+import { Music, Share2 } from "lucide-react";
+import { AdminPage } from "./AdminPage";
 
 export default function HomeSettings() {
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold">Home Page Settings</h1>
-        <p className="text-gray-500 mt-2">Manage homepage content and features</p>
-      </div>
-
-      <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="sections">Sections</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="overview" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Homepage Management</CardTitle>
-              <CardDescription>Configure homepage sections and content</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <p className="text-gray-600">
-                Manage all homepage content from this unified dashboard. Navigate to specific sections below to configure them.
-              </p>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="sections" className="space-y-4">
+    <AdminPage title="Home Page Settings" description="Manage homepage content and features">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Discover Genres Card */}
             <Card className="hover:shadow-lg transition-shadow">
@@ -84,8 +58,6 @@ export default function HomeSettings() {
               </CardContent>
             </Card>
           </div>
-        </TabsContent>
-      </Tabs>
-    </div>
+    </AdminPage>
   );
 }
