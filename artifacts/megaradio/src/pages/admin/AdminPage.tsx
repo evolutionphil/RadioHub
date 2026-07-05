@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
  */
 interface AdminPageProps {
   title: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
   children: ReactNode;
   className?: string;

@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -199,15 +200,7 @@ export default function AdvertisementsAdmin() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      <div className="flex justify-between items-start">
-        <div>
-          <h1 className="text-3xl font-bold">Advertisement Management</h1>
-          <p className="text-muted-foreground mt-1">
-            Choose an ad spot and upload your image
-          </p>
-        </div>
-      </div>
+    <AdminPage title="Advertisement Management" description="Choose an ad spot and upload your image">
 
       {/* Quick Add Buttons - Choose which ad spot to add */}
       {!showForm && (
@@ -455,6 +448,6 @@ export default function AdvertisementsAdmin() {
           </Card>
         )}
       </div>
-    </div>
+    </AdminPage>
   );
 }

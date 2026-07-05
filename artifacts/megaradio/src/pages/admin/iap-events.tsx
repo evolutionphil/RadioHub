@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -181,13 +182,10 @@ export default function AdminIapEvents() {
   const totalPages = data ? Math.max(1, Math.ceil(data.total / limit)) : 1;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">IAP Events</h1>
-        <p className="text-gray-600 mt-2">
-          Per-call audit trail for <code className="bg-gray-100 px-1 rounded text-sm">/api/iap/validate</code>. Auto-purges after 365 days.
-        </p>
-      </div>
+    <AdminPage
+      title="IAP Events"
+      description={<>Per-call audit trail for <code className="bg-gray-100 px-1 rounded text-sm">/api/iap/validate</code>. Auto-purges after 365 days.</>}
+    >
 
       {/* 7-day summary */}
       <Card>
@@ -402,6 +400,6 @@ export default function AdminIapEvents() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AdminPage>
   );
 }
