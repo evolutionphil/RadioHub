@@ -223,7 +223,7 @@ function ServerNoindexBadge({ value }: { value?: ServerNoindex }) {
   if (!value) return <span className="text-gray-500 text-xs">—</span>;
   if (!value.noindex) {
     return (
-      <Badge className="bg-green-700 hover:bg-green-800 text-white">
+      <Badge className="bg-green-700 hover:bg-green-800 text-gray-900">
         <CheckCircle2 className="w-3 h-3 mr-1" />
         Indexable
       </Badge>
@@ -231,7 +231,7 @@ function ServerNoindexBadge({ value }: { value?: ServerNoindex }) {
   }
   const reason = value.reason ?? 'stationNoIndex';
   return (
-    <Badge className={`${NOINDEX_REASON_CLS[reason]} text-white`}>
+    <Badge className={`${NOINDEX_REASON_CLS[reason]} text-gray-900`}>
       <XCircle className="w-3 h-3 mr-1" />
       {NOINDEX_REASON_LABEL[reason]}
     </Badge>
@@ -267,7 +267,7 @@ function StateBadge({ state }: { state: GscState }) {
       ? Clock
       : AlertCircle;
   return (
-    <Badge className={`${cls[state]} text-white`}>
+    <Badge className={`${cls[state]} text-gray-900`}>
       <Icon className="w-3 h-3 mr-1" />
       {STATE_LABEL[state]}
     </Badge>
@@ -599,28 +599,28 @@ export default function GscInspectionPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0E0E0E] text-white p-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <div>
           <h1 className="text-3xl font-bold mb-2">GSC URL Inspection</h1>
-          <p className="text-gray-400">
+          <p className="text-gray-500">
             Cached Google Search Console results for every URL we publish in
             the sitemap. Refreshed automatically on a schedule.
           </p>
         </div>
 
         {/* OAuth2 Connection Card */}
-        <Card className="bg-[#1A1A1A] border-gray-700">
+        <Card className="bg-white border-gray-200">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               {oauthStatus?.connected ? (
                 <CheckCircle2 className="w-4 h-4 text-green-400" />
               ) : (
-                <Link2 className="w-4 h-4 text-gray-400" />
+                <Link2 className="w-4 h-4 text-gray-500" />
               )}
               Google Account Connection
             </CardTitle>
-            <CardDescription className="text-gray-400 text-sm">
+            <CardDescription className="text-gray-500 text-sm">
               {oauthStatus?.connected ? (
                 <span>
                   {oauthStatus.connectedEmail ? (
@@ -655,7 +655,7 @@ export default function GscInspectionPage() {
             ) : (
               <Button
                 size="sm"
-                className="bg-blue-600 hover:bg-blue-700 text-white"
+                className="bg-blue-600 hover:bg-blue-700 text-gray-900"
                 onClick={() => connectOAuth.mutate()}
                 disabled={connectOAuth.isPending || !oauthStatus?.hasEnvVars}
               >
@@ -688,9 +688,9 @@ export default function GscInspectionPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-400">
+              <CardTitle className="text-sm text-gray-500">
                 Total URLs in sitemap cache
               </CardTitle>
             </CardHeader>
@@ -705,9 +705,9 @@ export default function GscInspectionPage() {
               </p>
             </CardContent>
           </Card>
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-400">
+              <CardTitle className="text-sm text-gray-500">
                 Indexed by Google
               </CardTitle>
             </CardHeader>
@@ -721,9 +721,9 @@ export default function GscInspectionPage() {
               </p>
             </CardContent>
           </Card>
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-400">
+              <CardTitle className="text-sm text-gray-500">
                 Discovered — not indexed
               </CardTitle>
             </CardHeader>
@@ -745,9 +745,9 @@ export default function GscInspectionPage() {
               </p>
             </CardContent>
           </Card>
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-400">Last refresh</CardTitle>
+              <CardTitle className="text-sm text-gray-500">Last refresh</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="text-base font-semibold">
@@ -760,9 +760,9 @@ export default function GscInspectionPage() {
               </p>
             </CardContent>
           </Card>
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-400">
+              <CardTitle className="text-sm text-gray-500">
                 Stuck (&gt; {status?.resubmitStuckDays ?? 14}d)
               </CardTitle>
             </CardHeader>
@@ -787,22 +787,22 @@ export default function GscInspectionPage() {
             Shows WHY the server is sending noindex (distinct from what
             Google's verdict says in `state`). Primary surface for tracking
             the 368-noindex incident and Phase B/C fix effectiveness. */}
-        <Card className="bg-[#1A1A1A] border-gray-800">
+        <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
               <div>
                 <CardTitle>Server-side noindex breakdown</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription className="text-gray-500">
                   Why the server is currently sending <code>noindex</code> for
                   URLs in the sitemap cache — distinct from Google's verdict
                   above. Language-ineligible variants now receive a{' '}
                   <strong>301 redirect → /en</strong> instead of noindex.
                 </CardDescription>
               </div>
-              <div className="text-right text-sm text-gray-400 shrink-0">
+              <div className="text-right text-sm text-gray-500 shrink-0">
                 <div>
                   <span className="text-gray-500">Qualified languages:</span>{' '}
-                  <strong className="text-white">
+                  <strong className="text-gray-900">
                     {noindexBreakdown?.qualifiedLanguageCount ?? '—'}
                   </strong>
                   {' / '}
@@ -875,31 +875,31 @@ export default function GscInspectionPage() {
 
             {noindexBreakdown && noindexBreakdown.byLanguage.length > 0 && (
               <details className="mt-4">
-                <summary className="cursor-pointer text-sm text-gray-400 hover:text-white">
+                <summary className="cursor-pointer text-sm text-gray-500 hover:text-gray-900">
                   Per-language ineligibility breakdown (top 20)
                 </summary>
                 <Table className="mt-3">
                   <TableHeader>
-                    <TableRow className="border-gray-800">
-                      <TableHead className="text-gray-400">Language</TableHead>
-                      <TableHead className="text-gray-400 text-right">
+                    <TableRow className="border-gray-200">
+                      <TableHead className="text-gray-500">Language</TableHead>
+                      <TableHead className="text-gray-500 text-right">
                         Total URLs
                       </TableHead>
-                      <TableHead className="text-gray-400 text-right">
+                      <TableHead className="text-gray-500 text-right">
                         Redirected
                       </TableHead>
-                      <TableHead className="text-gray-400">
+                      <TableHead className="text-gray-500">
                         Qualified?
                       </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {noindexBreakdown.byLanguage.slice(0, 20).map((row) => (
-                      <TableRow key={row.language} className="border-gray-800">
+                      <TableRow key={row.language} className="border-gray-200">
                         <TableCell className="text-gray-200">
                           {row.language}
                         </TableCell>
-                        <TableCell className="text-right text-gray-300">
+                        <TableCell className="text-right text-gray-600">
                           {row.total.toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right text-blue-300">
@@ -907,12 +907,12 @@ export default function GscInspectionPage() {
                         </TableCell>
                         <TableCell>
                           {row.qualified ? (
-                            <Badge className="bg-green-700 hover:bg-green-800 text-white">
+                            <Badge className="bg-green-700 hover:bg-green-800 text-gray-900">
                               <CheckCircle2 className="w-3 h-3 mr-1" />
                               Yes
                             </Badge>
                           ) : (
-                            <Badge className="bg-purple-700 hover:bg-purple-800 text-white">
+                            <Badge className="bg-purple-700 hover:bg-purple-800 text-gray-900">
                               <XCircle className="w-3 h-3 mr-1" />
                               No
                             </Badge>
@@ -933,12 +933,12 @@ export default function GscInspectionPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-[#1A1A1A] border-gray-800">
+        <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div>
                 <CardTitle>Indexing trend</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription className="text-gray-500">
                   Daily snapshots of total / indexed / crawled-not-indexed /
                   discovered-not-indexed counts. Snapshot job runs nightly at
                   23:55 Berlin time.
@@ -952,10 +952,10 @@ export default function GscInspectionPage() {
                   value={trendDays}
                   onValueChange={(v) => setTrendDays(v as '30' | '90')}
                 >
-                  <SelectTrigger className="w-[120px] bg-[#0E0E0E] border-gray-700">
+                  <SelectTrigger className="w-[120px] bg-white border-gray-200">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="30">Last 30 days</SelectItem>
                     <SelectItem value="90">Last 90 days</SelectItem>
                   </SelectContent>
@@ -964,10 +964,10 @@ export default function GscInspectionPage() {
                   value={trendLanguage}
                   onValueChange={setTrendLanguage}
                 >
-                  <SelectTrigger className="w-[140px] bg-[#0E0E0E] border-gray-700">
+                  <SelectTrigger className="w-[140px] bg-white border-gray-200">
                     <SelectValue placeholder="Language" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="all">All languages</SelectItem>
                     {languages.map((l) => (
                       <SelectItem key={l} value={l}>
@@ -977,10 +977,10 @@ export default function GscInspectionPage() {
                   </SelectContent>
                 </Select>
                 <Select value={trendGroup} onValueChange={setTrendGroup}>
-                  <SelectTrigger className="w-[140px] bg-[#0E0E0E] border-gray-700">
+                  <SelectTrigger className="w-[140px] bg-white border-gray-200">
                     <SelectValue placeholder="Group" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="all">All groups</SelectItem>
                     <SelectItem value="static">Static</SelectItem>
                     <SelectItem value="country">Country</SelectItem>
@@ -991,7 +991,7 @@ export default function GscInspectionPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-gray-700"
+                  className="border-gray-200"
                   disabled={recordSnapshot.isPending}
                   onClick={() => recordSnapshot.mutate()}
                   title="Force a daily snapshot now (cron also runs nightly)"
@@ -1011,7 +1011,7 @@ export default function GscInspectionPage() {
                     p.set('group', trendGroup);
                     return `/api/admin/gsc-inspection/history.csv?${p.toString()}`;
                   })()}
-                  className="inline-flex items-center text-sm border border-gray-700 rounded-md px-3 py-1.5 hover:bg-gray-800"
+                  className="inline-flex items-center text-sm border border-gray-200 rounded-md px-3 py-1.5 hover:bg-gray-50"
                   title="Download the snapshot history as CSV (matches the current filters)"
                 >
                   <Download className="w-4 h-4 mr-2" />
@@ -1072,11 +1072,11 @@ export default function GscInspectionPage() {
               </div>
             )}
             {trendsLoading ? (
-              <div className="text-center text-gray-400 py-12">
+              <div className="text-center text-gray-500 py-12">
                 Loading trend…
               </div>
             ) : trendChartData.length === 0 ? (
-              <div className="text-center text-gray-400 py-12">
+              <div className="text-center text-gray-500 py-12">
                 No snapshots yet for this filter. The first snapshot is
                 recorded automatically tonight at 23:55 Berlin time, or you
                 can click "Snapshot now" to capture today's numbers
@@ -1174,12 +1174,12 @@ export default function GscInspectionPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-[#1A1A1A] border-gray-800">
+        <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <CardTitle>Indexing by URL group</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription className="text-gray-500">
                   Breakdown across static pages, top-30 country pages,
                   genres, and station pages.
                 </CardDescription>
@@ -1188,7 +1188,7 @@ export default function GscInspectionPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="border-gray-700"
+                  className="border-gray-200"
                   disabled={rediscover.isPending}
                   onClick={() => rediscover.mutate()}
                 >
@@ -1236,7 +1236,7 @@ export default function GscInspectionPage() {
               </p>
             )}
             {resubmitStuck.data?.stats && (
-              <p className="text-sm text-gray-400 mt-2">
+              <p className="text-sm text-gray-500 mt-2">
                 Resubmitted {resubmitStuck.data.stats.succeeded}/
                 {resubmitStuck.data.stats.attempted} stuck URL
                 {resubmitStuck.data.stats.attempted === 1 ? '' : 's'} via
@@ -1251,23 +1251,23 @@ export default function GscInspectionPage() {
           <CardContent>
             <Table>
               <TableHeader>
-                <TableRow className="border-gray-800">
-                  <TableHead className="text-gray-400">Group</TableHead>
-                  <TableHead className="text-gray-400 text-right">Total</TableHead>
-                  <TableHead className="text-gray-400 text-right">Indexed</TableHead>
-                  <TableHead className="text-gray-400 text-right">
+                <TableRow className="border-gray-200">
+                  <TableHead className="text-gray-500">Group</TableHead>
+                  <TableHead className="text-gray-500 text-right">Total</TableHead>
+                  <TableHead className="text-gray-500 text-right">Indexed</TableHead>
+                  <TableHead className="text-gray-500 text-right">
                     Crawled, not indexed
                   </TableHead>
-                  <TableHead className="text-gray-400 text-right">
+                  <TableHead className="text-gray-500 text-right">
                     Discovered, not indexed
                   </TableHead>
-                  <TableHead className="text-gray-400 text-right">Excluded</TableHead>
-                  <TableHead className="text-gray-400 text-right">Pending</TableHead>
+                  <TableHead className="text-gray-500 text-right">Excluded</TableHead>
+                  <TableHead className="text-gray-500 text-right">Pending</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {(stats?.byGroup ?? []).map((row) => (
-                  <TableRow key={row.group} className="border-gray-800">
+                  <TableRow key={row.group} className="border-gray-200">
                     <TableCell className="capitalize">{row.group}</TableCell>
                     <TableCell className="text-right">
                       {row.total.toLocaleString()}
@@ -1290,7 +1290,7 @@ export default function GscInspectionPage() {
                   </TableRow>
                 ))}
                 {(!stats?.byGroup || stats.byGroup.length === 0) && (
-                  <TableRow className="border-gray-800">
+                  <TableRow className="border-gray-200">
                     <TableCell colSpan={7} className="text-center text-gray-500 py-6">
                       No data yet — click "Re-discover URLs" to populate.
                     </TableCell>
@@ -1301,12 +1301,12 @@ export default function GscInspectionPage() {
           </CardContent>
         </Card>
 
-        <Card className="bg-[#1A1A1A] border-gray-800">
+        <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
               <div>
                 <CardTitle>URLs</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardDescription className="text-gray-500">
                   Filter by language, URL group, and indexing state.
                 </CardDescription>
               </div>
@@ -1320,7 +1320,7 @@ export default function GscInspectionPage() {
                       setPage(1);
                     }}
                     placeholder="Search URL"
-                    className="pl-8 w-[220px] bg-[#0E0E0E] border-gray-700"
+                    className="pl-8 w-[220px] bg-white border-gray-200"
                   />
                 </div>
                 <Select
@@ -1330,10 +1330,10 @@ export default function GscInspectionPage() {
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="w-[140px] bg-[#0E0E0E] border-gray-700">
+                  <SelectTrigger className="w-[140px] bg-white border-gray-200">
                     <SelectValue placeholder="Language" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="all">All languages</SelectItem>
                     {languages.map((l) => (
                       <SelectItem key={l} value={l}>
@@ -1349,10 +1349,10 @@ export default function GscInspectionPage() {
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="w-[140px] bg-[#0E0E0E] border-gray-700">
+                  <SelectTrigger className="w-[140px] bg-white border-gray-200">
                     <SelectValue placeholder="Group" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="all">All groups</SelectItem>
                     <SelectItem value="static">Static</SelectItem>
                     <SelectItem value="country">Country</SelectItem>
@@ -1367,10 +1367,10 @@ export default function GscInspectionPage() {
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="w-[200px] bg-[#0E0E0E] border-gray-700">
+                  <SelectTrigger className="w-[200px] bg-white border-gray-200">
                     <SelectValue placeholder="State" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="all">All states</SelectItem>
                     <SelectItem value="indexed">Indexed</SelectItem>
                     <SelectItem value="crawled-not-indexed">
@@ -1391,10 +1391,10 @@ export default function GscInspectionPage() {
                     setPage(1);
                   }}
                 >
-                  <SelectTrigger className="w-[180px] bg-[#0E0E0E] border-gray-700">
+                  <SelectTrigger className="w-[180px] bg-white border-gray-200">
                     <SelectValue placeholder="Server noindex" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="any">Any server status</SelectItem>
                     <SelectItem value="noindex">Server noindex only</SelectItem>
                     <SelectItem value="indexable">Server indexable only</SelectItem>
@@ -1405,34 +1405,34 @@ export default function GscInspectionPage() {
           </CardHeader>
           <CardContent>
             {urlsLoading ? (
-              <div className="text-center text-gray-400 py-6">Loading…</div>
+              <div className="text-center text-gray-500 py-6">Loading…</div>
             ) : !urls || urls.rows.length === 0 ? (
-              <div className="text-center text-gray-400 py-6">
+              <div className="text-center text-gray-500 py-6">
                 No URLs match these filters.
               </div>
             ) : (
               <>
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-gray-800">
-                      <TableHead className="text-gray-400">URL</TableHead>
-                      <TableHead className="text-gray-400">Group</TableHead>
-                      <TableHead className="text-gray-400">Lang</TableHead>
-                      <TableHead className="text-gray-400">Server</TableHead>
-                      <TableHead className="text-gray-400">State</TableHead>
-                      <TableHead className="text-gray-400">
+                    <TableRow className="border-gray-200">
+                      <TableHead className="text-gray-500">URL</TableHead>
+                      <TableHead className="text-gray-500">Group</TableHead>
+                      <TableHead className="text-gray-500">Lang</TableHead>
+                      <TableHead className="text-gray-500">Server</TableHead>
+                      <TableHead className="text-gray-500">State</TableHead>
+                      <TableHead className="text-gray-500">
                         Stuck since
                       </TableHead>
-                      <TableHead className="text-gray-400">
+                      <TableHead className="text-gray-500">
                         Last resubmit
                       </TableHead>
-                      <TableHead className="text-gray-400">Last crawl</TableHead>
-                      <TableHead className="text-gray-400">Last checked</TableHead>
+                      <TableHead className="text-gray-500">Last crawl</TableHead>
+                      <TableHead className="text-gray-500">Last checked</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {urls.rows.map((row) => (
-                      <TableRow key={row._id} className="border-gray-800">
+                      <TableRow key={row._id} className="border-gray-200">
                         <TableCell className="max-w-[480px]">
                           <div className="flex items-center gap-2">
                             <a
@@ -1450,7 +1450,7 @@ export default function GscInspectionPage() {
                                 target="_blank"
                                 rel="noreferrer"
                                 title="Open in Search Console"
-                                className="text-gray-400 hover:text-white"
+                                className="text-gray-500 hover:text-gray-900"
                               >
                                 <ExternalLink className="w-3 h-3" />
                               </a>
@@ -1465,10 +1465,10 @@ export default function GscInspectionPage() {
                             </p>
                           )}
                         </TableCell>
-                        <TableCell className="capitalize text-gray-300">
+                        <TableCell className="capitalize text-gray-600">
                           {row.group}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {row.language}
                         </TableCell>
                         <TableCell>
@@ -1486,7 +1486,7 @@ export default function GscInspectionPage() {
                               </p>
                             )}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {row.notIndexedSince ? (
                             <span className="text-orange-300">
                               {fmt(row.notIndexedSince)}
@@ -1495,7 +1495,7 @@ export default function GscInspectionPage() {
                             '—'
                           )}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {row.lastResubmitAt ? (
                             <div>
                               <div
@@ -1523,17 +1523,17 @@ export default function GscInspectionPage() {
                             '—'
                           )}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {fmt(row.lastCrawlTime)}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {fmt(row.lastInspectedAt)}
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-                <div className="flex items-center justify-between mt-4 text-sm text-gray-400">
+                <div className="flex items-center justify-between mt-4 text-sm text-gray-500">
                   <div>
                     {urls.pagination.total.toLocaleString()} URL
                     {urls.pagination.total === 1 ? '' : 's'} • page{' '}
@@ -1543,7 +1543,7 @@ export default function GscInspectionPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-gray-700"
+                      className="border-gray-200"
                       disabled={page <= 1}
                       onClick={() => setPage((p) => Math.max(1, p - 1))}
                     >
@@ -1552,7 +1552,7 @@ export default function GscInspectionPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="border-gray-700"
+                      className="border-gray-200"
                       disabled={page >= urls.pagination.pages}
                       onClick={() =>
                         setPage((p) =>

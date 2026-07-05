@@ -349,7 +349,7 @@ export default function AdminCoverageCountry() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="space-y-2">
           <Link href="/admin/coverage">

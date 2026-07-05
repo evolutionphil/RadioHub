@@ -1642,7 +1642,7 @@ export default function AdminCountryLanguageMappings() {
   };
 
   return (
-    <div className="container mx-auto py-8 px-4">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Country-Language Mappings</CardTitle>

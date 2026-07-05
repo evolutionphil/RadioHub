@@ -721,7 +721,7 @@ export default function AdminDuplicates() {
   };
 
   return (
-    <div className="container mx-auto p-3 sm:p-6 space-y-4 sm:space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="text-center space-y-2">
         <h1 className="text-xl sm:text-3xl font-bold">Station Duplicate Management</h1>
         <p className="text-sm sm:text-base text-muted-foreground">

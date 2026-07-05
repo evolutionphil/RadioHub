@@ -1210,7 +1210,7 @@ export default function Stations() {
   const totalPages = Math.ceil((stationsData?.total || 0) / filters.limit!);
 
   return (
-    <div className="p-2 sm:p-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       {/* AI Generation Progress Indicator */}
       {generatingStationId && (
         <div className="mb-4 p-4 bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-lg shadow-md">
