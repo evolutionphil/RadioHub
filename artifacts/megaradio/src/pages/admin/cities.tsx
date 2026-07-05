@@ -79,13 +79,13 @@ export default function AdminCities() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6 bg-[#0E0E0E] min-h-screen text-white">
-      <div className="bg-[#151515] p-6 rounded-lg">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
+      <div className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <MapPin className="h-8 w-8 text-[#FF4199]" />
             <div>
-              <h1 className="text-2xl font-bold text-white">City Cleanup</h1>
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">City Cleanup</h1>
               <p className="text-[#838383] text-sm">
                 Merge duplicate cities with different capitalizations
               </p>
@@ -96,7 +96,6 @@ export default function AdminCities() {
               onClick={analyzeDuplicates} 
               disabled={isLoading}
               variant="outline"
-              className="bg-[#2F2F2F] border-[#3F3F3F] text-white hover:bg-[#3F3F3F]"
             >
               {isLoading ? (
                 <>
@@ -131,7 +130,7 @@ export default function AdminCities() {
       </div>
 
       {mergeResults && (
-        <Alert className="bg-[#1A3F1A] border-[#2F5F2F]">
+        <Alert className="bg-green-50 border-green-200">
           <CheckCircle className="h-4 w-4 text-green-500" />
           <AlertDescription className="text-green-300">
             <div className="font-medium mb-2">Merge Completed Successfully!</div>
@@ -154,20 +153,20 @@ export default function AdminCities() {
       )}
 
       {duplicates && (
-        <Card className="bg-[#1A1A1A] border-[#2F2F2F]">
+        <Card>
           <CardHeader className="pb-4">
             <div className="flex justify-between items-start">
               <div>
-                <CardTitle className="text-xl text-white">Duplicate Cities Analysis</CardTitle>
+                <CardTitle className="text-lg text-gray-900">Duplicate Cities Analysis</CardTitle>
                 <CardDescription className="text-[#838383]">
                   Found {duplicates.totalCityGroups} city groups with duplicates affecting {duplicates.totalStationsAffected} stations
                 </CardDescription>
               </div>
               <div className="flex gap-2">
-                <Badge variant="secondary" className="bg-[#2F2F2F] text-white border-[#3F3F3F]">
+                <Badge variant="secondary">
                   {duplicates.totalCityGroups} Groups
                 </Badge>
-                <Badge variant="destructive" className="bg-[#3F1A1A] text-red-300 border-[#5F2F2F]">
+                <Badge variant="destructive">
                   {duplicates.totalStationsAffected} Stations
                 </Badge>
               </div>
@@ -176,7 +175,7 @@ export default function AdminCities() {
 
           <CardContent className="space-y-4">
             {duplicates.duplicates.length === 0 ? (
-              <Alert className="bg-[#1A3F1A] border-[#2F5F2F]">
+              <Alert className="bg-green-50 border-green-200">
                 <CheckCircle className="h-4 w-4 text-green-500" />
                 <AlertDescription className="text-green-300">
                   No duplicate cities found! All city names are already consistent.
@@ -189,14 +188,14 @@ export default function AdminCities() {
                 </div>
                 
                 {duplicates.duplicates.slice(0, 20).map((duplicate, index) => (
-                  <div key={duplicate.lowerCity} className="bg-[#2F2F2F] rounded-lg p-4 space-y-3">
+                  <div key={duplicate.lowerCity} className="bg-gray-50 border border-gray-200 rounded-lg p-4 space-y-3">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="flex items-center gap-3 mb-2">
-                          <h3 className="font-medium text-white">
+                          <h3 className="font-medium text-gray-900">
                             Will become: <span className="text-[#FF4199]">"{duplicate.canonical}"</span>
                           </h3>
-                          <Badge variant="outline" className="bg-[#1A1A1A] text-white border-[#3F3F3F]">
+                          <Badge variant="outline">
                             {duplicate.totalStations} stations
                           </Badge>
                         </div>
@@ -209,7 +208,7 @@ export default function AdminCities() {
                       </div>
                     </div>
                     
-                    <Separator className="bg-[#3F3F3F]" />
+                    <Separator />
                     
                     <div className="space-y-2">
                       <div className="text-sm font-medium text-[#838383]">Current variations:</div>
@@ -219,14 +218,13 @@ export default function AdminCities() {
                             key={vIndex} 
                             className={`px-3 py-2 rounded text-sm flex justify-between items-center ${
                               variation.name === duplicate.canonical 
-                                ? 'bg-[#1A3F1A] text-green-300 border border-[#2F5F2F]' 
-                                : 'bg-[#3F1A1A] text-red-300 border border-[#5F2F2F]'
+                                ? 'bg-green-50 text-green-700 border border-green-200' 
+                                : 'bg-red-50 text-red-700 border border-red-200'
                             }`}
                           >
                             <span className="font-mono">"{variation.name}"</span>
                             <Badge 
-                              variant="secondary" 
-                              className="text-xs bg-[#1A1A1A] text-white border-[#3F3F3F]"
+                              variant="outline" className="text-xs"
                             >
                               {variation.count}
                             </Badge>
@@ -249,10 +247,10 @@ export default function AdminCities() {
       )}
 
       {!duplicates && !isLoading && (
-        <Card className="bg-[#1A1A1A] border-[#2F2F2F]">
+        <Card>
           <CardContent className="py-12 text-center">
             <MapPin className="h-12 w-12 text-[#838383] mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-white mb-2">Ready to Clean Up Cities</h3>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Ready to Clean Up Cities</h3>
             <p className="text-[#838383] text-sm mb-6 max-w-md mx-auto">
               Click "Analyze Duplicates" to scan your database for cities with different capitalizations 
               (e.g., "ankara", "ANKARA", "Ankara") that should be merged.
