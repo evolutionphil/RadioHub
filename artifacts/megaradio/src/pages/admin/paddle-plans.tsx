@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -249,14 +250,10 @@ export default function PaddlePlansPage() {
   });
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold">Paddle Plans</h1>
-        <p className="text-gray-500 mt-2">
-          Manage Paddle price IDs for the TV/Web subscription flow.
-          These apply when <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm">PAYMENT_PROVIDER=paddle</code> is set in Railway.
-        </p>
-      </div>
+    <AdminPage
+      title="Paddle Plans"
+      description={<>Manage Paddle price IDs for the TV/Web subscription flow. These apply when <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm">PAYMENT_PROVIDER=paddle</code> is set in Railway.</>}
+    >
 
       <Card className="border-blue-200 bg-blue-50">
         <CardContent className="pt-4 text-sm text-blue-800 space-y-1">
@@ -281,6 +278,6 @@ export default function PaddlePlansPage() {
           ))}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

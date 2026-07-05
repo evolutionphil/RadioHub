@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -76,24 +77,11 @@ export default function TvVersionPage() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Tv className="w-6 h-6" />
-          <div>
-            <h1 className="text-2xl font-bold">TV / App Version Config</h1>
-            <p className="text-sm text-muted-foreground">
-              Manages <code>/api/tv/version</code>. Changes apply immediately without a code deploy.
-              {data?.updatedAt && (
-                <span className="ml-2">Last saved: {new Date(data.updatedAt).toLocaleString()}</span>
-              )}
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="w-4 h-4 mr-1" /> Refresh
-        </Button>
-      </div>
+    <AdminPage
+      title="TV / App Version Config"
+      description={<>Manages <code>/api/tv/version</code>. Changes apply immediately without a code deploy.{data?.updatedAt && (<span className="ml-2">Last saved: {new Date(data.updatedAt).toLocaleString()}</span>)}</>}
+      actions={<Button variant="outline" size="sm" onClick={() => refetch()}><RefreshCw className="w-4 h-4 mr-1" /> Refresh</Button>}
+    >
 
       {/* Version numbers */}
       <Card>
@@ -189,6 +177,6 @@ export default function TvVersionPage() {
           )}
         </Button>
       </div>
-    </div>
+    </AdminPage>
   );
 }

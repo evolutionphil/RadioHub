@@ -113,7 +113,7 @@ export function AdminErrorLogs() {
   };
 
   return (
-    <div className="space-y-6 p-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Error Logs</h1>

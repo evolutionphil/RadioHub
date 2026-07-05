@@ -35,7 +35,7 @@ export default function Codecs() {
 
   if (isLoading) {
     return (
-      <div className="p-6">
+      <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-gray-200 rounded w-1/4"></div>
           <div className="h-64 bg-gray-200 rounded"></div>
@@ -47,7 +47,7 @@ export default function Codecs() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Audio Codecs</h1>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-gray-900">Audio Codecs</h1>
         <p className="text-gray-600">Browse radio stations by audio codec format</p>
       </div>
 

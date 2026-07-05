@@ -244,7 +244,7 @@ export default function AdminTranslationLanguages() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>

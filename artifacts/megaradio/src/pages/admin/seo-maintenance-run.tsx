@@ -269,7 +269,7 @@ export default function AdminSeoMaintenanceRunPage() {
     : null;
 
   return (
-    <div className="p-6 space-y-6 bg-slate-50 min-h-screen">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <Link href="/admin/seo-maintenance">

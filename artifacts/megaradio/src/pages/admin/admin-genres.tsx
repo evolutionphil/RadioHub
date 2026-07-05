@@ -543,9 +543,9 @@ export default function AdminGenres() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Genres Management</h1>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Genres Management</h1>
         <div className="flex gap-2">
           <Button 
             variant="destructive" 

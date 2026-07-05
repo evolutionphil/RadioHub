@@ -845,7 +845,7 @@ export default function AdminUsers() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Users Management</h1>
         <p className="text-gray-600 mt-2">View and manage all registered users</p>

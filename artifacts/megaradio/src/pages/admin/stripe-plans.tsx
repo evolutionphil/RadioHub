@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -302,14 +303,10 @@ export default function StripePlansPage() {
   const plans = DEFAULT_PLANS.map(def => planMap.get(def.planId) ?? def);
 
   return (
-    <div className="space-y-6 p-6">
-      <div>
-        <h1 className="text-3xl font-bold">Stripe Plans</h1>
-        <p className="text-gray-500 mt-2">
-          Manage Stripe price IDs for the TV/Web subscription flow.
-          These apply to Samsung TV, LG TV, and web — not iOS/Android (those use App Store IAP).
-        </p>
-      </div>
+    <AdminPage
+      title="Stripe Plans"
+      description="Manage Stripe price IDs for the TV/Web subscription flow. These apply to Samsung TV, LG TV, and web — not iOS/Android (those use App Store IAP)."
+    >
 
       <Card className="border-purple-200 bg-purple-50">
         <CardContent className="pt-4 text-sm text-purple-800 space-y-1">
@@ -332,6 +329,6 @@ export default function StripePlansPage() {
           ))}
         </div>
       )}
-    </div>
+    </AdminPage>
   );
 }

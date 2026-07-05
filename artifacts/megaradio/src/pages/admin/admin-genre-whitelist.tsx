@@ -632,9 +632,9 @@ export default function AdminGenreWhitelist() {
   if (!data) return null;
 
   return (
-    <div className="p-6 space-y-6 max-w-6xl">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Genre whitelist</h1>
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight">Genre whitelist</h1>
         <p className="text-sm text-gray-500 mt-1">
           Controls which <code>/genres/:slug</code> URLs MegaRadio publishes to search engines.
           Slugs not on the whitelist (and without an alias) are served as <code>noindex</code> and

@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -129,10 +130,10 @@ export default function DbManagement() {
   const usagePct = dbStatus ? Math.round((dbStatus.storageSizeMB / 512) * 100) : 0;
 
   return (
-    <div className="p-6 space-y-6 bg-white min-h-screen">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-900">Database Management</h2>
-        <div className="flex items-center gap-2">
+    <AdminPage
+      title="Database Management"
+      actions={
+        <>
           <Button
             onClick={() => {
               setFlushConfirmText("");
@@ -148,8 +149,9 @@ export default function DbManagement() {
           <Button onClick={() => refetch()} variant="outline" size="sm">
             Refresh
           </Button>
-        </div>
-      </div>
+        </>
+      }
+    >
 
       {isLoading && <p className="text-gray-600">Loading...</p>}
 
@@ -380,6 +382,6 @@ export default function DbManagement() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </AdminPage>
   );
 }

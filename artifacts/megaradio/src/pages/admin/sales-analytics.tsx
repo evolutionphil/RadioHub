@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -162,17 +163,16 @@ export default function SalesAnalyticsPage() {
   }));
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Sales Analytics</h1>
-          <p className="text-gray-500 mt-1">iOS, Android IAP + Stripe (TV/Web) combined</p>
-        </div>
+    <AdminPage
+      title="Sales Analytics"
+      description="iOS, Android IAP + Stripe (TV/Web) combined"
+      actions={
         <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
           {isFetching ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <RefreshCw className="w-4 h-4 mr-1" />}
           Refresh
         </Button>
-      </div>
+      }
+    >
 
       {/* Filters */}
       <Card>
@@ -403,6 +403,6 @@ export default function SalesAnalyticsPage() {
           </Card>
         </>
       )}
-    </div>
+    </AdminPage>
   );
 }

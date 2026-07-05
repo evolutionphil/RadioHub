@@ -236,36 +236,36 @@ export default function IndexNowMonitoring() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0E0E0E] text-white p-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold mb-2">IndexNow Monitoring</h1>
-          <p className="text-gray-400">Monitor IndexNow search engine submissions and performance</p>
+          <p className="text-gray-500">Monitor IndexNow search engine submissions and performance</p>
         </div>
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-400">Total Submissions</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Total Submissions</CardTitle>
               <Activity className="h-4 w-4 text-blue-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 {statsLoading ? '...' : stats?.totalSubmissions.toLocaleString() || 0}
               </div>
               <p className="text-xs text-gray-500 mt-1">All-time submissions</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-400">Success Rate</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Success Rate</CardTitle>
               <TrendingUp className="h-4 w-4 text-green-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 {statsLoading ? '...' : `${stats?.successRate || 0}%`}
               </div>
               <p className="text-xs text-gray-500 mt-1">
@@ -274,26 +274,26 @@ export default function IndexNowMonitoring() {
             </CardContent>
           </Card>
 
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-400">Submissions Today</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Submissions Today</CardTitle>
               <Clock className="h-4 w-4 text-yellow-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 {statsLoading ? '...' : stats?.submissionsToday.toLocaleString() || 0}
               </div>
               <p className="text-xs text-gray-500 mt-1">Last 24 hours</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-[#1A1A1A] border-gray-800">
+          <Card className="bg-white border-gray-200">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-400">Failed Count</CardTitle>
+              <CardTitle className="text-sm font-medium text-gray-500">Failed Count</CardTitle>
               <XCircle className="h-4 w-4 text-red-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-white">
+              <div className="text-2xl font-bold text-gray-900">
                 {statsLoading ? '...' : stats?.failedSubmissions.toLocaleString() || 0}
               </div>
               <p className="text-xs text-gray-500 mt-1">
@@ -304,13 +304,13 @@ export default function IndexNowMonitoring() {
         </div>
 
         {/* Nightly sitemap-diff runs (Task #190 surfacing) */}
-        <Card className="bg-[#1A1A1A] border-gray-800 mb-8" data-testid="card-sitemap-diff-runs">
+        <Card className="bg-white border-gray-200 mb-8" data-testid="card-sitemap-diff-runs">
           <CardHeader>
             <div className="flex items-center gap-2">
               <Calendar className="h-5 w-5 text-purple-400" />
               <div>
-                <CardTitle className="text-white">Nightly Sitemap Diff Runs</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardTitle className="text-gray-900">Nightly Sitemap Diff Runs</CardTitle>
+                <CardDescription className="text-gray-500">
                   New URLs that the nightly job pinged to search engines, grouped by night (last 14 days). Expand a row to see the actual URLs submitted.
                 </CardDescription>
               </div>
@@ -318,9 +318,9 @@ export default function IndexNowMonitoring() {
           </CardHeader>
           <CardContent>
             {diffRunsLoading ? (
-              <div className="text-center py-8 text-gray-400">Loading runs...</div>
+              <div className="text-center py-8 text-gray-500">Loading runs...</div>
             ) : diffRuns.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">
+              <div className="text-center py-8 text-gray-500">
                 No sitemap-diff runs in the last 14 days.
               </div>
             ) : (
@@ -346,15 +346,15 @@ export default function IndexNowMonitoring() {
                           className="flex-1 text-left"
                           data-testid={`button-toggle-run-${run.date}`}
                         >
-                          <div className="flex items-center justify-between p-3 rounded-md bg-[#0E0E0E] border border-gray-800 hover:border-gray-700 h-full">
+                          <div className="flex items-center justify-between p-3 rounded-md bg-white border border-gray-200 hover:border-gray-200 h-full">
                             <div className="flex items-center gap-3">
                               {isOpen ? (
-                                <ChevronDown className="h-4 w-4 text-gray-400" />
+                                <ChevronDown className="h-4 w-4 text-gray-500" />
                               ) : (
-                                <ChevronRight className="h-4 w-4 text-gray-400" />
+                                <ChevronRight className="h-4 w-4 text-gray-500" />
                               )}
                               <div>
-                                <div className="text-white font-medium" data-testid={`text-run-date-${run.date}`}>
+                                <div className="text-gray-900 font-medium" data-testid={`text-run-date-${run.date}`}>
                                   {new Date(`${run.date}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}
                                   <span className="ml-1 text-xs text-gray-500">UTC</span>
                                 </div>
@@ -365,7 +365,7 @@ export default function IndexNowMonitoring() {
                             </div>
                             <div className="flex items-center gap-3">
                               <div className="text-right">
-                                <div className="text-white font-semibold">
+                                <div className="text-gray-900 font-semibold">
                                   {run.totalUrls.toLocaleString()} URLs
                                 </div>
                                 <div className="text-xs text-gray-500">
@@ -393,7 +393,7 @@ export default function IndexNowMonitoring() {
                             variant="outline"
                             disabled={rerunMutation.isPending}
                             onClick={() => handleRerun(false)}
-                            className="border-gray-700 text-gray-200 hover:bg-gray-800 hover:text-white"
+                            className="border-gray-200 text-gray-200 hover:bg-gray-50 hover:text-gray-900"
                             data-testid={`button-rerun-run-${run.date}`}
                             title="Re-run the diff/submit pass now. Computes additions vs. the current snapshot, so any URLs that previously failed will be retried."
                           >
@@ -406,7 +406,7 @@ export default function IndexNowMonitoring() {
                             variant="ghost"
                             disabled={rerunMutation.isPending}
                             onClick={() => handleRerun(true)}
-                            className="text-xs text-gray-400 hover:text-white hover:bg-gray-800 h-7"
+                            className="text-xs text-gray-500 hover:text-gray-900 hover:bg-gray-50 h-7"
                             data-testid={`button-rerun-dryrun-run-${run.date}`}
                             title="Compute what would be submitted, but don't ping IndexNow or update the snapshot."
                           >
@@ -436,7 +436,7 @@ export default function IndexNowMonitoring() {
                         </div>
                       )}
                       <CollapsibleContent>
-                        <div className="mt-2 ml-6 p-4 rounded-md bg-[#0A0A0A] border border-gray-800 space-y-4">
+                        <div className="mt-2 ml-6 p-4 rounded-md bg-gray-50 border border-gray-200 space-y-4">
                           <div>
                             <div className="text-xs uppercase tracking-wider text-gray-500 mb-2">
                               Per-language breakdown
@@ -446,7 +446,7 @@ export default function IndexNowMonitoring() {
                                 <Badge
                                   key={lb.language}
                                   variant="outline"
-                                  className="border-gray-700 text-gray-300"
+                                  className="border-gray-200 text-gray-600"
                                   data-testid={`badge-lang-${run.date}-${lb.language}`}
                                 >
                                   <span className="font-semibold mr-1">{lb.language}</span>
@@ -466,12 +466,12 @@ export default function IndexNowMonitoring() {
                             <div className="overflow-x-auto">
                               <Table>
                                 <TableHeader>
-                                  <TableRow className="border-gray-800 hover:bg-transparent">
-                                    <TableHead className="text-gray-400">Time</TableHead>
-                                    <TableHead className="text-gray-400">Lang</TableHead>
-                                    <TableHead className="text-gray-400">URLs</TableHead>
-                                    <TableHead className="text-gray-400">Status</TableHead>
-                                    <TableHead className="text-gray-400">Sample URLs</TableHead>
+                                  <TableRow className="border-gray-200 hover:bg-transparent">
+                                    <TableHead className="text-gray-500">Time</TableHead>
+                                    <TableHead className="text-gray-500">Lang</TableHead>
+                                    <TableHead className="text-gray-500">URLs</TableHead>
+                                    <TableHead className="text-gray-500">Status</TableHead>
+                                    <TableHead className="text-gray-500">Sample URLs</TableHead>
                                   </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -483,14 +483,14 @@ export default function IndexNowMonitoring() {
                                     return (
                                       <TableRow
                                         key={sub._id}
-                                        className="border-gray-800 hover:bg-[#0E0E0E] align-top"
+                                        className="border-gray-200 hover:bg-white align-top"
                                         data-testid={`row-submission-${sub._id}`}
                                       >
-                                        <TableCell className="text-white whitespace-nowrap">
+                                        <TableCell className="text-gray-900 whitespace-nowrap">
                                           {format(new Date(sub.timestamp), 'HH:mm:ss')}
                                         </TableCell>
-                                        <TableCell className="text-gray-300">{sub.language}</TableCell>
-                                        <TableCell className="text-gray-300">{sub.urlCount}</TableCell>
+                                        <TableCell className="text-gray-600">{sub.language}</TableCell>
+                                        <TableCell className="text-gray-600">{sub.urlCount}</TableCell>
                                         <TableCell>
                                           <Badge
                                             variant={sub.status === 'success' ? 'default' : 'destructive'}
@@ -507,7 +507,7 @@ export default function IndexNowMonitoring() {
                                             </div>
                                           )}
                                         </TableCell>
-                                        <TableCell className="text-gray-300">
+                                        <TableCell className="text-gray-600">
                                           {displayUrls.length === 0 && !isReady ? (
                                             <span className="text-gray-600 italic">none recorded</span>
                                           ) : (
@@ -538,7 +538,7 @@ export default function IndexNowMonitoring() {
                                                 <Button
                                                   size="sm"
                                                   variant="outline"
-                                                  className="h-7 px-2 text-xs border-gray-700 text-gray-200 hover:bg-gray-800"
+                                                  className="h-7 px-2 text-xs border-gray-200 text-gray-200 hover:bg-gray-50"
                                                   onClick={() => fetchFullUrls(sub._id)}
                                                   data-testid={`button-show-all-urls-${sub._id}`}
                                                 >
@@ -553,7 +553,7 @@ export default function IndexNowMonitoring() {
                                                 <Button
                                                   size="sm"
                                                   variant="outline"
-                                                  className="h-7 px-2 text-xs border-gray-700 text-gray-200 hover:bg-gray-800"
+                                                  className="h-7 px-2 text-xs border-gray-200 text-gray-200 hover:bg-gray-50"
                                                   onClick={() => downloadFullUrls(sub._id, fullState.data.urls)}
                                                   data-testid={`button-download-urls-${sub._id}`}
                                                 >
@@ -592,32 +592,32 @@ export default function IndexNowMonitoring() {
         </Card>
 
         {/* Filters and Table */}
-        <Card className="bg-[#1A1A1A] border-gray-800">
+        <Card className="bg-white border-gray-200">
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
-                <CardTitle className="text-white">Submission Logs</CardTitle>
-                <CardDescription className="text-gray-400">
+                <CardTitle className="text-gray-900">Submission Logs</CardTitle>
+                <CardDescription className="text-gray-500">
                   Recent IndexNow submissions with details
                 </CardDescription>
               </div>
               
               <div className="flex gap-3">
                 <Select value={hostFilter} onValueChange={setHostFilter}>
-                  <SelectTrigger className="w-[180px] bg-[#0E0E0E] border-gray-700 text-white">
+                  <SelectTrigger className="w-[180px] bg-white border-gray-200 text-gray-900">
                     <SelectValue placeholder="Filter by host" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="all">All Hosts</SelectItem>
                     <SelectItem value="themegaradio.com">themegaradio.com</SelectItem>
                   </SelectContent>
                 </Select>
 
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-[160px] bg-[#0E0E0E] border-gray-700 text-white">
+                  <SelectTrigger className="w-[160px] bg-white border-gray-200 text-gray-900">
                     <SelectValue placeholder="Filter by status" />
                   </SelectTrigger>
-                  <SelectContent className="bg-[#1A1A1A] border-gray-700">
+                  <SelectContent className="bg-white border-gray-200">
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="success">Success</SelectItem>
                     <SelectItem value="failed">Failed</SelectItem>
@@ -628,35 +628,35 @@ export default function IndexNowMonitoring() {
           </CardHeader>
           <CardContent>
             {logsLoading ? (
-              <div className="text-center py-8 text-gray-400">Loading logs...</div>
+              <div className="text-center py-8 text-gray-500">Loading logs...</div>
             ) : !logs || logs.length === 0 ? (
-              <div className="text-center py-8 text-gray-400">No logs found</div>
+              <div className="text-center py-8 text-gray-500">No logs found</div>
             ) : (
               <div className="overflow-x-auto">
                 <Table>
                   <TableHeader>
-                    <TableRow className="border-gray-800 hover:bg-[#0E0E0E]">
-                      <TableHead className="text-gray-400">Timestamp</TableHead>
-                      <TableHead className="text-gray-400">Host</TableHead>
-                      <TableHead className="text-gray-400">URLs</TableHead>
-                      <TableHead className="text-gray-400">Status</TableHead>
-                      <TableHead className="text-gray-400">Trigger</TableHead>
-                      <TableHead className="text-gray-400">Response Time</TableHead>
+                    <TableRow className="border-gray-200 hover:bg-white">
+                      <TableHead className="text-gray-500">Timestamp</TableHead>
+                      <TableHead className="text-gray-500">Host</TableHead>
+                      <TableHead className="text-gray-500">URLs</TableHead>
+                      <TableHead className="text-gray-500">Status</TableHead>
+                      <TableHead className="text-gray-500">Trigger</TableHead>
+                      <TableHead className="text-gray-500">Response Time</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {logs.map((log) => (
                       <TableRow 
                         key={log._id} 
-                        className="border-gray-800 hover:bg-[#0E0E0E]"
+                        className="border-gray-200 hover:bg-white"
                       >
-                        <TableCell className="text-white">
+                        <TableCell className="text-gray-900">
                           {formatTimestamp(log.timestamp)}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {log.host}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {log.urlCount} URLs
                         </TableCell>
                         <TableCell>
@@ -675,10 +675,10 @@ export default function IndexNowMonitoring() {
                             {log.status}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-gray-300 capitalize">
+                        <TableCell className="text-gray-600 capitalize">
                           {log.trigger.replace(/-/g, ' ')}
                         </TableCell>
-                        <TableCell className="text-gray-300">
+                        <TableCell className="text-gray-600">
                           {formatResponseTime(log.responseTime)}
                         </TableCell>
                       </TableRow>

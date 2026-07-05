@@ -1,3 +1,4 @@
+import { AdminPage } from "./AdminPage";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -153,14 +154,10 @@ export default function FooterSocialMediaAdmin() {
   }
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Footer Social Media Links</h1>
-        <Button onClick={() => { setEditingId(null); setShowForm(true); }}>
-          <Plus className="w-4 h-4 mr-2" />
-          Add Social Media Link
-        </Button>
-      </div>
+    <AdminPage
+      title="Footer Social Media Links"
+      actions={<Button onClick={() => { setEditingId(null); setShowForm(true); }}><Plus className="w-4 h-4 mr-2" />Add Social Media Link</Button>}
+    >
 
       {showForm && (
         <Card>
@@ -272,6 +269,6 @@ export default function FooterSocialMediaAdmin() {
           </CardContent>
         </Card>
       )}
-    </div>
+    </AdminPage>
   );
 }

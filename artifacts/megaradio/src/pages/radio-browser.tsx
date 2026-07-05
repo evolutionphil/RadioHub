@@ -258,7 +258,7 @@ export default function RadioBrowser() {
   };
 
   return (
-    <div className="container mx-auto p-3 sm:p-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="mb-6 sm:mb-8">
         <h1 className="text-2xl sm:text-3xl font-bold mb-2 text-gray-900 dark:text-gray-100">Radio-Browser API Integration</h1>
         <p className="text-sm sm:text-base text-muted-foreground">
