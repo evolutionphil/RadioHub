@@ -336,7 +336,7 @@ export default function LogoManagement() {
   const progressPercent = effectiveTotal > 0 && jobStatus ? Math.min(100, Math.round((jobStatus.processed / effectiveTotal) * 100)) : 0;
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">

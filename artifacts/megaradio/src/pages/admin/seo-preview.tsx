@@ -49,7 +49,7 @@ export default function SeoPreview() {
   const hreflangCount = seoData?.seoTags?.hreflangs?.length || 0;
 
   return (
-    <div className="container mx-auto p-6 max-w-7xl" data-testid="admin-seo-preview">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6" data-testid="admin-seo-preview">
       <div className="mb-8">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-3">

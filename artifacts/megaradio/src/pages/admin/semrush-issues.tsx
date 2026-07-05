@@ -122,7 +122,7 @@ export default function SemrushIssues() {
   const totalPages = issues ? Math.ceil(issues.total / issues.limit) : 1;
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 space-y-5 sm:space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">SEMrush Site Audit Issues</h1>
