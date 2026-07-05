@@ -232,7 +232,18 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     if (!((req.path.startsWith('/api/') || req.path === '/' || !req.path.includes('.')))) return next();
     if (VISITOR_SKIP_PREFIXES.some(p => req.path.startsWith(p))) return next();
     if (mongoose.connection.readyState !== 1) return next();
-    const ipAddress = req.ip || req.connection.remoteAddress || 'unknown';
+    // VISITOR-COUNT FIX (2026-07-05): req.ip behind Cloudflare → Railway →
+    // web-proxy → api is the LAST proxy hop (trust proxy is 1, the chain is
+    // 3+), so every real visitor upserted the SAME VisitorSession row and
+    // the dashboard showed 1 active / 1 today / 1 week forever while
+    // Cloudflare reported 30k+ uniques. Cloudflare stamps the true client
+    // address in CF-Connecting-IP on every request and intermediate proxies
+    // pass headers through — prefer it, then the first X-Forwarded-For
+    // entry, then req.ip as the last resort.
+    const ipAddress =
+      (req.headers['cf-connecting-ip'] as string | undefined)?.trim() ||
+      (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
+      req.ip || req.connection.remoteAddress || 'unknown';
     VisitorSession.findOneAndUpdate(
       { ipAddress },
       { $set: { lastActiveDate: new Date(), userAgent: req.get('user-agent') }, $inc: { visitCount: 1 } },
