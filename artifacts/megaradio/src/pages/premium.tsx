@@ -1,14 +1,16 @@
 import { useState, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { motion, AnimatePresence, useInView } from "framer-motion";
+import { motion, AnimatePresence, useInView, MotionConfig } from "framer-motion";
 import {
   Crown, Sparkles, Check, ChevronDown, Loader2,
   Volume2, Zap, Radio, Music, Tv, Star, Shield, Wifi, Smartphone,
+  Lock, BadgeCheck,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 import { useSubscriptionCheckout } from "@/hooks/useSubscriptionCheckout";
 import { useLocation } from "wouter";
+import { useTranslation } from "@/hooks/useTranslation";
 import { FALLBACK_PLANS, PLAN_LABEL, fmtPrice, type PlanInfo } from "@/lib/premium";
 
 // ── Constants ────────────────────────────────────────────────────────────────
@@ -217,7 +219,7 @@ function PlanCard({ plan, selected, recommended, onSelect }: PlanCardProps) {
         {price ? (
           <>
             <div className="flex items-end gap-1">
-              <span className="text-4xl sm:text-5xl font-black tracking-tight text-white leading-none">
+              <span className="text-4xl sm:text-5xl font-black tracking-tight text-white leading-none tabular-nums">
                 {price}
               </span>
               {period && (
@@ -307,6 +309,7 @@ function AlreadyPremium({ plan }: { plan: string }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function PremiumPage() {
+  const { t } = useTranslation();
   const { user, isLoading: authLoading } = useAuth();
   const { isPremium, plan: currentPlan } = usePremiumStatus();
   const [selectedPlan, setSelectedPlan] = useState(RECOMMENDED);
@@ -342,6 +345,7 @@ export default function PremiumPage() {
   }
 
   return (
+    <MotionConfig reducedMotion="user">
     <div className="min-h-screen bg-[#080808] text-white selection:bg-[#FF4199]/30">
 
       {/* ── Ambient background ──────────────────────────────────────────────── */}
@@ -379,16 +383,16 @@ export default function PremiumPage() {
             className="text-center mb-3"
           >
             <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.1]">
-              25,000+ stations.{" "}
+              {t("premium_hero_stations", "60,000+ stations.")}{" "}
               <span
                 className="bg-gradient-to-r from-[#FF4199] via-[#FF6B35] to-[#FF4199] bg-clip-text text-transparent"
                 style={{ backgroundSize: "200%" }}
               >
-                Zero ads.
+                {t("premium_hero_zero_ads", "Zero ads.")}
               </span>
             </h1>
             <p className="text-white/45 text-base sm:text-lg mt-2.5 max-w-lg mx-auto">
-              Pick a plan and start listening ad-free in under a minute.
+              {t("premium_hero_sub", "Pick a plan and start listening ad-free in under a minute.")}
             </p>
           </motion.div>
 
@@ -448,18 +452,18 @@ export default function PremiumPage() {
                 ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing…</>
                 : user
                   ? <><Sparkles className="w-5 h-5" /> Get {selectedPlanInfo?.label ?? "Premium"}</>
-                  : "Sign In to Subscribe"
+                  : t("premium_cta_signin", "Sign In to Subscribe")
               }
             </button>
 
             {!user && (
               <p className="text-center text-xs text-white/30 mt-3">
-                Already have an account?{" "}
+                {t("premium_have_account", "Already have an account?")}{" "}
                 <a
                   href={`/login?returnTo=${encodeURIComponent("/premium")}`}
                   className="text-[#FF4199] hover:underline"
                 >
-                  Sign in
+                  {t("premium_signin", "Sign in")}
                 </a>
               </p>
             )}
@@ -474,9 +478,27 @@ export default function PremiumPage() {
               </motion.p>
             )}
 
-            <p className="text-center text-xs text-white/20 mt-3 flex items-center justify-center gap-1">
-              <Shield className="w-3 h-3" />
-              Secure payment · SSL encrypted · Cancel anytime
+            {/* Payment trust row — a payment page must answer "is this safe?"
+                at the exact moment of commitment. All claims are true: Paddle
+                is our Merchant of Record and PCI DSS Level 1 certified; card
+                data never touches our servers. */}
+            <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+              {[
+                { icon: Lock,       label: t("premium_trust_ssl", "SSL encrypted") },
+                { icon: Shield,     label: t("premium_trust_paddle", "Secured by Paddle") },
+                { icon: BadgeCheck, label: t("premium_trust_cancel", "Cancel anytime") },
+              ].map(({ icon: Icon, label }) => (
+                <div key={label} className="flex flex-col items-center gap-1.5 rounded-xl bg-white/[0.02] border border-white/[0.05] px-2 py-3">
+                  <Icon className="w-4 h-4 text-[#FF4199]/80" />
+                  <span className="text-[11px] leading-tight text-white/40">{label}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-center text-[11px] text-white/25 mt-3 leading-relaxed">
+              {t("premium_legal_processor", "Payments are processed by Paddle.com as Merchant of Record — your card details never reach our servers.")}{" "}
+              <a href="/terms-and-conditions" className="underline hover:text-white/50 transition-colors">{t("footer_terms", "Terms")}</a>
+              {" · "}
+              <a href="/privacy-policy" className="underline hover:text-white/50 transition-colors">{t("footer_privacy", "Privacy")}</a>
             </p>
           </motion.div>
         </section>
@@ -486,9 +508,9 @@ export default function PremiumPage() {
           <section className="max-w-2xl mx-auto px-4 sm:px-6 py-10">
             <div className="grid grid-cols-3 divide-x divide-white/[0.07] bg-white/[0.025] border border-white/[0.06] rounded-2xl overflow-hidden">
               {[
-                { value: "500K+", label: "Listeners" },
-                { value: "25K+",  label: "Stations" },
-                { value: "4.8★",  label: "App Rating" },
+                { value: "60,000+", label: t("premium_stat_stations", "Stations") },
+                { value: "120+",    label: t("premium_stat_countries", "Countries") },
+                { value: "14",      label: t("premium_stat_languages", "Languages") },
               ].map(({ value, label }) => (
                 <div key={label} className="flex flex-col items-center py-5 px-3">
                   <span className="text-2xl sm:text-3xl font-black text-white">{value}</span>
@@ -503,7 +525,7 @@ export default function PremiumPage() {
         <Reveal>
           <section className="max-w-4xl mx-auto px-4 sm:px-6 pb-16">
             <h2 className="text-xl sm:text-2xl font-bold text-center mb-7">
-              Everything in{" "}
+              {t("premium_features_title", "Everything in")}{" "}
               <span className="bg-gradient-to-r from-[#FF4199] to-[#FF6B35] bg-clip-text text-transparent">
                 Premium
               </span>
@@ -531,7 +553,7 @@ export default function PremiumPage() {
         <Reveal>
           <section className="max-w-2xl mx-auto px-4 sm:px-6 pb-16">
             <h2 className="text-xl sm:text-2xl font-bold text-center mb-7">
-              Common questions
+              {t("premium_faq_title", "Common questions")}
             </h2>
             <div className="bg-white/[0.025] border border-white/[0.06] rounded-2xl px-5 sm:px-7">
               {FAQ_ITEMS.map(item => (
@@ -549,20 +571,20 @@ export default function PremiumPage() {
                 <div className="absolute -bottom-12 left-1/2 -translate-x-1/2 w-72 h-36 bg-[#FF4199]/15 blur-[70px]" />
               </div>
               <Crown className="w-9 h-9 text-[#FF4199] mx-auto mb-4" />
-              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">Ready to go ad-free?</h3>
+              <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">{t("premium_bottom_title", "Ready to go ad-free?")}</h3>
               <p className="text-white/40 text-sm mb-6">
-                Join 500,000+ listeners who already switched.
+                {t("premium_bottom_sub", "Listeners in 120+ countries already switched.")}
               </p>
               <button
                 onClick={() => checkout(selectedPlan)}
                 disabled={loading}
-                className="w-full h-13 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-[#FF4199]/25"
+                className="w-full h-14 rounded-2xl font-bold text-base text-white bg-gradient-to-r from-[#FF4199] to-[#FF6B35] hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-xl shadow-[#FF4199]/25"
               >
                 {loading
                   ? <><Loader2 className="w-5 h-5 animate-spin" /> Processing…</>
                   : user
                     ? <><Sparkles className="w-5 h-5" /> Get {selectedPlanInfo?.label ?? "Premium"}</>
-                    : "Sign In to Subscribe"
+                    : t("premium_cta_signin", "Sign In to Subscribe")
                 }
               </button>
             </div>
@@ -600,5 +622,6 @@ export default function PremiumPage() {
       </div>
 
     </div>
+    </MotionConfig>
   );
 }

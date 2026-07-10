@@ -135,8 +135,10 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
           return;
         }
         const { priceId, customData, successUrl, environment } = data.paddleCheckout;
-        // Debug: log everything passed to Paddle so misconfig is immediately visible.
-        console.log("[Paddle] checkout config:", {
+        // Debug: log config in DEV only — a payment page must not print
+        // checkout internals (token prefix, price IDs, customData with user
+        // ids) to every visitor's production console. (2026-07-05)
+        if (import.meta.env.DEV) console.log("[Paddle] checkout config:", {
           environment,
           priceId,
           clientTokenPrefix: paddleToken?.slice(0, 12) + "...",
@@ -162,7 +164,7 @@ export function useSubscriptionCheckout(opts: CheckoutOptions = {}): CheckoutRes
               // Don't reset loading — page is navigating away
             }
             if (event.name === "checkout.error") {
-              console.error("[Paddle] checkout.error full event:", JSON.stringify(event));
+              if (import.meta.env.DEV) console.error("[Paddle] checkout.error full event:", JSON.stringify(event));
               const data = event.data as any;
               const detail = data?.detail || data?.message || data?.type || data?.code
                 || (typeof data === "string" ? data : null)
