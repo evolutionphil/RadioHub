@@ -3,7 +3,38 @@
 Date: 2026-09-07. Local implementation and verification are complete. No production
 database was migrated, deleted or switched, and no production deployment occurred.
 
-## Final local evidence
+## Automatic first-installation verification (2026-09-07)
+
+The new guarded schema launcher and isolated one-time importer were verified on
+disposable loopback PostgreSQL 17.11 and MongoDB 8.2.6:
+
+- Complete API suite: **869 passed, 0 failed, 0 skipped** (includes the new
+  first-start, packaging and real Mongo-to-PostgreSQL test).
+- All 24 immutable schema migrations installed successfully on an empty database;
+  a second run skipped all 24 without resetting data.
+- Real initializer integration passed both from source and from the flat
+  production operator package with plain Node (no tsx/repository schema fallback).
+  Two concurrent initializers created exactly one completed import. Six synthetic
+  source collections exercised users, stations, favorites, translations and an
+  unknown collection containing exact BSON integer/decimal/binary/date values.
+- Subsequent initialization without Mongo credentials preserved newer PostgreSQL
+  edits and did not add another migration run. First write authority stayed
+  blocked until verification; existing authority prevented replay.
+- Fresh API/web bundles and flat production packages passed all 10 real smoke
+  checks through the new launcher, including readiness, SQL reads, proxy/SEO,
+  SPA assets and the external-network prohibition. Each application package had
+  377 production packages and zero Mongo dependencies (API 2609 / web 1188 build
+  inputs). The Mongo driver exists only in the isolated operator package.
+- Workspace and offline-package typechecks passed. The API-access outage fixture
+  was isolated from `public` so an already-installed public table cannot hide its
+  intentionally missing test table; the final complete suite passed afterward.
+
+No real source data, Railway variables, deployments or credentials were changed.
+The actual Linux Docker images were not built locally (Docker unavailable).
+Railway wiring, genuine source/target writer quiescence and independently verified
+source backup remain required before live import. See POSTGRES_AUTOMATIC_SETUP.md.
+
+## Earlier migration baseline
 
 Environment: Windows, Node 24.16, pnpm 11.19 and PostgreSQL 17.11. SQL tests ran on
 an explicitly disposable, loopback-only cluster with isolated per-suite schemas.

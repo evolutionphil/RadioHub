@@ -5,6 +5,24 @@ those modes are now rejected. This document is a deployment procedure, not
 approval that customer-data migration and production verification have occurred.
 No production data has been changed.
 
+## Automatic first installation
+
+See [POSTGRES_AUTOMATIC_SETUP.md](POSTGRES_AUTOMATIC_SETUP.md) for the one-time
+Railway operator service (`Dockerfile.migration`, `railway.migration.json`). It
+creates the schema, reads the stopped MongoDB primary once, imports all data and
+verifies it. Successful runs and existing PostgreSQL authority are skipped on
+later starts without contacting MongoDB. A source URL, real writer quiescence
+and an independently recoverable backup remain prerequisites; the script cannot
+infer or create these external conditions from `DATABASE_URL`.
+
+API/web Docker entrypoints now automatically apply immutable schema migrations
+and wait for a verified import before loading the application. The same readiness
+guard runs under the data-import lock before recording first write authority.
+The default `POSTGRES_INIT_MODE=import` protects existing installations.
+`POSTGRES_INIT_MODE=empty` is an explicit new-installation-only alternative, not a
+workaround for pending/failed imports. Existing PostgreSQL authority allows normal
+restarts without reimport. The old manual operator sequence below remains valid.
+
 ## Application configuration
 
 Set `DATABASE_URL` (or `POSTGRES_URL`) to a PostgreSQL URL and a strong

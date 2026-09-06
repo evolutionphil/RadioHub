@@ -19,7 +19,6 @@ const batchSize = Math.max(
   Math.min(1_000, Number.parseInt(process.env.MIGRATION_BATCH_SIZE || "250", 10)),
 );
 const phaseArgument = process.argv.find((value) => value.startsWith("--phase="))?.split("=", 2)[1];
-const mode = (phaseArgument || process.env.MIGRATION_PHASE || "all").toLowerCase();
 const allowedPhases = new Set(["mirror", "normalize", "verify", "all"]);
 
 function migrationPostgresSsl(): false | { rejectUnauthorized: boolean; ca?: string } {
@@ -1700,7 +1699,12 @@ export function validateMigrationSourcePreflight(
   }
 }
 
-async function main(): Promise<void> {
+export async function runMigration(options: {
+  phase?: string;
+  forcePrimary?: boolean;
+  beforeWrite?: (client: pg.PoolClient) => Promise<boolean>;
+} = {}): Promise<void> {
+  const mode = (options.phase || phaseArgument || process.env.MIGRATION_PHASE || "all").toLowerCase();
   if (!allowedPhases.has(mode)) {
     throw new Error(`MIGRATION_PHASE must be one of ${[...allowedPhases].join(", ")}`);
   }
@@ -1732,9 +1736,13 @@ async function main(): Promise<void> {
   try {
     migrationLockClient = await postgres.connect();
     await migrationLockClient.query("SELECT pg_advisory_lock(hashtext('radiohub-data-migration'))");
+    // Automatic bootstrap must re-check durable completion under the SAME lock
+    // as imports/runtime authority, not only under its outer coordinator lock.
+    if (mode !== "verify" && options.beforeWrite && !await options.beforeWrite(migrationLockClient)) return;
     if (mode !== "verify") await assertNoPostgresWriteAuthority(migrationLockClient);
     if (mongoUrl) {
       const finalReconciliation =
+        options.forcePrimary === true ||
         process.env.MIGRATION_PRUNE === "true" ||
         process.env.DATABASE_MAINTENANCE_READ_ONLY === "true";
       mongoClient = new MongoClient(mongoUrl, {
@@ -1819,7 +1827,7 @@ async function main(): Promise<void> {
 
 const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : "";
 if (import.meta.url === invokedPath) {
-  main().catch((error) => {
+  runMigration().catch((error) => {
     console.error(error);
     process.exitCode = 1;
   });

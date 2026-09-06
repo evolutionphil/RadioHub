@@ -148,6 +148,8 @@ export function childEnvironment(
     NODE_ENV: "production",
     DATABASE_URL: databaseUrl,
     POSTGRES_SSL: "disable",
+    // This harness creates a disposable native fixture, not a customer import.
+    POSTGRES_INIT_MODE: "empty",
     POSTGRES_POOL_MAX: "5",
     POSTGRES_CONNECT_TIMEOUT_MS: "3000",
     POSTGRES_STATEMENT_TIMEOUT_MS: "10000",
@@ -169,7 +171,8 @@ function launch(directory, entry, environment) {
     [
       "--import",
       pathToFileURL(path.join(here, "production-smoke-network-guard.mjs")).href,
-      path.join(directory, "dist", entry),
+      path.join(directory, "scripts", "start-postgres.mjs"),
+      "dist/" + entry,
     ],
     {
       cwd: directory,

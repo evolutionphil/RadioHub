@@ -9,6 +9,15 @@ jobs:
   postgres-migration:
     runs-on: ubuntu-latest
     services:
+      mongo:
+        image: mongo:8.0
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping:1}).ok'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
       postgres:
         image: postgres:17-alpine
         env:
@@ -26,7 +35,8 @@ jobs:
       DATABASE_URL: postgresql://radiohub:radiohub_test@localhost:5432/radiohub_test
       POSTGRES_SSL: disable
       POSTGRES_INTEGRATION_TEST: "true"
-      PG_TEST_DATABASE_URL: postgresql://radiohub:radiohub_test@localhost:5432/radiohub_test
+      PG_TEST_DATABASE_URL: postgresql://radiohub:radiohub_test@127.0.0.1:5432/radiohub_test
+      MONGO_TEST_URI: mongodb://127.0.0.1:27017
       PORT: "5000"
       BASE_PATH: /
     steps:
@@ -64,6 +74,17 @@ jobs:
           ENTRY=src/index-web.ts pnpm --filter @workspace/api-server run build
           pnpm --filter @workspace/api-server deploy --prod --legacy "$RUNNER_TEMP/radiohub-web-production"
           cp -r artifacts/megaradio/dist/public "$RUNNER_TEMP/radiohub-web-production/dist/public"
+          cp -r lib/db/migrations "$RUNNER_TEMP/radiohub-web-production/db-migrations"
+      - name: Build isolated one-time importer (never packaged in API or web)
+        run: |
+          node artifacts/api-server/scripts/build-postgres-bootstrap.mjs
+          pnpm --filter @workspace/legacy-migration deploy --prod --legacy "$RUNNER_TEMP/radiohub-migration-production"
+          cp -r lib/db/migrations "$RUNNER_TEMP/radiohub-migration-production/db-migrations"
+      - name: Verify real one-time import using the packaged operator, without tsx
+        run: >-
+          PG_BOOTSTRAP_TEST_PACKAGE="$RUNNER_TEMP/radiohub-migration-production"
+          pnpm --filter @workspace/api-server exec tsx --test --test-timeout=90000
+          tests/postgres-auto-bootstrap.integration.test.ts
       - name: Boot real production processes with PostgreSQL and no external egress
         env:
           POSTGRES_PRODUCTION_SMOKE: "true"

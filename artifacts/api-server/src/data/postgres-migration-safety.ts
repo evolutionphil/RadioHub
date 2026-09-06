@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { validatePostgresStoreConfiguration } from './postgres-store-config';
+import { assertPostgresInitializationReady } from '../../scripts/postgres-initialization.mjs';
 
 const writeStores = [
   "USER_STORE", "AUTH_STORE", "ENGAGEMENT_STORE", "NOTIFICATION_STORE",
@@ -43,6 +44,10 @@ export async function recordPostgresWriteAuthority(pool: pg.Pool, environment: N
     // Same lock as the migration runner: startup cannot change authority midway
     // through a snapshot import. The operator must still stop existing writers.
     await client.query("SELECT pg_advisory_xact_lock(hashtext('radiohub-data-migration'))");
+    // A newly provisioned database must not become writable before its one-time
+    // import is verified. Keep this check inside the import/cutover lock, even
+    // when the deployment launcher already checked readiness.
+    await assertPostgresInitializationReady(client, environment);
     const previous = await client.query<{ domain: string }>("SELECT domain FROM database_write_authority");
     const rollback = previous.rows.filter((row) => !domains.includes(row.domain));
     if (rollback.length) {

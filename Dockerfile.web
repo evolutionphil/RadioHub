@@ -44,6 +44,7 @@ RUN ENTRY=src/index-web.ts pnpm --filter @workspace/api-server run build
 RUN pnpm --filter @workspace/api-server deploy --prod --legacy /deploy
 RUN cp -r /app/artifacts/megaradio/dist/public /deploy/dist/public \
     && (cp /app/artifacts/api-server/src/fontconfig.conf /deploy/fontconfig.conf 2>/dev/null || true)
+RUN cp -r /app/lib/db/migrations /deploy/db-migrations
 
 FROM node:24-slim AS production
 
@@ -63,4 +64,4 @@ EXPOSE 443
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD node -e "const http=require('http');http.get('http://localhost:'+(process.env.PORT||3000)+'/readyz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));"
 
-CMD ["node", "--max-old-space-size=10240", "--max-semi-space-size=96", "--expose-gc", "dist/index-web.mjs"]
+CMD ["node", "--max-old-space-size=10240", "--max-semi-space-size=96", "--expose-gc", "scripts/start-postgres.mjs", "dist/index-web.mjs"]

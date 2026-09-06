@@ -1,0 +1,41 @@
+# One-time OPERATOR service. Never use this Dockerfile for API, web or proxy.
+# Only this service receives MONGODB_URI. Application images stay Mongo-free.
+FROM node:24-slim AS build
+WORKDIR /app
+RUN apt-get update && apt-get install -y python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+RUN corepack enable && corepack prepare pnpm@11.19.0 --activate
+
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY tsconfig.base.json tsconfig.json ./
+COPY artifacts/api-server/package.json ./artifacts/api-server/
+COPY artifacts/megaradio/package.json ./artifacts/megaradio/
+COPY lib/db-shared/package.json ./lib/db-shared/
+COPY lib/legacy-migration/package.json ./lib/legacy-migration/
+COPY lib/seo-shared/package.json ./lib/seo-shared/
+COPY lib/api-client-react/package.json ./lib/api-client-react/
+COPY lib/api-zod/package.json ./lib/api-zod/
+COPY lib/api-spec/package.json ./lib/api-spec/
+COPY lib/db/package.json ./lib/db/
+COPY scripts/package.json ./scripts/
+# esbuild is an existing build-time API dependency. Nothing from the API graph
+# is copied into the final image: it receives only the operator's prod graph.
+RUN pnpm install --frozen-lockfile --filter @workspace/api-server...
+COPY lib/legacy-migration/src ./lib/legacy-migration/src
+COPY lib/db/migrations ./lib/db/migrations
+COPY artifacts/api-server/src/data ./artifacts/api-server/src/data
+COPY artifacts/api-server/scripts ./artifacts/api-server/scripts
+RUN node artifacts/api-server/scripts/build-postgres-bootstrap.mjs
+RUN pnpm --filter @workspace/legacy-migration deploy --prod --legacy /deploy
+
+FROM node:24-slim AS migration
+RUN apt-get update && apt-get install -y ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /deploy/package.json ./package.json
+COPY --from=build /deploy/node_modules ./node_modules
+COPY --from=build /app/lib/legacy-migration/dist ./dist
+COPY --from=build /app/lib/db/migrations ./db-migrations
+ENV NODE_ENV=production
+# A successful job exits 0. Subsequent runs inspect PG and skip the old source.
+CMD ["node", "dist/bootstrap.mjs"]

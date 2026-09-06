@@ -12,6 +12,7 @@
     "./station-change-stream-cdc": "./src/station-change-stream-cdc.ts"
   },
   "scripts": {
+    "bootstrap": "tsx src/auto-bootstrap-postgres.ts",
     "migrate": "tsx src/migrate-mongo-to-postgres.ts",
     "verify": "tsx src/migrate-mongo-to-postgres.ts --phase=verify",
     "typecheck": "tsc -p tsconfig.json --noEmit"

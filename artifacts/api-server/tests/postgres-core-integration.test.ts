@@ -103,7 +103,9 @@ describe("PostgreSQL user, engagement and migration safety integration", { skip:
   it("persists cutover authority, blocks snapshot replay and rejects implicit rollback", async () => {
     const client = await pool.connect();
     try { await assertNoPostgresWriteAuthority(client); } finally { client.release(); }
-    await recordPostgresWriteAuthority(pool, { USER_STORE: "postgres" });
+    await assert.rejects(recordPostgresWriteAuthority(pool, { USER_STORE: "postgres" }), /initialization|import|bootstrap/i);
+    assert.equal((await pool.query("SELECT count(*)::int AS count FROM database_write_authority")).rows[0].count, 0);
+    await recordPostgresWriteAuthority(pool, { USER_STORE: "postgres", POSTGRES_INIT_MODE: "empty" });
     await recordPostgresWriteAuthority(pool, { USER_STORE: "postgres" });
     const check = await pool.connect();
     try { await assert.rejects(assertNoPostgresWriteAuthority(check), /durable PostgreSQL write authority/); }

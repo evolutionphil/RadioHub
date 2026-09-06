@@ -24,7 +24,9 @@ describe('Native PostgreSQL developer API access', { skip: !connectionString }, 
     await admin.query(`CREATE SCHEMA "${schema}"`);
     schemaCreated = true;
     const url = new URL(connectionString!);
-    url.searchParams.set('options', `-c search_path=${schema},public`);
+    // This fixture needs no public extension functions. A public.api_keys table
+    // would otherwise mask the intentional missing-table outage test below.
+    url.searchParams.set('options', `-c search_path=${schema}`);
     process.env.DATABASE_URL = url.toString();
     process.env.POSTGRES_SSL = ssl ? 'require' : 'disable';
     const runtime = await import('../src/postgres-runtime');

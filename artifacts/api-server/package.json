@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
-    "start": "node --enable-source-maps ./dist/index.mjs",
+    "start": "node --enable-source-maps scripts/start-postgres.mjs dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "tsx --experimental-test-module-mocks --test --test-concurrency=4 --test-timeout=90000 tests/**/*.test.ts",
     "backfill:tr-logos": "tsx src/scripts/backfill-tr-logos.ts",
@@ -101,6 +101,8 @@
   },
   "files": [
     "dist",
-    "scripts/apply-postgres-migrations.mjs"
+    "scripts/apply-postgres-migrations.mjs",
+    "scripts/postgres-initialization.mjs",
+    "scripts/start-postgres.mjs"
   ]
 }
