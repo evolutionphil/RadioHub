@@ -18,6 +18,21 @@ const apiRoot = path.resolve(
 );
 const repository = path.resolve(apiRoot, "../..");
 
+test("cold installs explicitly deny the optional core-js hook without weakening build security", () => {
+  const workspace = readFileSync(
+    path.join(repository, "pnpm-workspace.yaml"),
+    "utf8",
+  );
+  const allowBuilds = workspace.match(
+    /^allowBuilds:\r?\n((?:[ \t]+[^\r\n]*\r?\n|\r?\n)*)/m,
+  )?.[1];
+  assert.ok(allowBuilds, "Dependency lifecycle decisions must remain explicit");
+  assert.match(allowBuilds, /^  core-js: false[ \t]*\r?$/m);
+  assert.doesNotMatch(workspace, /^strictDepBuilds:\s*false\b/m);
+  assert.doesNotMatch(workspace, /^dangerouslyAllowAllBuilds:\s*true\b/m);
+  assert.match(workspace, /^minimumReleaseAge: 1440[ \t]*\r?$/m);
+});
+
 test("production boundary rejects Mongo drivers, archived adapters and pnpm paths", () => {
   for (const forbidden of [
     "mongoose",

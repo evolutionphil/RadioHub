@@ -70,6 +70,8 @@ autoInstallPeers: false
 
 allowBuilds:
   '@swc/core': true
+  # core-js only prints a donation banner; explicitly deny this optional hook.
+  core-js: false
   # Production native adapters: allow only their platform-binary setup hooks.
   bcrypt: true
   esbuild: true
