@@ -1,13 +1,13 @@
+import { getAdminSetting, pgAdminSettings } from '../data/postgres-admin-settings-store';
 import { logger } from '../utils/logger';
-import {
-  AdminSetting,
-  User,
-  UserNotification,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgCreateNotification } from '../data/postgres-notification-store';
+import { pgAdminUserIds } from '../data/postgres-user-store';
 import type {
   GenreWhitelistPushStatus,
   PushStepResult,
 } from '../seo/genre-whitelist-push-status';
+
+async function adminUserIds(): Promise<string[]> { return pgAdminUserIds(); }
 
 /**
  * Notifier for the "push the genre whitelist to search engines" pipeline
@@ -187,12 +187,11 @@ async function postWebhook(
       signal: controller.signal,
     });
     if (!res.ok) {
-      logger.warn(
-        `⚠️  Genre whitelist push alert webhook returned ${res.status} ${res.statusText}`,
-      );
+      throw new Error(`Genre whitelist push alert webhook returned ${res.status} ${res.statusText}`);
     }
   } catch (err) {
     logger.warn('⚠️  Genre whitelist push alert webhook POST failed:', err);
+    throw err;
   } finally {
     clearTimeout(timeout);
   }
@@ -202,8 +201,8 @@ async function notifyAdminsInApp(
   status: GenreWhitelistPushStatus,
   failed: FailedPushStep[],
 ): Promise<number> {
-  const admins = await User.find({ role: 'admin' }, { _id: 1 }).lean();
-  if (admins.length === 0) return 0;
+  const adminIds = await adminUserIds();
+  if (adminIds.length === 0) return 0;
 
   const slugSummary =
     status.affectedSlugs.length === 0
@@ -214,8 +213,8 @@ async function notifyAdminsInApp(
   const stepNames = failed.map((f) => f.step).join(', ');
   const message = `Genre whitelist push (${status.trigger}) failed at: ${stepNames}. Slugs: ${slugSummary}.`;
 
-  const docs = admins.map((a) => ({
-    userId: a._id,
+  const docs = adminIds.map((userId) => ({
+    userId,
     type: 'system' as const,
     title: '⚠️ Genre whitelist push failed',
     message,
@@ -230,8 +229,8 @@ async function notifyAdminsInApp(
     },
   }));
 
-  await UserNotification.insertMany(docs, { ordered: false });
-  return admins.length;
+  await Promise.all(docs.map(doc => pgCreateNotification(doc)));
+  return adminIds.length;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -410,14 +409,14 @@ export async function sendTestWhitelistPushFailureWebhook(
 export async function sendTestWhitelistPushFailureInAppNotification(
   triggeredBy: string | null,
 ): Promise<number> {
-  const admins = await User.find({ role: 'admin' }, { _id: 1 }).lean();
-  if (admins.length === 0) return 0;
+  const adminIds = await adminUserIds();
+  if (adminIds.length === 0) return 0;
   const now = new Date().toISOString();
   const message = triggeredBy
     ? `Test alert triggered by ${triggeredBy} from the admin UI — no real push failed.`
     : 'Test alert triggered from the admin UI — no real push failed.';
-  const docs = admins.map((a) => ({
-    userId: a._id,
+  const docs = adminIds.map((userId) => ({
+    userId,
     type: 'system' as const,
     title: '🧪 Genre whitelist push failure (TEST)',
     message,
@@ -429,8 +428,8 @@ export async function sendTestWhitelistPushFailureInAppNotification(
       triggeredAt: now,
     },
   }));
-  await UserNotification.insertMany(docs, { ordered: false });
-  return admins.length;
+  await Promise.all(docs.map(doc => pgCreateNotification(doc)));
+  return adminIds.length;
 }
 
 /**
@@ -458,28 +457,14 @@ export async function recordWhitelistPushTestResult(input: {
   };
   try {
     const now = new Date();
-    await AdminSetting.findOneAndUpdate(
-      { key: GENRE_WHITELIST_PUSH_LAST_TEST_KEY },
-      {
-        $set: {
-          value: record,
-          updatedAt: now,
-          updatedBy: input.triggeredBy,
-        },
-        $setOnInsert: {
-          createdAt: now,
-          key: GENRE_WHITELIST_PUSH_LAST_TEST_KEY,
-        },
-      },
-      { upsert: true, new: true },
-    );
+    await pgAdminSettings().save({ key: GENRE_WHITELIST_PUSH_LAST_TEST_KEY, value: record, changedBy: input.triggeredBy });
     return record;
   } catch (err) {
     logger.warn(
       '⚠️  Failed to persist last genre-whitelist push test webhook result:',
       err,
     );
-    return null;
+    throw err;
   }
 }
 
@@ -512,16 +497,14 @@ function sanitizeLastTestRecord(value: unknown): WhitelistPushLastTestRecord | n
 
 export async function loadLastWhitelistPushTestResult(): Promise<WhitelistPushLastTestRecord | null> {
   try {
-    const doc = await AdminSetting.findOne({
-      key: GENRE_WHITELIST_PUSH_LAST_TEST_KEY,
-    }).lean();
+    const doc = await getAdminSetting(GENRE_WHITELIST_PUSH_LAST_TEST_KEY);
     return sanitizeLastTestRecord(doc?.value);
   } catch (err) {
     logger.warn(
       '⚠️  Failed to load last genre-whitelist push test webhook result:',
       err,
     );
-    return null;
+    throw err;
   }
 }
 
@@ -541,6 +524,7 @@ const defaultNotifier: GenreWhitelistPushNotifier = async (status, failed) => {
   // Always surface in logs so the alert is visible even with no webhook
   // configured and no admin users in the DB.
   logger.error(`🚨 ${summary}`);
+  const errors:unknown[]=[];
 
   try {
     const recipients = await notifyAdminsInApp(status, failed);
@@ -550,6 +534,7 @@ const defaultNotifier: GenreWhitelistPushNotifier = async (status, failed) => {
       );
     }
   } catch (err) {
+    errors.push(err);
     logger.warn(
       '⚠️  Failed to write genre whitelist push failure in-app notifications:',
       err,
@@ -558,8 +543,9 @@ const defaultNotifier: GenreWhitelistPushNotifier = async (status, failed) => {
 
   const url = process.env.BACKFILL_ALERT_WEBHOOK_URL;
   if (url) {
-    await postWebhook(url, summary, status, failed);
+    try { await postWebhook(url, summary, status, failed); } catch(error) { errors.push(error); }
   }
+  if(errors.length)throw new AggregateError(errors,'Genre whitelist alert delivery failed');
 };
 
 let activeNotifier: GenreWhitelistPushNotifier = defaultNotifier;
@@ -573,8 +559,9 @@ export function setGenreWhitelistPushNotifier(
 export interface NotifyWhitelistPushResult {
   /** Push had at least one failed step. */
   failed: boolean;
-  /** Notifier was actually invoked (i.e. failure not suppressed). */
+  /** Notifier completed successfully (not merely attempted). */
   notified: boolean;
+  deliveryError?:string;
   /** Reason notifier was skipped, if any. */
   suppressedReason?: 'disabled' | 'no-failures' | 'deduped';
   failedSteps: FailedPushStep[];
@@ -623,6 +610,8 @@ export async function notifyWhitelistPushResult(
     await activeNotifier(status, failed);
   } catch (err) {
     logger.error('❌ Genre whitelist push notifier itself threw:', err);
+    if(dedupeCache.get(key)?.at===now)dedupeCache.delete(key);
+    return {failed:true,notified:false,failedSteps:failed,deliveryError:err instanceof Error?err.message:String(err)};
   }
   return { failed: true, notified: true, failedSteps: failed };
 }

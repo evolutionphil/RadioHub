@@ -1,8 +1,12 @@
+import { pgCoverage } from '../data/postgres-coverage-store';
+import { getAdminSetting } from '../data/postgres-admin-settings-store';
+import crypto from 'node:crypto';
+import { pgAdminAux } from '../data/postgres-admin-auxiliary-store';
+import { pgCatalog, pgBlacklistAdd, pgBlacklistGet, pgBlacklistFind, pgBlacklistPage } from '../data/postgres-catalog-store';
+import { pgAdminCatalogPage, pgContentDuplicateGroups, pgDuplicateCityGroups, pgDuplicateStationGroups, pgDatabaseSizeReport, pgPurgeOperationalData } from '../data/postgres-admin-catalog-store';
 import type { Express } from "express";
 import express from "express";
-import mongoose from "mongoose";
 import multer from "multer";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification, AnalyticsEvent, SyncLog, StationDebugLog, BulkDescriptionJob, CoverageSnapshot, AdminSetting, CoverageBackfillStatus, CoverageBackfillRun, SharedComparisonPreset } from '@workspace/db-shared/mongo-schemas';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter, resolveToDbName, dbNameToIso } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -26,11 +30,13 @@ import {
   parseHistoryLimit,
   upsertAdminSettingWithHistory,
 } from "../services/admin-setting-audit";
+import { pgUserManagementStats } from "../data/postgres-user-store";
 
 // AdminSetting key used to record the most recent coverage drop alert
 // acknowledgement (Task #238). The stored value is keyed by snapshotDate
 // so a newer alert automatically un-suppresses the banner.
 const COVERAGE_DROP_ACK_KEY = 'coverage-drop-alert-ack';
+const isCatalogId = (value:unknown):value is string => typeof value==='string' && /^[a-f0-9]{24}$/i.test(value);
 
 // Convert a lowercased city name (e.g. "new york", "san josé") to a
 // title-cased canonical spelling ("New York", "San José"). Used by the
@@ -141,224 +147,39 @@ function cleanupMergeAllJobs() {
 async function runAutoMergeAllJob(jobId: string): Promise<void> {
   const job = mergeAllJobs.get(jobId);
   if (!job) return;
-
-  // Step 1: detect duplicate groups using the same aggregation as
-  // GET /api/admin/stations/duplicates so admins see exactly what the
-  // Duplicates page just listed.
   const minLen = job.threshold >= 0.95 ? 1 : job.threshold >= 0.85 ? 3 : 4;
-  type GroupStation = {
-    _id: mongoose.Types.ObjectId;
-    name: string;
-    url: string;
-    votes: number;
-    country: string;
-    stationuuid?: string;
-  };
-  type DuplicateGroup = {
-    _id: { name: string; country: string };
-    count: number;
-    stations: GroupStation[];
-  };
-  const groups = (await Station.aggregate([
-    {
-      $project: {
-        _id: 1,
-        name: 1,
-        country: 1,
-        url: 1,
-        votes: 1,
-        stationuuid: 1,
-        normalizedName: {
-          $trim: { input: { $toLower: { $ifNull: ['$name', ''] } } },
-        },
-      },
-    },
-    { $match: { $expr: { $gte: [{ $strLenCP: '$normalizedName' }, minLen] } } },
-    {
-      $group: {
-        _id: { name: '$normalizedName', country: { $ifNull: ['$country', ''] } },
-        count: { $sum: 1 },
-        stations: {
-          $push: {
-            _id: '$_id',
-            name: '$name',
-            url: '$url',
-            votes: { $ifNull: ['$votes', 0] },
-            country: '$country',
-            stationuuid: '$stationuuid',
-          },
-        },
-      },
-    },
-    { $match: { count: { $gt: 1 } } },
-    { $sort: { count: -1 } },
-    // No limit — background job must process every duplicate group.
-    { $limit: 50000 },
-  ]).option({ maxTimeMS: 120000, allowDiskUse: true })) as DuplicateGroup[];
-
+  const groups = await pgDuplicateStationGroups(minLen,50000);
   job.progress.totalGroups = groups.length;
-  job.progress.currentStep = job.dryRun
-    ? `Previewing ${groups.length} groups…`
-    : `Merging ${groups.length} groups…`;
-  job.progress.percentage = groups.length === 0 ? 100 : 1;
-
-  const mergedStations: MergeAllJobMergedStation[] = [];
-  const errors: string[] = [];
-  let totalStationsToDelete = 0;
-  let totalStationsDeleted = 0;
-  let mergedGroups = 0;
-
-  // Collect all per-group decisions first, then apply them in a handful of
-  // bulk round-trips. The previous implementation issued 4 sequential DB
-  // calls PER GROUP (findByIdAndUpdate + findById + find + deleteMany), which
-  // made a full merge take many minutes on large catalogs ("500, 500 çok
-  // sürüyor"). Bulk ops collapse that to O(catalog/CHUNK) round-trips.
-  const voteUpdates: any[] = [];
-  const allLoserIds: mongoose.Types.ObjectId[] = [];
-  const blacklistDocs: Array<{
-    stationUuid?: string;
-    url: string;
-    name: string;
-    reason: string;
-    deletedBy: string;
-  }> = [];
-
-  for (let i = 0; i < groups.length; i++) {
-    const group = groups[i];
-    const groupLabel = group._id?.name || '(unnamed)';
+  const mergedStations: MergeAllJobMergedStation[] = [], errors: string[] = [];
+  let totalStationsToDelete = 0,totalStationsDeleted = 0,mergedGroups = 0;
+  for (const group of groups) {
     try {
-      // Highest-voted wins. Stable on _id when tied for determinism.
-      const sorted = [...group.stations].sort((a, b) => {
-        const va = a.votes || 0;
-        const vb = b.votes || 0;
-        if (vb !== va) return vb - va;
-        return String(a._id).localeCompare(String(b._id));
-      });
-      const primary = sorted[0];
-      const duplicates = sorted.slice(1);
-      if (!primary || duplicates.length === 0) continue;
-
-      totalStationsToDelete += duplicates.length;
-      const totalVotes = duplicates.reduce(
-        (sum, s) => sum + (s.votes || 0),
-        primary.votes || 0,
-      );
-
-      if (!job.dryRun) {
-        voteUpdates.push({
-          updateOne: {
-            filter: { _id: primary._id },
-            update: { $set: { votes: totalVotes } },
-          },
-        });
-        for (const d of duplicates) {
-          allLoserIds.push(d._id);
-          // Blacklist losers by upstream UUID + URL so the next Radio-Browser
-          // sync never re-imports them. Without this, merged duplicates
-          // silently reappear on the very next sync cycle (Radio-Browser
-          // still serves the loser's stationuuid). Mirrors bulk-delete.
-          blacklistDocs.push({
-            stationUuid: d.stationuuid,
-            url: d.url || `merged-dup-${String(d._id)}`,
-            name: d.name || groupLabel,
-            reason: 'Auto-merge-all duplicate removal',
-            deletedBy: 'admin',
-          });
-        }
+      const planned = [...group.stations].sort((a,b)=>(b.votes || 0)-(a.votes || 0) || a._id.localeCompare(b._id));
+      totalStationsToDelete += Math.max(0,planned.length-1);
+      const applied = job.dryRun ? { primary:planned[0],duplicates:planned.slice(1),deletedCount:0 }
+        : await pgCatalog().mergeDuplicates(planned.map(s=>s._id));
+      if (applied.primary && applied.duplicates.length) {
+        mergedGroups++; totalStationsDeleted += applied.deletedCount;
+        mergedStations.push({ groupName:group._id.name,
+          primaryStation:{ name:applied.primary.name,country:applied.primary.country || '' },
+          mergedStations:applied.duplicates.map(s=>({ name:s.name,votes:s.votes || 0,url:s.url })),
+          fallbackUrlsAdded:0,totalVotes:job.dryRun ? planned.reduce((sum,s)=>sum+(s.votes || 0),0) : applied.primary.votes });
       }
-
-      mergedGroups += 1;
-      mergedStations.push({
-        groupName: groupLabel,
-        primaryStation: {
-          name: primary.name || groupLabel,
-          country: primary.country || group._id?.country || '',
-        },
-        mergedStations: duplicates.map((d) => ({
-          name: d.name || '',
-          votes: d.votes || 0,
-          url: d.url || '',
-        })),
-        // No fallback-URL persistence layer exists yet — surface 0 so
-        // the UI line ("Added N fallback URL(s)") renders correctly
-        // without lying about a feature that isn't wired up.
-        fallbackUrlsAdded: 0,
-        totalVotes,
-      });
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`${groupLabel}: ${msg}`);
-      logger.error(
-        `❌ auto-merge-all job ${jobId} failed on group "${groupLabel}": ${msg}`,
-      );
-    }
-
-    job.progress.groupsProcessed = i + 1;
-    // Detection/planning pass caps at 60%; bulk apply fills the last 40%.
-    job.progress.percentage = job.dryRun
-      ? Math.round(((i + 1) / Math.max(groups.length, 1)) * 100)
-      : Math.round(((i + 1) / Math.max(groups.length, 1)) * 60);
-    job.progress.currentStep = job.dryRun
-      ? `Previewed ${i + 1}/${groups.length} groups`
-      : `Planned ${i + 1}/${groups.length} groups`;
+    } catch(error) { errors.push(group._id.name+': '+(error instanceof Error ? error.message : String(error))); }
+    job.progress.groupsProcessed++;
+    job.progress.percentage = Math.round(job.progress.groupsProcessed/Math.max(groups.length,1)*100);
+    job.progress.currentStep = (job.dryRun ? 'Previewed ' : 'Processed ')+job.progress.groupsProcessed+'/'+groups.length;
   }
-
-  // Apply the collected operations in bulk batches (live runs only).
-  if (!job.dryRun && allLoserIds.length > 0) {
-    const CHUNK = 1000;
-    try {
-      // 1. Merge vote totals onto the surviving primaries.
-      for (let i = 0; i < voteUpdates.length; i += CHUNK) {
-        await Station.bulkWrite(voteUpdates.slice(i, i + CHUNK), { ordered: false });
-      }
-      // 2. Blacklist losers so sync never re-imports them. insertMany with
-      //    ordered:false tolerates dup-key collisions with prior blacklisting.
-      for (let i = 0; i < blacklistDocs.length; i += CHUNK) {
-        try {
-          await BlacklistedStation.insertMany(blacklistDocs.slice(i, i + CHUNK), { ordered: false });
-        } catch {
-          /* dup-key on an already-blacklisted url/uuid is expected and safe */
-        }
-        job.progress.currentStep = `Blacklisting losers ${Math.min(i + CHUNK, blacklistDocs.length)}/${blacklistDocs.length}`;
-        job.progress.percentage = 60 + Math.round((Math.min(i + CHUNK, blacklistDocs.length) / Math.max(blacklistDocs.length, 1)) * 20);
-      }
-      // 3. Delete the loser rows.
-      for (let i = 0; i < allLoserIds.length; i += CHUNK) {
-        const slice = allLoserIds.slice(i, i + CHUNK);
-        const delRes = await Station.deleteMany({ _id: { $in: slice } });
-        totalStationsDeleted += delRes?.deletedCount ?? 0;
-        await UserFavorite.deleteMany({ stationId: { $in: slice.map(String) } });
-        job.progress.currentStep = `Deleting duplicates ${Math.min(i + CHUNK, allLoserIds.length)}/${allLoserIds.length}`;
-        job.progress.percentage = 80 + Math.round((Math.min(i + CHUNK, allLoserIds.length) / Math.max(allLoserIds.length, 1)) * 20);
-      }
-      // 4. Invalidate list caches once (per-slug invalidation would be tens of
-      //    thousands of extra calls; pattern-clear is O(1) here).
-      await CacheManager.clearByPattern('popular_stations');
-      await CacheManager.clearByPattern('stations');
-      await CacheManager.clearByPattern('community_favorites');
-      triggerGenreStationCountsRecompute('auto-merge-all');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      errors.push(`bulk-apply: ${msg}`);
-      logger.error(`❌ auto-merge-all job ${jobId} bulk-apply failed: ${msg}`);
-    }
+  if (!job.dryRun && totalStationsDeleted) {
+    await Promise.all(['popular_stations','stations','community_favorites'].map(pattern=>CacheManager.clearByPattern(pattern)));
+    triggerGenreStationCountsRecompute('auto-merge-all');
   }
-
-  job.status = 'completed';
-  job.finishedAt = Date.now();
-  job.progress.percentage = 100;
-  job.progress.currentStep = job.dryRun ? 'Dry run complete' : 'Merge complete';
-  job.results = {
-    message: job.dryRun
-      ? `Dry run: would merge ${mergedGroups} group${mergedGroups === 1 ? '' : 's'}, removing ${totalStationsToDelete} duplicate station${totalStationsToDelete === 1 ? '' : 's'}.`
-      : `Merged ${mergedGroups} group${mergedGroups === 1 ? '' : 's'}, deleted ${totalStationsDeleted} duplicate station${totalStationsDeleted === 1 ? '' : 's'}.`,
-    mergedStations,
-    errors,
-    totalGroups: groups.length,
-    mergedGroups,
-    totalStationsToDelete,
-    totalStationsDeleted,
-  };
+  job.status = errors.length ? 'failed' : 'completed';
+  job.errorMessage = errors.length ? errors.join('; ').slice(0,2000) : undefined;
+  job.finishedAt = Date.now(); job.progress.percentage = 100;
+  job.progress.currentStep = errors.length ? 'Finished with errors' : job.dryRun ? 'Dry run complete' : 'Merge complete';
+  job.results = { message:job.dryRun ? 'Previewed '+mergedGroups+' duplicate groups.' : 'Merged '+mergedGroups+' groups; deleted '+totalStationsDeleted+' duplicates.',
+    mergedStations,errors,totalGroups:groups.length,mergedGroups,totalStationsToDelete,totalStationsDeleted };
 }
 function cleanupRecheckTagsJobs() {
   const now = Date.now();
@@ -728,54 +549,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   // DATA SYNC UTILITY - Fix follower counts for all users
   app.post("/api/admin/sync-follower-counts", requireAdmin, async (req, res) => {
     try {
-      // Compute follower and following counts via aggregation (single query each)
-      const [followersAgg, followingAgg] = await Promise.all([
-        UserFollow.aggregate([
-          { $group: { _id: '$followingUserId', count: { $sum: 1 } } }
-        ]),
-        UserFollow.aggregate([
-          { $group: { _id: '$userId', count: { $sum: 1 } } }
-        ])
-      ]);
-
-      const followersMap = new Map(followersAgg.map((r: any) => [String(r._id), r.count]));
-      const followingMap = new Map(followingAgg.map((r: any) => [String(r._id), r.count]));
-
-      // Build bulk update using aggregated data — no per-user queries
-      const BATCH = 1000;
-      let skip = 0;
-      let syncedUsers = 0;
-
-      while (true) {
-        const users = await User.find({})
-          .select('_id followersCount followingCount')
-          .skip(skip)
-          .limit(BATCH)
-          .lean();
-        if (users.length === 0) break;
-
-        const bulkOps = users
-          .map((user: any) => {
-            const actualFollowers = followersMap.get(String(user._id)) ?? 0;
-            const actualFollowing = followingMap.get(String(user._id)) ?? 0;
-            if (user.followersCount === actualFollowers && user.followingCount === actualFollowing) return null;
-            syncedUsers++;
-            return {
-              updateOne: {
-                filter: { _id: user._id },
-                update: { $set: { followersCount: actualFollowers, followingCount: actualFollowing } }
-              }
-            };
-          })
-          .filter(Boolean);
-
-        if (bulkOps.length > 0) await User.bulkWrite(bulkOps as any[]);
-        skip += BATCH;
-        if (users.length < BATCH) break;
-      }
-
-      const totalUsers = skip; // approximate
-      res.json({ success: true, message: `Synchronized ${syncedUsers} users`, totalUsers, syncedUsers, errors: 0 });
+      const stats = await pgUserManagementStats();
+      return void res.json({ success:true,message:'PostgreSQL follower counts are relational and require no denormalized sync',
+        totalUsers:stats.totalUsers,syncedUsers:0,errors:0 });
     } catch (error) {
       res.status(500).json({ error: 'Failed to sync follower counts' });
     }
@@ -829,7 +605,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }
       
       if (country && country !== '' && country !== 'all') {
-        Object.assign(filter, normalizeCountryFilter(country as string));
+        (filter.$and ||= []).push(normalizeCountryFilter(country as string));
       }
       
       if (language && language !== '' && language !== 'all') {
@@ -873,34 +649,6 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         }
       }
 
-      if (hasDescriptions && hasDescriptions !== 'all') {
-        if (hasDescriptions === 'yes') {
-          filter.$and = [
-            ...(filter.$and || []),
-            { descriptions: { $exists: true, $type: 'object' } },
-            { $expr: { $gt: [{ $size: { $objectToArray: { $ifNull: ['$descriptions', {}] } } }, 0] } }
-          ];
-        } else if (hasDescriptions === 'no') {
-          filter.$or = [
-            ...(filter.$or || []),
-            { descriptions: { $exists: false } },
-            { descriptions: null },
-            { descriptions: {} },
-            { $expr: { $eq: [{ $size: { $objectToArray: { $ifNull: ['$descriptions', {}] } } }, 0] } }
-          ];
-        } else if (hasDescriptions === 'partial') {
-          filter.$and = [
-            ...(filter.$and || []),
-            { descriptions: { $exists: true, $type: 'object' } },
-            { $expr: { 
-              $and: [
-                { $gt: [{ $size: { $objectToArray: { $ifNull: ['$descriptions', {}] } } }, 0] },
-                { $lt: [{ $size: { $objectToArray: { $ifNull: ['$descriptions', {}] } } }, 14] }
-              ]
-            }}
-          ];
-        }
-      }
       
       if (hasLogo && hasLogo !== 'all') {
         if (hasLogo === 'yes') {
@@ -911,69 +659,30 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           filter['logoAssets.status'] = 'completed';
           filter['logoAssets.webp256'] = { $exists: true, $nin: [null, ''] };
         } else if (hasLogo === 'no') {
-          filter.$or = [
-            ...(filter.$or || []),
+          (filter.$and ||= []).push({ $or: [
             { 'logoAssets.status': { $ne: 'completed' } },
             { 'logoAssets.webp256': { $exists: false } },
             { 'logoAssets.webp256': null },
             { 'logoAssets.webp256': '' },
-          ];
+          ] });
         }
       }
 
-      const total = await Station.countDocuments(filter);
-
-      let stations: any = [];
-
-      if (sortBy === 'favicon') {
-        const skip = (Number(page) - 1) * Number(limit);
-        const lim = Number(limit);
-        const pipeline: any[] = [];
-        if (Object.keys(filter).length > 0) {
-          pipeline.push({ $match: filter });
-        }
-        pipeline.push({
-          $addFields: {
-            hasFavicon: {
-              $cond: {
-                if: {
-                  $and: [
-                    { $ne: ['$favicon', null] },
-                    { $ne: ['$favicon', ''] },
-                    { $gt: [{ $strLenCP: { $ifNull: ['$favicon', ''] } }, 5] }
-                  ]
-                },
-                then: 1,
-                else: 0
-              }
-            }
-          }
-        });
-        const faviconSortDir = sortOrder === 'asc' ? -1 : 1;
-        pipeline.push({ $sort: { hasFavicon: faviconSortDir, name: 1 } });
-        pipeline.push({ $skip: skip });
-        pipeline.push({ $limit: lim });
-        pipeline.push({ $project: { hasFavicon: 0 } });
-        stations = await Station.aggregate(pipeline).allowDiskUse(true);
-      } else {
-        const sort: any = {};
-        sort[sortBy as string] = sortOrder === 'asc' ? 1 : -1;
-        
-        stations = await Station.find(filter)
-          .sort(sort)
-          .skip((Number(page) - 1) * Number(limit))
-          .limit(Number(limit))
-          .lean();
-      }
+      const pageNumber = Math.max(1,Number.parseInt(String(page),10) || 1);
+      const pageSize = Math.max(1,Math.min(500,Number.parseInt(String(limit),10) || 50));
+      const { total,stations } = await pgAdminCatalogPage(filter,{
+        descriptionState:String(hasDescriptions),sortBy:String(sortBy),direction:sortOrder==='asc' ? 1 : -1,
+        limit:pageSize,offset:(pageNumber-1)*pageSize,
+      });
       
       const result = {
         stations: stripPlaceholders(stations),
         total,
-        page: Number(page),
-        totalPages: Math.ceil(total / Number(limit))
+        page: pageNumber,
+        totalPages: Math.ceil(total / pageSize)
       };
       
-      await CacheManager.set(cacheKey, result, { ttl: 86400 });
+      await CacheManager.set(cacheKey, result, { ttl: 60 });
       res.json(result);
     } catch (error: any) {
       logger.error(`Error in /api/admin/stations: ${error?.message || error}`);
@@ -991,29 +700,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   app.post('/api/admin/stations/dedup', requireAdmin, async (req, res) => {
     try {
       const confirm = String(req.query.confirm || '').toLowerCase() === 'true';
-      const clusters = await Station.aggregate([
-        {
-          $group: {
-            _id: {
-              name: { $trim: { input: '$name' } },
-              url: { $trim: { input: '$url' } },
-              countryCode: { $toUpper: { $ifNull: ['$countryCode', ''] } },
-            },
-            count: { $sum: 1 },
-            docs: {
-              $push: {
-                _id: '$_id',
-                stationuuid: '$stationuuid',
-                votes: { $ifNull: ['$votes', 0] },
-                clickCount: { $ifNull: ['$clickCount', 0] },
-                noIndex: { $ifNull: ['$noIndex', false] },
-              },
-            },
-          },
-        },
-        { $match: { count: { $gt: 1 } } },
-        { $limit: 5000 },
-      ]).option({ maxTimeMS: 30000, allowDiskUse: true });
+      const clusters = await pgContentDuplicateGroups();
 
       let rowsMarked = 0;
       if (confirm) {
@@ -1026,10 +713,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           for (const l of losers) idsToMark.push(l._id);
         }
         if (idsToMark.length > 0) {
-          const result = await Station.updateMany(
-            { _id: { $in: idsToMark } },
-            { $set: { noIndex: true } },
-          );
+          const result = await pgCatalog().update({ _id: { $in: idsToMark } }, { $set: { noIndex: true } }, { many: true });
           rowsMarked = result.modifiedCount;
         }
       }
@@ -1080,12 +764,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       // Only slugs containing a digit-hyphen-digit can be the "punctuated"
       // member of a frequency cluster. Pull those plus their normalized
       // (hyphen-collapsed) sibling slugs so every cluster has all its members.
-      const punctuated: Doc[] = await Station.find(
-        { slug: { $regex: /[0-9]-[0-9]/ } },
-        { slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 },
-      )
-        .limit(100000)
-        .lean<Doc[]>();
+      const punctuated = await pgCatalog().find({ slug: { $regex: /[0-9]-[0-9]/ } }, { limit: 100000, fields: Object.keys({ slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 }) });
 
       // Compute each punctuated slug's normalized sibling (e.g.
       // classical-95-9-wcri → classical-959-wcri) and fetch those records too.
@@ -1096,18 +775,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         do { prev = n; n = n.replace(/(\d)-(\d)/g, '$1$2'); } while (n !== prev);
         if (n !== d.slug) siblingSlugs.add(n);
       }
-      let siblings: Doc[] = [];
+      let siblings: any[] = [];
       if (siblingSlugs.size > 0) {
-        siblings = await Station.find(
-          { slug: { $in: Array.from(siblingSlugs) } },
-          { slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 },
-        )
-          .limit(100000)
-          .lean<Doc[]>();
+        siblings = await pgCatalog().find({ slug: { $in: Array.from(siblingSlugs) } }, { limit: 100000, fields: Object.keys({ slug: 1, countryCode: 1, votes: 1, clickCount: 1, lastCheckOk: 1, noIndex: 1, redirectToSlug: 1 }) });
       }
 
       // Cluster by (frequencyClusterKey, countryCode).
-      const clusters = new Map<string, Doc[]>();
+      const clusters = new Map<string, any[]>();
       const seenIds = new Set<string>();
       for (const d of [...punctuated, ...siblings]) {
         const idStr = String(d._id);
@@ -1148,20 +822,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       if (confirm) {
         for (const c of dupClusters) {
           const canonicalDoc = c.docs[0];
-          const loserDocs = c.docs.filter(d => d.slug !== c.canonical && d.redirectToSlug !== c.canonical);
+          const loserDocs = c.docs.filter(d => d.slug !== c.canonical);
           if (loserDocs.length === 0) continue;
-          await Station.updateMany(
-            { _id: { $in: loserDocs.map(l => l._id) } },
-            { $set: { redirectToSlug: c.canonical, noIndex: true } },
-          );
-          // Belt-and-braces: register loser slugs as aliases on the canonical
-          // so the alias-301 path also resolves them if redirectToSlug is ever
-          // cleared.
-          await Station.updateOne(
-            { _id: canonicalDoc._id },
-            { $addToSet: { slugAliases: { $each: loserDocs.map(l => l.slug) } } },
-          );
-          rowsRedirected += loserDocs.length;
+          rowsRedirected += await pgCatalog().redirectDuplicates(canonicalDoc._id,c.canonical,loserDocs.map(doc=>({id:doc._id,slug:doc.slug})));
         }
         // Drop any cached SSR HTML so the new 301s take effect immediately.
         try { (performanceCache as any).clearSeoHtml?.(); } catch { /* best-effort */ }
@@ -1204,10 +867,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const cooldownCutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
       const [emptyCooldown, neverChecked] = await Promise.all([
-        Station.countDocuments({
+        pgCatalog().count({
           $and: [emptyTagsPredicate, { tagsCheckedAt: { $gte: cooldownCutoff } }],
         }),
-        Station.countDocuments({
+        pgCatalog().count({
           $and: [
             emptyTagsPredicate,
             {
@@ -1262,10 +925,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   app.get("/api/admin/working-stations", requireAdmin, async (req, res) => {
     try {
       const { limit = 100 } = req.query;
-      const stations = await Station.find({ lastCheckOk: true })
-        .limit(Number(limit))
-        .select('name url lastCheckOk')
-        .lean();
+      const stations = await pgCatalog().find({ lastCheckOk: true }, { limit: Number(limit), fields: ["name","url","lastCheckOk"] });
       res.json(stations);
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch working stations' });
@@ -1291,14 +951,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     async (req: any, res) => {
       try {
         const { id } = req.params;
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!isCatalogId(id)) {
           return void res.status(400).json({ error: 'Invalid station id' });
         }
         if (!req.file || !req.file.buffer || req.file.buffer.length === 0) {
           return void res.status(400).json({ error: 'No favicon file uploaded (field name: favicon)' });
         }
 
-        const station = await Station.findById(id).select('_id slug name').lean();
+        const station = await pgCatalog().findOne({ _id: id }, { fields: ["_id","slug","name"] });
         if (!station) return void res.status(404).json({ error: 'Station not found' });
 
         const slug = (station as any).slug || (station as any).name?.toLowerCase().replace(/\s+/g, '-') || String(station._id);
@@ -1314,16 +974,14 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           return void res.status(422).json({ error: result.error || 'Logo processing failed' });
         }
 
-        const updated = await Station.findById(id).select('_id slug favicon logoAssets').lean();
+        const updated = await pgCatalog().findOne({ _id: id }, { fields: ["_id","slug","favicon","logoAssets"] });
         const newFaviconUrl = (updated as any)?.logoAssets?.webp256
           || (updated as any)?.logoAssets?.original
           || (updated as any)?.favicon
           || '';
 
-        // Mirror processed S3 URL into the favicon field so the visible URL is also S3
-        if (newFaviconUrl && isS3Url(newFaviconUrl)) {
-          await Station.updateOne({ _id: id }, { $set: { favicon: newFaviconUrl } });
-        }
+        // The processor commits the mirrored favicon together with its claim.
+        // Never write this read-back snapshot: a later edit may already exist.
 
         if ((station as any).slug) {
           performanceCache.invalidateStationCache((station as any).slug);
@@ -1357,7 +1015,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   app.put("/api/stations/:stationId", requireAdmin, express.json({ limit: '1mb' }), async (req, res) => {
     try {
       const { stationId } = req.params;
-      if (!mongoose.Types.ObjectId.isValid(stationId)) {
+      if (!isCatalogId(stationId)) {
         return void res.status(400).json({ error: 'Invalid station id' });
       }
 
@@ -1366,14 +1024,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         return void res.status(400).json({ error: 'No editable fields provided' });
       }
 
-      const before = await Station.findById(stationId).select('_id slug favicon logoAssets').lean();
+      const before = await pgCatalog().findOne({ _id: stationId }, { fields: ["_id","slug","favicon","logoAssets"] });
       if (!before) return void res.status(404).json({ error: 'Station not found' });
 
-      const updated = await Station.findByIdAndUpdate(
-        stationId,
-        { $set: update },
-        { returnDocument: 'after', runValidators: false }
-      ).lean();
+      for (const field of Object.keys(update)) update['manualEditFields.'+field] = true;
+      const updated = await pgCatalog().patchById(stationId,{ $set:update });
+      if (!updated) return void res.status(404).json({ error:'Station not found' });
 
       // If favicon URL changed AND it's not already an S3 URL → mirror it to S3 in background.
       // ALSO retry the mirror when the URL is unchanged but the previous mirror
@@ -1437,7 +1093,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      const stations = await Station.find({ _id: { $in: stationIds } }).lean();
+      const stations = await pgCatalog().find({ _id: { $in: stationIds } });
       const stationMap = stations.reduce((acc: any, station: any) => {
         acc[station._id.toString()] = station;
         return acc;
@@ -1459,41 +1115,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         return void res.status(400).json({ error: 'Invalid stations array' });
       }
       
-      if (req.body.clearOnly) {
-        try {
-          await Station.collection.drop();
-          logger.log('✅ Database cleared');
-        } catch (dropError) {}
-        return void res.json({ success: true, message: 'Database cleared' });
-      }
-      
-      if (!append) {
-        try {
-          await Station.collection.drop();
-        } catch (dropError) {}
-      }
-      
-      const BATCH_SIZE = 1000;
-      let insertedCount = 0;
-      for (let i = 0; i < stations.length; i += BATCH_SIZE) {
-        const batch = stations.slice(i, i + BATCH_SIZE);
-        const cleanBatch = batch.map((station: any) => {
-          const { language, ...cleanStation } = station;
-          return cleanStation;
-        });
-        try {
-          await Station.insertMany(cleanBatch, { ordered: false });
-          insertedCount += batch.length;
-        } catch (batchError) {}
-      }
-      
-      if (!append && !skipIndexes) {
-        try {
-          await Station.collection.createIndex({ country: 1 }, { background: true });
-          await Station.collection.createIndex({ votes: -1 }, { background: true });
-          await Station.collection.createIndex({ hls: 1 }, { background: true });
-        } catch (indexError) {}
-      }
+      if (!stations.length && !req.body.clearOnly) return void res.status(400).json({ error:'Empty import requires clearOnly=true' });
+      const imported = await pgCatalog().importSnapshot(req.body.clearOnly ? [] : stations,req.body.clearOnly || !append);
+      if (req.body.clearOnly) return void res.json({ success:true,message:'Station catalog cleared',deletedCount:imported.removed });
+      await Promise.all(['stations','popular_stations','community_favorites'].map(pattern=>CacheManager.clearByPattern(pattern)));
       
       // Task #185: a bulk import flips most genres' station counts at once.
       // Refresh Genre.stationCount in the background so the admin Genre
@@ -1501,12 +1126,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       // showing pre-import "thin" / "no matching stations" badges.
       triggerGenreStationCountsRecompute('bulk-import-stations');
 
-      const finalCount = await Station.countDocuments();
-      const hlsCount = await Station.countDocuments({ hls: true });
-      const mp3Count = await Station.countDocuments({ format: 'MP3' });
-      const aacCount = await Station.countDocuments({ format: 'AAC' });
-      const oggCount = await Station.countDocuments({ format: 'OGG' });
-      const otherCount = await Station.countDocuments({ format: 'Other' });
+      const finalCount = await pgCatalog().count();
+      const hlsCount = await pgCatalog().count({ hls: true });
+      const mp3Count = await pgCatalog().count({ format: 'MP3' });
+      const aacCount = await pgCatalog().count({ format: 'AAC' });
+      const oggCount = await pgCatalog().count({ format: 'OGG' });
+      const otherCount = await pgCatalog().count({ format: 'Other' });
       
       res.json({
         success: true,
@@ -1523,25 +1148,13 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   app.delete("/api/stations/:stationId", requireAdmin, async (req, res) => {
     try {
       const { stationId } = req.params;
-      const station = await Station.findById(stationId);
+      const station = await pgCatalog().findOne({ _id: stationId });
       if (!station) return void res.status(404).json({ error: 'Station not found' });
       
-      let blacklisted = false;
-      try {
-        await BlacklistedStation.create({
-          stationUuid: station.stationuuid,
-          url: station.url,
-          name: station.name,
-          reason: 'Admin deletion',
-          deletedBy: 'admin',
-          radioBrowserId: station.changeUuid,
-        });
-        blacklisted = true;
-      } catch (blacklistError) {}
-      
+      const deleted = await pgCatalog().remove({ _id:stationId },{ reason:'Admin deletion',deletedBy:'admin' });
+      if (!deleted.deletedCount) return void res.status(404).json({ error:'Station not found' });
+      const blacklisted = true;
       if (station.slug) performanceCache.invalidateStationCache(station.slug);
-      await Station.findByIdAndDelete(stationId);
-      await UserFavorite.deleteMany({ stationId: stationId });
       
       await CacheManager.clearByPattern('popular_stations');
       await CacheManager.clearByPattern('stations');
@@ -1607,7 +1220,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const limitRaw = parseInt(String(req.query.limit ?? '10000'), 10);
       const groupLimit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50000) : 10000;
 
-      const totalStations = await Station.estimatedDocumentCount();
+      const totalStations = await pgCatalog().count();
 
       // Group by normalized name + country. We deliberately stay on the
       // simple, deterministic name-equality strategy (case + whitespace
@@ -1615,57 +1228,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       // and matches what the merge UI already does. The threshold knob still
       // gates the minimum normalized-name length so very short names ("FM",
       // "Mix") don't dominate the result.
-      const groups = await Station.aggregate([
-        {
-          $project: {
-            _id: 1,
-            name: 1,
-            country: 1,
-            url: 1,
-            urlResolved: 1,
-            votes: 1,
-            playbackSuccessCount: 1,
-            lastCheckOk: 1,
-            favicon: 1,
-            localImagePath: 1,
-            hasLogo: 1,
-            normalizedName: {
-              $trim: {
-                input: { $toLower: { $ifNull: ['$name', ''] } },
-              },
-            },
-          },
-        },
-        {
-          $match: {
-            $expr: { $gte: [{ $strLenCP: '$normalizedName' }, minLen] },
-          },
-        },
-        {
-          $group: {
-            _id: { name: '$normalizedName', country: { $ifNull: ['$country', ''] } },
-            count: { $sum: 1 },
-            stations: {
-              $push: {
-                _id: '$_id',
-                name: '$name',
-                url: '$url',
-                urlResolved: '$urlResolved',
-                votes: { $ifNull: ['$votes', 0] },
-                playbackSuccessCount: { $ifNull: ['$playbackSuccessCount', 0] },
-                lastCheckOk: { $ifNull: ['$lastCheckOk', false] },
-                favicon: '$favicon',
-                localImagePath: '$localImagePath',
-                hasLogo: '$hasLogo',
-                country: '$country',
-              },
-            },
-          },
-        },
-        { $match: { count: { $gt: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: groupLimit },
-      ]).option({ maxTimeMS: 60000, allowDiskUse: true });
+      const groups = await pgDuplicateStationGroups(minLen,groupLimit);
 
       // Strip null/empty favicons so the frontend never tries to
       // `new URL("")` (the actual source of the Safari pattern-mismatch
@@ -1727,7 +1290,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         : 0.85;
       const dryRun = req.body?.dryRun !== false; // default to safe preview
 
-      const jobId = new mongoose.Types.ObjectId().toString();
+      const jobId = crypto.randomBytes(12).toString('hex');
       const job: MergeAllJob = {
         jobId,
         status: 'running',
@@ -1800,51 +1363,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   //   }
   app.get("/api/admin/cities/duplicates", requireAdmin, async (_req, res) => {
     try {
-      const groups = await Station.aggregate([
-        {
-          $match: {
-            city: { $type: 'string', $ne: '' },
-          },
-        },
-        {
-          $project: {
-            city: 1,
-            country: 1,
-            lowerCity: {
-              $trim: { input: { $toLower: '$city' } },
-            },
-          },
-        },
-        {
-          $match: {
-            $expr: { $gte: [{ $strLenCP: '$lowerCity' }, 2] },
-          },
-        },
-        {
-          $group: {
-            _id: { lowerCity: '$lowerCity', name: '$city' },
-            count: { $sum: 1 },
-            countries: { $addToSet: { $ifNull: ['$country', ''] } },
-          },
-        },
-        {
-          $group: {
-            _id: '$_id.lowerCity',
-            variations: {
-              $push: {
-                name: '$_id.name',
-                count: '$count',
-                countries: '$countries',
-              },
-            },
-            totalStations: { $sum: '$count' },
-            allCountries: { $addToSet: '$countries' },
-          },
-        },
-        { $match: { $expr: { $gt: [{ $size: '$variations' }, 1] } } },
-        { $sort: { totalStations: -1 } },
-        { $limit: 10000 },
-      ]).option({ maxTimeMS: 60000, allowDiskUse: true });
+      const groups = await pgDuplicateCityGroups();
 
       const duplicates = groups.map((g: any) => {
         const lowerCity: string = g._id ?? '';
@@ -1914,49 +1433,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
   // standardised.
   app.post("/api/admin/cities/merge-duplicates", requireAdmin, async (_req, res) => {
     try {
-      const groups = await Station.aggregate([
-        {
-          $match: {
-            city: { $type: 'string', $ne: '' },
-          },
-        },
-        {
-          $project: {
-            city: 1,
-            lowerCity: {
-              $trim: { input: { $toLower: '$city' } },
-            },
-          },
-        },
-        {
-          $match: {
-            $expr: { $gte: [{ $strLenCP: '$lowerCity' }, 2] },
-          },
-        },
-        {
-          $group: {
-            _id: { lowerCity: '$lowerCity', name: '$city' },
-            count: { $sum: 1 },
-          },
-        },
-        {
-          $group: {
-            _id: '$_id.lowerCity',
-            variations: {
-              $push: { name: '$_id.name', count: '$count' },
-            },
-          },
-        },
-        { $match: { $expr: { $gt: [{ $size: '$variations' }, 1] } } },
-      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
-
-      const mergeOperations: Array<{
-        canonical: string;
-        merged: string[];
-        stationsUpdated: number;
-      }> = [];
+      const groups = await pgDuplicateCityGroups();
       let totalStationsUpdated = 0;
       let cityGroupsProcessed = 0;
+      const mergeOperations: Array<{ canonical:string; merged:string[]; stationsUpdated:number }> = [];
 
       for (const g of groups) {
         const lowerCity: string = g._id ?? '';
@@ -1977,10 +1457,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           .filter((name) => name !== canonical);
         if (toRewrite.length === 0) continue;
 
-        const result = await Station.updateMany(
-          { city: { $in: toRewrite } },
-          { $set: { city: canonical } },
-        );
+        const result = await pgCatalog().update({ city: { $in: toRewrite } }, { $set: { city: canonical } }, { many: true });
         const updated =
           typeof (result as any).modifiedCount === 'number'
             ? (result as any).modifiedCount
@@ -2026,8 +1503,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         return void res.status(400).json({ success: false, error: 'stationIds must be a non-empty array' });
       }
 
-      const mongoose = await import('mongoose');
-      const invalidIds = stationIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+      const invalidIds = stationIds.filter(id => !isCatalogId(id));
       if (invalidIds.length > 0) {
         return void res.status(400).json({ success: false, error: `Invalid station IDs: ${invalidIds.join(', ')}` });
       }
@@ -2047,42 +1523,18 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
       for (const stationId of stationIds) {
         try {
-          const station = await Station.findById(stationId);
+          const station = await pgCatalog().findOne({ _id: stationId });
           if (!station) {
             errors.push(`Station ${stationId} not found`);
             continue;
           }
 
-          try {
-            await BlacklistedStation.create({
-              stationUuid: station.stationuuid,
-              url: station.url,
-              name: station.name,
-              reason: 'Admin bulk deletion from duplicates management',
-              deletedBy: 'admin',
-              radioBrowserId: station.changeUuid,
-            });
-            blacklistedCount++;
-            if (blacklistSamples.length < SAMPLE_CAP) {
-              blacklistSamples.push({
-                name: station.name ?? '',
-                url: station.url ?? '',
-                stationUuid: station.stationuuid,
-                country: (station as any).country ?? '',
-                countryCode: (station as any).countrycode ?? '',
-                reason: 'Admin bulk deletion from duplicates management',
-              });
-            }
-          } catch (blacklistError: any) {
-            if (!blacklistError.message.includes('duplicate')) {
-              logger.warn(`Failed to blacklist station ${station.name}:`, blacklistError.message);
-            }
-          }
-
+          const removed = await pgCatalog().remove({ _id:stationId },{ reason:'Admin bulk deletion from duplicates management',deletedBy:'admin' });
+          deletedCount += removed.deletedCount; blacklistedCount += removed.deletedCount;
           if (station.slug) performanceCache.invalidateStationCache(station.slug);
-          await Station.findByIdAndDelete(stationId);
-          deletedCount++;
-          await UserFavorite.deleteMany({ stationId: stationId });
+          if (removed.deletedCount && blacklistSamples.length<SAMPLE_CAP) blacklistSamples.push({
+            name:station.name,url:station.url,stationUuid:station.stationuuid,country:station.country || '',
+            countryCode:station.countryCode || '',reason:'Admin bulk deletion from duplicates management' });
 
         } catch (stationError: any) {
           errors.push(`Error deleting station ${stationId}: ${stationError.message}`);
@@ -2150,38 +1602,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }> = [];
 
       // Stream matching stations via cursor — bounded memory regardless of match count
-      const cursor = Station.find(filter)
-        .select('_id name url stationuuid slug country countrycode')
-        .lean()
-        .cursor({ batchSize: 500 });
+      const cursor = pgCatalog().iterate(filter,{ batchSize:500,fields:['_id','name','url','stationuuid','slug','country','countryCode'] });
 
       for await (const station of cursor as any) {
         try {
-          try {
-            await BlacklistedStation.create({
-              stationUuid: station.stationuuid,
-              url: station.url,
-              name: station.name,
-              reason: 'Station name is a URL - auto-cleanup',
-              deletedBy: 'admin',
-            });
-            blacklistedCount++;
-            if (blacklistSamples.length < SAMPLE_CAP) {
-              blacklistSamples.push({
-                name: station.name ?? '',
-                url: station.url ?? '',
-                stationUuid: station.stationuuid,
-                country: station.country ?? '',
-                countryCode: station.countrycode ?? '',
-                reason: 'Station name is a URL - auto-cleanup',
-              });
-            }
-          } catch (blacklistError: any) {}
-
+          const removed = await pgCatalog().remove({ _id:station._id },{ reason:'Station name is a URL - auto-cleanup',deletedBy:'admin' });
+          deletedCount += removed.deletedCount; blacklistedCount += removed.deletedCount;
           if (station.slug) performanceCache.invalidateStationCache(station.slug);
-          await Station.findByIdAndDelete(station._id);
-          deletedCount++;
-          await UserFavorite.deleteMany({ stationId: station._id });
+          if (removed.deletedCount && blacklistSamples.length<SAMPLE_CAP) blacklistSamples.push({
+            name:station.name,url:station.url,stationUuid:station.stationuuid,country:station.country || '',
+            countryCode:station.countryCode || '',reason:'Station name is a URL - auto-cleanup' });
         } catch (stationError: any) {
           errors.push(`Error deleting station ${station._id}: ${stationError.message}`);
         }
@@ -2246,7 +1676,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       const dupFilter: any = stationUuid
         ? { $or: [{ url }, { stationUuid }] }
         : { url };
-      const existing = await BlacklistedStation.findOne(dupFilter).lean();
+      const existing = await pgBlacklistFind(url,stationUuid);
       if (existing) {
         return void res.status(409).json({
           error: 'Station is already blacklisted',
@@ -2255,7 +1685,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }
 
       const actorEmail = (req.user as { email?: string } | undefined)?.email ?? undefined;
-      const created = await BlacklistedStation.create({
+      const created = await pgBlacklistAdd({
         stationUuid: stationUuid || undefined,
         url,
         name,
@@ -2292,21 +1722,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
   app.get("/api/admin/blacklisted-stations", requireAdmin, async (req, res) => {
     try {
-      const { page = 1, limit = 50, search = '' } = req.query;
-      const skip = (Number(page) - 1) * Number(limit);
-      const searchFilter = search ? {
-        $or: [
-          { name: { $regex: String(search), $options: 'i' } },
-          { url: { $regex: String(search), $options: 'i' } },
-          { reason: { $regex: String(search), $options: 'i' } }
-        ]
-      } : {};
-      
-      const total = await BlacklistedStation.countDocuments(searchFilter);
-      const blacklistedStations = await BlacklistedStation.find(searchFilter)
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit));
+      const page = Math.max(1,Number.parseInt(String(req.query.page),10) || 1);
+      const limit = Math.max(1,Math.min(500,Number.parseInt(String(req.query.limit),10) || 50));
+      const { total,rows:blacklistedStations } = await pgBlacklistPage(String(req.query.search || ''),limit,(page-1)*limit);
       
       res.json({
         stations: blacklistedStations,
@@ -2350,83 +1768,23 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     };
     try {
       const { blacklistId } = req.params;
-      const blacklistedStation = await BlacklistedStation.findById(blacklistId);
-      if (!blacklistedStation) return void res.status(404).json({ error: 'Blacklisted station not found' });
-      
-      // Station schema uses lowercase `stationuuid` — matching BlacklistedStation's `stationUuid` field
-      const existingStation = await Station.findOne({
-        $or: [ { stationuuid: blacklistedStation.stationUuid }, { url: blacklistedStation.url } ]
-      });
-      if (existingStation) return void res.status(400).json({ error: 'Station already exists in database' });
-      
-      try {
-        if (blacklistedStation.stationUuid) {
-          const radioBrowserResponse = await fetch(`https://de1.api.radio-browser.info/json/stations/byuuid/${blacklistedStation.stationUuid}`);
-          if (radioBrowserResponse.ok) {
-            const radioBrowserData = (await radioBrowserResponse.json()) as any[];
-            if (radioBrowserData && radioBrowserData.length > 0) {
-              const stationData = radioBrowserData[0];
-              const restoredStation = new Station({
-                stationuuid: stationData.stationuuid,
-                name: stationData.name || blacklistedStation.name,
-                url: stationData.url || blacklistedStation.url,
-                homepage: stationData.homepage,
-                favicon: stationData.favicon,
-                tags: stationData.tags ? stationData.tags.split(',').map((tag: any) => tag.trim()).filter(Boolean) : [],
-                country: stationData.country,
-                state: stationData.state,
-                language: stationData.language,
-                languageCodes: stationData.languagecodes ? stationData.languagecodes.split(',') : [],
-                votes: stationData.votes || 0,
-                lastChangeTime: stationData.lastchangetime,
-                codec: stationData.codec,
-                bitrate: stationData.bitrate,
-                hls: stationData.hls === 1,
-                lastCheckOk: stationData.lastcheckok === 1,
-                lastCheckTime: stationData.lastchecktime,
-                lastCheckOkTime: stationData.lastcheckoktime,
-                lastLocalCheckTime: stationData.lastlocalchecktime,
-                clickTimestamp: stationData.clicktimestamp,
-                clickCount: stationData.clickcount || 0,
-                clickTrend: stationData.clicktrend || 0,
-                sslError: stationData.ssl_error === 1,
-                geoLat: stationData.geo_lat ? parseFloat(stationData.geo_lat) : null,
-                geoLong: stationData.geo_long ? parseFloat(stationData.geo_long) : null,
-                hasExtendedInfo: stationData.has_extended_info === 1
-              });
-              await restoredStation.save();
-              await BlacklistedStation.findByIdAndDelete(blacklistId);
-              await CacheManager.clearByPattern('stations');
-              await CacheManager.clearByPattern('popular_stations');
-              sendUnblacklistEmail({
-                name: blacklistedStation.name,
-                url: blacklistedStation.url,
-                stationUuid: blacklistedStation.stationUuid,
-                reason: blacklistedStation.reason,
-              });
-              return void res.json({ success: true, message: 'Station restored successfully with fresh data', station: restoredStation });
-            }
+      const blacklistedStation = await pgBlacklistGet(blacklistId);
+      if (!blacklistedStation) return void res.status(404).json({ error:'Blacklisted station not found' });
+      let fresh: Record<string,any> | undefined;
+      if (blacklistedStation.stationUuid) {
+        try {
+          const response = await fetch('https://de1.api.radio-browser.info/json/stations/byuuid/'+encodeURIComponent(blacklistedStation.stationUuid),{ signal:AbortSignal.timeout(15000) });
+          if (response.ok) {
+            const data = await response.json() as any[];
+            if (Array.isArray(data) && data[0]) fresh = data[0];
           }
-        }
-      } catch (radioBrowserError: any) {}
-      
-      const restoredStation = new Station({
-        stationuuid: blacklistedStation.stationUuid,
-        name: blacklistedStation.name,
-        url: blacklistedStation.url,
-        tags: [], country: 'Unknown', language: 'Unknown', votes: 0, lastCheckOk: false, clickCount: 0, clickTrend: 0, sslError: false
-      });
-      await restoredStation.save();
-      await BlacklistedStation.findByIdAndDelete(blacklistId);
-      await CacheManager.clearByPattern('stations');
-      await CacheManager.clearByPattern('popular_stations');
-      sendUnblacklistEmail({
-        name: blacklistedStation.name,
-        url: blacklistedStation.url,
-        stationUuid: blacklistedStation.stationUuid,
-        reason: blacklistedStation.reason,
-      });
-      res.json({ success: true, message: 'Station restored successfully with cached data', station: restoredStation });
+        } catch(error) { logger.warn('Fresh station data unavailable; restoring cached record',error instanceof Error ? error.message : String(error)); }
+      }
+      const restoredStation = await pgCatalog().restoreBlacklisted(blacklistId,fresh);
+      if (!restoredStation) return void res.status(404).json({ error:'Blacklisted station not found' });
+      await Promise.all(['stations','popular_stations'].map(pattern=>CacheManager.clearByPattern(pattern)));
+      sendUnblacklistEmail(blacklistedStation);
+      res.json({ success:true,message:fresh ? 'Station restored successfully with fresh data' : 'Station restored successfully with cached data',station:restoredStation });
     } catch (error) {
       res.status(500).json({ error: 'Failed to restore station' });
     }
@@ -2434,33 +1792,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
   app.get("/api/admin/db-status", requireAdmin, async (req, res) => {
     try {
-      const db = mongoose.connection.db;
-      if (!db) {
-        return void res.status(500).json({ error: 'Database not connected' });
-      }
-      const stats = await db.stats();
-      const collections = await db.listCollections().toArray();
-      const collectionStats: any[] = [];
-      for (const col of collections) {
-        try {
-          const cStats: any = await db.command({ collStats: col.name });
-          collectionStats.push({
-            name: col.name,
-            count: cStats.count,
-            sizeMB: Math.round((cStats.size / 1024 / 1024) * 100) / 100,
-            storageSizeMB: Math.round((cStats.storageSize / 1024 / 1024) * 100) / 100,
-            indexSizeMB: Math.round((cStats.totalIndexSize / 1024 / 1024) * 100) / 100,
-          });
-        } catch {}
-      }
-      collectionStats.sort((a, b) => b.storageSizeMB - a.storageSizeMB);
-      res.json({
-        totalSizeMB: Math.round((stats.dataSize / 1024 / 1024) * 100) / 100,
-        storageSizeMB: Math.round((stats.storageSize / 1024 / 1024) * 100) / 100,
-        indexSizeMB: Math.round((stats.indexSize / 1024 / 1024) * 100) / 100,
-        collections: collectionStats,
-        quotaStatus: getQuotaStatus()
-      });
+      res.json({ ...await pgDatabaseSizeReport(),quotaStatus:getQuotaStatus() });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to get DB status', details: error.message });
     }
@@ -2468,66 +1800,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
   app.post("/api/admin/db-cleanup", requireAdmin, async (req, res) => {
     try {
-      const { collections: targetCollections } = req.body;
-      const cleanableCollections: Record<string, { model: any; keepDays?: number }> = {
-        'analyticsevent': { model: AnalyticsEvent, keepDays: 0 },
-        'analyticsevents': { model: AnalyticsEvent, keepDays: 0 },
-        'synclogs': { model: SyncLog, keepDays: 7 },
-        'stationdebuglogs': { model: StationDebugLog, keepDays: 3 },
-        'bulkdescriptionjobs': { model: BulkDescriptionJob, keepDays: 1 },
-      };
-
-      const results: any[] = [];
-      const targets = targetCollections || [...Object.keys(cleanableCollections), 'applogs', 'visitorsessions', 'userlisteninghistories'];
-
-      for (const name of targets) {
-        const key = name.toLowerCase().replace(/[_-]/g, '');
-        const config = cleanableCollections[key];
-        if (!config) {
-          continue;
-        }
-        try {
-          let deleteResult;
-          if (config.keepDays === 0) {
-            deleteResult = await config.model.deleteMany({});
-          } else {
-            const cutoff = new Date(Date.now() - config.keepDays! * 24 * 60 * 60 * 1000);
-            deleteResult = await config.model.deleteMany({
-              $or: [
-                { createdAt: { $lt: cutoff } },
-                { timestamp: { $lt: cutoff } }
-              ]
-            });
-          }
-          results.push({ collection: name, status: 'cleaned', deletedCount: deleteResult.deletedCount });
-        } catch (err: any) {
-          results.push({ collection: name, status: 'error', error: err.message });
-        }
-      }
-
-      const db = mongoose.connection.db;
-
-      const rawCollections: Record<string, { field: string; keepDays: number }> = {
-        'applogs': { field: 'createdAt', keepDays: 7 },
-        'visitorsessions': { field: 'createdAt', keepDays: 7 },
-        'userlisteninghistories': { field: 'listenedAt', keepDays: 30 },
-      };
-
-      for (const name of targets) {
-        const key = name.toLowerCase().replace(/[_-]/g, '');
-        const rawConfig = rawCollections[key];
-        if (!rawConfig || !db) continue;
-        try {
-          const col = db.collection(key);
-          const cutoff = new Date(Date.now() - rawConfig.keepDays * 24 * 60 * 60 * 1000);
-          const r = await col.deleteMany({ [rawConfig.field]: { $lt: cutoff } });
-          results.push({ collection: key, status: 'cleaned', deletedCount: r.deletedCount });
-        } catch (err: any) {
-          results.push({ collection: key, status: 'error', error: err.message });
-        }
-      }
-
-      res.json({ success: true, results });
+      const targets = req.body.collections;
+      if (targets !== undefined && (!Array.isArray(targets) || targets.some((value:unknown)=>typeof value!=='string'))) return void res.status(400).json({ error:'collections must be an array of names' });
+      const results = await pgPurgeOperationalData(targets);
+      res.json({ success:results.every(row=>row.status==='cleaned'),results });
     } catch (error: any) {
       res.status(500).json({ error: 'Cleanup failed', details: error.message });
     }
@@ -2543,16 +1819,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         return void res.status(400).json({ error: `Collection "${collection}" cannot be dropped. Allowed: ${droppable.join(', ')}` });
       }
 
-      const db = mongoose.connection.db;
-      if (!db) return void res.status(500).json({ error: 'Database not connected' });
-
-      const collections = await db.listCollections({ name: collection }).toArray();
-      if (collections.length === 0) {
-        return void res.json({ success: true, message: `Collection "${collection}" does not exist` });
-      }
-
-      await db.dropCollection(collection);
-      res.json({ success: true, message: `Collection "${collection}" dropped successfully` });
+      const results = await pgPurgeOperationalData([collection],true);
+      if (results.some(row=>row.status==='error')) return void res.status(500).json({ success:false,results });
+      res.json({ success:true,message:'Operational records cleared; PostgreSQL schema and indexes preserved',results });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to drop collection', details: error.message });
     }
@@ -2611,7 +1880,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
         const ids = Array.isArray(stationIds)
           ? (stationIds.filter(
-              (id) => typeof id === 'string' && mongoose.Types.ObjectId.isValid(id),
+              (id) => typeof id === 'string' && isCatalogId(id),
             ) as string[])
           : [];
         const rawCountry =
@@ -2674,7 +1943,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
 
         const filter: Record<string, unknown> = {};
         if (ids.length > 0) {
-          filter._id = { $in: ids.map((id) => new mongoose.Types.ObjectId(id)) };
+          filter._id = { $in: ids.map((id) => id) };
         } else if (isFilterMode) {
           // Filter-driven bulk: target every station matching the
           // current admin "tagsStatus" filter (and any additional
@@ -2746,9 +2015,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // tens of thousands of stuck stations are still fully covered.
         let filterModeIds: string[] = [];
         if (isFilterMode) {
-          const cursor = Station.find(filter).select('_id').lean().cursor();
+          const cursor = pgCatalog().iterate(filter,{ fields:['_id'] });
           for await (const doc of cursor) {
-            const id = (doc as { _id: mongoose.Types.ObjectId })._id;
+            const id = (doc as { _id: string })._id;
             if (id) filterModeIds.push(id.toString());
           }
         }
@@ -2762,18 +2031,15 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           const updateChunkSize = 5000;
           for (let i = 0; i < filterModeIds.length; i += updateChunkSize) {
             const chunk = filterModeIds.slice(i, i + updateChunkSize);
-            const chunkResult = await Station.updateMany(
-              {
+            const chunkResult = await pgCatalog().update({
                 _id: {
-                  $in: chunk.map((id) => new mongoose.Types.ObjectId(id)),
+                  $in: chunk.map((id) => id),
                 },
-              },
-              { $unset: { tagsCheckedAt: '' } },
-            );
+              }, { $unset: { tagsCheckedAt: '' } }, { many: true });
             cleared += chunkResult.modifiedCount ?? 0;
           }
         } else {
-          const updateResult = await Station.updateMany(filter, { $unset: { tagsCheckedAt: '' } });
+          const updateResult = await pgCatalog().update(filter, { $unset: { tagsCheckedAt: '' } }, { many: true });
           cleared = updateResult.modifiedCount ?? 0;
           matched = updateResult.matchedCount ?? cleared;
         }
@@ -2786,7 +2052,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // `running` until we detect it has nothing to track and mark
         // it completed.
         cleanupRecheckTagsJobs();
-        const jobId = new mongoose.Types.ObjectId().toString();
+        const jobId = crypto.randomBytes(12).toString('hex');
         const scopeBits: string[] = [];
         if (ids.length > 0) scopeBits.push(`${ids.length} selected`);
         if (rawTagsStatus) scopeBits.push(rawTagsStatus);
@@ -2922,10 +2188,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         } else if (rawCountry) {
           // No ISO code resolvable — fall back to ID-scoped sweep
           // over the matched stations so we still re-query them.
-          const matchedDocs = (await Station.find(filter)
-            .select('_id')
-            .limit(5000)
-            .lean()) as unknown as Array<{ _id: mongoose.Types.ObjectId }>;
+          const matchedDocs = (await pgCatalog().find(filter, { fields: ["_id"], limit: 5000 })) as unknown as Array<{ _id: string }>;
           const matchedIds = matchedDocs.map((d) => d._id.toString());
           if (matchedIds.length > 0) {
             job.total = matchedIds.length;
@@ -3098,52 +2361,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     requireAdmin,
     async (_req, res) => {
       try {
-        const rows = await Station.aggregate([
-          {
-            $match: {
-              countryCode: { $exists: true, $nin: [null, '', 'null'] },
-            },
-          },
-          {
-            $group: {
-              _id: { $toUpper: '$countryCode' },
-              total: { $sum: 1 },
-              withLogo: {
-                $sum: {
-                  $cond: [
-                    { $eq: ['$logoAssets.status', 'completed'] },
-                    1,
-                    0,
-                  ],
-                },
-              },
-              withTags: {
-                $sum: {
-                  $cond: [
-                    {
-                      $and: [
-                        { $ne: ['$tags', null] },
-                        { $ne: [{ $ifNull: ['$tags', ''] }, ''] },
-                        {
-                          $not: [
-                            {
-                              $regexMatch: {
-                                input: { $ifNull: ['$tags', ''] },
-                                regex: /^\s*$/,
-                              },
-                            },
-                          ],
-                        },
-                      ],
-                    },
-                    1,
-                    0,
-                  ],
-                },
-              },
-            },
-          },
-        ]);
+        const rows = await pgCoverage().coverage().then(rows=>rows.map(row=>({...row,_id:row.countryCode})));
 
         const decorated = rows
           .map((row) => {
@@ -3209,15 +2427,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           updatedAt?: Date;
         };
         const [doc, historyDocs] = await Promise.all([
-          CoverageBackfillStatus.findOne({ key: 'latest' }).lean<BackfillStatusDoc | null>(),
+          pgCoverage().status(),
           // Task #316: small bounded list of past boot evaluations so
           // the UI can render a "Previous boot runs" panel under the
           // latest status. Sorted newest-first; capped writes-side to
           // ~20 rows so this is always a tiny query.
-          CoverageBackfillRun.find({})
-            .sort({ observedAt: -1, _id: -1 })
-            .limit(20)
-            .lean<BackfillStatusDoc[]>(),
+          pgCoverage().statusHistory(20),
         ]);
         const serializeRun = (d: BackfillStatusDoc) => ({
           outcome: d.outcome,
@@ -3323,25 +2538,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           source: 'cron' | 'backfill';
         };
 
-        const rows = await CoverageSnapshot.find(
-          {
-            snapshotDate: { $gte: since },
-            ...(countryFilter !== null ? { countryCode: countryFilter } : {}),
-          },
-          {
-            countryCode: 1,
-            snapshotDate: 1,
-            logoCoveragePct: 1,
-            tagCoveragePct: 1,
-            total: 1,
-            withLogo: 1,
-            withTags: 1,
-            source: 1,
-            _id: 0,
-          },
-        )
-          .sort({ countryCode: 1, snapshotDate: 1 })
-          .lean<SnapshotRow[]>();
+        const rows = await pgCoverage().snapshots({since,countries:countryList});
 
         const byCountry = new Map<string, TrendPoint[]>();
         for (const r of rows) {
@@ -3434,9 +2631,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // render the banner. In history mode only the matching alert
         // (typically the latest) carries `acknowledged: true`; older
         // alerts in the list always come back as `acknowledged: false`.
-        const ackDoc = await AdminSetting.findOne({
-          key: COVERAGE_DROP_ACK_KEY,
-        }).lean();
+        const ackDoc = await getAdminSetting(COVERAGE_DROP_ACK_KEY);
         const ackValue = (ackDoc?.value ?? null) as {
           snapshotDate?: string | null;
           acknowledgedAt?: string | null;
@@ -3495,12 +2690,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // and fall back to `createdAt` so historical replays / backfills
         // don't misorder. In normal nightly operation the two correlate.
         if (!wantHistory) {
-          const latest = await UserNotification.findOne(
-            { type: 'system', 'data.kind': 'coverage_drop' },
-            { createdAt: 1, message: 1, data: 1 },
-          )
-            .sort({ 'data.snapshotDate': -1, createdAt: -1 })
-            .lean();
+          const latest = await pgCoverage().alerts(1).then(rows=>rows[0]??null);
 
           if (!latest) {
             return void res.json({ alert: null });
@@ -3529,14 +2719,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         }
 
         // Fetch one extra row to determine `hasMore` without a count.
-        const rows = await UserNotification.find(filter, {
-          createdAt: 1,
-          message: 1,
-          data: 1,
-        })
-          .sort({ 'data.snapshotDate': -1, createdAt: -1 })
-          .limit(limit + 1)
-          .lean();
+        const rows = await pgCoverage().alerts(limit+1,beforeParam);
 
         const hasMore = rows.length > limit;
         const pageRows = hasMore ? rows.slice(0, limit) : rows;
@@ -3585,12 +2768,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // Confirm the latest alert actually has the snapshotDate the
         // client is acknowledging — otherwise an out-of-date client
         // could silence a freshly-arrived alert.
-        const latest = await UserNotification.findOne(
-          { type: 'system', 'data.kind': 'coverage_drop' },
-          { data: 1 },
-        )
-          .sort({ 'data.snapshotDate': -1, createdAt: -1 })
-          .lean();
+        const latest = await pgCoverage().alerts(1).then(rows=>rows[0]??null);
         const latestSnapshotDate =
           (latest?.data as { snapshotDate?: string } | undefined)?.snapshotDate ?? null;
         if (!latest || latestSnapshotDate !== snapshotDate) {
@@ -3723,7 +2901,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         }
 
         cleanupCoverageBackfillJobs();
-        const jobId = new mongoose.Types.ObjectId().toString();
+        const jobId = crypto.randomBytes(12).toString('hex');
         const job: CoverageBackfillJob = {
           jobId,
           countryCode: rawCode,
@@ -3781,24 +2959,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               },
             ],
           };
-          const matchedDocs = (await Station.find(logoFilter)
-            .select('_id')
-            .lean()) as unknown as Array<{ _id: mongoose.Types.ObjectId }>;
-          logoMatched = matchedDocs.length;
-          logoEnqueuedIds = matchedDocs.map((d) => d._id.toString());
-          if (logoEnqueuedIds.length > 0) {
-            const result = await Station.updateMany(
-              {
-                _id: {
-                  $in: logoEnqueuedIds.map(
-                    (id) => new mongoose.Types.ObjectId(id),
-                  ),
-                },
-              },
-              { $unset: { logoAssets: '' } },
-            );
-            logoEnqueued = result.modifiedCount ?? 0;
-          }
+          const queued=await pgCoverage().enqueueLogos(logoFilter,null);
+          logoMatched=queued.candidates;
+          logoEnqueued=queued.enqueued;
+          logoEnqueuedIds=queued.sampleStations.map(station=>station._id);
           job.logos = {
             matched: logoMatched,
             enqueuedIds: logoEnqueuedIds,
@@ -3988,10 +3152,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       }
       if (job.logos && !job.logos.done && job.logos.enqueuedIds.length > 0) {
         try {
-          const completed = await Station.countDocuments({
+          const completed = await pgCatalog().count({
             _id: {
               $in: job.logos.enqueuedIds.map(
-                (id) => new mongoose.Types.ObjectId(id),
+                (id) => id,
               ),
             },
             'logoAssets.status': 'completed',
@@ -4159,7 +3323,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
         // shared in-process map; the UI polls
         // /reconstruct-history-status/:jobId for updates.
         cleanupCoverageReconstructionJobs();
-        const jobId = new mongoose.Types.ObjectId().toString();
+        const leader=await pgCoverage().acquireJob('coverage-history-backfill');
+        if(!leader)return void res.status(409).json({success:false,error:'A coverage history backfill is already running'});
+        const jobId = crypto.randomBytes(12).toString('hex');
         const job: CoverageReconstructionJob = {
           jobId,
           days: daysNum,
@@ -4194,8 +3360,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           days: daysNum,
           dryRun,
           onProgress,
-          isCancelled: () =>
-            coverageReconstructionJobs.get(jobId)?.cancelRequested === true,
+          isCancelled: () => {
+            leader.assertOwned();
+            return coverageReconstructionJobs.get(jobId)?.cancelRequested === true;
+          },
         })
           .then((result) => {
             const current = coverageReconstructionJobs.get(jobId);
@@ -4220,7 +3388,9 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
             current.error = err instanceof Error ? err.message : String(err);
             current.finishedAt = Date.now();
             coverageReconstructionJobs.set(jobId, current);
-          });
+          })
+          .finally(()=>leader.release())
+          .catch(error=>logger.error('Coverage reconstruction leader release failed',error));
 
         return void res.json({
           success: true,
@@ -4343,9 +3513,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
     app.get('/api/admin/shared-presets', requireAdmin, async (req, res) => {
       try {
         const callerUsername = getCallerAdminUsername(req);
-        const docs = await SharedComparisonPreset.find({})
-          .sort({ updatedAt: -1 })
-          .lean();
+        const docs = await pgAdminAux().presets();
         const callerCanManageAll =
           callerUsername !== null && isSuperAdminUsername(callerUsername);
         return void res.json({
@@ -4387,24 +3555,12 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               .status(400)
               .json({ error: 'At least one valid country code is required' });
           }
-          const existingTotal = await SharedComparisonPreset.estimatedDocumentCount();
-          if (existingTotal >= SHARED_PRESET_TOTAL_MAX) {
-            return void res.status(409).json({
-              error: `The team already has ${SHARED_PRESET_TOTAL_MAX} shared presets. Delete one before adding more.`,
-            });
-          }
           const now = new Date();
           try {
-            const doc = await SharedComparisonPreset.create({
-              name,
-              countries,
-              ownerUsername,
-              createdAt: now,
-              updatedAt: now,
-            });
-            return void res.status(201).json(serializeSharedPreset(doc.toObject()));
+            const doc = await pgAdminAux().presetCreate({ name,countries,ownerUsername },SHARED_PRESET_TOTAL_MAX);
+            return void res.status(201).json(serializeSharedPreset(doc));
           } catch (err: any) {
-            if (err?.code === 11000) {
+            if (err?.code === '23505' || err?.code === 'PRESET_LIMIT') {
               return void res
                 .status(409)
                 .json({ error: 'A shared preset with that name already exists' });
@@ -4433,10 +3589,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               .json({ error: 'Admin identity unavailable' });
           }
           const { id } = req.params;
-          if (!mongoose.isValidObjectId(id)) {
+          if (!isCatalogId(id)) {
             return void res.status(400).json({ error: 'Invalid preset id' });
           }
-          const existing = await SharedComparisonPreset.findById(id);
+          const existing = await pgAdminAux().preset(id);
           if (!existing) {
             return void res.status(404).json({ error: 'Preset not found' });
           }
@@ -4472,16 +3628,16 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
           }
           existing.updatedAt = new Date();
           try {
-            await existing.save();
+            await pgAdminAux().presetUpdate(id,callerUsername,isSuperAdminUsername(callerUsername),{ ...(body.name !== undefined ? { name:existing.name } : {}),...(body.countries !== undefined ? { countries:existing.countries } : {}) });
           } catch (err: any) {
-            if (err?.code === 11000) {
+            if (err?.code === '23505' || err?.code === 'PRESET_LIMIT') {
               return void res
                 .status(409)
                 .json({ error: 'A shared preset with that name already exists' });
             }
             throw err;
           }
-          return void res.json(serializeSharedPreset(existing.toObject()));
+          return void res.json(serializeSharedPreset(await pgAdminAux().preset(id)));
         } catch (error: any) {
           logger.error('Error updating shared comparison preset:', error);
           return void res
@@ -4503,10 +3659,10 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               .json({ error: 'Admin identity unavailable' });
           }
           const { id } = req.params;
-          if (!mongoose.isValidObjectId(id)) {
+          if (!isCatalogId(id)) {
             return void res.status(400).json({ error: 'Invalid preset id' });
           }
-          const existing = await SharedComparisonPreset.findById(id);
+          const existing = await pgAdminAux().preset(id);
           if (!existing) {
             return void res.json({ id, deleted: 0 });
           }
@@ -4518,7 +3674,7 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
               error: 'Only the owner can delete this shared preset',
             });
           }
-          await existing.deleteOne();
+          await pgAdminAux().presetDelete(id,callerUsername,isSuperAdminUsername(callerUsername));
           return void res.json({ id, deleted: 1 });
         } catch (error: any) {
           logger.error('Error deleting shared comparison preset:', error);
@@ -4580,4 +3736,3 @@ export function registerAdminStationRoutes(app: Express, deps: RouteDeps) {
       },
     );
   }
-  

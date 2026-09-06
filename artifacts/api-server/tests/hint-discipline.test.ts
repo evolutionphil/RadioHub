@@ -20,8 +20,9 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SRC_ROOT = new URL('../src/', import.meta.url).pathname;
+const SRC_ROOT = fileURLToPath(new URL('../src/', import.meta.url));
 const HINT_RE = /\.hint\s*\(/;
 const VERIFIED_RE = /\/\/\s*HINT-VERIFIED\s+\d{4}-\d{2}-\d{2}\b/;
 

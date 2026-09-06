@@ -1,5 +1,5 @@
-// This file contains shared schema types - using MongoDB with additional social auth support
-// All validation is handled at the MongoDB schema level in shared/mongo-schemas.ts
+// Driver-independent shared API types and Zod validation.
+// Persistent data is stored in PostgreSQL; browser imports never load a driver.
 import { z } from "zod";
 
 // Validation schemas for authentication
@@ -25,7 +25,7 @@ export const insertStationRatingSchema = z.object({
   ipAddress: z.string().optional(),
 });
 
-// Station with country information (for MongoDB compatibility)
+// Station with country information; _id preserves the public API identifier contract.
 export interface StationWithCountry {
   _id: string;
   name: string;

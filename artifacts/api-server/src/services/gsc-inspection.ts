@@ -33,14 +33,9 @@
 import cron from 'node-cron';
 import { JWT, OAuth2Client } from 'google-auth-library';
 import axios from 'axios';
-import {
-  GscUrlInspection,
-  GscIndexingSnapshot,
-  GscOAuthToken,
-  Station,
-  Genre,
-  type IGscUrlInspection,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgActiveManifests, pgSeoGenres, type IGscUrlInspection } from '../data/postgres-seo-indexing-store';
+import { pgGscSyncDiscovery, pgGscOAuthToken, pgGscBackfill, pgGscPruneSnapshots, pgGscGroupCounts, pgGscSaveSnapshots, pgGscClaimInspection, pgGscBeginInspection, pgGscSaveInspection, pgGscClaimResubmit, pgGscSaveResubmit } from '../data/postgres-gsc-store';
 import { logger } from '../utils/logger';
 import {
   getActiveManifest,
@@ -170,12 +165,7 @@ async function discoverSitemapUrls(): Promise<UrlSpec[]> {
   };
 
   // Pull the union of languages that have an active main manifest.
-  const SitemapManifest = (await import('@workspace/db-shared/mongo-schemas'))
-    .SitemapManifest;
-  const manifests = await SitemapManifest.find(
-    { type: 'main', status: 'active' },
-    { language: 1 },
-  ).lean();
+  const manifests = await pgActiveManifests('main');
   const languages = Array.from(
     new Set(manifests.map((m) => m.language).filter(Boolean)),
   );
@@ -211,12 +201,7 @@ async function discoverSitemapUrls(): Promise<UrlSpec[]> {
       const genreIds = genres.chunks.flatMap((c) => c.stationIds);
       const genreDocs =
         genreIds.length > 0
-          ? await Genre.collection
-              .find(
-                { _id: { $in: genreIds as any[] } },
-                { projection: { _id: 1, slug: 1 } },
-              )
-              .toArray()
+          ? await pgSeoGenres(genreIds)
           : [];
       const SAFE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
       for (const g of genreDocs) {
@@ -246,9 +231,7 @@ async function discoverSitemapUrls(): Promise<UrlSpec[]> {
           ? allIds.slice(0, STATION_DISCOVERY_CAP_PER_LANG)
           : allIds;
       if (slice.length > 0) {
-        const stationDocs = await Station.find({ _id: { $in: slice } })
-          .select('_id slug')
-          .lean();
+        const stationDocs = await pgCatalog().find({ _id: { $in: slice.map(String) } }, { fields: ['slug'] });
         for (const s of stationDocs) {
           const slug = (s as any).slug;
           if (!slug) continue;
@@ -278,44 +261,7 @@ async function syncDiscoveredUrls(specs: UrlSpec[]): Promise<{
   refreshed: number;
   pruned: number;
 }> {
-  const now = new Date();
-  let inserted = 0;
-  let refreshed = 0;
-
-  // Bulk upsert in batches of 1000 to keep round-trips bounded.
-  const CHUNK = 1000;
-  for (let i = 0; i < specs.length; i += CHUNK) {
-    const slice = specs.slice(i, i + CHUNK);
-    const ops = slice.map((spec) => ({
-      updateOne: {
-        filter: { url: spec.url },
-        update: {
-          $set: {
-            language: spec.language,
-            group: spec.group,
-            discoveredAt: now,
-            updatedAt: now,
-          },
-          $setOnInsert: {
-            state: 'pending' as const,
-            errorCount: 0,
-          },
-        },
-        upsert: true,
-      },
-    }));
-    const res = await GscUrlInspection.bulkWrite(ops, { ordered: false });
-    inserted += res.upsertedCount ?? 0;
-    refreshed += res.modifiedCount ?? 0;
-  }
-
-  // Prune URLs that haven't been re-discovered for a while (sitemap
-  // dropped them — e.g. station deleted, country fell out of top-30).
-  const cutoff = new Date(now.getTime() - STALE_DISCOVERY_MS);
-  const pruneRes = await GscUrlInspection.deleteMany({
-    discoveredAt: { $lt: cutoff },
-  });
-  return { inserted, refreshed, pruned: pruneRes.deletedCount ?? 0 };
+  return pgGscSyncDiscovery(specs, STALE_DISCOVERY_MS);
 }
 
 /**
@@ -399,26 +345,31 @@ function getJwt(): JWT | null {
 }
 
 let cachedOAuthClient: OAuth2Client | null = null;
+let cachedOAuthVersion: string | null = null;
 
 export async function getOAuthClient(): Promise<OAuth2Client | null> {
   const clientId = process.env.GOOGLE_OAUTH_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET;
   if (!clientId || !clientSecret) return null;
-  if (cachedOAuthClient) return cachedOAuthClient;
   try {
-    const token = await GscOAuthToken.findOne({}).sort({ createdAt: -1 }).lean();
-    if (!token?.refreshToken) return null;
+    const token = await pgGscOAuthToken();
+    if (!token?.refreshToken) { invalidateOAuthCache(); return null; }
+    const version = `${token.id}:${token.updatedAt?.getTime()}`;
+    if (cachedOAuthClient && cachedOAuthVersion === version) return cachedOAuthClient;
     const client = new OAuth2Client({ clientId, clientSecret });
     client.setCredentials({ refresh_token: token.refreshToken });
     cachedOAuthClient = client;
+    cachedOAuthVersion = version;
     return client;
-  } catch {
-    return null;
+  } catch (error) {
+    invalidateOAuthCache();
+    throw error;
   }
 }
 
 export function invalidateOAuthCache(): void {
   cachedOAuthClient = null;
+  cachedOAuthVersion = null;
 }
 
 export function createOAuthClientFromEnv(): OAuth2Client | null {
@@ -633,28 +584,7 @@ class GscInspectionService {
    * waiting for the slow inspection rotation to revisit each one.
    */
   private async backfillNotIndexedSince(): Promise<void> {
-    // ARCHITECT FIX (2026-05-10): Mongoose ≥8 refuses array (aggregation
-    // pipeline) updates unless `updatePipeline: true` is set explicitly,
-    // throwing `MongooseError: Cannot pass an array to query updates unless
-    // the updatePipeline option is set.` Adding the flag re-enables the
-    // legacy pipeline form so this one-shot backfill stops crashing on
-    // every cold boot in production.
-    const res = await GscUrlInspection.updateMany(
-      {
-        state: { $in: NON_INDEXED_STATES },
-        notIndexedSince: { $exists: false },
-      },
-      [
-        {
-          $set: {
-            notIndexedSince: {
-              $ifNull: ['$lastInspectedAt', { $ifNull: ['$updatedAt', '$$NOW'] }],
-            },
-          },
-        },
-      ] as any,
-      { updatePipeline: true } as any,
-    );
+    const res = { modifiedCount: await pgGscBackfill() };
     if ((res.modifiedCount ?? 0) > 0) {
       logger.log(
         `🔁 GSC backfill: anchored notIndexedSince on ${res.modifiedCount} legacy non-indexed rows`,
@@ -717,9 +647,7 @@ class GscInspectionService {
       const cutoff = new Date(
         Date.now() - SNAPSHOT_RETENTION_DAYS * 24 * 60 * 60 * 1000,
       );
-      const res = await GscIndexingSnapshot.deleteMany({
-        date: { $lt: cutoff },
-      });
+      const res = { deletedCount: await pgGscPruneSnapshots(cutoff) };
       const stats = {
         deleted: res.deletedCount ?? 0,
         olderThan: cutoff.toISOString(),
@@ -768,51 +696,7 @@ class GscInspectionService {
       );
 
       // Per (language, group)
-      const perGroup = await GscUrlInspection.aggregate<{
-        _id: { language: string; group: IGscUrlInspection['group'] };
-        total: number;
-        indexed: number;
-        crawledNotIndexed: number;
-        discoveredNotIndexed: number;
-        excluded: number;
-        error: number;
-        pending: number;
-        unknown: number;
-      }>([
-        {
-          $group: {
-            _id: { language: '$language', group: '$group' },
-            total: { $sum: 1 },
-            indexed: {
-              $sum: { $cond: [{ $eq: ['$state', 'indexed'] }, 1, 0] },
-            },
-            crawledNotIndexed: {
-              $sum: {
-                $cond: [{ $eq: ['$state', 'crawled-not-indexed'] }, 1, 0],
-              },
-            },
-            discoveredNotIndexed: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$state', 'discovered-not-indexed'] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            excluded: {
-              $sum: { $cond: [{ $eq: ['$state', 'excluded'] }, 1, 0] },
-            },
-            error: { $sum: { $cond: [{ $eq: ['$state', 'error'] }, 1, 0] } },
-            pending: {
-              $sum: { $cond: [{ $eq: ['$state', 'pending'] }, 1, 0] },
-            },
-            unknown: {
-              $sum: { $cond: [{ $eq: ['$state', 'unknown'] }, 1, 0] },
-            },
-          },
-        },
-      ]);
+      const perGroup = await pgGscGroupCounts();
 
       type Row = {
         date: Date;
@@ -915,28 +799,7 @@ class GscInspectionService {
 
       rows.push(...perLang.values(), ...perGrp.values(), overall);
 
-      if (rows.length > 0) {
-        const ops = rows.map((r) => ({
-          updateOne: {
-            filter: { date: r.date, language: r.language, group: r.group },
-            update: {
-              $set: {
-                total: r.total,
-                indexed: r.indexed,
-                crawledNotIndexed: r.crawledNotIndexed,
-                discoveredNotIndexed: r.discoveredNotIndexed,
-                excluded: r.excluded,
-                error: r.error,
-                pending: r.pending,
-                unknown: r.unknown,
-              },
-              $setOnInsert: { createdAt: new Date() },
-            },
-            upsert: true,
-          },
-        }));
-        await GscIndexingSnapshot.bulkWrite(ops, { ordered: false });
-      }
+      await pgGscSaveSnapshots(rows);
 
       const stats = { rows: rows.length, date: date.toISOString() };
       this.lastSnapshotAt = new Date();
@@ -1014,32 +877,21 @@ class GscInspectionService {
       // rows whose last inspection is oldest. Uses the
       // (lastInspectedAt, discoveredAt) compound index so the sort is
       // covered.
-      const candidates = await GscUrlInspection.find({})
-        .sort({ lastInspectedAt: 1, discoveredAt: -1 })
-        .limit(Math.max(1, Math.min(batchSize, 200)))
-        .lean();
+      const candidates = await pgGscClaimInspection(siteUrl, batchSize);
       logger.log(
         `🔍 GSC inspection START (${trigger}) — ${candidates.length} URLs`,
       );
 
       for (const row of candidates) {
+        if (!await pgGscBeginInspection(row._id, row.inspectionLeaseToken)) continue;
         attempted += 1;
         const result = await inspectUrl(row.url, authClient, siteUrl);
         const now = new Date();
         if (!result.ok) {
           failed += 1;
-          await GscUrlInspection.updateOne(
-            { _id: row._id },
-            {
-              $set: {
-                state: 'error' as const,
-                lastError: result.error.slice(0, 1000),
-                lastInspectedAt: now,
-                updatedAt: now,
-              },
-              $inc: { errorCount: 1 },
-            },
-          );
+          await pgGscSaveInspection(row._id, row.inspectionLeaseToken, {
+            state: 'error', lastError: result.error.slice(0,1000), lastInspectedAt: now, updatedAt: now,
+          }, true);
           // Back off briefly on errors so a misconfigured property doesn't
           // burn through quota in a tight loop.
           await new Promise((r) => setTimeout(r, 500));
@@ -1095,9 +947,8 @@ class GscInspectionService {
         } else if (!isNonIndexed) {
           unset.notIndexedSince = '';
         }
-        const update: Record<string, unknown> = { $set: set };
-        if (Object.keys(unset).length > 0) update.$unset = unset;
-        await GscUrlInspection.updateOne({ _id: row._id }, update);
+        for (const key of Object.keys(unset)) set[key] = null;
+        await pgGscSaveInspection(row._id, row.inspectionLeaseToken, set);
         // Pace ourselves to ~10 req/s — well below GSC's published cap.
         await new Promise((r) => setTimeout(r, 120));
       }
@@ -1148,18 +999,7 @@ class GscInspectionService {
       const cooldownCutoff = new Date(
         now - RESUBMIT_COOLDOWN_DAYS * 24 * 60 * 60 * 1000,
       );
-      const candidates = await GscUrlInspection.find({
-        state: { $in: NON_INDEXED_STATES },
-        notIndexedSince: { $lte: stuckCutoff },
-        $or: [
-          { lastResubmitAt: { $exists: false } },
-          { lastResubmitAt: null },
-          { lastResubmitAt: { $lte: cooldownCutoff } },
-        ],
-      })
-        .sort({ notIndexedSince: 1 })
-        .limit(Math.max(1, RESUBMIT_BATCH_LIMIT))
-        .lean();
+      const candidates = await pgGscClaimResubmit(stuckCutoff, cooldownCutoff, RESUBMIT_BATCH_LIMIT);
 
       logger.log(
         `🔁 GSC resubmit START (${trigger}) — ${candidates.length} stuck URLs (>${RESUBMIT_STUCK_DAYS}d)`,
@@ -1201,20 +1041,7 @@ class GscInspectionService {
       // `lastInspectedAt` so the next inspection batch (sorted asc on
       // that field) picks these rows up first to verify if Google moved
       // them after the re-ping.
-      const ids = candidates.map((c) => c._id);
-      await GscUrlInspection.updateMany(
-        { _id: { $in: ids } },
-        {
-          $set: {
-            lastResubmitAt: submitNow,
-            lastResubmitStatus: status,
-            lastResubmitError: errorMsg,
-            updatedAt: submitNow,
-          },
-          $inc: { resubmitCount: 1 },
-          $unset: { lastInspectedAt: '' },
-        },
-      );
+      await pgGscSaveResubmit(candidates, submitNow, status, errorMsg);
 
       // Force-rebuild the sitemap so each affected URL gets a fresh
       // <lastmod>. The rebuild is cluster-wide and not per-URL, so we

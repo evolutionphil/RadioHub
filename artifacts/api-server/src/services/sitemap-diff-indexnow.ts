@@ -14,13 +14,8 @@
  * pattern consistent with `indexnow-resubmit-task-152.ts`).
  */
 
-import mongoose from 'mongoose';
-import {
-  SitemapUrlSnapshot,
-  SitemapManifest,
-  Genre,
-  Station,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgActiveManifest, pgActiveManifests, pgSeoGenres, pgGetUrlSnapshot, pgSaveUrlSnapshot, withSeoJobLock, type SeoJobLock } from '../data/postgres-seo-indexing-store';
 import { logger } from '../utils/logger';
 import { performanceCache } from '../performance-cache';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
@@ -169,7 +164,7 @@ export function computeGenresSitemapUrls(args: {
  * `country`, `countryCode`, `language`, `languageCodes`) so we can re-run
  * `getIndexableLanguagesForStation` and skip junk/noIndex stations. */
 export interface StationSitemapDoc {
-  _id: mongoose.Types.ObjectId | string;
+  _id: string;
   slug?: string;
   name?: string;
   url?: string;
@@ -194,7 +189,7 @@ export interface StationSitemapDoc {
 export function computeStationsSitemapUrlsForChunk(args: {
   language: string;
   qualifiedLanguages: ReadonlyArray<string>;
-  stationIds: ReadonlyArray<mongoose.Types.ObjectId | string>;
+  stationIds: ReadonlyArray<string>;
   stationsById: ReadonlyMap<string, StationSitemapDoc>;
   translations: Map<string, string>;
   baseUrl?: string;
@@ -257,11 +252,14 @@ function chunk<T>(arr: T[], size: number): T[][] {
  *                                  Nightly Sitemap Diff Runs panel instead of
  *                                  today's row. Cron runs leave this unset.
  */
-export async function runSitemapDiffSubmission(opts: {
+export async function runSitemapDiffSubmission(opts: Parameters<typeof runSitemapDiffUnlocked>[0] = {}): Promise<SitemapDiffSummary> {
+  return opts.dryRun ? runSitemapDiffUnlocked(opts) : withSeoJobLock('sitemap-diff', lock => runSitemapDiffUnlocked(opts,lock));
+}
+async function runSitemapDiffUnlocked(opts: {
   ensureManifestFresh?: boolean;
   dryRun?: boolean;
   runDate?: string;
-} = {}): Promise<SitemapDiffSummary> {
+} = {}, lock?:SeoJobLock): Promise<SitemapDiffSummary> {
   const startedAt = new Date();
   const ensureManifestFresh = opts.ensureManifestFresh ?? true;
   const dryRun = !!opts.dryRun;
@@ -304,10 +302,9 @@ export async function runSitemapDiffSubmission(opts: {
   const genreSlugsById = await loadGenreSlugsForActiveManifest();
 
   for (const language of qualifiedLanguages) {
+    lock?.assertOwned();
     // ---- main ----
-    const mainManifest = await SitemapManifest.findOne({ type: 'main', language, status: 'active' })
-      .sort({ generatedAt: -1 })
-      .lean();
+    const mainManifest = await pgActiveManifest('main', language);
     if (!mainManifest) {
       logger.log(`⏭️ sitemap-diff: no active main manifest for lang=${language}, skipping main`);
     } else {
@@ -315,25 +312,23 @@ export async function runSitemapDiffSubmission(opts: {
         ? extractTopCountriesFromChunk(mainManifest.chunks[0].stationIds)
         : [];
       const todayUrls = computeMainSitemapUrls({ language, topCountries, translations });
-      const result = await processLanguageDiff({ type: 'main', language, todayUrls, dryRun, runDate });
+      const result = await processLanguageDiff({ type: 'main', language, todayUrls, dryRun, runDate, lock });
       totalAdditions += result.additions.length;
       perLanguage.push(result);
     }
 
     // ---- genres (task #253) ----
-    const genresManifest = await SitemapManifest.findOne({ type: 'genres', language, status: 'active' })
-      .sort({ generatedAt: -1 })
-      .lean();
+    const genresManifest = await pgActiveManifest('genres', language);
     if (!genresManifest) {
       logger.log(`⏭️ sitemap-diff: no active genres manifest for lang=${language}, skipping genres`);
     } else {
-      const manifestIds: Array<mongoose.Types.ObjectId | string> = [];
+      const manifestIds: Array<string> = [];
       for (const c of genresManifest.chunks) {
         for (const id of c.stationIds) manifestIds.push(id);
       }
       const slugs = mapGenreIdsToSlugs(manifestIds, genreSlugsById);
       const todayUrls = computeGenresSitemapUrls({ language, genreSlugs: slugs, translations });
-      const result = await processLanguageDiff({ type: 'genres', language, todayUrls, dryRun, runDate });
+      const result = await processLanguageDiff({ type: 'genres', language, todayUrls, dryRun, runDate, lock });
       totalAdditions += result.additions.length;
       perLanguage.push(result);
     }
@@ -342,15 +337,13 @@ export async function runSitemapDiffSubmission(opts: {
     // keyed by (type='stations', language, chunk). One bulk Station fetch
     // per language amortizes across all chunks (chunks are bounded at 1000
     // ids each by the manifest builder). ----
-    const stationsManifest = await SitemapManifest.findOne({ type: 'stations', language, status: 'active' })
-      .sort({ generatedAt: -1 })
-      .lean();
+    const stationsManifest = await pgActiveManifest('stations', language);
     if (!stationsManifest) {
       logger.log(`⏭️ sitemap-diff: no active stations manifest for lang=${language}, skipping stations`);
     } else if (stationsManifest.chunks.length === 0) {
       logger.log(`⏭️ sitemap-diff: stations manifest for lang=${language} has zero chunks, skipping`);
     } else {
-      const allIds: Array<mongoose.Types.ObjectId | string> = [];
+      const allIds: Array<string> = [];
       const seenId = new Set<string>();
       for (const c of stationsManifest.chunks) {
         for (const id of c.stationIds) {
@@ -360,9 +353,7 @@ export async function runSitemapDiffSubmission(opts: {
           allIds.push(id);
         }
       }
-      const stationDocs = await Station.find({ _id: { $in: allIds } })
-        .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime country countryCode language languageCodes noIndex')
-        .lean<StationSitemapDoc[]>();
+      const stationDocs = await pgCatalog().find({ _id: { $in: allIds.map(String) } }) as StationSitemapDoc[];
       const stationsById = new Map<string, StationSitemapDoc>();
       for (const s of stationDocs) stationsById.set(String(s._id), s);
 
@@ -383,6 +374,8 @@ export async function runSitemapDiffSubmission(opts: {
           chunk: c.chunk,
           todayUrls,
           dryRun,
+          runDate,
+          lock,
         });
         totalAdditions += result.additions.length;
         perLanguage.push(result);
@@ -410,8 +403,10 @@ async function processLanguageDiff(args: {
   todayUrls: string[];
   dryRun: boolean;
   runDate?: string;
+  lock?: SeoJobLock;
 }): Promise<SitemapDiffPerLangResult> {
-  const { type, language, chunk: chunkIdx, todayUrls, dryRun, runDate } = args;
+  const { type, language, chunk: chunkIdx, todayUrls, dryRun, runDate, lock } = args;
+  lock?.assertOwned();
 
   // Snapshot key — for stations rows we MUST include `chunk` so two chunks
   // in the same language don't collide on the (type, language, chunk)
@@ -426,7 +421,7 @@ async function processLanguageDiff(args: {
   } else {
     snapshotKey.chunk = { $exists: false };
   }
-  const snapshot = await SitemapUrlSnapshot.findOne(snapshotKey).lean();
+  const snapshot = await pgGetUrlSnapshot(type, language, type === 'stations' ? chunkIdx! : 0);
   const previousUrls = snapshot?.urls ?? [];
   const additions = diffUrlSets(previousUrls, todayUrls);
 
@@ -453,6 +448,7 @@ async function processLanguageDiff(args: {
     let allOk = true;
     let lastError: string | undefined;
     for (let i = 0; i < batches.length; i++) {
+      lock?.assertOwned();
       const batch = batches[i];
       const submit = await IndexNowService.submitToIndexNow(batch, 'sitemap-diff', runDate);
       if (submit.success) {
@@ -470,7 +466,7 @@ async function processLanguageDiff(args: {
 
   if (!dryRun) {
     const todaySet = new Set(todayUrls);
-    const carriedOver = previousUrls.filter((u) => todaySet.has(u));
+    const carriedOver = previousUrls.filter((u: string) => todaySet.has(u));
     const nextSnapshot = Array.from(new Set([...carriedOver, ...successfullySubmitted])).sort();
     // For stations we need `chunk` in BOTH the filter and the
     // $setOnInsert payload so the unique-index entry materializes on
@@ -484,19 +480,7 @@ async function processLanguageDiff(args: {
     } else {
       filter.chunk = { $exists: false };
     }
-    await SitemapUrlSnapshot.updateOne(
-      filter,
-      {
-        $set: {
-          urls: nextSnapshot,
-          urlCount: nextSnapshot.length,
-          generatedAt: new Date(),
-          updatedAt: new Date(),
-        },
-        $setOnInsert: setOnInsert,
-      },
-      { upsert: true },
-    );
+    await pgSaveUrlSnapshot(type, language, type === 'stations' ? chunkIdx! : 0, nextSnapshot, lock);
   }
 
   return result;
@@ -506,7 +490,7 @@ async function processLanguageDiff(args: {
  * dropping any id whose Genre is missing or whose slug failed to resolve.
  * Pure helper so the manifest→slug step is independently testable. */
 export function mapGenreIdsToSlugs(
-  manifestIds: ReadonlyArray<mongoose.Types.ObjectId | string>,
+  manifestIds: ReadonlyArray<string>,
   slugsById: ReadonlyMap<string, string>,
 ): string[] {
   const out: string[] = [];
@@ -517,7 +501,7 @@ export function mapGenreIdsToSlugs(
   return out;
 }
 
-type GenreIdLookup = mongoose.Types.ObjectId | string;
+type GenreIdLookup = string;
 interface GenreIdSlugDoc { _id: GenreIdLookup; slug?: string }
 
 /** Collect every Genre._id referenced by an active genres manifest while
@@ -548,9 +532,7 @@ function collectManifestGenreIds(
  * String(_id) for cheap lookups regardless of ObjectId vs legacy-string ids. */
 async function loadGenreSlugsForActiveManifest(): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  const manifests = await SitemapManifest.find({ type: 'genres', status: 'active' })
-    .select('chunks')
-    .lean();
+  const manifests = await pgActiveManifests('genres');
   // Preserve BSON types — see collectManifestGenreIds JSDoc.
   const ids = collectManifestGenreIds(
     manifests as Array<{ chunks: Array<{ stationIds: GenreIdLookup[] }> }>,
@@ -563,12 +545,7 @@ async function loadGenreSlugsForActiveManifest(): Promise<Map<string, string>> {
   // Genre.collection types `_id` as ObjectId, but the underlying collection
   // accepts the mixed-shape array — cast the filter to satisfy the driver
   // typings without losing the BSON types of the values themselves.
-  const docs = await Genre.collection
-    .find<GenreIdSlugDoc>(
-      { _id: { $in: ids as mongoose.Types.ObjectId[] } },
-      { projection: { _id: 1, slug: 1 } },
-    )
-    .toArray();
+  const docs = await pgSeoGenres(ids);
   for (const d of docs) {
     const slug = d.slug;
     if (typeof slug === 'string' && slug.length > 0) {

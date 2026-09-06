@@ -1,5 +1,6 @@
 import type { Express } from "express";
-import { Station, BulkDescriptionJob } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgSaveDescriptionJob } from '../data/postgres-runtime-operations';
 import { logger } from "../utils/logger";
 import { stripPlaceholders, TV_STATION_PROJECTION } from "./shared-utils";
 import { performanceCache } from "../performance-cache";
@@ -57,7 +58,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       const stationId = req.params.id;
       const { language } = req.body; // Optional: override auto-detected language
       
-      const station = await Station.findById(stationId).lean();
+      const station = await pgCatalog().findOne({ _id: stationId });
       if (!station) {
         return void res.status(404).json({ error: 'Station not found' });
       }
@@ -79,17 +80,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       if (result.fullDescription && result.metaDescription) {
         logger.log(`💾 Saving both full (${result.fullDescription.length} chars) and meta (${result.metaDescription.length} chars) for "${station.name}"`);
         
-        const updateResult = await Station.updateOne(
-          { _id: stationId },
-          { 
+        const updateResult = await pgCatalog().update({ _id: stationId }, {
             $set: { 
               [`descriptions.${result.language}`]: {
                 full: result.fullDescription,
                 meta: result.metaDescription
               }
             } 
-          }
-        );
+          });
         
         if (updateResult.modifiedCount > 0 && station.slug) {
           performanceCache.invalidateStationCache(station.slug);
@@ -122,7 +120,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     try {
       const stationId = req.params.id;
       
-      const station = await Station.findById(stationId).lean();
+      const station = await pgCatalog().findOne({ _id: stationId });
       if (!station) {
         return void res.status(404).json({ error: 'Station not found' });
       }
@@ -130,10 +128,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       logger.log(`🔄 Refreshing AI description for station: ${station.name} (clearing skip flag)`);
       
       // Clear the skip flag to allow regeneration
-      await Station.updateOne(
-        { _id: stationId },
-        { $unset: { aiDescriptionSkipped: 1 } }
-      );
+      await pgCatalog().update({ _id: stationId }, { $unset: { aiDescriptionSkipped: 1 } });
       
       // Generate fresh description
       const result = await generateStationDescription(station as any);
@@ -142,17 +137,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       if (result.fullDescription && result.metaDescription) {
         logger.log(`💾 Saving refreshed description for "${station.name}"`);
         
-        const updateResult = await Station.updateOne(
-          { _id: stationId },
-          { 
+        const updateResult = await pgCatalog().update({ _id: stationId }, {
             $set: { 
               [`descriptions.${result.language}`]: {
                 full: result.fullDescription,
                 meta: result.metaDescription
               }
             } 
-          }
-        );
+          });
         
         if (updateResult.modifiedCount > 0 && station.slug) {
           performanceCache.invalidateStationCache(station.slug);
@@ -200,11 +192,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
           const cleanupStats: any = {};
           
           while (true) {
-            const batch = await Station.find({ descriptions: { $exists: true } })
-              .select('_id descriptions')
-              .skip(skip)
-              .limit(BATCH)
-              .lean();
+            const batch = await pgCatalog().find({ descriptions: { $exists: true } }, { fields: ["_id","descriptions"], offset: skip, limit: BATCH });
             
             if (batch.length === 0) break;
             logger.log(`🧹 Cleanup batch: processing stations ${skip + 1}–${skip + batch.length}...`);
@@ -214,7 +202,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
               if (!station.descriptions || typeof station.descriptions !== 'object') continue;
               
               let hasChanges = false;
-              const updatedDescriptions: any = {};
+              const updatedDescriptions: any = structuredClone(station.descriptions);
               
               for (const [lang, desc] of Object.entries(station.descriptions)) {
                 if (typeof desc === 'object' && desc !== null && 'meta' in desc) {
@@ -235,7 +223,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
               if (hasChanges) {
                 bulkOps.push({
                   updateOne: {
-                    filter: { _id: station._id },
+                    filter: { _id: station._id,descriptions:station.descriptions },
                     update: { $set: { descriptions: updatedDescriptions } }
                   }
                 });
@@ -243,7 +231,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
               }
             }
             
-            if (bulkOps.length > 0) await Station.bulkWrite(bulkOps);
+            for (const operation of bulkOps) await pgCatalog().update(operation.updateOne.filter,operation.updateOne.update);
             skip += BATCH;
             if (batch.length < BATCH) break;
           }
@@ -267,10 +255,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     try {
       logger.log(`🔄 Clearing aiDescriptionSkipped flags for all stations`);
       
-      const result = await Station.updateMany(
-        { aiDescriptionSkipped: true },
-        { $unset: { aiDescriptionSkipped: 1 } }
-      );
+      const result = await pgCatalog().update({ aiDescriptionSkipped: true }, { $unset: { aiDescriptionSkipped: 1 } }, { many: true });
       
       logger.log(`✅ Cleared skip flags for ${result.modifiedCount} stations`);
       
@@ -299,9 +284,8 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       
       if (selectedStationIds && selectedStationIds.length > 0) {
         // If specific stations selected, only process those (check for missing English)
-        const mongoose = await import('mongoose');
         query = {
-          _id: { $in: selectedStationIds.map((id: string) => new mongoose.default.Types.ObjectId(id)) },
+          _id: { $in: selectedStationIds.map((id: string) => String(id)) },
           $or: [
             { 'descriptions.en': { $exists: false } },
             { 'descriptions.en.full': { $exists: false } },
@@ -332,7 +316,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       }
       
       // Count matching stations
-      const totalStations = await Station.countDocuments(query);
+      const totalStations = await pgCatalog().count(query);
       const stationsToProcess = limit ? Math.min(limit, totalStations) : totalStations;
       
       logger.log(`🔍 Found ${totalStations} stations with missing English descriptions`);
@@ -389,7 +373,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
           
           while (processed < stationsToProcess) {
             const currentLimit = limit ? Math.min(batchSize, stationsToProcess - processed) : batchSize;
-            const stations = await Station.find(query).skip(skip).limit(currentLimit).select(TV_STATION_PROJECTION).lean();
+            const stations = await pgCatalog().find(query, { offset: skip, limit: currentLimit, fields: [...Object.keys(TV_STATION_PROJECTION),'descriptions','manualEditFields'] });
             
             if (stations.length === 0) break;
             
@@ -484,10 +468,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   sourceLanguage = nativeLanguage;
                   
                   // Save native language
-                  await Station.updateOne(
-                    { _id: station._id },
-                    { $set: { [`descriptions.${nativeLanguage}`]: sourceDescription } }
-                  );
+                  await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${nativeLanguage}`]: sourceDescription } });
                   
                   // Remove native from missing list if it was there
                   const nativeIndex = missingLanguages.indexOf(nativeLanguage);
@@ -519,10 +500,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   
                   // Save all translations
                   for (const [lang, translation] of translations) {
-                    await Station.updateOne(
-                      { _id: station._id },
-                      { $set: { [`descriptions.${lang}`]: translation } }
-                    );
+                    await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: translation } });
                   }
                   
                   logger.log(`   ✅ Added ${translations.size} languages for "${stationName}"`);
@@ -610,15 +588,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
       let query: any = {};
 
       if (hasExplicitSelection) {
-        const mongoose = await import('mongoose');
         query = {
-          _id: { $in: selectedStationIds.map((id: string) => new mongoose.default.Types.ObjectId(id)) }
+          _id: { $in: selectedStationIds.map((id: string) => String(id)) }
         };
       } else if (filterByCountry) {
         query = { countryCode: filterByCountry };
       }
 
-      const totalStations = await Station.countDocuments(query);
+      const totalStations = await pgCatalog().count(query);
       // When the admin explicitly selects stations, the selection IS the work
       // list. The previous `limit = 10` destructuring default silently
       // truncated any selection to 10 (the Bulk AI dialog sends no limit —
@@ -666,7 +643,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
           
           while (processed < stationsToProcess) {
             const currentLimit = Math.min(batchSize, stationsToProcess - processed);
-            const stations = await Station.find(query).skip(skip).limit(currentLimit).lean();
+            const stations = await pgCatalog().find(query, { offset: skip, limit: currentLimit });
             
             if (stations.length === 0) break;
             
@@ -730,10 +707,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                           meta: stripPlaceholders(translation.meta)
                         };
                         
-                        await Station.updateOne(
-                          { _id: station._id },
-                          { $set: { [`descriptions.${lang}`]: cleanedTranslation } }
-                        );
+                        await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: cleanedTranslation } });
                       }
                       
                       successful++;
@@ -788,17 +762,14 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                   const cleanedFull = stripPlaceholders(result.fullDescription);
                   const cleanedMeta = stripPlaceholders(result.metaDescription);
                   
-                  await Station.updateOne(
-                    { _id: station._id },
-                    { 
+                  await pgCatalog().update({ _id: station._id }, {
                       $set: { 
                         [`descriptions.${result.language}`]: {
                           full: cleanedFull,
                           meta: cleanedMeta
                         }
                       } 
-                    }
-                  );
+                    });
                   
                   let translationTargets = targetLanguages.filter((lang: string) => lang !== result.language);
                   const existingLangs = (station.descriptions && typeof station.descriptions === 'object') ? Object.keys(station.descriptions).filter((lang: string) => {
@@ -827,10 +798,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                         meta: stripPlaceholders(translation.meta)
                       };
                       
-                      await Station.updateOne(
-                        { _id: station._id },
-                        { $set: { [`descriptions.${lang}`]: cleanedTranslation } }
-                      );
+                      await pgCatalog().update({ _id: station._id }, { $set: { [`descriptions.${lang}`]: cleanedTranslation } });
                     }
                     successful++;
                     pushLimited(job.successfulStations, { name: station.name, languages: [result.language, ...missingLangs] });
@@ -853,8 +821,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                 descriptionJobs.set(jobId, job);
                 
                 if (processed % 5 === 0) {
-                  await BulkDescriptionJob.findOneAndUpdate(
-                    { jobId },
+                  await pgSaveDescriptionJob(jobId,totalStations,
                     {
                       processedStations: processed,
                       successCount: successful,
@@ -863,8 +830,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
                       lastProcessedStationId: station._id?.toString(),
                       lastProcessedSkip: skip,
                       updatedAt: new Date()
-                    },
-                    { upsert: true }
+                    }
                   );
                 }
               } catch (error: any) {
@@ -882,8 +848,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
             descriptionJobs.set(jobId, job);
           }
           
-          await BulkDescriptionJob.findOneAndUpdate(
-            { jobId },
+          await pgSaveDescriptionJob(jobId,totalStations,
             {
               status: 'completed',
               processedStations: processed,
@@ -891,8 +856,7 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
               failedCount: failed,
               skippedCount: skipped,
               updatedAt: new Date()
-            },
-            { upsert: true }
+            }
           );
         } catch (error: any) {
           const job = descriptionJobs.get(jobId);
@@ -952,18 +916,18 @@ export async function registerAiDescriptionRoutes(app: Express, deps: any) {
     const UNIVERSAL_14 = ['en', 'es', 'fr', 'de', 'pt', 'it', 'ru', 'ar', 'zh', 'tr', 'ja', 'ko', 'hi', 'he'];
 
     try {
-      const totalStations = await Station.countDocuments({});
-      const indexableStations = await Station.countDocuments({ noIndex: { $ne: true } });
+      const totalStations = await pgCatalog().count({});
+      const indexableStations = await pgCatalog().count({ noIndex: { $ne: true } });
 
       const perLanguage = await Promise.all(
         UNIVERSAL_14.map(async (lang) => {
           // A language counts as "covered" only when BOTH full and meta are
           // present and non-empty (mirrors the SSR render gate at
           // seo-renderer.ts which only emits the rich body when full exists).
-          const withFull = await Station.countDocuments({
+          const withFull = await pgCatalog().count({
             [`descriptions.${lang}.full`]: { $exists: true, $nin: [null, ''] },
           });
-          const withMeta = await Station.countDocuments({
+          const withMeta = await pgCatalog().count({
             [`descriptions.${lang}.meta`]: { $exists: true, $nin: [null, ''] },
           });
           const pct = totalStations > 0 ? Math.round((withFull / totalStations) * 1000) / 10 : 0;

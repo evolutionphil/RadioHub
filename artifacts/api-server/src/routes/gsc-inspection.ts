@@ -12,7 +12,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { GscUrlInspection, GscIndexingSnapshot, GscOAuthToken, Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgGscCounts, pgGscStats, pgGscList, pgGscSnapshots, pgGscGroupCounts, pgGscOAuthToken, pgGscReplaceOAuthToken, pgGscCreateOAuthState, pgGscConsumeOAuthState } from '../data/postgres-gsc-store';
 import {
   gscInspectionService,
   isGscConfigured,
@@ -94,13 +95,7 @@ router.get('/status', async (_req: Request, res: Response) => {
     const stuckCutoff = new Date(
       Date.now() - status.resubmitStuckDays * 24 * 60 * 60 * 1000,
     );
-    const [total, stuck] = await Promise.all([
-      GscUrlInspection.estimatedDocumentCount(),
-      GscUrlInspection.countDocuments({
-        state: { $in: ['discovered-not-indexed', 'crawled-not-indexed'] },
-        notIndexedSince: { $lte: stuckCutoff },
-      }),
-    ]);
+    const { total, stuck } = await pgGscCounts(stuckCutoff);
     res.json({ ...status, totalUrls: total, stuckUrls: stuck });
   } catch (err: any) {
     logger.error('GSC inspection /status failed:', err?.message ?? err);
@@ -110,57 +105,7 @@ router.get('/status', async (_req: Request, res: Response) => {
 
 router.get('/stats', async (_req: Request, res: Response) => {
   try {
-    const [byState, byGroup, byLanguage] = await Promise.all([
-      GscUrlInspection.aggregate([
-        { $group: { _id: '$state', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-      ]),
-      GscUrlInspection.aggregate([
-        {
-          $group: {
-            _id: '$group',
-            total: { $sum: 1 },
-            indexed: {
-              $sum: { $cond: [{ $eq: ['$state', 'indexed'] }, 1, 0] },
-            },
-            crawledNotIndexed: {
-              $sum: {
-                $cond: [{ $eq: ['$state', 'crawled-not-indexed'] }, 1, 0],
-              },
-            },
-            discoveredNotIndexed: {
-              $sum: {
-                $cond: [
-                  { $eq: ['$state', 'discovered-not-indexed'] },
-                  1,
-                  0,
-                ],
-              },
-            },
-            excluded: {
-              $sum: { $cond: [{ $eq: ['$state', 'excluded'] }, 1, 0] },
-            },
-            error: { $sum: { $cond: [{ $eq: ['$state', 'error'] }, 1, 0] } },
-            pending: {
-              $sum: { $cond: [{ $eq: ['$state', 'pending'] }, 1, 0] },
-            },
-          },
-        },
-        { $sort: { _id: 1 } },
-      ]),
-      GscUrlInspection.aggregate([
-        {
-          $group: {
-            _id: '$language',
-            total: { $sum: 1 },
-            indexed: {
-              $sum: { $cond: [{ $eq: ['$state', 'indexed'] }, 1, 0] },
-            },
-          },
-        },
-        { $sort: { _id: 1 } },
-      ]),
-    ]);
+    const { byState, byGroup, byLanguage } = await pgGscStats();
 
     const total = byState.reduce(
       (sum: number, row: any) => sum + (row.count ?? 0),
@@ -219,15 +164,11 @@ router.get('/urls', async (req: Request, res: Response) => {
 
     const noindexFilter = String(req.query.noindex ?? 'any');
 
-    const [rawRows, total, qualifiedLangsArr] = await Promise.all([
-      GscUrlInspection.find(filter)
-        .sort({ state: 1, language: 1, url: 1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .lean(),
-      GscUrlInspection.countDocuments(filter),
-      getCachedQualifiedLanguages().catch(() => [] as string[]),
+    const [listed, qualifiedLangsArr] = await Promise.all([
+      pgGscList({ language, group, state, search }, limit, (page-1)*limit),
+      getCachedQualifiedLanguages(),
     ]);
+    const { rows: rawRows, total } = listed;
 
     const qualifiedLangs = new Set(qualifiedLangsArr);
 
@@ -242,10 +183,7 @@ router.get('/urls', async (req: Request, res: Response) => {
       ),
     );
     const stations = stationSlugs.length
-      ? await Station.find(
-          { slug: { $in: stationSlugs } },
-          { slug: 1, noIndex: 1, name: 1, url: 1, lastCheckOk: 1 },
-        ).lean()
+      ? await pgCatalog().find({ slug: { $in: stationSlugs } })
       : [];
     const stationBySlug = new Map<string, any>(
       stations.map((s: any) => [s.slug, s]),
@@ -360,9 +298,7 @@ router.get('/trends', async (req: Request, res: Response) => {
     if (language !== 'any') filter.language = language;
     if (group !== 'any') filter.group = group;
 
-    const rows = await GscIndexingSnapshot.find(filter)
-      .sort({ date: 1, language: 1, group: 1 })
-      .lean();
+    const rows = await pgGscSnapshots(since, language, group);
 
     // Compute which UTC days inside the requested window have no
     // snapshot row at all. The snapshot job always writes the
@@ -374,10 +310,7 @@ router.get('/trends', async (req: Request, res: Response) => {
     // language/group filter doesn't manufacture phantom gaps.
     const coveredDates = new Set<string>();
     if (language !== 'any' && group !== 'any' && (language !== 'all' || group !== 'all')) {
-      const unfiltered = await GscIndexingSnapshot.find(
-        { date: { $gte: since } },
-        { date: 1 },
-      ).lean();
+      const unfiltered = await pgGscSnapshots(since);
       for (const r of unfiltered as any[]) {
         coveredDates.add(new Date(r.date).toISOString().slice(0, 10));
       }
@@ -447,9 +380,7 @@ router.get('/history.csv', async (req: Request, res: Response) => {
     if (language !== 'any') filter.language = language;
     if (group !== 'any') filter.group = group;
 
-    const rows = await GscIndexingSnapshot.find(filter)
-      .sort({ date: 1, language: 1, group: 1 })
-      .lean();
+    const rows = await pgGscSnapshots(since, language, group);
 
     const headers = [
       'date',
@@ -588,20 +519,11 @@ router.post('/discover', async (_req: Request, res: Response) => {
  */
 router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
   try {
-    const qualifiedLangsArr = await getCachedQualifiedLanguages().catch(
-      () => [] as string[],
-    );
+    const qualifiedLangsArr = await getCachedQualifiedLanguages();
     const qualifiedLangs = new Set(qualifiedLangsArr);
 
     // Per-language totals from gscurlinspections
-    const byLangAgg = await GscUrlInspection.aggregate([
-      {
-        $group: {
-          _id: { language: '$language', group: '$group' },
-          count: { $sum: 1 },
-        },
-      },
-    ]);
+    const byLangAgg = await pgGscGroupCounts();
 
     // langRedirected: URLs whose language is not qualified — previously served
     // as noindex, now served as 301 redirect to /en. Not counted as
@@ -626,12 +548,7 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
     // For station-specific reasons (junk, numericSlug, stationNoIndex) we
     // need to look at every station URL. We aggregate the slugs from the
     // gscurlinspections then join against Station.
-    const stationUrlSample = await GscUrlInspection.find(
-      { group: 'station' },
-      { url: 1, language: 1 },
-    )
-      .limit(50000)
-      .lean();
+    const stationUrlSample = (await pgGscList({ group: 'station' }, 50000)).rows;
 
     let numericSlugCount = 0;
     let stationNoIndexCount = 0;
@@ -654,10 +571,7 @@ router.get('/noindex-breakdown', async (_req: Request, res: Response) => {
     }
 
     if (slugSet.size > 0) {
-      const stations = await Station.find(
-        { slug: { $in: Array.from(slugSet) } },
-        { slug: 1, noIndex: 1, name: 1, url: 1, lastCheckOk: 1 },
-      ).lean();
+      const stations = await pgCatalog().find({ slug: { $in: Array.from(slugSet) } });
       const stationBySlug = new Map<string, any>(
         stations.map((s: any) => [s.slug, s]),
       );
@@ -708,7 +622,7 @@ router.get('/oauth/status', async (_req: Request, res: Response) => {
     process.env.GOOGLE_OAUTH_CLIENT_ID && process.env.GOOGLE_OAUTH_CLIENT_SECRET,
   );
   const token = hasEnvVars
-    ? await GscOAuthToken.findOne({}).sort({ createdAt: -1 }).lean()
+    ? await pgGscOAuthToken()
     : null;
   res.json({
     hasEnvVars,
@@ -719,7 +633,7 @@ router.get('/oauth/status', async (_req: Request, res: Response) => {
   });
 });
 
-router.get('/oauth/init', (_req: Request, res: Response) => {
+router.get('/oauth/init', async (req: Request, res: Response) => {
   const client = createOAuthClientFromEnv();
   if (!client) {
     return void res.status(400).json({
@@ -727,17 +641,21 @@ router.get('/oauth/init', (_req: Request, res: Response) => {
     });
   }
   const redirectUri = `${process.env.API_BASE_URL ?? 'https://api.themegaradio.com'}/api/admin/gsc-inspection/oauth/callback`;
+  if (!req.session || !req.sessionID) return void res.status(401).json({ error: 'An admin session is required to connect OAuth' });
+  (req.session as any).gscOAuthInitiatedAt = Date.now();
+  const state = await pgGscCreateOAuthState(req.sessionID);
   const url = client.generateAuthUrl({
     access_type: 'offline',
     scope: ['https://www.googleapis.com/auth/webmasters.readonly'],
     redirect_uri: redirectUri,
     prompt: 'consent',
+    state,
   });
   res.json({ url, redirectUri });
 });
 
 router.delete('/oauth/disconnect', async (_req: Request, res: Response) => {
-  await GscOAuthToken.deleteMany({});
+  await pgGscReplaceOAuthToken(null);
   invalidateOAuthCache();
   res.json({ message: 'OAuth token disconnected' });
 });
@@ -749,6 +667,11 @@ router.delete('/oauth/disconnect', async (_req: Request, res: Response) => {
  */
 export async function handleOAuthCallback(req: Request, res: Response): Promise<void> {
   const { code, error } = req.query as { code?: string; error?: string };
+  const state = typeof req.query.state === 'string' ? req.query.state : '';
+  if (!await pgGscConsumeOAuthState(state, req.sessionID || '')) {
+    res.redirect('/admin/gsc-inspection?oauth_error=invalid_state');
+    return;
+  }
 
   if (error) {
     res.redirect(`/admin/gsc-inspection?oauth_error=${encodeURIComponent(String(error))}`);
@@ -777,8 +700,7 @@ export async function handleOAuthCallback(req: Request, res: Response): Promise<
       const tokenInfo = await infoClient.getTokenInfo(tokens.access_token!);
       connectedEmail = (tokenInfo as any).email ?? undefined;
     } catch { /* email is optional — don't fail the whole flow */ }
-    await GscOAuthToken.deleteMany({});
-    await GscOAuthToken.create({
+    await pgGscReplaceOAuthToken({
       refreshToken: tokens.refresh_token,
       accessToken: tokens.access_token ?? undefined,
       expiryDate: tokens.expiry_date ?? undefined,

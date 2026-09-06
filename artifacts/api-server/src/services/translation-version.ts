@@ -1,93 +1,22 @@
-import { TranslationMetadata } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 export class TranslationVersionService {
   private static SCOPE = 'global';
 
-  private static async ensureMetadataExists(): Promise<void> {
-    try {
-      const existing = await TranslationMetadata.findOne({ scope: this.SCOPE });
-      if (!existing) {
-        await TranslationMetadata.create({
-          scope: this.SCOPE,
-          languagesVersion: 1,
-          lastBumpedAt: new Date(),
-          notes: 'Auto-created translation metadata'
-        });
-        logger.log('✅ Translation metadata initialized with version 1');
-      }
-    } catch (error) {
-      logger.log('⚠️  Translation metadata may already exist or creation failed:', error);
-    }
-  }
-
   static async bumpVersion(notes?: string): Promise<{ version: number; success: boolean }> {
-    try {
-      await this.ensureMetadataExists();
+    return pgLocalization().bumpVersion(notes, this.SCOPE);
 
-      const metadata = await TranslationMetadata.findOneAndUpdate(
-        { scope: this.SCOPE },
-        { 
-          $inc: { languagesVersion: 1 },
-          $set: { 
-            lastBumpedAt: new Date(),
-            updatedAt: new Date(),
-            ...(notes && { notes })
-          }
-        },
-        { 
-          returnDocument: 'after',
-          upsert: true
-        }
-      );
-
-      if (!metadata) {
-        logger.log('❌ Failed to bump translation version');
-        return { version: 0, success: false };
-      }
-
-      logger.log(`🔄 Translation version bumped to ${metadata.languagesVersion}`);
-      return { version: metadata.languagesVersion, success: true };
-    } catch (error) {
-      logger.log('❌ Error bumping translation version:', error);
-      return { version: 0, success: false };
-    }
   }
 
   static async getCurrentVersion(): Promise<number> {
-    try {
-      await this.ensureMetadataExists();
-      
-      const metadata = await TranslationMetadata.findOne({ scope: this.SCOPE });
-      return metadata?.languagesVersion || 1;
-    } catch (error) {
-      logger.log('⚠️  Error fetching translation version:', error);
-      return 1;
-    }
+    return (await pgLocalization().getMetadata(this.SCOPE)).languagesVersion;
+
   }
 
   static async getMetadata() {
-    try {
-      await this.ensureMetadataExists();
-      
-      const metadata = await TranslationMetadata.findOne({ scope: this.SCOPE }).lean();
-      return metadata || {
-        scope: this.SCOPE,
-        languagesVersion: 1,
-        lastBumpedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-    } catch (error) {
-      logger.log('⚠️  Error fetching translation metadata:', error);
-      return {
-        scope: this.SCOPE,
-        languagesVersion: 1,
-        lastBumpedAt: new Date(),
-        createdAt: new Date(),
-        updatedAt: new Date()
-      };
-    }
+    return pgLocalization().getMetadata(this.SCOPE);
+
   }
 
   static async bumpVersionViaApi(adminToken?: string): Promise<{ success: boolean; version: number }> {

@@ -5,7 +5,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Edit, Play, Pause, Trash2, ArrowUpDown, Radio, Circle, Sparkles, Tag } from "lucide-react";
 import { useState, useRef } from "react";
 import { useTranslation } from "@/hooks/useTranslation";
-// MongoDB stations use _id instead of id
+// The station API retains its stable _id identifier field.
 interface MongoStation {
   _id: string;
   name: string;

@@ -1,10 +1,8 @@
+import { getAdminSetting, pgAdminSettings } from '../data/postgres-admin-settings-store';
 import { logger } from '../utils/logger';
-import {
-  User,
-  UserNotification,
-  CoverageSnapshot,
-  AdminSetting,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgCoverage } from '../data/postgres-coverage-store';
+import { pgCreateNotification } from '../data/postgres-notification-store';
+import { pgAdminUserIds } from '../data/postgres-user-store';
 
 /**
  * Coverage-drop notifier (Task #145).
@@ -143,19 +141,13 @@ export async function loadStoredCoverageDropSettings(
     return settingsCache.value;
   }
   try {
-    const doc = await AdminSetting.findOne({ key: COVERAGE_DROP_SETTINGS_KEY }).lean();
+    const doc = await getAdminSetting(COVERAGE_DROP_SETTINGS_KEY);
     const value = sanitizeStoredSettings(doc?.value);
     settingsCache = { at: Date.now(), value };
     return value;
   } catch (err) {
-    logger.warn('⚠️  Failed to load coverage-drop settings from DB, using env/defaults:', err);
-    const value: CoverageDropAlertSettings = {
-      thresholdPp: null,
-      minStations: null,
-      webhookUrl: null,
-    };
-    settingsCache = { at: Date.now(), value };
-    return value;
+    logger.warn('⚠️  Failed to load coverage-drop settings from PostgreSQL:', err);
+    throw err;
   }
 }
 
@@ -247,8 +239,8 @@ export async function detectCoverageDrops(opts: {
   weekAgo.setUTCDate(weekAgo.getUTCDate() - lookbackDays);
 
   const [todayRows, weekAgoRows] = await Promise.all([
-    CoverageSnapshot.find({ snapshotDate: today }).lean(),
-    CoverageSnapshot.find({ snapshotDate: weekAgo }).lean(),
+    pgCoverage().snapshots({date:today}),
+    pgCoverage().snapshots({date:weekAgo}),
   ]);
 
   if (weekAgoRows.length === 0) {
@@ -387,22 +379,11 @@ export async function recordCoverageDropTestResult(input: {
   };
   try {
     const now = new Date();
-    await AdminSetting.findOneAndUpdate(
-      { key: COVERAGE_DROP_LAST_TEST_KEY },
-      {
-        $set: {
-          value: record,
-          updatedAt: now,
-          updatedBy: input.triggeredBy,
-        },
-        $setOnInsert: { createdAt: now, key: COVERAGE_DROP_LAST_TEST_KEY },
-      },
-      { upsert: true, new: true },
-    );
+    await pgAdminSettings().save({ key: COVERAGE_DROP_LAST_TEST_KEY, value: record, changedBy: input.triggeredBy });
     return record;
   } catch (err) {
     logger.warn('⚠️  Failed to persist last coverage-drop test webhook result:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -432,11 +413,11 @@ function sanitizeLastTestRecord(value: unknown): CoverageDropLastTestRecord | nu
 
 export async function loadLastCoverageDropTestResult(): Promise<CoverageDropLastTestRecord | null> {
   try {
-    const doc = await AdminSetting.findOne({ key: COVERAGE_DROP_LAST_TEST_KEY }).lean();
+    const doc = await getAdminSetting(COVERAGE_DROP_LAST_TEST_KEY);
     return sanitizeLastTestRecord(doc?.value);
   } catch (err) {
     logger.warn('⚠️  Failed to load last coverage-drop test webhook result:', err);
-    return null;
+    throw err;
   }
 }
 
@@ -545,8 +526,8 @@ async function notifyAdminsInApp(
   snapshotDate: Date,
   thresholdPp: number,
 ): Promise<number> {
-  const admins = await User.find({ role: 'admin' }, { _id: 1 }).lean();
-  if (admins.length === 0) return 0;
+  const adminIds=await pgAdminUserIds();
+  if (adminIds.length === 0) return 0;
 
   const date = snapshotDate.toISOString().slice(0, 10);
   const top = drops.slice(0, 5).map(formatDrop).join('; ');
@@ -555,8 +536,8 @@ async function notifyAdminsInApp(
       ? `Coverage drop on ${date}: ${formatDrop(drops[0])}`
       : `${drops.length} coverage drops on ${date} (>${thresholdPp}pp vs 7 days ago): ${top}${drops.length > 5 ? '…' : ''}`;
 
-  const docs = admins.map((a) => ({
-    userId: a._id,
+  const docs = adminIds.map((userId) => ({
+    userId,
     type: 'system' as const,
     title: '⚠️ Coverage drop detected',
     message,
@@ -575,8 +556,9 @@ async function notifyAdminsInApp(
     },
   }));
 
-  await UserNotification.insertMany(docs, { ordered: false });
-  return admins.length;
+  await Promise.all(docs.map(doc=>pgCreateNotification(doc)));
+
+  return adminIds.length;
 }
 
 export type CoverageDropNotifier = (

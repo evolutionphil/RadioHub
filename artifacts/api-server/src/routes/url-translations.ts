@@ -1,10 +1,18 @@
 import { Router, Request, Response } from 'express';
-import { UrlTranslation } from '@workspace/db-shared/mongo-schemas';
+
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import OpenAI from 'openai';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 const router = Router();
+
+async function refreshUrlTranslations(): Promise<void> {
+  const { performanceCache } = await import('../performance-cache');
+  performanceCache.clearUrlTranslations();
+  const { loadDatabaseUrlTranslations } = await import('../seo/load-database-mappings');
+  await loadDatabaseUrlTranslations();
+}
 
 // Initialize OpenAI client
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({
@@ -63,7 +71,7 @@ router.get('/available-paths', requireAdmin, async (req: Request, res: Response)
 // Get all URL translations from database
 router.get('/', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const translations = await UrlTranslation.find({ isActive: true }).sort({ languageCode: 1, englishPath: 1 });
+    const translations = (await pgLocalization().listUrlTranslations());
     res.json(translations);
   } catch (error: any) {
     console.error('Error fetching URL translations:', error);
@@ -75,10 +83,7 @@ router.get('/', requireAdmin, async (req: Request, res: Response) => {
 router.get('/:languageCode', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { languageCode } = req.params;
-    const translations = await UrlTranslation.find({ 
-      languageCode, 
-      isActive: true 
-    }).sort({ englishPath: 1 });
+    const translations = (await pgLocalization().listUrlTranslations(String(languageCode)));
     
     res.json(translations);
   } catch (error: any) {
@@ -92,13 +97,15 @@ router.post('/bulk', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { translations } = req.body;
     
-    if (!Array.isArray(translations)) {
-      return void res.status(400).json({ message: 'Translations must be an array' });
+    if (!Array.isArray(translations) || translations.length > 10_000) {
+      return void res.status(400).json({ message: 'Translations must be an array of at most 10000 entries' });
     }
     
     // Validate each translation
     for (const translation of translations) {
-      if (!translation.languageCode || !translation.englishPath || !translation.translatedPath) {
+      if (!translation || ['languageCode', 'englishPath', 'translatedPath'].some(
+        (field) => typeof translation[field] !== 'string' || !translation[field].trim(),
+      ) || (translation.notes !== undefined && typeof translation.notes !== 'string')) {
         return void res.status(400).json({ 
           message: 'Each translation must have languageCode, englishPath, and translatedPath' 
         });
@@ -124,17 +131,12 @@ router.post('/bulk', requireAdmin, async (req: Request, res: Response) => {
       }
     }));
     
-    const result = await UrlTranslation.bulkWrite(operations);
+    const result = (await pgLocalization().saveUrlTranslations(translations));
     
     console.log(`✅ Saved ${result.upsertedCount + result.modifiedCount} URL translations`);
     
     // Clear the cache so fresh data is loaded
-    const { performanceCache } = await import('../performance-cache');
-    performanceCache.clearUrlTranslations();
-    
-    // Reload URL translations into memory
-    const { loadDatabaseUrlTranslations } = await import('../seo/load-database-mappings');
-    await loadDatabaseUrlTranslations();
+    await refreshUrlTranslations();
     
     res.json({ 
       message: 'URL translations saved successfully',
@@ -232,13 +234,14 @@ Example format: {"about": "uber", "stations": "sender", "genres": "genres"}`;
 router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const result = await UrlTranslation.findByIdAndDelete(id);
+    const result = (await pgLocalization().deleteUrlTranslation(String(id)));
     
     if (!result) {
       return void res.status(404).json({ message: 'URL translation not found' });
     }
     
     console.log(`🗑️ Deleted URL translation: ${result.languageCode}/${result.englishPath}`);
+    await refreshUrlTranslations();
     
     res.json({ message: 'URL translation deleted successfully' });
   } catch (error: any) {
@@ -250,29 +253,10 @@ router.delete('/:id', requireAdmin, async (req: Request, res: Response) => {
 // Get translation statistics
 router.get('/stats/overview', requireAdmin, async (req: Request, res: Response) => {
   try {
-    const totalTranslations = await UrlTranslation.countDocuments({ isActive: true });
+    {
+      return void res.json(await pgLocalization().urlTranslationStats());
+    }
     
-    // Get count by language
-    const byLanguage = await UrlTranslation.aggregate([
-      { $match: { isActive: true } },
-      { $group: { _id: '$languageCode', count: { $sum: 1 } } },
-      { $sort: { _id: 1 } }
-    ]);
-    
-    // Get count by path
-    const byPath = await UrlTranslation.aggregate([
-      { $match: { isActive: true } },
-      { $group: { _id: '$englishPath', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 10 }
-    ]);
-    
-    res.json({
-      totalTranslations,
-      byLanguage,
-      byPath,
-      totalLanguages: byLanguage.length
-    });
   } catch (error: any) {
     console.error('Error fetching URL translation stats:', error);
     res.status(500).json({ message: error.message || 'Failed to fetch stats' });

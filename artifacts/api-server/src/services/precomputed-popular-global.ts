@@ -1,5 +1,5 @@
 import CacheManager from '../cache';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { logger } from '../utils/logger';
 import { sleep } from '../utils/event-loop-yield';
 import { trackOperation } from '../utils/operation-tracker';
@@ -53,12 +53,7 @@ export class PrecomputedPopularGlobalService {
       // Featured global pool — small (~hundreds), one cheap aggregate.
       let featured: any[] = [];
       try {
-        featured = await Station.aggregate([
-          { $match: { lastCheckOk: true, isFeatured: true, showInGlobalPopular: true, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } } },
-          { $sort: { votes: -1, clickCount: -1 } },
-          { $project: POPULAR_PROJECTION },
-          { $limit: maxLimit * 4 }
-        ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
+        featured = await pgCatalog().find({ lastCheckOk: true, isFeatured: true, showInGlobalPopular: true, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } }, { sort: { votes: -1, clickCount: -1 }, limit: maxLimit * 4, fields: Object.keys(POPULAR_PROJECTION) });
       } catch (err: any) {
         logger.warn(`[popular-global] featured aggregate failed: ${err?.message || 'unknown'}`);
       }
@@ -68,7 +63,7 @@ export class PrecomputedPopularGlobalService {
       // routinely times out on (code 50, 15s budget).
       let countries: string[] = [];
       try {
-        const raw = await Station.distinct('country', { lastCheckOk: true });
+        const raw = (await pgCatalog().groupCount('country', { lastCheckOk: true })).map(row => row._id);
         countries = raw
           .filter((c: any) => c && typeof c === 'string' && c.trim().length > 0)
           .map((c: any) => c.trim());
@@ -83,12 +78,7 @@ export class PrecomputedPopularGlobalService {
 
       for (const country of countries) {
         try {
-          const batch = await Station.aggregate([
-            { $match: { country, lastCheckOk: true, isFeatured: { $ne: true }, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } } },
-            { $sort: { votes: -1, clickCount: -1 } },
-            { $limit: PER_COUNTRY_LIMIT },
-            { $project: POPULAR_PROJECTION }
-          ]).option({ maxTimeMS: 8000, allowDiskUse: true }).exec();
+          const batch = await pgCatalog().find({ country, lastCheckOk: true, isFeatured: { $ne: true }, noIndex: { $ne: true }, slug: { $exists: true, $ne: '' } }, { sort: { votes: -1, clickCount: -1 }, limit: PER_COUNTRY_LIMIT, fields: Object.keys(POPULAR_PROJECTION) });
           if (batch.length > 0) pool.push(...batch);
         } catch (err: any) {
           perCountryFailures++;

@@ -1,14 +1,18 @@
 import type { Express } from "express";
-import mongoose from 'mongoose';
-import { TvLoginCode, UserDevice, CastCommand, CastNowPlaying, PushToken, AuthToken, User, CastSession, UserFollow, Station, Genre, TvTelemetry } from '@workspace/db-shared/mongo-schemas';
+import { findActiveAuthToken, revokeAuthToken, revokeUserAuthTokens } from '../data/auth-token-store';
 import { logger } from '../utils/logger';
-import { TV_STATION_PROJECTION, tvSlimStation, tvSlimGenre } from './shared-utils';
-import { normalizeCountryFilter } from '../utils/normalize-country';
+import { tvSlimStation } from './shared-utils';
 import CacheManager from '../cache';
-import { PrecomputedGenresService } from '../services/precomputed-genres';
+import { pgFindUserById, pgUserFollowCounts } from '../data/postgres-user-store';
+import { activateTvLogin,cleanupTvState,createTvCode,deactivatePushToken,enqueueCastCommand,findTvDevice,getCastNowPlaying,getTvCode,listTvDevices,pollCastCommand,saveCastNowPlaying,savePushToken,touchTvDevice,unpairTvDevice } from '../data/postgres-tv-store';
+import { expireCastSessions } from '../data/postgres-cast-store';
+import { getPostgresPool } from '../postgres-runtime';
+import { resolveToDbName } from '../utils/normalize-country';
 
 export function registerMobileTvRoutes(app: Express, deps: any) {
-  const { requireAuth, generateAuthToken } = deps;
+  const { requireAuth } = deps;
+  const cleanupTimer = setInterval(() => { void cleanupTvState().catch(error => logger.error('TV state cleanup failed:', error)); }, 60_000);
+  cleanupTimer.unref();
 
   // ==================== App Static Pages API (for mobile apps) ====================
 
@@ -242,7 +246,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const authHeader = req.headers['authorization'];
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
       if (bearerToken) {
-        const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } });
+        const tokenDoc = await findActiveAuthToken(bearerToken);
         if (tokenDoc) resolvedUserId = tokenDoc.userId;
       } else if ((req as any).session?.passport?.user) {
         resolvedUserId = (req as any).session.passport.user;
@@ -259,21 +263,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         }
       }
 
-      await PushToken.findOneAndUpdate(
-        { token },
-        {
-          token,
-          userId: resolvedUserId,
-          platform,
-          tokenType: detectedTokenType,
-          deviceName: deviceName || '',
-          country: country || '',
-          language: language || '',
-          isActive: true,
-          updatedAt: new Date()
-        },
-        { upsert: true, returnDocument: 'after' }
-      );
+      await savePushToken({ token, userId: resolvedUserId, platform, tokenType: detectedTokenType, deviceName, country, language });
 
       res.json({ success: true, message: "Push token saved successfully" });
     } catch (error) {
@@ -294,21 +284,13 @@ If you have any questions about this privacy policy or our data practices, pleas
       const authHeader = req.headers['authorization'];
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
       if (bearerToken) {
-        const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } });
+        const tokenDoc = await findActiveAuthToken(bearerToken);
         if (tokenDoc) resolvedUserId = tokenDoc.userId;
       } else if ((req as any).session?.passport?.user) {
         resolvedUserId = (req as any).session.passport.user;
       }
 
-      const filter: any = { token };
-      if (resolvedUserId) {
-        filter.$or = [{ userId: resolvedUserId }, { userId: null }];
-      }
-
-      const result = await PushToken.findOneAndUpdate(
-        filter,
-        { isActive: false, updatedAt: new Date() }
-      );
+      const result = await deactivatePushToken(token, resolvedUserId);
 
       if (!result) {
         return void res.status(404).json({ success: false, message: "Push token not found" });
@@ -331,29 +313,21 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.json({ authenticated: false, user: null });
       }
 
-      const tokenDoc = await AuthToken.findOne({
-        token,
-        isRevoked: false,
-        expiresAt: { $gt: new Date() }
-      });
+      const tokenDoc = await findActiveAuthToken(token);
 
       if (!tokenDoc) {
         return void res.json({ authenticated: false, user: null });
       }
 
-      tokenDoc.lastUsedAt = new Date();
-      await tokenDoc.save();
-
-      const user = await User.findById(tokenDoc.userId)
-        .select('-passwordHash -emailVerificationToken -resetPasswordToken')
-        .lean() as any;
+      const user: any = await pgFindUserById(tokenDoc.userId);
 
       if (!user) {
         return void res.json({ authenticated: false, user: null });
       }
 
-      const actualFollowersCount = await UserFollow.countDocuments({ followingUserId: user._id });
-      const actualFollowingCount = await UserFollow.countDocuments({ userId: user._id });
+      const followState = await pgUserFollowCounts(String(user._id));
+      const actualFollowersCount = followState.followersCount;
+      const actualFollowingCount = followState.followingCount;
 
       res.json({
         authenticated: true,
@@ -386,7 +360,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
       if (token) {
-        await AuthToken.findOneAndUpdate({ token }, { isRevoked: true });
+        await revokeAuthToken(token);
       }
 
       res.json({ success: true, message: 'Logged out successfully' });
@@ -404,12 +378,9 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.status(401).json({ error: 'Authentication required' });
       }
 
-      const result = await AuthToken.updateMany(
-        { userId: new mongoose.Types.ObjectId(userId), isRevoked: false },
-        { isRevoked: true }
-      );
+      const revokedCount = await revokeUserAuthTokens(userId);
 
-      res.json({ success: true, message: 'All devices logged out', revokedCount: result.modifiedCount });
+      res.json({ success: true, message: 'All devices logged out', revokedCount });
     } catch (error) {
       console.error('Mobile logout-all error:', error);
       res.status(500).json({ error: 'Logout failed' });
@@ -450,34 +421,7 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.status(400).json({ error: 'platform must be tizen, webos, or other' });
       }
 
-      await TvLoginCode.updateMany(
-        { deviceId, status: 'pending' },
-        { $set: { status: 'expired' } }
-      );
-
-      let code: string;
-      let attempts = 0;
-      do {
-        code = Math.floor(100000 + Math.random() * 900000).toString();
-        const existing = await TvLoginCode.findOne({ code, status: 'pending', expiresAt: { $gt: new Date() } });
-        if (!existing) break;
-        attempts++;
-      } while (attempts < 10);
-
-      if (attempts >= 10) {
-        return void res.status(503).json({ error: 'Unable to generate unique code. Try again.' });
-      }
-
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-
-      await TvLoginCode.create({
-        code,
-        deviceId,
-        platform,
-        status: 'pending',
-        expiresAt,
-        createdAt: new Date(),
-      });
+      const { code, expiresAt } = await createTvCode('login', deviceId, platform);
 
       logger.info(`[TV AUTH] Code ${code} generated for device ${deviceId} (${platform})`);
 
@@ -507,22 +451,20 @@ If you have any questions about this privacy policy or our data practices, pleas
       // same 6-digit code (collision from a previous session), the NEWEST
       // document is returned. Without this, findOne may return an already-
       // expired doc and the TV sees "expired" immediately after code creation.
-      const loginCode = await TvLoginCode.findOne({ code, deviceId }).sort({ _id: -1 });
+      const loginCode = await getTvCode('login', code, String(deviceId));
 
       if (!loginCode) {
         return void res.status(404).json({ status: 'expired', message: 'Code expired, request a new one' });
       }
 
       if (loginCode.expiresAt < new Date()) {
-        loginCode.status = 'expired';
-        await loginCode.save();
         // Return 200 (not 404): some TV clients treat 404 as "network error"
         // and keep polling indefinitely instead of showing "code expired" UI.
         return void res.status(200).json({ status: 'expired', message: 'Code expired, request a new one' });
       }
 
       if (loginCode.status === 'activated' && loginCode.token && loginCode.userId) {
-        const user = await User.findById(loginCode.userId).select('fullName username email avatar slug').lean();
+        const user: any = await pgFindUserById(String(loginCode.userId));
 
         res.json({
           status: 'activated',
@@ -570,8 +512,8 @@ If you have any questions about this privacy policy or our data practices, pleas
       let userId: string | null = null;
       if (sessionUserId) userId = sessionUserId;
       else if (bearerToken) {
-        const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } });
-        if (tokenDoc) userId = tokenDoc.userId.toString();
+        const tokenDoc = await findActiveAuthToken(bearerToken);
+        if (tokenDoc) userId = tokenDoc.userId;
       }
 
       if (!userId) {
@@ -583,54 +525,14 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.status(400).json({ error: 'code is required' });
       }
 
-      const loginCode = await TvLoginCode.findOne({
-        code,
-        status: 'pending',
-        expiresAt: { $gt: new Date() },
-      });
+      const loginCode = await activateTvLogin(String(code), userId);
 
       if (!loginCode) {
-        // Idempotency: if the code was already activated by THIS user, return
-        // success so the web page doesn't show an error when the effect fires
-        // twice (StrictMode double-mount) or when the user refreshes.
-        const alreadyActivated = await TvLoginCode.findOne({ code, status: 'activated', userId: new mongoose.Types.ObjectId(userId) }).lean();
-        if (alreadyActivated) {
-          const deviceName = alreadyActivated.platform === 'tizen' ? 'Samsung TV' : alreadyActivated.platform === 'webos' ? 'LG TV' : 'TV';
-          const user = await User.findById(userId).select('fullName username').lean();
-          return void res.json({
-            success: true,
-            deviceName,
-            deviceId: alreadyActivated.deviceId,
-            message: `${deviceName} already logged in as ${(user as any)?.fullName || (user as any)?.username || 'user'}`,
-          });
-        }
         return void res.status(404).json({ success: false, message: 'Invalid code or code expired' });
       }
 
       const deviceName = loginCode.platform === 'tizen' ? 'Samsung TV' : loginCode.platform === 'webos' ? 'LG TV' : 'TV';
-      const tvToken = await generateAuthToken(userId, 'tv', `${deviceName}-${loginCode.deviceId.slice(-6)}`);
-
-      loginCode.status = 'activated';
-      loginCode.userId = new mongoose.Types.ObjectId(userId);
-      loginCode.token = tvToken;
-      loginCode.activatedAt = new Date();
-      await loginCode.save();
-
-      await UserDevice.findOneAndUpdate(
-        { userId: new mongoose.Types.ObjectId(userId), deviceId: loginCode.deviceId },
-        {
-          userId: new mongoose.Types.ObjectId(userId),
-          deviceId: loginCode.deviceId,
-          deviceName,
-          platform: loginCode.platform,
-          lastSeenAt: new Date(),
-          pairedAt: new Date(),
-          isActive: true,
-        },
-        { upsert: true, returnDocument: 'after' }
-      );
-
-      const user = await User.findById(userId).select('fullName username').lean();
+      const user: any = await pgFindUserById(userId);
 
       logger.info(`[TV AUTH] Code ${code} activated by user ${userId} for ${deviceName} (device permanently saved)`);
 
@@ -656,19 +558,15 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.status(401).json({ error: 'TV token required' });
       }
 
-      const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false });
+      const tokenDoc = await findActiveAuthToken(bearerToken);
       if (!tokenDoc) {
         return void res.status(401).json({ error: 'Invalid or expired token' });
       }
 
-      tokenDoc.isRevoked = true;
-      await tokenDoc.save();
+      await revokeAuthToken(bearerToken);
 
-      const userId = tokenDoc.userId.toString();
-      await CastSession.updateMany(
-        { userId, status: { $in: ['waiting_for_pair', 'paired', 'active'] } },
-        { $set: { status: 'expired', isPlaying: false } }
-      );
+      const userId = tokenDoc.userId;
+      await expireCastSessions(userId);
 
       logger.info(`[TV AUTH] TV token revoked for user ${userId}`);
 
@@ -689,20 +587,13 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.status(401).json({ valid: false, error: 'Token required' });
       }
 
-      const tokenDoc = await AuthToken.findOne({
-        token: bearerToken,
-        isRevoked: false,
-        expiresAt: { $gt: new Date() },
-      });
+      const tokenDoc = await findActiveAuthToken(bearerToken);
 
       if (!tokenDoc) {
         return void res.status(401).json({ valid: false, error: 'Invalid or expired token' });
       }
 
-      tokenDoc.lastUsedAt = new Date();
-      await tokenDoc.save();
-
-      const user = await User.findById(tokenDoc.userId).select('fullName username email avatar slug').lean();
+      const user: any = await pgFindUserById(tokenDoc.userId);
 
       res.json({
         valid: true,
@@ -724,7 +615,7 @@ If you have any questions about this privacy policy or our data practices, pleas
   app.get('/api/user/devices', requireAuth, async (req: any, res) => {
     try {
       const userId = (req.session as any).userId;
-      const devices = await UserDevice.find({ userId: new mongoose.Types.ObjectId(userId), isActive: true }).sort({ lastSeenAt: -1 }).lean();
+      const devices = await listTvDevices(userId);
       res.json({ success: true, devices });
     } catch (error: any) {
       res.status(500).json({ error: 'Failed to get devices' });
@@ -737,15 +628,9 @@ If you have any questions about this privacy policy or our data practices, pleas
       const userId = (req.session as any).userId;
       const { deviceId } = req.params;
 
-      await UserDevice.findOneAndUpdate(
-        { userId: new mongoose.Types.ObjectId(userId), deviceId },
-        { isActive: false }
-      );
+      await unpairTvDevice(userId, deviceId);
 
-      await AuthToken.updateMany(
-        { userId: new mongoose.Types.ObjectId(userId), deviceType: 'tv', deviceName: { $regex: new RegExp(`-${deviceId.slice(-6)}$`) } },
-        { isRevoked: true }
-      );
+      await revokeUserAuthTokens(userId, { deviceType: 'tv', deviceNameSuffix: `-${deviceId.slice(-6)}` });
 
       res.json({ success: true, message: 'Device unpaired' });
     } catch (error: any) {
@@ -767,38 +652,25 @@ If you have any questions about this privacy policy or our data practices, pleas
         return void res.json(cached);
       }
 
-      let stationFilter: any = { lastCheckOk: true };
-      if (country && country !== 'all' && country !== 'null') {
-        Object.assign(stationFilter, normalizeCountryFilter(country));
-      } else if (countryCode && countryCode !== 'all' && countryCode !== 'null') {
-        stationFilter.countrycode = countryCode.toUpperCase();
-      }
-
-      const genreIdentifier = country || (countryCode ? countryCode : 'global');
-
-      const [popularStations, trendingStations, genresRaw, countries] = await Promise.all([
-        Station.find(stationFilter)
-          .sort({ votes: -1, clickCount: -1 })
-          .limit(limit * 2)
-          .select(TV_STATION_PROJECTION)
-          .lean(),
-
-        Station.find({ ...stationFilter, clickTrend: { $gt: 0 } })
-          .sort({ clickTrend: -1 })
-          .limit(limit)
-          .select(TV_STATION_PROJECTION)
-          .lean()
-          .catch(() => []),
-
-        PrecomputedGenresService.getGenres(genreIdentifier).catch(() => ({ genres: [] })),
-
-        Station.aggregate([
-          { $match: { country: { $nin: [null, ''] } } },
-          { $group: { _id: '$country', count: { $sum: 1 }, code: { $first: '$countrycode' } } },
-          { $sort: { count: -1 } },
-          { $limit: 200 }
-        ]).option({ maxTimeMS: 15000, allowDiskUse: true }).catch(() => [])
+      const selection = country && !['all','null','global'].includes(country) ? country
+        : countryCode && !['all','null','global'].includes(countryCode) ? countryCode : null;
+      const dbCountry = selection ? resolveToDbName(selection) || selection : null;
+      const scope = "($1::text IS NULL OR lower(s.country)=lower($1) OR upper(s.country_code)=upper($2))";
+      const [popular, trending, genreRows, countryRows] = await Promise.all([
+        getPostgresPool().query(`SELECT s.* FROM stations s WHERE s.last_check_ok=true AND ${scope} ORDER BY votes DESC,click_count DESC,id LIMIT $3`, [dbCountry,selection,limit*2]),
+        getPostgresPool().query(`SELECT s.* FROM stations s WHERE s.last_check_ok=true AND s.click_trend>0 AND ${scope} ORDER BY click_trend DESC,id LIMIT $3`, [dbCountry,selection,limit]),
+        getPostgresPool().query(`SELECT sg.genre_slug slug,COALESCE(g.name,initcap(replace(sg.genre_slug,'-',' '))) name,
+          count(*)::int AS "stationCount",g.source->>'posterImage' AS "posterImage"
+          FROM station_genres sg JOIN stations s ON s.id=sg.station_id LEFT JOIN genres g ON g.slug=sg.genre_slug
+          WHERE ${scope} AND (g.id IS NULL OR g.is_discoverable=true) GROUP BY sg.genre_slug,g.name,g.source HAVING count(*) >= CASE WHEN $1::text IS NULL AND g.name IS NULL THEN 5 ELSE 1 END
+          ORDER BY count(*) DESC,sg.genre_slug LIMIT $3`, [dbCountry,selection,genreLimit]),
+        getPostgresPool().query("SELECT country AS _id,count(*)::int count,min(country_code) code FROM stations WHERE country IS NOT NULL AND country<>'' GROUP BY country ORDER BY count(*) DESC LIMIT 200"),
       ]);
+      const stationShape = (s: any) => ({ ...s.source, ...s, _id:s.id,urlResolved:s.url_resolved,countrycode:s.country_code,
+        tags:s.tags_raw,clickCount:Number(s.click_count),votes:Number(s.votes),logoAssets:s.logo_assets });
+      const popularStations = popular.rows.map(stationShape), trendingStations = trending.rows.map(stationShape);
+      const countries = countryRows.rows;
+      const genresRaw = { genres: genreRows.rows.map((g:any) => ({ ...g,posterImage:g.posterImage || `/images/genre-bg-grad-${(Math.abs(g.slug.split('').reduce((a:number,b:string)=>a+b.charCodeAt(0),0))%4)+1}.webp` })) };
 
       const seenNames = new Set<string>();
       const dedupedPopular: any[] = [];
@@ -847,32 +719,7 @@ If you have any questions about this privacy policy or our data practices, pleas
     }
   });
 
-  // ─── TV Telemetry Beacon ─────────────────────────────────────────────────────
-  const VALID_SRC  = new Set(['remote', 'local']);
-  const VALID_PLAT = new Set(['tizen', 'webos', 'other']);
-  const RE_VERSION = /^[0-9.]{1,20}$/;
-  const RE_DID     = /^[a-z0-9-]{8,64}$/;
-
-  app.get('/api/tv/telemetry/open', async (req, res) => {
-    res.set('Access-Control-Allow-Origin', '*');
-    res.set('Cache-Control', 'no-store');
-    res.status(204).end();
-    try {
-      const src  = VALID_SRC.has(req.query.src as string)  ? req.query.src  as string : undefined;
-      const plat = VALID_PLAT.has(req.query.plat as string) ? req.query.plat as string : 'other';
-      const v    = RE_VERSION.test(req.query.v as string   ?? '') ? req.query.v  as string : undefined;
-      const app_ = RE_VERSION.test(req.query.app as string ?? '') ? req.query.app as string : undefined;
-      const did  = RE_DID.test(req.query.did as string     ?? '') ? req.query.did as string : undefined;
-      const country = (
-        (req.headers['cf-ipcountry'] as string) ||
-        (req.headers['x-country-code'] as string) ||
-        undefined
-      )?.slice(0, 2).toUpperCase() || undefined;
-      await new TvTelemetry({ src, v, plat, app: app_, did, country }).save();
-    } catch {
-      // non-fatal — telemetry loss is acceptable
-    }
-  });
+  // The shared tv-telemetry routes record both raw beacons and daily counts.
 
   // ── Cast endpoints ────────────────────────────────────────────────────────
   // Shared auth helper: accepts session cookie OR Bearer token.
@@ -882,8 +729,8 @@ If you have any questions about this privacy policy or our data practices, pleas
     const bearer = req.headers['authorization']?.startsWith('Bearer ')
       ? req.headers['authorization'].slice(7) : null;
     if (bearer) {
-      const tok = await AuthToken.findOne({ token: bearer, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
-      if (tok) return tok.userId.toString();
+      const tok = await findActiveAuthToken(bearer);
+      if (tok) return tok.userId;
     }
     return null;
   }
@@ -899,16 +746,8 @@ If you have any questions about this privacy policy or our data practices, pleas
       if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
 
       // Update last-seen for this device (non-blocking)
-      UserDevice.updateOne(
-        { userId: new mongoose.Types.ObjectId(userId), deviceId },
-        { $set: { lastSeenAt: new Date(), ...(platform ? { platform } : {}) } }
-      ).catch(() => {});
-
-      const command = await CastCommand.findOneAndUpdate(
-        { userId: new mongoose.Types.ObjectId(userId), deviceId, consumed: false },
-        { $set: { consumed: true } },
-        { sort: { timestamp: 1 }, returnDocument: 'before' }
-      ).lean();
+      void touchTvDevice(userId, deviceId, platform).catch(() => {});
+      const command = await pollCastCommand(userId, deviceId);
 
       if (!command) return void res.json({});
 
@@ -932,22 +771,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const { deviceId, platform = 'other', stationName, title, artist, isPlaying } = req.body;
       if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
 
-      await CastNowPlaying.findOneAndUpdate(
-        { userId: new mongoose.Types.ObjectId(userId), deviceId },
-        {
-          $set: {
-            userId: new mongoose.Types.ObjectId(userId),
-            deviceId,
-            platform,
-            stationName: stationName ?? null,
-            title: title ?? null,
-            artist: artist ?? null,
-            isPlaying: isPlaying === true || isPlaying === 'true',
-            updatedAt: new Date(),
-          },
-        },
-        { upsert: true }
-      );
+      await saveCastNowPlaying(userId, { deviceId, platform, stationName, title, artist, isPlaying });
 
       res.json({ ok: true });
     } catch (err: any) {
@@ -965,9 +789,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const { deviceId } = req.query as { deviceId?: string };
       if (!deviceId) return void res.status(400).json({ error: 'deviceId is required' });
 
-      const np = await CastNowPlaying.findOne(
-        { userId: new mongoose.Types.ObjectId(userId), deviceId }
-      ).lean();
+      const np = await getCastNowPlaying(userId, deviceId);
 
       res.json(np ?? { isPlaying: false });
     } catch (err: any) {
@@ -977,7 +799,8 @@ If you have any questions about this privacy policy or our data practices, pleas
   });
 
   // Phone sends a cast command to a paired TV device.
-  app.post('/api/cast/command', async (req: any, res) => {
+  app.post('/api/cast/command', async (req: any, res, next) => {
+    if (!req.body?.deviceId && req.body?.sessionId) return void next();
     try {
       const userId = await resolveCastUserId(req);
       if (!userId) return void res.status(401).json({ error: 'Authentication required' });
@@ -991,21 +814,12 @@ If you have any questions about this privacy policy or our data practices, pleas
       }
 
       // Verify this device belongs to the calling user
-      const device = await UserDevice.findOne(
-        { userId: new mongoose.Types.ObjectId(userId), deviceId, isActive: true }
-      ).lean();
+      const device = await findTvDevice(userId, deviceId);
       if (!device) {
         return void res.status(404).json({ error: 'Device not found or not paired to this account' });
       }
 
-      await CastCommand.create({
-        userId: new mongoose.Types.ObjectId(userId),
-        deviceId,
-        type,
-        station: station ?? undefined,
-        timestamp: Date.now(),
-        consumed: false,
-      });
+      if (!await enqueueCastCommand(userId, deviceId, type, station)) return void res.status(404).json({ error: 'Device not found or not paired to this account' });
 
       res.json({ ok: true });
     } catch (err: any) {
@@ -1020,9 +834,7 @@ If you have any questions about this privacy policy or our data practices, pleas
       const userId = await resolveCastUserId(req);
       if (!userId) return void res.status(401).json({ error: 'Authentication required' });
 
-      const devices = await UserDevice.find(
-        { userId: new mongoose.Types.ObjectId(userId), isActive: true }
-      ).sort({ lastSeenAt: -1 }).lean();
+      const devices = await listTvDevices(userId);
 
       res.json({ devices: devices.map((d) => ({
         deviceId: d.deviceId,

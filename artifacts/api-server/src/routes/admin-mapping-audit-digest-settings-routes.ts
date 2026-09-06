@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { AdminSetting } from '@workspace/db-shared/mongo-schemas';
+import { getAdminSetting } from '../data/postgres-admin-settings-store';
 import { logger } from '../utils/logger';
 import {
   clearAdminSettingWithHistory,
@@ -35,9 +35,7 @@ async function buildResponse() {
   const env = getEnvMappingAuditDigestCadence();
   const defaults = { cadence: getDefaultMappingAuditDigestCadence() };
   const resolved = await resolveMappingAuditDigestSettings();
-  const doc = await AdminSetting.findOne({
-    key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-  }).lean();
+  const doc = await getAdminSetting(MAPPING_AUDIT_DIGEST_SETTINGS_KEY);
   return {
     stored,
     env: { cadence: env },

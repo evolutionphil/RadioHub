@@ -29,21 +29,13 @@
  */
 
 import cron from 'node-cron';
-import {
-  GscUrlInspection,
-  type IGscUrlInspection,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgGscDigestGroupCounts } from '../data/postgres-gsc-store';
 import { logger } from '../utils/logger';
 import {
   emailStuckResubmitDigest,
   type StuckResubmitDigestStats,
   type StuckResubmitGroupRow,
 } from './admin-audit-email';
-
-const NON_INDEXED_STATES: IGscUrlInspection['state'][] = [
-  'discovered-not-indexed',
-  'crawled-not-indexed',
-];
 
 const STUCK_DAYS = parseInt(
   process.env.GSC_RESUBMIT_STUCK_DAYS || '14',
@@ -230,83 +222,17 @@ export async function collectStats(
     windowStart.getTime() - stuckDays * 24 * 60 * 60 * 1000,
   );
 
-  const [
-    currentlyStuckByGroup,
-    resubmittedByGroup,
-    recoveredByGroup,
-    newlyStuckByGroup,
-  ] = await Promise.all([
-    GscUrlInspection.aggregate<{ _id: string; count: number }>([
-      {
-        $match: {
-          state: { $in: NON_INDEXED_STATES },
-          notIndexedSince: { $lte: stuckCutoff },
-        },
-      },
-      { $group: { _id: '$group', count: { $sum: 1 } } },
-    ]),
-    GscUrlInspection.aggregate<{ _id: string; count: number }>([
-      {
-        $match: {
-          lastResubmitAt: { $gte: windowStart, $lt: windowEnd },
-        },
-      },
-      { $group: { _id: '$group', count: { $sum: 1 } } },
-    ]),
-    GscUrlInspection.aggregate<{ _id: string; count: number }>([
-      {
-        $match: {
-          state: 'indexed',
-          lastResubmitAt: { $gte: recoveryStart, $lt: windowEnd },
-          $expr: { $gt: ['$lastInspectedAt', '$lastResubmitAt'] },
-        },
-      },
-      { $group: { _id: '$group', count: { $sum: 1 } } },
-    ]),
-    GscUrlInspection.aggregate<{ _id: string; count: number }>([
-      {
-        $match: {
-          state: { $in: NON_INDEXED_STATES },
-          notIndexedSince: { $gte: newlyStuckLowerBound, $lte: stuckCutoff },
-        },
-      },
-      { $group: { _id: '$group', count: { $sum: 1 } } },
-    ]),
-  ]);
-
-  const groupKeys = new Set<string>();
-  const collect = (rows: { _id: string; count: number }[]) => {
-    const map = new Map<string, number>();
-    for (const r of rows) {
-      const key = r._id ?? 'unknown';
-      groupKeys.add(key);
-      map.set(key, r.count);
-    }
-    return map;
-  };
-  const stuckMap = collect(currentlyStuckByGroup);
-  const resubmitMap = collect(resubmittedByGroup);
-  const recoveredMap = collect(recoveredByGroup);
-  const newlyMap = collect(newlyStuckByGroup);
-
-  const byGroup: StuckResubmitGroupRow[] = [...groupKeys]
-    .map((group) => ({
-      group,
-      currentlyStuck: stuckMap.get(group) ?? 0,
-      resubmittedInWindow: resubmitMap.get(group) ?? 0,
-      recoveredAfterResubmit: recoveredMap.get(group) ?? 0,
-      newlyStuckInWindow: newlyMap.get(group) ?? 0,
-    }))
-    .sort((a, b) => b.currentlyStuck - a.currentlyStuck);
-
-  const sum = (m: Map<string, number>) =>
-    [...m.values()].reduce((acc, v) => acc + v, 0);
-
+  const rows = await pgGscDigestGroupCounts({ windowStart, windowEnd, recoveryStart, stuckCutoff, newlyStuckLowerBound });
+  const byGroup: StuckResubmitGroupRow[] = rows
+    .filter(row => row.currentlyStuck || row.resubmittedInWindow || row.recoveredAfterResubmit || row.newlyStuckInWindow)
+    .sort((a,b) => b.currentlyStuck - a.currentlyStuck || a.group.localeCompare(b.group));
+  const sum = (field: keyof StuckResubmitGroupRow) =>
+    byGroup.reduce((total,row) => total + Number(row[field] || 0),0);
   return {
-    currentlyStuck: sum(stuckMap),
-    resubmittedInWindow: sum(resubmitMap),
-    recoveredAfterResubmit: sum(recoveredMap),
-    newlyStuckInWindow: sum(newlyMap),
+    currentlyStuck: sum('currentlyStuck'),
+    resubmittedInWindow: sum('resubmittedInWindow'),
+    recoveredAfterResubmit: sum('recoveredAfterResubmit'),
+    newlyStuckInWindow: sum('newlyStuckInWindow'),
     stuckDays,
     byGroup,
   };

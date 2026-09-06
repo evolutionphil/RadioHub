@@ -7,7 +7,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import mongoose from 'mongoose';
+import { randomBytes } from 'node:crypto';
+const newId=()=>randomBytes(12).toString('hex');
 import {
   diffUrlSets,
   computeMainSitemapUrls,
@@ -133,18 +134,15 @@ test('computeGenresSitemapUrls + diffUrlSets surfaces newly-whitelisted genre', 
   assert.deepEqual(additions, ['https://example.com/en/genres/jazz']);
 });
 
-test('mapGenreIdsToSlugs resolves ObjectId and legacy string ids in order, dropping unknowns', () => {
-  // Architect-flagged regression guard (task #253): the manifest stores genre
-  // ids as a mix of ObjectIds (new docs) and legacy string slugs (seed data).
-  // String(ObjectId) === ObjectId.toHexString(), which is what the lookup map
-  // uses as a key — verify both flavors resolve, the original ordering is
-  // preserved, and ids with no slug are silently dropped.
-  const objId1 = new mongoose.Types.ObjectId();
-  const objId2 = new mongoose.Types.ObjectId();
-  const objIdMissing = new mongoose.Types.ObjectId();
+test('mapGenreIdsToSlugs resolves 24-hex and legacy slug IDs in order, dropping unknowns', () => {
+  // PostgreSQL preserves imported 24-hex identifiers and legacy seed slugs
+  // as strings. Both forms must resolve while retaining manifest order.
+  const objId1 = newId();
+  const objId2 = newId();
+  const objIdMissing = newId();
   const slugsById = new Map<string, string>([
-    [objId1.toHexString(), 'pop'],
-    [objId2.toHexString(), 'rock'],
+    [objId1, 'pop'],
+    [objId2, 'rock'],
     ['genre-jazz', 'jazz'],
   ]);
   const out = mapGenreIdsToSlugs(
@@ -159,16 +157,16 @@ test('computeStationsSitemapUrlsForChunk emits one URL per indexable, non-junk s
   // (see routes/seo-sitemap-routes.ts): junk/noIndex stations are dropped,
   // stations missing a slug are dropped, and the order is sorted for
   // deterministic snapshot comparisons.
-  const id1 = new mongoose.Types.ObjectId();
-  const id2 = new mongoose.Types.ObjectId();
-  const id3 = new mongoose.Types.ObjectId();
-  const idJunk = new mongoose.Types.ObjectId();
-  const idNoIndex = new mongoose.Types.ObjectId();
-  const idMissing = new mongoose.Types.ObjectId();
-  const idNoSlug = new mongoose.Types.ObjectId();
+  const id1 = newId();
+  const id2 = newId();
+  const id3 = newId();
+  const idJunk = newId();
+  const idNoIndex = newId();
+  const idMissing = newId();
+  const idNoSlug = newId();
 
   const goodStation = (slug: string, name: string): StationSitemapDoc => ({
-    _id: new mongoose.Types.ObjectId(),
+    _id: newId(),
     slug,
     name,
     url: 'https://stream.example/listen.mp3',
@@ -213,17 +211,17 @@ test('computeStationsSitemapUrlsForChunk emits one URL per indexable, non-junk s
   });
 
   assert.deepEqual(urls, [
-    'https://example.com/de/station/alpha-fm',
-    'https://example.com/de/station/bravo-radio',
-    'https://example.com/de/station/charlie-am',
+    'https://example.com/de/sender/alpha-fm',
+    'https://example.com/de/sender/bravo-radio',
+    'https://example.com/de/sender/charlie-am',
   ]);
 });
 
 test('computeStationsSitemapUrlsForChunk + diffUrlSets surfaces newly-whitelisted station', () => {
-  const id1 = new mongoose.Types.ObjectId();
-  const id2 = new mongoose.Types.ObjectId();
+  const id1 = newId();
+  const id2 = newId();
   const mk = (slug: string): StationSitemapDoc => ({
-    _id: new mongoose.Types.ObjectId(),
+    _id: newId(),
     slug,
     name: slug,
     url: 'https://stream.example/listen.mp3',
@@ -257,15 +255,15 @@ test('computeStationsSitemapUrlsForChunk + diffUrlSets surfaces newly-whiteliste
     baseUrl: 'https://example.com',
   });
   const additions = diffUrlSets(previousUrls, currentUrls);
-  assert.deepEqual(additions, ['https://example.com/de/station/bravo-radio']);
+  assert.deepEqual(additions, ['https://example.com/de/sender/bravo-radio']);
 });
 
 test('mapGenreIdsToSlugs piped through computeGenresSitemapUrls yields the live route URL set', () => {
   // End-to-end-ish check that the manifest → slug → URL pipeline produces
   // exactly what the live /sitemap-genres-{lang}.xml route would emit.
-  const objId = new mongoose.Types.ObjectId();
+  const objId = newId();
   const slugsById = new Map<string, string>([
-    [objId.toHexString(), 'pop'],
+    [objId, 'pop'],
     ['genre-jazz', 'jazz'],
   ]);
   const slugs = mapGenreIdsToSlugs([objId, 'genre-jazz'], slugsById);

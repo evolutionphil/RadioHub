@@ -1,10 +1,5 @@
 import { Router, Request, Response } from 'express';
-import {
-  IndexNowLog,
-  IndexNowSubmissionUrls,
-  INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
-} from '@workspace/db-shared/mongo-schemas';
-import mongoose from 'mongoose';
+import { pgIndexNowLogs, pgIndexNowLog, pgIndexNowUrls, pgIndexNowStats, INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS } from '../data/postgres-seo-indexing-store';
 import { scheduledSitemapDiff } from '../services/scheduled-sitemap-diff';
 
 const router = Router();
@@ -25,10 +20,7 @@ router.get('/logs', async (req: Request, res: Response) => {
       filter.status = status;
     }
     
-    const logs = await IndexNowLog.find(filter)
-      .sort({ timestamp: -1 })
-      .limit(limit)
-      .lean();
+    const logs = await pgIndexNowLogs(filter, limit);
     
     res.json(logs);
   } catch (error) {
@@ -46,100 +38,16 @@ router.get('/stats', async (req: Request, res: Response) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     
-    // Get all-time stats
-    const totalSubmissions = await IndexNowLog.countDocuments();
-    const successfulSubmissions = await IndexNowLog.countDocuments({ status: 'success' });
-    const failedSubmissions = await IndexNowLog.countDocuments({ status: 'failed' });
-    
-    // Get today's submissions
-    const submissionsToday = await IndexNowLog.countDocuments({
-      timestamp: { $gte: today }
-    });
-    
-    // Calculate success rate
-    const successRate = totalSubmissions > 0 
-      ? Math.round((successfulSubmissions / totalSubmissions) * 100) 
-      : 0;
-    
-    // Get submissions by host
-    const submissionsByHost = await IndexNowLog.aggregate([
-      {
-        $group: {
-          _id: '$host',
-          count: { $sum: 1 },
-          successful: {
-            $sum: { $cond: [{ $eq: ['$status', 'success'] }, 1, 0] }
-          },
-          failed: {
-            $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
-          }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      }
-    ]);
-    
-    // Get submissions by trigger
-    const submissionsByTrigger = await IndexNowLog.aggregate([
-      {
-        $group: {
-          _id: '$trigger',
-          count: { $sum: 1 },
-          successful: {
-            $sum: { $cond: [{ $eq: ['$status', 'success'] }, 1, 0] }
-          },
-          failed: {
-            $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
-          }
-        }
-      },
-      {
-        $sort: { count: -1 }
-      }
-    ]);
-    
-    // Get 7-day trend (submissions per day)
-    const sevenDayTrend = await IndexNowLog.aggregate([
-      {
-        $match: {
-          timestamp: { $gte: sevenDaysAgo }
-        }
-      },
-      {
-        $group: {
-          _id: {
-            $dateToString: { format: '%Y-%m-%d', date: '$timestamp' }
-          },
-          count: { $sum: 1 },
-          successful: {
-            $sum: { $cond: [{ $eq: ['$status', 'success'] }, 1, 0] }
-          },
-          failed: {
-            $sum: { $cond: [{ $eq: ['$status', 'failed'] }, 1, 0] }
-          }
-        }
-      },
-      {
-        $sort: { _id: 1 }
-      }
-    ]);
-    
-    // Calculate average response time
-    const avgResponseTime = await IndexNowLog.aggregate([
-      {
-        $match: {
-          responseTime: { $exists: true, $ne: null }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          avgResponseTime: { $avg: '$responseTime' }
-        }
-      }
-    ]);
-    
+    const data = await pgIndexNowStats(today, sevenDaysAgo);
+    const totalSubmissions = data.totals.count;
+    const successfulSubmissions = data.totals.successful;
+    const failedSubmissions = data.totals.failed;
+    const submissionsToday = data.totals.today;
+    const successRate = totalSubmissions > 0 ? Math.round(successfulSubmissions / totalSubmissions * 100) : 0;
+    const submissionsByHost: any[] = data.hosts;
+    const submissionsByTrigger: any[] = data.triggers;
+    const sevenDayTrend: any[] = data.trend;
+    const avgResponseTime = [{ avgResponseTime: data.totals.avg }];
     const stats = {
       totalSubmissions,
       successfulSubmissions,
@@ -196,15 +104,7 @@ router.get('/sitemap-diff-runs', async (req: Request, res: Response) => {
     // night still need to appear under that night's row even if the rerun
     // itself happened today.
     const sinceIso = since.toISOString().slice(0, 10);
-    const submissions = await IndexNowLog.find({
-      trigger: 'sitemap-diff',
-      $or: [
-        { timestamp: { $gte: since } },
-        { runDate: { $gte: sinceIso } },
-      ],
-    })
-      .sort({ timestamp: -1 })
-      .lean();
+    const submissions = await pgIndexNowLogs({ trigger: 'sitemap-diff', since }, 100000);
 
     interface LangAgg { urls: number; successful: number; failed: number; }
     interface SubmissionView {
@@ -319,17 +219,17 @@ router.get('/sitemap-diff-runs', async (req: Request, res: Response) => {
 router.get('/submissions/:id/urls', async (req: Request, res: Response) => {
   try {
     const id = String(req.params.id || '');
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!/^[a-f0-9]{24}$/i.test(id)) {
       res.status(400).json({ error: 'Invalid submission id' });
       return;
     }
-    const logId = new mongoose.Types.ObjectId(id);
-    const doc = await IndexNowSubmissionUrls.findOne({ logId }).lean();
+    const logId = id;
+    const doc = await pgIndexNowUrls(logId);
     if (!doc) {
       // Either the submission predates Task #336 (no full list captured),
       // its 30-day retention window already expired, or the id is unknown.
       // Surface the distinction so the UI can explain it to admins.
-      const log = await IndexNowLog.findById(logId).lean();
+      const log = await pgIndexNowLog(logId);
       if (!log) {
         res.status(404).json({ error: 'Submission not found' });
         return;

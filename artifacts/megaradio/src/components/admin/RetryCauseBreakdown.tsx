@@ -28,10 +28,10 @@ const BUCKET_RULES: BucketRule[] = [
     match: /\bs3\b|amazonaws|object[\s-]?storage|noSuchKey|slowDown|putObject|getObject/i,
   },
   {
-    key: "mongo",
-    label: "MongoDB",
+    key: "postgresql",
+    label: "PostgreSQL",
     color: "#10b981",
-    match: /mongo|mongoose|write conflict|writeconflict|e11000|duplicate key|wiredtiger/i,
+    match: /postgres|sqlstate|serialization failure|deadlock|duplicate key|\b(?:40001|40P01|23505|53300|57P01)\b/i,
   },
   {
     key: "logo-fetch",

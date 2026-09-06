@@ -32,7 +32,7 @@ import assert from 'node:assert/strict';
 import type {
   IBackfillRun,
   IBackfillRunAttempt,
-} from '@workspace/db-shared/mongo-schemas';
+} from '@workspace/legacy-migration/mongo-schemas';
 
 function makeRun(overrides: Partial<IBackfillRun> = {}): IBackfillRun {
   const base = {

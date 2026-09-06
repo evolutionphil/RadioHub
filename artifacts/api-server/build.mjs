@@ -3,7 +3,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
+import {
+  assertProductionMetafile,
+  productionDatabaseBoundaryPlugin,
+  inspectProductionDependencyGraph,
+} from "./scripts/production-database-boundary.mjs";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -11,15 +16,26 @@ globalThis.require = createRequire(import.meta.url);
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function buildAll() {
+  inspectProductionDependencyGraph([path.join(artifactDir, "package.json")]);
   const distDir = path.resolve(artifactDir, "dist");
   await rm(distDir, { recursive: true, force: true });
 
   // ENTRY env var lets Docker builds pick a specific server bundle:
   //   src/index.ts (default), src/index-web.ts, src/index-api.ts, src/index-proxy.ts
   const entryRel = process.env.ENTRY || "src/index.ts";
+  if (
+    ![
+      "src/index.ts",
+      "src/index-api.ts",
+      "src/index-web.ts",
+      "src/index-proxy.ts",
+    ].includes(entryRel)
+  )
+    throw new Error("Unsupported production ENTRY: " + entryRel);
   const entryAbs = path.resolve(artifactDir, entryRel);
 
-  await esbuild({
+  const result = await esbuild({
+    metafile: true,
     entryPoints: [entryAbs],
     platform: "node",
     bundle: true,
@@ -53,7 +69,6 @@ async function buildAll() {
       "lightningcss",
       "pg-native",
       "oracledb",
-      "mongodb-client-encryption",
       "nodemailer",
       "handlebars",
       "knex",
@@ -108,8 +123,9 @@ async function buildAll() {
     ],
     sourcemap: "linked",
     plugins: [
+      productionDatabaseBoundaryPlugin(),
       // pino relies on workers to handle logging, instead of externalizing it we use a plugin to handle it
-      esbuildPluginPino({ transports: ["pino-pretty"] })
+      esbuildPluginPino({ transports: ["pino-pretty"] }),
     ],
     // Make sure packages that are cjs only (e.g. express) but are bundled continue to work in our esm output file
     banner: {
@@ -123,6 +139,15 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+  const report = assertProductionMetafile(result.metafile);
+  await writeFile(
+    path.join(distDir, "production-dependency-report.json"),
+    JSON.stringify(
+      { entry: entryRel, ...report, metafile: result.metafile },
+      null,
+      2,
+    ),
+  );
 }
 
 buildAll().catch((err) => {

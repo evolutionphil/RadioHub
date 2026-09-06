@@ -11,11 +11,9 @@ EventEmitter.defaultMaxListeners = 30;
 
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import MongoStore from "connect-mongo";
 import compression from "compression";
 import crypto from "crypto";
 import { rateLimit } from 'express-rate-limit';
-import { markQuotaExceeded as markQuotaExceededFn } from './utils/quota-guard';
 
 declare module "express-session" {
   interface SessionData {
@@ -28,21 +26,41 @@ declare module "express-session" {
   }
 }
 import { registerRoutes } from "./routes";
-import { connectToMongoDB } from "./db-mongo";
+import { seedPostgresDefaultLanguages, cleanupPostgresDescriptionPrefixes } from './services/postgres-bootstrap';
+import { pgGenres } from './data/postgres-taxonomy-store';
+import {
+  closePostgres,
+  getPostgresHealth,
+  getPostgresMigrationStatus,
+  getPostgresPool,
+  postgresAvailable,
+  initializePostgres,
+} from "./postgres-runtime";
+import { PostgresSessionStore } from "./data/postgres-session-store";
 import { performanceCache } from "./performance-cache";
 import { logger } from './utils/logger';
 import { initLogCollector } from './services/log-collector';
 import { startOperation, endOperation, getActiveOperations, getGcStats, getActiveOperationsSummary, resetGcStats, initGcTracking } from './utils/operation-tracker';
 
 import { geoBlockMiddleware } from './middleware/geo-block';
+import { databaseMaintenanceMiddleware } from './middleware/database-maintenance';
 
 const app = express();
+// Allows a staging/read-serving replica to boot the production code path without
+// starting provider calls or background mutations. Manual admin actions remain explicit.
+const backgroundJobsEnabled = process.env.BACKGROUND_JOBS_ENABLED !== 'false';
+let startupReady = false;
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
 
 // Geo-block FIRST — drop TCP connection from blocked countries (no response)
 app.use(geoBlockMiddleware);
+app.use(databaseMaintenanceMiddleware);
+app.use('/api/test', (_req, res, next) => {
+  if (process.env.NODE_ENV === 'production') return void res.status(404).json({ error: 'Not found' });
+  next();
+});
 
 function getFrameOptionsHeader(): string | null {
   if (process.env.CLICKJACKING_MITIGATION) {
@@ -118,26 +136,6 @@ process.on('uncaughtException', (err) => {
 });
 process.on('unhandledRejection', (reason: any) => {
   const msg = reason?.message || reason || 'unknown';
-  if (typeof msg === 'string' && msg.includes('over your space quota')) {
-    markQuotaExceededFn();
-    console.warn('⚠️ MongoDB quota exceeded (unhandled rejection) — writes paused for 10min');
-    return;
-  }
-  const msgStr = typeof msg === 'string' ? msg : '';
-  // Include all known transient MongoDB driver errors. Without these in the
-  // list, a momentary Atlas failover or pool clear would scheduleFatalExit().
-  // NOTE: do NOT use a generic "connection.*closed" pattern — it would
-  // suppress unrelated failures from other subsystems whose error message
-  // happens to contain that phrase. The Mongo-specific patterns below cover
-  // the real failure modes (MongoNetworkError already includes connection
-  // teardowns).
-  const errName = (reason as any)?.name || '';
-  const isMongoTransient = errName.startsWith('Mongo') ||
-    /MongoNetworkError|MongoServerSelectionError|MongoNotConnectedError|MongoPoolClearedError|MongoExpiredSessionError|PoolClearedError|ECONNRESET|ETIMEDOUT|ENOTFOUND|EHOSTUNREACH|server selection/i.test(msgStr);
-  if (isMongoTransient) {
-    console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msgStr);
-    return;
-  }
   console.error('🚨 UNHANDLED REJECTION:', msg);
   if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
   scheduleFatalExit('UNHANDLED_REJECTION');
@@ -172,19 +170,6 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   const seconds = uptimeSeconds % 60;
   const uptimeFormatted = `${days}d ${hours}h ${minutes}m ${seconds}s`;
 
-  let mongoStatus = 'unknown';
-  let mongoLatency = -1;
-  try {
-    const { default: mongoose } = await import('mongoose');
-    const mongoState = mongoose.connection.readyState;
-    mongoStatus = ({ 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' } as Record<number, string>)[mongoState] || 'unknown';
-    if (mongoState === 1) {
-      const start = Date.now();
-      await mongoose.connection.db!.admin().ping();
-      mongoLatency = Date.now() - start;
-    }
-  } catch {}
-
   const os = await import('os');
   const cpus = os.cpus();
   const loadAvg = os.loadavg();
@@ -196,8 +181,13 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
   if (heapMB > 3500) memoryHealth = 'critical';
   else if (heapMB > 3000) memoryHealth = 'warning';
 
-  res.status(200).json({
-    status: 'ok',
+  const postgres = await getPostgresHealth();
+  const migration = postgres.status === 'connected'
+    ? await getPostgresMigrationStatus().catch(() => null)
+    : null;
+
+  res.status(postgres.status === 'connected' && startupReady ? 200 : 503).json({
+    status: postgres.status === 'connected' && startupReady ? 'ok' : 'degraded',
     service: 'backend-api',
     version: '1.0.0',
     environment: process.env.NODE_ENV || 'development',
@@ -217,8 +207,11 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
       formatted: uptimeFormatted
     },
     database: {
-      status: mongoStatus,
-      latencyMs: mongoLatency
+      engine: 'postgresql',
+      status: postgres.status,
+      latencyMs: postgres.latencyMs,
+      postgres,
+      migration,
     },
     system: {
       cpuCores: cpus.length,
@@ -253,6 +246,12 @@ app.get(['/healthz', '/health', '/api/health'], async (req, res) => {
       allocator: process.env.LD_PRELOAD?.includes('jemalloc') ? 'jemalloc' : 'glibc'
     }
   });
+});
+
+app.get('/readyz', async (_req, res) => {
+  const postgres = await getPostgresHealth();
+  const ready = startupReady && postgres.status === 'connected';
+  res.status(ready ? 200 : 503).json({ ready,database:'postgresql',postgres:postgres.status });
 });
 
 const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || 'https://themegaradio.com').split(',').map(s => s.trim());
@@ -321,20 +320,11 @@ app.use('/api/auth/forgot-password', authLimiter);
 app.use('/api/auth/reset-password', authLimiter);
 app.use('/api/admin/login', authLimiter);
 
-app.use((req, res, next) => {
-  if (req.path === '/healthz' || req.path === '/health' || req.path === '/api/health') return next();
-  if (!req.path.startsWith('/api')) return next();
-  const nonDbPaths = ['/api/stream/', '/api/image-proxy/'];
-  if (nonDbPaths.some(p => req.path.startsWith(p))) return next();
-  try {
-    const mongoose = require('mongoose');
-    const state = mongoose.connection.readyState;
-    if (state !== 1) {
-      const stateNames: Record<number, string> = { 0: 'disconnected', 2: 'connecting', 3: 'disconnecting' };
-      console.error(`🚫 MongoDB circuit breaker: rejecting ${req.method} ${req.path} (state=${stateNames[state] || 'unknown'})`);
-      return void res.status(503).json({ error: 'Service temporarily unavailable, please retry in a few seconds' });
-    }
-  } catch {}
+app.use(async (req, res, next) => {
+  if (!req.path.startsWith('/api') || ['/api/health','/api/stream/','/api/image-proxy/'].some(p=>req.path.startsWith(p))) return next();
+  if (!startupReady || !(await postgresAvailable())) {
+    return void res.status(503).json({ error:'Service temporarily unavailable, please retry in a few seconds' });
+  }
   next();
 });
 
@@ -464,9 +454,6 @@ if ((process.env.NODE_ENV === 'production' || isReplit) && !process.env.SESSION_
 // Production env hygiene — surface common misconfigs at boot instead of
 // having login silently fail later.
 if (process.env.NODE_ENV === 'production') {
-  if (!process.env.MONGODB_URI) {
-    console.error('🚨 PROD WARNING: MONGODB_URI is not set — session store and AuthToken writes may go to localhost or two different clusters!');
-  }
   if (!process.env.GOOGLE_CALLBACK_URL) {
     console.error('🚨 PROD WARNING: GOOGLE_CALLBACK_URL is not set — Passport will fall back to FRONTEND_URL/api/auth/google/callback which is the wrong host on Railway!');
   }
@@ -504,69 +491,26 @@ const sessionConfig: session.SessionOptions = {
 
 logger.log(`🔐 API Session config: secure=${useSecureCookies}, isReplit=${isReplit}, NODE_ENV=${process.env.NODE_ENV}, cookieDomain=${cookieDomain || 'auto'}, sameSite=${cookieDomain ? 'none' : (isReplit ? 'none' : 'lax')}`);
 
-const mongoUri = process.env.MONGODB_URI || process.env.DATABASE_URL || 'mongodb://localhost:27017/mega';
-const isProduction = process.env.NODE_ENV === 'production' || isReplit;
-
-if (isProduction && mongoUri) {
-  // INCIDENT 2026-05-15: connect-mongo was previously created without any
-  // `mongoOptions`, so it spun up a SECOND Mongo client with the driver
-  // defaults (maxPoolSize=100, socketTimeoutMS=infinite, no waitQueueTimeout).
-  // On Atlas M10 (1500 conn cap shared across the cluster) this dual-client
-  // setup leaked sockets during a primary failover and starved the main
-  // Mongoose pool, contributing to the timeout cascade. Pin a small pool +
-  // matching timeouts so the session store can't outgrow Mongoose.
-  sessionConfig.store = MongoStore.create({
-    mongoUrl: mongoUri,
-    collectionName: 'sessions',
-    ttl: 3 * 24 * 60 * 60,
-    autoRemove: 'native',
-    touchAfter: 24 * 60 * 60,
-    mongoOptions: {
-      // INCIDENT 2026-05-15 v3 — USER DIRECTIVE: maxed out. Session store is
-      // low-volume (one read/write per HTTP request, mostly cached), so a
-      // generous pool + long timeouts cost nothing in steady state and
-      // eliminate the cascade during boot or failover.
-      // INCIDENT 2026-05-15 v6 — REVERT v5 reduction. v5 capped maxPool=6
-      // for the session store; under crawler bursts every request touches
-      // the session store, and 6 sockets aren't enough. Restore maxPool=20
-      // (v3 value) but keep minPool=1 so the steady-state native footprint
-      // stays low. Pool grows on demand up to 20 and shrinks back to 1.
-      maxPoolSize: 20,
-      minPoolSize: 1,
-      serverSelectionTimeoutMS: 60000,
-      connectTimeoutMS: 60000,
-      socketTimeoutMS: 120000,
-      waitQueueTimeoutMS: 60000,
-      maxIdleTimeMS: 120000,
-      heartbeatFrequencyMS: 10000,
-      family: 4,
-      retryWrites: true,
-      retryReads: true,
-    },
-  });
-  logger.log('🔐 Using MongoDB session store for production (pool=20, 60s wait / 120s socket)');
-}
+sessionConfig.store = new PostgresSessionStore(getPostgresPool());
+logger.log('🔐 Using PostgreSQL session store');
 
 app.use(session(sessionConfig));
 
 (async () => {
   initLogCollector();
-  await connectToMongoDB();
+  await initializePostgres();
+  await seedPostgresDefaultLanguages();
 
   const server = await registerRoutes(app, { mode: 'api-only' });
+  startupReady = true;
 
   server.on('upgrade', async (request, socket, head) => {
     const pathname = new URL(request.url || '', `http://${request.headers.host}`).pathname;
 
-    // Mongo circuit breaker for WS upgrades — chat/cast/metadata all use DB.
-    try {
-      const mongooseMod = (await import('mongoose')).default;
-      if (mongooseMod.connection.readyState !== 1) {
-        try { socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); } catch {}
-        try { socket.destroy(); } catch {}
-        return;
-      }
-    } catch {}
+    if (!startupReady || !(await postgresAvailable())) {
+      try { socket.write('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n'); } finally { socket.destroy(); }
+      return;
+    }
 
     if (pathname === '/ws/metadata') {
       server.metadataWss.handleUpgrade(request, socket, head, (ws) => {
@@ -635,11 +579,8 @@ app.use(session(sessionConfig));
         setTimeout(resolve, 10000);
       });
 
-      const mongooseModule = (await import('mongoose')).default;
-      if (mongooseModule.connection.readyState === 1) {
-        await mongooseModule.connection.close(false);
-        console.log('✅ MongoDB connection closed');
-      }
+      startupReady = false;
+      await closePostgres();
 
       clearTimeout(shutdownTimeout);
       console.log('✅ Graceful shutdown complete');
@@ -664,7 +605,7 @@ app.use(session(sessionConfig));
   });
 
   const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  server.listen({ port, host: "0.0.0.0", reusePort: process.platform !== 'win32' }, () => {
     logger.log(`🚀 BACKEND-API: Listening on port ${port}`);
     logger.log(`🔗 CORS allowed origins: ${CORS_ALLOWED_ORIGINS.join(', ')}`);
     logger.log(`🔗 Frontend URL: ${FRONTEND_URL}`);
@@ -685,7 +626,7 @@ app.use(session(sessionConfig));
     // node-cron schedule and returns immediately), so this completes in
     // <1s and is independent of the heavy warmup chain.
     void (async () => {
-      if (process.env.NODE_ENV === 'development') return;
+      if (process.env.NODE_ENV === 'development' || !backgroundJobsEnabled) return;
       try {
         const inits: Array<[string, () => Promise<void>]> = [
           ['scheduled cache clear', async () => { (await import('./services/scheduled-cache-clear')).scheduledCacheClearService.initialize(); }],
@@ -750,14 +691,14 @@ app.use(session(sessionConfig));
     })();
 
     let watchdogFailures = 0;
-    let mongoDownSince: number | null = null;
+    let postgresDownSince: number | null = null;
     const WATCHDOG_MAX_FAILURES = 3;
     const WATCHDOG_INTERVAL = 30_000;
     const WATCHDOG_TIMEOUT = 5_000;
     // Atlas primary failover takes 30-60s in practice. 90s gives the app-level
     // reconnect loop two backoff windows to recover before we trigger a hard
     // restart. 3-minute window was unnecessarily user-hostile.
-    const MONGO_DOWN_RESTART_MS = 90_000;
+    const POSTGRES_DOWN_RESTART_MS = 90_000;
 
     const watchdogTimer = setInterval(async () => {
       if (isShuttingDown) { clearInterval(watchdogTimer); return; }
@@ -792,24 +733,15 @@ app.use(session(sessionConfig));
           }
         }
 
-        try {
-          const mongooseModule = (await import('mongoose')).default;
-          const state = mongooseModule.connection.readyState;
-          if (state === 1) {
-            if (mongoDownSince !== null) {
-              console.log(`🐕 Watchdog: MongoDB recovered after ${Math.round((Date.now() - mongoDownSince) / 1000)}s`);
-              mongoDownSince = null;
-            }
-          } else {
-            if (mongoDownSince === null) mongoDownSince = Date.now();
-            const downFor = Date.now() - mongoDownSince;
-            console.error(`🐕 Watchdog: MongoDB readyState=${state}, down for ${Math.round(downFor / 1000)}s`);
-            if (downFor >= MONGO_DOWN_RESTART_MS) {
-              console.error(`🐕 Watchdog: MongoDB down >${MONGO_DOWN_RESTART_MS / 1000}s — forcing restart`);
-              process.kill(process.pid, 'SIGTERM');
-            }
+        if (await postgresAvailable()) {
+          postgresDownSince = null;
+        } else {
+          if (postgresDownSince === null) postgresDownSince = Date.now();
+          if (Date.now()-postgresDownSince >= POSTGRES_DOWN_RESTART_MS) {
+            console.error('PostgreSQL unavailable beyond watchdog deadline; restarting');
+            process.kill(process.pid,'SIGTERM');
           }
-        } catch {}
+        }
       } catch (err: any) {
         watchdogFailures++;
         console.error(`🐕 Watchdog error: ${err.message} (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
@@ -826,8 +758,8 @@ app.use(session(sessionConfig));
   (async () => {
     try {
       try {
-        const { BulkDescriptionJob } = await import('@workspace/db-shared/mongo-schemas');
-        const unfinishedJobs = await BulkDescriptionJob.find({ status: 'running' }).sort({ createdAt: -1 }).limit(1);
+        const unfinishedJobs = (await getPostgresPool().query(`SELECT job_id AS "jobId",last_processed_station_id AS "lastProcessedStationId"
+          FROM bulk_description_jobs WHERE status='running' ORDER BY created_at DESC LIMIT 1`)).rows;
 
         if (unfinishedJobs.length > 0) {
           const job = unfinishedJobs[0];
@@ -850,14 +782,13 @@ app.use(session(sessionConfig));
             await performanceCache.warmupSimilarStations();
             logger.log('✅ BACKGROUND: Similar stations warmup completed');
           } catch (err) {
-            logger.warn('⚠️ Similar stations warmup failed (will use MongoDB fallback)');
+            logger.warn('⚠️ Similar stations warmup failed (will retry PostgreSQL on demand)');
           }
         });
 
         try {
-          const { Genre } = await import('@workspace/db-shared/mongo-schemas');
           const CacheManagerModule = (await import('./cache')).default;
-          const genres = await Genre.find({ isDiscoverable: true }).sort({ stationCount: -1 }).limit(13).lean();
+          const genres = (await pgGenres()).sort((a,b)=>b.stationCount-a.stationCount).slice(0,13);
           await CacheManagerModule.set('genres:discoverable:all:13', genres, { ttl: 600 });
           logger.log('✅ CACHE: Discoverable genres warmed up');
         } catch (err) {
@@ -874,57 +805,9 @@ app.use(session(sessionConfig));
       await loadDatabaseCountryLanguageMappings();
       await loadDatabaseUrlTranslations();
 
-      if (process.env.NODE_ENV !== 'development') {
+      if (process.env.NODE_ENV !== 'development' && backgroundJobsEnabled) {
         try {
-          // Use MongoDB for 24h gate so it persists across restarts/redeploys.
-          // In-memory node-cache is cleared on every container restart, causing
-          // the 40k-station cursor to run on every Railway deploy (+80 MB RSS).
-          const mongoose = (await import('mongoose')).default;
-          const appState = mongoose.connection.collection('app_state');
-          const CLEANUP_KEY = 'description_cleanup_last_run';
-          const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
-          const lastRunDoc = await appState.findOne({ _id: CLEANUP_KEY as any });
-          const lastRunMs = (lastRunDoc as any)?.runAt instanceof Date ? (lastRunDoc as any).runAt.getTime() : 0;
-
-          if (Date.now() - lastRunMs < TWENTY_FOUR_HOURS) {
-            logger.log('🧹 CLEANUP: Skipping (already ran within 24h — persisted in DB)');
-          } else {
-            const { Station } = await import('@workspace/db-shared/mongo-schemas');
-            let cleanedCount = 0;
-            const placeholderRegex = /^\[(TRANSLATED\s+)?(META|FULL\s+DESCRIPTION|SEO\s+META)[^\]]*\]\s*/i;
-            const cursor = Station.find({
-              $or: [
-                { 'descriptions': { $regex: '^\\[(TRANSLATED\\s+)?(META|FULL|SEO)[^\\]]*\\]', $options: 'i' } }
-              ]
-            }).select('_id descriptions').lean().cursor({ batchSize: 2000 });
-
-            for await (const station of cursor) {
-              if (!station.descriptions || typeof station.descriptions !== 'object') continue;
-              const updatedDescriptions: any = {};
-              let hasChanges = false;
-              for (const [lang, desc] of Object.entries(station.descriptions as any)) {
-                if (typeof desc === 'object' && desc !== null) {
-                  const d = desc as any;
-                  const cleanedMeta = (d.meta || '').replace(placeholderRegex, '').trim();
-                  const cleanedFull = (d.full || '').replace(placeholderRegex, '').trim();
-                  if (cleanedMeta !== d.meta || cleanedFull !== d.full) hasChanges = true;
-                  updatedDescriptions[lang] = { ...d, meta: cleanedMeta, full: cleanedFull };
-                } else {
-                  updatedDescriptions[lang] = desc;
-                }
-              }
-              if (hasChanges) {
-                await Station.updateOne({ _id: station._id }, { $set: { descriptions: updatedDescriptions } });
-                cleanedCount++;
-              }
-            }
-            await appState.updateOne(
-              { _id: CLEANUP_KEY as any },
-              { $set: { runAt: new Date() } },
-              { upsert: true },
-            );
-            if (cleanedCount > 0) logger.log(`🧹 CLEANUP: Cleaned placeholder prefixes from ${cleanedCount} stations`);
-          }
+          await cleanupPostgresDescriptionPrefixes();
         } catch (error: any) {
           logger.warn(`⚠️ Automatic cleanup failed:`, error.message);
         }
@@ -938,7 +821,7 @@ app.use(session(sessionConfig));
       // many minutes when Atlas is stressed at boot, which previously meant
       // GSC cron and 12 other scheduled-* services were silently never
       // registered. Do not re-add scheduler init here.
-      if (process.env.NODE_ENV !== 'development') {
+      if (process.env.NODE_ENV !== 'development' && backgroundJobsEnabled) {
         // Coverage backfill on boot (idempotent, gated on row count, can
         // safely live here since it's not a cron registration).
         try {
@@ -959,7 +842,7 @@ app.use(session(sessionConfig));
         }
       }
 
-      if (process.env.NODE_ENV !== 'development') {
+      if (process.env.NODE_ENV !== 'development' && backgroundJobsEnabled) {
         try {
           const { TranslationSyncService } = await import('./services/translation-sync');
           logger.log('🌍 BACKGROUND: Scanning for new translation keys...');
@@ -1186,14 +1069,9 @@ app.use(session(sessionConfig));
         }
       }, 5000);
 
-      const mongoose = (await import('mongoose')).default;
       setInterval(() => {
-        const state = mongoose.connection.readyState;
-        if (state !== 1) {
-          const stateNames: Record<number, string> = { 0: 'disconnected', 2: 'connecting', 3: 'disconnecting' };
-          console.error(`🚨 MONGODB STATE: ${stateNames[state] || 'unknown'} (readyState=${state})`);
-        }
-      }, 30000);
+        void postgresAvailable().then(available => { if (!available) logger.error('PostgreSQL is unavailable'); });
+      },30000).unref();
     }
 
   })();

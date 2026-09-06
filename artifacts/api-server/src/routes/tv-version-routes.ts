@@ -5,12 +5,12 @@
  * GET  /api/admin/tv-version  — admin read (returns same doc)
  * PUT  /api/admin/tv-version  — admin write (full replace of config fields)
  *
- * The document is stored as a single MongoDB record so version numbers,
+ * The manifest is stored as a PostgreSQL singleton so version numbers,
  * release notes, and store URLs can be updated without a code deploy.
  */
 
 import type { Express, Request, Response } from 'express';
-import { TvVersionConfig } from '@workspace/db-shared/mongo-schemas';
+import { getTvVersion, saveTvVersion } from '../data/postgres-tv-store';
 import { logger } from '../utils/logger';
 import CacheManager from '../cache';
 
@@ -69,7 +69,7 @@ export function registerTvVersionRoutes(app: Express, deps: any) {
     openCors(res);
     try {
       const config = await CacheManager.getOrSetSingleFlight<any>(CACHE_KEY, async () => {
-        const doc = await TvVersionConfig.findOne().lean();
+        const doc = await getTvVersion();
         return doc ?? DEFAULT_CONFIG;
       }, { ttl: CACHE_TTL });
 
@@ -86,7 +86,7 @@ export function registerTvVersionRoutes(app: Express, deps: any) {
   // GET /api/admin/tv-version — admin read
   app.get('/api/admin/tv-version', requireAdmin, async (_req: Request, res: Response) => {
     try {
-      const doc = await TvVersionConfig.findOne().lean();
+      const doc = await getTvVersion();
       res.json(doc ?? { ...DEFAULT_CONFIG, _isDefault: true });
     } catch (err: any) {
       logger.error('admin/tv-version GET failed:', err?.message);
@@ -111,7 +111,7 @@ export function registerTvVersionRoutes(app: Express, deps: any) {
         updatedAt:    new Date(),
       };
 
-      await TvVersionConfig.findOneAndUpdate({}, update, { upsert: true, new: true });
+      await saveTvVersion(update);
       await CacheManager.del(CACHE_KEY);
 
       logger.log('TV version config updated');

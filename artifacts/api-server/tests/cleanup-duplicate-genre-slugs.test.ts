@@ -10,50 +10,29 @@
  * delete the wrong genre's slug on production. These tests pin that
  * ordering down and verify DRY_RUN performs no writes.
  *
- * The tests boot mongodb-memory-server, drop the partial unique index
- * (so duplicate slugs can actually be seeded), insert duplicates via
- * the raw collection driver to bypass the SAFE_GENRE_SLUG_RE validator
- * where needed, then run the production cleanup function in-process.
+ * Tests use an isolated PostgreSQL corruption-recovery schema, temporarily
+ * remove slug uniqueness there, seed legacy duplicate rows, and execute the
+ * production SQL cleanup in-process. Production constraints are never changed.
  */
 
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose, { Types } from 'mongoose';
-
-import { Genre } from '@workspace/db-shared/mongo-schemas';
+import { randomBytes } from 'node:crypto';
+import { createNativePostgresFixture } from './helpers/native-postgres-fixture';
 import { runDuplicateGenreSlugCleanup } from '../src/scripts/cleanup-duplicate-genre-slugs';
 
-let mongod: MongoMemoryServer;
-
+let fixture: Awaited<ReturnType<typeof createNativePostgresFixture>>;
+const newId=()=>randomBytes(12).toString('hex');
 before(async () => {
-  process.env.NODE_ENV = 'test';
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri(), {
-    dbName: 'cleanup-duplicate-genre-slugs-test',
-  });
+  fixture=await createNativePostgresFixture('duplicate_genre_cleanup');
+  // Only this isolated corruption-recovery fixture permits legacy duplicates.
+  await fixture.pool.query('ALTER TABLE genres DROP CONSTRAINT genres_slug_key');
 });
-
-after(async () => {
-  await mongoose.disconnect();
-  if (mongod) await mongod.stop();
-});
-
-beforeEach(async () => {
-  await Genre.deleteMany({});
-  // Drop the partial unique index on `slug` so we can seed duplicates.
-  // The cleanup script's whole reason to exist is to clear these
-  // duplicates *before* the index can be built, so it must work in a
-  // database where the index isn't enforced.
-  try {
-    await Genre.collection.dropIndex('slug_1');
-  } catch {
-    // Index may not exist yet — fine.
-  }
-});
+after(async () => { if(fixture) await fixture.close(); });
+beforeEach(async () => { await fixture.clear('genres'); });
 
 interface RawGenre {
-  _id: Types.ObjectId;
+  _id: string;
   name: string;
   slug?: string;
   isDiscoverable?: boolean;
@@ -62,10 +41,13 @@ interface RawGenre {
 }
 
 async function seedRaw(docs: RawGenre[]): Promise<void> {
-  await Genre.collection.insertMany(docs as never);
+  for(const doc of docs) await fixture.insert('genres',{
+    id:doc._id,name:doc.name,slug:doc.slug ?? null,is_discoverable:doc.isDiscoverable ?? Boolean(doc.slug),
+    station_count:doc.stationCount ?? 0,created_at:doc.createdAt ?? new Date(),source:doc,
+  });
 }
 
-async function fetchById(id: Types.ObjectId): Promise<{
+async function fetchById(id: string): Promise<{
   slug?: string | null;
   isDiscoverable?: boolean;
   cleanupDemotion?: {
@@ -78,8 +60,9 @@ async function fetchById(id: Types.ObjectId): Promise<{
     demotedAt?: Date;
   };
 }> {
-  const doc = await Genre.collection.findOne({ _id: id as never });
-  return doc as never;
+  const row=(await fixture.pool.query('SELECT * FROM genres WHERE id=$1',[id])).rows[0];
+  const demotion=row.source.cleanupDemotion;
+  return {slug:row.slug,isDiscoverable:row.is_discoverable,...(demotion?{cleanupDemotion:{...demotion,demotedAt:new Date(demotion.demotedAt)}}:{})};
 }
 
 // ---------------------------------------------------------------------------
@@ -90,9 +73,9 @@ async function fetchById(id: Types.ObjectId): Promise<{
 test('highest stationCount wins, even when other docs are discoverable / older / smaller _id', async () => {
   // Build _ids in ascending lexicographic order so the loser has the
   // smaller _id — proves stationCount beats the _id tiebreak.
-  const loserA = new Types.ObjectId('000000000000000000000001');
-  const winner = new Types.ObjectId('000000000000000000000002');
-  const loserB = new Types.ObjectId('000000000000000000000003');
+  const loserA = '000000000000000000000001';
+  const winner = '000000000000000000000002';
+  const loserB = '000000000000000000000003';
 
   await seedRaw([
     {
@@ -147,7 +130,7 @@ test('highest stationCount wins, even when other docs are discoverable / older /
 
   for (const id of [loserA, loserB]) {
     const loser = await fetchById(id);
-    assert.equal(loser.slug, undefined, `loser ${id} has slug unset`);
+    assert.equal(loser.slug, null, `loser ${id} has slug unset`);
     assert.equal(loser.isDiscoverable, false, `loser ${id} is hidden`);
     assert.ok(loser.cleanupDemotion, `loser ${id} has cleanupDemotion`);
     assert.equal(loser.cleanupDemotion!.reason, 'collision');
@@ -169,8 +152,8 @@ test('highest stationCount wins, even when other docs are discoverable / older /
 // ---------------------------------------------------------------------------
 
 test('with equal stationCount, the discoverable doc wins over a hidden one', async () => {
-  const hiddenOlderSmallerId = new Types.ObjectId('000000000000000000000010');
-  const discoverable = new Types.ObjectId('000000000000000000000020');
+  const hiddenOlderSmallerId = '000000000000000000000010';
+  const discoverable = '000000000000000000000020';
 
   await seedRaw([
     {
@@ -202,7 +185,7 @@ test('with equal stationCount, the discoverable doc wins over a hidden one', asy
   assert.equal(winner.cleanupDemotion, undefined);
 
   const loser = await fetchById(hiddenOlderSmallerId);
-  assert.equal(loser.slug, undefined);
+  assert.equal(loser.slug, null);
   assert.equal(loser.isDiscoverable, false);
   assert.equal(loser.cleanupDemotion?.collisionWinnerName, 'Rock (live)');
 });
@@ -213,8 +196,8 @@ test('with equal stationCount, the discoverable doc wins over a hidden one', asy
 // ---------------------------------------------------------------------------
 
 test('with equal stationCount and discoverability, the older createdAt wins', async () => {
-  const older = new Types.ObjectId('000000000000000000000200');
-  const newer = new Types.ObjectId('000000000000000000000100'); // smaller _id but newer
+  const older = '000000000000000000000200';
+  const newer = '000000000000000000000100'; // smaller _id but newer
 
   await seedRaw([
     {
@@ -245,7 +228,7 @@ test('with equal stationCount and discoverability, the older createdAt wins', as
   assert.equal(winner.cleanupDemotion, undefined);
 
   const loser = await fetchById(newer);
-  assert.equal(loser.slug, undefined);
+  assert.equal(loser.slug, null);
   assert.equal(loser.cleanupDemotion?.collisionWinnerName, 'Jazz (original)');
   assert.equal(
     String(loser.cleanupDemotion?.collisionWinnerId),
@@ -259,8 +242,8 @@ test('with equal stationCount and discoverability, the older createdAt wins', as
 // ---------------------------------------------------------------------------
 
 test('with everything else equal, the lexicographically smallest _id wins (stable re-runs)', async () => {
-  const small = new Types.ObjectId('000000000000000000000aaa');
-  const big = new Types.ObjectId('000000000000000000000bbb');
+  const small = '000000000000000000000aaa';
+  const big = '000000000000000000000bbb';
   const sameTime = new Date('2022-05-05T00:00:00Z');
 
   await seedRaw([
@@ -288,7 +271,7 @@ test('with everything else equal, the lexicographically smallest _id wins (stabl
   });
 
   assert.equal((await fetchById(small)).slug, 'indie');
-  assert.equal((await fetchById(big)).slug, undefined);
+  assert.equal((await fetchById(big)).slug, null);
   assert.equal(
     (await fetchById(big)).cleanupDemotion?.collisionWinnerName,
     'Indie (A)',
@@ -301,11 +284,11 @@ test('with everything else equal, the lexicographically smallest _id wins (stabl
 // ---------------------------------------------------------------------------
 
 test('handles multiple duplicate groups independently and leaves unique slugs alone', async () => {
-  const popWinner = new Types.ObjectId();
-  const popLoser = new Types.ObjectId();
-  const rockWinner = new Types.ObjectId();
-  const rockLoser = new Types.ObjectId();
-  const lonely = new Types.ObjectId();
+  const popWinner = newId();
+  const popLoser = newId();
+  const rockWinner = newId();
+  const rockLoser = newId();
+  const lonely = newId();
 
   await seedRaw([
     {
@@ -361,9 +344,9 @@ test('handles multiple duplicate groups independently and leaves unique slugs al
   assert.equal(stats.errors, 0);
 
   assert.equal((await fetchById(popWinner)).slug, 'pop');
-  assert.equal((await fetchById(popLoser)).slug, undefined);
+  assert.equal((await fetchById(popLoser)).slug, null);
   assert.equal((await fetchById(rockWinner)).slug, 'rock');
-  assert.equal((await fetchById(rockLoser)).slug, undefined);
+  assert.equal((await fetchById(rockLoser)).slug, null);
 
   const lonelyDoc = await fetchById(lonely);
   assert.equal(lonelyDoc.slug, 'lonely', 'unique slug must be untouched');
@@ -376,8 +359,8 @@ test('handles multiple duplicate groups independently and leaves unique slugs al
 // ---------------------------------------------------------------------------
 
 test('DRY_RUN performs no writes — losers keep their slug, isDiscoverable, and have no cleanupDemotion', async () => {
-  const winner = new Types.ObjectId();
-  const loser = new Types.ObjectId();
+  const winner = newId();
+  const loser = newId();
 
   await seedRaw([
     {
@@ -444,7 +427,7 @@ test('DRY_RUN performs no writes — losers keep their slug, isDiscoverable, and
 test('no duplicate groups → stats are all zero and nothing is mutated', async () => {
   await seedRaw([
     {
-      _id: new Types.ObjectId(),
+      _id: newId(),
       name: 'Solo',
       slug: 'solo',
       isDiscoverable: true,

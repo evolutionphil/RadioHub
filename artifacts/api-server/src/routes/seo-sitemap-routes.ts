@@ -1,6 +1,8 @@
 import type { Express, Request } from "express";
 import crypto from 'crypto';
-import { Station, Country, Genre, AuthToken, AppLog } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgReportStationDebugLog, pgListStationDebugLogs } from '../data/postgres-station-debug-store';
+import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStationDiagnostics } from '../data/postgres-seo-indexing-store';
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
 import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES, LOCALIZED_LOGO_WORD, LOCALIZED_RADIO_STATION_WORD } from '@workspace/seo-shared/seo-config';
@@ -57,7 +59,6 @@ import {
   getActiveStationChunk,
   extractTopCountriesFromChunk,
 } from "../seo/sitemap-manifest-builder";
-import { SitemapManifest } from '@workspace/db-shared/mongo-schemas';
 import {
   loadDatabaseUrlTranslations,
   loadDatabaseCountryLanguageMappings,
@@ -235,10 +236,8 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       const clientIP = req.ip || req.connection.remoteAddress || 'unknown';
       const userAgent = req.headers['user-agent'] || 'unknown';
 
-      const { StationDebugLog } = await import('@workspace/db-shared/mongo-schemas');
-
-      // Create comprehensive error log
-      const errorLog = new StationDebugLog({
+      // Create comprehensive error log; persistence groups concurrent reports atomically.
+      const errorLog = {
         stationId: stationId || 'unknown',
         stationName: stationName || 'Unknown Station',
         stationUrl: stationUrl || 'unknown',
@@ -277,58 +276,11 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         }],
         uniqueUserCount: 1,
         totalOccurrences: 1
-      });
-
-      // Check if similar error exists for this station in last 24 hours
-      const existingError = await StationDebugLog.findOne({
-        stationId: stationId || 'unknown',
-        errorType: errorType || 'AUDIO_ERROR',
-        timestamp: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) }
-      });
-
-      if (existingError) {
-        // Update existing error with new occurrence
-        const userAlreadyReported = existingError.reportingUsers.some(
-          (user: any) => user.userAgent === userAgent && user.clientIP === clientIP
-        );
-
-        if (!userAlreadyReported) {
-          existingError.reportingUsers.push({
-            userAgent,
-            clientIP,
-            timestamp: new Date()
-          });
-          existingError.uniqueUserCount = existingError.reportingUsers.length;
-        }
-
-        existingError.totalOccurrences += 1;
-        existingError.errorDetails = {
-          ...existingError.errorDetails,
-          occurrenceCount: existingError.totalOccurrences,
-          ...errorDetails
-        };
-
-        await existingError.save();
-        logger.log(`🔄 Updated existing error log for station ${stationName} (${existingError.totalOccurrences} occurrences)`);
-        
-        res.json({ 
-          success: true, 
-          message: 'Error updated in existing log',
-          errorId: existingError._id,
-          totalOccurrences: existingError.totalOccurrences
-        });
-      } else {
-        // Save new error log
-        const savedError = await errorLog.save();
-        logger.log(`💾 New error logged for station: ${stationName} - ${errorType}: ${errorMessage}`);
-        
-        res.json({ 
-          success: true, 
-          message: 'Error logged successfully',
-          errorId: savedError._id 
-        });
-      }
-
+      };
+      const { row, created } = await pgReportStationDebugLog(errorLog,errorDetails || {});
+      res.json(created
+        ? { success: true, message: 'Error logged successfully', errorId: row._id }
+        : { success: true, message: 'Error updated in existing log', errorId: row._id, totalOccurrences: row.totalOccurrences });
     } catch (error) {
       console.error('Error saving playback error log:', error);
       res.status(500).json({ error: 'Failed to log error' });
@@ -338,9 +290,8 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
   // GET endpoint to retrieve error logs for debugging
   app.get("/api/admin/error-logs", requireAdmin, async (req, res) => {
     try {
-      const { StationDebugLog } = await import('@workspace/db-shared/mongo-schemas');
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50;
+      const page = Math.max(1,parseInt(req.query.page as string) || 1);
+      const limit = Math.max(1,Math.min(500,parseInt(req.query.limit as string) || 50));
       const skip = (page - 1) * limit;
       
       const stationId = req.query.stationId as string;
@@ -353,14 +304,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       if (errorType) query.errorType = errorType;
       if (resolved !== undefined) query.isResolved = resolved === 'true';
 
-      const [errors, total] = await Promise.all([
-        StationDebugLog.find(query)
-          .sort({ timestamp: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        StationDebugLog.countDocuments(query)
-      ]);
+      const { errors, total } = await pgListStationDebugLogs(query,limit,skip);
 
       res.json({
         errors,
@@ -683,34 +627,15 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         // touch — the architect guard is best-effort.
       }
       const now = new Date();
-      // ARCHITECT BUG FIX (2026-05-10): switched from
-      //   Station.updateMany(filter, { $set: { updatedAt: now } }, { timestamps: false })
-      // to the raw MongoDB driver via `Station.collection.updateMany(...)`.
-      //
-      // Why: the Station schema declares `{ timestamps: true }` (mongo-schemas.ts
-      // line 1216). When Mongoose's auto-timestamp middleware sees an updateMany
-      // with `{ timestamps: false }` option, it conflicts with the schema-level
-      // setting and was silently no-op'ing on production — admin saw
-      // "0/0 istasyon güncellendi" forever, sitemap manifests stayed frozen at
-      // chunkInfo.maxUpdatedAt = 2025-12-11, Googlebot got 304 Not Modified on
-      // every IMS poll, and Search Console showed "0 keşfedilen sayfa".
-      //
-      // Bypassing Mongoose entirely (Station.collection is the raw driver
-      // collection) sidesteps every middleware/option conflict — the update
-      // is sent to MongoDB exactly as written, no auto-timestamps interfere.
-      const updateRes = await Station.collection.updateMany(
-        { slug: { $exists: true, $ne: '' } },
-        { $set: { updatedAt: now } },
-      );
+      // Shares the provider-sync advisory lock across workers. The SQL update
+      // changes only lastmod metadata; catalogue content/counters are untouched.
+      const updateRes = await pgTouchSitemapStations(now);
       const matched = (updateRes as any).matchedCount ?? 0;
       const modified = (updateRes as any).modifiedCount ?? 0;
       logger.warn(`🕐 admin/sitemap/touch-stations: bumped updatedAt on ${modified}/${matched} stations to ${now.toISOString()}`);
       if (matched === 0) {
         logger.error(
-          `🔴 admin/sitemap/touch-stations: matchedCount=0 — Station.collection has no docs with slug. ` +
-          `Verify (a) MONGODB_URI points to the same DB as the rest of the app, ` +
-          `(b) the Station collection is named '${Station.collection.collectionName}', and ` +
-          `(c) docs actually carry a non-empty slug field.`,
+          '🔴 admin/sitemap/touch-stations: PostgreSQL stations has no rows with a non-empty slug. Check DATABASE_URL and the imported catalog.',
         );
       }
 
@@ -796,7 +721,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       const warnings: string[] = [];
       if (matched === 0) {
         warnings.push(
-          `Station.collection.updateMany matched 0 docs (collection='${Station.collection.collectionName}'). ` +
+          `PostgreSQL stations update matched 0 rows. ` +
           `DB connection may point to wrong cluster/db, OR no station has a non-empty slug.`,
         );
       }
@@ -811,7 +736,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         touchedAt: now.toISOString(),
         matchedStations: matched,
         modifiedStations: modified,
-        collectionName: Station.collection.collectionName,
+        collectionName: 'stations',
         rebuild: {
           built: result.built,
           qualifiedLanguages: result.qualifiedLanguages.length,
@@ -823,7 +748,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       });
     } catch (err: any) {
       logger.error('admin/sitemap/touch-stations failed:', err);
-      res.status(500).json({ ok: false, error: err?.message ?? 'touch_failed' });
+      res.status(err?.statusCode === 409 ? 409 : 500).json({ ok: false, error: err?.code ?? err?.message ?? 'touch_failed', message: err?.message });
     }
   });
 
@@ -844,9 +769,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
         if (!(err instanceof QualifiedLanguagesUnavailableError)) throw err;
       }
 
-      const docs = await SitemapManifest.find({ status: 'active' })
-        .select('type language version qualifiedLanguagesHash chunks chunkCount totalUrls generatedAt')
-        .lean();
+      const docs = await pgActiveManifests();
 
       const stats = docs.map((d: any) => {
         const dates: number[] = (d.chunks || [])
@@ -885,37 +808,7 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       // collection? all slugs blank?) without needing shell access.
       let stationDiag: Record<string, unknown> = {};
       try {
-        const coll = Station.collection;
-        const [total, withSlug, withSlugNonEmpty, sample] = await Promise.all([
-          coll.countDocuments({}),
-          coll.countDocuments({ slug: { $exists: true } }),
-          coll.countDocuments({ slug: { $exists: true, $ne: '' } }),
-          coll.find({ slug: { $exists: true, $ne: '' } })
-            .project({ _id: 1, slug: 1, updatedAt: 1, name: 1, countryCode: 1 })
-            .sort({ updatedAt: -1 })
-            .limit(1)
-            .toArray(),
-        ]);
-        const conn: any = (Station as any).db ?? (Station.collection as any).conn;
-        const dbName: string | undefined = conn?.name ?? conn?.databaseName;
-        stationDiag = {
-          collectionName: coll.collectionName,
-          dbName: dbName ?? null,
-          totalDocs: total,
-          withSlugField: withSlug,
-          withSlugNonEmpty,
-          mostRecentSample: sample?.[0]
-            ? {
-                _id: String(sample[0]._id),
-                slug: (sample[0] as any).slug ?? null,
-                name: (sample[0] as any).name ?? null,
-                countryCode: (sample[0] as any).countryCode ?? null,
-                updatedAt: (sample[0] as any).updatedAt
-                  ? new Date((sample[0] as any).updatedAt).toISOString()
-                  : null,
-              }
-            : null,
-        };
+        stationDiag = await pgSitemapStationDiagnostics();
       } catch (diagErr: any) {
         stationDiag = { error: diagErr?.message ?? 'station_diag_failed' };
       }
@@ -1547,9 +1440,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
 
       // Bulk-fetch the stations from the manifest. Mongo $in is bounded
       // (max 1000 per chunk) so a single round-trip is safe.
-      const stationDocs = await Station.find({ _id: { $in: chunkInfo.stationIds } })
-        .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex updatedAt logoAssets favicon')
-        .lean();
+      const stationDocs = await pgCatalog().find({ _id: { $in: chunkInfo.stationIds.map(String) } });
 
       // Re-order by manifest order (Mongo doesn't preserve $in order).
       const byId = new Map<string, any>();
@@ -1696,11 +1587,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       // 'genre-pop' for legacy seed data). Use the raw native collection to
       // bypass mongoose strict ObjectId casting on the $in array.
       const genreIds = manifest.chunks.flatMap((c) => c.stationIds);
-      const genreDocs = genreIds.length > 0
-        ? await Genre.collection
-            .find({ _id: { $in: genreIds as any[] } }, { projection: { _id: 1, slug: 1, updatedAt: 1 } })
-            .toArray()
-        : [];
+      const genreDocs = genreIds.length > 0 ? await pgSeoGenres(genreIds) : [];
       const genreById = new Map<string, any>();
       for (const g of genreDocs) genreById.set(String((g as any)._id), g);
 
@@ -1826,14 +1713,8 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       const qualifiedLanguages = state.languages;
 
       // Fetch active manifests for all qualified langs, all 3 types.
-      const { SitemapManifest } = await import('@workspace/db-shared/mongo-schemas');
-      const allActiveManifests = await SitemapManifest.find({
-        status: 'active',
-        language: { $in: qualifiedLanguages },
-        type: { $in: ['main', 'genres', 'stations'] },
-      })
-        .select('type language version chunks chunkCount totalUrls qualifiedLanguagesHash')
-        .lean();
+      const allActiveManifests = (await pgActiveManifests())
+        .filter(row => qualifiedLanguages.includes(row.language));
 
       // If no manifests at all, manifest-builder hasn't run yet (cold boot).
       if (allActiveManifests.length === 0) {
@@ -2051,14 +1932,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         return sendSitemapGone(res, SITEMAP_CONFIG.indexCacheTtlSeconds);
       }
 
-      const { SitemapManifest } = await import('@workspace/db-shared/mongo-schemas');
-      const langManifests = await SitemapManifest.find({
-        status: 'active',
-        language: lang,
-        type: { $in: ['main', 'genres', 'stations'] },
-      })
-        .select('type language version chunks chunkCount totalUrls qualifiedLanguagesHash')
-        .lean();
+      const langManifests = (await pgActiveManifests()).filter(row => row.language === lang);
 
       if (langManifests.length === 0) {
         res.setHeader('Content-Type', 'text/plain');

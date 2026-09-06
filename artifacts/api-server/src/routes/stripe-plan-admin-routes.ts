@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
 import { Paddle, Environment } from "@paddle/paddle-node-sdk";
-import { StripeSubscriptionPlan, type StripePlanId } from "@workspace/db-shared/mongo-schemas";
+import { listSubscriptionPlans, saveSubscriptionPlan, type StripePlanId } from "../data/postgres-tv-store";
 import { logger } from "../utils/logger";
 
 const DEFAULT_PLANS: Array<{ planId: StripePlanId; label: string; description: string }> = [
@@ -14,17 +14,13 @@ const DEFAULT_PLANS: Array<{ planId: StripePlanId; label: string; description: s
 // Seed default plans on first boot if collection is empty
 async function seedDefaultPlans() {
   try {
-    const count = await StripeSubscriptionPlan.countDocuments();
-    if (count > 0) return;
     const envPriceIds: Record<StripePlanId, string | undefined> = {
       remove_ads: process.env.STRIPE_PRICE_REMOVE_ADS,
       premium_monthly: process.env.STRIPE_PRICE_MONTHLY,
       premium_yearly: process.env.STRIPE_PRICE_ANNUAL,
       premium_lifetime: process.env.STRIPE_PRICE_LIFETIME,
     };
-    await StripeSubscriptionPlan.insertMany(
-      DEFAULT_PLANS.map(p => ({
-        planId: p.planId,
+    await Promise.all(DEFAULT_PLANS.map(p => saveSubscriptionPlan(p.planId, {
         stripePriceId: envPriceIds[p.planId] || "",
         label: p.label,
         description: p.description,
@@ -32,8 +28,7 @@ async function seedDefaultPlans() {
         amount: 0,
         isActive: true,
         updatedAt: new Date(),
-      }))
-    );
+      }, true)));
     logger.log("[StripeConfig] Default subscription plans seeded");
   } catch (err: any) {
     logger.warn("[StripeConfig] Seed failed (non-critical):", err?.message);
@@ -49,9 +44,7 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
   // ── Public: /activate page fetches plan list ───────────────────────────────
   app.get("/api/subscription/plans", async (_req: Request, res: Response) => {
     try {
-      const plans = await StripeSubscriptionPlan.find({ isActive: true })
-        .select("planId label description currency amount")
-        .lean();
+      const plans = (await listSubscriptionPlans(true)).map(({ _id, planId, label, description, currency, amount }) => ({ _id, planId, label, description, currency, amount }));
       res.json({ plans });
     } catch (err: any) {
       // Fallback to hardcoded defaults so /activate always works
@@ -70,7 +63,7 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
   // ── Admin: list all plans (including inactive) ─────────────────────────────
   app.get("/api/admin/stripe-plans", requireAdmin, async (_req: Request, res: Response) => {
     try {
-      const plans = await StripeSubscriptionPlan.find().lean();
+      const plans = await listSubscriptionPlans();
       res.json({ plans });
     } catch (err: any) {
       res.status(500).json({ error: "Failed to fetch plans" });
@@ -107,11 +100,7 @@ export function registerStripePlanAdminRoutes(app: Express, deps: any) {
       if (typeof amount === "number") update.amount = Math.round(amount);
       if (typeof isActive === "boolean") update.isActive = isActive;
 
-      const plan = await StripeSubscriptionPlan.findOneAndUpdate(
-        { planId: planId as any },
-        { $set: update as any },
-        { new: true, upsert: true }
-      );
+      const plan = await saveSubscriptionPlan(planId as StripePlanId, update);
 
       logger.log(`[StripeConfig] Plan ${planId} updated by admin`);
       res.json({ success: true, plan });

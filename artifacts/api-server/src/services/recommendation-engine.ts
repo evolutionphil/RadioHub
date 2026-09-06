@@ -1,7 +1,7 @@
-import { Station, UserListeningHistory, StationSimilarity, UserProfile } from '@workspace/db-shared/mongo-schemas';
-import { CacheManager, CacheKeys } from '../cache';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgCollaborativeRecommendations, pgRecommendationProfile, pgRecordRecommendationInteraction } from '../data/postgres-recommendation-store';
+import { CacheManager } from '../cache';
 import { performanceCache } from '../performance-cache';
-import { isQuotaExceeded, handleQuotaError } from '../utils/quota-guard';
 
 interface UserInteraction {
   sessionId: string;
@@ -31,20 +31,28 @@ interface PersonalizedSimilarStationsOptions {
 export class RecommendationEngine {
   private static activeRecommendations = 0;
   private static readonly MAX_CONCURRENT_RECOMMENDATIONS = 3;
+
+  static async getDedicatedRecommendations(country?: string, genre?: string, limit = 10): Promise<any[]> {
+    const escapedGenre = genre?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return pgCatalog().find({ lastCheckOk: true, ...(country ? { country } : {}),
+      ...(escapedGenre ? { tags: { $regex: new RegExp(escapedGenre, 'i') } } : {}) },
+    { sort: { votes: -1, clickCount: -1 }, limit: Math.max(1, Math.min(100, Math.trunc(limit) || 10)) });
+  }
   
   static async recordUserInteraction(interaction: UserInteraction): Promise<void> {
     try {
-      const station = await Station.findById(interaction.stationId).lean();
+      const station = await pgCatalog().findOne({ _id: interaction.stationId });
       if (!station) return;
 
       const now = new Date();
-      const listenHistory = new UserListeningHistory({
+      await pgRecordRecommendationInteraction({
         sessionId: interaction.sessionId,
         stationId: interaction.stationId,
         stationName: station.name,
         country: station.country || 'Unknown',
         genre: this.extractPrimaryGenre(station.tags),
         tags: station.tags,
+        language: station.language,
         listenDuration: interaction.listenDuration,
         interactionType: interaction.interactionType,
         listenedAt: now,
@@ -54,32 +62,29 @@ export class RecommendationEngine {
         location: interaction.location,
         skipReason: interaction.skipReason,
         rating: this.calculateImplicitRating(interaction.listenDuration, interaction.interactionType)
-      });
-
-      if (isQuotaExceeded()) return;
-      await listenHistory.save();
-      
-      setImmediate(() => this.updateUserProfile(interaction.sessionId));
+      }, history => this.deriveUserProfile(history));
       await CacheManager.del(`user_profile_${interaction.sessionId}`);
       
     } catch (error: any) {
-      handleQuotaError('recommendation:interaction', error);
+      console.error('recommendation interaction failed:', error?.message);
+      throw error;
     }
   }
 
   static async getPersonalizedSimilarStations(options: PersonalizedSimilarStationsOptions): Promise<RecommendationResult[]> {
-    const { sourceStationId, sessionId, limit = 10, minConfidence = 0.3 } = options;
+    const { sourceStationId, sessionId, limit: requestedLimit = 10, minConfidence = 0.3 } = options;
+    const limit = Math.max(1, Math.min(100, Math.trunc(requestedLimit) || 10));
     
     if (this.activeRecommendations >= this.MAX_CONCURRENT_RECOMMENDATIONS) {
       return this.getFallbackRecommendations(sourceStationId, limit);
     }
     
     this.activeRecommendations++;
-    let settled = false;
+    let computeStarted = false;
     try {
       const computePromise = (async () => {
         const userProfile = await this.getUserProfile(sessionId ?? '');
-        const sourceStation = await Station.findById(sourceStationId).lean();
+        const sourceStation = await pgCatalog().findOne({ _id: sourceStationId });
         
         if (!sourceStation) return [];
 
@@ -95,6 +100,9 @@ export class RecommendationEngine {
           .filter(rec => rec.confidence >= minConfidence)
           .slice(0, limit);
       })();
+      computeStarted = true;
+      const release = () => { this.activeRecommendations = Math.max(0, this.activeRecommendations - 1); };
+      void computePromise.then(release, release);
       
       let timeoutHandle: NodeJS.Timeout | null = null;
       const timeoutPromise = new Promise<RecommendationResult[]>((resolve) => {
@@ -107,18 +115,14 @@ export class RecommendationEngine {
       } finally {
         if (timeoutHandle) clearTimeout(timeoutHandle);
       }
-      settled = true;
       return result.length > 0 ? result : await this.getFallbackRecommendations(sourceStationId, limit);
         
     } catch (error) {
-      settled = true;
       return this.getFallbackRecommendations(sourceStationId, limit);
     } finally {
-      if (settled) {
-        this.activeRecommendations--;
-      } else {
-        setTimeout(() => { this.activeRecommendations = Math.max(0, this.activeRecommendations - 1); }, 15000);
-      }
+      // A timeout does not cancel database work; retain its concurrency slot
+      // until the actual computation settles.
+      if (!computeStarted) this.activeRecommendations = Math.max(0, this.activeRecommendations - 1);
     }
   }
 
@@ -127,7 +131,7 @@ export class RecommendationEngine {
     sourceStationId: string, 
     userProfile?: any
   ): Promise<RecommendationResult[]> {
-    const sourceStation = await Station.findById(sourceStationId).lean();
+    const sourceStation = await pgCatalog().findOne({ _id: sourceStationId });
     if (!sourceStation) return [];
 
     const sourceGenres = this.extractGenres(sourceStation.tags);
@@ -150,10 +154,7 @@ export class RecommendationEngine {
       query.tags = { $regex: new RegExp(sourceGenres.join('|'), 'i') };
     }
 
-    const similarStations = await Station.find(query)
-      .sort({ votes: -1, clickCount: -1 })
-      .limit(50)
-      .lean();
+    const similarStations = await pgCatalog().find(query, { sort: { votes: -1, clickCount: -1 }, limit: 50 });
 
     return similarStations.map(station => ({
       stationId: station._id.toString(),
@@ -171,49 +172,7 @@ export class RecommendationEngine {
     userProfile?: any
   ): Promise<RecommendationResult[]> {
     // Find users with similar listening patterns
-    const userHistory = await UserListeningHistory.find({ sessionId }).lean();
-    const userStationIds = userHistory.map(h => h.stationId);
-
-    if (userStationIds.length < 3) return []; // Need enough data
-
-    const similarUsers = await UserListeningHistory.aggregate([
-      { $match: { stationId: { $in: userStationIds }, sessionId: { $ne: sessionId } } },
-      { 
-        $group: { 
-          _id: '$sessionId', 
-          commonStations: { $addToSet: '$stationId' },
-          totalListenDuration: { $sum: '$listenDuration' }
-        } 
-      },
-      { $match: { $expr: { $gte: [{ $size: '$commonStations' }, 2] } } },
-      { $sort: { totalListenDuration: -1 } },
-      { $limit: 50 }
-    ]).option({ maxTimeMS: 5000, allowDiskUse: true });
-
-    if (similarUsers.length === 0) return [];
-
-    // Get recommendations from similar users
-    const similarUserIds = similarUsers.map(u => u._id);
-    const recommendations = await UserListeningHistory.aggregate([
-      { 
-        $match: { 
-          sessionId: { $in: similarUserIds },
-          stationId: { $nin: [sourceStationId, ...userStationIds] },
-          listenDuration: { $gte: 30 } // Only stations they listened to for meaningful time
-        } 
-      },
-      { 
-        $group: { 
-          _id: '$stationId',
-          score: { $avg: '$rating' },
-          listenerCount: { $sum: 1 },
-          avgListenDuration: { $avg: '$listenDuration' }
-        } 
-      },
-      { $match: { listenerCount: { $gte: 2 } } },
-      { $sort: { score: -1, listenerCount: -1 } },
-      { $limit: 20 }
-    ]).option({ maxTimeMS: 5000, allowDiskUse: true });
+    const recommendations = await pgCollaborativeRecommendations(sourceStationId, sessionId);
 
     return recommendations.map(rec => ({
       stationId: rec._id,
@@ -245,10 +204,7 @@ export class RecommendationEngine {
       query.country = sourceStation.country;
     }
 
-    const popularStations = await Station.find(query)
-      .sort({ votes: -1, clickCount: -1 })
-      .limit(15)
-      .lean();
+    const popularStations = await pgCatalog().find(query, { sort: { votes: -1, clickCount: -1 }, limit: 15 });
 
     return popularStations.map((station, index) => ({
       stationId: station._id.toString(),
@@ -333,15 +289,7 @@ export class RecommendationEngine {
   }
 
   // Update user profile based on listening history
-  private static async updateUserProfile(sessionId: string): Promise<void> {
-    try {
-      const recentHistory = await UserListeningHistory.find({ sessionId })
-        .sort({ listenedAt: -1 })
-        .limit(1000)
-        .lean();
-
-      if (recentHistory.length === 0) return;
-
+  private static deriveUserProfile(recentHistory: any[]): Record<string, any> {
       // Calculate preferences
       const genreWeights = this.calculateGenrePreferences(recentHistory);
       const countryWeights = this.calculateCountryPreferences(recentHistory);
@@ -354,9 +302,7 @@ export class RecommendationEngine {
       const profileStrength = Math.min(recentHistory.length / 50, 1); // Stronger with more data
 
       // Update or create user profile
-      await UserProfile.findOneAndUpdate(
-        { sessionId },
-        {
+      return {
           preferredGenres: genreWeights,
           preferredCountries: countryWeights,
           preferredLanguages: languageWeights,
@@ -369,13 +315,7 @@ export class RecommendationEngine {
           lastListenedAt: recentHistory[0].listenedAt,
           profileStrength,
           updatedAt: new Date()
-        },
-        { upsert: true, returnDocument: 'after' }
-      );
-
-    } catch (error) {
-      console.error('Failed to update user profile:', error);
-    }
+      };
   }
 
   // Helper methods for ML calculations
@@ -550,7 +490,7 @@ export class RecommendationEngine {
     let profile = await CacheManager.get(cacheKey);
     
     if (!profile) {
-      profile = await UserProfile.findOne({ sessionId }).lean();
+      profile = await pgRecommendationProfile(sessionId);
       if (profile) {
         await CacheManager.set(cacheKey, profile, { ttl: 300 }); // 5 minutes
       }
@@ -560,7 +500,7 @@ export class RecommendationEngine {
   }
 
   private static async getFallbackRecommendations(sourceStationId: string, limit: number): Promise<RecommendationResult[]> {
-    const sourceStation = await Station.findById(sourceStationId).select('country').lean();
+    const sourceStation = await pgCatalog().findOne({ _id: sourceStationId }, { fields: ['country'] });
     if (!sourceStation) return [];
 
     const country = sourceStation.country ?? '';
@@ -580,14 +520,11 @@ export class RecommendationEngine {
       }));
     }
 
-    const fallbackStations = await Station.find({
+    const fallbackStations = await pgCatalog().find({
       _id: { $ne: sourceStationId },
       country,
       lastCheckOk: true
-    })
-    .sort({ votes: -1, clickCount: -1 })
-    .limit(limit)
-    .lean();
+    }, { sort: { votes: -1, clickCount: -1 }, limit });
 
     return fallbackStations.map((station, index) => ({
       stationId: station._id.toString(),
@@ -616,13 +553,12 @@ export class RecommendationEngine {
     excludeIds?: string[];
     seedRandom?: number;
   }): Promise<any[]> {
-    const { stationId, limit = 12, excludeIds = [] } = options;
+    const { stationId, limit: requestedLimit = 12, excludeIds = [] } = options;
+    const limit = Math.max(1, Math.min(100, Math.trunc(requestedLimit) || 12));
     
     try {
       // Get source station with tags and country
-      const sourceStation = await Station.findById(stationId)
-        .select('country tags')
-        .lean();
+      const sourceStation = await pgCatalog().findOne({ _id: stationId }, { fields: ['country', 'tags'] });
       if (!sourceStation) return [];
       
       const stationCountry = sourceStation.country;
@@ -640,19 +576,15 @@ export class RecommendationEngine {
         );
         
         // CRITICAL: country filter MUST be applied - only same country stations!
-        const tagMatchedStations = await Station.find({
+        const tagMatchedStations = await pgCatalog().find({
           _id: { $nin: Array.from(excludeSet) },
           country: stationCountry, // STRICT COUNTRY LOCK
           lastCheckOk: true,
           $or: tagPatterns.map(pattern => ({ tags: pattern }))
-        })
-        .sort({ votes: -1 })
-        .limit(limit * 3)
-        .select('_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets localImagePath url url_resolved')
-        .lean();
+        }, { sort: { votes: -1 }, limit: limit * 3, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved'] });
         
         // Score by tag match count
-        const scoredStations = tagMatchedStations.map(station => {
+        const scoredStations: any[] = tagMatchedStations.map(station => {
           const stationTags = this.parseStationTags(station.tags);
           const matchCount = sourceTags.filter(st => 
             stationTags.some(tt => tt.includes(st) || st.includes(tt))
@@ -671,15 +603,12 @@ export class RecommendationEngine {
         const needed = limit - pool.length;
         
         // Get high-vote stations from same country (5000+ votes) for discovery
-        const highVoteStations = await Station.find({
+        const highVoteStations = await pgCatalog().find({
           _id: { $nin: Array.from(excludeSet) },
           country: stationCountry, // STRICT COUNTRY LOCK
           lastCheckOk: true,
           votes: { $gte: 5000 } // Discovery threshold
-        })
-        .select('_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets localImagePath url url_resolved')
-        .limit(50) // Get pool for random selection
-        .lean();
+        }, { limit: 50, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved'] });
         
         // Filter out already used stations
         const available = highVoteStations.filter(s => !existingIds.has(s._id.toString()));
@@ -695,15 +624,11 @@ export class RecommendationEngine {
         const existingIds = new Set(pool.map(s => s._id.toString()));
         const needed = limit - pool.length;
         
-        const countryStations = await Station.find({
+        const countryStations = await pgCatalog().find({
           _id: { $nin: Array.from(excludeSet) },
           country: stationCountry, // STRICT COUNTRY LOCK
           lastCheckOk: true
-        })
-        .sort({ votes: -1 })
-        .limit(needed * 2)
-        .select('_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets localImagePath url url_resolved')
-        .lean();
+        }, { sort: { votes: -1 }, limit: needed * 2, fields: ['_id', 'name', 'slug', 'favicon', 'country', 'countryCode', 'tags', 'votes', 'clickCount', 'bitrate', 'codec', 'logoAssets', 'localImagePath', 'url', 'urlResolved'] });
         
         pool.push(...countryStations.filter(s => !existingIds.has(s._id.toString())).slice(0, needed));
       }

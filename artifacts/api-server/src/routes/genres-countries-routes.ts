@@ -1,11 +1,15 @@
 import type { Express } from "express";
-import { Genre, Country, Station, UserProfile, UserListeningHistory, SAFE_GENRE_SLUG_RE } from '@workspace/db-shared/mongo-schemas';
+import { pgRecommendationProfile, pgRecentSessionListening } from '../data/postgres-recommendation-store';
+import { SAFE_GENRE_SLUG_RE } from '../seo/genre-slug';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { RecommendationEngine } from '../services/recommendation-engine';
 import CacheManager, { CacheKeys } from '../cache';
 import { PrecomputedGenresService } from '../services/precomputed-genres';
-import { normalizeCountryFilter, resolveToDbName, getAllCountryInfoFromDb } from '../utils/normalize-country';
-import { tvValidateParams, tvSlimGenre, stripPlaceholders } from './shared-utils';
+import { resolveToDbName, getAllCountryInfoFromDb } from '../utils/normalize-country';
+import { tvValidateParams, tvSlimGenre } from './shared-utils';
 import { logger } from '../utils/logger';
+import { listStationsFromPostgres } from '../data/station-read-store';
+import { pgCountryCounts, pgDiscoverableGenres, pgGenreBySlug, pgGenres, pgStoredGenreBySlug, pgCreateGenre, pgUpdateGenre, pgDeleteGenre } from '../data/postgres-taxonomy-store';
 
 export function registerGenresCountriesRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
@@ -49,7 +53,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
   app.get("/api/ml/user-profile/:sessionId", async (req, res) => {
     try {
       const { sessionId } = req.params;
-      const profile = await UserProfile.findOne({ sessionId }).lean();
+      const profile = await pgRecommendationProfile(sessionId);
       
       if (!profile) {
         return void res.json({
@@ -85,16 +89,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const { limit: rawLimit = 20 } = req.query;
       const limit = typeof rawLimit === 'string' ? (parseInt(rawLimit) || 20) : (typeof rawLimit === 'number' ? rawLimit : 20);
 
-      const recentStations = await UserListeningHistory.find({ sessionId })
-        .sort({ listenedAt: -1 })
-        .limit(5)
-        .lean();
+      const recentStations = await pgRecentSessionListening(sessionId, 5);
 
       if (recentStations.length === 0) {
-        const popularStations = await Station.find({})
-          .sort({ votes: -1 })
-          .limit(limit || 6)
-          .lean();
+        const popularStations = await pgCatalog().find({}, { sort: { votes: -1 }, limit: limit || 6 });
         
         const starterRecommendations = popularStations.map(station => ({
           ...station,
@@ -119,7 +117,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       if (recommendations.length > 0) {
         const stationIds = recommendations.map(rec => rec.stationId);
-        const stations = await Station.find({ _id: { $in: stationIds } }).lean();
+        const stations = await pgCatalog().find({ _id: { $in: stationIds } });
         
         const enhancedStations = stations.map(station => {
           const rec = recommendations.find(r => r.stationId === station._id.toString());
@@ -159,32 +157,22 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         return void res.json(cached);
       }
 
-      if (isRich) {
-        const countryCounts = await Station.aggregate([
-          { $match: { country: { $nin: [null, ''] } } },
-          { $group: { _id: '$country', count: { $sum: 1 } } },
-          { $sort: { _id: 1 } }
-        ]).option({ maxTimeMS: 12000, allowDiskUse: true });
-        const countries = getAllCountryInfoFromDb(
-          countryCounts.map((c: any) => ({ name: c._id, count: c.count }))
-        );
+      {
+        const countryCounts = await pgCountryCounts();
+        const countries = isRich
+          ? getAllCountryInfoFromDb(countryCounts)
+          : countryCounts.map((entry) => entry.name).sort();
         await CacheManager.set(cacheKey, countries, { ttl: 86400 });
         res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
         return void res.json(countries);
       }
 
-      const countries = await (Station.distinct('country') as any).maxTimeMS(12000);
-      const filteredCountries = (countries as string[])
-        .filter((country: string) => country && country.trim() !== '')
-        .sort();
-      await CacheManager.set(cacheKey, filteredCountries, { ttl: 86400 });
-      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-      res.json(filteredCountries);
+
     } catch (error: any) {
       logger.warn('[countries] failed: ' + (error?.message || 'unknown'));
       // Soft-fail with empty list rather than 500 so the UI shell renders
       res.set('Cache-Control', 'no-store');
-      res.json([]);
+      res.status(503).json({ error: 'Taxonomy data is temporarily unavailable' });
     }
   });
 
@@ -242,194 +230,38 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         return void res.json(cachedResult);
       }
 
-      const realGenres = await Genre.find({ isDiscoverable: true }).lean();
-      const isCountryScoped = !!(countrycode && countrycode !== 'global' && countrycode !== 'null');
-      let stationFilter = {};
-      if (isCountryScoped) {
-        Object.assign(stationFilter, normalizeCountryFilter(countrycode));
-      }
-
-      // INCIDENT 2026-05-14: when there is NO country filter, the
-      // $unwind/$group over the entire Station collection scans every
-      // doc and routinely takes 25-30s, which is the only path that
-      // still pile-up timed out after the cross-link disable. The
-      // global genre counts are already maintained on the Genre
-      // collection (`stationCount`) by the genre-recompute job, so
-      // skip the aggregate entirely on the global path. Country-
-      // scoped requests still run the aggregate, but they only scan
-      // a single country (much smaller working set) and remain fast.
-      let genreCounts: Array<{ _id: string; count: number }> = [];
-      if (isCountryScoped) {
-        try {
-        genreCounts = await Station.aggregate([
-          { $match: stationFilter },
-          {
-            $addFields: {
-              allTags: {
-                $setUnion: [
-                  { $cond: [
-                    { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
-                    [{ $toLower: '$genre' }],
-                    []
-                  ]},
-                  { $cond: [
-                    { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
-                    { $map: {
-                      input: { $split: ['$tags', ','] },
-                      as: 'tag',
-                      in: { $toLower: { $trim: { input: '$$tag' } } }
-                    }},
-                    []
-                  ]}
-                ]
-              }
-            }
-          },
-          { $unwind: '$allTags' },
-          { $match: { allTags: { $ne: '' } } },
-          { $group: { _id: '$allTags', count: { $sum: 1 } } }
-        ]).option({ maxTimeMS: 8000, allowDiskUse: true });
-        } catch (aggErr: any) {
-          // INCIDENT 2026-05-14 fallback: if the country-scoped genre
-          // tag aggregate times out, render the page with global
-          // stationCount from the Genre collection rather than a 500.
-          // Counts will be slightly off (global, not country-filtered)
-          // but the page renders. Tracked separately for backfill.
-          logger.warn('[genres] country aggregate failed, falling back to global counts: ' + (aggErr?.message || 'unknown'));
-          genreCounts = [];
+      {
+        const scopedCountry = countrycode && !['global', 'null', 'all'].includes(String(countrycode))
+          ? (resolveToDbName(String(countrycode)) || String(countrycode)) : undefined;
+        let allGenres = await pgGenres(scopedCountry);
+        if (searchQuery) {
+          const needle = String(searchQuery).toLowerCase();
+          allGenres = allGenres.filter((genre: any) =>
+            genre.name?.toLowerCase().includes(needle) || genre.slug?.toLowerCase().includes(needle),
+          );
         }
-      }
-
-      const tagCounts = new Map();
-      for (const entry of genreCounts) {
-        tagCounts.set(entry._id, entry.count);
-      }
-      
-      let dynamicGenres: Array<{ name: string; slug: string; stationCount: number; isDynamic: boolean }> = [];
-      const isCountryFiltered = isCountryScoped;
-      
-      dynamicGenres = Array.from(tagCounts.entries())
-        .filter(([tag, count]) => count >= 1 && tag.length > 1)
-        .map(([tag, count]) => ({
-          name: tag.charAt(0).toUpperCase() + tag.slice(1),
-          slug: tag,
-          stationCount: count,
-          isDynamic: true
-        }));
-      
-      const genreMap = new Map();
-      if (!isCountryFiltered) {
-        for (const realGenre of realGenres) {
-          const normalizedName = realGenre.name.toLowerCase();
-          let filteredCount = tagCounts.get(normalizedName);
-          let actualCount = filteredCount !== undefined ? filteredCount : realGenre.stationCount;
-          
-          genreMap.set(normalizedName, {
-            _id: realGenre._id,
-            name: realGenre.name,
-            slug: realGenre.slug || normalizedName.replace(/\s+/g, '-'),
-            description: realGenre.description,
-            stationCount: actualCount,
-            total_stations: actualCount,
-            posterImage: realGenre.posterImage,
-            discoverableImage: realGenre.discoverableImage,
-            isDiscoverable: realGenre.isDiscoverable,
-            discoverable: realGenre.isDiscoverable,
-            createdAt: realGenre.createdAt,
-            updatedAt: realGenre.updatedAt,
-            isDynamic: false
-          });
-        }
-      }
-      
-      for (const dynamicGenre of dynamicGenres) {
-        const normalizedName = dynamicGenre.name.toLowerCase();
-        if (!genreMap.has(normalizedName)) {
-          genreMap.set(normalizedName, {
-            _id: `dynamic-${dynamicGenre.slug}`,
-            name: dynamicGenre.name,
-            slug: dynamicGenre.slug,
-            posterImage: `/images/genre-bg-grad-${(genreMap.size % 4) + 1}.webp`,
-            description: `${dynamicGenre.name} music and stations`,
-            stationCount: dynamicGenre.stationCount,
-            total_stations: dynamicGenre.stationCount,
-            createdAt: new Date(),
-            isDynamic: true
-          });
-        } else {
-          const existingGenre = genreMap.get(normalizedName);
-          existingGenre.stationCount = dynamicGenre.stationCount;
-          existingGenre.total_stations = dynamicGenre.stationCount;
-        }
-      }
-      
-      let allGenres = Array.from(genreMap.values());
-      if (isCountryFiltered && genreCounts.length > 0) {
-        // Only filter out zero-count genres when we actually have
-        // country-scoped counts. If the aggregate fell back, keep
-        // every genre so the page is not empty.
-        allGenres = allGenres.filter(genre => (genre.stationCount || 0) > 0);
-      }
-      
-      if (searchQuery) {
-        // Plain case-insensitive substring match (was `new RegExp(searchQuery)`
-        // built from raw user input — that threw on regex metacharacters like
-        // `[`/`(` (soft-failing the search to empty) and exposed a ReDoS vector
-        // via crafted catastrophic patterns run over every cached genre). A
-        // substring match is what this filter actually wants and is injection-safe.
-        const needle = searchQuery.toLowerCase();
-        allGenres = allGenres.filter(genre =>
-          genre.name?.toLowerCase().includes(needle) ||
-          genre.slug?.toLowerCase().includes(needle) ||
-          (genre.description && genre.description.toLowerCase().includes(needle))
+        const direction = sortBy === 'desc' ? -1 : 1;
+        allGenres.sort((a: any, b: any) =>
+          sortColumn === 'name'
+            ? direction * a.name.localeCompare(b.name)
+            : direction * ((a.stationCount || 0) - (b.stationCount || 0)),
         );
+        const totalCount = allGenres.length;
+        const paginatedGenres = allGenres.slice((page - 1) * limit, page * limit);
+        const response = {
+          success: true, genres: paginatedGenres, data: paginatedGenres,
+          total: totalCount, count: totalCount, page, currentPage: page, limit,
+          perPage: limit, totalPages: Math.ceil(totalCount / limit),
+        };
+        await CacheManager.set(cacheKey, response, { ttl: 86400 });
+        return void res.json(isTV ? { ...response, genres: paginatedGenres.map(tvSlimGenre), data: paginatedGenres.map(tvSlimGenre) } : response);
       }
+
       
-      const sortOrder = sortBy === 'desc' ? -1 : 1;
-      allGenres.sort((a, b) => {
-        if (sortColumn === 'total_stations' || sortColumn === 'stationCount') {
-          return sortOrder === -1 ? (b.stationCount || 0) - (a.stationCount || 0) : (a.stationCount || 0) - (b.stationCount || 0);
-        } else if (sortColumn === 'name') {
-          return sortOrder === -1 ? b.name.localeCompare(a.name) : a.name.localeCompare(b.name);
-        }
-        return 0;
-      });
-      
-      const totalCount = allGenres.length;
-      const skip = (page - 1) * limit;
-      const paginatedGenres = allGenres.slice(skip, skip + limit);
-      
-      const response = {
-        success: true,
-        genres: paginatedGenres,
-        data: paginatedGenres,
-        total: totalCount,
-        count: totalCount,
-        page: page,
-        currentPage: page,
-        limit: limit,
-        perPage: limit,
-        totalPages: Math.ceil(totalCount / limit)
-      };
-      
-      await CacheManager.set(cacheKey, response, { ttl: 86400 });
-      
-      if (isTV) {
-        return void res.json({
-          genres: paginatedGenres.map(tvSlimGenre),
-          data: paginatedGenres.map(tvSlimGenre),
-          total: totalCount,
-          page: page,
-          limit: limit,
-          totalPages: Math.ceil(totalCount / limit)
-        });
-      }
-      
-      res.json(response);
     } catch (error: any) {
       logger.error(`❌ /api/genres failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       res.set('Cache-Control', 'no-store');
-      res.json({ success: true, genres: [], data: [], total: 0, count: 0, page: 1, currentPage: 1, limit: 20, perPage: 20, totalPages: 0 });
+      res.status(503).json({ success: false, error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -442,38 +274,22 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const search = (req.query.search as string || '').toLowerCase().trim();
 
       const identifier = (!countryName || countryName === 'all') ? 'global' : countryName;
-      const raw = await PrecomputedGenresService.getGenres(identifier);
-
-      let genres = raw.genres || [];
-
-      if (search) {
-        genres = genres.filter((g: any) =>
-          g.name?.toLowerCase().includes(search) || g.slug?.toLowerCase().includes(search)
-        );
+      {
+        let genres = await pgGenres(identifier === 'global' ? undefined : (resolveToDbName(identifier) || identifier), true);
+        if (search) genres = genres.filter((genre: any) => genre.name?.toLowerCase().includes(search) || genre.slug?.toLowerCase().includes(search));
+        const total = genres.length;
+        const paginated = genres.slice((page - 1) * limit, page * limit);
+        return void res.json({
+          success: true, data: paginated, genres: paginated, count: total, total,
+          currentPage: page, page, perPage: limit, limit, totalPages: Math.ceil(total / limit),
+          computedAt: Date.now(), countryName: identifier,
+        });
       }
 
-      const total = genres.length;
-      const skip = (page - 1) * limit;
-      const paginated = genres.slice(skip, skip + limit);
-
-      res.json({
-        success: true,
-        data: paginated,
-        genres: paginated,
-        count: total,
-        total,
-        currentPage: page,
-        page,
-        perPage: limit,
-        limit,
-        totalPages: Math.ceil(total / limit),
-        computedAt: raw.computedAt,
-        countryName: raw.countryName
-      });
     } catch (error: any) {
       logger.error(`❌ /api/genres/precomputed failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       res.set('Cache-Control', 'no-store');
-      res.json({ success: true, data: [], genres: [], count: 0, total: 0, currentPage: 1, page: 1, perPage: 27, limit: 27, totalPages: 0, computedAt: Date.now(), countryName: 'global' });
+      res.status(503).json({ success: false, error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -486,22 +302,16 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      let filter: any = { isDiscoverable: true };
-      if (country) {
-        const countryFilter = normalizeCountryFilter(country);
-        if (Object.keys(countryFilter).length > 0) {
-          const stationCountries = await Station.distinct('genre', { ...countryFilter, isDiscoverable: true });
-          filter.name = { $in: stationCountries };
-        }
+      {
+        const genres = await pgDiscoverableGenres(
+          country ? (resolveToDbName(country) || country) : undefined,
+          limit,
+        );
+        await CacheManager.set(cacheKey, genres, { ttl: 600 });
+        return void res.json(genres);
       }
 
-      const genres = await Genre.find({ isDiscoverable: true })
-        .sort({ displayOrder: 1, stationCount: -1 })
-        .limit(limit)
-        .lean();
 
-      await CacheManager.set(cacheKey, genres, { ttl: 600 });
-      res.json(genres);
     } catch (error: any) {
       logger.error(`❌ /api/genres/discoverable failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       res.set('Cache-Control', 'no-store');
@@ -519,7 +329,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         return void res.json(cached);
       }
 
-      const genre = await Genre.findOne({ slug }).select('name slug stationCount description icon').lean();
+      const genre = (await pgGenreBySlug(slug));
       if (genre) {
         const result = { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount, description: (genre as any).description, icon: (genre as any).icon };
         await CacheManager.set(cacheKey, result, { ttl: 3600 });
@@ -528,12 +338,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       const normalizedName = slug.replace(/-/g, ' ');
       const escapedName = normalizedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const stationCount = await Station.countDocuments({
-        $or: [
-          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedName}\\s*(,|$)`, 'i') } },
-          { genre: { $regex: new RegExp(escapedName, 'i') } }
-        ]
-      });
+      const stationCount = ((await listStationsFromPostgres({ genre: normalizedName, page: 1, limit: 1 })).totalCount);
 
       if (stationCount > 0) {
         const result = { name: normalizedName.split(' ').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' '), slug, stationCount };
@@ -545,7 +350,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
     } catch (error: any) {
       logger.error(`❌ /api/genres/slug failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       res.set('Cache-Control', 'no-store');
-      res.status(404).json({ error: 'Genre not found' });
+      res.status(503).json({ error: 'Taxonomy data is temporarily unavailable' });
     }
   });
 
@@ -577,7 +382,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         });
       }
 
-      const existing = await Genre.findOne({ slug }).lean();
+      const existing = await pgStoredGenreBySlug(slug);
       if (existing) {
         return res.status(409).json({ error: `A genre with slug "${slug}" already exists` });
       }
@@ -599,10 +404,10 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
 
       let created;
       try {
-        created = await Genre.create(doc);
+        created = await pgCreateGenre(doc);
       } catch (err: any) {
         // Race-condition safety net: unique-index violation on slug.
-        if (err?.code === 11000) {
+        if (err?.code === '23505') {
           return res.status(409).json({ error: `A genre with slug "${slug}" already exists` });
         }
         throw err;
@@ -664,10 +469,8 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         // Task #210: Reject slug collisions before they hit the DB so two
         // genres can't end up sharing a slug (which breaks
         // `/api/genres/slug/:slug` lookups and SEO routing).
-        const collision = await Genre.findOne({ slug, _id: { $ne: id } })
-          .select('_id name')
-          .lean<{ _id: unknown; name: string } | null>();
-        if (collision) {
+        const collision = await pgStoredGenreBySlug(slug);
+        if (collision && String(collision._id) !== id) {
           return res.status(409).json({
             error: `Slug "${slug}" is already used by genre "${collision.name}".`,
           });
@@ -682,10 +485,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
         ops.$unset = { cleanupDemotion: '' };
       }
 
-      const updated = await Genre.findByIdAndUpdate(id, ops, {
-        new: true,
-        runValidators: true,
-      });
+      const updated = await pgUpdateGenre(String(id), set, isDisc === true);
       if (!updated) {
         return void res.status(404).json({ error: 'Genre not found' });
       }
@@ -704,9 +504,9 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       // Task #210: Mongo duplicate-key fallback for the partial unique slug
       // index. Covers the race window between the findOne check above and the
       // findByIdAndUpdate below.
-      if (error?.code === 11000 && error?.keyPattern?.slug) {
+      if (error?.code === '23505') {
         return res.status(409).json({
-          error: `Slug "${error?.keyValue?.slug}" is already used by another genre.`,
+          error: `Slug "${String(req.body?.slug || '')}" is already used by another genre.`,
         });
       }
       logger.error({ err: error }, 'Failed to update genre');
@@ -718,7 +518,7 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
   app.delete("/api/genres/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const deleted = await Genre.findByIdAndDelete(id);
+      const deleted = await pgDeleteGenre(String(id));
       if (!deleted) {
         return void res.status(404).json({ error: 'Genre not found' });
       }
@@ -752,40 +552,25 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       // genre pages. Single-flight + 8s maxTimeMS + soft-fail catch.
       // Genre.findOne stays OUTSIDE the single-flight so a real 404 is
       // a clean 404 (no `as any` sentinel inside the cached payload).
-      const genre = await Genre.findOne({ slug }).maxTimeMS(5000).lean();
+      const genre = (await pgGenreBySlug(slug));
       if (!genre) {
         return void res.status(404).json({ error: 'Genre not found' });
       }
 
       const result = await CacheManager.getOrSetSingleFlight(cacheKey, async () => {
-        const filter: any = {
-          $or: [
-            { tags: { $regex: new RegExp(`(^|,)\\s*${(genre as any).name}\\s*(,|$)`, 'i') } },
-            { genre: { $regex: new RegExp((genre as any).name, 'i') } }
-          ]
-        };
-        if (country) {
-          filter.country = { $regex: new RegExp(`^${country}$`, 'i') };
+        {
+          const listed = await listStationsFromPostgres({
+            genre: (genre as any).name,
+            country: country || undefined,
+            sort: 'votes', page, limit,
+          });
+          return {
+            genre: { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount },
+            stations: listed.stations, total: listed.totalCount, page,
+            pages: listed.pagination.pages,
+          };
         }
 
-        const [stations, total] = await Promise.all([
-          Station.find(filter)
-            .select('name slug favicon url country language genre tags votes codec bitrate logoAssets')
-            .sort({ votes: -1 })
-            .skip(skip)
-            .limit(limit)
-            .maxTimeMS(15000)
-            .lean(),
-          Station.countDocuments(filter).maxTimeMS(15000)
-        ]);
-
-        return {
-          genre: { name: (genre as any).name, slug: (genre as any).slug, stationCount: (genre as any).stationCount },
-          stations,
-          total,
-          page,
-          pages: Math.ceil(total / limit)
-        };
       }, { ttl: 300 });
 
       res.json(result);
@@ -797,13 +582,8 @@ export function registerGenresCountriesRoutes(app: Express, deps: any) {
       // Soft-fail payload: empty-but-shape-correct. `name: ''` (not the
       // slug) so the client can't accidentally render a fake genre title
       // when the DB is down.
-      res.json(stale ?? {
-        genre: { name: '', slug, stationCount: 0 },
-        stations: [],
-        total: 0,
-        page,
-        pages: 0
-      });
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 }

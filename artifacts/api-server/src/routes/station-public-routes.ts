@@ -1,15 +1,26 @@
 import type { Express } from "express";
-import { Station, UserProfile, UserListeningHistory, User, UserFollow, Country, Genre } from '@workspace/db-shared/mongo-schemas';
-import { deduplicatedFetch, calculateDistance, stripPlaceholders, tvValidateParams, tvSlimStation, tvSlimGenre, tvSlimProjection } from './shared-utils';
+import { stripPlaceholders, tvValidateParams, tvSlimStation } from './shared-utils';
 import { normalizeCountryFilter, resolveToDbName } from '../utils/normalize-country';
-import CacheManager, { CacheKeys } from '../cache';
+import CacheManager from '../cache';
 import { logger } from '../utils/logger';
-import { RecommendationEngine } from '../services/recommendation-engine';
-import { getAllCountryInfoFromDb } from '../utils/normalize-country';
-import { PrecomputedGenresService } from '../services/precomputed-genres';
-import { PrecomputedStationsService } from '../services/precomputed-stations';
-import { PrecomputedPopularGlobalService } from '../services/precomputed-popular-global';
+
+
+
+
+
 import { slugifyStationName, evaluateJunkStation } from '../seo/junk-station-rules';
+import {
+  getStationByIdentifier,
+  getGeoStationsFromPostgres,
+  getNearbyStationsFromPostgres,
+  getPopularStationsFromPostgres,
+  getRandomCountryStationFromPostgres,
+  getRelatedStationsFromPostgres,
+  getStationStatsFromPostgres,
+  listStationsFromPostgres,
+  stationSlugExists,
+  updateStationDerivedFields,
+} from '../data/station-read-store';
 
 // Escape regex meta-characters from user input. Without this, callers can pass
 // patterns like `.*` or catastrophic-backtracking inputs (e.g. `(a+)+`) and
@@ -72,8 +83,7 @@ async function generateUniqueSlug(name: string, type: string, id: string): Promi
   let counter = 0;
   while (true) {
     const candidate = counter === 0 ? slug : `${slug}-${counter}`;
-    const existing = await Station.findOne({ slug: candidate, _id: { $ne: id } });
-    if (!existing) return candidate;
+    if (!(await stationSlugExists(candidate, id))) return candidate;
     counter++;
   }
 }
@@ -90,15 +100,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      let station: any;
-
-      station = await Station.findOne({ slug: identifier }).select('+descriptions').lean();
-
-      if (!station) {
-        if (identifier.match(/^[0-9a-fA-F]{24}$/)) {
-          station = await Station.findById(identifier).select('+descriptions').lean();
-        }
-      }
+      const station: any = await getStationByIdentifier(identifier);
 
       if (!station) {
         return void res.status(404).json({ error: 'Station not found' });
@@ -125,7 +127,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
           update.noIndex = true;
           station.noIndex = true;
         }
-        await Station.updateOne({ _id: station._id }, { $set: update });
+        await updateStationDerivedFields(String(station._id), update);
         station.slug = newSlug;
       }
 
@@ -137,7 +139,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       let stale: any = null;
       try { stale = await CacheManager.get(`station:detail:${req.params.identifier}`); } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json(stale ?? null);
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -150,6 +153,19 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     const cacheKey = `popular_stations:${resolvedCountry}:${normalizedState}:${limit}:${excludeBroken}:${isTV ? 'tv' : 'web'}:v2`;
     const popularRequestStart = Date.now();
     try {
+      {
+        const stations = await CacheManager.getOrSetSWR<any[]>(cacheKey, () =>
+          getPopularStationsFromPostgres({
+            country: country && !['all', 'null', 'undefined'].includes(String(country)) ? resolvedCountry : undefined,
+            state: state && !['all', 'null', 'undefined'].includes(String(state)) ? String(state) : undefined,
+            limit: Number(limit),
+            requireLogo: isTV,
+          }),
+          { freshTtl: 3600, staleTtl: 21600 },
+        );
+        res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
+        return void res.json(isTV ? stations.map(tvSlimStation) : stripPlaceholders(stations));
+      }
       // INCIDENT 2026-05-15 v10 — wrapped compute in single-flight so 100
       // concurrent cold misses (typical SSR fanout when CDN expires the
       // homepage) coalesce into ONE Mongo aggregate. Previously each
@@ -158,256 +174,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // 6h stale) so a stressed cluster keeps serving last-known-good
       // popular stations during refresh windows instead of waiting
       // 5-15s on the aggregate.
-      const isGlobalPath = !country || country === 'all' || country === 'null' || country === 'undefined';
-      // Review fix — treat 'null'/'undefined' string sentinels and empty
-      // strings the same as a missing state so /api/stations/popular?
-      // country=all&state=null still routes through the global precompute
-      // branch instead of slipping into the legacy live aggregate.
-      const stateStr = typeof state === 'string' ? state : '';
-      const isStateFiltered = !!(stateStr && stateStr !== 'all' && stateStr !== 'null' && stateStr !== 'undefined');
-
-      // INCIDENT 2026-05-16 — /api/stations/popular?country=all (homepage)
-      // 500'd 8 times in an 8h window with code=50 multiplanner timeout.
-      // The live featured+regular fanout against {lastCheckOk:true} (no
-      // country prefix) routinely blew the 15s budget on M10 because the
-      // planner couldn't pin a useful index. Route the global path through
-      // the per-country batched precomputer (uses the country-prefixed
-      // index, never one giant global $sort) so visitors never wait on
-      // that aggregate. TV fast-path and country-filtered paths keep
-      // their existing behavior.
-      if (isGlobalPath && !isStateFiltered && !(isTV && Number(limit) <= 10)) {
-        // Review hardening — task spec requires the global path to NEVER
-        // fall back to the legacy live featured+regular aggregate (that
-        // was the original 500 source). Always go through the precompute
-        // envelope; on failure, serve last-known-good stale; if even
-        // stale is empty, soft-fail with [] + no-store so the next
-        // request retries immediately instead of locking visitors out.
-        try {
-          const precomputed = await PrecomputedPopularGlobalService.getOrCompute(Number(limit));
-          if (Array.isArray(precomputed) && precomputed.length > 0) {
-            res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-            return void res.json(stripPlaceholders(precomputed));
-          }
-          logger.warn('[popular] global precompute returned empty — trying stale');
-        } catch (e: any) {
-          logger.warn(`[popular] global precompute failed — trying stale: ${e?.message || e}`);
-        }
-        const stale = await PrecomputedPopularGlobalService.getStale(Number(limit));
-        if (stale && stale.length > 0) {
-          res.set('Cache-Control', 'no-store');
-          return void res.json(stripPlaceholders(stale));
-        }
-        // Emergency fallback: precompute and stale both unavailable (e.g. first
-        // ever boot before cron has run + Redis completely cold). Run a minimal
-        // synchronous DB query so users never see an empty global popular list.
-        try {
-          const emergency = await Station.find({ lastCheckOk: true })
-            .sort({ votes: -1 })
-            .limit(Number(limit))
-            .lean();
-          if (emergency.length > 0) {
-            logger.warn(`[popular] using emergency DB fallback — ${emergency.length} stations`);
-            res.set('Cache-Control', 'no-store');
-            return void res.json(isTV ? emergency.map(tvSlimStation) : stripPlaceholders(emergency));
-          }
-        } catch (fallbackErr: any) {
-          logger.error(`[popular] emergency fallback also failed: ${fallbackErr?.message || fallbackErr}`);
-        }
-        logger.error('[popular] global precompute + stale + emergency all empty — soft-failing []');
-        res.set('Cache-Control', 'no-store');
-        return void res.json([]);
-      }
-
-      const computed = await CacheManager.getOrSetSWR<any[]>(cacheKey, async () => {
-        if (isTV && Number(limit) <= 10) {
-          let tvFilter: any = { lastCheckOk: true };
-          if (country && country !== 'all' && country !== 'null') {
-            Object.assign(tvFilter, normalizeCountryFilter(country as string));
-          }
-          if (state && state !== 'all') {
-            tvFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
-          }
-          // Prefer processed logos (S3/local webp) but also accept stations
-          // with a favicon URL — otherwise the TV list is empty when S3 is
-          // not yet configured or logos haven't been processed yet.
-          tvFilter.$or = [
-            { 'logoAssets.status': 'completed' },
-            { favicon: { $exists: true, $nin: ['', null, 'null'] } },
-          ];
-
-          // Single sort field so {country,lastCheckOk,votes} compound index
-          // fully covers the query without a blocking in-memory SORT stage.
-          const fastStations = await Station.find(tvFilter)
-            .sort({ votes: -1 })
-            .limit(Number(limit) * 2)
-            .select(deps.TV_STATION_PROJECTION || {})
-            .lean();
-
-          const seen = new Set<string>();
-          const unique: any[] = [];
-          for (const s of fastStations) {
-            const key = s.name?.toLowerCase().replace(/\s*(radio|fm|am|online|live)\s*/gi, '').replace(/[^a-z0-9]/gi, '');
-            if (key && seen.has(key)) continue;
-            if (key) seen.add(key);
-            // Cache the FULL station shape — tvSlimStation is applied
-            // once by the response writer outside this closure. Slimming
-            // here would double-slim on cache HIT.
-            unique.push(s);
-            if (unique.length >= Number(limit)) break;
-          }
-          logger.log(`[Cache MISS] /api/stations/popular TV fast-path country=${resolvedCountry} (${Date.now() - popularRequestStart}ms)`);
-          return unique;
-        }
       
-      const normalizeStationName = (name: string): string => {
-        if (!name) return '';
-        return name
-          .toLowerCase()
-          .replace(/[''`´]/g, '')
-          .replace(/\s*(radio|fm|am|digital|online|live|stream|web|internet|music|hits?)\s*/gi, ' ')
-          .replace(/\s*\d+(\.\d+)?\s*(fm|am|mhz|khz)?\s*/gi, ' ')
-          .replace(/[^a-z0-9\u00C0-\u024F]/gi, '')
-          .trim();
-      };
-      
-      const hasValidImage = (station: any): boolean => {
-        // 1. Optimized S3 image — preferred
-        if (station.logoAssets?.status === 'completed' &&
-            (station.logoAssets?.webp256 || station.logoAssets?.webp96)) {
-          return true;
-        }
-        // 2. Permanent failure (URL itself dead) — hide
-        const failureType = station.logoAssets?.failureType;
-        if (station.logoAssets?.status === 'failed' &&
-            (failureType === 'http_error' || failureType === 'invalid_format')) {
-          return false;
-        }
-        // 3. Legacy local download
-        if (station.localImagePath && station.localImagePath.trim()) {
-          return true;
-        }
-        // 4. Source URL fallback — used both when logo not yet processed AND when
-        //    processing transiently failed (timeout/processing_failed/download_failed).
-        //    Browser may succeed where our server-side downloader did.
-        if (station.favicon && /^https?:\/\/.+/i.test(station.favicon.trim())) {
-          return true;
-        }
-        return false;
-      };
-      
-      let countryFilter: any = {
-        lastCheckOk: true
-      };
-      
-      if (country && country !== 'all' && country !== 'null') {
-        // INCIDENT 2026-05-16: normalizeCountryFilter returns
-        // `{country: /Turkey/i}` (case-insensitive regex). Mongo
-        // CANNOT use the lastCheckOk_1_country_1_... compound index
-        // for a regex with /i flag — every popular request did a
-        // full collection scan and timed out at 15s (code 50,
-        // PlanExecutor MaxTimeMSExpired) on the Turkey query path.
-        // Fix: use exact equality on the canonical dbName when we
-        // have one (resolveToDbName already maps ISO/aliases →
-        // "Turkey", "Germany", etc.). Falls back to the legacy
-        // regex only for unknown country strings.
-        const canonical = resolveToDbName(country as string);
-        if (canonical) {
-          countryFilter.country = canonical;
-        } else {
-          Object.assign(countryFilter, normalizeCountryFilter(country as string));
-        }
-      }
-      if (state && state !== 'all') {
-        countryFilter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
-      }
-      
-      const requestedLimit = Number(limit);
-      const fetchMultiplier = 4;
-      
-      let featuredFilter: any = {
-        ...countryFilter,
-        isFeatured: true
-      };
-      
-      if (!country || country === 'all' || country === 'null') {
-        featuredFilter.showInGlobalPopular = true;
-      }
-      
-      const POPULAR_PROJECTION = {
-        _id: 1, name: 1, url: 1, urlResolved: 1, favicon: 1, country: 1,
-        countrycode: 1, state: 1, genre: 1, codec: 1, bitrate: 1,
-        homepage: 1, tags: 1, slug: 1, hls: 1, votes: 1, clickCount: 1,
-        lastCheckOk: 1, lastCheckTime: 1, descriptions: 1, logoAssets: 1, localImagePath: 1
-      };
-
-      // INCIDENT 2026-05-15 v10 — REMOVED all `.hint()` calls. The May 14
-      // Atlas index audit (commit aee98c81e) HID 17 stations indexes
-      // including `lastCheckOk_1_votes_-1`. Hinting a hidden index throws
-      // BadValue (code 2) and silently 500'd the popular endpoint. We trust
-      // the planner now; supporting indexes are PRESENT and visible
-      // (country_1_votes_-1, isFeatured_1, votes_-1). Any new hint MUST
-      // be tagged with `// HINT-VERIFIED YYYY-MM-DD` after probing
-      // `db.stations.aggregate([{$indexStats:{}}])` on the live cluster.
-      const [featuredStations, regularStations] = await Promise.all([
-        Station.aggregate([
-          { $match: featuredFilter },
-          { $sort: { votes: -1, clickCount: -1 } },
-          { $project: POPULAR_PROJECTION },
-          { $limit: requestedLimit * fetchMultiplier }
-        ]).option({ maxTimeMS: 15000, allowDiskUse: true }),
-        Station.aggregate([
-          { $match: { ...countryFilter, isFeatured: { $ne: true } } },
-          { $sort: { votes: -1, clickCount: -1 } },
-          { $project: POPULAR_PROJECTION },
-          { $limit: requestedLimit * fetchMultiplier }
-        ]).option({ maxTimeMS: 15000, allowDiskUse: true })
-      ]);
-      
-      const allCandidates = [...featuredStations, ...regularStations];
-      
-      const seenNames = new Set<string>();
-      const seenFavicons = new Set<string>();
-      const stationsWithLogo: any[] = [];
-      const stationsWithoutLogo: any[] = [];
-      
-      for (const station of allCandidates) {
-        const normalizedName = normalizeStationName(station.name);
-        const faviconKey = station.favicon?.toLowerCase()?.replace(/\?.*$/, '') || '';
-        
-        if (normalizedName && seenNames.has(normalizedName)) continue;
-        if (faviconKey && seenFavicons.has(faviconKey)) continue;
-        
-        if (normalizedName) seenNames.add(normalizedName);
-        if (faviconKey) seenFavicons.add(faviconKey);
-        
-        if (hasValidImage(station)) {
-          stationsWithLogo.push(station);
-        } else {
-          stationsWithoutLogo.push(station);
-        }
-      }
-      
-      let stations: any[];
-      if (stationsWithLogo.length >= requestedLimit) {
-        stations = stationsWithLogo.slice(0, requestedLimit);
-      } else {
-        const remaining = requestedLimit - stationsWithLogo.length;
-        stations = [...stationsWithLogo, ...stationsWithoutLogo.slice(0, remaining)];
-      }
-
-        const elapsed = Date.now() - popularRequestStart;
-        logger.log(`[Cache MISS] /api/stations/popular country=${resolvedCountry} limit=${requestedLimit} (${elapsed}ms)`);
-
-        // Cache the FULL station shape; the response writer below applies
-        // the TV slim transform / placeholder strip per request.
-        return stations;
-      }, { freshTtl: 3600, staleTtl: 21600 });
-
-      res.set('Cache-Control', 'public, max-age=600, s-maxage=3600');
-      if (isTV) {
-        return void res.json(computed.map(tvSlimStation));
-      }
-      res.json(stripPlaceholders(computed));
     } catch (error: any) {
       // SOFT-FAIL (2026-05-15 v10): never 500 a public read endpoint.
       // SWR fallback: try the cache key one last time — a parallel
@@ -427,7 +194,9 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // Apply the same response shaping as the success path so the
       // payload contract is identical on stale fallback (TV gets slim
       // shape; web strips placeholder logos).
-      const staleArr: any[] = Array.isArray(stale) ? stale : [];
+      if (!Array.isArray(stale)) return void res.status(503).json({ error: 'Station data is temporarily unavailable' });
+      res.set('X-Data-Stale', 'true');
+      const staleArr: any[] = stale;
       if (isTV) {
         return void res.json(staleArr.map(tvSlimStation));
       }
@@ -451,20 +220,13 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      const stations = await Station.find({
-        $and: [
-          { geoLat: { $exists: true, $ne: null } },
-          { geoLong: { $exists: true, $ne: null } }
-        ]
-      })
-      .select('name slug country geoLat geoLong votes clickCount tags homepage favicon hasExtendedInfo url logoAssets')
-      .sort({ votes: -1 }) 
-      .limit(safeLimit)
-      .lean();
+      {
+        const result = stripPlaceholders(await getGeoStationsFromPostgres(safeLimit));
+        await CacheManager.set(cacheKey, result, { ttl: 1800 });
+        return void res.json(result);
+      }
+
       
-      const result = stripPlaceholders(stations);
-      await CacheManager.set(cacheKey, result, { ttl: 1800 });
-      res.json(result);
     } catch (error: any) {
       logger.error(`❌ /api/stations/with-geo failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
@@ -474,7 +236,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         stale = await CacheManager.get(`stations:with_geo:${safeLimit}`);
       } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json(stale ?? []);
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -498,151 +261,28 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       
       let filter: any = {};
       let stations: any[] = [];
-      
-      if (lat && lng) {
-        const userLat = parseFloat(lat as string);
-        const userLng = parseFloat(lng as string);
-        let searchRadius = parseFloat(radius as string);
-        
-        searchRadius = Math.min(searchRadius, 150);
-        const resultLimit = Math.min(Number(limit), 50);
-        
-        const deltaLat = searchRadius / 111; 
-        const deltaLng = searchRadius / (111 * Math.cos(userLat * Math.PI / 180)); 
-        
-        let queryFilter: any = {
-          geoLat: { 
-            $type: 'number',
-            $gte: userLat - deltaLat,
-            $lte: userLat + deltaLat
-          },
-          geoLong: { 
-            $type: 'number',
-            $gte: userLng - deltaLng,
-            $lte: userLng + deltaLng
-          }
-        };
-        
-        if (country && country !== 'all' && country !== 'undefined' && country !== 'null') {
-          Object.assign(queryFilter, normalizeCountryFilter(country as string));
-        }
-        
-        if (excludeBroken === 'true') {
-          queryFilter.lastCheckOk = true;
-        }
-        
-        try {
-          const candidateStations = await Station.find(queryFilter)
-            .select('name slug country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets')
-            .limit(500)
-            .lean(); 
-          
-          const stationsWithDistance = candidateStations
-            .map((station: any) => {
-              const distance = calculateDistance(userLat, userLng, station.geoLat, station.geoLong);
-              return {
-                ...station,
-                distance: Math.round(distance * 10) / 10 
-              };
-            })
-            .filter((station: any) => station.distance <= searchRadius) 
-            .sort((a: any, b: any) => {
-              const userCountryLower = userCountry ? (userCountry as string).toLowerCase() : '';
-              const aIsUserCountry = userCountryLower && a.country?.toLowerCase().includes(userCountryLower);
-              const bIsUserCountry = userCountryLower && b.country?.toLowerCase().includes(userCountryLower);
-              
-              if (aIsUserCountry && !bIsUserCountry) return -1;
-              if (!aIsUserCountry && bIsUserCountry) return 1;
-              
-              const aHasFavicon = a.favicon && a.favicon.trim() !== '' && a.favicon !== 'null' && a.favicon !== 'undefined';
-              const bHasFavicon = b.favicon && b.favicon.trim() !== '' && b.favicon !== 'null' && b.favicon !== 'undefined';
-              
-              if (aHasFavicon && !bHasFavicon) return -1;
-              if (!aHasFavicon && bHasFavicon) return 1;
-              
-              if (a.distance !== b.distance) return a.distance - b.distance;
-              
-              return (b.votes || 0) - (a.votes || 0);
-            })
-            .slice(0, resultLimit);
-          
-          stations = stationsWithDistance;
-          
-          if (stations.length === 0 && searchRadius < 100) {
-            const expandedStations = candidateStations
-              .map((station: any) => {
-                const distance = calculateDistance(userLat, userLng, station.geoLat, station.geoLong);
-                return {
-                  ...station,
-                  distance: Math.round(distance * 10) / 10
-                };
-              })
-              .filter((station: any) => station.distance <= 100) 
-              .sort((a: any, b: any) => a.distance - b.distance)
-              .slice(0, Math.min(resultLimit, 10));
-            
-            stations = expandedStations;
-          }
-          
-        } catch (error) {
-          const fallbackFilter: any = {};
-          if (country && country !== 'all') {
-            Object.assign(fallbackFilter, normalizeCountryFilter(country as string));
-          } else {
-            fallbackFilter.country = { $exists: true, $ne: null };
-          }
-          if (excludeBroken === 'true') {
-            fallbackFilter.lastCheckOk = true;
-          }
-          
-          stations = await Station.find(fallbackFilter)
-          .sort({ votes: -1 })
-          .limit(resultLimit)
-          .select('name slug country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets')
-          .lean();
-          
-          stations = stations.map((station: any) => ({
-            ...station,
-            distance: null
-          }));
-        }
-        
-      } else if (country && country !== 'all') {
-        Object.assign(filter, normalizeCountryFilter(country as string));
-        if (excludeBroken === 'true') {
-          filter.lastCheckOk = true;
-        }
-        const countryStations = await Station.find(filter)
-          .select('name slug country geoLat geoLong votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets')
-          .sort({ votes: -1 })
-          .limit(Math.min(Number(limit) * 3, 100))
-          .lean();
 
-        countryStations.sort((a: any, b: any) => {
-          const aHasFavicon = a.favicon && a.favicon.trim() !== '' && a.favicon !== 'null' && a.favicon !== 'undefined';
-          const bHasFavicon = b.favicon && b.favicon.trim() !== '' && b.favicon !== 'null' && b.favicon !== 'undefined';
-          
-          if (aHasFavicon && !bHasFavicon) return -1;
-          if (!aHasFavicon && bHasFavicon) return 1;
-          
-          return (b.votes || 0) - (a.votes || 0);
+      {
+        stations = await getNearbyStationsFromPostgres({
+          latitude: lat ? parseFloat(lat as string) : undefined,
+          longitude: lng ? parseFloat(lng as string) : undefined,
+          radiusKm: parseFloat(radius as string),
+          limit: Number(limit),
+          country: country && !['all', 'null', 'undefined'].includes(String(country))
+            ? (resolveToDbName(country as string) || String(country)) : undefined,
+          excludeBroken: excludeBroken === 'true',
+          userCountry: userCountry ? String(userCountry) : undefined,
         });
-
-        stations = countryStations.slice(0, Number(limit));
-        
-      } else {
-        return void res.json([]);
+        if (lat && lng && stations.length > 0) {
+          const snappedLat = Math.round(parseFloat(lat as string) * 100) / 100;
+          const snappedLng = Math.round(parseFloat(lng as string) * 100) / 100;
+          const countryKey = country && country !== 'all' ? String(country) : 'global';
+          await CacheManager.set(`nearby:${snappedLat}_${snappedLng}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`, stations, { ttl: 1800 });
+        }
+        return void res.json(stripPlaceholders(stations));
       }
 
-      if (lat && lng && stations.length > 0) {
-        const snappedLat = Math.round(parseFloat(lat as string) * 100) / 100;
-        const snappedLng = Math.round(parseFloat(lng as string) * 100) / 100;
-        const countryKey = country && country !== 'all' ? (country as string) : 'global';
-        const cacheKey = `nearby:${snappedLat}_${snappedLng}_${parseFloat(radius as string)}_${countryKey}_${excludeBroken}`;
-        await CacheManager.set(cacheKey, stations, { ttl: 1800 }); 
-      }
 
-      res.json(stripPlaceholders(stations));
     } catch (error: any) {
       logger.error(`❌ /api/stations/nearby failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
@@ -656,7 +296,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         }
       } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json(stale ?? []);
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -668,76 +309,20 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       if (cachedStats) {
         return void res.json(cachedStats);
       }
+      {
+        const result = await getStationStatsFromPostgres();
+        await CacheManager.set(cacheKey, result, { ttl: 1800 });
+        return void res.json(result);
+      }
       
-      const stats = await Station.aggregate([
-        {
-          $facet: {
-            total: [{ $count: "count" }],
-            working: [
-              { $match: { lastCheckOk: true } },
-              { $count: "count" }
-            ],
-            broken: [
-              { $match: { lastCheckOk: { $ne: true } } },
-              { $count: "count" }
-            ],
-            withGps: [
-              { 
-                $match: { 
-                  geoLat: { $exists: true, $nin: [null, ''] },
-                  geoLong: { $exists: true, $nin: [null, ''] }
-                } 
-              },
-              { $count: "count" }
-            ],
-            withFavicon: [
-              { 
-                $match: { 
-                  favicon: { 
-                    $exists: true, 
-                    $nin: [null, '', 'null', 'undefined'] 
-                  } 
-                } 
-              },
-              { $count: "count" }
-            ],
-            byCountry: [
-              { $match: { country: { $exists: true, $nin: [null, ''] } } },
-              { $group: { _id: "$country", count: { $sum: 1 } } },
-              { $sort: { count: -1 } },
-              { $limit: 10 }
-            ],
-            byGenre: [
-              { $match: { genre: { $exists: true, $nin: [null, ''] } } },
-              { $group: { _id: "$genre", count: { $sum: 1 } } },
-              { $sort: { count: -1 } },
-              { $limit: 10 }
-            ]
-          }
-        }
-      ]).allowDiskUse(true).option({ maxTimeMS: 20000 });
       
-      const result = {
-        total: stats[0].total[0]?.count || 0,
-        working: stats[0].working[0]?.count || 0,
-        broken: stats[0].broken[0]?.count || 0,
-        workingPercentage: stats[0].total[0]?.count > 0 
-          ? Math.round((stats[0].working[0]?.count || 0) / stats[0].total[0].count * 100) 
-          : 0,
-        lastUpdated: new Date().toISOString()
-      };
-      
-      await CacheManager.set(cacheKey, result, { ttl: 1800 });
-      res.json(result);
     } catch (error: any) {
       logger.error(`❌ /api/stations/stats failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
       try { stale = await CacheManager.get('station_stats'); } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json(stale ?? {
-        total: 0, working: 0, broken: 0, workingPercentage: 0,
-        lastUpdated: new Date().toISOString()
-      });
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -751,38 +336,10 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // Single-flight: concurrent cold-misses for the same station coalesce
       // into one DB call instead of spawning N parallel RecommendationEngine runs.
       const result = await CacheManager.getOrSetSingleFlight<any[] | null>(cacheKey, async () => {
-        const sourceStation = await Station.findById(id).select('country tags').lean();
-        if (!sourceStation) return null; // null = not cached (cache miss signal)
-
-        const { performanceCache: pc } = await import('../performance-cache');
-        const pool = pc.getSimilarPool(sourceStation.country ?? '') || pc.getGlobalPopularPool();
-
-        if (pool && pool.length > 0) {
-          return pool.filter((s: any) => s._id?.toString() !== id).slice(0, limitNum);
+        {
+          return getRelatedStationsFromPostgres(id, limitNum);
         }
 
-        // Fast indexed fallback: country + lastCheckOk uses the compound index
-        // {country,lastCheckOk,votes} → 50-200ms vs RecommendationEngine's
-        // regex/collaborative queries that take 2-8s on a cold cache.
-        const country = sourceStation.country;
-        const stations = await Station.find(
-          country
-            ? { country, lastCheckOk: true, _id: { $ne: id } }
-            : { lastCheckOk: true, _id: { $ne: id } },
-        )
-          .sort({ votes: -1 })
-          .limit(limitNum * 4)
-          .select('_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets url url_resolved')
-          .maxTimeMS(3000)
-          .lean();
-
-        // Lazy-populate the per-country pool so the next same-country request
-        // is served from memory without a DB round-trip.
-        if (country && stations.length > 0) {
-          pc.setSimilarPool(country, stations.slice(0, 30));
-        }
-
-        return stations.slice(0, limitNum);
       }, { ttl: 3600 });
 
       if (result === null) return void res.status(404).json({ error: 'Station not found' });
@@ -797,7 +354,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         stale = await CacheManager.get(`similar_stations:${req.params.id}:${Math.min(Math.max(Number(req.query.limit ?? 6), 1), 20)}`);
       } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json(stale ?? []);
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -808,16 +366,18 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       if (!country) return void res.status(400).json({ error: 'Country parameter is required' });
 
       const filter = normalizeCountryFilter(country as string);
-      const [station] = await Station.aggregate([
-        { $match: filter },
-        { $sample: { size: 1 } }
-      ]);
-      if (!station) return void res.status(404).json({ error: 'No stations found for this country' });
-      res.json(stripPlaceholders(station));
+      {
+        const station = await getRandomCountryStationFromPostgres(
+          resolveToDbName(country as string) || String(country),
+        );
+        if (!station) return void res.status(404).json({ error: 'No stations found for this country' });
+        return void res.json(stripPlaceholders(station));
+      }
+
     } catch (error: any) {
       logger.error(`❌ /api/stations/country-random failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       res.set('Cache-Control', 'no-store');
-      res.json(null);
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -830,6 +390,31 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
 
       const identifier = (countryName as string) || (countryCode as string);
       const isGlobal = !identifier || identifier === 'global' || identifier === 'all';
+
+      {
+        const pgResult = await listStationsFromPostgres({
+          country: isGlobal ? undefined : (
+            resolveToDbName(((countryName as string) || (countryCode as string))) ||
+            (countryName as string) || (countryCode as string)
+          ),
+          genre: genre as string | undefined,
+          language: language as string | undefined,
+          search: search as string | undefined,
+          page: pageNum,
+          limit: limitNum,
+          sort: sort as string | undefined,
+          hasLogo: hasLogo === 'true' ? true : hasLogo === 'false' ? false : undefined,
+          codec: typeof codec === 'string' ? codec : undefined,
+          minBitrate: bitrate ? parseInt(String(bitrate)) : undefined,
+        });
+        const stations = pgResult.stations;
+        return void res.json({
+          success: true, data: stations, stations, total: pgResult.totalCount,
+          count: pgResult.totalCount, page: pageNum,
+          totalPages: pgResult.pagination.pages, cached: false,
+          pagination: pgResult.pagination,
+        });
+      }
 
       // INCIDENT 2026-05-15 v10.2 round 9 — REMOVED the `hasGlobalCache()`
       // cold-fallback branch. Previously, when the SWR envelope was
@@ -846,39 +431,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // miss coalesces onto that same in-flight promise. After the
       // envelope is populated, subsequent traffic gets fresh-or-stale
       // hits with background refresh — no more cold fallback ever.
-      let result;
-      if (isGlobal) {
-        result = await PrecomputedStationsService.getGlobalStations(pageNum, limitNum);
-      } else if (countryCode) {
-        result = await PrecomputedStationsService.getCountryStations(countryCode as string, pageNum, limitNum);
-      } else {
-        result = await PrecomputedStationsService.getCountryStationsByName(countryName as string, pageNum, limitNum);
-      }
 
-      let { stations } = result;
-
-      // Apply client-side filters on cached data
-      if (genre) stations = stations.filter((s: any) => s.genre?.toLowerCase().includes((genre as string).toLowerCase()) || (typeof s.tags === 'string' ? s.tags.toLowerCase().includes((genre as string).toLowerCase()) : Array.isArray(s.tags) && s.tags.some((t: string) => t.toLowerCase().includes((genre as string).toLowerCase()))));
-      if (language) stations = stations.filter((s: any) => s.language?.toLowerCase().includes((language as string).toLowerCase()));
-      if (search) {
-        const q = (search as string).toLowerCase();
-        stations = stations.filter((s: any) => s.name?.toLowerCase().includes(q) || s.country?.toLowerCase().includes(q));
-      }
-      if (hasLogo === 'true') stations = stations.filter((s: any) => s.favicon || s.hasLogo);
-      if (codec) stations = stations.filter((s: any) => s.codec?.toLowerCase() === (codec as string).toLowerCase());
-      if (bitrate) stations = stations.filter((s: any) => s.bitrate >= parseInt(bitrate as string));
-
-      res.json({
-        success: true,
-        data: stations,
-        stations,
-        total: result.total,
-        count: result.total,
-        page: result.page,
-        totalPages: result.totalPages,
-        cached: result.cached,
-        pagination: { page: result.page, limit: limitNum, total: result.total, pages: result.totalPages }
-      });
     } catch (error: any) {
       // INCIDENT 2026-05-14 round 8: this catch was emitting `logger.error`
       // (with full stack trace) once per failed request — during the failover
@@ -890,11 +443,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       // get cached as an empty payload by upstream CDN.
       logger.warn(`[/api/stations/precomputed] failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || 'unknown'}`);
       res.set('Cache-Control', 'no-store');
-      res.json({
-        success: true, data: [], stations: [], total: 0, count: 0,
-        page: 1, totalPages: 0, cached: false,
-        pagination: { page: 1, limit: 0, total: 0, pages: 0 }
-      });
+      res.status(503).json({ success: false, error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -902,9 +451,7 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     try {
       const { id } = req.params;
 
-      const station = await Station.findOne(
-        { $or: [{ slug: id }, { _id: id.match(/^[0-9a-fA-F]{24}$/) ? id : undefined }].filter(Boolean) }
-      ).select('name url urlResolved').lean() as any;
+      const station = (await getStationByIdentifier(id));
 
       if (!station) {
         return void res.status(404).json({ error: 'Station not found' });
@@ -947,28 +494,22 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
       const cached = await CacheManager.get(cacheKey);
       if (cached) return void res.json(cached);
 
-      const station = await Station.findById(stationId).lean() as any;
-      if (!station) return void res.status(404).json({ error: 'Station not found' });
+      {
+        const linked = await getRelatedStationsFromPostgres(stationId, 12);
+        if (linked === null) return void res.status(404).json({ error: 'Station not found' });
+        const result = { stations: linked };
+        await CacheManager.set(cacheKey, result, { ttl: 1800 });
+        return void res.json(result);
+      }
 
-      const filter: any = { _id: { $ne: stationId } };
-      if (station.country) filter.country = station.country;
-      if (station.genre) filter.genre = { $regex: new RegExp(escapeRegex(station.genre, 60), 'i') };
 
-      const linked = await Station.find(filter)
-        .select('_id name favicon slug country genre tags votes bitrate codec language url urlResolved hls lastCheckOk hasLogo logoAssets')
-        .sort({ votes: -1 })
-        .limit(12)
-        .lean();
-
-      const result = { stations: linked };
-      await CacheManager.set(cacheKey, result, { ttl: 1800 });
-      res.json(result);
     } catch (error: any) {
       logger.error(`❌ /api/stations/:stationId/linked failed: code=${error?.code || 'unknown'} msg=${error?.message || error}`);
       let stale: any = null;
       try { stale = await CacheManager.get(`stations:linked:${req.params.stationId}`); } catch {}
       res.set('Cache-Control', 'no-store');
-      res.json(stale ?? { stations: [] });
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 
@@ -1017,189 +558,25 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
     const lkgKey = `stations:list:lkg:${country || 'all'}:${isTV ? 'tv' : 'web'}`;
 
     const computeStationsList = async () => {
-      const filter: any = {};
-
-      if (excludeBroken === 'true') filter.lastCheckOk = true;
-
-      if (excludeStationIds && typeof excludeStationIds === 'string') {
-        const excludeIds = excludeStationIds.split(',').filter((id: string) => id.trim());
-        if (excludeIds.length > 0) filter._id = { $nin: excludeIds };
-      }
-
-      if (minVotes && Number(minVotes) > 0) filter.votes = { $gte: Number(minVotes) };
-
-      if (timePeriod && timePeriod !== 'all') {
-        const now = new Date();
-        const startDate = new Date();
-        if (timePeriod === '24h') startDate.setHours(now.getHours() - 24);
-        else if (timePeriod === '7d') startDate.setDate(now.getDate() - 7);
-        else if (timePeriod === '30d') startDate.setDate(now.getDate() - 30);
-        filter.$or = [
-          { lastChangeTime: { $gte: startDate } },
-          { clickTimestamp: { $gte: startDate } },
-          { createdAt: { $gte: startDate } }
-        ];
-      }
-
-      if (country && country !== 'all') {
-        Object.assign(filter, normalizeCountryFilter(country as string));
-      }
-
-      if (state && state !== 'all') {
-        const stateAliases: { [key: string]: string[] } = {
-          'Wien': ['Wien', 'Vienna'],
-          'Vienna': ['Wien', 'Vienna'],
-        };
-        const searchTerms = stateAliases[state as string] || [state as string];
-        if (searchTerms.length > 1) {
-          if (!filter.$or) filter.$or = [];
-          filter.$or.push(...searchTerms.map((term: string) => ({ state: { $regex: new RegExp(escapeRegex(term, 60), 'i') } })));
-        } else {
-          filter.state = { $regex: new RegExp(escapeRegex(state, 60), 'i') };
+      {
+        let createdAfter: Date | undefined;
+        if (timePeriod && timePeriod !== 'all') {
+          const milliseconds = timePeriod === '24h' ? 86400000 : timePeriod === '7d' ? 604800000 : timePeriod === '30d' ? 2592000000 : 0;
+          if (milliseconds) createdAfter = new Date(Date.now() - milliseconds);
         }
-      }
-
-      if (tags && tags !== 'all') filter.tags = { $regex: new RegExp(escapeRegex(tags, 80), 'i') };
-
-      if (genre && genre !== 'all') {
-        const escapedGenre = (genre as string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        filter.$or = [
-          { genre: { $regex: new RegExp(`^${escapedGenre}$`, 'i') } },
-          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedGenre}\\s*(,|$)`, 'i') } }
-        ];
-      }
-
-      if (language && language !== 'all') filter.language = { $regex: new RegExp(escapeRegex(language, 40), 'i') };
-
-      let isGenreSearch = false;
-      let genreSearchTerm = '';
-      let isTextSearch = false;
-
-      if (search) {
-        const rawTerm = (search as string).trim();
-        // Apply synonym substitution before anything else ("Viyana" → "vienna")
-        const expandedTerm = applySynonyms(rawTerm);
-        if (expandedTerm.length >= 3) {
-          // Use the existing { name, country, tags } $text index — ~50-100× faster
-          // than a regex full-scan on 200k+ stations.
-          const sanitised = sanitiseForTextSearch(expandedTerm);
-          if (sanitised.length >= 3) {
-            filter.$text = { $search: sanitised };
-            isTextSearch = true;
-          }
-        } else if (expandedTerm.length === 2) {
-          // 2-char fallback: starts-with regex on the name field only
-          // (short enough that the collection isn't too large to scan for prefix hits).
-          const escaped = escapeRegex(expandedTerm, 10);
-          filter.name = { $regex: new RegExp(`^${escaped}`, 'i') };
-        }
-
-        // Genre boost: if the raw term matches a known genre keyword, surface genre
-        // matches first (works for both text-search and short-term fallback paths).
-        if (expandedTerm.length >= 2) {
-          const knownGenres = ['jazz', 'pop', 'rock', 'classical', 'news', 'talk', 'dance', 'electronic',
-            'hiphop', 'country', 'oldies', 'hits', 'rnb', 'soul', 'blues', 'reggae',
-            'metal', 'punk', 'alternative', 'indie', 'folk', 'world', 'latin'];
-          const normalised = expandedTerm.toLowerCase().replace(/[\s-]/g, '');
-          if (knownGenres.some(g => g === normalised)) {
-            isGenreSearch = true;
-            genreSearchTerm = escapeRegex(expandedTerm, 80);
-          }
-        }
-      }
-
-      const total = await Station.countDocuments(filter);
-
-      let pipeline: any[] = [{ $match: filter }];
-
-      if (isGenreSearch && genreSearchTerm) {
-        pipeline.push({
-          $addFields: {
-            genreMatchScore: {
-              $cond: [{ $regexMatch: { input: { $ifNull: ['$genre', ''] }, regex: genreSearchTerm, options: 'i' } }, 2,
-                { $cond: [{ $regexMatch: { input: { $ifNull: ['$tags', ''] }, regex: genreSearchTerm, options: 'i' } }, 1, 0] }]
-            }
-          }
+        return listStationsFromPostgres({
+          country: country && country !== 'all' ? (resolveToDbName(country as string) || String(country)) : undefined,
+          state: state && state !== 'all' ? String(state) : undefined,
+          genre: genre && genre !== 'all' ? String(genre) : undefined,
+          tags: tags && tags !== 'all' ? String(tags) : undefined,
+          language: language && language !== 'all' ? String(language) : undefined,
+          search: search ? applySynonyms(String(search).trim()) : undefined,
+          sort: String(sort), excludeBroken: excludeBroken === 'true',
+          excludeIds: typeof excludeStationIds === 'string' ? excludeStationIds.split(',').map((value) => value.trim()).filter(Boolean) : [],
+          minVotes: Number(minVotes) || 0, createdAfter, page: Number(page), limit: Number(limit),
         });
       }
 
-      // Computed fields added to every result
-      const addFieldsBase: any = {
-        hasValidFavicon: {
-          $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$favicon', ''] } } }, regex: '^(https?:\\/\\/.+|data:image\\/.+)', options: 'i' } }, 1, 0]
-        },
-        startsWithNumber: {
-          $cond: [{ $regexMatch: { input: { $trim: { input: { $ifNull: ['$name', ''] } } }, regex: '^[0-9]' } }, 1, 0]
-        },
-      };
-      // When using $text, include the relevance score as a computed field.
-      // It becomes the primary sort key so the most relevant station floats first.
-      if (isTextSearch) {
-        addFieldsBase.textScore = { $meta: 'textScore' };
-      }
-      pipeline.push({ $addFields: addFieldsBase });
-
-      // Build sort object: textScore → genreMatch → quality signals → requested order
-      let sortObj: any;
-      const textScorePrefix = isTextSearch ? { textScore: -1 } : {};
-      const genrePrefix = isGenreSearch ? { genreMatchScore: -1 } : {};
-
-      switch (sort) {
-        case 'az':
-          sortObj = { ...textScorePrefix, ...genrePrefix, startsWithNumber: 1, hasValidFavicon: -1, name: 1 };
-          break;
-        case 'za':
-          sortObj = { ...textScorePrefix, ...genrePrefix, startsWithNumber: 1, hasValidFavicon: -1, name: -1 };
-          break;
-        case 'newest':
-          sortObj = { ...textScorePrefix, ...genrePrefix, hasValidFavicon: -1, createdAt: -1 };
-          break;
-        case 'oldest':
-          sortObj = { ...textScorePrefix, ...genrePrefix, hasValidFavicon: -1, createdAt: 1 };
-          break;
-        default:
-          sortObj = { ...textScorePrefix, ...genrePrefix, hasValidFavicon: -1, votes: -1 };
-          break;
-      }
-
-      // Sort before project so computed fields (textScore, genreMatchScore, hasValidFavicon)
-      // are still present when the sort runs. Project → skip → limit then trims the payload.
-      pipeline.push({ $sort: sortObj });
-      pipeline.push({ $skip: (Number(page) - 1) * Number(limit) });
-      pipeline.push({ $limit: Number(limit) });
-
-      if (isTV) {
-        pipeline.push(tvSlimProjection());
-      } else {
-        pipeline.push({
-          $project: {
-            _id: 1, name: 1, url: 1, urlResolved: 1, favicon: 1, country: 1, countrycode: 1,
-            state: 1, language: 1, genre: 1, codec: 1, bitrate: 1, homepage: 1, tags: 1,
-            slug: 1, hls: 1, votes: 1, clickCount: 1, lastCheckOk: 1, lastCheckTime: 1,
-            descriptions: 1, logoAssets: 1, localImagePath: 1, createdAt: 1, updatedAt: 1,
-            hasValidFavicon: 1, startsWithNumber: 1
-          }
-        });
-      }
-
-      // INCIDENT 2026-05-16 v11 — maxTimeMS reduced 20000 → 8000.
-      // With socketTimeoutMS now 30s, a query that runs >8s would still
-      // hold the pool slot for the full 30s ceiling. Failing fast at 8s
-      // lets the next caller (single-flight coalesced) retry sooner and
-      // keeps pool slots free during M10 multiplanner pressure.
-      const stations = await Station.aggregate(pipeline).allowDiskUse(true).option({ maxTimeMS: 8000 });
-
-      return {
-        stations,
-        totalCount: total,
-        count: total,
-        pagination: {
-          page: Number(page),
-          limit: Number(limit),
-          total,
-          pages: Math.ceil(total / Number(limit))
-        }
-      };
     };
 
     try {
@@ -1240,10 +617,8 @@ export function registerPublicStationRoutes(app: Express, deps: any) {
         }
       }
       res.set('Cache-Control', 'no-store');
-      res.json(stale ?? {
-        stations: [], totalCount: 0, count: 0,
-        pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 }
-      });
+      if (stale != null) { res.set('X-Data-Stale', 'true'); return void res.json(stale); }
+      res.status(503).json({ error: 'Station data is temporarily unavailable' });
     }
   });
 }

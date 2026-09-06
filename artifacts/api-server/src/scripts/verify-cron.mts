@@ -1,46 +1,41 @@
 /**
- * Verify post-cron logo-processing outcomes for a configurable cohort of
- * countries. Set `BACKFILL_COUNTRIES=US,DE,RU` to override the default
- * cohort. Re-run after each `scheduled-logo-processor` pass to track the
- * remaining pending counts draining toward 0.
+ * Read-only post-cron logo outcomes from PostgreSQL.
+ * BACKFILL_COUNTRIES=US,DE,RU overrides the default cohort.
  */
-import mongoose from 'mongoose';
+import {
+  initializePostgres,
+  closePostgres,
+  getPostgresPool,
+} from "../postgres-runtime.js";
 
-const uri =
-  process.env.MONGODB_URI ||
-  process.env.DATABASE_URL ||
-  process.env.MONGO_URI;
-if (!uri) {
-  throw new Error(
-    'MONGODB_URI / DATABASE_URL / MONGO_URI not set in env — cannot connect to Mongo.',
-  );
-}
-
-const COUNTRIES = (process.env.BACKFILL_COUNTRIES || 'US,DE,RU,FR,GB')
-  .split(',')
-  .map((c) => c.trim().toUpperCase())
+const countries = (process.env.BACKFILL_COUNTRIES || "US,DE,RU,FR,GB")
+  .split(",")
+  .map((country) => country.trim().toUpperCase())
   .filter(Boolean);
-
-await mongoose.connect(uri);
-const Station = mongoose.connection.collection('stations');
-
-for (const cc of COUNTRIES) {
-  const buckets = await Station.aggregate([
-    { $match: { countryCode: cc, 'logoAssets.lastAttempt': { $gte: new Date(Date.now() - 36 * 60 * 60 * 1000) } } },
-    { $group: { _id: { status: '$logoAssets.status', failureType: '$logoAssets.failureType' }, c: { $sum: 1 } } },
-    { $sort: { c: -1 } },
-  ]).toArray();
-  console.log(cc, JSON.stringify(buckets));
-
-  const stillUnset = await Station.countDocuments({
-    countryCode: cc,
-    favicon: { $exists: true, $nin: ['', null, 'null'] },
-    slug: { $exists: true, $ne: null },
-    $or: [
-      { logoAssets: { $exists: false } },
-      { 'logoAssets.status': 'pending' },
-    ],
-  });
-  console.log(cc, 'still-unset/pending:', stillUnset);
+if (countries.some((country) => !/^[A-Z]{2}$/.test(country)))
+  throw new Error("BACKFILL_COUNTRIES must contain two-letter country codes");
+try {
+  await initializePostgres();
+  for (const country of countries) {
+    const buckets = (
+      await getPostgresPool().query(
+        `SELECT jsonb_build_object('status',logo_assets->>'status','failureType',logo_assets->>'failureType') AS "_id",count(*)::integer AS c
+       FROM stations WHERE country_code=$1
+       AND CASE WHEN pg_input_is_valid(logo_assets->>'lastAttempt','timestamptz')
+         THEN (logo_assets->>'lastAttempt')::timestamptz>=now()-interval '36 hours' ELSE false END
+       GROUP BY logo_assets->>'status',logo_assets->>'failureType' ORDER BY c DESC`,
+        [country],
+      )
+    ).rows;
+    console.log(country, JSON.stringify(buckets));
+    const {
+      rows: [pending],
+    } = await getPostgresPool().query(
+      "SELECT count(*)::integer AS count FROM stations WHERE country_code=$1 AND favicon IS NOT NULL AND favicon NOT IN ('','null') AND slug IS NOT NULL AND (logo_assets IS NULL OR logo_assets='{}'::jsonb OR logo_assets->>'status'='pending')",
+      [country],
+    );
+    console.log(country, "still-unset/pending:", pending.count);
+  }
+} finally {
+  await closePostgres();
 }
-await mongoose.disconnect();

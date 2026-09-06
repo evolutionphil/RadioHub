@@ -22,10 +22,7 @@
  * promotes them to `source: 'cron'` as days roll over.
  */
 
-import {
-  Station,
-  CoverageSnapshot,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgCoverage } from '../data/postgres-coverage-store';
 import { logger } from '../utils/logger';
 
 function utcMidnight(d: Date): Date {
@@ -41,77 +38,7 @@ interface DailyRow {
   withTags: number;
 }
 
-export async function aggregateForDay(endOfDay: Date): Promise<DailyRow[]> {
-  // endOfDay = exclusive upper bound (i.e. start of the next UTC day).
-  // A station "existed on day D" iff createdAt < startOfDay(D+1) = endOfDay.
-  const rows = await Station.aggregate<{
-    _id: string;
-    total: number;
-    withLogo: number;
-    withTags: number;
-  }>([
-    {
-      $match: {
-        countryCode: { $exists: true, $nin: [null, '', 'null'] },
-        createdAt: { $lt: endOfDay },
-      },
-    },
-    {
-      $group: {
-        _id: { $toUpper: '$countryCode' },
-        total: { $sum: 1 },
-        withLogo: {
-          $sum: {
-            $cond: [
-              {
-                $and: [
-                  { $eq: ['$logoAssets.status', 'completed'] },
-                  { $ne: ['$logoAssets.processedAt', null] },
-                  { $lt: ['$logoAssets.processedAt', endOfDay] },
-                ],
-              },
-              1,
-              0,
-            ],
-          },
-        },
-        withTags: {
-          $sum: {
-            $cond: [
-              {
-                $and: [
-                  { $ne: ['$tags', null] },
-                  { $ne: [{ $ifNull: ['$tags', ''] }, ''] },
-                  {
-                    $not: [
-                      {
-                        $regexMatch: {
-                          input: { $ifNull: ['$tags', ''] },
-                          regex: /^\s*$/,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              1,
-              0,
-            ],
-          },
-        },
-      },
-    },
-  ]);
-
-  return rows
-    .filter((r) => r._id && typeof r._id === 'string')
-    .map((r) => ({
-      countryCode: String(r._id).toUpperCase(),
-      total: Number(r.total) || 0,
-      withLogo: Number(r.withLogo) || 0,
-      withTags: Number(r.withTags) || 0,
-    }));
-}
+export async function aggregateForDay(endOfDay: Date): Promise<DailyRow[]> { return pgCoverage().coverage(endOfDay); }
 
 export interface RunCoverageBackfillProgress {
   // ISO `YYYY-MM-DD` of the day just processed (or about to be skipped).
@@ -163,6 +90,7 @@ export async function runCoverageBackfill(
   opts: RunCoverageBackfillOptions,
 ): Promise<RunCoverageBackfillResult> {
   const days = opts.days;
+  if(!Number.isSafeInteger(days)||days<1||days>3650) throw new RangeError('Coverage history days must be between 1 and 3650');
   const dryRun = !!opts.dryRun;
 
   logger.log(
@@ -171,9 +99,7 @@ export async function runCoverageBackfill(
 
   // Quick sanity check: do we actually have any historical signal? If not,
   // log loudly and exit cleanly instead of silently writing a flat line.
-  const earliestStation = await Station.findOne({}, { createdAt: 1 })
-    .sort({ createdAt: 1 })
-    .lean();
+  const earliestStation = await pgCoverage().earliestStation();
   if (!earliestStation || !earliestStation.createdAt) {
     logger.warn(
       '📈 Coverage backfill: stations collection is empty — nothing to seed.',
@@ -265,40 +191,8 @@ export async function runCoverageBackfill(
       continue;
     }
 
-    const ops = rows.map((row) => {
-      const total = row.total;
-      const logoCoveragePct =
-        total > 0 ? Math.round((row.withLogo / total) * 1000) / 10 : 0;
-      const tagCoveragePct =
-        total > 0 ? Math.round((row.withTags / total) * 1000) / 10 : 0;
-      return {
-        updateOne: {
-          filter: { countryCode: row.countryCode, snapshotDate },
-          update: {
-            // $setOnInsert preserves any real cron-written row that
-            // already exists for this (country, day) pair.
-            $setOnInsert: {
-              countryCode: row.countryCode,
-              snapshotDate,
-              total,
-              withLogo: row.withLogo,
-              withTags: row.withTags,
-              logoCoveragePct,
-              tagCoveragePct,
-              // Tag this row as a reconstructed/backfilled point so the
-              // admin coverage chart can render it differently from real
-              // cron-written snapshots. See `CoverageSnapshot.source`.
-              source: 'backfill' as const,
-              createdAt: new Date(),
-            },
-          },
-          upsert: true,
-        },
-      };
-    });
-
-    const result = await CoverageSnapshot.bulkWrite(ops, { ordered: false });
-    const inserted = result.upsertedCount || 0;
+    const result=await pgCoverage().writeSnapshots(snapshotDate,rows,'backfill');
+    const inserted=result.inserted;
     const skipped = rows.length - inserted;
     totalDaysSeeded++;
     totalRowsInserted += inserted;

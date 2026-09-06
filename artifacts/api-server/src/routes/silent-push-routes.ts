@@ -1,6 +1,6 @@
 import type { Express } from 'express';
 import { SilentPushService, SilentPushAction } from '../services/silentPushService';
-import { PushToken } from '@workspace/db-shared/mongo-schemas';
+import { pgCleanupPushTokens, pgPushStatus } from '../data/postgres-push-store';
 import { logger } from '../utils/logger';
 import cron from 'node-cron';
 
@@ -38,32 +38,11 @@ export function registerSilentPushRoutes(app: Express, deps: any) {
     try {
       const config = SilentPushService.isConfigured();
 
-      const [totalTokens, activeTokens, iosPlatform, androidPlatform, expoType, apnsType, fcmType] = await Promise.all([
-        PushToken.countDocuments(),
-        PushToken.countDocuments({ isActive: true }),
-        PushToken.countDocuments({ platform: 'ios', isActive: true }),
-        PushToken.countDocuments({ platform: 'android', isActive: true }),
-        PushToken.countDocuments({ tokenType: 'expo', isActive: true }),
-        PushToken.countDocuments({ tokenType: 'apns', isActive: true }),
-        PushToken.countDocuments({ tokenType: 'fcm', isActive: true }),
-      ]);
-
-      const topCountries = await PushToken.aggregate([
-        { $match: { isActive: true, country: { $ne: '' } } },
-        { $group: { _id: '$country', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 10 },
-      ]);
+      const status = await pgPushStatus();
 
       res.json({
         configuration: config,
-        tokens: {
-          total: totalTokens,
-          active: activeTokens,
-          byPlatform: { ios: iosPlatform, android: androidPlatform },
-          byType: { expo: expoType, apns: apnsType, fcm: fcmType },
-        },
-        topCountries: topCountries.map((c) => ({ country: c._id, count: c.count })),
+        ...status,
         validActions: VALID_ACTIONS,
       });
     } catch (error) {
@@ -74,15 +53,11 @@ export function registerSilentPushRoutes(app: Express, deps: any) {
 
   app.post('/api/admin/push/cleanup', requireAdmin, async (req, res) => {
     try {
-      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-      const result = await PushToken.deleteMany({
-        isActive: false,
-        updatedAt: { $lt: thirtyDaysAgo },
-      });
+      const deletedCount = await pgCleanupPushTokens();
 
       res.json({
         success: true,
-        deletedCount: result.deletedCount,
+        deletedCount,
       });
     } catch (error) {
       logger.error('Push cleanup error:', error);

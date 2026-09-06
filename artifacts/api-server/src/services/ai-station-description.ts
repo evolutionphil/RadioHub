@@ -2,10 +2,14 @@ import OpenAI from "openai";
 import { COUNTRY_TO_LANGUAGE, getNativeCountryName } from "@workspace/seo-shared/seo-config";
 import { logger } from "../utils/logger";
 
-// Using existing OpenAI API key (same as translation system)
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+// Optional AI credentials must not prevent the API from starting. Construct
+// the client only when an operator actually invokes generation/translation.
+let openaiClient: OpenAI | undefined;
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) throw new Error('AI description service is unavailable: OPENAI_API_KEY is not configured');
+  return openaiClient ??= new OpenAI({ apiKey });
+}
 
 interface StationInfo {
   _id: string;
@@ -100,6 +104,7 @@ export async function generateStationDescription(
   const languageName = LANGUAGE_NAMES[language] || 'English';
   
   try {
+    const openai = getOpenAIClient();
     // Build context for OpenAI
     const tags = station.tags?.split(',').map(t => t.trim()).filter(Boolean).join(', ') || 'General';
     const nativeCountry = station.country ? getNativeCountryName(station.country, language) : 'Unknown';
@@ -338,6 +343,8 @@ export async function translateDescription(
   
   // Filter out same-language and create parallel translation promises
   const languagesToTranslate = targetLanguages.filter(lang => lang !== sourceLanguage);
+  if (!languagesToTranslate.length) return translations;
+  const openai = getOpenAIClient();
   
   // Create all translation requests in parallel
   const translationPromises = languagesToTranslate.map(async (targetLang) => {

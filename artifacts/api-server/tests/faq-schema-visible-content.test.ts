@@ -113,7 +113,7 @@ mongoMockExports.ADMIN_SETTING_HISTORY_RETENTION_PER_KEY = 20;
 mongoMockExports.normalizeGenreSlug = (raw: string) =>
   String(raw ?? '').toLowerCase().trim().replace(/\s+/g, '-');
 
-mock.module('@workspace/db-shared/mongo-schemas', {
+mock.module('@workspace/legacy-migration/mongo-schemas', {
   namedExports: mongoMockExports,
 });
 

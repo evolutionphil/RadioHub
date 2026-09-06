@@ -1,12 +1,8 @@
+import { pgCoverage, type BackfillRun as IBackfillRun } from '../data/postgres-coverage-store';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { getAdminSetting } from '../data/postgres-admin-settings-store';
 import type { Express, Request, Response } from "express";
-import mongoose from "mongoose";
-import {
-  Station,
-  BackfillRun,
-  Genre,
-  GenreSlugCleanupRun,
-  type IBackfillRun,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgGenreCleanup } from '../data/postgres-genre-cleanup-store';
 import {
   BACKFILL_RETENTION_DAYS_MAX,
   BACKFILL_RETENTION_DAYS_MIN,
@@ -21,7 +17,6 @@ import {
 } from "../services/scheduled-backfill";
 import { radioBrowserService } from "../services/radio-browser";
 import { scheduledBackfill } from "../services/scheduled-backfill";
-import { AdminSetting } from "@workspace/db-shared/mongo-schemas";
 import {
   clearAdminSettingWithHistory,
   listAdminSettingHistory,
@@ -70,6 +65,8 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
   if (activeTagsJob && activeTagsJob.isRunning) {
     return activeTagsJob;
   }
+  const leader=await pgCoverage().acquireJob('station-backfill');
+  if(!leader)throw Object.assign(new Error('A backfill is already running on another worker'),{code:'BACKFILL_BUSY'});
   // Persist a BackfillRun-style audit row so the tags-only sweep shows up
   // in the same history table as the weekly logo+tag sweep. We use
   // `topN: 0` to flag that this isn't a top-N pick — it's either a
@@ -79,7 +76,8 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
     : "admin:manual:tags";
   let run: IBackfillRun | null = null;
   try {
-    run = await BackfillRun.create({
+    await pgCoverage().recoverInterruptedRuns();
+    run = await pgCoverage().createRun({
       trigger,
       status: "running",
       topN: 0,
@@ -96,6 +94,8 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
       "[tags-backfill] failed to persist BackfillRun audit row:",
       err?.message || err,
     );
+    await leader.release();
+    throw err;
   }
   const job: BackfillState = {
     jobId: makeJobId(),
@@ -131,10 +131,7 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
       };
       if (countryCode) filter.countryCode = countryCode.toUpperCase();
 
-      const cursor = Station.find(filter)
-        .select("_id stationuuid slug name countryCode tags languageCodes")
-        .limit(limitMax)
-        .cursor();
+      const cursor = pgCatalog().iterate(filter,{fields:['_id','stationuuid','slug','name','countryCode','tags','languageCodes'],limit:limitMax});
 
       const BATCH = 25;
       let batch: any[] = [];
@@ -147,7 +144,9 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
           items.map(async (s: any) => {
             job.scanned++;
             try {
+              leader.assertOwned();
               const fetched = await radioBrowserService.getStationByUuid(s.stationuuid);
+              leader.assertOwned();
               const fresh = Array.isArray(fetched) ? fetched[0] : null;
               if (!fresh) {
                 job.skipped++;
@@ -174,8 +173,8 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
                 job.skipped++;
                 return;
               }
-              await Station.updateOne({ _id: s._id }, { $set: update });
-              job.updated++;
+              const changes=await Promise.all(Object.entries(update).map(([field,value])=>pgCatalog().update({_id:s._id,$or:[{[field]:{$exists:false}},{[field]:null},{[field]:''}]},{$set:{[field]:value}},{respectManualFields:true})));
+              if(changes.some(change=>change.modifiedCount>0))job.updated++;else job.skipped++;
             } catch (err: any) {
               job.failed++;
               job.lastError = err?.message || String(err);
@@ -187,6 +186,7 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
       };
 
       for await (const doc of cursor) {
+        leader.assertOwned();
         batch.push(doc);
         if (batch.length >= BATCH) await flush();
       }
@@ -197,7 +197,6 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
     } finally {
       const finishedAt = new Date();
       job.finishedAt = finishedAt;
-      job.isRunning = false;
       logger.log(
         `[tags-backfill] done: scanned=${job.scanned} updated=${job.updated} ` +
           `failed=${job.failed} skipped=${job.skipped}`,
@@ -222,8 +221,9 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
             emptyUpstream: job.skipped,
             failed: job.failed,
           });
-          await run.save();
+          await pgCoverage().saveRun(run);
         } catch (saveErr: any) {
+          job.lastError=saveErr?.message||String(saveErr);
           logger.error(
             "[tags-backfill] failed to persist final BackfillRun row:",
             saveErr?.message || saveErr,
@@ -231,7 +231,8 @@ async function runTagsBackfill(countryCode: string | null, limitMax: number) {
         }
       }
     }
-  })();
+  })().finally(async()=>{try{await leader.release();}finally{job.isRunning=false;}})
+    .catch(error=>{job.lastError=error instanceof Error?error.message:String(error);logger.error('[tags-backfill] worker failed',error);});
 
   return job;
 }
@@ -297,40 +298,38 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           brokenStreamIndexable,
           brokenStreamOver30d,
         ] = await Promise.all([
-          Station.countDocuments(base),
-          Station.countDocuments({ ...base, noIndex: true }),
-          Station.countDocuments({ ...base, $or: [{ tags: { $exists: false } }, { tags: null }, { tags: "" }] }),
-          Station.countDocuments({ ...base, $or: [{ languageCodes: { $exists: false } }, { languageCodes: null }, { languageCodes: "" }] }),
-          Station.countDocuments({ ...base, $or: [{ logoAssets: { $exists: false } }, { logoAssets: null }] }),
-          Station.countDocuments({
+          pgCatalog().count(base),
+          pgCatalog().count({ ...base, noIndex: true }),
+          pgCatalog().count({ ...base, $or: [{ tags: { $exists: false } }, { tags: null }, { tags: "" }] }),
+          pgCatalog().count({ ...base, $or: [{ languageCodes: { $exists: false } }, { languageCodes: null }, { languageCodes: "" }] }),
+          pgCatalog().count({ ...base, $or: [{ logoAssets: { $exists: false } }, { logoAssets: null }] }),
+          pgCatalog().count({
             ...base,
             $or: [
               { "descriptions.tr.full": { $exists: false } },
               { "descriptions.tr.full": "" },
             ],
           }),
-          Station.countDocuments({
+          pgCatalog().count({
             ...base,
             $or: [
               { "descriptions.en.full": { $exists: false } },
               { "descriptions.en.full": "" },
             ],
           }),
-          Station.countDocuments({
+          pgCatalog().count({
             ...base,
             lastCheckOk: false,
             $or: [{ noIndex: { $exists: false } }, { noIndex: false }],
           }),
-          Station.countDocuments({
+          pgCatalog().count({
             ...base,
             lastCheckOk: false,
             $or: [{ noIndex: { $exists: false } }, { noIndex: false }],
-            $expr: {
-              $or: [
-                { $eq: [{ $type: "$lastCheckOkTime" }, "missing"] },
-                { $lt: ["$lastCheckOkTime", new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)] },
-              ],
-            },
+            $and: [{ $or: [
+              { lastCheckOkTime: { $exists: false } },
+              { lastCheckOkTime: { $lt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } },
+            ] }],
           }),
         ]);
 
@@ -393,6 +392,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         res.json({ ok: true, job });
       } catch (err: any) {
         logger.error("[tags-backfill trigger] error:", err?.message || err);
+        if(err?.code==='BACKFILL_BUSY')return void res.status(409).json({error:'already_running'});
         res.status(500).json({ error: err?.message || "internal_error" });
       }
     },
@@ -528,22 +528,14 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         // Paged rows + collection-wide totals so the dashboard can show
         // "showing X of Y · oldest from <date>" and admins know how
         // deep the retained history actually goes (Task #180).
-        const [runs, total, oldest, retention] = await Promise.all([
-          BackfillRun.find(filter)
-            .sort({ startedAt: -1 })
-            .limit(limit)
-            .lean(),
-          BackfillRun.countDocuments(filter),
-          BackfillRun.findOne(filter)
-            .sort({ startedAt: 1 })
-            .select({ startedAt: 1 })
-            .lean<{ startedAt: Date } | null>(),
+        const [{runs,total,oldestStartedAt}, retention] = await Promise.all([
+          pgCoverage().runs({limit,trigger,country:rawCountry?.toUpperCase()}),
           resolveBackfillRetentionSettings(),
         ]);
         res.json({
           runs,
           total,
-          oldestStartedAt: oldest?.startedAt ?? null,
+          oldestStartedAt,
           // Echo the effective retention thresholds so the dashboard can
           // render an accurate "kept for X days / Y rows" hint even when
           // ops has overridden the defaults via env vars or admins have
@@ -574,10 +566,10 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     async (req: Request, res: Response) => {
       try {
         const { id } = req.params;
-        if (!mongoose.isValidObjectId(id)) {
+        if (!/^[a-f0-9]{24}$/i.test(String(id))) {
           return void res.status(400).json({ error: "invalid_id" });
         }
-        const run = await BackfillRun.findById(id).lean();
+        const run = await pgCoverage().run(String(id));
         if (!run) {
           return void res.status(404).json({ error: "not_found" });
         }
@@ -613,7 +605,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
               .slice(0, 200),
           ),
         );
-        const validIds = ids.filter((id) => mongoose.isValidObjectId(id));
+        const validIds = ids.filter((id) => /^[a-f0-9]{24}$/i.test(id));
         const statuses: Record<
           string,
           "pending" | "processing" | "completed" | "failed" | "missing"
@@ -622,10 +614,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           statuses[id] = "missing";
         }
         if (validIds.length > 0) {
-          const stations = await Station.find(
-            { _id: { $in: validIds } },
-            { _id: 1, "logoAssets.status": 1 },
-          ).lean();
+          const stations = await pgCatalog().find({_id:{$in:validIds}},{fields:['_id','logoAssets.status'],limit:validIds.length});
           for (const s of stations) {
             const id = String(s._id);
             const st = s.logoAssets?.status;
@@ -665,9 +654,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     async (_req: Request, res: Response) => {
       try {
         const status = scheduledBackfill.getStatus();
-        const lastRun = await BackfillRun.findOne()
-          .sort({ startedAt: -1 })
-          .lean();
+        const lastRun = await pgCoverage().runs({limit:1}).then(result=>result.runs[0]??null);
         res.json({ status, lastRun });
       } catch (err: any) {
         logger.error(
@@ -705,14 +692,9 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
             status: scheduledGenreSlugCleanup.getStatus(),
           });
         }
-        // Fire-and-forget: `runOnce` resolves only when the full sweep
-        // finishes (potentially many seconds), but the dashboard already
-        // polls /runs while `status.isRunning` is true. Returning early
-        // keeps the HTTP request snappy and the singleton lock prevents
-        // a follow-up POST from kicking off a second concurrent run.
-        scheduledGenreSlugCleanup.runOnce('admin:manual').catch((err) => {
-          logger.error('[genre-slug-cleanup manual] crashed:', err);
-        });
+        const started = await scheduledGenreSlugCleanup.start('admin:manual');
+        if (!started) return void res.status(409).json({ error: 'already_running', status: scheduledGenreSlugCleanup.getStatus() });
+        started.completion.catch(err => logger.error('[genre-slug-cleanup manual] crashed:', err));
         res.json({
           ok: true,
           status: scheduledGenreSlugCleanup.getStatus(),
@@ -737,28 +719,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           Math.min(50, Number(req.query.limit) || 10),
         );
         const trigger = (req.query.trigger as string | undefined)?.trim();
-        const filter: any = {};
-        if (trigger) {
-          // Task #347: match the trigger as a "namespace" prefix so that
-          // e.g. `?trigger=admin:manual` also captures any future
-          // `admin:manual:<suffix>` variants (mirrors the prefix match the
-          // scheduled-backfill/runs endpoint already uses). The boundary
-          // anchor `(:|$)` keeps `admin:manual` from matching unrelated
-          // siblings like `admin:manual-other`.
-          const escaped = trigger.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-          filter.trigger = { $regex: `^${escaped}(:|$)` };
-        }
-        const [runs, total, oldest] = await Promise.all([
-          GenreSlugCleanupRun.find(filter)
-            .sort({ startedAt: -1 })
-            .limit(limit)
-            .lean(),
-          GenreSlugCleanupRun.countDocuments(filter),
-          GenreSlugCleanupRun.findOne(filter)
-            .sort({ startedAt: 1 })
-            .select({ startedAt: 1 })
-            .lean<{ startedAt: Date } | null>(),
-        ]);
+        const {runs,total,oldestStartedAt} = await pgGenreCleanup().runs({limit:Math.floor(limit),trigger:trigger||undefined});
         // Echo the effective retention thresholds (Task #265) so the
         // dashboard can render an accurate "kept for X days / Y rows"
         // hint, matching the scheduled-backfill/runs endpoint.
@@ -766,7 +727,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         res.json({
           runs,
           total,
-          oldestStartedAt: oldest?.startedAt ?? null,
+          oldestStartedAt,
           alertThreshold: getGenreSlugCleanupAlertThreshold(),
           status: scheduledGenreSlugCleanup.getStatus(),
           retention: {
@@ -797,17 +758,11 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
     async (req: Request, res: Response): Promise<void> => {
       try {
         const id = String(req.params.id ?? "");
-        if (!mongoose.Types.ObjectId.isValid(id)) {
+        if (!/^[a-f0-9]{24}$/i.test(id)) {
           res.status(400).json({ error: "invalid_run_id" });
           return;
         }
-        const run = await GenreSlugCleanupRun.findById(id)
-          .select({ startedAt: 1, finishedAt: 1, status: 1 })
-          .lean<{
-            startedAt: Date;
-            finishedAt?: Date;
-            status: string;
-          } | null>();
+        const run = await pgGenreCleanup().run(id);
         if (!run) {
           res.status(404).json({ error: "run_not_found" });
           return;
@@ -817,21 +772,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
           1,
           Math.min(500, Number(req.query.limit) || 200),
         );
-        const demotions = await Genre.find({
-          "cleanupDemotion.demotedAt": {
-            $gte: run.startedAt,
-            $lte: windowEnd,
-          },
-        })
-          .select({
-            _id: 1,
-            name: 1,
-            slug: 1,
-            cleanupDemotion: 1,
-          })
-          .sort({ "cleanupDemotion.demotedAt": 1 })
-          .limit(limit)
-          .lean();
+        const demotions = await pgGenreCleanup().demotions({since:run.startedAt,until:windowEnd,limit:Math.floor(limit)});
         res.json({
           runId: id,
           window: {
@@ -840,22 +781,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
             runStatus: run.status,
             isOpenEnded: !run.finishedAt,
           },
-          demotions: demotions.map((g: any) => ({
-            _id: String(g._id),
-            name: g.name,
-            currentSlug: g.slug,
-            reason: g.cleanupDemotion?.reason ?? null,
-            originalSlug: g.cleanupDemotion?.originalSlug ?? null,
-            normalizedSlug: g.cleanupDemotion?.normalizedSlug ?? null,
-            collisionWinnerId: g.cleanupDemotion?.collisionWinnerId
-              ? String(g.cleanupDemotion.collisionWinnerId)
-              : null,
-            collisionWinnerSlug:
-              g.cleanupDemotion?.collisionWinnerSlug ?? null,
-            collisionWinnerName:
-              g.cleanupDemotion?.collisionWinnerName ?? null,
-            demotedAt: g.cleanupDemotion?.demotedAt ?? null,
-          })),
+          demotions,
           total: demotions.length,
           limit,
         });
@@ -884,9 +810,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         const env = getEnvBackfillRetention();
         const defaults = getDefaultBackfillRetention();
         const resolved = await resolveBackfillRetentionSettings();
-        const doc = await AdminSetting.findOne({
-          key: BACKFILL_RETENTION_SETTINGS_KEY,
-        }).lean();
+        const doc = await getAdminSetting(BACKFILL_RETENTION_SETTINGS_KEY);
         res.json({
           stored,
           env: {
@@ -982,16 +906,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         const effectiveMaxRows =
           (maxRowsParsed as number | null) ?? resolved.maxRows;
 
-        const cutoff = new Date(
-          Date.now() - effectiveDays * 24 * 60 * 60 * 1000,
-        );
-        const [total, withinCutoff] = await Promise.all([
-          BackfillRun.countDocuments({}),
-          BackfillRun.countDocuments({ startedAt: { $gte: cutoff } }),
-        ]);
-        const kept = Math.min(withinCutoff, effectiveMaxRows);
-        const removed = Math.max(0, total - kept);
-        const percent = total > 0 ? removed / total : 0;
+        const {total,kept,removed,percent}=await pgCoverage().retentionPreview(effectiveDays,effectiveMaxRows);
 
         res.json({
           proposed: {
@@ -1078,9 +993,7 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
         const env = getEnvBackfillRetention();
         const defaults = getDefaultBackfillRetention();
         const resolved = await resolveBackfillRetentionSettings();
-        const doc = await AdminSetting.findOne({
-          key: BACKFILL_RETENTION_SETTINGS_KEY,
-        }).lean();
+        const doc = await getAdminSetting(BACKFILL_RETENTION_SETTINGS_KEY);
         res.json({
           stored,
           env: {
@@ -1242,77 +1155,36 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
   app.post(
     "/api/admin/maintenance/descriptions/strip-suffix",
     requireAdmin,
-    (_req: Request, res: Response) => {
-      if (activeStripSuffixJob?.isRunning) {
-        return void res.status(409).json({ error: "already_running", job: activeStripSuffixJob });
-      }
-      const job: StripSuffixJobState = {
-        jobId: `strip-suffix-${Date.now()}`,
-        startedAt: new Date(),
-        finishedAt: null,
-        processed: 0,
-        modified: 0,
-        isRunning: true,
-        lastError: null,
-      };
-      activeStripSuffixJob = job;
-
-      (async () => {
+    async (_req: Request, res: Response) => {
+      if (activeStripSuffixJob?.isRunning) return void res.status(409).json({error:'already_running',job:activeStripSuffixJob});
+      let leader;
+      try { leader = await pgCoverage().acquireJob('station-descriptions-maintenance'); }
+      catch (error:any) { return void res.status(503).json({error:error?.message||'database_unavailable'}); }
+      if (!leader) return void res.status(409).json({error:'already_running'});
+      const job:StripSuffixJobState={jobId:`strip-suffix-${Date.now()}`,startedAt:new Date(),finishedAt:null,processed:0,modified:0,isRunning:true,lastError:null};
+      activeStripSuffixJob=job;
+      void (async()=>{
         try {
-          const cursor = Station.find({ descriptions: { $exists: true, $ne: {} } })
-            .select('descriptions')
-            .lean()
-            .cursor();
-          const BATCH = 500;
-          const bulk: any[] = [];
-
-          for await (const doc of cursor) {
-            job.processed++;
-            const descriptions: Record<string, any> = (doc as any).descriptions || {};
-            const updates: Record<string, string> = {};
-
-            for (const [lang, entry] of Object.entries(descriptions)) {
-              if (!entry || typeof entry !== 'object') continue;
-              if (typeof entry.full === 'string' && entry.full.length > 0) {
-                const { stripped, changed } = stripDescriptionSuffix(entry.full);
-                if (changed) updates[`descriptions.${lang}.full`] = stripped;
-              }
-              if (typeof entry.meta === 'string' && entry.meta.length > 0) {
-                const { stripped, changed } = stripDescriptionSuffix(entry.meta);
-                if (changed) updates[`descriptions.${lang}.meta`] = stripped;
+          for await (const doc of pgCatalog().iterate({descriptions:{$exists:true,$ne:{}}},{fields:['descriptions']})) {
+            leader.assertOwned();job.processed++;
+            const descriptions:Record<string,any>=doc.descriptions||{},updates:Record<string,string>={};
+            for (const [lang,entry] of Object.entries(descriptions)) {
+              if(!entry||typeof entry!=='object')continue;
+              for(const field of ['full','meta'])if(typeof entry[field]==='string'&&entry[field].length>0){
+                const {stripped,changed}=stripDescriptionSuffix(entry[field]);
+                if(changed)updates[`descriptions.${lang}.${field}`]=stripped;
               }
             }
-
-            if (Object.keys(updates).length > 0) {
-              job.modified++;
-              bulk.push({
-                updateOne: {
-                  filter: { _id: (doc as any)._id },
-                  update: { $set: updates },
-                },
-              });
-            }
-
-            if (bulk.length >= BATCH) {
-              await Station.bulkWrite(bulk, { ordered: false });
-              bulk.length = 0;
+            if(Object.keys(updates).length){
+              leader.assertOwned();
+              const result=await pgCatalog().update({_id:doc._id,descriptions,'manualEditFields.descriptions':{$ne:true}},{$set:updates},{respectManualFields:true});
+              job.modified+=result.modifiedCount;
             }
           }
-
-          if (bulk.length > 0) {
-            await Station.bulkWrite(bulk, { ordered: false });
-          }
-        } catch (err: any) {
-          job.lastError = err?.message || String(err);
-          logger.error('[strip-suffix] crashed:', err);
-        } finally {
-          job.isRunning = false;
-          job.finishedAt = new Date();
-          logger.log(`[strip-suffix] done: processed=${job.processed} modified=${job.modified}`);
-        }
-      })();
-
-      res.json({ ok: true, job });
+        }catch(error:any){job.lastError=error?.message||String(error);logger.error('[strip-suffix] failed:',error);}
+        finally{try{await leader.release();}finally{job.isRunning=false;job.finishedAt=new Date();}}
+      })().catch(error=>{job.lastError=String(error);logger.error('[strip-suffix] release failed:',error);});
+      res.json({ok:true,job});
     },
   );
 
@@ -1346,98 +1218,33 @@ export function registerAdminMaintenanceRoutes(app: Express, deps: any) {
   app.post(
     "/api/admin/maintenance/descriptions/fill-templates",
     requireAdmin,
-    (_req: Request, res: Response) => {
-      if (activeFillTemplatesJob?.isRunning) {
-        return void res.status(409).json({ error: "already_running", job: activeFillTemplatesJob });
-      }
-      const job: FillTemplatesJobState = {
-        jobId: `fill-templates-${Date.now()}`,
-        startedAt: new Date(),
-        finishedAt: null,
-        processed: 0,
-        filled: 0,
-        skipped: 0,
-        aiReady: 0,
-        isRunning: true,
-        lastError: null,
-      };
-      activeFillTemplatesJob = job;
-
-      (async () => {
-        try {
-          // Find stations with no English description
-          const cursor = Station.find({
-            $or: [
-              { 'descriptions.en': { $exists: false } },
-              { 'descriptions.en.full': { $exists: false } },
-              { 'descriptions.en.full': '' },
-              { 'descriptions.en.full': null },
-            ],
-          })
-            .select('name country countryCode state tags language votes bitrate codec homepage slug')
-            .lean()
-            .cursor();
-
-          const BATCH = 500;
-          const bulk: any[] = [];
-
-          for await (const doc of cursor) {
-            job.processed++;
-            const s = doc as any;
-
-            try {
-              const { full, meta } = buildTemplateDescription({
-                name: s.name,
-                country: s.country,
-                countryCode: s.countryCode,
-                state: s.state,
-                tags: s.tags,
-                language: s.language,
-                votes: s.votes,
-                bitrate: s.bitrate,
-                codec: s.codec,
-                homepage: s.homepage,
-              });
-
-              if (!full) {
-                job.skipped++;
-                continue;
-              }
-
-              bulk.push({
-                updateOne: {
-                  filter: { _id: s._id },
-                  update: { $set: { 'descriptions.en.full': full, 'descriptions.en.meta': meta } },
-                },
-              });
-              job.filled++;
-              if (s.votes && s.votes >= 1000) {
-                job.aiReady++;
-              }
-            } catch {
-              job.skipped++;
-            }
-
-            if (bulk.length >= BATCH) {
-              await Station.bulkWrite(bulk, { ordered: false });
-              bulk.length = 0;
-            }
+    async (_req: Request,res: Response)=>{
+      if(activeFillTemplatesJob?.isRunning)return void res.status(409).json({error:'already_running',job:activeFillTemplatesJob});
+      let leader;
+      try{leader=await pgCoverage().acquireJob('station-descriptions-maintenance');}
+      catch(error:any){return void res.status(503).json({error:error?.message||'database_unavailable'});}
+      if(!leader)return void res.status(409).json({error:'already_running'});
+      const job:FillTemplatesJobState={jobId:`fill-templates-${Date.now()}`,startedAt:new Date(),finishedAt:null,processed:0,filled:0,skipped:0,aiReady:0,isRunning:true,lastError:null};
+      activeFillTemplatesJob=job;
+      const missingEnglish={$or:[{'descriptions.en':{$exists:false}},{'descriptions.en.full':{$exists:false}},{'descriptions.en.full':''},{'descriptions.en.full':null}]};
+      void(async()=>{
+        try{
+          for await(const station of pgCatalog().iterate(missingEnglish,{fields:['name','country','countryCode','state','tags','language','votes','bitrate','codec','homepage','slug']})){
+            leader.assertOwned();job.processed++;
+            let description;
+            try{description=buildTemplateDescription(station as Parameters<typeof buildTemplateDescription>[0]);}
+            catch(error){job.skipped++;logger.error('[fill-templates] template generation failed:',error);continue;}
+            if(!description.full){job.skipped++;continue;}
+            leader.assertOwned();
+            const result=await pgCatalog().update({_id:station._id,...missingEnglish,'manualEditFields.descriptions':{$ne:true}},{$set:{'descriptions.en.full':description.full,'descriptions.en.meta':description.meta}},{respectManualFields:true});
+            job.filled+=result.modifiedCount;
+            if(result.modifiedCount&&station.votes>=1000)job.aiReady++;
+            if(!result.modifiedCount)job.skipped++;
           }
-
-          if (bulk.length > 0) {
-            await Station.bulkWrite(bulk, { ordered: false });
-          }
-        } catch (err: any) {
-          job.lastError = err?.message || String(err);
-          logger.error('[fill-templates] crashed:', err);
-        } finally {
-          job.isRunning = false;
-          job.finishedAt = new Date();
-          logger.log(`[fill-templates] done: processed=${job.processed} filled=${job.filled} skipped=${job.skipped} aiReady=${job.aiReady}`);
-        }
-      })();
-
-      res.json({ ok: true, job });
+        }catch(error:any){job.lastError=error?.message||String(error);logger.error('[fill-templates] failed:',error);}
+        finally{try{await leader.release();}finally{job.isRunning=false;job.finishedAt=new Date();}}
+      })().catch(error=>{job.lastError=String(error);logger.error('[fill-templates] release failed:',error);});
+      res.json({ok:true,job});
     },
   );
 

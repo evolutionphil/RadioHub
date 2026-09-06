@@ -42,10 +42,7 @@ import {
   hasCompleteSeoTranslations,
 } from '@workspace/seo-shared/seo-config';
 import { logger } from '../utils/logger';
-import {
-  SeoQualifiedLanguagesLkg,
-  Translation,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -178,16 +175,7 @@ async function loadTranslationsFromDb(
   lang: string,
 ): Promise<Record<string, string> | null> {
   try {
-    const docs = await Translation.find({ language: lang })
-      .populate('keyId')
-      .lean()
-      .maxTimeMS(60000);
-    const map: Record<string, string> = {};
-    for (const t of docs as any[]) {
-      if (t?.keyId?.key && t?.value) {
-        map[t.keyId.key] = t.value;
-      }
-    }
+    const map = await pgLocalization().getTranslations(lang);
     if (Object.keys(map).length === 0) return null;
     // Backfill the in-memory cache so subsequent reads are O(1).
     try {
@@ -200,7 +188,7 @@ async function loadTranslationsFromDb(
     logger.warn(
       `⚠️ qualified-languages: DB fallback failed for ${lang} — ${(err as any)?.message?.slice(0, 120) || err}`,
     );
-    return null;
+    throw err;
   }
 }
 
@@ -270,6 +258,7 @@ async function computeFromTranslations(): Promise<string[]> {
   const CONCURRENCY = 4;
   let cursor = 0;
   let dbFallbacks = 0;
+  let loadFailed = false;
   await Promise.all(
     Array.from({ length: Math.min(CONCURRENCY, misses.length) }, async () => {
       while (cursor < misses.length) {
@@ -282,6 +271,7 @@ async function computeFromTranslations(): Promise<string[]> {
             if (hasCompleteSeoTranslations(translations)) qualified.push(lang);
           }
         } catch (err) {
+          loadFailed = true;
           logger.warn(
             `⚠️ qualified-languages: skipping ${lang} — translation load failed`,
           );
@@ -289,6 +279,8 @@ async function computeFromTranslations(): Promise<string[]> {
       }
     }),
   );
+
+  if (loadFailed) throw new Error('Qualified-language computation failed because PostgreSQL translations could not be read');
 
   if (dbFallbacks > 0) {
     logger.log(
@@ -300,7 +292,7 @@ async function computeFromTranslations(): Promise<string[]> {
 
 async function loadLkg(): Promise<QualifiedLanguagesState | null> {
   try {
-    const doc = await SeoQualifiedLanguagesLkg.findOne({ key: LKG_KEY }).lean();
+    const doc = await pgLocalization().getQualifiedLanguagesLkg(LKG_KEY);
     if (!doc) return null;
     if (doc.expiresAt && doc.expiresAt.getTime() < Date.now()) {
       logger.warn(`⚠️ qualified-languages: LKG expired at ${doc.expiresAt.toISOString()}`);
@@ -315,28 +307,17 @@ async function loadLkg(): Promise<QualifiedLanguagesState | null> {
     };
   } catch (err) {
     logger.error('❌ qualified-languages: LKG read failed', err);
-    return null;
+    throw err;
   }
 }
 
 async function persistLkg(languages: string[], hash: string): Promise<void> {
   try {
     const now = new Date();
-    await SeoQualifiedLanguagesLkg.findOneAndUpdate(
-      { key: LKG_KEY },
-      {
-        $set: {
-          languages,
-          hash,
-          source: 'computed',
-          computedAt: now,
-          expiresAt: new Date(now.getTime() + LKG_TTL_MS),
-        },
-      },
-      { upsert: true, returnDocument: 'after' },
-    );
+    await pgLocalization().saveQualifiedLanguagesLkg({ key: LKG_KEY, languages, hash, source: 'computed', computedAt: now, expiresAt: new Date(now.getTime()+LKG_TTL_MS) });
   } catch (err) {
     logger.error('❌ qualified-languages: LKG persist failed', err);
+    throw err;
   }
 }
 
@@ -385,7 +366,15 @@ export async function getQualifiedLanguagesState(): Promise<QualifiedLanguagesSt
 
 async function doComputeAndCache(): Promise<QualifiedLanguagesState> {
   const now = Date.now();
-  const computed = await computeFromTranslations();
+  let computed: string[];
+  try {
+    computed = await computeFromTranslations();
+  } catch (error) {
+    const lkg = await loadLkg();
+    if (!lkg) throw error;
+    memoryCache = { state: lkg, expiresAt: now + 30_000 };
+    return lkg;
+  }
 
   // Try to load LKG up front so we can compare sizes for shrink protection.
   const lkg = await loadLkg();
@@ -415,9 +404,8 @@ async function doComputeAndCache(): Promise<QualifiedLanguagesState> {
       computedAt: new Date(),
       expiresAt: new Date(now + CACHE_TTL_MS),
     };
+    await persistLkg(computed, hash);
     memoryCache = { state, expiresAt: now + CACHE_TTL_MS };
-    // Persist LKG asynchronously (do not block response on Mongo write).
-    void persistLkg(computed, hash);
     logger.log(
       `✅ qualified-languages: ${computed.length}/${ACTIVE_SITEMAP_LANGUAGES.length} computed, hash=${hash}`,
     );
@@ -565,40 +553,19 @@ export async function initializeQualifiedLanguages(): Promise<QualifiedLanguages
       const hash = hashLanguages(seed);
       const now = new Date();
       try {
-        await SeoQualifiedLanguagesLkg.findOneAndUpdate(
-          { key: LKG_KEY },
-          {
-            $set: {
-              languages: seed,
-              hash,
-              source: 'seed',
-              computedAt: now,
-              expiresAt: new Date(now.getTime() + LKG_TTL_MS),
-            },
-          },
-          { upsert: true, returnDocument: 'after' },
-        );
+        await pgLocalization().saveQualifiedLanguagesLkg({ key: LKG_KEY, languages: seed, hash, source: 'seed', computedAt: now, expiresAt: new Date(now.getTime()+LKG_TTL_MS) });
         logger.warn(
           `⚠️ qualified-languages: seeded LKG with emergency fallback (${seed.length} langs, hash=${hash})`,
         );
       } catch (seedErr) {
         logger.error('❌ qualified-languages: emergency seed failed', seedErr);
+        throw seedErr;
       }
       // Try one more time — should now find the seed.
       try {
         return await getQualifiedLanguagesState();
-      } catch {
-        // Truly catastrophic — no Mongo. Return seed in memory only so warm-up
-        // doesn't block server startup; routes will still 503 if Mongo down.
-        const state: QualifiedLanguagesState = {
-          languages: seed,
-          hash,
-          source: 'seed',
-          computedAt: now,
-          expiresAt: null,
-        };
-        memoryCache = { state, expiresAt: Date.now() + 30 * 1000 };
-        return state;
+      } catch (error) {
+        throw error;
       }
     }
     throw err;

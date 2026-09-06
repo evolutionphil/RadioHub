@@ -2,7 +2,7 @@
  * Regression tests for the rest of the admin Genre actions on
  * `translation-admin-routes.ts` (Task #291). Task #215 already covers
  * `POST /api/admin/genres/:id/merge-into-winner`; this file mirrors the
- * same mocked-mongoose pattern for the remaining one-button-in-production
+ * same native SQL transport fixture pattern for the remaining one-button-in-production
  * actions on the same route file:
  *
  *   - `GET  /api/admin/genres`        — list with pagination, search,
@@ -30,6 +30,7 @@
  */
 import { test, mock, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { genreAdminPgFixture } from './helpers/genre-admin-pg-fixture';
 import express, {
   type Express,
   type Request,
@@ -40,7 +41,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
 
 // ---------------------------------------------------------------------------
-// In-memory state used by the mocked Mongo models.
+// In-memory records behind the native PostgreSQL transport fixture.
 // ---------------------------------------------------------------------------
 
 interface FakeGenreRow {
@@ -77,239 +78,14 @@ interface UpsertCall {
 let upsertCalls: UpsertCall[] = [];
 
 // ---------------------------------------------------------------------------
-// Tiny query / chain shims that match the surface used by the routes under
-// test. We keep these private to this test file rather than sharing with
-// the merge test so future tweaks here can't break that suite.
-// ---------------------------------------------------------------------------
-
-interface GenreQuery {
-  _filter: Record<string, unknown>;
-  _sort: Record<string, 1 | -1>;
-  _skip: number;
-  _limit: number;
-  sort(s: Record<string, 1 | -1>): GenreQuery;
-  skip(n: number): GenreQuery;
-  limit(n: number): GenreQuery;
-  lean(): Promise<FakeGenreRow[]>;
-}
-
-function applyGenreFilter(rows: FakeGenreRow[], filter: Record<string, unknown>): FakeGenreRow[] {
-  return rows.filter((row) => {
-    for (const [key, raw] of Object.entries(filter)) {
-      if (key === 'name') {
-        const v = raw as { $regex?: string; $options?: string };
-        if (v.$regex) {
-          const re = new RegExp(v.$regex, v.$options ?? '');
-          if (!re.test(row.name)) return false;
-        }
-        continue;
-      }
-      if (key === 'cleanupDemotion.reason') {
-        const v = raw as { $in?: string[] };
-        const reason = row.cleanupDemotion?.reason;
-        if (!v.$in || !reason || !v.$in.includes(reason)) return false;
-        continue;
-      }
-    }
-    return true;
-  });
-}
-
-function makeGenreQuery(filter: Record<string, unknown>): GenreQuery {
-  const q: GenreQuery = {
-    _filter: filter,
-    _sort: {},
-    _skip: 0,
-    _limit: Number.POSITIVE_INFINITY,
-    sort(s) {
-      this._sort = s;
-      return this;
-    },
-    skip(n) {
-      this._skip = n;
-      return this;
-    },
-    limit(n) {
-      this._limit = n;
-      return this;
-    },
-    async lean() {
-      const filtered = applyGenreFilter(genres, this._filter);
-      const sortKey = Object.keys(this._sort)[0];
-      if (sortKey) {
-        const dir = this._sort[sortKey];
-        const get = (row: FakeGenreRow): unknown => {
-          if (sortKey === 'cleanupDemotion.demotedAt') {
-            return row.cleanupDemotion?.demotedAt ?? null;
-          }
-          return (row as unknown as Record<string, unknown>)[sortKey];
-        };
-        filtered.sort((a, b) => {
-          const av = get(a);
-          const bv = get(b);
-          if (av == null && bv == null) return 0;
-          if (av == null) return 1;
-          if (bv == null) return -1;
-          if (av < bv) return -1 * dir;
-          if (av > bv) return 1 * dir;
-          return 0;
-        });
-      }
-      return filtered.slice(this._skip, this._skip + this._limit);
-    },
-  };
-  return q;
-}
-
-function fakeGenreFindById<T = FakeGenreRow | null>(id: string) {
-  const row = genres.find((g) => g._id === String(id)) ?? null;
-  const q: {
-    select: () => typeof q;
-    lean: <U = T>() => Promise<U>;
-  } = {
-    select: () => q,
-    lean: async () => row as unknown as never,
-  };
-  return q;
-}
-
-const FakeGenreModel = {
-  countDocuments: async (filter: Record<string, unknown>) =>
-    applyGenreFilter(genres, filter).length,
-  find: (filter: Record<string, unknown>) => makeGenreQuery(filter),
-  findById: (id: string) => fakeGenreFindById(id),
-  findOneAndUpdate: async (
-    filter: { slug?: string },
-    payload: Partial<FakeGenreRow>,
-  ) => {
-    upsertCalls.push({ filter, payload });
-    const existing = genres.find((g) => g.slug === filter.slug);
-    if (existing) {
-      Object.assign(existing, payload);
-      return existing;
-    }
-    const created: FakeGenreRow = {
-      _id: `gen-${genres.length + 1}`,
-      name: payload.name ?? '',
-      slug: payload.slug ?? filter.slug ?? '',
-      ...payload,
-    };
-    genres.push(created);
-    return created;
-  },
-};
-
-interface StationQuery {
-  select(): StationQuery;
-  sort(s: Record<string, 1 | -1>): StationQuery;
-  limit(n: number): StationQuery;
-  lean(): Promise<FakeStationRow[]>;
-}
-
-function matchStation(st: FakeStationRow, filter: Record<string, unknown>): boolean {
-  // Two filter shapes are supported:
-  //   1. The populate route's "has a usable tags or genre" $or shape.
-  //   2. The merge-preview route's regex-based $or shape on tags/genre.
-  if (!('$or' in filter)) return true;
-  const clauses = filter.$or as Array<Record<string, unknown>>;
-  return clauses.some((clause) => {
-    if ('tags' in clause) {
-      const v = clause.tags as { $regex?: RegExp; $exists?: boolean; $nin?: unknown[] };
-      if (v.$regex instanceof RegExp) {
-        return typeof st.tags === 'string' && v.$regex.test(st.tags);
-      }
-      return typeof st.tags === 'string' && st.tags.trim().length > 0;
-    }
-    if ('genre' in clause) {
-      const v = clause.genre as { $regex?: RegExp; $exists?: boolean; $nin?: unknown[] };
-      if (v.$regex instanceof RegExp) {
-        return typeof st.genre === 'string' && v.$regex.test(st.genre);
-      }
-      return typeof st.genre === 'string' && st.genre.trim().length > 0;
-    }
-    return false;
-  });
-}
-
-function makeStationQuery(filter: Record<string, unknown>): StationQuery {
-  let _sort: Record<string, 1 | -1> = {};
-  let _limit = Number.POSITIVE_INFINITY;
-  const q: StationQuery = {
-    select() {
-      return q;
-    },
-    sort(s) {
-      _sort = s;
-      return q;
-    },
-    limit(n) {
-      _limit = n;
-      return q;
-    },
-    async lean() {
-      const matches = stations.filter((s) => matchStation(s, filter));
-      const sortKey = Object.keys(_sort)[0];
-      if (sortKey) {
-        const dir = _sort[sortKey];
-        matches.sort((a, b) => {
-          const av = (a as unknown as Record<string, unknown>)[sortKey];
-          const bv = (b as unknown as Record<string, unknown>)[sortKey];
-          if (av == null && bv == null) return 0;
-          if (av == null) return 1;
-          if (bv == null) return -1;
-          if (av < bv) return -1 * dir;
-          if (av > bv) return 1 * dir;
-          return 0;
-        });
-      }
-      return matches.slice(0, _limit);
-    },
-  };
-  return q;
-}
-
-const FakeStationModel = {
-  find: (filter: Record<string, unknown>): StationQuery => makeStationQuery(filter),
-  countDocuments: async (filter: Record<string, unknown>) =>
-    stations.filter((s) => matchStation(s, filter)).length,
-};
-
-// ---------------------------------------------------------------------------
-// Module mocks — installed BEFORE the route module is imported.
-// ---------------------------------------------------------------------------
-
-// `normalizeGenreSlug` and `SAFE_GENRE_SLUG_RE` are exercised by the
-// populate route's safety guard, so we mock them with the actual contract
-// the route relies on (lowercase + dash-separated, non-empty).
-const SAFE_GENRE_SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
-function normalizeGenreSlug(s: string): string {
-  return String(s ?? '')
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-}
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Genre: FakeGenreModel,
-    Station: FakeStationModel,
-    TranslationKey: {},
-    Translation: {},
-    TranslationLanguage: {},
-    User: {},
-    Language: {},
-    UserFavorite: {},
-    UserNotification: {},
-    UserFollow: {},
-    AuthToken: {},
-    StationRating: {},
-    SyncLog: {},
-    BlacklistedStation: {},
-    SAFE_GENRE_SLUG_RE,
-    normalizeGenreSlug,
-  },
-});
+const fixtureAudits:any[]=[];
+const nativeFixture=genreAdminPgFixture({genres:()=>genres,stations:()=>stations,audits:()=>fixtureAudits,upsert:payload=>upsertCalls.push({filter:{slug:payload.slug},payload})});
+mock.module('../src/postgres-runtime',{namedExports:{getPostgresPool: () => nativeFixture.pool, getPostgresCoordinationPool: () => nativeFixture.pool,closePostgres:async()=>{}}});
+mock.module('../src/data/postgres-catalog-store',{namedExports:{
+  pgCatalog:()=>nativeFixture.catalog,pgSyncLogs:async()=>[],PostgresCatalogStore:class {},
+}});
+// The real native genre-admin store executes its merge transaction against the
+// fixture transport; no Mongoose models or fake merge business logic are used.
 
 mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
   namedExports: {
@@ -396,6 +172,7 @@ after(async () => {
 });
 
 beforeEach(() => {
+  fixtureAudits.length=0;
   genres = [];
   stations = [];
   upsertCalls = [];

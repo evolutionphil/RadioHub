@@ -14,11 +14,9 @@
  * Invoked from `routes.ts` alongside `seedSearchPageTranslations()`.
  */
 
-import {
-  Translation,
-  TranslationKey,
-} from '@workspace/db-shared/mongo-schemas';
+
 import { logger } from '../utils/logger';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 interface PremiumKeyDef {
   key: string;
@@ -682,93 +680,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 // ── Seeder ────────────────────────────────────────────────────────────────────
 
 export async function seedPremiumTranslations(): Promise<void> {
-  try {
-    // Step 1 — upsert TranslationKey rows (one bulkWrite, idempotent)
-    const keyOps = PREMIUM_KEYS.map((def) => ({
-      updateOne: {
-        filter: { key: def.key },
-        update: {
-          $setOnInsert: {
-            key: def.key,
-            defaultValue: def.defaultValue,
-            description: def.description,
-            category: 'premium',
-            createdAt: new Date(),
-          },
-          $set: { updatedAt: new Date() },
-        },
-        upsert: true,
-      },
-    }));
-    if (keyOps.length > 0) {
-      await TranslationKey.bulkWrite(keyOps, { ordered: false });
-    }
-
-    // Step 2 — fetch generated _ids
-    const keyDocs = await TranslationKey.find({
-      key: { $in: PREMIUM_KEYS.map((d) => d.key) },
-    })
-      .select({ _id: 1, key: 1 })
-      .lean();
-    const keyIdByKey = new Map<string, unknown>();
-    for (const doc of keyDocs) keyIdByKey.set(doc.key, doc._id);
-
-    // Step 3 — skip rows already populated (admin-edited copy wins)
-    const existing = await Translation.find({
-      keyId: { $in: keyDocs.map((d) => d._id) },
-    })
-      .select({ keyId: 1, language: 1, value: 1 })
-      .lean();
-    const populated = new Set<string>();
-    for (const tx of existing) {
-      if (typeof tx.value === 'string' && tx.value.trim().length > 0) {
-        populated.add(`${String(tx.keyId)}::${tx.language}`);
-      }
-    }
-
-    // Step 4 — build upsert ops for missing rows
-    const txOps: Parameters<typeof Translation.bulkWrite>[0] = [];
-    for (const [language, values] of Object.entries(TRANSLATIONS)) {
-      for (const def of PREMIUM_KEYS) {
-        const keyId = keyIdByKey.get(def.key);
-        if (!keyId) continue;
-        const value = values[def.key];
-        if (typeof value !== 'string' || value.trim().length === 0) continue;
-        if (populated.has(`${String(keyId)}::${language}`)) continue;
-        txOps.push({
-          updateOne: {
-            filter: { keyId, language },
-            update: {
-              $set: {
-                keyId,
-                language,
-                value,
-                isCompleted: true,
-                lastModified: new Date(),
-              },
-              $setOnInsert: { createdAt: new Date() },
-            },
-            upsert: true,
-          },
-        });
-      }
-    }
-
-    // Step 5 — write in 500-op chunks
-    if (txOps.length > 0) {
-      const CHUNK = 500;
-      for (let i = 0; i < txOps.length; i += CHUNK) {
-        await Translation.bulkWrite(txOps.slice(i, i + CHUNK), {
-          ordered: false,
-        });
-      }
-      logger.log(
-        `✅ seedPremiumTranslations: backfilled ${txOps.length} premium_*/onboarding_* rows ` +
-          `across ${Object.keys(TRANSLATIONS).length} languages.`,
-      );
-    }
-  } catch (err) {
-    // Non-fatal — TV falls back to English inline strings
-    logger.error('seedPremiumTranslations failed (non-fatal):', err);
+  {
+    const changed = await pgLocalization().seedTranslationBundle(PREMIUM_KEYS, TRANSLATIONS, 'premium');
+    logger.log(`seedPremiumTranslations: backfilled ${changed} PostgreSQL rows`);
+    return;
   }
+
 }

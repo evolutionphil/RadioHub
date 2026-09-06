@@ -15,7 +15,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
-import { TvTelemetryDaily } from '@workspace/db-shared/mongo-schemas';
+import { listTvTelemetry, recordTvTelemetry } from '../data/postgres-tv-store';
 import { logger } from '../utils/logger';
 
 const SRC_VALUES  = new Set(['remote', 'local']);
@@ -65,20 +65,7 @@ export function registerTvTelemetryRoutes(app: Express, deps: any) {
         ? req.headers['cf-ipcountry'].toUpperCase()
         : undefined;
 
-      const day = toDay(new Date());
-      const id  = `${day}|${plat}|${src}|${v}`;
-
-      const update: Record<string, any> = {
-        $inc: { count: 1 },
-        $set: { day, plat, src, v, updatedAt: new Date(), ...(country ? { country } : {}) },
-      };
-      if (did) update.$addToSet = { uniqueDids: did };
-
-      await TvTelemetryDaily.findOneAndUpdate(
-        { _id: id },
-        update,
-        { upsert: true },
-      );
+      await recordTvTelemetry({ src, plat, v, did, app: VERSION_RE.test(q.app ?? '') ? q.app : '', country: country?.slice(0, 2) });
     } catch (err: any) {
       // Never let a telemetry write block the beacon response (already sent).
       logger.error('[tv-telemetry] write failed:', err?.message);
@@ -88,13 +75,11 @@ export function registerTvTelemetryRoutes(app: Express, deps: any) {
   // ── Admin stats ───────────────────────────────────────────────────────────
   app.get('/api/admin/tv-telemetry', requireAdmin, async (req: Request, res: Response) => {
     try {
-      const days = Math.min(parseInt((req.query.days as string) || '7', 10), 90);
+      const parsedDays = parseInt((req.query.days as string) || '7', 10);
+      const days = Number.isFinite(parsedDays) ? Math.max(1, Math.min(parsedDays, 90)) : 7;
       const since = toDay(new Date(Date.now() - days * 86_400_000));
 
-      const rows = await TvTelemetryDaily
-        .find({ day: { $gte: since } })
-        .sort({ day: -1 })
-        .lean();
+      const rows = await listTvTelemetry(since);
 
       // Summarise: per version × src, sum count + unique did count
       const byVersion: Record<string, { remote: number; local: number; uniqueTvs: Set<string> }> = {};

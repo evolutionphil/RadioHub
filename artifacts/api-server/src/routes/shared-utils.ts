@@ -24,7 +24,7 @@ setInterval(() => {
   for (const [key, value] of inflightRequests) {
     if (now - value.createdAt > TIMEOUT) inflightRequests.delete(key);
   }
-}, 30000);
+}, 30000).unref();
 
 export async function deduplicatedFetch<T>(cacheKey: string, fetchFn: () => Promise<T>): Promise<T> {
   const existing = inflightRequests.get(cacheKey);
@@ -36,7 +36,7 @@ export async function deduplicatedFetch<T>(cacheKey: string, fetchFn: () => Prom
 
 export const TV_STATION_FIELDS = {
   _id: 1, name: 1, slug: 1, url: 1, urlResolved: 1, url_resolved: 1,
-  favicon: 1, tags: 1, country: 1, countrycode: 1,
+  favicon: 1, tags: 1, country: 1, countryCode: 1, countrycode: 1,
   state: 1, language: 1, votes: 1, clickcount: 1, clickCount: 1,
   codec: 1, bitrate: 1, hls: 1, logoAssets: 1
 };
@@ -52,7 +52,7 @@ export function tvSlimStation(s: any) {
     _id: s._id, name: s.name, slug: s.slug, url: s.url,
     urlResolved: s.urlResolved || s.url_resolved || '',
     favicon: s.favicon, tags: s.tags, country: s.country,
-    countrycode: s.countrycode || '', state: s.state, language: s.language,
+    countrycode: s.countryCode || s.countrycode || '', state: s.state, language: s.language,
     votes: s.votes || 0, clickCount: s.clickCount || s.clickcount || 0,
     codec: s.codec, bitrate: s.bitrate, hls: s.hls,
     logoAssets: s.logoAssets || null

@@ -1,8 +1,8 @@
 import cron from 'node-cron';
 import {
-  AdminSettingHistory,
   ADMIN_SETTING_HISTORY_RETENTION_PER_KEY,
-} from '@workspace/db-shared/mongo-schemas';
+  pgAdminSettings,
+} from '../data/postgres-admin-settings-store';
 import { logger } from '../utils/logger';
 
 /**
@@ -110,41 +110,13 @@ class ScheduledAdminSettingHistoryPrune {
     let errorMsg: string | undefined;
 
     try {
-      const keys = (await AdminSettingHistory.distinct('key')) as string[];
-      for (const key of keys) {
-        keysProcessed += 1;
-        // Find the cut-off `changedAt` of the Nth most recent row. Rows
-        // strictly older than that timestamp can be deleted in one go.
-        const cutoffDoc = await AdminSettingHistory.find({ key })
-          .sort({ changedAt: -1, _id: -1 })
-          .skip(ADMIN_SETTING_HISTORY_RETENTION_PER_KEY - 1)
-          .limit(1)
-          .select({ changedAt: 1, _id: 1 })
-          .lean();
-        if (!cutoffDoc.length) continue; // fewer than N rows for this key
-        const cutoff = cutoffDoc[0].changedAt;
-        const cutoffId = cutoffDoc[0]._id;
-        // Delete anything older than the cutoff timestamp, plus anything
-        // sharing the cutoff timestamp but with an older _id (so we don't
-        // accidentally keep N+1 when several rows share the same ms).
-        const result = await AdminSettingHistory.deleteMany({
-          key,
-          $or: [
-            { changedAt: { $lt: cutoff } },
-            { changedAt: cutoff, _id: { $lt: cutoffId } },
-          ],
-        });
-        const trimmed = result.deletedCount ?? 0;
-        rowsTrimmed += trimmed;
-        if (trimmed > 0) {
-          logger.log(
-            `🗂️  Admin-setting-history prune: trimmed ${trimmed} row(s) for key="${key}" (kept ${ADMIN_SETTING_HISTORY_RETENTION_PER_KEY})`,
-          );
-        }
-      }
+      const result = await pgAdminSettings().pruneHistory();
+      keysProcessed = result.keysProcessed;
+      rowsTrimmed = result.rowsTrimmed;
     } catch (err: any) {
       errorMsg = err?.message || String(err);
       logger.error('❌ Admin-setting-history prune error:', errorMsg);
+      throw err;
     } finally {
       const finishedAt = new Date();
       this.lastRunAt = finishedAt;

@@ -8,7 +8,7 @@ export function isQuotaExceeded(): boolean {
   if (!quotaExceeded) return false;
   if (Date.now() - quotaExceededAt > QUOTA_COOLDOWN_MS) {
     quotaExceeded = false;
-    console.log('📦 MongoDB quota guard reset — retrying writes');
+    console.log('📦 PostgreSQL quota guard reset — retrying writes');
     return false;
   }
   return true;
@@ -21,11 +21,8 @@ export function markQuotaExceeded(): void {
 
 export function isQuotaError(error: any): boolean {
   if (!error) return false;
-  const msg = (error?.message || error?.errmsg || '').toLowerCase();
-  return msg.includes('over your space quota') ||
-    msg.includes('quota') ||
-    error?.code === 8000 ||
-    error?.codeName === 'AtlasError';
+  // PostgreSQL disk_full; service-level string matching would misclassify unrelated failures.
+  return String(error.code) === '53100';
 }
 
 export function handleQuotaError(context: string, error: any): void {
@@ -34,7 +31,7 @@ export function handleQuotaError(context: string, error: any): void {
     const now = Date.now();
     if (now - lastQuotaLog > QUOTA_LOG_INTERVAL) {
       lastQuotaLog = now;
-      console.warn(`⚠️ MongoDB quota exceeded — writes paused for 10min (${context})`);
+      console.warn(`⚠️ PostgreSQL quota exceeded — writes paused for 10min (${context})`);
     }
     return;
   }
@@ -46,13 +43,17 @@ export async function safeWrite<T>(
   fn: () => Promise<T>,
   optional: boolean = false
 ): Promise<T | null> {
-  if (isQuotaExceeded()) return null;
+  if (isQuotaExceeded()) {
+    if (optional) return null;
+    throw Object.assign(new Error(`PostgreSQL writes temporarily paused after disk capacity failure (${context})`), { code: '53100' });
+  }
   try {
     return await fn();
   } catch (error: any) {
     if (isQuotaError(error)) {
       handleQuotaError(context, error);
-      return null;
+      if (optional) return null;
+      throw error;
     }
     if (optional) {
       console.error(`❌ ${context} (optional, skipped):`, error?.message || error);

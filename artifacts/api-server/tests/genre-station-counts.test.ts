@@ -21,6 +21,7 @@
  */
 import { test, mock, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createNativePostgresFixture } from './helpers/native-postgres-fixture';
 import express, {
   type Express,
   type Request,
@@ -48,147 +49,13 @@ interface FakeGenre {
 let stations: FakeStation[] = [];
 let genres: FakeGenre[] = [];
 
-// Mirrors the documented behavior of the aggregation pipeline:
-//   genre + tags → lowercased → comma-split + trimmed → de-duplicated → grouped.
-function aggregateTagCounts(): Array<{ _id: string; count: number }> {
-  const counts = new Map<string, number>();
-  for (const s of stations) {
-    const tags = new Set<string>();
-    if (s.genre != null && s.genre !== '') {
-      tags.add(String(s.genre).toLowerCase());
-    }
-    if (s.tags != null && s.tags !== '') {
-      for (const raw of String(s.tags).split(',')) {
-        const t = raw.trim().toLowerCase();
-        if (t !== '') tags.add(t);
-      }
-    }
-    for (const t of tags) {
-      if (t === '') continue;
-      counts.set(t, (counts.get(t) ?? 0) + 1);
-    }
-  }
-  return [...counts.entries()].map(([_id, count]) => ({ _id, count }));
+let fixture: Awaited<ReturnType<typeof createNativePostgresFixture>>;
+async function seedFixtures(){
+  for(const [index,station] of stations.entries())await fixture.insert('stations',{_id:'s'+index,stationuuid:'uuid-'+index,name:'Station '+index,url:'https://example.invalid/'+index,...station});
+  for(const genre of genres)await fixture.insert('genres',{name:genre.slug,...genre});
 }
-
-let aggregateCallCount = 0;
-let aggregateDelayMs = 0;
-
-const FakeStationModel = {
-  aggregate: (_pipeline: unknown) => {
-    aggregateCallCount += 1;
-    const result = aggregateTagCounts();
-    const exec = async () => {
-      if (aggregateDelayMs > 0) {
-        await new Promise<void>((r) => setTimeout(r, aggregateDelayMs));
-      }
-      return result;
-    };
-    // Mongoose Aggregate has `.option()` chainable returning a thenable.
-    const aggregate = {
-      option(_opts: unknown) {
-        return aggregate;
-      },
-      then<TResult1 = typeof result, TResult2 = never>(
-        onfulfilled?: ((value: typeof result) => TResult1 | PromiseLike<TResult1>) | null,
-        onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
-      ) {
-        return exec().then(onfulfilled, onrejected);
-      },
-    };
-    return aggregate;
-  },
-};
-
-interface FakeQuery<T> extends PromiseLike<T> {
-  select: () => FakeQuery<T>;
-  sort: () => FakeQuery<T>;
-  limit: () => FakeQuery<T>;
-  lean: <U = T>() => Promise<U>;
-}
-function fakeQuery<T>(value: T): FakeQuery<T> {
-  const q: FakeQuery<T> = {
-    select: () => q,
-    sort: () => q,
-    limit: () => q,
-    lean: async () => value as unknown as never,
-    then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
-  };
-  return q;
-}
-
-const FakeGenreModel = {
-  find: (_query?: unknown) => fakeQuery(genres.map((g) => ({ ...g }))),
-  findOne: (query: { slug?: string }) =>
-    fakeQuery(
-      query?.slug
-        ? genres.find((g) => g.slug === query.slug) ?? null
-        : null,
-    ),
-  bulkWrite: async (
-    ops: Array<{
-      updateOne: {
-        filter: { _id: string };
-        update: { $set: { stationCount: number; updatedAt: Date } };
-      };
-    }>,
-  ) => {
-    for (const op of ops) {
-      const target = genres.find((g) => g._id === op.updateOne.filter._id);
-      if (target) target.stationCount = op.updateOne.update.$set.stationCount;
-    }
-    return { modifiedCount: ops.length };
-  },
-};
-
-// Track override rows for the admin route mock (unused by the recompute
-// endpoint itself but other handlers in the same module touch them).
-const overrideRows: unknown[] = [];
-const FakeOverrideModel = {
-  find: () => fakeQuery([...overrideRows]),
-  findOneAndUpdate: async () => ({}),
-  deleteOne: async () => ({ deletedCount: 0 }),
-  deleteMany: async () => ({ deletedCount: 0 }),
-};
-
-// ---------------------------------------------------------------------------
-// Module mocks — must run BEFORE the service / routes module is imported.
-// ---------------------------------------------------------------------------
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Station: FakeStationModel,
-    Genre: FakeGenreModel,
-    GenreWhitelistOverride: FakeOverrideModel,
-    // genre-whitelist-push-notifier (transitively imported by
-    // admin-genre-whitelist-routes) reads these. Empty stubs keep the
-    // notifier a harmless no-op during tests instead of crashing module
-    // instantiation with "does not provide an export named 'User'".
-    User: {
-      find: () => ({
-        lean: async () => [] as Array<{ _id: string }>,
-      }),
-    },
-    UserNotification: {
-      insertMany: async () => [],
-      create: async () => ({}),
-    },
-    GenreWhitelistPushLog: {
-      create: async () => ({}),
-      find: () => ({
-        sort: () => ({ limit: () => ({ lean: async () => [] }) }),
-        lean: async () => [],
-      }),
-    },
-    SAFE_GENRE_SLUG_RE: /^[a-z0-9-]+$/,
-    normalizeGenreSlug: (slug: string) =>
-      String(slug ?? '')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9-]+/g, '-')
-        .replace(/^-+|-+$/g, ''),
-  },
-});
+async function storedCounts(){return new Map<string,number>((await fixture.pool.query('SELECT id,station_count FROM genres')).rows.map(row=>[row.id,row.station_count]));}
+async function recomputeRuns(){return Number((await fixture.pool.query('SELECT count(*) AS count FROM genre_station_counts_runs')).rows[0].count);}
 
 mock.module(new URL('../src/utils/logger.ts', import.meta.url).href, {
   namedExports: {
@@ -267,6 +134,7 @@ let baseUrl: string;
 
 before(async () => {
   process.env.NODE_ENV = 'test';
+  fixture=await createNativePostgresFixture('genre_counts');
   const svc = await import('../src/services/genre-station-counts.ts');
   recomputeGenreStationCounts = svc.recomputeGenreStationCounts;
   getGenreStationCountsStatus = svc.getGenreStationCountsStatus;
@@ -290,15 +158,14 @@ before(async () => {
 });
 
 after(async () => {
-  if (!server) return;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  if(fixture) await fixture.close();
 });
 
-function resetState() {
+async function resetState() {
+  await fixture.clear('stations','genres','genre_station_counts_runs');
   stations = [];
   genres = [];
-  aggregateCallCount = 0;
-  aggregateDelayMs = 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -306,7 +173,7 @@ function resetState() {
 // ---------------------------------------------------------------------------
 
 test('recomputeGenreStationCounts rewrites Genre.stationCount from genre + comma-split tags (lowercased, deduped)', async () => {
-  resetState();
+  await resetState();
   // Seed: a mix of `genre` field, `tags` strings (mixed case, surrounding
   // whitespace, duplicates across the two fields), and noise that should
   // NOT count (empty / unwhitelisted slugs).
@@ -331,9 +198,10 @@ test('recomputeGenreStationCounts rewrites Genre.stationCount from genre + comma
     { _id: 'g-empty', slug: 'metal', stationCount: 4 }, // no matching tag → 0
   ];
 
+  await seedFixtures();
   await recomputeGenreStationCounts('test');
 
-  const byId = new Map(genres.map((g) => [g._id, g.stationCount] as const));
+  const byId = await storedCounts();
   // s1 (genre rock) + s2 (tag rock) + s3 (genre rock) + s4 (genre+tag rock, deduped) = 4
   assert.equal(byId.get('g-rock'), 4, 'rock should count each station once even if both genre & tag say rock');
   // s5 (genre jazz) + s6 (tag jazz) = 2
@@ -357,12 +225,12 @@ test('recomputeGenreStationCounts rewrites Genre.stationCount from genre + comma
 });
 
 test('recomputeGenreStationCounts coalesces concurrent callers into a single aggregation', async () => {
-  resetState();
+  await resetState();
   stations = [{ genre: 'rock', tags: '' }];
   genres = [{ _id: 'g-rock', slug: 'rock', stationCount: 0 }];
   // Hold the aggregation open long enough that the second caller arrives
   // while the first is still running.
-  aggregateDelayMs = 50;
+  await seedFixtures();
 
   const p1 = recomputeGenreStationCounts('first');
   const p2 = recomputeGenreStationCounts('second');
@@ -375,9 +243,9 @@ test('recomputeGenreStationCounts coalesces concurrent callers into a single agg
   await Promise.all([p1, p2]);
 
   assert.equal(
-    aggregateCallCount,
+    await recomputeRuns(),
     1,
-    'Station.aggregate must run exactly once even with two overlapping callers',
+    'The durable SQL recompute must run exactly once even with two overlapping callers',
   );
   // The *first* trigger label wins — coalescing returns the original.
   assert.equal(getGenreStationCountsStatus().lastTrigger, 'first');
@@ -386,12 +254,12 @@ test('recomputeGenreStationCounts coalesces concurrent callers into a single agg
   // After the in-flight promise resolves, a new call must start a fresh
   // aggregation rather than reusing the stale one.
   await recomputeGenreStationCounts('third');
-  assert.equal(aggregateCallCount, 2, 'a post-completion call must trigger a new aggregation');
+  assert.equal(await recomputeRuns(), 2, 'a post-completion call must trigger a new aggregation');
   assert.equal(getGenreStationCountsStatus().lastTrigger, 'third');
 });
 
 test('POST /api/admin/genre-whitelist/recompute-counts returns the updated status payload', async () => {
-  resetState();
+  await resetState();
   stations = [
     { genre: 'rock', tags: '' },
     { genre: null, tags: 'rock, jazz' },
@@ -401,6 +269,7 @@ test('POST /api/admin/genre-whitelist/recompute-counts returns the updated statu
     { _id: 'g-jazz', slug: 'jazz', stationCount: 99 },
   ];
 
+  await seedFixtures();
   const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/recompute-counts`, {
     method: 'POST',
   });
@@ -426,7 +295,7 @@ test('POST /api/admin/genre-whitelist/recompute-counts returns the updated statu
   assert.ok((body.status?.lastDurationMs ?? -1) >= 0);
 
   // And the underlying Genre rows actually reflect the recompute.
-  const byId = new Map(genres.map((g) => [g._id, g.stationCount] as const));
+  const byId = await storedCounts();
   assert.equal(byId.get('g-rock'), 2);
   assert.equal(byId.get('g-jazz'), 1);
 });

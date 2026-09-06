@@ -1,359 +1,140 @@
+import { randomUUID } from 'node:crypto';
+import type pg from 'pg';
 import { WebSocket } from 'ws';
-import crypto from 'crypto';
-import { CastSession, Station, UserDevice } from '@workspace/db-shared/mongo-schemas';
+import { applyCastCommand, castCommands, createCastSession, expireCastSessions, getCastSession, listCastSessions, pairCastSession, publishCastEvent } from '../data/postgres-cast-store';
+import { getPostgresPool, getPostgresCoordinationPool } from '../postgres-runtime';
 import { logger } from '../utils/logger';
 
-interface CastClient {
-  socket: WebSocket;
-  sessionId: string;
-  role: 'mobile' | 'tv';
-  userId: string;
-  deviceId?: string;
-}
+interface CastClient { socket: WebSocket; sessionId: string; role: 'mobile'|'tv'; userId: string; deviceId?: string }
+export type CastCommand = 'play'|'pause'|'resume'|'stop'|'change_station'|'volume_up'|'volume_down'|'set_volume';
+export interface CastCommandPayload { sessionId: string; command: CastCommand; data?: { stationId?: string; volume?: number } }
 
-export type CastCommand = 'play' | 'pause' | 'resume' | 'stop' | 'change_station' | 'volume_up' | 'volume_down' | 'set_volume';
-
-export interface CastCommandPayload {
-  sessionId: string;
-  command: CastCommand;
-  data?: {
-    stationId?: string;
-    volume?: number;
-  };
-}
-
+/** WebSockets are process-local; commands and peer presence are coordinated by PostgreSQL. */
 export class CastService {
-  private clients: Map<string, CastClient> = new Map();
-  private sessionClients: Map<string, { mobile?: string; tv?: string }> = new Map();
+  private readonly nodeId = randomUUID();
+  private clients = new Map<string,CastClient>();
+  private listener: pg.PoolClient|null = null;
+  private starting: Promise<void>|null = null;
+  private heartbeat: ReturnType<typeof setInterval>|null = null;
+  private deliveryQueue: Promise<void> = Promise.resolve();
 
-  private generatePairingCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  private generateSessionId(): string {
-    return `cast_${crypto.randomBytes(16).toString('hex')}`;
-  }
-
-  async createSession(userId: string, mobileDeviceId?: string): Promise<{ sessionId: string; pairingCode: string }> {
-    await CastSession.updateMany(
-      { userId, status: { $in: ['waiting_for_pair', 'paired'] } },
-      { $set: { status: 'expired' } }
-    );
-
-    const sessionId = this.generateSessionId();
-    const pairingCode = this.generatePairingCode();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    await CastSession.create({
-      sessionId,
-      pairingCode,
-      userId,
-      mobileDeviceId,
-      status: 'waiting_for_pair',
-      isPlaying: false,
-      expiresAt,
-      lastActivityAt: new Date(),
-    });
-
-    logger.log(`📺 CAST: Session created ${sessionId} with code ${pairingCode}`);
-    return { sessionId, pairingCode };
-  }
-
-  async pairSession(pairingCode: string, tvDeviceId: string, tvUserId?: string): Promise<{ sessionId: string; userId: string } | null> {
-    const session = await CastSession.findOne({
-      pairingCode,
-      status: 'waiting_for_pair',
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (!session) return null;
-
-    session.tvDeviceId = tvDeviceId;
-    session.status = 'paired';
-    session.pairedAt = new Date();
-    session.lastActivityAt = new Date();
-    await session.save();
-
-    const mobileClientId = this.sessionClients.get(session.sessionId)?.mobile;
-    if (mobileClientId) {
-      this.sendToClient(mobileClientId, {
-        type: 'cast:paired',
-        sessionId: session.sessionId,
-        tvDeviceId,
-      });
-    }
-
-    logger.log(`📺 CAST: Session ${session.sessionId} paired with TV ${tvDeviceId}`);
-    return { sessionId: session.sessionId, userId: session.userId.toString() };
-  }
-
-  async sendCommand(sessionId: string, command: CastCommand, data?: any, fromRole?: 'mobile' | 'tv', userId?: string): Promise<boolean> {
-    const session = await CastSession.findOne({
-      sessionId,
-      status: { $in: ['paired', 'active'] },
-      expiresAt: { $gt: new Date() },
-    });
-
-    if (!session) return false;
-
-    if (fromRole === 'mobile' && userId && session.userId.toString() !== userId) return false;
-    if (fromRole !== 'mobile' && fromRole !== 'tv') return false;
-
-    if (command === 'play' || command === 'change_station') {
-      if (data?.stationId) {
-        const station = await Station.findById(data.stationId).select('name slug url_resolved favicon').lean();
-        if (station) {
-          session.currentStation = {
-            stationId: data.stationId,
-            name: (station as any).name,
-            slug: (station as any).slug,
-            streamUrl: (station as any).url_resolved || (station as any).url,
-            favicon: (station as any).favicon,
-          };
+  async start(): Promise<void> {
+    if(this.listener)return;
+    if(this.starting)return this.starting;
+    this.starting=(async()=>{
+      const client=await getPostgresCoordinationPool().connect();
+      try {
+        const schema=(await client.query('SELECT current_schema() name')).rows[0].name;
+        client.on('notification', notification=>{
+          if(notification.channel!=='radiohub_cast_events')return;
+          let notice:{schema:string;id:string};
+          try{notice=JSON.parse(notification.payload||'');}catch{return;}
+          if(notice.schema!==schema||!/^\d+$/.test(String(notice.id)))return;
+          // Preserve notification commit order, including non-commutative volume commands.
+          this.deliveryQueue=this.deliveryQueue.then(async()=>{
+            const row=(await getPostgresPool().query('SELECT session_id,payload FROM cast_events WHERE id=$1',[notice.id])).rows[0];
+            if(row)this.deliver(row.session_id,row.payload);
+          }).catch(error=>this.failConnections(error));
+        });
+        client.on('error',error=>{
+          if(this.listener===client){this.listener=null;client.release(true);this.failConnections(error);}
+        });
+        await client.query('LISTEN radiohub_cast_events');
+        this.listener=client;
+        if(!this.heartbeat){
+          this.heartbeat=setInterval(()=>{
+            void getPostgresPool().query("UPDATE cast_connections SET expires_at=now()+interval '45 seconds' WHERE node_id=$1",[this.nodeId])
+              .catch(error=>this.failConnections(error));
+          },15000);
+          this.heartbeat.unref();
         }
-      }
-      session.isPlaying = true;
-      session.status = 'active';
-    } else if (command === 'pause') {
-      session.isPlaying = false;
-    } else if (command === 'resume') {
-      session.isPlaying = true;
-    } else if (command === 'stop') {
-      session.isPlaying = false;
-      session.currentStation = undefined;
-    }
-
-    session.lastActivityAt = new Date();
-    await session.save();
-
-    const targetRole = fromRole === 'mobile' ? 'tv' : 'mobile';
-    const clients = this.sessionClients.get(sessionId);
-    const targetClientId = targetRole === 'tv' ? clients?.tv : clients?.mobile;
-
-    if (targetClientId) {
-      this.sendToClient(targetClientId, {
-        type: `cast:${command}`,
-        sessionId,
-        data: command === 'play' || command === 'change_station' ? {
-          station: session.currentStation,
-        } : data,
-      });
-    }
-
-    if (fromRole === 'mobile') {
-      const mobileClientId = clients?.mobile;
-      if (mobileClientId) {
-        this.sendToClient(mobileClientId, {
-          type: 'cast:command_ack',
-          sessionId,
-          command,
-        });
-      }
-    }
-
-    logger.log(`📺 CAST: Command '${command}' sent in session ${sessionId}`);
-    return true;
+      }catch(error){client.release(true);throw error;}
+    })();
+    try{await this.starting;}finally{this.starting=null;}
   }
 
-  async getSessionStatus(sessionId: string, userId?: string): Promise<any> {
-    const session = await CastSession.findOne({ sessionId }).lean();
-    if (!session) return null;
-
-    if (userId && session.userId.toString() !== userId) return null;
-
-    const clients = this.sessionClients.get(sessionId);
-    return {
-      sessionId: session.sessionId,
-      status: session.status,
-      isPlaying: session.isPlaying,
-      currentStation: session.currentStation,
-      mobileConnected: !!clients?.mobile,
-      tvConnected: !!clients?.tv,
-      createdAt: session.createdAt,
-      pairedAt: session.pairedAt,
-      expiresAt: session.expiresAt,
-    };
+  private failConnections(error:unknown):void {
+    logger.error('Cast coordination connection failed:',error);
+    // A dropped LISTEN channel cannot safely acknowledge delivery. Reconnecting
+    // clients receive the current durable session state instead of silent loss.
+    for(const [id,client] of this.clients){try{client.socket.close(1012,'Reconnect cast session');}catch{}this.removeClient(id);}
   }
 
-  async endSession(sessionId: string, userId?: string): Promise<boolean> {
-    const session = await CastSession.findOne({ sessionId });
-    if (!session) return false;
-
-    if (userId && session.userId.toString() !== userId) return false;
-
-    session.status = 'expired';
-    session.isPlaying = false;
-    await session.save();
-
-    const clients = this.sessionClients.get(sessionId);
-    if (clients?.tv) {
-      this.sendToClient(clients.tv, { type: 'cast:session_ended', sessionId });
-    }
-    if (clients?.mobile) {
-      this.sendToClient(clients.mobile, { type: 'cast:session_ended', sessionId });
-    }
-
-    this.sessionClients.delete(sessionId);
-    logger.log(`📺 CAST: Session ${sessionId} ended`);
-    return true;
+  async close():Promise<void>{
+    if(this.heartbeat){clearInterval(this.heartbeat);this.heartbeat=null;}
+    for(const client of this.clients.values())try{client.socket.close(1001,'Server shutting down');}catch{}
+    this.clients.clear();
+    await this.deliveryQueue;
+    await getPostgresPool().query('DELETE FROM cast_connections WHERE node_id=$1',[this.nodeId]);
+    const client=this.listener;this.listener=null;
+    if(client){try{await client.query('UNLISTEN radiohub_cast_events');client.release();}catch{client.release(true);}}
   }
 
-  async createDirectSession(userId: string, tvDeviceId: string, stationId?: string): Promise<{ sessionId: string } | null> {
-    const device = await UserDevice.findOne({ userId, deviceId: tvDeviceId, isActive: true });
-    if (!device) return null;
-
-    await CastSession.updateMany(
-      { userId, status: { $in: ['waiting_for_pair', 'paired'] } },
-      { $set: { status: 'expired' } }
-    );
-
-    const sessionId = this.generateSessionId();
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-
-    let currentStation: any = undefined;
-    if (stationId) {
-      const station = await Station.findById(stationId).select('name slug url_resolved url favicon').lean();
-      if (station) {
-        currentStation = {
-          stationId,
-          name: (station as any).name,
-          slug: (station as any).slug,
-          streamUrl: (station as any).url_resolved || (station as any).url,
-          favicon: (station as any).favicon,
-        };
-      }
-    }
-
-    await CastSession.create({
-      sessionId,
-      userId,
-      tvDeviceId,
-      mobileDeviceId: 'direct',
-      status: 'active',
-      isPlaying: !!stationId,
-      currentStation,
-      pairedAt: new Date(),
-      expiresAt,
-      lastActivityAt: new Date(),
-    });
-
-    device.lastSeenAt = new Date();
-    await device.save();
-
-    this.notifyTvDevice(tvDeviceId, {
-      type: 'cast:direct_session',
-      sessionId,
-      currentStation,
-      isPlaying: !!stationId,
-    });
-
-    logger.log(`📺 CAST: Direct session ${sessionId} created for TV ${tvDeviceId}`);
-    return { sessionId };
-  }
-
-  private notifyTvDevice(tvDeviceId: string, message: any) {
-    for (const [clientId, client] of this.clients) {
-      if (client.role === 'tv' && client.deviceId === tvDeviceId) {
-        this.sendToClient(clientId, message);
-        return;
+  private deliver(sessionId:string,payload:any):void{
+    for(const delivery of payload.deliveries||[]){
+      for(const [id,client] of this.clients){
+        if(delivery.deviceId){if(client.role!=='tv'||client.deviceId!==delivery.deviceId||client.userId!==delivery.userId)continue;}
+        else if(client.sessionId!==sessionId||(delivery.role&&client.role!==delivery.role))continue;
+        this.sendToClient(id,delivery.message);
       }
     }
   }
 
-  async getUserActiveSessions(userId: string): Promise<any[]> {
-    const sessions = await CastSession.find({
-      userId,
-      status: { $in: ['waiting_for_pair', 'paired', 'active'] },
-      expiresAt: { $gt: new Date() },
-    }).lean();
-
-    return sessions.map(s => ({
-      sessionId: s.sessionId,
-      pairingCode: s.status === 'waiting_for_pair' ? s.pairingCode : undefined,
-      status: s.status,
-      isPlaying: s.isPlaying,
-      currentStation: s.currentStation,
-      tvDeviceId: s.tvDeviceId,
-      createdAt: s.createdAt,
-      expiresAt: s.expiresAt,
-    }));
+  async createSession(userId:string,mobileDeviceId?:string):Promise<{sessionId:string;pairingCode:string}>{
+    const {sessionId,pairingCode}=await createCastSession(userId,mobileDeviceId);
+    return {sessionId,pairingCode};
   }
-
-  registerClient(clientId: string, socket: WebSocket, sessionId: string, role: 'mobile' | 'tv', userId: string, deviceId?: string) {
-    this.clients.set(clientId, { socket, sessionId, role, userId, deviceId });
-
-    if (!this.sessionClients.has(sessionId)) {
-      this.sessionClients.set(sessionId, {});
-    }
-    const sc = this.sessionClients.get(sessionId)!;
-    if (role === 'mobile') sc.mobile = clientId;
-    else sc.tv = clientId;
-
-    const otherRole = role === 'mobile' ? 'tv' : 'mobile';
-    const otherClientId = otherRole === 'tv' ? sc.tv : sc.mobile;
-    if (otherClientId) {
-      this.sendToClient(otherClientId, {
-        type: 'cast:peer_connected',
-        sessionId,
-        peerRole: role,
-      });
-    }
-
-    logger.log(`📺 CAST: ${role} client registered for session ${sessionId}`);
+  async pairSession(pairingCode:string,tvDeviceId:string,_tvUserId?:string):Promise<{sessionId:string;userId:string}|null>{
+    const session=await pairCastSession(pairingCode,tvDeviceId);
+    if(!session)return null;
+    await publishCastEvent(session.sessionId,{deliveries:[{role:'mobile',message:{type:'cast:paired',sessionId:session.sessionId,tvDeviceId}}]});
+    return {sessionId:session.sessionId,userId:session.userId};
   }
-
-  removeClient(clientId: string) {
-    const client = this.clients.get(clientId);
-    if (!client) return;
-
-    const sc = this.sessionClients.get(client.sessionId);
-    if (sc) {
-      if (sc.mobile === clientId) sc.mobile = undefined;
-      if (sc.tv === clientId) sc.tv = undefined;
-
-      const otherRole = client.role === 'mobile' ? 'tv' : 'mobile';
-      const otherClientId = otherRole === 'tv' ? sc.tv : sc.mobile;
-      if (otherClientId) {
-        this.sendToClient(otherClientId, {
-          type: 'cast:peer_disconnected',
-          sessionId: client.sessionId,
-          peerRole: client.role,
-        });
-      }
-
-      if (!sc.mobile && !sc.tv) {
-        this.sessionClients.delete(client.sessionId);
-      }
-    }
-
-    this.clients.delete(clientId);
-    logger.log(`📺 CAST: ${client.role} client disconnected from session ${client.sessionId}`);
+  async sendCommand(sessionId:string,command:CastCommand,data?:any,fromRole?:'mobile'|'tv',userId?:string):Promise<boolean>{
+    if(!userId||!castCommands.has(command)||(fromRole!=='mobile'&&fromRole!=='tv'))return false;
+    return !!await applyCastCommand(sessionId,userId,command,data,fromRole);
   }
-
-  // If a client can't keep up, drop the connection instead of buffering frames in ws internal buffer
-  private static WS_BUFFER_THRESHOLD_BYTES = 2 * 1024 * 1024; // 2MB
-
-  private sendToClient(clientId: string, message: any) {
-    const client = this.clients.get(clientId);
-    if (!client || client.socket.readyState !== WebSocket.OPEN) return;
-    if ((client.socket as any).bufferedAmount > CastService.WS_BUFFER_THRESHOLD_BYTES) {
-      try { client.socket.close(1013, 'slow consumer'); } catch {}
-      this.removeClient(clientId);
-      return;
-    }
-    try { client.socket.send(JSON.stringify(message)); } catch {}
+  async getSessionStatus(sessionId:string,userId?:string):Promise<any>{
+    const session=await getCastSession(sessionId,userId);if(!session)return null;
+    const presence=(await getPostgresPool().query('SELECT role FROM cast_connections WHERE session_id=$1 AND expires_at>now()',[sessionId])).rows;
+    return {sessionId:session.sessionId,status:session.status,isPlaying:session.isPlaying,currentStation:session.currentStation,
+      mobileConnected:presence.some(row=>row.role==='mobile'),tvConnected:presence.some(row=>row.role==='tv'),
+      createdAt:session.createdAt,pairedAt:session.pairedAt,expiresAt:session.expiresAt};
   }
-
-  async handleNowPlaying(sessionId: string, nowPlaying: any) {
-    const clients = this.sessionClients.get(sessionId);
-    if (clients?.mobile) {
-      this.sendToClient(clients.mobile, {
-        type: 'cast:now_playing',
-        sessionId,
-        data: nowPlaying,
-      });
-    }
+  async endSession(sessionId:string,userId?:string):Promise<boolean>{
+    const session=await getCastSession(sessionId,userId);if(!session)return false;
+    await expireCastSessions(session.userId,sessionId);
+    await publishCastEvent(sessionId,{deliveries:[{message:{type:'cast:session_ended',sessionId}}]});return true;
+  }
+  async createDirectSession(userId:string,tvDeviceId:string,stationId?:string):Promise<{sessionId:string}|null>{
+    const session=await createCastSession(userId,'direct',tvDeviceId,stationId);if(!session)return null;
+    await publishCastEvent(session.sessionId,{deliveries:[{deviceId:tvDeviceId,userId,message:{type:'cast:direct_session',sessionId:session.sessionId,currentStation:session.currentStation,isPlaying:!!stationId}}]});
+    return {sessionId:session.sessionId};
+  }
+  async getUserActiveSessions(userId:string):Promise<any[]>{
+    return(await listCastSessions(userId)).map(s=>({sessionId:s.sessionId,pairingCode:s.status==='waiting_for_pair'?s.pairingCode:undefined,
+      status:s.status,isPlaying:s.isPlaying,currentStation:s.currentStation,tvDeviceId:s.tvDeviceId,createdAt:s.createdAt,expiresAt:s.expiresAt}));
+  }
+  async registerClient(clientId:string,socket:WebSocket,sessionId:string,role:'mobile'|'tv',userId:string,deviceId?:string):Promise<void>{
+    await this.start();
+    await getPostgresPool().query(`INSERT INTO cast_connections(connection_id,node_id,session_id,user_id,device_id,role,expires_at)
+      VALUES($1,$2,$3,$4,$5,$6,now()+interval '45 seconds')`,[clientId,this.nodeId,sessionId,userId,deviceId||null,role]);
+    this.clients.set(clientId,{socket,sessionId,role,userId,deviceId});
+    await publishCastEvent(sessionId,{deliveries:[{role:role==='mobile'?'tv':'mobile',message:{type:'cast:peer_connected',sessionId,peerRole:role}}]});
+  }
+  removeClient(clientId:string):void{
+    const client=this.clients.get(clientId);if(!client)return;this.clients.delete(clientId);
+    void getPostgresPool().query('DELETE FROM cast_connections WHERE connection_id=$1 AND node_id=$2',[clientId,this.nodeId]).catch(error=>logger.warn('Cast presence cleanup:',error));
+    void publishCastEvent(client.sessionId,{deliveries:[{role:client.role==='mobile'?'tv':'mobile',message:{type:'cast:peer_disconnected',sessionId:client.sessionId,peerRole:client.role}}]}).catch(error=>logger.warn('Cast disconnect event:',error));
+  }
+  private sendToClient(clientId:string,message:any):void{
+    const client=this.clients.get(clientId);if(!client||client.socket.readyState!==WebSocket.OPEN)return;
+    if(client.socket.bufferedAmount>2*1024*1024){try{client.socket.close(1013,'slow consumer');}catch{}this.removeClient(clientId);return;}
+    try{client.socket.send(JSON.stringify(message));}catch{}
+  }
+  async handleNowPlaying(sessionId:string,nowPlaying:any,userId?:string):Promise<void>{
+    if(!userId||!await getCastSession(sessionId,userId))return;
+    await publishCastEvent(sessionId,{deliveries:[{role:'mobile',message:{type:'cast:now_playing',sessionId,data:nowPlaying}}]});
   }
 }
-
-export const castService = new CastService();
+export const castService=new CastService();

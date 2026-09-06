@@ -1,21 +1,4 @@
-import type { Types } from 'mongoose';
-import { TranslationKey, Translation } from '@workspace/db-shared/mongo-schemas';
-
-// Lean shapes for the two queries below. Mongoose 8 returns `.lean()` results
-// as `unknown` when their inferred document type can't flow through helpers,
-// so we declare the small subset of fields we actually read here. Keeping the
-// shapes explicit means a future schema change surfaces as a compile error
-// instead of silently breaking these mappings.
-interface LeanTranslationKeyDoc {
-  _id?: Types.ObjectId;
-  key: string;
-  defaultValue?: string;
-}
-
-interface LeanTranslationDoc {
-  keyId?: Types.ObjectId;
-  value: string;
-}
+import { pgLocalization } from '../data/postgres-localization-store';
 
 export interface SitemapTranslations {
   stationTitle: string;
@@ -27,7 +10,7 @@ export interface SitemapTranslations {
 
 /**
  * Load sitemap translations for a given language with batched database queries
- * Uses 2 MongoDB queries total (instead of 5+ individual queries) for better performance
+ * Uses 2 PostgreSQL queries total (instead of 5+ individual queries) for better performance
  * 
  * @param langCode - The language code (e.g., 'tr', 'de', 'en')
  * @returns Object containing all 5 sitemap translation templates
@@ -44,36 +27,13 @@ export async function loadSitemapTranslations(langCode: string): Promise<Sitemap
     'sitemap_genre_image_caption'
   ];
 
-  // Batch fetch all translation keys in one query
-  const translationKeys = await TranslationKey.find({
-    key: { $in: sitemapKeys },
-  }).lean<LeanTranslationKeyDoc[]>();
-
-  // Harden against missing translation keys in database - fallback values will be used
-
-  const keyMap = new Map(translationKeys.map((k) => [k.key, k]));
-
-  // Batch fetch all translations for this language in one query
-  const keyIds = translationKeys
-    .map((k) => k._id)
-    .filter((id): id is Types.ObjectId => Boolean(id));
-  const translations = await Translation.find({
-    keyId: { $in: keyIds },
-    language: langCode,
-  }).lean<LeanTranslationDoc[]>();
-
-  const translationMap = new Map(
-    translations
-      .map((t) => [t.keyId?.toString(), t.value] as [string | undefined, string])
-      .filter((entry): entry is [string, string] => Boolean(entry[0]))
-  );
-
-  // Helper to safely get translation with null safety
-  const getTranslation = (keyName: string, fallback: string): string => {
-    const key = keyMap.get(keyName);
-    if (!key || !key._id) return fallback;
-    return translationMap.get(key._id.toString()) || key.defaultValue || fallback;
-  };
+  const [translationKeys, translationMap] = await Promise.all([
+    pgLocalization().getKeys(sitemapKeys),
+    pgLocalization().getTranslations(langCode, sitemapKeys),
+  ]);
+  const keyMap = new Map(translationKeys.map((key) => [key.key, key]));
+  const getTranslation = (keyName: string, fallback: string): string =>
+    translationMap[keyName] || keyMap.get(keyName)?.defaultValue || fallback;
 
   // Build result object with hardened null safety
   return {

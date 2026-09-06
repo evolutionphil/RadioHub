@@ -18,25 +18,28 @@
  *   2. Cancel → re-enqueue AFTER the TTL has elapsed gets a fresh
  *      0/0 baseline with `resumedFrom: null`.
  *
- * The test boots the production admin routes against an in-memory
- * MongoDB and stubs `syncService.hydrateMissingTagsInBackground` so
+ * The test boots the production admin routes against an isolated
+ * PostgreSQL schema and stubs `syncService.hydrateMissingTagsInBackground` so
  * we can drive `onProgress` / cancellation deterministically.
  */
 
-import { test, before, after, beforeEach } from 'node:test';
-import assert from 'node:assert/strict';
+import { test, before, after, beforeEach } from "node:test";
+import assert from "node:assert/strict";
 import express, {
   type Request,
   type Response,
   type NextFunction,
-} from 'express';
-import type { AddressInfo } from 'node:net';
-import type { Server as HttpServer } from 'node:http';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
+} from "express";
+import type { AddressInfo } from "node:net";
+import type { Server as HttpServer } from "node:http";
+import {
+  createNativePostgresFixture,
+  type NativePostgresFixture,
+} from "./helpers/native-postgres-fixture";
+import { recomputeGenreStationCounts } from "../src/services/genre-station-counts";
 
-import { registerAdminStationRoutes } from '../src/routes/admin-station-routes';
-import { syncService } from '../src/services/sync';
+import { registerAdminStationRoutes } from "../src/routes/admin-station-routes";
+import { syncService } from "../src/services/sync";
 
 type HydrateResult = {
   processed: number;
@@ -72,32 +75,30 @@ function makeCapture(): Capture {
   };
 }
 
-let mongod: MongoMemoryServer;
+let fixture: NativePostgresFixture;
 let server: HttpServer;
 let baseUrl: string;
 let originalHydrate: typeof syncService.hydrateMissingTagsInBackground;
 let nextCapture: Capture | null = null;
 
 before(async () => {
-  process.env.NODE_ENV = 'test';
+  process.env.NODE_ENV = "test";
 
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri(), { dbName: 'tags-resume-hint-test' });
+  fixture = await createNativePostgresFixture("coverage-tags-resume-hint");
 
   // Swap out the real Radio-Browser-touching hydrator for a deterministic
   // stub. The route only ever uses the `isCancelled` / `onProgress`
   // callbacks and the resolved counters, which is exactly what the
   // capture exposes to the test body.
-  originalHydrate = syncService.hydrateMissingTagsInBackground.bind(
-    syncService,
-  );
+  originalHydrate =
+    syncService.hydrateMissingTagsInBackground.bind(syncService);
   (syncService as any).hydrateMissingTagsInBackground = async (opts: {
     isCancelled?: () => boolean;
-    onProgress?: Capture['onProgress'];
+    onProgress?: Capture["onProgress"];
   }) => {
     if (!nextCapture) {
       throw new Error(
-        'hydrateMissingTagsInBackground was called but the test has not staged a capture',
+        "hydrateMissingTagsInBackground was called but the test has not staged a capture",
       );
     }
     const cap = nextCapture;
@@ -109,21 +110,18 @@ before(async () => {
 
   const app = express();
   app.use((req: Request, _res: Response, next: NextFunction) => {
-    (req as any).session = { adminAuth: { username: 'tester-admin' } };
+    (req as any).session = { adminAuth: { username: "tester-admin" } };
     next();
   });
-  const passthrough = (
-    _req: Request,
-    _res: Response,
-    next: NextFunction,
-  ) => next();
+  const passthrough = (_req: Request, _res: Response, next: NextFunction) =>
+    next();
   registerAdminStationRoutes(app, {
     requireAuth: passthrough,
     requireAdmin: passthrough,
   });
 
   server = app.listen(0);
-  await new Promise<void>((resolve) => server.once('listening', resolve));
+  await new Promise<void>((resolve) => server.once("listening", resolve));
   const addr = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${addr.port}`;
 });
@@ -132,8 +130,10 @@ after(async () => {
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
-  await mongoose.disconnect();
-  if (mongod) await mongod.stop();
+  // Join the production background recompute before closing its pool.
+  await flushMicrotasks();
+  if (fixture) await recomputeGenreStationCounts("test:resume-hint-drain");
+  await fixture?.close();
   if (originalHydrate) {
     (syncService as any).hydrateMissingTagsInBackground = originalHydrate;
   }
@@ -145,15 +145,15 @@ beforeEach(() => {
 
 async function enqueueTags(country: string) {
   return fetch(`${baseUrl}/api/admin/coverage/enqueue/${country}`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ scope: 'tags' }),
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ scope: "tags" }),
   });
 }
 
 async function cancelJob(jobId: string) {
   return fetch(`${baseUrl}/api/admin/coverage/enqueue-job-cancel/${jobId}`, {
-    method: 'POST',
+    method: "POST",
   });
 }
 
@@ -161,7 +161,7 @@ async function jobStatus(jobId: string) {
   const res = await fetch(
     `${baseUrl}/api/admin/coverage/enqueue-job-status/${jobId}`,
   );
-  assert.equal(res.status, 200, 'status endpoint must return 200');
+  assert.equal(res.status, 200, "status endpoint must return 200");
   return (await res.json()) as {
     success: boolean;
     job: {
@@ -198,8 +198,8 @@ async function flushMicrotasks() {
 // 1. Cancel + re-enqueue within the TTL carries the counters forward.
 // ---------------------------------------------------------------------------
 
-test('cancel + re-enqueue within the TTL window seeds the new tags subjob from the cancelled run', async () => {
-  const COUNTRY = 'AT';
+test("cancel + re-enqueue within the TTL window seeds the new tags subjob from the cancelled run", async () => {
+  const COUNTRY = "AT";
 
   // ---- First enqueue: starts the tags subjob with no resume hint.
   const cap1 = makeCapture();
@@ -216,7 +216,7 @@ test('cancel + re-enqueue within the TTL window seeds the new tags subjob from t
   assert.equal(
     body1.tags.resumedFrom,
     null,
-    'first run for this country must not have a resume hint',
+    "first run for this country must not have a resume hint",
   );
 
   // Drive some progress so cancel has non-zero counters to stash.
@@ -235,7 +235,7 @@ test('cancel + re-enqueue within the TTL window seeds the new tags subjob from t
   assert.equal(
     sMid.job.tags?.resumedFrom,
     undefined,
-    'first run must not surface resumedFrom on its status',
+    "first run must not surface resumedFrom on its status",
   );
 
   // ---- Cancel the first run. The cancel handler stashes a hint
@@ -246,7 +246,7 @@ test('cancel + re-enqueue within the TTL window seeds the new tags subjob from t
   assert.equal(
     cap1.isCancelled(),
     true,
-    'cancelRequested must propagate to the hydrator callback',
+    "cancelRequested must propagate to the hydrator callback",
   );
 
   // Resolve the stubbed hydrator as if it observed the cancel and
@@ -263,8 +263,8 @@ test('cancel + re-enqueue within the TTL window seeds the new tags subjob from t
   const sFinal = await jobStatus(body1.jobId);
   assert.equal(
     sFinal.job.status,
-    'cancelled',
-    'first job must transition to cancelled once the hydrator returns',
+    "cancelled",
+    "first job must transition to cancelled once the hydrator returns",
   );
 
   // ---- Re-enqueue within the TTL: the new job must carry the
@@ -291,39 +291,39 @@ test('cancel + re-enqueue within the TTL window seeds the new tags subjob from t
   assert.deepEqual(
     body2.tags.resumedFrom,
     { processed: 4, hydrated: 3, emptyUpstream: 1, failed: 0, total: 10 },
-    'enqueue response must echo the resumed counters from the cancelled run',
+    "enqueue response must echo the resumed counters from the cancelled run",
   );
 
   const sResumed = await jobStatus(body2.jobId);
   assert.equal(
     sResumed.job.tags?.processed,
     4,
-    'resumed job must inherit processed counter from cancelled run',
+    "resumed job must inherit processed counter from cancelled run",
   );
   assert.equal(
     sResumed.job.tags?.hydrated,
     3,
-    'resumed job must inherit hydrated counter from cancelled run',
+    "resumed job must inherit hydrated counter from cancelled run",
   );
   assert.equal(
     sResumed.job.tags?.emptyUpstream,
     1,
-    'resumed job must inherit emptyUpstream counter from cancelled run',
+    "resumed job must inherit emptyUpstream counter from cancelled run",
   );
   assert.equal(
     sResumed.job.tags?.failed,
     0,
-    'resumed job must inherit failed counter from cancelled run',
+    "resumed job must inherit failed counter from cancelled run",
   );
   assert.equal(
     sResumed.job.tags?.total,
     10,
-    'resumed job must inherit total denominator from cancelled run',
+    "resumed job must inherit total denominator from cancelled run",
   );
   assert.deepEqual(
     sResumed.job.tags?.resumedFrom,
     { processed: 4, hydrated: 3, emptyUpstream: 1, failed: 0, total: 10 },
-    'status payload must surface the resumedFrom block so the UI can label progress as carried-forward',
+    "status payload must surface the resumedFrom block so the UI can label progress as carried-forward",
   );
 
   // Tear the resumed run down so it doesn't dangle into the next test.
@@ -341,8 +341,8 @@ test('cancel + re-enqueue within the TTL window seeds the new tags subjob from t
 // 2. Once the TTL has elapsed, the hint is dropped on the next enqueue.
 // ---------------------------------------------------------------------------
 
-test('re-enqueue after the resume-hint TTL elapses gets a fresh 0/0 baseline with resumedFrom: null', async () => {
-  const COUNTRY = 'BE';
+test("re-enqueue after the resume-hint TTL elapses gets a fresh 0/0 baseline with resumedFrom: null", async () => {
+  const COUNTRY = "BE";
 
   const cap1 = makeCapture();
   nextCapture = cap1;
@@ -393,29 +393,29 @@ test('re-enqueue after the resume-hint TTL elapses gets a fresh 0/0 baseline wit
     assert.equal(
       body2.tags.resumedFrom,
       null,
-      'after the TTL elapses the hint must be dropped and the new job starts fresh',
+      "after the TTL elapses the hint must be dropped and the new job starts fresh",
     );
 
     const sFresh = await jobStatus(body2.jobId);
     assert.equal(
       sFresh.job.tags?.processed,
       0,
-      'expired hint must NOT seed processed counter',
+      "expired hint must NOT seed processed counter",
     );
     assert.equal(
       sFresh.job.tags?.hydrated,
       0,
-      'expired hint must NOT seed hydrated counter',
+      "expired hint must NOT seed hydrated counter",
     );
     assert.equal(
       sFresh.job.tags?.total,
       0,
-      'expired hint must NOT seed total denominator',
+      "expired hint must NOT seed total denominator",
     );
     assert.equal(
       sFresh.job.tags?.resumedFrom,
       undefined,
-      'expired hint must leave resumedFrom undefined on the status payload',
+      "expired hint must leave resumedFrom undefined on the status payload",
     );
 
     cap2.resolve({

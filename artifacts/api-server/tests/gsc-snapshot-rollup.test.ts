@@ -9,7 +9,7 @@
  * `(date, language, group)` index makes a second run on the same UTC
  * day overwrite (not duplicate) the previous numbers.
  *
- * These tests boot a real in-memory MongoDB, seed a small but
+ * These tests use an isolated real PostgreSQL schema, seed a small but
  * deliberately uneven cross-section of inspection rows, run the
  * snapshot, and assert:
  *
@@ -31,16 +31,12 @@
 
 import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
+import { createNativePostgresFixture,type NativePostgresFixture } from './helpers/native-postgres-fixture';
+import { seoShape } from '../src/data/postgres-seo-indexing-store';
 
-import {
-  GscUrlInspection,
-  GscIndexingSnapshot,
-  type IGscUrlInspection,
-} from '@workspace/db-shared/mongo-schemas';
+import type { IGscUrlInspection } from '../src/data/postgres-seo-indexing-store';
 
-let mongod: MongoMemoryServer;
+let fixture:NativePostgresFixture;
 let gscInspectionService: typeof import('../src/services/gsc-inspection').gscInspectionService;
 
 before(async () => {
@@ -49,27 +45,20 @@ before(async () => {
   // for these tests — we only ever invoke recordDailySnapshot directly.
   process.env.ENABLE_GSC_INSPECTION_CRON = 'false';
 
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri(), { dbName: 'gsc-snapshot-test' });
+  fixture=await createNativePostgresFixture('gsc-snapshot-test');
 
-  // Make sure the snapshot collection's unique
-  // (date, language, group) index is materialized BEFORE the first
-  // recordDailySnapshot call. Without this, the second run
-  // (overwrite) test could race the index build and end up inserting
-  // duplicates instead of updating in place.
-  await GscIndexingSnapshot.syncIndexes();
+  // All migrations, including the daily natural-key constraint, are applied before tests.
 
   ({ gscInspectionService } = await import('../src/services/gsc-inspection'));
 });
 
 after(async () => {
-  await mongoose.disconnect();
-  if (mongod) await mongod.stop();
+  await fixture?.close();
 });
 
 beforeEach(async () => {
-  await GscUrlInspection.deleteMany({});
-  await GscIndexingSnapshot.deleteMany({});
+  if(!fixture)return;
+  await fixture.clear('gsc_url_inspections','gsc_indexing_snapshots','gsc_inspection_quota');
 });
 
 type State = IGscUrlInspection['state'];
@@ -101,7 +90,7 @@ async function seedBucket(
       });
     }
   }
-  if (docs.length > 0) await GscUrlInspection.insertMany(docs);
+  for(const doc of docs)await fixture.insert('gsc_url_inspections',{...doc,urlGroup:doc.group});
 }
 
 function utcMidnight(d: Date = new Date()): Date {
@@ -136,7 +125,7 @@ test('recordDailySnapshot rolls per-URL state into per-bucket, per-language, per
   assert.ok(stats, 'recordDailySnapshot must return stats on success');
 
   const today = utcMidnight();
-  const allRows = await GscIndexingSnapshot.find({ date: today }).lean();
+  const allRows = await fixture.pool.query('SELECT * FROM gsc_indexing_snapshots WHERE date=$1',[today]).then(result=>result.rows.map(seoShape));
 
   // Expected row layout: 5 per-bucket + 2 per-language rollups +
   // 3 per-group rollups + 1 overall = 11.
@@ -279,9 +268,7 @@ test('recordDailySnapshot is idempotent for the same UTC day (overwrites, never 
   assert.ok(first);
   const today = utcMidnight();
 
-  const rowsAfterFirst = await GscIndexingSnapshot.find({
-    date: today,
-  }).lean();
+  const rowsAfterFirst = await fixture.pool.query('SELECT * FROM gsc_indexing_snapshots WHERE date=$1',[today]).then(result=>result.rows.map(seoShape));
   // 2 buckets + 1 per-lang + 2 per-group + 1 overall = 6
   assert.equal(rowsAfterFirst.length, 6);
 
@@ -303,9 +290,7 @@ test('recordDailySnapshot is idempotent for the same UTC day (overwrites, never 
   const second = await gscInspectionService.recordDailySnapshot('test-2');
   assert.ok(second);
 
-  const rowsAfterSecond = await GscIndexingSnapshot.find({
-    date: today,
-  }).lean();
+  const rowsAfterSecond = await fixture.pool.query('SELECT * FROM gsc_indexing_snapshots WHERE date=$1',[today]).then(result=>result.rows.map(seoShape));
   // 3 buckets + 1 per-lang + 3 per-group + 1 overall = 8 (not 6 + 8)
   assert.equal(
     rowsAfterSecond.length,
@@ -335,7 +320,7 @@ test('recordDailySnapshot is idempotent for the same UTC day (overwrites, never 
   assert.equal(overallAfterSecond!.pending, 1);
 
   // The createdAt sentinel must be preserved across overwrites — the
-  // production code uses $setOnInsert for createdAt, so re-running on
+  // PostgreSQL upsert preserves createdAt, so re-running on
   // the same day must keep the original insert timestamp.
   assert.deepEqual(
     overallAfterSecond!.createdAt,

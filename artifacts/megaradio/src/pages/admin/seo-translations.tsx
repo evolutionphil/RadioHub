@@ -169,7 +169,7 @@ export default function SeoTranslationsHub() {
         <OperationCard
           icon={<Database className="h-5 w-5" />}
           title="Apply Phase C Translations"
-          description="Upserts the pre-generated 57×15 SEO translation JSON into MongoDB. Safe to re-run — skips keys that already have a value."
+          description="Upserts the pre-generated 57×15 SEO translation JSON into PostgreSQL. Safe to re-run — skips keys that already have a value."
           buttonLabel="Apply Now"
           isPending={applyMutation.isPending}
           isDisabled={anyPending}

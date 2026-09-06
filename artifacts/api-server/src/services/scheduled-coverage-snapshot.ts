@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Station, CoverageSnapshot } from '@workspace/db-shared/mongo-schemas';
+import { pgCoverage } from '../data/postgres-coverage-store';
 import { logger } from '../utils/logger';
 import { checkAndNotifyCoverageDrops } from './coverage-drop-notifier';
 
@@ -33,63 +33,7 @@ interface CountryCoverageRow {
   withTags: number;
 }
 
-async function aggregateCurrentCoverage(): Promise<CountryCoverageRow[]> {
-  const rows = await Station.aggregate<{
-    _id: string;
-    total: number;
-    withLogo: number;
-    withTags: number;
-  }>([
-    {
-      $match: {
-        countryCode: { $exists: true, $nin: [null, '', 'null'] },
-      },
-    },
-    {
-      $group: {
-        _id: { $toUpper: '$countryCode' },
-        total: { $sum: 1 },
-        withLogo: {
-          $sum: {
-            $cond: [{ $eq: ['$logoAssets.status', 'completed'] }, 1, 0],
-          },
-        },
-        withTags: {
-          $sum: {
-            $cond: [
-              {
-                $and: [
-                  { $ne: ['$tags', null] },
-                  { $ne: [{ $ifNull: ['$tags', ''] }, ''] },
-                  {
-                    $not: [
-                      {
-                        $regexMatch: {
-                          input: { $ifNull: ['$tags', ''] },
-                          regex: /^\s*$/,
-                        },
-                      },
-                    ],
-                  },
-                ],
-              },
-              1,
-              0,
-            ],
-          },
-        },
-      },
-    },
-  ]);
-  return rows
-    .filter((r) => r._id && typeof r._id === 'string')
-    .map((r) => ({
-      countryCode: String(r._id).toUpperCase(),
-      total: Number(r.total) || 0,
-      withLogo: Number(r.withLogo) || 0,
-      withTags: Number(r.withTags) || 0,
-    }));
-}
+async function aggregateCurrentCoverage(): Promise<CountryCoverageRow[]> { return pgCoverage().coverage(); }
 
 class ScheduledCoverageSnapshot {
   private static instance: ScheduledCoverageSnapshot;
@@ -162,6 +106,10 @@ class ScheduledCoverageSnapshot {
       return null;
     }
     this.isRunning = true;
+    let leader: Awaited<ReturnType<ReturnType<typeof pgCoverage>['acquireJob']>>;
+    try { leader=await pgCoverage().acquireJob('coverage-snapshot'); }
+    catch(error){this.isRunning=false;throw error;}
+    if(!leader){this.isRunning=false;return null;}
     const startedAt = new Date();
     const snapshotDate = todayUtcMidnight();
 
@@ -173,39 +121,8 @@ class ScheduledCoverageSnapshot {
         return { countries: 0, snapshotDate };
       }
 
-      const ops = rows.map((row) => {
-        const total = row.total;
-        const logoCoveragePct =
-          total > 0 ? Math.round((row.withLogo / total) * 1000) / 10 : 0;
-        const tagCoveragePct =
-          total > 0 ? Math.round((row.withTags / total) * 1000) / 10 : 0;
-        return {
-          updateOne: {
-            filter: {
-              countryCode: row.countryCode,
-              snapshotDate,
-            },
-            update: {
-              $set: {
-                total,
-                withLogo: row.withLogo,
-                withTags: row.withTags,
-                logoCoveragePct,
-                tagCoveragePct,
-                // Re-running the cron on the same UTC day must promote
-                // a previously-backfilled row to 'cron' (the live numbers
-                // have replaced the reconstruction), so set this on
-                // every write, not just on insert.
-                source: 'cron' as const,
-              },
-              $setOnInsert: { createdAt: new Date() },
-            },
-            upsert: true,
-          },
-        };
-      });
-
-      await CoverageSnapshot.bulkWrite(ops, { ordered: false });
+      leader.assertOwned();
+      await pgCoverage().writeSnapshots(snapshotDate,rows,'cron');
       this.lastRunAt = new Date();
       this.lastSnapshotDate = snapshotDate;
       this.lastCountriesWritten = rows.length;
@@ -233,6 +150,7 @@ class ScheduledCoverageSnapshot {
       throw err;
     } finally {
       this.isRunning = false;
+      await leader.release();
     }
   }
 }

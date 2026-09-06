@@ -1,5 +1,5 @@
 import type { Express } from "express";
-import { Station, User, UserFollow, BlacklistedStation, UserFavorite, UserNotification } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { logger } from "../utils/logger";
 import { normalizeCountryFilter } from "../utils/normalize-country";
 import { syncService } from "../services/sync";
@@ -72,12 +72,12 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         stationsWithoutLogo,
         stationsNoFavicon,
       ] = await Promise.all([
-        Station.countDocuments(),
-        Station.countDocuments({ favicon: { $exists: true, $nin: ['', null, 'null'] } }),
-        Station.countDocuments({ slug: { $exists: true, $ne: null } }),
-        Station.countDocuments({ 'logoAssets.status': 'completed' }),
-        Station.countDocuments({ 'logoAssets.status': 'failed' }),
-        Station.countDocuments({
+        pgCatalog().count(),
+        pgCatalog().count({ favicon: { $exists: true, $nin: ['', null, 'null'] } }),
+        pgCatalog().count({ slug: { $exists: true, $ne: null } }),
+        pgCatalog().count({ 'logoAssets.status': 'completed' }),
+        pgCatalog().count({ 'logoAssets.status': 'failed' }),
+        pgCatalog().count({
           favicon: { $exists: true, $nin: ['', null, 'null'] },
           $or: [
             { 'logoAssets.status': { $exists: false } },
@@ -89,7 +89,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         // ANY station that does not currently serve from S3 ("logo eksik").
         // Includes failed processing, not-yet-processed, and stations without
         // a favicon URL at all. The frontend modal lets admin filter further.
-        Station.countDocuments({
+        pgCatalog().count({
           $or: [
             { logoAssets: { $exists: false } },
             { 'logoAssets.status': { $exists: false } },
@@ -98,7 +98,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         }),
         // Subset: stations that have NO favicon URL — backfill cannot help
         // these without manually entering a logo URL.
-        Station.countDocuments({
+        pgCatalog().count({
           $or: [
             { favicon: { $exists: false } },
             { favicon: { $in: ['', null, 'null'] } },
@@ -168,13 +168,8 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       }
 
       const [stations, total] = await Promise.all([
-        Station.find(filter)
-          .select('_id name slug favicon country countryCode logoAssets updatedAt')
-          .sort({ updatedAt: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        Station.countDocuments(filter),
+        pgCatalog().find(filter, { fields: ["_id","name","slug","favicon","country","countryCode","logoAssets","updatedAt"], sort: { updatedAt: -1 }, offset: skip, limit: limit }),
+        pgCatalog().count(filter),
       ]);
 
       res.json({
@@ -214,15 +209,8 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       }
 
       const [rows, byType] = await Promise.all([
-        Station.find(filter)
-          .sort({ 'logoAssets.lastAttempt': -1 })
-          .limit(limit)
-          .select('_id name countryCode favicon logoAssets.error logoAssets.failureType logoAssets.lastAttempt')
-          .lean(),
-        Station.aggregate([
-          { $match: { 'logoAssets.status': 'failed' } },
-          { $group: { _id: '$logoAssets.failureType', count: { $sum: 1 } } },
-        ]).option({ maxTimeMS: 15000, allowDiskUse: true }),
+        pgCatalog().find(filter, { sort: { 'logoAssets.lastAttempt': -1 }, limit: limit, fields: ["_id","name","countryCode","favicon","logoAssets.error","logoAssets.failureType","logoAssets.lastAttempt"] }),
+        pgCatalog().groupCount('logoAssets.failureType', { 'logoAssets.status': 'failed' }),
       ]);
 
       const counts: Record<string, number> = {
@@ -265,24 +253,24 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     try {
       const s3Configured = isS3Configured();
       const [s3Count, localCount, sampleS3, sampleLocal] = await Promise.all([
-        Station.countDocuments({
+        pgCatalog().count({
           'logoAssets.status': 'completed',
           'logoAssets.webp256': { $regex: '^https://', $options: 'i' },
         }),
-        Station.countDocuments({
+        pgCatalog().count({
           'logoAssets.status': 'completed',
           'logoAssets.webp256': { $exists: true, $nin: [null, ''] },
           $nor: [{ 'logoAssets.webp256': { $regex: '^https://', $options: 'i' } }],
         }),
-        Station.findOne({
+        pgCatalog().findOne({
           'logoAssets.status': 'completed',
           'logoAssets.webp256': { $regex: '^https://', $options: 'i' },
-        }).select('logoAssets.webp256').lean() as any,
-        Station.findOne({
+        }, { fields: ["logoAssets.webp256"] }) as any,
+        pgCatalog().findOne({
           'logoAssets.status': 'completed',
           'logoAssets.webp256': { $exists: true, $nin: [null, ''] },
           $nor: [{ 'logoAssets.webp256': { $regex: '^https://', $options: 'i' } }],
-        }).select('logoAssets.folder logoAssets.webp256').lean() as any,
+        }, { fields: ["logoAssets.folder","logoAssets.webp256"] }) as any,
       ]);
 
       let s3Reachable: boolean | null = null;
@@ -317,9 +305,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
   app.post("/api/admin/logos/retry/:stationId", requireAdmin, async (req, res) => {
     try {
       const stationId = String(req.params.stationId);
-      const station = await Station.findById(stationId)
-        .select('_id name slug favicon logoAssets')
-        .lean() as any;
+      const station = await pgCatalog().findOne({ _id: stationId }, { fields: ["_id","name","slug","favicon","logoAssets"] }) as any;
       if (!station) {
         return void res.status(404).json({ error: 'Station not found' });
       }
@@ -349,13 +335,9 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       const limit = 50;
       const skip = (page - 1) * limit;
       
-      const stations = await Station.find({ 'logoAssets.status': 'completed' })
-        .select('name slug logoAssets')
-        .skip(skip)
-        .limit(limit)
-        .lean();
+      const stations = await pgCatalog().find({ 'logoAssets.status': 'completed' }, { fields: ["name","slug","logoAssets"], offset: skip, limit: limit });
       
-      const total = await Station.countDocuments({ 'logoAssets.status': 'completed' });
+      const total = await pgCatalog().count({ 'logoAssets.status': 'completed' });
       
       res.json({
         stations: stations.map((s: any) => ({
@@ -388,7 +370,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         }
       }
       
-      const stationsNeedingProcessing = await Station.countDocuments({
+      const stationsNeedingProcessing = await pgCatalog().count({
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         slug: { $exists: true, $ne: null },
         $or: [
@@ -447,19 +429,16 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       // Rescue stations left in 'processing' by a previous crashed job:
       // anything still 'processing' after 10 minutes is definitively stuck.
       const staleProcessingCutoff = new Date(Date.now() - 10 * 60 * 1000);
-      const staleReset = await Station.updateMany(
-        {
+      const staleReset = await pgCatalog().update({
           'logoAssets.status': 'processing',
           'logoAssets.lastAttempt': { $lt: staleProcessingCutoff },
-        },
-        {
+        }, {
           $set: {
             'logoAssets.status': 'failed',
             'logoAssets.error': 'Processing timed out — reset by bulk job',
             'logoAssets.failureType': 'processing_failed',
           },
-        }
-      );
+        }, { many: true });
       if (staleReset.modifiedCount > 0) {
         logger.log(`🔧 Reset ${staleReset.modifiedCount} stale 'processing' stations to 'failed' before bulk run`);
       }
@@ -486,10 +465,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
             }
             
             roundNumber++;
-            const stations = await Station.find(needsProcessingFilter)
-              .select('_id name slug favicon')
-              .limit(BATCH_FETCH_SIZE)
-              .lean();
+            const stations = await pgCatalog().find(needsProcessingFilter, { fields: ["_id","name","slug","favicon"], limit: BATCH_FETCH_SIZE });
             
             if (stations.length === 0) {
               logger.log(`🎉 ALL LOGOS PROCESSED! Total: ${totalProcessedOverall} (${totalSuccessful} successful, ${totalFailed} failed)`);
@@ -506,10 +482,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               const batchPromises = batch.map(async (station) => {
                 try {
                   if (!station.favicon || !station.slug) {
-                    await Station.updateOne(
-                      { _id: station._id },
-                      { $set: { 'logoAssets.status': 'failed', 'logoAssets.error': 'Missing favicon or slug', 'logoAssets.failureType': 'invalid_format' } }
-                    );
+                    await pgCatalog().update({ _id: station._id }, { $set: { 'logoAssets.status': 'failed', 'logoAssets.error': 'Missing favicon or slug', 'logoAssets.failureType': 'invalid_format' } });
                     return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: 'Missing favicon or slug' };
                   }
                   const result = await logoProcessor.processFromUrl(station._id.toString(), station.slug, station.favicon);
@@ -547,17 +520,14 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                   const stationId = batch[ri]?._id;
                   if (stationId) {
                     try {
-                      await Station.updateOne(
-                        { _id: stationId },
-                        {
+                      await pgCatalog().update({ _id: stationId }, {
                           $set: {
                             'logoAssets.status': 'failed',
                             'logoAssets.error': result.reason?.message ?? 'Unhandled rejection',
                             'logoAssets.failureType': 'processing_failed',
                             'logoAssets.lastAttempt': new Date(),
                           },
-                        }
-                      );
+                        });
                     } catch { /* best-effort */ }
                   }
                 }
@@ -567,7 +537,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
             }
 
             if (roundNumber % 5 === 0) {
-              const remaining = await Station.countDocuments(needsProcessingFilter);
+              const remaining = await pgCatalog().count(needsProcessingFilter);
               const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
               logger.log(`📊 Round ${roundNumber}: ${totalProcessedOverall} done, ${remaining} remaining, heap: ${heapMB}MB`);
               if (typeof global.gc === 'function') global.gc();
@@ -604,14 +574,11 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
   // completed logos, so it is cheap and safe to press repeatedly.
   app.post("/api/admin/logos/retry-all-failed", requireAdmin, async (_req, res) => {
     try {
-      const resetResult = await Station.updateMany(
-        {
+      const resetResult = await pgCatalog().update({
           favicon: { $exists: true, $nin: ['', null, 'null'] },
           slug: { $exists: true, $ne: null },
           'logoAssets.status': 'failed',
-        },
-        { $unset: { logoAssets: '' } },
-      );
+        }, { $unset: { logoAssets: '' } }, { many: true });
       const reset = (resetResult as any).modifiedCount ?? (resetResult as any).nModified ?? 0;
 
       scheduledLogoProcessor.runOnce('admin:retry-all-failed').catch((err) => {
@@ -641,7 +608,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
         }
       }
 
-      const totalWithFavicon = await Station.countDocuments({
+      const totalWithFavicon = await pgCatalog().count({
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         slug: { $exists: true, $ne: null }
       });
@@ -654,15 +621,9 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
       let resetSkip = 0;
       let totalReset = 0;
       while (true) {
-        const stationIds = await Station.find(
-          { favicon: { $exists: true, $nin: ['', null, 'null'] } },
-          { _id: 1 }
-        ).skip(resetSkip).limit(RESET_BATCH).lean();
+        const stationIds = await pgCatalog().find({ favicon: { $exists: true, $nin: ['', null, 'null'] } }, { offset: resetSkip, limit: RESET_BATCH, fields: ["_id"] });
         if (stationIds.length === 0) break;
-        await Station.updateMany(
-          { _id: { $in: stationIds.map((s: any) => s._id) } },
-          { $unset: { logoAssets: '' } }
-        );
+        await pgCatalog().update({ _id: { $in: stationIds.map((s: any) => s._id) } }, { $unset: { logoAssets: '' } }, { many: true });
         totalReset += stationIds.length;
         resetSkip += RESET_BATCH;
         await new Promise(r => setTimeout(r, 100));
@@ -723,10 +684,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
             }
 
             roundNumber++;
-            const stations = await Station.find(needsProcessingFilter)
-              .select('_id name slug favicon')
-              .limit(BATCH_FETCH_SIZE)
-              .lean();
+            const stations = await pgCatalog().find(needsProcessingFilter, { fields: ["_id","name","slug","favicon"], limit: BATCH_FETCH_SIZE });
 
             if (stations.length === 0) {
               logger.log(`🎉 ALL LOGOS REPROCESSED! Total: ${totalProcessedOverall} (${totalSuccessful} successful, ${totalFailed} failed)`);
@@ -743,10 +701,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
               const batchPromises = batch.map(async (station) => {
                 try {
                   if (!station.favicon || !station.slug) {
-                    await Station.updateOne(
-                      { _id: station._id },
-                      { $set: { 'logoAssets.status': 'failed', 'logoAssets.error': 'Missing favicon or slug', 'logoAssets.failureType': 'invalid_format' } }
-                    );
+                    await pgCatalog().update({ _id: station._id }, { $set: { 'logoAssets.status': 'failed', 'logoAssets.error': 'Missing favicon or slug', 'logoAssets.failureType': 'invalid_format' } });
                     return { stationId: station._id.toString(), stationName: station.name, status: 'failed' as const, error: 'Missing favicon or slug' };
                   }
                   const result = await logoProcessor.processFromUrl(station._id.toString(), station.slug, station.favicon);
@@ -782,17 +737,14 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
                   const stationId = batch[ri]?._id;
                   if (stationId) {
                     try {
-                      await Station.updateOne(
-                        { _id: stationId },
-                        {
+                      await pgCatalog().update({ _id: stationId }, {
                           $set: {
                             'logoAssets.status': 'failed',
                             'logoAssets.error': result.reason?.message ?? 'Unhandled rejection',
                             'logoAssets.failureType': 'processing_failed',
                             'logoAssets.lastAttempt': new Date(),
                           },
-                        }
-                      );
+                        });
                     } catch { /* best-effort */ }
                   }
                 }
@@ -802,7 +754,7 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
             }
 
             if (roundNumber % 5 === 0) {
-              const remaining = await Station.countDocuments(needsProcessingFilter);
+              const remaining = await pgCatalog().count(needsProcessingFilter);
               const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
               logger.log(`📊 Reprocess Round ${roundNumber}: ${totalProcessedOverall} done, ${remaining} remaining, heap: ${heapMB}MB`);
               if (typeof global.gc === 'function') global.gc();
@@ -842,8 +794,8 @@ export function registerLogoRoutes(app: Express, deps: RouteDeps) {
     const job = logoProcessingJobs.get(jobId);
     
     if (!job) {
-      const completedCount = await Station.countDocuments({ 'logoAssets.status': 'completed' });
-      const failedCount = await Station.countDocuments({ 'logoAssets.status': 'failed' });
+      const completedCount = await pgCatalog().count({ 'logoAssets.status': 'completed' });
+      const failedCount = await pgCatalog().count({ 'logoAssets.status': 'failed' });
       return void res.json({
         jobId,
         status: 'lost',

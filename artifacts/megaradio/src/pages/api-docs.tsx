@@ -801,9 +801,9 @@ const STATION_ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/api/station/:identifier",
     title: "Get Station Details",
-    description: "Retrieve detailed information about a specific station by its slug or MongoDB ID. Returns full metadata including stream URL, logo assets, ratings, and localized AI descriptions.",
+    description: "Retrieve detailed information about a specific station by its slug or station ID. Returns full metadata including stream URL, logo assets, ratings, and localized AI descriptions.",
     params: [
-      { name: "identifier", type: "string", required: true, description: "Station slug (e.g., 'bbc-radio-1') or MongoDB ObjectId" },
+      { name: "identifier", type: "string", required: true, description: "Station slug (e.g., 'bbc-radio-1') or opaque station ID" },
     ],
     responseExample: `{
   "_id": "64a1b2c3d4e5f6a7b8c9d0e1",
@@ -839,7 +839,7 @@ const STATION_ENDPOINTS: Endpoint[] = [
   }
 }`,
     codeExamples: {
-      curl: `# By slug\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/bbc-radio-1"\n\n# By MongoDB ID\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/64a1b2c3d4e5f6a7b8c9d0e1"`,
+      curl: `# By slug\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/bbc-radio-1"\n\n# By station ID\ncurl -H "X-API-Key: YOUR_KEY" "${BASE_URL}/api/station/64a1b2c3d4e5f6a7b8c9d0e1"`,
       javascript: `const response = await fetch('${BASE_URL}/api/station/bbc-radio-1', {\n  headers: { 'X-API-Key': 'YOUR_KEY' }\n});\nconst station = await response.json();`,
       python: `response = requests.get(\n    '${BASE_URL}/api/station/bbc-radio-1',\n    headers={'X-API-Key': 'YOUR_KEY'}\n)\nstation = response.json()`,
       swift: `let url = URL(string: "${BASE_URL}/api/station/bbc-radio-1")!\nvar request = URLRequest(url: url)\nrequest.setValue("YOUR_KEY", forHTTPHeaderField: "X-API-Key")\nlet (data, _) = try await URLSession.shared.data(for: request)`,
@@ -963,7 +963,7 @@ const STATION_ENDPOINTS: Endpoint[] = [
     title: "Similar Stations",
     description: "Find stations similar to a given station based on genre, country, and tags. Useful for building 'You might also like' features.",
     params: [
-      { name: "id", type: "string", required: true, description: "Station ID (MongoDB ObjectId)" },
+      { name: "id", type: "string", required: true, description: "Station ID (opaque station ID)" },
       { name: "limit", type: "number", default: "6", description: "Number of similar stations to return" },
     ],
     responseExample: `[
@@ -988,7 +988,7 @@ const STATION_ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/api/stations/country-random",
     title: "Random Station",
-    description: "Get a random radio station from a specific country using MongoDB $sample aggregation. The country parameter is required. Returns a single random station.",
+    description: "Get a random radio station from a specific country using a PostgreSQL random-selection query. The country parameter is required. Returns a single random station.",
     params: [
       { name: "country", type: "string", required: true, description: "Country to pick a random station from (all formats supported: English, ISO-2, ISO-3, native, Turkish)" },
     ],
@@ -1016,7 +1016,7 @@ const STATION_ENDPOINTS: Endpoint[] = [
     title: "Track Station Click",
     description: "Increment the click count for a station. Call this when a user starts playing a station to improve popularity rankings and trending data.",
     params: [
-      { name: "id", type: "string", required: true, description: "Station ID (MongoDB ObjectId)" },
+      { name: "id", type: "string", required: true, description: "Station ID (opaque station ID)" },
     ],
     responseExample: `{
   "success": true
@@ -1318,9 +1318,9 @@ const STREAMING_ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/api/now-playing/:id",
     title: "Now Playing",
-    description: "Get the currently playing track information for a station. Returns title, artist, and station info when available from the stream metadata. Accepts station slug or MongoDB ID.",
+    description: "Get the currently playing track information for a station. Returns title, artist, and station info when available from the stream metadata. Accepts station slug or station ID.",
     params: [
-      { name: "id", type: "string", required: true, description: "Station slug (e.g., 'bbc-radio-1') or MongoDB ObjectId" },
+      { name: "id", type: "string", required: true, description: "Station slug (e.g., 'bbc-radio-1') or opaque station ID" },
     ],
     responseExample: `{
   "title": "Blinding Lights",
@@ -1601,7 +1601,7 @@ const USER_DATA_ENDPOINTS: Endpoint[] = [
     title: "Add Favorite",
     description: "Add a station to the authenticated user's favorites list. Requires user authentication via session or auth token.",
     bodyParams: [
-      { name: "stationId", type: "string", required: true, description: "Station ID (MongoDB ObjectId) to favorite" },
+      { name: "stationId", type: "string", required: true, description: "Station ID (opaque station ID) to favorite" },
     ],
     headers: [
       { name: "Authorization", type: "string", required: true, description: "Bearer mrt_your_token (mobile) or session cookie (web)" },
@@ -1670,7 +1670,7 @@ const USER_DATA_ENDPOINTS: Endpoint[] = [
     title: "Add to Recently Played",
     description: "Record a station as recently played. The list maintains up to 12 entries with the most recent at the top. Duplicate entries are moved to the top.",
     bodyParams: [
-      { name: "stationId", type: "string", required: true, description: "Station ID (MongoDB ObjectId) that was played" },
+      { name: "stationId", type: "string", required: true, description: "Station ID (opaque station ID) that was played" },
     ],
     headers: [
       { name: "Authorization", type: "string", required: true, description: "Bearer mrt_your_token (mobile) or session cookie (web)" },
@@ -2086,7 +2086,7 @@ const ML_ENDPOINTS: Endpoint[] = [
     description: "Track a user's interaction with a station (play, skip, favorite) for the ML recommendation engine. Use a persistent `sessionId` across sessions for better personalization. No authentication required.",
     bodyParams: [
       { name: "sessionId", type: "string", required: true, description: "Persistent anonymous session ID (store in localStorage)" },
-      { name: "stationId", type: "string", required: true, description: "Station MongoDB ObjectId" },
+      { name: "stationId", type: "string", required: true, description: "Station opaque station ID" },
       { name: "interactionType", type: "string", required: true, description: "'play', 'skip', or 'favorite'" },
       { name: "duration", type: "number", description: "Seconds listened (for 'play' interactions)" },
     ],
@@ -2399,11 +2399,11 @@ const HEALTH_ENDPOINTS: Endpoint[] = [
     path: "/api/health",
     auth: "public",
     title: "Health Check",
-    description: "Check API server health. Returns uptime, MongoDB connection state, and environment info. Useful for monitoring and load-balancer health checks. No authentication required.",
+    description: "Check API server health. Returns uptime, PostgreSQL connection state, and environment info. Useful for monitoring and load-balancer health checks. No authentication required.",
     responseExample: `{
   "status": "ok",
   "uptime": 86400,
-  "mongodb": "connected",
+  "database": { "engine": "postgresql", "status": "connected" },
   "environment": "production",
   "version": "1.0.0"
 }`,

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import {
   IndexNowSubmissionUrls,
   INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
-} from '@workspace/db-shared/mongo-schemas';
+} from '@workspace/legacy-migration/mongo-schemas';
 
 test('IndexNowSubmissionUrls schema declares the fields we depend on', () => {
   const paths = IndexNowSubmissionUrls.schema.paths;

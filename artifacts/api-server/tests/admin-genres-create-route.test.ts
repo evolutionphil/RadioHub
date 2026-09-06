@@ -16,6 +16,7 @@
  */
 import { test, mock, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { createNativePostgresFixture } from './helpers/native-postgres-fixture';
 import express, {
   type Express,
   type Request,
@@ -26,7 +27,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
 
 // ---------------------------------------------------------------------------
-// In-memory Genre store stubbing the routes' Mongoose dependency.
+// Real PostgreSQL persistence; only non-database side effects are mocked.
 // ---------------------------------------------------------------------------
 
 interface GenreRow {
@@ -43,77 +44,9 @@ interface GenreRow {
   updatedAt?: Date;
 }
 
-const genreRows: GenreRow[] = [];
-let nextId = 1;
+let fixture: Awaited<ReturnType<typeof createNativePostgresFixture>>;
 let refreshAllCalls = 0;
-
-interface FakeQuery<T> extends PromiseLike<T> {
-  select: () => FakeQuery<T>;
-  sort: () => FakeQuery<T>;
-  limit: () => FakeQuery<T>;
-  lean: <U = T>() => Promise<U>;
-}
-function fakeQuery<T>(value: T): FakeQuery<T> {
-  const q: FakeQuery<T> = {
-    select: () => q,
-    sort: () => q,
-    limit: () => q,
-    lean: async () => value as unknown as never,
-    then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
-  };
-  return q;
-}
-
-const FakeGenreModel = {
-  find: () => fakeQuery([...genreRows]),
-  findOne: (query: { slug?: string }) =>
-    fakeQuery(
-      query?.slug
-        ? (genreRows.find((r) => r.slug === query.slug) ?? null)
-        : null,
-    ),
-  create: async (doc: Partial<GenreRow>) => {
-    if (genreRows.some((r) => r.slug === doc.slug)) {
-      const err = new Error('E11000 duplicate key') as Error & { code?: number };
-      err.code = 11000;
-      throw err;
-    }
-    const row: GenreRow = {
-      _id: String(nextId++),
-      name: doc.name ?? '',
-      slug: doc.slug ?? '',
-      isDiscoverable: doc.isDiscoverable ?? false,
-      description: doc.description,
-      posterImage: doc.posterImage,
-      discoverableImage: doc.discoverableImage,
-      displayOrder: doc.displayOrder,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    genreRows.push(row);
-    return row;
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Module mocks — must be installed BEFORE the routes module is imported.
-// ---------------------------------------------------------------------------
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Genre: FakeGenreModel,
-    Country: { find: () => fakeQuery([]) },
-    Station: {
-      find: () => fakeQuery([]),
-      aggregate: async () => [],
-      distinct: () => fakeQuery([]),
-      countDocuments: async () => 0,
-    },
-    UserProfile: { findOne: () => fakeQuery(null) },
-    UserListeningHistory: { find: () => fakeQuery([]) },
-    SAFE_GENRE_SLUG_RE: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-  },
-});
+async function genreCount(){return Number((await fixture.pool.query('SELECT count(*) AS count FROM genres')).rows[0].count);}
 
 mock.module(
   new URL('../src/services/recommendation-engine.ts', import.meta.url).href,
@@ -191,6 +124,7 @@ let baseUrl: string;
 
 before(async () => {
   process.env.NODE_ENV = 'test';
+  fixture=await createNativePostgresFixture('admin_genre_create');
 
   const mod = (await import(
     '../src/routes/genres-countries-routes.ts'
@@ -223,13 +157,12 @@ before(async () => {
 });
 
 after(async () => {
-  if (!server) return;
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  if (server) await new Promise<void>((resolve) => server.close(() => resolve()));
+  if(fixture) await fixture.close();
 });
 
-function resetState() {
-  genreRows.length = 0;
-  nextId = 1;
+async function resetState() {
+  await fixture.clear('genres');
   refreshAllCalls = 0;
 }
 
@@ -238,18 +171,18 @@ function resetState() {
 // ---------------------------------------------------------------------------
 
 test('POST /api/genres rejects non-admins with 401', async () => {
-  resetState();
+  await resetState();
   const res = await fetch(`${baseUrl}/api/genres`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ name: 'Shoegaze', slug: 'shoegaze' }),
   });
   assert.equal(res.status, 401, 'non-admin must be rejected');
-  assert.equal(genreRows.length, 0, 'no genre must be persisted for non-admins');
+  assert.equal(await genreCount(), 0, 'no genre must be persisted for non-admins');
 });
 
 test('POST /api/genres creates a new genre and returns 201 (admin)', async () => {
-  resetState();
+  await resetState();
   const res = await fetch(`${baseUrl}/api/genres`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-admin': '1' },
@@ -270,7 +203,7 @@ test('POST /api/genres creates a new genre and returns 201 (admin)', async () =>
   assert.equal(body.displayOrder, 7);
   assert.ok(body._id, 'created genre must have an _id');
 
-  assert.equal(genreRows.length, 1, 'a single Genre row must be persisted');
+  assert.equal(await genreCount(), 1, 'a single Genre row must be persisted');
   assert.equal(
     refreshAllCalls,
     1,
@@ -279,7 +212,7 @@ test('POST /api/genres creates a new genre and returns 201 (admin)', async () =>
 });
 
 test('POST /api/genres rejects an invalid slug with 400 (SAFE_GENRE_SLUG_RE)', async () => {
-  resetState();
+  await resetState();
   // Uppercase + space — fails /^[a-z0-9]+(?:-[a-z0-9]+)*$/.
   const res = await fetch(`${baseUrl}/api/genres`, {
     method: 'POST',
@@ -289,14 +222,14 @@ test('POST /api/genres rejects an invalid slug with 400 (SAFE_GENRE_SLUG_RE)', a
   assert.equal(res.status, 400);
   const body = (await res.json()) as { error?: string };
   assert.match(body.error ?? '', /invalid slug/i);
-  assert.equal(genreRows.length, 0, 'invalid-slug request must NOT persist a row');
+  assert.equal(await genreCount(), 0, 'invalid-slug request must NOT persist a row');
   assert.equal(refreshAllCalls, 0, 'refreshAll must NOT run when validation fails');
 });
 
 test('POST /api/genres rejects a duplicate slug with 409', async () => {
-  resetState();
+  await resetState();
   // Pre-seed an existing genre with slug "rock".
-  genreRows.push({
+  await fixture.insert('genres',{
     _id: 'seed-1',
     name: 'Rock',
     slug: 'rock',
@@ -312,11 +245,11 @@ test('POST /api/genres rejects a duplicate slug with 409', async () => {
   const body = (await res.json()) as { error?: string };
   assert.match(body.error ?? '', /already exists/i);
   assert.match(body.error ?? '', /rock/);
-  assert.equal(genreRows.length, 1, 'duplicate-slug request must NOT add a new row');
+  assert.equal(await genreCount(), 1, 'duplicate-slug request must NOT add a new row');
 });
 
 test('POST /api/genres rejects missing name with 400', async () => {
-  resetState();
+  await resetState();
   const res = await fetch(`${baseUrl}/api/genres`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-admin': '1' },
@@ -325,5 +258,5 @@ test('POST /api/genres rejects missing name with 400', async () => {
   assert.equal(res.status, 400);
   const body = (await res.json()) as { error?: string };
   assert.match(body.error ?? '', /name is required/i);
-  assert.equal(genreRows.length, 0);
+  assert.equal(await genreCount(), 0);
 });

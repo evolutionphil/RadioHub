@@ -20,17 +20,15 @@
  * Runner: `--experimental-test-module-mocks` (wired up in
  * artifacts/api-server/package.json#scripts.test).
  */
-import { test, mock, before, after, afterEach } from 'node:test';
-import assert from 'node:assert/strict';
+import { test, mock, before, after, afterEach } from "node:test";
+import assert from "node:assert/strict";
 
-import type {
-  IBackfillRun,
-  IBackfillRunCountryLogos,
-  IBackfillRunCountryTags,
-} from '@workspace/db-shared/mongo-schemas';
+import type { BackfillRun as IBackfillRun } from "../src/data/postgres-coverage-store";
+type IBackfillRunCountryLogos = IBackfillRun["logos"][number];
+type IBackfillRunCountryTags = IBackfillRun["tags"][number];
 
 // ---------------------------------------------------------------------------
-// Recording fake for BackfillRun.find().sort().limit().select().lean().
+// Recording boundary for the native PostgreSQL historical-run reader.
 // ---------------------------------------------------------------------------
 
 type HistoryRow = {
@@ -43,38 +41,25 @@ let historyRows: HistoryRow[] = [];
 let lastFindFilter: unknown = null;
 let lastLimit = 0;
 
-function chainable(rows: HistoryRow[]) {
-  const q = {
-    sort: () => q,
-    limit: (n: number) => {
-      lastLimit = n;
-      return q;
+mock.module(
+  new URL("../src/data/postgres-coverage-store.ts", import.meta.url).href,
+  {
+    namedExports: {
+      pgCoverage: () => ({
+        runs: async (input: any) => {
+          lastFindFilter = input;
+          lastLimit = input.limit;
+          return { runs: historyRows, total: historyRows.length };
+        },
+      }),
     },
-    select: () => q,
-    lean: async () => rows,
-  };
-  return q;
-}
-
-const FakeBackfillRun = {
-  find: (filter: unknown) => {
-    lastFindFilter = filter;
-    return chainable(historyRows);
   },
-};
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    BackfillRun: FakeBackfillRun,
-    Station: {},
-    AdminSetting: {},
-  },
-});
+);
 
 // SyncService is imported by scheduled-backfill.ts but the slowdown
 // detector never touches it. Stub to a no-op class so the module
 // graph resolves under the mock.
-mock.module(new URL('../src/services/sync.ts', import.meta.url).href, {
+mock.module(new URL("../src/services/sync.ts", import.meta.url).href, {
   namedExports: {
     SyncService: class {},
   },
@@ -90,12 +75,12 @@ function makeRun(
   overrides: Partial<IBackfillRun> = {},
 ): IBackfillRun {
   const base = {
-    _id: 'current-run' as unknown,
-    trigger: 'cron:weekly',
-    status: 'completed' as 'running' | 'completed' | 'failed',
+    _id: "current-run" as unknown,
+    trigger: "cron:weekly",
+    status: "completed" as "running" | "completed" | "failed",
     topN: 5,
-    startedAt: new Date('2026-01-08T04:00:00Z'),
-    finishedAt: new Date('2026-01-08T04:10:00Z'),
+    startedAt: new Date("2026-01-08T04:00:00Z"),
+    finishedAt: new Date("2026-01-08T04:10:00Z"),
     durationMs: 600_000,
     logos: logos.map((l) => ({
       candidates: 0,
@@ -116,20 +101,31 @@ function makeRun(
   return { ...base, ...overrides } as unknown as IBackfillRun;
 }
 
-function historyOf(samples: Array<{ logos?: Array<[string, number]>; tags?: Array<[string, number]> }>): HistoryRow[] {
+function historyOf(
+  samples: Array<{
+    logos?: Array<[string, number]>;
+    tags?: Array<[string, number]>;
+  }>,
+): HistoryRow[] {
   return samples.map((s, i) => ({
     _id: `hist-${i}`,
-    logos: (s.logos ?? []).map(([countryCode, durationMs]) => ({ countryCode, durationMs })),
-    tags: (s.tags ?? []).map(([countryCode, durationMs]) => ({ countryCode, durationMs })),
+    logos: (s.logos ?? []).map(([countryCode, durationMs]) => ({
+      countryCode,
+      durationMs,
+    })),
+    tags: (s.tags ?? []).map(([countryCode, durationMs]) => ({
+      countryCode,
+      durationMs,
+    })),
   }));
 }
 
 const ENV_KEYS = [
-  'BACKFILL_PHASE_SLOWDOWN_MULTIPLIER',
-  'BACKFILL_PHASE_SLOWDOWN_LOOKBACK',
-  'BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES',
-  'BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS',
-  'BACKFILL_ALERT_WEBHOOK_URL',
+  "BACKFILL_PHASE_SLOWDOWN_MULTIPLIER",
+  "BACKFILL_PHASE_SLOWDOWN_LOOKBACK",
+  "BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES",
+  "BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS",
+  "BACKFILL_ALERT_WEBHOOK_URL",
 ] as const;
 const originalEnv: Record<string, string | undefined> = {};
 
@@ -150,7 +146,8 @@ afterEach(async () => {
   historyRows = [];
   lastFindFilter = null;
   lastLimit = 0;
-  const { setBackfillNotifier } = await import('../src/services/backfill-notifier.ts');
+  const { setBackfillNotifier } =
+    await import("../src/services/backfill-notifier.ts");
   setBackfillNotifier(null);
 });
 
@@ -158,199 +155,193 @@ afterEach(async () => {
 // detectBackfillPhaseSlowdowns — happy path
 // ---------------------------------------------------------------------------
 
-test('flags a phase that ran 3x slower than the recent median', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("flags a phase that ran 3x slower than the recent median", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   // Baseline: DE tag-hydration ~30s. Today's run: 5 minutes.
   historyRows = historyOf([
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 28_000]] },
-    { tags: [['DE', 32_000]] },
-    { tags: [['DE', 31_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 28_000]] },
+    { tags: [["DE", 32_000]] },
+    { tags: [["DE", 31_000]] },
   ]);
 
-  const run = makeRun(
-    [],
-    [{ countryCode: 'DE', durationMs: 300_000 }],
-  );
+  const run = makeRun([], [{ countryCode: "DE", durationMs: 300_000 }]);
   const slowdowns = await detectBackfillPhaseSlowdowns(run);
 
   assert.equal(slowdowns.length, 1);
-  assert.equal(slowdowns[0].countryCode, 'DE');
-  assert.equal(slowdowns[0].phase, 'tags');
+  assert.equal(slowdowns[0].countryCode, "DE");
+  assert.equal(slowdowns[0].phase, "tags");
   assert.equal(slowdowns[0].durationMs, 300_000);
-  assert.ok(slowdowns[0].baselineMs >= 28_000 && slowdowns[0].baselineMs <= 32_000);
+  assert.ok(
+    slowdowns[0].baselineMs >= 28_000 && slowdowns[0].baselineMs <= 32_000,
+  );
   assert.ok(slowdowns[0].multiplier >= 3);
   assert.equal(slowdowns[0].sampleSize, 4);
 });
 
-test('does not flag a phase that is only mildly slower than the baseline', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("does not flag a phase that is only mildly slower than the baseline", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   historyRows = historyOf([
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
   ]);
 
-  const run = makeRun([], [{ countryCode: 'DE', durationMs: 60_000 }]); // 2x, below default 3x
+  const run = makeRun([], [{ countryCode: "DE", durationMs: 60_000 }]); // 2x, below default 3x
   const slowdowns = await detectBackfillPhaseSlowdowns(run);
   assert.equal(slowdowns.length, 0);
 });
 
-test('skips countries with too few historical samples', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("skips countries with too few historical samples", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   // Only 2 samples — below default min of 3. A brand-new country
   // shouldn't be allowed to page on the second-ever run just because
   // the first one happened to be quick.
   historyRows = historyOf([
-    { logos: [['XX', 1_000]] },
-    { logos: [['XX', 1_500]] },
+    { logos: [["XX", 1_000]] },
+    { logos: [["XX", 1_500]] },
   ]);
 
-  const run = makeRun([{ countryCode: 'XX', durationMs: 100_000 }], []);
+  const run = makeRun([{ countryCode: "XX", durationMs: 100_000 }], []);
   const slowdowns = await detectBackfillPhaseSlowdowns(run);
   assert.equal(slowdowns.length, 0);
 });
 
-test('skips phases whose baseline is below the noise floor', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("skips phases whose baseline is below the noise floor", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   // Baseline of ~50ms. Even a 10x jump (500ms) is operationally
   // boring and shouldn't page anyone.
   historyRows = historyOf([
-    { logos: [['NL', 50]] },
-    { logos: [['NL', 60]] },
-    { logos: [['NL', 40]] },
+    { logos: [["NL", 50]] },
+    { logos: [["NL", 60]] },
+    { logos: [["NL", 40]] },
   ]);
 
-  const run = makeRun([{ countryCode: 'NL', durationMs: 500 }], []);
+  const run = makeRun([{ countryCode: "NL", durationMs: 500 }], []);
   const slowdowns = await detectBackfillPhaseSlowdowns(run);
   assert.equal(slowdowns.length, 0);
 });
 
-test('only counts samples for the same country AND phase', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("only counts samples for the same country AND phase", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   // Plenty of LOGO samples for DE, but no historical TAG samples for DE.
   // A slow current DE tag-hydration must not borrow the logo baseline.
   historyRows = historyOf([
-    { logos: [['DE', 30_000]] },
-    { logos: [['DE', 30_000]] },
-    { logos: [['DE', 30_000]] },
-    { logos: [['DE', 30_000]] },
+    { logos: [["DE", 30_000]] },
+    { logos: [["DE", 30_000]] },
+    { logos: [["DE", 30_000]] },
+    { logos: [["DE", 30_000]] },
   ]);
 
-  const run = makeRun([], [{ countryCode: 'DE', durationMs: 300_000 }]);
+  const run = makeRun([], [{ countryCode: "DE", durationMs: 300_000 }]);
   const slowdowns = await detectBackfillPhaseSlowdowns(run);
   assert.equal(slowdowns.length, 0);
 });
 
-test('excludes the current run from the historical query', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("excludes the current run from the historical query", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   historyRows = historyOf([
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
   ]);
 
   await detectBackfillPhaseSlowdowns(
-    makeRun([], [{ countryCode: 'DE', durationMs: 1 }], { _id: 'today' as unknown }),
+    makeRun([], [{ countryCode: "DE", durationMs: 1 }], {
+      _id: "today" as unknown,
+    }),
   );
 
-  const filter = lastFindFilter as { _id?: { $ne?: unknown }; status?: string } | null;
-  assert.ok(filter, 'find should have been called');
-  assert.equal(filter.status, 'completed');
-  assert.equal(filter._id?.$ne, 'today');
+  const filter = lastFindFilter as {
+    excludeId?: string;
+    status?: string;
+  } | null;
+  assert.ok(filter, "find should have been called");
+  assert.equal(filter.status, "completed");
+  assert.equal(filter.excludeId, "today");
 });
 
 // ---------------------------------------------------------------------------
 // Env knobs
 // ---------------------------------------------------------------------------
 
-test('BACKFILL_PHASE_SLOWDOWN_MULTIPLIER tightens / loosens the trigger', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("BACKFILL_PHASE_SLOWDOWN_MULTIPLIER tightens / loosens the trigger", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   historyRows = historyOf([
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
   ]);
-  const run = makeRun([], [{ countryCode: 'DE', durationMs: 60_000 }]); // exactly 2x
+  const run = makeRun([], [{ countryCode: "DE", durationMs: 60_000 }]); // exactly 2x
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = '5';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = "5";
   assert.equal((await detectBackfillPhaseSlowdowns(run)).length, 0);
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = '2';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = "2";
   const slow = await detectBackfillPhaseSlowdowns(run);
   assert.equal(slow.length, 1);
-  assert.equal(slow[0].countryCode, 'DE');
+  assert.equal(slow[0].countryCode, "DE");
 });
 
-test('BACKFILL_PHASE_SLOWDOWN_LOOKBACK is forwarded to the Mongo query', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("BACKFILL_PHASE_SLOWDOWN_LOOKBACK is forwarded to the native history query", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_LOOKBACK = '25';
+  process.env.BACKFILL_PHASE_SLOWDOWN_LOOKBACK = "25";
   historyRows = []; // empty result is fine; we only care about the limit arg
   await detectBackfillPhaseSlowdowns(
-    makeRun([], [{ countryCode: 'DE', durationMs: 99 }]),
+    makeRun([], [{ countryCode: "DE", durationMs: 99 }]),
   );
   assert.equal(lastLimit, 25);
 });
 
-test('BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES raises the floor for new markets', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES raises the floor for new markets", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   historyRows = historyOf([
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
-    { tags: [['DE', 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
+    { tags: [["DE", 30_000]] },
   ]);
-  const run = makeRun([], [{ countryCode: 'DE', durationMs: 300_000 }]);
+  const run = makeRun([], [{ countryCode: "DE", durationMs: 300_000 }]);
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES = '5';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES = "5";
   assert.equal((await detectBackfillPhaseSlowdowns(run)).length, 0);
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES = '1';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES = "1";
   assert.equal((await detectBackfillPhaseSlowdowns(run)).length, 1);
 });
 
-test('BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS gates the noise floor', async () => {
-  const { detectBackfillPhaseSlowdowns } = await import(
-    '../src/services/scheduled-backfill.ts'
-  );
+test("BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS gates the noise floor", async () => {
+  const { detectBackfillPhaseSlowdowns } =
+    await import("../src/services/scheduled-backfill.ts");
 
   historyRows = historyOf([
-    { logos: [['NL', 100]] },
-    { logos: [['NL', 100]] },
-    { logos: [['NL', 100]] },
+    { logos: [["NL", 100]] },
+    { logos: [["NL", 100]] },
+    { logos: [["NL", 100]] },
   ]);
-  const run = makeRun([{ countryCode: 'NL', durationMs: 1_000 }], []);
+  const run = makeRun([{ countryCode: "NL", durationMs: 1_000 }], []);
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS = '5000';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS = "5000";
   assert.equal((await detectBackfillPhaseSlowdowns(run)).length, 0);
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS = '0';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS = "0";
   assert.equal((await detectBackfillPhaseSlowdowns(run)).length, 1);
 });
 
@@ -358,10 +349,9 @@ test('BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS gates the noise floor', async () =
 // Notifier integration
 // ---------------------------------------------------------------------------
 
-test('notifyBackfillPhaseSlowdowns forwards the slowdowns payload to the notifier', async () => {
-  const { notifyBackfillPhaseSlowdowns, setBackfillNotifier } = await import(
-    '../src/services/backfill-notifier.ts'
-  );
+test("notifyBackfillPhaseSlowdowns forwards the slowdowns payload to the notifier", async () => {
+  const { notifyBackfillPhaseSlowdowns, setBackfillNotifier } =
+    await import("../src/services/backfill-notifier.ts");
 
   let captured: { reason: string; slowdowns: unknown } | null = null;
   setBackfillNotifier((_run, reason, ctx) => {
@@ -370,8 +360,8 @@ test('notifyBackfillPhaseSlowdowns forwards the slowdowns payload to the notifie
 
   await notifyBackfillPhaseSlowdowns(makeRun(), [
     {
-      countryCode: 'DE',
-      phase: 'tags',
+      countryCode: "DE",
+      phase: "tags",
       durationMs: 300_000,
       baselineMs: 30_000,
       multiplier: 10,
@@ -379,12 +369,12 @@ test('notifyBackfillPhaseSlowdowns forwards the slowdowns payload to the notifie
     },
   ]);
 
-  assert.ok(captured, 'notifier should have been called');
-  assert.equal(captured!.reason, 'phase-slowdown');
+  assert.ok(captured, "notifier should have been called");
+  assert.equal(captured!.reason, "phase-slowdown");
   assert.deepEqual(captured!.slowdowns, [
     {
-      countryCode: 'DE',
-      phase: 'tags',
+      countryCode: "DE",
+      phase: "tags",
       durationMs: 300_000,
       baselineMs: 30_000,
       multiplier: 10,
@@ -393,10 +383,9 @@ test('notifyBackfillPhaseSlowdowns forwards the slowdowns payload to the notifie
   ]);
 });
 
-test('notifyBackfillPhaseSlowdowns is a no-op for an empty slowdowns list', async () => {
-  const { notifyBackfillPhaseSlowdowns, setBackfillNotifier } = await import(
-    '../src/services/backfill-notifier.ts'
-  );
+test("notifyBackfillPhaseSlowdowns is a no-op for an empty slowdowns list", async () => {
+  const { notifyBackfillPhaseSlowdowns, setBackfillNotifier } =
+    await import("../src/services/backfill-notifier.ts");
 
   let called = 0;
   setBackfillNotifier(() => {
@@ -406,8 +395,8 @@ test('notifyBackfillPhaseSlowdowns is a no-op for an empty slowdowns list', asyn
   await notifyBackfillPhaseSlowdowns(makeRun(), []);
   await notifyBackfillPhaseSlowdowns(null, [
     {
-      countryCode: 'DE',
-      phase: 'tags',
+      countryCode: "DE",
+      phase: "tags",
       durationMs: 1,
       baselineMs: 1,
       multiplier: 1,
@@ -417,20 +406,19 @@ test('notifyBackfillPhaseSlowdowns is a no-op for an empty slowdowns list', asyn
   assert.equal(called, 0);
 });
 
-test('a notifier that throws on phase-slowdown does not bubble out', async () => {
-  const { notifyBackfillPhaseSlowdowns, setBackfillNotifier } = await import(
-    '../src/services/backfill-notifier.ts'
-  );
+test("a notifier that throws on phase-slowdown does not bubble out", async () => {
+  const { notifyBackfillPhaseSlowdowns, setBackfillNotifier } =
+    await import("../src/services/backfill-notifier.ts");
 
   setBackfillNotifier(() => {
-    throw new Error('alert channel exploded');
+    throw new Error("alert channel exploded");
   });
 
   await assert.doesNotReject(
     notifyBackfillPhaseSlowdowns(makeRun(), [
       {
-        countryCode: 'DE',
-        phase: 'tags',
+        countryCode: "DE",
+        phase: "tags",
         durationMs: 300_000,
         baselineMs: 30_000,
         multiplier: 10,
@@ -440,18 +428,18 @@ test('a notifier that throws on phase-slowdown does not bubble out', async () =>
   );
 });
 
-test('env getters fall back to defaults on garbage input', async () => {
+test("env getters fall back to defaults on garbage input", async () => {
   const {
     getBackfillPhaseSlowdownMultiplier,
     getBackfillPhaseSlowdownLookback,
     getBackfillPhaseSlowdownMinSamples,
     getBackfillPhaseSlowdownMinBaselineMs,
-  } = await import('../src/services/backfill-notifier.ts');
+  } = await import("../src/services/backfill-notifier.ts");
 
-  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = 'nope';
-  process.env.BACKFILL_PHASE_SLOWDOWN_LOOKBACK = '-3';
-  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES = '0';
-  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS = 'nope';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = "nope";
+  process.env.BACKFILL_PHASE_SLOWDOWN_LOOKBACK = "-3";
+  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_SAMPLES = "0";
+  process.env.BACKFILL_PHASE_SLOWDOWN_MIN_BASELINE_MS = "nope";
 
   assert.equal(getBackfillPhaseSlowdownMultiplier(), 3);
   assert.equal(getBackfillPhaseSlowdownLookback(), 10);
@@ -460,10 +448,10 @@ test('env getters fall back to defaults on garbage input', async () => {
 
   // A multiplier of exactly 1 is meaningless (every run trivially
   // hits 1x its own median), so it must also fall back.
-  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = '1';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = "1";
   assert.equal(getBackfillPhaseSlowdownMultiplier(), 3);
 
   // But fractional multipliers > 1 are accepted.
-  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = '1.5';
+  process.env.BACKFILL_PHASE_SLOWDOWN_MULTIPLIER = "1.5";
   assert.equal(getBackfillPhaseSlowdownMultiplier(), 1.5);
 });

@@ -1,48 +1,31 @@
-import crypto from 'crypto';
-import mongoose from 'mongoose';
-import { AuthToken } from '@workspace/db-shared/mongo-schemas';
 import { logger } from '../utils/logger';
+import { createAuthToken, findActiveAuthToken } from '../data/auth-token-store';
+import { pgFindUserById } from '../data/postgres-user-store';
 
 export type MiddlewareFn = (req: any, res: any, next: any) => void | Promise<void>;
 
 export const requireAuth: MiddlewareFn = async (req, res, next) => {
   try {
     const session = req.session;
-    if (session?.user?.userId) {
-      (req.session as any).userId = session.user.userId;
-      return next();
-    }
-
+    let userId = session?.user?.userId || session?.userId || req.user?._id || req.user?.id;
     const authHeader = req.headers['authorization'];
     const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
 
-    if (bearerToken) {
-      try {
-        const tokenDoc = await AuthToken.findOne({
-          token: bearerToken,
-          isRevoked: false,
-          expiresAt: { $gt: new Date() }
-        });
-
-        if (tokenDoc) {
-          tokenDoc.lastUsedAt = new Date();
-          await tokenDoc.save();
-
-          if (!req.session) req.session = {};
-          (req.session as any).userId = tokenDoc.userId.toString();
-          if (!req.session.user) req.session.user = {} as any;
-          (req.session as any).user = { userId: tokenDoc.userId.toString() };
-          return next();
-        }
-      } catch (err) {
-        logger.error('Token auth error:', err);
-      }
+    if (!userId && bearerToken) userId = (await findActiveAuthToken(bearerToken))?.userId;
+    if (!userId) return void res.status(401).json({ error:'Authentication required' });
+    const user = await pgFindUserById(String(userId));
+    if (!user) return void res.status(401).json({ error:'Authentication required' });
+    if (['inactive','suspended','banned','deleted'].includes(user.status) || user.isActive===false) {
+      return void res.status(403).json({ error:'Account is not active' });
     }
-
-    return void res.status(401).json({ error: 'Authentication required' });
+    if (!req.session) req.session = {};
+    req.session.userId = user._id;
+    req.session.user = { ...req.session.user,userId:user._id };
+    req.user = user;
+    return next();
   } catch (err) {
     logger.error('requireAuth fatal error:', err);
-    return void res.status(500).json({ error: 'Authentication error' });
+    return void res.status(503).json({ error: 'Authentication service unavailable' });
   }
 };
 
@@ -76,39 +59,5 @@ export const generateAuthToken = async (
   deviceType: 'mobile' | 'tv' | 'desktop' | 'web' = 'mobile',
   deviceName?: string
 ): Promise<string> => {
-  const prefix = deviceType === 'tv' ? 'mrt_tv_' : 'mrt_';
-  const token = `${prefix}${crypto.randomBytes(32).toString('hex')}`;
-  const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000);
-
-  // Pre-flight: ensure mongoose is actually connected. With bufferCommands=false
-  // (db-mongo.ts), .create() would throw fast — but we want a clean diagnostic.
-  if (mongoose.connection.readyState !== 1) {
-    logger.error(`🔴 generateAuthToken: Mongo NOT ready (readyState=${mongoose.connection.readyState}) — refusing to mint token that won't persist`);
-    throw new Error('Database not ready — cannot generate auth token');
-  }
-
-  const created = await AuthToken.create({
-    token,
-    userId: new mongoose.Types.ObjectId(userId),
-    deviceType,
-    deviceName,
-    expiresAt,
-    lastUsedAt: new Date(),
-    createdAt: new Date(),
-    isRevoked: false,
-  });
-
-  // CRITICAL: round-trip verify the write actually landed and is readable.
-  // Catches: silent writeConcern downgrades, wrong-cluster routing, duplicate
-  // mongoose instances (monorepo hoisting), TTL-on-create misconfigs.
-  const verify = await AuthToken.findOne({ token }).select('_id userId').lean();
-  const conn = mongoose.connection;
-  if (!verify) {
-    logger.error(`🔴 generateAuthToken: WRITE returned ok but doc NOT readable! createdId=${String(created._id)} tokenPrefix=${token.slice(0, 16)} host=${conn.host} db=${conn.name} readyState=${conn.readyState}`);
-    throw new Error('AuthToken persistence verification failed');
-  }
-
-  logger.log(`✅ generateAuthToken persisted+verified userId=${userId} deviceType=${deviceType} tokenPrefix=${token.slice(0, 16)} _id=${String(created._id)} host=${conn.host} db=${conn.name}`);
-
-  return token;
+  return createAuthToken(userId, deviceType, deviceName);
 };

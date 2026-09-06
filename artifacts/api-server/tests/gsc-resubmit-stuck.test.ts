@@ -22,8 +22,8 @@
  *      transition INTO a non-indexed bucket and cleared on the transition
  *      out, while preserved when the row stays non-indexed across runs.
  *
- * The resubmit suite uses a real in-memory MongoDB so the actual Mongoose
- * filter, sort and updateMany run end-to-end. The transition suite calls
+ * The resubmit suite uses an isolated real PostgreSQL schema so native
+ * filters, locks and bookkeeping writes run end-to-end. The transition suite calls
  * the same `runInspectionBatchOnce` the cron uses, with `axios` and the
  * `google-auth-library` JWT mocked so we can drive deterministic GSC
  * inspection responses without touching the network.
@@ -34,8 +34,8 @@
 
 import { test, mock, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
+import { createNativePostgresFixture,type NativePostgresFixture } from './helpers/native-postgres-fixture';
+import { seoShape } from '../src/data/postgres-seo-indexing-store';
 
 // ---------------------------------------------------------------------------
 // Mocks installed BEFORE importing gsc-inspection.ts so it picks them up.
@@ -121,6 +121,7 @@ mock.module('axios', {
 
 mock.module('google-auth-library', {
   namedExports: {
+    OAuth2Client: class FakeOAuth2Client {},
     JWT: class FakeJWT {
       constructor(_opts: unknown) {}
       async getAccessToken() {
@@ -131,13 +132,12 @@ mock.module('google-auth-library', {
 });
 
 // ---------------------------------------------------------------------------
-// Shared fixtures — boot one mongo-memory server for the whole file.
+// Shared fixtures — isolated PostgreSQL schema for the whole file.
 // ---------------------------------------------------------------------------
 
-let mongod: MongoMemoryServer;
+let fixture:NativePostgresFixture;
 
 // Imported lazily AFTER the mocks above are installed.
-let GscUrlInspection: typeof import('@workspace/db-shared/mongo-schemas')['GscUrlInspection'];
 let runResubmitStuckOnce: (trigger?: string) => Promise<unknown>;
 let runInspectionBatchOnce: (
   batchSize?: number,
@@ -151,8 +151,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 before(async () => {
   process.env.NODE_ENV = 'test';
 
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri(), { dbName: 'gsc-resubmit-test' });
+  fixture=await createNativePostgresFixture('gsc-resubmit-test');
 
   // Pretend GSC is configured so the inspection path doesn't short-circuit.
   process.env.GSC_SERVICE_ACCOUNT_JSON = JSON.stringify({
@@ -160,9 +159,6 @@ before(async () => {
     private_key: 'fake-key',
   });
   process.env.GSC_SITE_URL = 'https://themegaradio.com/';
-
-  const schemas = await import('@workspace/db-shared/mongo-schemas');
-  GscUrlInspection = schemas.GscUrlInspection;
 
   const svc = await import('../src/services/gsc-inspection.ts');
   runResubmitStuckOnce =
@@ -174,12 +170,12 @@ before(async () => {
 });
 
 after(async () => {
-  await mongoose.disconnect();
-  if (mongod) await mongod.stop();
+  await fixture?.close();
 });
 
 beforeEach(async () => {
-  await GscUrlInspection.deleteMany({});
+  if(!fixture)return;
+  await fixture.clear('gsc_url_inspections','gsc_inspection_quota');
   indexNowCalls.length = 0;
   axiosCalls.length = 0;
   indexNowResult = { success: true };
@@ -200,13 +196,10 @@ interface SeedRow {
 }
 
 async function seed(rows: SeedRow[]) {
-  await GscUrlInspection.insertMany(
-    rows.map((r) => ({
-      language: r.language ?? 'en',
-      group: (r.group ?? 'station') as 'station',
-      ...r,
-    })),
-  );
+  for(const row of rows)await fixture.insert('gsc_url_inspections',{...row,language:row.language??'en',urlGroup:row.group??'station'});
+}
+async function inspection(url:string){
+  return seoShape((await fixture.pool.query('SELECT * FROM gsc_url_inspections WHERE url=$1',[url])).rows[0]);
 }
 
 // ===========================================================================
@@ -306,9 +299,7 @@ test('runResubmitStuckOnce skips rows whose lastResubmitAt is inside the cooldow
   );
 
   // The cooldown row's bookkeeping must NOT advance.
-  const untouched = await GscUrlInspection.findOne({
-    url: 'https://t.example/in-cooldown',
-  }).lean();
+  const untouched = await inspection('https://t.example/in-cooldown');
   assert.ok(untouched);
   assert.equal(untouched!.resubmitCount, 1, 'cooldown row resubmitCount stays put');
   assert.equal(
@@ -348,11 +339,11 @@ test('runResubmitStuckOnce bookkeeps every candidate on the success path', async
   await runResubmitStuckOnce('test');
   const after = Date.now();
 
-  const rows = await GscUrlInspection.find({}).sort({ url: 1 }).lean();
+  const rows = await fixture.pool.query('SELECT * FROM gsc_url_inspections ORDER BY url').then(result=>result.rows.map(seoShape));
   assert.equal(rows.length, 2);
   for (const row of rows) {
     assert.equal(row.lastResubmitStatus, 'success');
-    assert.equal(row.lastResubmitError, undefined);
+    assert.equal(row.lastResubmitError, null);
     assert.ok(row.lastResubmitAt instanceof Date);
     const ts = row.lastResubmitAt!.getTime();
     assert.ok(
@@ -361,7 +352,7 @@ test('runResubmitStuckOnce bookkeeps every candidate on the success path', async
     );
     assert.equal(
       row.lastInspectedAt,
-      undefined,
+      null,
       'lastInspectedAt must be unset so the next inspection batch re-checks Google',
     );
   }
@@ -398,9 +389,7 @@ test('runResubmitStuckOnce records lastResubmitStatus="failed" when IndexNow rej
   assert.equal(stats.succeeded, 0);
   assert.equal(stats.failed, 1);
 
-  const row = await GscUrlInspection.findOne({
-    url: 'https://t.example/will-fail',
-  }).lean();
+  const row = await inspection('https://t.example/will-fail');
   assert.ok(row);
   assert.equal(row!.lastResubmitStatus, 'failed');
   assert.match(row!.lastResubmitError ?? '', /synthetic IndexNow outage/);
@@ -471,9 +460,7 @@ test('inspection update SETS notIndexedSince on the transition into a non-indexe
   await runInspectionBatchOnce(10, 'test');
   const after = Date.now();
 
-  const row = await GscUrlInspection.findOne({
-    url: 'https://t.example/freshly-stuck',
-  }).lean();
+  const row = await inspection('https://t.example/freshly-stuck');
   assert.ok(row);
   assert.equal(row!.state, 'discovered-not-indexed');
   assert.ok(row!.notIndexedSince instanceof Date);
@@ -500,9 +487,7 @@ test('inspection update PRESERVES notIndexedSince when a row stays non-indexed a
   axiosResponder = () => gscPayload('Crawled - currently not indexed');
   await runInspectionBatchOnce(10, 'test');
 
-  const row = await GscUrlInspection.findOne({
-    url: 'https://t.example/still-stuck',
-  }).lean();
+  const row = await inspection('https://t.example/still-stuck');
   assert.ok(row);
   assert.equal(row!.state, 'crawled-not-indexed');
   assert.equal(
@@ -525,14 +510,12 @@ test('inspection update CLEARS notIndexedSince on the transition out of a non-in
   axiosResponder = () => gscPayload('Submitted and indexed', 'PASS');
   await runInspectionBatchOnce(10, 'test');
 
-  const row = await GscUrlInspection.findOne({
-    url: 'https://t.example/recovered',
-  }).lean();
+  const row = await inspection('https://t.example/recovered');
   assert.ok(row);
   assert.equal(row!.state, 'indexed');
   assert.equal(
     row!.notIndexedSince,
-    undefined,
+    null,
     'notIndexedSince must be cleared so the row drops out of the resubmit candidate set',
   );
 });
@@ -554,9 +537,7 @@ test('inspection update ANCHORS notIndexedSince for legacy rows already non-inde
   axiosResponder = () => gscPayload('Discovered - currently not indexed');
   await runInspectionBatchOnce(10, 'test');
 
-  const row = await GscUrlInspection.findOne({
-    url: 'https://t.example/legacy',
-  }).lean();
+  const row = await inspection('https://t.example/legacy');
   assert.ok(row);
   assert.equal(row!.state, 'discovered-not-indexed');
   assert.equal(

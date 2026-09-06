@@ -359,6 +359,9 @@ export interface IUser extends Document {
     cancelAtPeriodEnd?: boolean;
     cancelledAt?: Date;
     lastVerifiedAt?: Date;
+    lastSignedDate?: Date;
+    lastGoogleEventTime?: Date;
+    lastStripeEventTime?: Date;
   };
   createdAt: Date;
   updatedAt: Date;
@@ -1717,6 +1720,9 @@ const UserSchema = new Schema<IUser>({
     cancelAtPeriodEnd: { type: Boolean, default: false },
     cancelledAt: Date,
     lastVerifiedAt: Date,
+    lastSignedDate: Date,
+    lastGoogleEventTime: Date,
+    lastStripeEventTime: Date,
   },
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now }

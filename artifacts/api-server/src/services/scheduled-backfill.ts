@@ -1,11 +1,7 @@
+import { getAdminSetting } from '../data/postgres-admin-settings-store';
 import cron from 'node-cron';
-import {
-  Station,
-  BackfillRun,
-  AdminSetting,
-  type IBackfillRun,
-  type IBackfillRunSampleStation,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgCoverage, type BackfillRun as IBackfillRun, type BackfillSampleStation as IBackfillRunSampleStation } from '../data/postgres-coverage-store';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { SyncService } from './sync';
 import { logger } from '../utils/logger';
 import {
@@ -155,18 +151,16 @@ export async function loadStoredBackfillRetentionSettings(
     return retentionCache.value;
   }
   try {
-    const doc = await AdminSetting.findOne({ key: BACKFILL_RETENTION_SETTINGS_KEY }).lean();
+    const doc = await getAdminSetting(BACKFILL_RETENTION_SETTINGS_KEY);
     const value = sanitizeStoredRetention(doc?.value);
     retentionCache = { at: Date.now(), value };
     return value;
   } catch (err) {
     logger.warn(
-      '⚠️  Failed to load backfill-retention settings from DB, using env/defaults:',
+      '⚠️  Failed to load backfill-retention settings from PostgreSQL:',
       err,
     );
-    const value: BackfillRetentionSettings = { days: null, maxRows: null };
-    retentionCache = { at: Date.now(), value };
-    return value;
+    throw err;
   }
 }
 
@@ -215,18 +209,15 @@ async function sampleStationsForFilter(
   if (BACKFILL_SAMPLE_STATIONS_PER_COUNTRY <= 0) return [];
   try {
     type Row = { _id: unknown; slug?: string; name?: string };
-    const rows = (await Station.find(filter)
-      .select('_id slug name')
-      .limit(BACKFILL_SAMPLE_STATIONS_PER_COUNTRY)
-      .lean()) as unknown as Row[];
+    const rows = (await pgCatalog().find(filter,{fields:['_id','slug','name'],limit:BACKFILL_SAMPLE_STATIONS_PER_COUNTRY})) as unknown as Row[];
     return rows.map((r) => ({
       _id: String(r._id),
       slug: typeof r.slug === 'string' && r.slug ? r.slug : undefined,
       name: typeof r.name === 'string' && r.name ? r.name : undefined,
     }));
   } catch (err) {
-    logger.warn('⚠️  sampleStationsForFilter failed (non-fatal):', err);
-    return [];
+    logger.error('sampleStationsForFilter failed:',err);
+    throw err;
   }
 }
 
@@ -243,36 +234,7 @@ async function sampleStationsForFilter(
  *      bound alone would let more through (e.g. heavy manual usage in
  *      a short window).
  */
-export async function pruneOldBackfillRuns(): Promise<{ removed: number }> {
-  let removed = 0;
-  try {
-    // Resolve at sweep time so admin-tunable overrides (Task #233) take
-    // effect on the next prune without a redeploy.
-    const { days, maxRows } = await resolveBackfillRetentionSettings();
-    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
-    const byAge = await BackfillRun.deleteMany({ startedAt: { $lt: cutoff } });
-    removed += byAge.deletedCount ?? 0;
-
-    const pivotDoc = await BackfillRun.find()
-      .sort({ startedAt: -1 })
-      .skip(maxRows - 1)
-      .limit(1)
-      .select({ startedAt: 1 })
-      .lean<{ startedAt: Date } | null>();
-    if (pivotDoc?.startedAt) {
-      const byCount = await BackfillRun.deleteMany({
-        startedAt: { $lt: pivotDoc.startedAt },
-      });
-      removed += byCount.deletedCount ?? 0;
-    }
-    if (removed > 0) {
-      logger.log(`🧹 Pruned ${removed} old BackfillRun row(s) (retention: ${days}d / ${maxRows} rows)`);
-    }
-  } catch (err) {
-    logger.warn('⚠️  pruneOldBackfillRuns failed (non-fatal):', err);
-  }
-  return { removed };
-}
+export async function pruneOldBackfillRuns(): Promise<{ removed: number }> { const {days,maxRows}=await resolveBackfillRetentionSettings();return pgCoverage().pruneRuns(days,maxRows); }
 
 export function buildLogoBackfillFilter(
   countryCode?: string,
@@ -346,18 +308,7 @@ export function buildTagsBackfillFilter(
  */
 export async function enqueueLogosForCountry(
   countryCode: string,
-): Promise<{ candidates: number; enqueued: number; sampleStations: IBackfillRunSampleStation[] }> {
-  const filter = buildLogoBackfillFilter(countryCode);
-  const candidates = await Station.countDocuments(filter);
-  if (candidates === 0) return { candidates: 0, enqueued: 0, sampleStations: [] };
-  // Snapshot the head of the candidate set BEFORE the $unset so admins
-  // can click into specific touched stations from the run detail page.
-  // Captured pre-update because the $unset removes the very fields the
-  // filter matches on, so re-querying afterwards would return nothing.
-  const sampleStations = await sampleStationsForFilter(filter);
-  const result = await Station.updateMany(filter, { $unset: { logoAssets: '' } });
-  return { candidates, enqueued: result.modifiedCount ?? 0, sampleStations };
-}
+): Promise<{ candidates: number; enqueued: number; sampleStations: IBackfillRunSampleStation[] }> { return pgCoverage().enqueueLogos(buildLogoBackfillFilter(countryCode),BACKFILL_SAMPLE_STATIONS_PER_COUNTRY); }
 
 interface CountryCount {
   countryCode: string;
@@ -367,18 +318,7 @@ interface CountryCount {
 async function topCountriesByFilter(
   filter: Record<string, unknown>,
   topN: number,
-): Promise<CountryCount[]> {
-  const rows = await Station.aggregate<{ _id: string | null; count: number }>([
-    { $match: filter },
-    { $group: { _id: '$countryCode', count: { $sum: 1 } } },
-    { $sort: { count: -1 } },
-    { $limit: topN * 2 + 5 }, // over-fetch so we can drop blanks
-  ]);
-  return rows
-    .filter((r) => r._id && typeof r._id === 'string' && r._id.trim().length === 2)
-    .slice(0, topN)
-    .map((r) => ({ countryCode: r._id as string, count: r.count }));
-}
+): Promise<CountryCount[]> { const rows=await pgCatalog().groupCount('countryCode',filter);return rows.filter(r=>typeof r._id==='string'&&r._id.trim().length===2).sort((a,b)=>b.count-a.count).slice(0,topN).map(r=>({countryCode:r._id as string,count:r.count})); }
 
 /**
  * Compute the median of a list of numbers. Caller is responsible for
@@ -447,14 +387,7 @@ export async function detectBackfillPhaseSlowdowns(
       logos?: Array<{ countryCode?: string; durationMs?: number }>;
       tags?: Array<{ countryCode?: string; durationMs?: number }>;
     };
-    const history = (await BackfillRun.find({
-      status: 'completed',
-      _id: { $ne: currentRun._id },
-    })
-      .sort({ startedAt: -1 })
-      .limit(lookback)
-      .select({ logos: 1, tags: 1 })
-      .lean()) as unknown as HistoryRow[];
+    const history = (await pgCoverage().runs({status:'completed',excludeId:String(currentRun._id),limit:lookback}).then(result=>result.runs)) as unknown as HistoryRow[];
 
     if (history.length === 0) return [];
 
@@ -509,6 +442,7 @@ class ScheduledBackfillService {
   private static instance: ScheduledBackfillService;
   private isInitialized = false;
   private isRunning = false;
+  private leader: {assertOwned:()=>void;release:()=>Promise<void>} | null = null;
   private lastRunAt: Date | null = null;
   private lastRunId: string | null = null;
 
@@ -589,7 +523,7 @@ class ScheduledBackfillService {
       await new Promise((r) => setTimeout(r, 250));
     }
     // Re-read so we get the final status / counts the worker persisted.
-    return BackfillRun.findById(run._id);
+    return pgCoverage().run(String(run._id));
   }
 
   /**
@@ -607,6 +541,9 @@ class ScheduledBackfillService {
       return null;
     }
     this.isRunning = true;
+    try { this.leader=await pgCoverage().acquireJob('station-backfill'); }
+    catch(error){this.isRunning=false;throw error;}
+    if(!this.leader){this.isRunning=false;return null;}
     const startedAt = new Date();
 
     const overrideCountry = options.countryCode
@@ -616,7 +553,10 @@ class ScheduledBackfillService {
     // the sweep itself only touches one market — see `executeSweep`.
     const effectiveTopN = overrideCountry ? 1 : this.TOP_N;
 
-    const run = await BackfillRun.create({
+    let run: IBackfillRun;
+    try {
+      await pgCoverage().recoverInterruptedRuns();
+      run = await pgCoverage().createRun({
       trigger,
       status: 'running',
       topN: effectiveTopN,
@@ -624,7 +564,12 @@ class ScheduledBackfillService {
       startedAt,
       logos: [],
       tags: [],
-    });
+      });
+    }catch(error){
+      try { await this.leader.release(); }
+      finally { this.leader=null;this.isRunning=false; }
+      throw error;
+    }
     this.lastRunId = String(run._id);
 
     logger.log(
@@ -666,7 +611,9 @@ class ScheduledBackfillService {
         run.logos.splice(0, run.logos.length);
         run.tags.splice(0, run.tags.length);
         try {
+          this.leader?.assertOwned();
           await this.performSweep(run, overrideCountry);
+          this.leader?.assertOwned();
           lastError = undefined;
           break;
         } catch (err) {
@@ -681,7 +628,8 @@ class ScheduledBackfillService {
             );
             // Persist the in-progress attempts so dashboards can show
             // "retrying…" while we sleep through backoff.
-            try { await run.save(); } catch { /* best-effort */ }
+            this.leader?.assertOwned();
+            await pgCoverage().saveRun(run);
             await sleep(backoff);
           } else {
             logger.error(
@@ -696,7 +644,7 @@ class ScheduledBackfillService {
         run.status = 'completed';
         run.finishedAt = finishedAt;
         run.durationMs = finishedAt.getTime() - startedAt.getTime();
-        await run.save();
+        await pgCoverage().saveRun(run);
         this.lastRunAt = finishedAt;
         const retryNote = (run.attempts && run.attempts.length > 0)
           ? ` (recovered after ${run.attempts.length} failed attempt${run.attempts.length === 1 ? '' : 's'})`
@@ -729,7 +677,7 @@ class ScheduledBackfillService {
         run.finishedAt = finishedAt;
         run.durationMs = finishedAt.getTime() - startedAt.getTime();
         run.errorMessage = lastError instanceof Error ? lastError.message : String(lastError);
-        await run.save();
+        await pgCoverage().saveRun(run);
         this.lastRunAt = finishedAt;
         logger.error('❌ Scheduled backfill failed:', lastError);
         // Notifier swallows its own errors (and bounds webhook latency
@@ -737,11 +685,21 @@ class ScheduledBackfillService {
         // background worker. Only fires after all retries are exhausted.
         await notifyBackfillResult(run);
       }
+    } catch(error) {
+      this.leader?.assertOwned();
+      run.status='failed';run.finishedAt=new Date();run.durationMs=Date.now()-startedAt.getTime();
+      run.errorMessage=error instanceof Error?error.message:String(error);
+      await pgCoverage().saveRun(run);
+      throw error;
     } finally {
-      this.isRunning = false;
       // Apply retention after every sweep so the BackfillRun collection
       // never grows unbounded. Best-effort — see `pruneOldBackfillRuns`.
-      await pruneOldBackfillRuns();
+      const leader=this.leader;
+      try { await pruneOldBackfillRuns(); }
+      finally {
+        try { await leader?.release(); }
+        finally { this.leader=null;this.isRunning=false; }
+      }
     }
   }
 
@@ -778,8 +736,10 @@ class ScheduledBackfillService {
     );
 
     const sync = new SyncService();
+    const failures:unknown[]=[];
 
     for (const c of topLogos) {
+      this.leader?.assertOwned();
       // Per-phase timing (Task #235): wrap each per-country logo enqueue
       // so the detail page can flag which market dominated the sweep,
       // not just the total `durationMs`. Errors still record duration so
@@ -797,6 +757,7 @@ class ScheduledBackfillService {
         });
         logger.log(`📥 ${c.countryCode}: enqueued ${r.enqueued}/${r.candidates} logos`);
       } catch (err) {
+        failures.push(err);
         logger.error(`❌ Logo enqueue failed for ${c.countryCode}:`, err);
         run.logos.push({
           countryCode: c.countryCode,
@@ -808,6 +769,7 @@ class ScheduledBackfillService {
     }
 
     for (const c of topTags) {
+      this.leader?.assertOwned();
       const phaseStart = Date.now();
       // Capture the head of the tags candidate set BEFORE invoking the
       // hydrator. The hydrator itself doesn't report which stationuuids
@@ -834,6 +796,7 @@ class ScheduledBackfillService {
           `🏷️  ${c.countryCode}: tags processed=${r.processed} hydrated=${r.hydrated} empty=${r.emptyUpstream} failed=${r.failed}`,
         );
       } catch (err) {
+        failures.push(err);
         logger.error(`❌ Tag hydration failed for ${c.countryCode}:`, err);
         run.tags.push({
           countryCode: c.countryCode,
@@ -845,6 +808,7 @@ class ScheduledBackfillService {
         });
       }
     }
+    if(failures.length)throw new AggregateError(failures,'Some country backfill phases failed');
   }
 }
 

@@ -28,43 +28,27 @@ import assert from 'node:assert/strict';
 import {
   normalizeGenreSlug,
   SAFE_GENRE_SLUG_RE,
-} from '@workspace/db-shared/mongo-schemas';
+} from '../src/seo/genre-slug';
 
 // ---------------------------------------------------------------------------
-// Recording fakes for the Mongoose models the helper touches.
+// Recording SQL transport for the actual PostgreSQL-backed slug helper.
 // ---------------------------------------------------------------------------
 
 let existingGenreSlugs = new Set<string>();
 let existingUserSlugs = new Set<string>();
 let existingStationSlugs = new Set<string>();
 
-const FakeGenre = {
-  findOne: async (filter: { slug?: string }) => {
-    return existingGenreSlugs.has(filter.slug ?? '') ? { slug: filter.slug } : null;
+const fixturePool = {
+  query: async (sql:string, values:unknown[]) => {
+    const table=/FROM (genres|users|stations) WHERE slug=/.exec(sql)?.[1];
+    assert.ok(table, 'Unexpected SQL in native slug fixture: '+sql);
+    const slugs=table==='genres'?existingGenreSlugs:table==='users'?existingUserSlugs:existingStationSlugs;
+    const exists=slugs.has(String(values[0]));
+    return {rowCount:exists?1:0,rows:exists?[{slug:values[0]}]:[]};
   },
 };
-const FakeUser = {
-  findOne: async (filter: { slug?: string; username?: string }) => {
-    if (filter.slug !== undefined) {
-      return existingUserSlugs.has(filter.slug) ? { slug: filter.slug } : null;
-    }
-    return null;
-  },
-};
-const FakeStation = {
-  findOne: async (filter: { slug?: string }) => {
-    return existingStationSlugs.has(filter.slug ?? '') ? { slug: filter.slug } : null;
-  },
-};
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Genre: FakeGenre,
-    User: FakeUser,
-    Station: FakeStation,
-    normalizeGenreSlug,
-    SAFE_GENRE_SLUG_RE,
-  },
+mock.module('../src/postgres-runtime', {
+  namedExports: {getPostgresPool:()=>fixturePool},
 });
 
 let generateUniqueSlug: (

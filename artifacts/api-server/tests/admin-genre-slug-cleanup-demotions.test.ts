@@ -12,8 +12,8 @@
  * a false positive.
  *
  * These tests boot a real Express app with the production routes
- * registered against an in-memory MongoDB so the actual Mongoose
- * models + handler logic run end-to-end.
+ * registered against an isolated PostgreSQL schema so the actual SQL
+ * stores and handler logic run end-to-end.
  */
 
 import { test, before, after, beforeEach } from 'node:test';
@@ -25,28 +25,33 @@ import express, {
 } from 'express';
 import type { AddressInfo } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
-
-import {
-  Genre,
-  GenreSlugCleanupRun,
-} from '@workspace/db-shared/mongo-schemas';
+import { randomBytes } from 'node:crypto';
+import { createNativePostgresFixture } from './helpers/native-postgres-fixture';
 import { registerAdminMaintenanceRoutes } from '../src/routes/admin-maintenance-routes';
 
 const BASE_PATH = '/api/admin/maintenance/genre-slug-cleanup/runs';
 
-let mongod: MongoMemoryServer;
+let fixture: Awaited<ReturnType<typeof createNativePostgresFixture>>;
+const newId=()=>randomBytes(12).toString('hex');
+async function seedGenre(input:Record<string,any>){
+  const id=input._id || newId();
+  await fixture.insert('genres',{id,name:input.name,slug:input.slug,is_discoverable:input.isDiscoverable ?? true,source:input});
+  return {_id:id,...input};
+}
+async function seedRun(input:Record<string,any>){
+  const id=newId();
+  const row:Record<string,any>={id};
+  for(const [key,value] of Object.entries(input)) row[key.replace(/[A-Z]/g,c=>'_'+c.toLowerCase())]=value;
+  await fixture.insert('genre_slug_cleanup_runs',row);
+  return {_id:id,...input};
+}
 let server: HttpServer;
 let baseUrl: string;
 
 before(async () => {
   process.env.NODE_ENV = 'test';
 
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri(), {
-    dbName: 'genre-slug-cleanup-demotions-test',
-  });
+  fixture=await createNativePostgresFixture('genre_demotions');
 
   const app = express();
   const passthrough = (
@@ -66,13 +71,11 @@ after(async () => {
   if (server) {
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
-  await mongoose.disconnect();
-  if (mongod) await mongod.stop();
+  if(fixture) await fixture.close();
 });
 
 beforeEach(async () => {
-  await Genre.deleteMany({});
-  await GenreSlugCleanupRun.deleteMany({});
+  await fixture.clear('genres','genre_slug_cleanup_runs');
 });
 
 interface DemotionsResponse {
@@ -117,7 +120,7 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
   const startedAt = new Date('2026-05-01T00:00:00Z');
   const finishedAt = new Date('2026-05-01T00:10:00Z');
 
-  const run = await GenreSlugCleanupRun.create({
+  const run = await seedRun({
     trigger: 'manual',
     status: 'completed',
     startedAt,
@@ -133,11 +136,11 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
     rewarmed: false,
   });
 
-  const winnerId = new mongoose.Types.ObjectId();
+  const winnerId = newId();
 
   // (1) Empty-slug demotion at the very start of the window — must be
   // included (>= startedAt).
-  await Genre.create({
+  await seedGenre({
     name: 'Pop (empty)',
     slug: 'pop-empty-undiscoverable',
     isDiscoverable: false,
@@ -151,7 +154,7 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
 
   // (2) Collision demotion in the middle of the window — must be
   // included with the collision winner metadata intact.
-  await Genre.create({
+  await seedGenre({
     name: 'Rock (loser)',
     slug: 'rock-loser-undiscoverable',
     isDiscoverable: false,
@@ -168,7 +171,7 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
 
   // (3) Demotion at the closing edge of the window — must be included
   // (<= finishedAt).
-  await Genre.create({
+  await seedGenre({
     name: 'Jazz (edge)',
     slug: 'jazz-edge-undiscoverable',
     isDiscoverable: false,
@@ -184,7 +187,7 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
   });
 
   // (4) Demotion BEFORE the run started — must be excluded.
-  await Genre.create({
+  await seedGenre({
     name: 'Older demotion',
     slug: 'older-undiscoverable',
     isDiscoverable: false,
@@ -197,7 +200,7 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
   });
 
   // (5) Demotion AFTER the run finished — must be excluded.
-  await Genre.create({
+  await seedGenre({
     name: 'Later demotion',
     slug: 'later-undiscoverable',
     isDiscoverable: false,
@@ -210,7 +213,7 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
   });
 
   // (6) Healthy genre with no cleanupDemotion — must be excluded.
-  await Genre.create({
+  await seedGenre({
     name: 'Healthy',
     slug: 'healthy',
     isDiscoverable: true,
@@ -281,7 +284,7 @@ test('returns only demotions whose demotedAt falls inside the run window, with f
 
 test('still-running runs cap the window at now and flag isOpenEnded=true', async () => {
   const startedAt = new Date(Date.now() - 60_000); // 1 minute ago
-  const run = await GenreSlugCleanupRun.create({
+  const run = await seedRun({
     trigger: 'manual',
     status: 'running',
     startedAt,
@@ -296,7 +299,7 @@ test('still-running runs cap the window at now and flag isOpenEnded=true', async
   });
 
   // In-window: 30s ago.
-  await Genre.create({
+  await seedGenre({
     name: 'Live demotion',
     slug: 'live-demotion-undiscoverable',
     isDiscoverable: false,
@@ -311,7 +314,7 @@ test('still-running runs cap the window at now and flag isOpenEnded=true', async
   // Out-of-window: 1 hour in the future. Must be excluded — windowEnd
   // is capped at "now" for running runs even though finishedAt is
   // unset.
-  await Genre.create({
+  await seedGenre({
     name: 'Future demotion',
     slug: 'future-demotion-undiscoverable',
     isDiscoverable: false,
@@ -344,7 +347,7 @@ test('returns 400 for an invalid ObjectId', async () => {
 });
 
 test('returns 404 for an unknown run id', async () => {
-  const missingId = new mongoose.Types.ObjectId().toString();
+  const missingId = newId().toString();
   const { status, body } = await getDemotions(missingId);
   assert.equal(status, 404);
   assert.match((body as { error?: string }).error ?? '', /run_not_found/);

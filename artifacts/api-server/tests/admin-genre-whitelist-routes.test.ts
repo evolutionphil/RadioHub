@@ -35,106 +35,54 @@ interface OverrideRow {
 }
 
 const overrideRows: OverrideRow[] = [];
-let genreStationCount = 0; // controls Genre.findOne(...) responses.
+let genreStationCount = 0; // Native stored-genre lookup fixture.
 
-// Tiny chainable lean()/select()/sort() helper matching mongoose's surface.
-interface FakeQuery<T> extends PromiseLike<T> {
-  select: () => FakeQuery<T>;
-  sort: () => FakeQuery<T>;
-  limit: () => FakeQuery<T>;
-  lean: <U = T>() => Promise<U>;
-}
-function fakeQuery<T>(value: T): FakeQuery<T> {
-  const q: FakeQuery<T> = {
-    select: () => q,
-    sort: () => q,
-    limit: () => q,
-    lean: async () => value as unknown as never,
-    then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
-  };
-  return q;
-}
-
-const FakeGenreModel = {
-  find: () => fakeQuery([] as Array<{ slug?: string; stationCount?: number }>),
-  findOne: (query: { slug?: string }) =>
-    fakeQuery(
-      query?.slug
-        ? { slug: query.slug, stationCount: genreStationCount }
-        : null,
-    ),
-};
-
-const FakeOverrideModel = {
-  find: () => fakeQuery([...overrideRows]),
-  findOneAndUpdate: async (
-    filter: Partial<OverrideRow>,
-    update: { $set?: Partial<OverrideRow>; $setOnInsert?: Partial<OverrideRow> },
-    _opts?: unknown,
-  ) => {
-    const existing = overrideRows.find(
-      (r) => r.kind === filter.kind && r.slug === filter.slug,
-    );
-    if (existing) {
-      Object.assign(existing, update.$set ?? {});
-      return existing;
-    }
-    const row: OverrideRow = {
-      kind: (filter.kind ?? 'slug-add') as OverrideRow['kind'],
-      slug: filter.slug ?? '',
-      ...(update.$setOnInsert ?? {}),
-      ...(update.$set ?? {}),
-    };
-    overrideRows.push(row);
-    return row;
-  },
-  deleteOne: async (filter: Partial<OverrideRow>) => {
-    const idx = overrideRows.findIndex(
-      (r) => r.kind === filter.kind && r.slug === filter.slug,
-    );
-    if (idx >= 0) overrideRows.splice(idx, 1);
-    return { deletedCount: idx >= 0 ? 1 : 0 };
-  },
-  deleteMany: async (filter: Partial<OverrideRow>) => {
+// Execute the real native store against a narrow SQL transport fixture. Unknown SQL fails loudly.
+// Store business rules (opposite-delta removal, alias checks, commit/rollback) remain production code.
+let transactionSnapshot: OverrideRow[] | undefined;
+let failNextOverrideInsert = false;
+const statements: Array<{ sql: string; values: any[] }> = [];
+async function query(text: string, values: any[] = []): Promise<{ rows: any[]; rowCount: number }> {
+  const sql = text.replace(/\s+/g, ' ').trim();
+  statements.push({ sql, values });
+  const result = (rows: any[] = [], rowCount = rows.length) => ({ rows, rowCount });
+  if (sql === 'BEGIN') { transactionSnapshot = structuredClone(overrideRows); return result(); }
+  if (sql === 'COMMIT') { transactionSnapshot = undefined; return result(); }
+  if (sql === 'ROLLBACK') {
+    if (transactionSnapshot) overrideRows.splice(0, overrideRows.length, ...transactionSnapshot);
+    transactionSnapshot = undefined; return result();
+  }
+  if (sql.startsWith('SELECT pg_advisory_xact_lock')) return result();
+  if (sql.startsWith('SELECT * FROM genre_whitelist_overrides')) {
+    return result(overrideRows.map(row => ({ ...row, created_by: row.createdBy, created_at: row.createdAt })));
+  }
+  if (sql.startsWith('SELECT kind,slug FROM genre_whitelist_overrides')) {
+    return result(overrideRows.filter(row => values[0].includes(row.slug) && ['slug-add', 'slug-remove'].includes(row.kind)));
+  }
+  if (sql.startsWith('DELETE FROM genre_whitelist_overrides')) {
     let removed = 0;
-    for (let i = overrideRows.length - 1; i >= 0; i -= 1) {
-      const r = overrideRows[i];
-      if (
-        (filter.kind === undefined || r.kind === filter.kind) &&
-        (filter.canonical === undefined || r.canonical === filter.canonical)
-      ) {
-        overrideRows.splice(i, 1);
-        removed += 1;
-      }
+    for (let index = overrideRows.length - 1; index >= 0; index--) {
+      const row = overrideRows[index];
+      const matches = sql.includes("kind='alias-add'")
+        ? row.kind === 'alias-add' && row.canonical === values[0]
+        : row.kind === values[0] && row.slug === values[1];
+      if (matches) { overrideRows.splice(index, 1); removed++; }
     }
-    return { deletedCount: removed };
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Module mocks — must be installed BEFORE the routes module is imported.
-// ---------------------------------------------------------------------------
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Genre: FakeGenreModel,
-    GenreWhitelistOverride: FakeOverrideModel,
-    Station: { aggregate: async () => [] },
-    User: { find: () => fakeQuery([]) },
-    UserNotification: { create: async () => ({}) },
-    GenreWhitelistPushLog: {
-      create: async () => ({}),
-      find: () => fakeQuery([]),
-    },
-    SAFE_GENRE_SLUG_RE: /^[a-z0-9-]+$/,
-    normalizeGenreSlug: (slug: string) =>
-      String(slug ?? '')
-        .trim()
-        .toLowerCase()
-        .replace(/[^a-z0-9-]+/g, '-')
-        .replace(/^-+|-+$/g, ''),
-  },
-});
+    return result([], removed);
+  }
+  if (sql.startsWith('INSERT INTO genre_whitelist_overrides')) {
+    if (failNextOverrideInsert) { failNextOverrideInsert = false; throw new Error('Injected native override write failure'); }
+    const [, kind, slug, canonical, notes, createdBy] = values;
+    const existing = overrideRows.find(row => row.kind === kind && row.slug === slug);
+    if (existing) { if (!sql.endsWith('DO NOTHING')) Object.assign(existing, { canonical, notes }); }
+    else overrideRows.push({ kind, slug, canonical, notes, createdBy, createdAt: new Date() });
+    return result([], 1);
+  }
+  if (sql.startsWith('SELECT count(*)::int count FROM genre_station_counts_runs')) return result([{ count: 0 }]);
+  if (sql.startsWith('SELECT * FROM genre_station_counts_runs') || sql.startsWith('SELECT id,slug,station_count FROM genres')) return result();
+  throw new Error('Unsupported whitelist fixture SQL: ' + sql);
+}
+const nativePool = { query, connect: async () => ({ query, release() {} }) };
 
 // Static seed: a known seeded slug ("rock") + the seeded alias map. The
 // reserved-slug guard runs before the seed check, so the only thing the
@@ -146,6 +94,8 @@ mock.module('@workspace/db-shared/mongo-schemas', {
 // admin-added branch by adjusting membership before the request.
 const seededSlugs = new Set<string>(['rock', 'jazz']);
 const seededAliases = new Map<string, string>();
+mock.module('../src/seo/genre-whitelist-seed', { namedExports: { GENRE_WHITELIST_SEED: seededSlugs } });
+mock.module('../src/data/postgres-taxonomy-store', { namedExports: { pgStoredGenreBySlug: async (slug: string) => ({ slug, stationCount: genreStationCount }) } });
 mock.module(new URL('../src/seo/genre-whitelist.ts', import.meta.url).href, {
   namedExports: {
     GENRE_WHITELIST: seededSlugs,
@@ -195,6 +145,11 @@ mock.module(new URL('../src/seo/url-helpers.ts', import.meta.url).href, {
 mock.module(new URL('../src/services/genre-whitelist-push-notifier.ts', import.meta.url).href, {
   namedExports: {
     notifyWhitelistPushResult: async () => {},
+    getConfiguredWhitelistPushWebhookUrl: () => null,
+    loadLastWhitelistPushTestResult: async () => null,
+    recordWhitelistPushTestResult: async () => {},
+    sendTestWhitelistPushFailureInAppNotification: async () => ({ success: true }),
+    sendTestWhitelistPushFailureWebhook: async () => ({ success: true }),
   },
 });
 
@@ -210,11 +165,24 @@ mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
 // Boot Express app with mocked deps.
 // ---------------------------------------------------------------------------
 
+mock.module('../src/services/genre-station-counts', { namedExports: {
+  getGenreStationCountsStatus: () => ({ isRunning: false }),
+  getGenreStationCountsRetentionMaxRows: () => 200,
+  recomputeGenreStationCounts: async () => ({}),
+} });
+mock.module('../src/seo/genre-whitelist-push-status', { namedExports: {
+  startPushStatus: () => 'test-push', updatePushStep: () => {},
+  completePushStatus: async () => null, getLastPushStatus: () => null, getRecentPushHistory: async () => [],
+} });
+
 let server: HttpServer;
 let baseUrl: string;
 
 before(async () => {
   process.env.NODE_ENV = 'test';
+  const { PostgresTaxonomyRuntimeStore } = await import('../src/data/postgres-taxonomy-runtime-store');
+  const nativeStore = new PostgresTaxonomyRuntimeStore(nativePool as any);
+  mock.module('../src/data/postgres-taxonomy-runtime-store', { namedExports: { pgTaxonomyRuntime: () => nativeStore } });
 
   const mod = (await import('../src/routes/admin-genre-whitelist-routes.ts')) as {
     registerAdminGenreWhitelistRoutes: (
@@ -249,6 +217,8 @@ after(async () => {
 
 function resetState() {
   overrideRows.length = 0;
+  statements.length = 0;
+  failNextOverrideInsert = false;
   genreStationCount = 0;
   mergedWhitelist = new Set(['rock', 'jazz']);
   seededSlugs.clear();
@@ -256,6 +226,36 @@ function resetState() {
   seededSlugs.add('jazz');
   seededAliases.clear();
 }
+
+test('native alias writes bind notes and validate canonical membership inside the transaction', async () => {
+  resetState();
+  const notes = "Editor's note; DROP TABLE genres; --";
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/aliases`, {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ source: 'rock-radio', canonical: 'rock', notes }),
+  });
+  assert.equal(res.status, 200);
+  assert.equal(overrideRows[0].notes, notes);
+  assert.equal(overrideRows[0].canonical, 'rock');
+  assert.equal(overrideRows[0].createdBy, 'test-admin');
+  const write = statements.find(statement => statement.sql.startsWith('INSERT INTO genre_whitelist_overrides'))!;
+  assert.ok(write); assert.equal(write.sql.includes(notes), false); assert.equal(write.values[4], notes);
+  assert.ok(statements.some(statement => statement.sql.startsWith('SELECT kind,slug')));
+  assert.equal(statements.at(-1)?.sql, 'COMMIT');
+});
+
+test('native write failure rolls back an opposing delta and returns an HTTP error', async () => {
+  resetState();
+  overrideRows.push({ kind: 'slug-remove', slug: 'shoegaze', createdBy: 'earlier-admin' });
+  failNextOverrideInsert = true;
+  const res = await fetch(`${baseUrl}/api/admin/genre-whitelist/slugs`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ slug: 'shoegaze' }),
+  });
+  assert.equal(res.status, 500);
+  assert.deepEqual(overrideRows, [{ kind: 'slug-remove', slug: 'shoegaze', createdBy: 'earlier-admin' }]);
+  assert.equal(statements.at(-1)?.sql, 'ROLLBACK');
+  assert.equal(statements.some(statement => statement.sql === 'COMMIT'), false);
+});
 
 // ---------------------------------------------------------------------------
 // Tests

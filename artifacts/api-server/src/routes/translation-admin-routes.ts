@@ -1,22 +1,19 @@
 import type { Express } from "express";
-import mongoose from "mongoose";
-import type { Types } from "mongoose";
 import { CODE_TO_COUNTRY } from "@workspace/seo-shared/seo-config";
-import { TranslationKey, Translation, TranslationLanguage, Genre, Station, User, Language, UserFavorite, UserNotification, UserFollow, AuthToken, StationRating, SyncLog, BlacklistedStation, SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '@workspace/db-shared/mongo-schemas';
-
-async function syncUserFavorites(): Promise<void> {
-  // Stub: full sync logic implemented elsewhere; no-op for typecheck.
-}
-
+import { SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '../seo/genre-slug';
+import { findActiveAuthToken } from '../data/auth-token-store';
+import { pgLocalization } from '../data/postgres-localization-store';
 async function generateUserSlug(user: any, _excludeId?: any): Promise<string> {
-  const base = (user?.fullName || user?.username || user?.email?.split('@')[0] || 'user')
-    .toString()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '');
-  return base || 'user';
+    const base = (user?.fullName || user?.username || user?.email?.split('@')[0] || 'user')
+        .toString()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+    return base || 'user';
 }
-import type { IGenre, IGenreCleanupDemotion, IStation } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog, pgSyncLogs } from '../data/postgres-catalog-store';
+import { pgStationFacetCounts, pgGenreLandingCountries, pgGenreLandingRelated, pgFavoriteIds, pgAdminAddFavorites, pgFlushStationData, pgAnalyticsEvents, pgGenrePopulationCounts } from '../data/postgres-translation-admin-store';
+import { pgStoredGenreById, pgListAdminGenres, pgUpsertPopulatedGenre, pgMergeDemotedGenre, pgPruneGenreMergeAudit, pgGenreMergeAuditList } from '../data/postgres-genre-admin-store';
 import CacheManager from "../cache";
 import { logger } from "../utils/logger";
 import { stripPlaceholders } from "./shared-utils";
@@ -25,497 +22,405 @@ import { syncService } from "../services/sync";
 import { isQuotaExceeded, isQuotaError, handleQuotaError, safeWrite } from "../utils/quota-guard";
 import { performanceCache } from "../performance-cache";
 import { getPhaseCTranslations } from "../data/phase-c-translations";
-
+import { UserEngagementService } from "../services/user-engagement-service";
+import { pgAddRecentlyPlayed, pgFavoriteStationsForUser, pgFindStationRating, pgIsFavorite, pgRateStationIdentity, pgRecentlyPlayedStations, pgPopularProfiles, pgStationRatingsDetailed, } from "../data/postgres-engagement-store";
+import { ensurePostgresUser } from "../data/auth-token-store";
+import { getStationByIdentifier } from "../data/station-read-store";
+import { incrementStationClick, incrementStationVote } from "../data/station-write-store";
+import { pgCreateNotification, pgListNotifications, pgMarkAllNotificationsRead, pgMarkNotificationRead, } from "../data/postgres-notification-store";
+import { pgFindUserByEmail, pgFindUserByIdOrSlug, pgUpdateUser, pgUserFavoriteCount, pgUserFollowCounts, pgUsersNeedingProfileFix, newPublicUserId } from "../data/postgres-user-store";
 // Module-scoped lock for the auto-translate route. The translation pipeline
 // reads existing rows, calls OpenAI in batches, then writes results — running
 // two concurrent jobs for the same language causes duplicate-key errors,
 // double API spend, and undefined "last write wins" semantics. Holding a
-// per-language Promise ensures the second concurrent caller fails fast with
-// HTTP 409 instead of stomping on the in-flight job.
-const inFlightTranslateJobs = new Map<string, Promise<unknown>>();
-
+// per-language Set fails fast locally; the PostgreSQL singleton below also
+// excludes other replicas and background sync while fencing every write.
+const inFlightTranslateJobs = new Set<string>();
 export function registerTranslationAdminRoutes(app: Express, deps: any) {
-  const { requireAuth, requireAdmin } = deps;
-
-  // Remove duplicate endpoint - using the one below that includes auto-population
-
-  // ADMIN TRANSLATION LANGUAGES API - Manage translation languages 
-  app.get("/api/admin/translation-languages", requireAdmin, async (req, res) => {
-    try {
-      // Fetch all translation languages from database
-      const languages = await TranslationLanguage.find().sort({ createdAt: -1 }).lean();
-      
-      // Get completion percentage for each language
-      const translationLanguages = await Promise.all(
-        languages.map(async (lang) => {
-          const totalKeys = await TranslationKey.countDocuments();
-          
-          // Count translations by joining with translations collection
-          const translatedKeys = await Translation.countDocuments({
-            language: lang.code,
-            isCompleted: true
-          });
-          
-          return {
-            ...lang,
-            completionPercentage: totalKeys > 0 ? Math.round((translatedKeys / totalKeys) * 100) : 0
-          };
-        })
-      );
-
-      res.json(translationLanguages);
-    } catch (error) {
-      // console.error('Error fetching translation languages:', error);
-      res.status(500).json({ error: 'Failed to fetch translation languages' });
+    const { requireAuth, requireAdmin } = deps;
+    const userEngagementService = new UserEngagementService();
+    async function authenticatedUserId(req: any): Promise<string | undefined> {
+        const sessionUserId = req.session?.userId || req.session?.user?.userId;
+        if (sessionUserId)
+            return String(sessionUserId);
+        const authHeader = req.headers?.authorization;
+        const bearerToken = typeof authHeader === "string" && authHeader.startsWith("Bearer ")
+            ? authHeader.slice(7)
+            : null;
+        const tokenDoc = bearerToken ? await findActiveAuthToken(bearerToken) : null;
+        return tokenDoc?.userId ? String(tokenDoc.userId) : undefined;
     }
-  });
-
-  // CREATE Translation Language
-  app.post("/api/admin/translation-languages", requireAdmin, async (req, res) => {
-    try {
-      const { code, name, isEnabled, isDefault } = req.body;
-
-      // Validate required fields
-      if (!code || !name) {
-        return void res.status(400).json({ error: 'Language code and name are required' });
-      }
-
-      // Check if language code already exists
-      const existingLanguage = await TranslationLanguage.findOne({ code: code.toLowerCase() });
-      if (existingLanguage) {
-        return void res.status(409).json({ error: 'Language with this code already exists' });
-      }
-
-      // If setting as default, unset other defaults
-      if (isDefault) {
-        await TranslationLanguage.updateMany({}, { $set: { isDefault: false } });
-      }
-
-      // Create new translation language
-      const newLanguage = new TranslationLanguage({
-        code: code.toLowerCase(),
-        name,
-        isEnabled: isEnabled !== undefined ? isEnabled : true,
-        isDefault: isDefault || false
-      });
-
-      await newLanguage.save();
-
-      res.status(201).json(newLanguage);
-    } catch (error) {
-      // console.error('Error creating translation language:', error);
-      res.status(500).json({ error: 'Failed to create translation language' });
-    }
-  });
-
-  // UPDATE Translation Language
-  app.put("/api/admin/translation-languages/:id", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const { code, name, isEnabled, isDefault } = req.body;
-
-      // Find the language
-      const language = await TranslationLanguage.findById(id);
-      if (!language) {
-        return void res.status(404).json({ error: 'Translation language not found' });
-      }
-
-      // If changing code, check for duplicates
-      if (code && code.toLowerCase() !== language.code) {
-        const existingLanguage = await TranslationLanguage.findOne({ 
-          code: code.toLowerCase(),
-          _id: { $ne: id }
-        });
-        if (existingLanguage) {
-          return void res.status(409).json({ error: 'Language with this code already exists' });
+    async function createUserNotification(input: Record<string, any>): Promise<any> {
+        const id = newPublicUserId();
+        let result: any;
+        {
+            result = await pgCreateNotification({ id, ...input } as any);
         }
-      }
-
-      // If setting as default, unset other defaults
-      if (isDefault && !language.isDefault) {
-        await TranslationLanguage.updateMany(
-          { _id: { $ne: id } },
-          { $set: { isDefault: false } }
-        );
-      }
-
-      // Update fields
-      if (code) language.code = code.toLowerCase();
-      if (name) language.name = name;
-      if (isEnabled !== undefined) language.isEnabled = isEnabled;
-      if (isDefault !== undefined) language.isDefault = isDefault;
-
-      await language.save();
-
-      res.json(language);
-    } catch (error) {
-      // console.error('Error updating translation language:', error);
-      res.status(500).json({ error: 'Failed to update translation language' });
+        await CacheManager.clearByPattern(`notifications:*:${input.userId}:`);
+        return result;
     }
-  });
-
-  // DELETE Translation Language
-  app.delete("/api/admin/translation-languages/:id", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-
-      // Find the language
-      const language = await TranslationLanguage.findById(id);
-      if (!language) {
-        return void res.status(404).json({ error: 'Translation language not found' });
-      }
-
-      // Prevent deleting default language
-      if (language.isDefault) {
-        return void res.status(400).json({ error: 'Cannot delete the default language' });
-      }
-
-      // Delete the language
-      await TranslationLanguage.findByIdAndDelete(id);
-
-      // Optionally delete associated translations
-      await Translation.deleteMany({ language: language.code });
-
-      res.json({ message: 'Translation language deleted successfully' });
-    } catch (error) {
-      // console.error('Error deleting translation language:', error);
-      res.status(500).json({ error: 'Failed to delete translation language' });
-    }
-  });
-
-  // GET Translation Metadata - for cache versioning
-  app.get("/api/admin/translation-metadata", requireAdmin, async (req, res) => {
-    try {
-      const { getTranslationMetadata } = await import('../services/translation-version');
-      const metadata = await getTranslationMetadata();
-      res.json(metadata);
-    } catch (error) {
-      console.error('Error fetching translation metadata:', error);
-      res.status(500).json({ error: 'Failed to fetch translation metadata' });
-    }
-  });
-
-  // POST Bump Translation Version - invalidates client caches
-  app.post("/api/admin/translation-metadata/bump", requireAdmin, async (req, res) => {
-    try {
-      const { notes } = req.body;
-      const { bumpTranslationVersion } = await import('../services/translation-version');
-      const result = await bumpTranslationVersion(notes);
-      
-      if (result.success) {
-        res.json({ 
-          success: true, 
-          version: result.version,
-          message: `Translation version bumped to ${result.version}`
-        });
-      } else {
-        res.status(500).json({ error: 'Failed to bump translation version' });
-      }
-    } catch (error) {
-      console.error('Error bumping translation version:', error);
-      res.status(500).json({ error: 'Failed to bump translation version' });
-    }
-  });
-
-  // SEED Translation Languages - Sync all 55 URL translation languages to database
-  app.post("/api/admin/seed-translation-languages", requireAdmin, async (req, res) => {
-    try {
-      const languageMapping = {
-        "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "az": "Azerbaijani",
-        "bg": "Bulgarian", "bn": "Bengali", "cs": "Czech", "da": "Danish",
-        "de": "German", "el": "Greek", "es": "Spanish", "et": "Estonian",
-        "fa": "Persian", "fi": "Finnish", "fr": "French", "gu": "Gujarati",
-        "he": "Hebrew", "hi": "Hindi", "hr": "Croatian", "hu": "Hungarian",
-        "hy": "Armenian", "id": "Indonesian", "it": "Italian", "ja": "Japanese",
-        "kn": "Kannada", "ko": "Korean", "lt": "Lithuanian", "lv": "Latvian",
-        "ml": "Malayalam", "mr": "Marathi", "ms": "Malay", "nl": "Dutch",
-        "no": "Norwegian", "pa": "Punjabi", "pl": "Polish", "pt": "Portuguese",
-        "ro": "Romanian", "ru": "Russian", "sk": "Slovak", "sl": "Slovenian",
-        "so": "Somali", "sq": "Albanian", "sr": "Serbian", "sv": "Swedish",
-        "sw": "Swahili", "ta": "Tamil", "te": "Telugu", "th": "Thai",
-        "tl": "Tagalog", "tr": "Turkish", "uk": "Ukrainian", "ur": "Urdu",
-        "vi": "Vietnamese", "zh": "Chinese", "zu": "Zulu"
-      };
-
-      let created = 0;
-      let updated = 0;
-      let skipped = 0;
-
-      // Check if there's already a default language
-      const hasDefault = await TranslationLanguage.findOne({ isDefault: true });
-
-      for (const [code, name] of Object.entries(languageMapping)) {
-        const existingLanguage = await TranslationLanguage.findOne({ code });
-
-        if (existingLanguage) {
-          skipped++;
-        } else {
-          // Create new language - set English, Hebrew, and Turkish as default
-          const isDefaultLanguage = !hasDefault && (code === 'en' || code === 'he' || code === 'tr');
-          await TranslationLanguage.create({
-            code,
-            name,
-            isEnabled: true,
-            isDefault: isDefaultLanguage
-          });
-          created++;
+    // Remove duplicate endpoint - using the one below that includes auto-population
+    // ADMIN TRANSLATION LANGUAGES API - Manage translation languages
+    app.get("/api/admin/translation-languages", requireAdmin, async (req, res) => {
+        try {
+            return void res.json(await pgLocalization().translationLanguagesWithCompletion());
         }
-      }
-
-      res.json({
-        message: 'Translation languages seeded successfully',
-        stats: {
-          total: Object.keys(languageMapping).length,
-          created,
-          updated,
-          skipped
+        catch (error) {
+            // console.error('Error fetching translation languages:', error);
+            res.status(500).json({ error: 'Failed to fetch translation languages' });
         }
-      });
-    } catch (error) {
-      console.error('Error seeding translation languages:', error);
-      res.status(500).json({ error: 'Failed to seed translation languages' });
-    }
-  });
-
-  // AUTO-TRANSLATE Language via OpenAI - Enhanced with English detection and brand protection
-  app.post("/api/admin/translation-languages/:code/translate", requireAdmin, async (req, res) => {
-    const { code } = req.params;
-    const lockKey = (code || '').toLowerCase();
-
-    // Server-side lock: reject if a job for this language is already running.
-    // Without this, double-clicks on "Auto-translate" or two admins clicking
-    // simultaneously kick off two pipelines that both insert/update the same
-    // rows — wasting OpenAI tokens and risking duplicate-key write errors.
-    if (lockKey && inFlightTranslateJobs.has(lockKey)) {
-      return void res.status(409).json({
-        error: 'A translation job for this language is already running',
-        code: 'translation_job_in_progress',
-      });
-    }
-
-    let releaseLock: (() => void) | null = null;
-    if (lockKey) {
-      const lockPromise = new Promise<void>((resolve) => {
-        releaseLock = resolve;
-      });
-      inFlightTranslateJobs.set(lockKey, lockPromise);
-    }
-
-    try {
-      // missingOnly=true → only insert truly missing translations, never overwrite existing rows
-      const missingOnly = req.query.missingOnly === 'true' || req.body?.missingOnly === true;
-
-      // Skip English - no need to translate
-      if (code.toLowerCase() === 'en') {
-        return void res.json({
-          message: 'English is the source language, no translation needed',
-          stats: { total: 0, existing: 0, translated: 0, fixed: 0, failed: 0 }
-        });
-      }
-
-      // Find the language
-      const language = await TranslationLanguage.findOne({ code: code.toLowerCase() });
-      if (!language) {
-        return void res.status(404).json({ error: 'Translation language not found' });
-      }
-
-      // Protected terms that should NOT be translated (brand names and placeholders)
-      const PROTECTED_TERMS = [
-        'Mega Radio', 'MegaRadio', 'mega radio',
-        '{STATION_NAME}', '{stationname}', '{station_name}', '{station}',
-        '{country}', '{COUNTRY}', '{Country}',
-        '{genre}', '{GENRE}', '{Genre}',
-        '{language}', '{LANGUAGE}', '{Language}',
-        '{city}', '{CITY}', '{City}',
-        '{count}', '{COUNT}', '{name}', '{NAME}',
-        '{url}', '{URL}', '{link}', '{LINK}',
-        '{time}', '{TIME}', '{date}', '{DATE}',
-        '{number}', '{NUMBER}', '{value}', '{VALUE}'
-      ];
-
-      // Common English words to detect incorrect translations (excluding protected terms)
-      const COMMON_ENGLISH_WORDS = [
-        'the', 'and', 'for', 'with', 'your', 'you', 'are', 'have', 'has', 'this', 'that',
-        'from', 'will', 'can', 'all', 'more', 'when', 'there', 'their', 'what', 'about',
-        'which', 'would', 'make', 'like', 'just', 'over', 'such', 'into', 'than', 'other',
-        'been', 'some', 'could', 'them', 'being', 'these', 'because', 'each', 'through',
-        'listen', 'radio', 'station', 'stations', 'streaming', 'music', 'live', 'online',
-        'discover', 'explore', 'find', 'search', 'browse', 'play', 'playing', 'favorite',
-        'favorites', 'settings', 'loading', 'error', 'please', 'wait', 'welcome', 'hello',
-        'world', 'country', 'countries', 'genre', 'genres', 'popular', 'trending', 'new',
-        'free', 'unlimited', 'access', 'anywhere', 'anytime', 'best', 'top', 'quality'
-      ];
-
-      // Function to detect if translation contains English content
-      const hasEnglishContent = (text: string, isEnglishSource: boolean = false): boolean => {
-        if (!text || isEnglishSource) return false;
-        
-        // Remove ALL placeholder patterns (any format: {xxx}, %xxx%, {{xxx}}, etc.)
-        let cleanText = text;
-        cleanText = cleanText.replace(/\{[^}]+\}/gi, ''); // {placeholder}
-        cleanText = cleanText.replace(/%[^%]+%/gi, '');   // %placeholder%
-        cleanText = cleanText.replace(/\{\{[^}]+\}\}/gi, ''); // {{placeholder}}
-        
-        // Remove brand name "Mega Radio" in any case variation
-        cleanText = cleanText.replace(/mega\s*radio/gi, '');
-        
-        // Trim and check if there's meaningful text left
-        cleanText = cleanText.trim();
-        if (!cleanText || cleanText.length < 3) {
-          // Text is mainly placeholders/brand names - skip
-          return false;
+    });
+    // CREATE Translation Language
+    app.post("/api/admin/translation-languages", requireAdmin, async (req, res) => {
+        try {
+            const { code, name, isEnabled, isDefault } = req.body;
+            // Validate required fields
+            if (typeof code !== 'string' || !code.trim() || typeof name !== 'string' || !name.trim()) {
+                return void res.status(400).json({ error: 'Language code and name are required' });
+            }
+            {
+                const language = await pgLocalization().saveTranslationLanguage({ code, name, isEnabled, isDefault });
+                return void res.status(201).json(language);
+            }
         }
-        
-        // Split into words and check for common English words
-        const words = cleanText.toLowerCase().split(/\s+/).filter(w => w.length > 1);
-        const englishWordCount = words.filter(word => 
-          COMMON_ENGLISH_WORDS.includes(word.replace(/[.,!?;:'"()]/g, ''))
-        ).length;
-        
-        // Calculate ratio: if more than 30% of words are common English words, likely incorrect
-        const englishRatio = words.length > 0 ? englishWordCount / words.length : 0;
-        
-        // Flag as English if: 2+ common words AND >25% of text is English
-        return englishWordCount >= 2 && englishRatio > 0.25;
-      };
-
-      // Get all translation keys
-      const allKeys = await TranslationKey.find({}).lean();
-      
-      // Get existing translations for this language - use keyId to map
-      const existingTranslations = await Translation.find({ language: code.toLowerCase() }).lean();
-      // Map by keyId (ObjectId) since Translation uses keyId reference, not key string
-      const existingTranslationsMap = new Map(existingTranslations.map((t: any) => [t.keyId?.toString(), t]));
-      
-      // Find keys that need translation (missing OR have English content)
-      const keysToTranslate: any[] = [];
-      const keysToFix: string[] = [];
-      
-      for (const key of allKeys) {
-        // Look up by key._id (TranslationKey ObjectId) matching Translation.keyId
-        const existing = existingTranslationsMap.get(key._id?.toString());
-        // Treat empty / whitespace-only existing rows as "missing" — otherwise
-        // missingOnly=true skips them forever and the language stays half-empty.
-        const existingValueTrimmed = (existing?.value || '').trim();
-        if (!existing || existingValueTrimmed === '') {
-          // Missing (or effectively-empty) translation. Pass existingId when
-          // there's a row to update so we don't insert a duplicate.
-          keysToTranslate.push({
-            ...key,
-            isNew: !existing,
-            ...(existing ? { existingId: existing._id, existingValue: existing.value } : {}),
-          });
-        } else if (!missingOnly) {
-          // Check if translation needs fixing (skip in missingOnly mode):
-          // 1. Value is same as key name (untranslated)
-          // 2. Value contains underscores (likely key name, not real translation)
-          // 3. Value is same as English default (not translated at all)
-          // 4. Value has English content
-          const value = existing.value?.trim() || '';
-          const defaultValue = key.defaultValue?.trim() || '';
-          
-          const isUntranslated = value === key.key || 
-            (value.includes('_') && !value.includes('{') && value.length < 50) ||
-            (defaultValue && value.toLowerCase() === defaultValue.toLowerCase()) ||
-            hasEnglishContent(value);
-          
-          if (isUntranslated) {
-            keysToTranslate.push({ ...key, isNew: false, existingId: existing._id, existingValue: existing.value });
-            keysToFix.push(key.key);
-          }
+        catch (error) {
+            // console.error('Error creating translation language:', error);
+            if ((error as any).code === '23505') {
+                return void res.status(409).json({ error: 'Language with this code already exists' });
+            }
+            res.status(500).json({ error: 'Failed to create translation language' });
         }
-      }
-      
-      if (keysToTranslate.length === 0) {
-        return void res.json({
-          message: 'All translations are complete and correct for this language',
-          stats: {
-            total: allKeys.length,
-            existing: existingTranslations.length,
-            translated: 0,
-            fixed: 0,
-            failed: 0
-          }
-        });
-      }
-
-      logger.log(`🔄 ${language.name}: Found ${keysToTranslate.filter(k => k.isNew).length} missing, ${keysToFix.length} to fix`);
-
-      // Complete language mapping for all 57 languages
-      const languageMapping: {[key: string]: {name: string, nativeName: string}} = {
-        af: { name: 'Afrikaans', nativeName: 'Afrikaans' },
-        am: { name: 'Amharic', nativeName: 'አማርኛ' },
-        ar: { name: 'Arabic', nativeName: 'العربية' },
-        az: { name: 'Azerbaijani', nativeName: 'Azərbaycan' },
-        bg: { name: 'Bulgarian', nativeName: 'Български' },
-        bn: { name: 'Bengali', nativeName: 'বাংলা' },
-        bs: { name: 'Bosnian', nativeName: 'Bosanski' },
-        cs: { name: 'Czech', nativeName: 'Čeština' },
-        da: { name: 'Danish', nativeName: 'Dansk' },
-        de: { name: 'German', nativeName: 'Deutsch' },
-        el: { name: 'Greek', nativeName: 'Ελληνικά' },
-        es: { name: 'Spanish', nativeName: 'Español' },
-        et: { name: 'Estonian', nativeName: 'Eesti' },
-        fa: { name: 'Persian', nativeName: 'فارسی' },
-        fi: { name: 'Finnish', nativeName: 'Suomi' },
-        fr: { name: 'French', nativeName: 'Français' },
-        gu: { name: 'Gujarati', nativeName: 'ગુજરાતી' },
-        he: { name: 'Hebrew', nativeName: 'עברית' },
-        hi: { name: 'Hindi', nativeName: 'हिन्दी' },
-        hr: { name: 'Croatian', nativeName: 'Hrvatski' },
-        hu: { name: 'Hungarian', nativeName: 'Magyar' },
-        hy: { name: 'Armenian', nativeName: 'Հայերեն' },
-        id: { name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
-        it: { name: 'Italian', nativeName: 'Italiano' },
-        ja: { name: 'Japanese', nativeName: '日本語' },
-        kn: { name: 'Kannada', nativeName: 'ಕನ್ನಡ' },
-        ko: { name: 'Korean', nativeName: '한국어' },
-        lt: { name: 'Lithuanian', nativeName: 'Lietuvių' },
-        lv: { name: 'Latvian', nativeName: 'Latviešu' },
-        ml: { name: 'Malayalam', nativeName: 'മലയാളം' },
-        mr: { name: 'Marathi', nativeName: 'मराठी' },
-        ms: { name: 'Malay', nativeName: 'Bahasa Melayu' },
-        nl: { name: 'Dutch', nativeName: 'Nederlands' },
-        no: { name: 'Norwegian', nativeName: 'Norsk' },
-        pa: { name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ' },
-        pl: { name: 'Polish', nativeName: 'Polski' },
-        pt: { name: 'Portuguese', nativeName: 'Português' },
-        ro: { name: 'Romanian', nativeName: 'Română' },
-        ru: { name: 'Russian', nativeName: 'Русский' },
-        sk: { name: 'Slovak', nativeName: 'Slovenčina' },
-        sl: { name: 'Slovenian', nativeName: 'Slovenščina' },
-        so: { name: 'Somali', nativeName: 'Soomaali' },
-        sq: { name: 'Albanian', nativeName: 'Shqip' },
-        sr: { name: 'Serbian', nativeName: 'Српски' },
-        sv: { name: 'Swedish', nativeName: 'Svenska' },
-        sw: { name: 'Swahili', nativeName: 'Kiswahili' },
-        ta: { name: 'Tamil', nativeName: 'தமிழ்' },
-        te: { name: 'Telugu', nativeName: 'తెలుగు' },
-        th: { name: 'Thai', nativeName: 'ไทย' },
-        tl: { name: 'Filipino', nativeName: 'Tagalog' },
-        tr: { name: 'Turkish', nativeName: 'Türkçe' },
-        uk: { name: 'Ukrainian', nativeName: 'Українська' },
-        ur: { name: 'Urdu', nativeName: 'اردو' },
-        vi: { name: 'Vietnamese', nativeName: 'Tiếng Việt' },
-        zh: { name: 'Chinese', nativeName: '中文' },
-        zu: { name: 'Zulu', nativeName: 'isiZulu' }
-      };
-
-      const langConfig = languageMapping[code] || { name: language.name, nativeName: language.name };
-
-      // Translate in batches
-      const batchSize = 20;
-      let translated = 0;
-      let fixed = 0;
-      let failed = 0;
-
-      for (let i = 0; i < keysToTranslate.length; i += batchSize) {
-        const batch = keysToTranslate.slice(i, i + batchSize);
-        
-        // Create translation prompt with protected terms
-        const keysText = batch.map((k: any) => `${k.key}: ${k.defaultValue}`).join('\n');
-        
-        const prompt = `Translate these UI texts to ${langConfig.name} (${langConfig.nativeName}).
+    });
+    // UPDATE Translation Language
+    app.put("/api/admin/translation-languages/:id", requireAdmin, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const { code, name, isEnabled, isDefault } = req.body;
+            {
+                const language = await pgLocalization().saveTranslationLanguage({ code, name, isEnabled, isDefault }, String(id));
+                return void (language ? res.json(language) : res.status(404).json({ error: 'Translation language not found' }));
+            }
+        }
+        catch (error) {
+            // console.error('Error updating translation language:', error);
+            if ((error as any).code === '23505') {
+                return void res.status(409).json({ error: 'Language with this code already exists' });
+            }
+            res.status(500).json({ error: 'Failed to update translation language' });
+        }
+    });
+    // DELETE Translation Language
+    app.delete("/api/admin/translation-languages/:id", requireAdmin, async (req, res) => {
+        try {
+            const { id } = req.params;
+            {
+                const language = await pgLocalization().deleteTranslationLanguage(String(id));
+                return void (language ? res.json({ message: 'Translation language deleted successfully' }) : res.status(404).json({ error: 'Translation language not found' }));
+            }
+        }
+        catch (error) {
+            // console.error('Error deleting translation language:', error);
+            if ((error as any).code === 'default_language') {
+                return void res.status(400).json({ error: 'Cannot delete the default language' });
+            }
+            res.status(500).json({ error: 'Failed to delete translation language' });
+        }
+    });
+    // GET Translation Metadata - for cache versioning
+    app.get("/api/admin/translation-metadata", requireAdmin, async (req, res) => {
+        try {
+            const { getTranslationMetadata } = await import('../services/translation-version');
+            const metadata = await getTranslationMetadata();
+            res.json(metadata);
+        }
+        catch (error) {
+            console.error('Error fetching translation metadata:', error);
+            res.status(500).json({ error: 'Failed to fetch translation metadata' });
+        }
+    });
+    // POST Bump Translation Version - invalidates client caches
+    app.post("/api/admin/translation-metadata/bump", requireAdmin, async (req, res) => {
+        try {
+            const { notes } = req.body;
+            const { bumpTranslationVersion } = await import('../services/translation-version');
+            const result = await bumpTranslationVersion(notes);
+            if (result.success) {
+                res.json({
+                    success: true,
+                    version: result.version,
+                    message: `Translation version bumped to ${result.version}`
+                });
+            }
+            else {
+                res.status(500).json({ error: 'Failed to bump translation version' });
+            }
+        }
+        catch (error) {
+            console.error('Error bumping translation version:', error);
+            res.status(500).json({ error: 'Failed to bump translation version' });
+        }
+    });
+    // SEED Translation Languages - Sync all 55 URL translation languages to database
+    app.post("/api/admin/seed-translation-languages", requireAdmin, async (req, res) => {
+        try {
+            const languageMapping = {
+                "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "az": "Azerbaijani",
+                "bg": "Bulgarian", "bn": "Bengali", "cs": "Czech", "da": "Danish",
+                "de": "German", "el": "Greek", "es": "Spanish", "et": "Estonian",
+                "fa": "Persian", "fi": "Finnish", "fr": "French", "gu": "Gujarati",
+                "he": "Hebrew", "hi": "Hindi", "hr": "Croatian", "hu": "Hungarian",
+                "hy": "Armenian", "id": "Indonesian", "it": "Italian", "ja": "Japanese",
+                "kn": "Kannada", "ko": "Korean", "lt": "Lithuanian", "lv": "Latvian",
+                "ml": "Malayalam", "mr": "Marathi", "ms": "Malay", "nl": "Dutch",
+                "no": "Norwegian", "pa": "Punjabi", "pl": "Polish", "pt": "Portuguese",
+                "ro": "Romanian", "ru": "Russian", "sk": "Slovak", "sl": "Slovenian",
+                "so": "Somali", "sq": "Albanian", "sr": "Serbian", "sv": "Swedish",
+                "sw": "Swahili", "ta": "Tamil", "te": "Telugu", "th": "Thai",
+                "tl": "Tagalog", "tr": "Turkish", "uk": "Ukrainian", "ur": "Urdu",
+                "vi": "Vietnamese", "zh": "Chinese", "zu": "Zulu"
+            };
+            let created = 0;
+            let updated = 0;
+            let skipped = 0;
+            // Check if there's already a default language
+            {
+                const languages = await pgLocalization().getTranslationLanguages();
+                const codes = new Set(languages.map((language) => language.code));
+                let hasDefault = languages.some((language) => language.isDefault);
+                for (const [code, name] of Object.entries(languageMapping)) {
+                    if (codes.has(code)) {
+                        skipped++;
+                        continue;
+                    }
+                    const isDefault = !hasDefault && ['en', 'he', 'tr'].includes(code);
+                    await pgLocalization().saveTranslationLanguage({ code, name, isEnabled: true, isDefault });
+                    if (isDefault)
+                        hasDefault = true;
+                    created++;
+                }
+                return void res.json({ message: 'Translation languages seeded successfully', stats: { total: Object.keys(languageMapping).length, created, updated, skipped } });
+            }
+        }
+        catch (error) {
+            console.error('Error seeding translation languages:', error);
+            res.status(500).json({ error: 'Failed to seed translation languages' });
+        }
+    });
+    // AUTO-TRANSLATE Language via OpenAI - Enhanced with English detection and brand protection
+    app.post("/api/admin/translation-languages/:code/translate", requireAdmin, async (req, res) => {
+        const { code } = req.params;
+        const lockKey = (code || '').toLowerCase();
+        // Server-side lock: reject if a job for this language is already running.
+        // Without this, double-clicks on "Auto-translate" or two admins clicking
+        // simultaneously kick off two pipelines that both insert/update the same
+        // rows — wasting OpenAI tokens and risking duplicate-key write errors.
+        if (lockKey && inFlightTranslateJobs.has(lockKey)) {
+            return void res.status(409).json({
+                error: 'A translation job for this language is already running',
+                code: 'translation_job_in_progress',
+            });
+        }
+        if (lockKey) {
+            inFlightTranslateJobs.add(lockKey);
+        }
+        try {
+            const { pgTranslationSync } = await import('../data/postgres-translation-sync-store');
+            await pgTranslationSync().withLeader(async writer => {
+            // missingOnly=true → only insert truly missing translations, never overwrite existing rows
+            const missingOnly = req.query.missingOnly === 'true' || req.body?.missingOnly === true;
+            // Skip English - no need to translate
+            if (code.toLowerCase() === 'en') {
+                return void res.json({
+                    message: 'English is the source language, no translation needed',
+                    stats: { total: 0, existing: 0, translated: 0, fixed: 0, failed: 0 }
+                });
+            }
+            // Find the language
+            const language = (await pgLocalization().findTranslationLanguage(code.toLowerCase()));
+            if (!language) {
+                return void res.status(404).json({ error: 'Translation language not found' });
+            }
+            if (!language.isEnabled) return void res.status(409).json({ error: 'Translation language is disabled' });
+            // Protected terms that should NOT be translated (brand names and placeholders)
+            const PROTECTED_TERMS = [
+                'Mega Radio', 'MegaRadio', 'mega radio',
+                '{STATION_NAME}', '{stationname}', '{station_name}', '{station}',
+                '{country}', '{COUNTRY}', '{Country}',
+                '{genre}', '{GENRE}', '{Genre}',
+                '{language}', '{LANGUAGE}', '{Language}',
+                '{city}', '{CITY}', '{City}',
+                '{count}', '{COUNT}', '{name}', '{NAME}',
+                '{url}', '{URL}', '{link}', '{LINK}',
+                '{time}', '{TIME}', '{date}', '{DATE}',
+                '{number}', '{NUMBER}', '{value}', '{VALUE}'
+            ];
+            // Common English words to detect incorrect translations (excluding protected terms)
+            const COMMON_ENGLISH_WORDS = [
+                'the', 'and', 'for', 'with', 'your', 'you', 'are', 'have', 'has', 'this', 'that',
+                'from', 'will', 'can', 'all', 'more', 'when', 'there', 'their', 'what', 'about',
+                'which', 'would', 'make', 'like', 'just', 'over', 'such', 'into', 'than', 'other',
+                'been', 'some', 'could', 'them', 'being', 'these', 'because', 'each', 'through',
+                'listen', 'radio', 'station', 'stations', 'streaming', 'music', 'live', 'online',
+                'discover', 'explore', 'find', 'search', 'browse', 'play', 'playing', 'favorite',
+                'favorites', 'settings', 'loading', 'error', 'please', 'wait', 'welcome', 'hello',
+                'world', 'country', 'countries', 'genre', 'genres', 'popular', 'trending', 'new',
+                'free', 'unlimited', 'access', 'anywhere', 'anytime', 'best', 'top', 'quality'
+            ];
+            // Function to detect if translation contains English content
+            const hasEnglishContent = (text: string, isEnglishSource: boolean = false): boolean => {
+                if (!text || isEnglishSource)
+                    return false;
+                // Remove ALL placeholder patterns (any format: {xxx}, %xxx%, {{xxx}}, etc.)
+                let cleanText = text;
+                cleanText = cleanText.replace(/\{[^}]+\}/gi, ''); // {placeholder}
+                cleanText = cleanText.replace(/%[^%]+%/gi, ''); // %placeholder%
+                cleanText = cleanText.replace(/\{\{[^}]+\}\}/gi, ''); // {{placeholder}}
+                // Remove brand name "Mega Radio" in any case variation
+                cleanText = cleanText.replace(/mega\s*radio/gi, '');
+                // Trim and check if there's meaningful text left
+                cleanText = cleanText.trim();
+                if (!cleanText || cleanText.length < 3) {
+                    // Text is mainly placeholders/brand names - skip
+                    return false;
+                }
+                // Split into words and check for common English words
+                const words = cleanText.toLowerCase().split(/\s+/).filter(w => w.length > 1);
+                const englishWordCount = words.filter(word => COMMON_ENGLISH_WORDS.includes(word.replace(/[.,!?;:'"()]/g, ''))).length;
+                // Calculate ratio: if more than 30% of words are common English words, likely incorrect
+                const englishRatio = words.length > 0 ? englishWordCount / words.length : 0;
+                // Flag as English if: 2+ common words AND >25% of text is English
+                return englishWordCount >= 2 && englishRatio > 0.25;
+            };
+            // Get all translation keys
+            const allKeys = (await pgLocalization().getKeys());
+            // Get existing translations for this language - use keyId to map
+            const existingTranslations = (await pgLocalization().listTranslations(code.toLowerCase()));
+            // Map by the stable key ID, not the user-visible key string.
+            const existingTranslationsMap = new Map(existingTranslations.map((t: any) => [t.keyId?.toString(), t]));
+            // Find keys that need translation (missing OR have English content)
+            const keysToTranslate: any[] = [];
+            const keysToFix: string[] = [];
+            for (const key of allKeys) {
+                // Lookup matches the translation's native foreign-key identity.
+                const existing = existingTranslationsMap.get(key._id?.toString());
+                // Treat empty / whitespace-only existing rows as "missing" — otherwise
+                // missingOnly=true skips them forever and the language stays half-empty.
+                const existingValueTrimmed = (existing?.value || '').trim();
+                if (!existing || existingValueTrimmed === '') {
+                    // Missing (or effectively-empty) translation. Pass existingId when
+                    // there's a row to update so we don't insert a duplicate.
+                    keysToTranslate.push({
+                        ...key,
+                        isNew: !existing,
+                        ...(existing ? { existingId: existing._id, existingValue: existing.value } : {}),
+                    });
+                }
+                else if (!missingOnly) {
+                    // Check if translation needs fixing (skip in missingOnly mode):
+                    // 1. Value is same as key name (untranslated)
+                    // 2. Value contains underscores (likely key name, not real translation)
+                    // 3. Value is same as English default (not translated at all)
+                    // 4. Value has English content
+                    const value = existing.value?.trim() || '';
+                    const defaultValue = key.defaultValue?.trim() || '';
+                    const isUntranslated = value === key.key ||
+                        (value.includes('_') && !value.includes('{') && value.length < 50) ||
+                        (defaultValue && value.toLowerCase() === defaultValue.toLowerCase()) ||
+                        hasEnglishContent(value);
+                    if (isUntranslated) {
+                        keysToTranslate.push({ ...key, isNew: false, existingId: existing._id, existingValue: existing.value });
+                        keysToFix.push(key.key);
+                    }
+                }
+            }
+            if (keysToTranslate.length === 0) {
+                return void res.json({
+                    message: 'All translations are complete and correct for this language',
+                    stats: {
+                        total: allKeys.length,
+                        existing: existingTranslations.length,
+                        translated: 0,
+                        fixed: 0,
+                        failed: 0
+                    }
+                });
+            }
+            logger.log(`🔄 ${language.name}: Found ${keysToTranslate.filter(k => k.isNew).length} missing, ${keysToFix.length} to fix`);
+            // Complete language mapping for all 57 languages
+            const languageMapping: {
+                [key: string]: {
+                    name: string;
+                    nativeName: string;
+                };
+            } = {
+                af: { name: 'Afrikaans', nativeName: 'Afrikaans' },
+                am: { name: 'Amharic', nativeName: 'አማርኛ' },
+                ar: { name: 'Arabic', nativeName: 'العربية' },
+                az: { name: 'Azerbaijani', nativeName: 'Azərbaycan' },
+                bg: { name: 'Bulgarian', nativeName: 'Български' },
+                bn: { name: 'Bengali', nativeName: 'বাংলা' },
+                bs: { name: 'Bosnian', nativeName: 'Bosanski' },
+                cs: { name: 'Czech', nativeName: 'Čeština' },
+                da: { name: 'Danish', nativeName: 'Dansk' },
+                de: { name: 'German', nativeName: 'Deutsch' },
+                el: { name: 'Greek', nativeName: 'Ελληνικά' },
+                es: { name: 'Spanish', nativeName: 'Español' },
+                et: { name: 'Estonian', nativeName: 'Eesti' },
+                fa: { name: 'Persian', nativeName: 'فارسی' },
+                fi: { name: 'Finnish', nativeName: 'Suomi' },
+                fr: { name: 'French', nativeName: 'Français' },
+                gu: { name: 'Gujarati', nativeName: 'ગુજરાતી' },
+                he: { name: 'Hebrew', nativeName: 'עברית' },
+                hi: { name: 'Hindi', nativeName: 'हिन्दी' },
+                hr: { name: 'Croatian', nativeName: 'Hrvatski' },
+                hu: { name: 'Hungarian', nativeName: 'Magyar' },
+                hy: { name: 'Armenian', nativeName: 'Հայերեն' },
+                id: { name: 'Indonesian', nativeName: 'Bahasa Indonesia' },
+                it: { name: 'Italian', nativeName: 'Italiano' },
+                ja: { name: 'Japanese', nativeName: '日本語' },
+                kn: { name: 'Kannada', nativeName: 'ಕನ್ನಡ' },
+                ko: { name: 'Korean', nativeName: '한국어' },
+                lt: { name: 'Lithuanian', nativeName: 'Lietuvių' },
+                lv: { name: 'Latvian', nativeName: 'Latviešu' },
+                ml: { name: 'Malayalam', nativeName: 'മലയാളം' },
+                mr: { name: 'Marathi', nativeName: 'मराठी' },
+                ms: { name: 'Malay', nativeName: 'Bahasa Melayu' },
+                nl: { name: 'Dutch', nativeName: 'Nederlands' },
+                no: { name: 'Norwegian', nativeName: 'Norsk' },
+                pa: { name: 'Punjabi', nativeName: 'ਪੰਜਾਬੀ' },
+                pl: { name: 'Polish', nativeName: 'Polski' },
+                pt: { name: 'Portuguese', nativeName: 'Português' },
+                ro: { name: 'Romanian', nativeName: 'Română' },
+                ru: { name: 'Russian', nativeName: 'Русский' },
+                sk: { name: 'Slovak', nativeName: 'Slovenčina' },
+                sl: { name: 'Slovenian', nativeName: 'Slovenščina' },
+                so: { name: 'Somali', nativeName: 'Soomaali' },
+                sq: { name: 'Albanian', nativeName: 'Shqip' },
+                sr: { name: 'Serbian', nativeName: 'Српски' },
+                sv: { name: 'Swedish', nativeName: 'Svenska' },
+                sw: { name: 'Swahili', nativeName: 'Kiswahili' },
+                ta: { name: 'Tamil', nativeName: 'தமிழ்' },
+                te: { name: 'Telugu', nativeName: 'తెలుగు' },
+                th: { name: 'Thai', nativeName: 'ไทย' },
+                tl: { name: 'Filipino', nativeName: 'Tagalog' },
+                tr: { name: 'Turkish', nativeName: 'Türkçe' },
+                uk: { name: 'Ukrainian', nativeName: 'Українська' },
+                ur: { name: 'Urdu', nativeName: 'اردو' },
+                vi: { name: 'Vietnamese', nativeName: 'Tiếng Việt' },
+                zh: { name: 'Chinese', nativeName: '中文' },
+                zu: { name: 'Zulu', nativeName: 'isiZulu' }
+            };
+            const langConfig = languageMapping[code] || { name: language.name, nativeName: language.name };
+            // Translate in batches
+            const batchSize = 20;
+            let translated = 0;
+            let fixed = 0;
+            let failed = 0;
+            for (let i = 0; i < keysToTranslate.length; i += batchSize) {
+                const batch = keysToTranslate.slice(i, i + batchSize);
+                // Create translation prompt with protected terms
+                const keysText = batch.map((k: any) => `${k.key}: ${k.defaultValue}`).join('\n');
+                const prompt = `Translate these UI texts to ${langConfig.name} (${langConfig.nativeName}).
 
 PROTECTED TERMS - DO NOT TRANSLATE, keep exactly as shown:
 - Brand name: "Mega Radio" (keep as "Mega Radio")
@@ -530,4108 +435,2590 @@ TRANSLATION RULES:
 
 Keys to translate:
 ${keysText}`;
-
-        try {
-          const openAIModule = await import('openai');
-          const openai = new openAIModule.default({
-            apiKey: process.env.OPENAI_API_KEY
-          });
-
-          const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
-            messages: [
-              {
-                role: 'system',
-                content: `You are an expert ${langConfig.name} translator for a radio streaming app. You produce 100% native ${langConfig.name} translations with NO English words (except brand name "Mega Radio" and {placeholders}). You understand that placeholders like {country}, {STATION_NAME} must remain unchanged.`
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: 0.2,
-            max_tokens: 4000
-          });
-          
-          const translatedText = response.choices[0].message.content || '';
-          
-          // Parse the response
-          const lines = translatedText.split('\n').filter(line => line.trim());
-          
-          for (const line of lines) {
-            const colonIndex = line.indexOf(':');
-            if (colonIndex > 0) {
-              const key = line.substring(0, colonIndex).trim();
-              let translation = line.substring(colonIndex + 1).trim();
-              
-              // Remove any quotes around the translation
-              translation = translation.replace(/^["']|["']$/g, '');
-              
-              const originalKey = batch.find((k: any) => k.key === key);
-              if (originalKey && translation) {
+                writer.assertOwned();
+                let parsed = new Map<string, string>();
                 try {
-                  if (originalKey.isNew) {
-                    // Insert new translation (keyId references TranslationKey._id)
-                    await Translation.create({
-                      keyId: originalKey._id,
-                      language: code.toLowerCase(),
-                      value: translation,
-                      isCompleted: true,
-                      lastModified: new Date()
+                    const openAIModule = await import('openai');
+                    const openai = new openAIModule.default({ apiKey: process.env.OPENAI_API_KEY });
+                    const response = await openai.chat.completions.create({
+                        model: 'gpt-4o-mini',
+                        messages: [
+                            { role: 'system', content: `You are an expert ${langConfig.name} translator. Preserve Mega Radio and every placeholder exactly.` },
+                            { role: 'user', content: prompt },
+                        ],
+                        temperature: 0.2,
+                        max_tokens: 4000,
                     });
-                    translated++;
-                  } else {
-                    // Only update if new translation differs from existing (avoid redundant writes)
-                    const existingValue = originalKey.existingValue?.trim();
-                    const newValue = translation.trim();
-                    
-                    if (existingValue !== newValue) {
-                      await Translation.updateOne(
-                        { _id: originalKey.existingId },
-                        { 
-                          $set: { 
-                            value: newValue, 
-                            isCompleted: true,
-                            updatedAt: new Date()
-                          } 
-                        }
-                      );
-                      fixed++;
+                    writer.assertOwned();
+                    const content = response.choices[0]?.message?.content;
+                    if (!content?.trim()) throw new Error('Translation provider returned an empty response');
+                    for (const line of content.split('\n')) {
+                        const colon = line.indexOf(':');
+                        if (colon > 0) parsed.set(line.slice(0, colon).trim(), line.slice(colon + 1).trim().replace(/^["']|["']$/g, ''));
                     }
-                    // Skip if values are identical (no change needed)
-                  }
-                } catch (dbError) {
-                  // Skip duplicate key errors
-                  if ((dbError as any).code !== 11000) {
-                    console.error(`DB error for key ${key}:`, dbError);
-                    failed++;
-                  }
+                } catch (error) {
+                    writer.assertOwned();
+                    logger.error('Translation provider batch failed:', error);
+                    failed += batch.length;
+                    continue;
                 }
-              }
+                const pending: import('../data/postgres-translation-sync-store').GeneratedTranslation[] = [];
+                for (const key of batch) {
+                    const value = parsed.get(key.key);
+                    const placeholders = (text: string) => (text.match(/\{[^{}]+\}/g) || []).sort();
+                    if (!value?.trim() || JSON.stringify(placeholders(value)) !== JSON.stringify(placeholders(key.defaultValue))) {
+                        failed++;
+                        continue;
+                    }
+                    if (!key.isNew && key.existingValue?.trim() === value.trim()) {
+                        // The provider did not correct a value explicitly identified for repair.
+                        failed++;
+                        continue;
+                    }
+                    pending.push({ keyId: String(key._id), defaultValue: key.defaultValue, language: code.toLowerCase(), value: value.trim(),
+                        observed: existingTranslationsMap.get(String(key._id)), allowCompletedRepair: !missingOnly });
+                }
+                // Database errors are not provider failures. The batch, CAS checks and version bump are atomic.
+                const written = new Set(await writer.saveGeneratedDetailed(pending));
+                for (const key of batch) if (written.has(String(key._id))) {
+                    if (key.isNew) translated++; else fixed++;
+                }
+                // Small delay between batches to avoid rate limiting
+                if (i + batchSize < keysToTranslate.length) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
             }
-          }
-          
-        } catch (error) {
-          console.error(`Error translating batch:`, error);
-          failed += batch.length;
-        }
-        
-        // Small delay between batches to avoid rate limiting
-        if (i + batchSize < keysToTranslate.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
-      }
-
-      // Clear translation caches
-      if (translated > 0 || fixed > 0) {
-        await CacheManager.clearByPattern(`sitemap_translations:${code}`);
-        await CacheManager.clearByPattern(`translations:${code}`);
-        logger.log(`✅ ${language.name}: Translated ${translated} new, fixed ${fixed} incorrect`);
-      }
-
-      res.json({
-        message: `Translation complete for ${language.name}`,
-        stats: {
-          total: allKeys.length,
-          existing: existingTranslations.length,
-          translated,
-          fixed,
-          failed,
-          keysFixed: keysToFix
-        }
-      });
-    } catch (error) {
-      console.error('Error auto-translating language:', error);
-      res.status(500).json({ error: 'Failed to auto-translate language' });
-    } finally {
-      // Always release the per-language lock so a future job can run, even
-      // when the pipeline threw mid-batch.
-      if (lockKey) {
-        inFlightTranslateJobs.delete(lockKey);
-      }
-      if (releaseLock) {
-        releaseLock();
-      }
-    }
-  });
-
-  // ADMIN REAL LANGUAGES API - Manage real languages from station database (Admin Only)
-  app.get("/api/admin/real-languages", requireAdmin, async (req, res) => {
-    try {
-      // Language grouping map to consolidate variants
-      const languageGroups = {
-        'Turkish': ['turkish', 'türkiye', 'turk', 'türkçe', 'turkey'],
-        'German': ['german', 'deutsch', 'germany', 'deutsche'],
-        'English': ['english', 'en', 'eng'],
-        'Spanish': ['spanish', 'español', 'espanol', 'spain', 'es'],
-        'French': ['french', 'français', 'francais', 'france', 'fr'],
-        'Italian': ['italian', 'italiano', 'italy', 'it'],
-        'Portuguese': ['portuguese', 'português', 'portugues', 'brazil', 'brasil', 'pt'],
-        'Russian': ['russian', 'русский', 'russia', 'ru'],
-        'Chinese': ['chinese', 'china', 'zh', '中文'],
-        'Japanese': ['japanese', 'japan', 'ja', '日本語'],
-        'Korean': ['korean', 'korea', 'ko', '한국어'],
-        'Arabic': ['arabic', 'عربي', 'ar'],
-        'Dutch': ['dutch', 'nederlands', 'netherlands', 'nl'],
-        'Polish': ['polish', 'polski', 'poland', 'pl'],
-        'Swedish': ['swedish', 'svenska', 'sweden', 'se'],
-        'Norwegian': ['norwegian', 'norsk', 'norway', 'no'],
-        'Danish': ['danish', 'dansk', 'denmark', 'dk'],
-        'Finnish': ['finnish', 'suomi', 'finland', 'fi'],
-        'Greek': ['greek', 'ελληνικά', 'greece', 'gr'],
-        'Czech': ['czech', 'čeština', 'czechia', 'cz'],
-        'Hungarian': ['hungarian', 'magyar', 'hungary', 'hu'],
-        'Romanian': ['romanian', 'română', 'romania', 'ro'],
-        'Bulgarian': ['bulgarian', 'български', 'bulgaria', 'bg'],
-        'Croatian': ['croatian', 'hrvatski', 'croatia', 'hr'],
-        'Serbian': ['serbian', 'srpski', 'serbia', 'rs'],
-        'Ukrainian': ['ukrainian', 'українська', 'ukraine', 'ua'],
-        'Slovenian': ['slovenian', 'slovenščina', 'slovenia', 'si'],
-        'Slovak': ['slovak', 'slovenčina', 'slovakia', 'sk'],
-        'Lithuanian': ['lithuanian', 'lietuvių', 'lithuania', 'lt'],
-        'Latvian': ['latvian', 'latviešu', 'latvia', 'lv'],
-        'Estonian': ['estonian', 'eesti', 'estonia', 'ee']
-      };
-
-      // Get all unique languages from stations
-      const rawLanguages = await Station.aggregate([
-        {
-          $match: {
-            language: { $exists: true, $nin: ["", null] }
-          }
-        },
-        {
-          $group: {
-            _id: "$language",
-            stationCount: { $sum: 1 }
-          }
-        },
-        {
-          $project: {
-            language: "$_id",
-            stationCount: 1,
-            _id: 0
-          }
-        }
-      ]);
-
-      // Group languages by their main language
-      const groupedLanguages: Record<string, any> = {};
-      const ungroupedLanguages: any[] = [];
-
-      rawLanguages.forEach(langData => {
-        const langName = langData.language.toLowerCase().trim();
-        let grouped = false;
-
-        // Check if this language belongs to any group
-        for (const [mainLang, variants] of Object.entries(languageGroups)) {
-          if (variants.some(variant => langName.includes(variant) || variant.includes(langName))) {
-            if (!groupedLanguages[mainLang]) {
-              groupedLanguages[mainLang] = {
-                mainLanguage: mainLang,
-                variants: [],
-                totalStations: 0
-              };
+            // Clear translation caches
+            if (translated > 0 || fixed > 0) {
+                await CacheManager.clearByPattern(`sitemap_translations:${code}`);
+                await CacheManager.clearByPattern(`translations:${code}`);
+                logger.log(`✅ ${language.name}: Translated ${translated} new, fixed ${fixed} incorrect`);
             }
-            groupedLanguages[mainLang].variants.push({
-              originalName: langData.language,
-              stationCount: langData.stationCount
+            writer.assertOwned();
+            res.json({
+                message: `Translation complete for ${language.name}`,
+                stats: {
+                    total: allKeys.length,
+                    existing: existingTranslations.length,
+                    translated,
+                    fixed,
+                    failed,
+                    keysFixed: keysToFix
+                }
             });
-            groupedLanguages[mainLang].totalStations += langData.stationCount;
-            grouped = true;
-            break;
-          }
-        }
-
-        // If not grouped, add to ungrouped
-        if (!grouped) {
-          ungroupedLanguages.push({
-            language: langData.language,
-            stationCount: langData.stationCount
-          });
-        }
-      });
-
-      // Convert grouped languages to array and sort by station count
-      const finalLanguages = (Object.values(groupedLanguages) as any[])
-        .sort((a: any, b: any) => b.totalStations - a.totalStations)
-        .map((group: any) => ({
-          ...group,
-          variants: group.variants.sort((a: any, b: any) => b.stationCount - a.stationCount)
-        }));
-
-      // Add ungrouped languages at the end, sorted by station count
-      const sortedUngrouped = ungroupedLanguages
-        .sort((a, b) => b.stationCount - a.stationCount)
-        .map(lang => ({
-          mainLanguage: lang.language,
-          variants: [{ originalName: lang.language, stationCount: lang.stationCount }],
-          totalStations: lang.stationCount
-        }));
-
-      const allLanguages = [...finalLanguages, ...sortedUngrouped];
-
-      res.json({
-        languages: allLanguages,
-        total: allLanguages.length,
-        totalStations: allLanguages.reduce((sum, lang) => sum + lang.totalStations, 0)
-      });
-    } catch (error) {
-      console.error('Error fetching real languages:', error);
-      res.status(500).json({ error: 'Failed to fetch real languages' });
-    }
-  });
-
-  // ADMIN MERGE STATIONS API - Merge duplicate stations manually (Admin Only)
-  app.post("/api/admin/stations/merge", requireAdmin, async (req, res) => {
-    try {
-      const { primaryStationId, duplicateStationIds, mergeData } = req.body;
-      
-      // logger.log(`🔗 Merging ${duplicateStationIds.length} stations into primary station ${primaryStationId}`);
-      
-      // Get primary station
-      const primaryStation = await Station.findById(primaryStationId);
-      if (!primaryStation) {
-        return void res.status(404).json({ error: 'Primary station not found' });
-      }
-
-      // Get duplicate stations
-      const duplicateStations = await Station.find({ _id: { $in: duplicateStationIds } });
-      
-      // Merge data (take best values from all stations)
-      const mergedData = {
-        name: mergeData.name || primaryStation.name,
-        url: mergeData.url || primaryStation.url,
-        homepage: mergeData.homepage || primaryStation.homepage,
-        favicon: mergeData.favicon || primaryStation.favicon,
-        country: mergeData.country || primaryStation.country,
-        language: mergeData.language || primaryStation.language,
-        genre: mergeData.genre || primaryStation.genre,
-        // Combine votes from all stations
-        votes: duplicateStations.reduce((total, station) => total + (station.votes || 0), primaryStation.votes || 0),
-        // Keep the earliest creation date
-        lastChangeTime: duplicateStations.reduce((earliest: any, station: any) => {
-          const stationTime = new Date(station.lastChangeTime);
-          const earliestTime = new Date(earliest);
-          return stationTime < earliestTime ? station.lastChangeTime : earliest;
-        }, primaryStation.lastChangeTime as any)
-      };
-
-      await Station.findByIdAndUpdate(primaryStationId, mergedData);
-      if (primaryStation.slug) performanceCache.invalidateStationCache(primaryStation.slug);
-      for (const dup of duplicateStations) {
-        if (dup.slug) performanceCache.invalidateStationCache(dup.slug);
-      }
-      // Blacklist the merged-away duplicates by upstream UUID + URL so the next
-      // Radio-Browser sync never re-imports them. Without this the deleted
-      // duplicates reappear on the very next sync cycle.
-      if (duplicateStations.length > 0) {
-        const blacklistDocs = duplicateStations.map((dup: any) => ({
-          stationUuid: dup.stationuuid,
-          url: dup.url || `merged-dup-${String(dup._id)}`,
-          name: dup.name || primaryStation.name || 'merged-duplicate',
-          reason: 'Manual merge duplicate removal',
-          deletedBy: 'admin',
-        }));
-        try {
-          await BlacklistedStation.insertMany(blacklistDocs, { ordered: false });
-        } catch {
-          /* dup-key on already-blacklisted url/uuid is expected and safe */
-        }
-      }
-      await Station.deleteMany({ _id: { $in: duplicateStationIds } });
-      
-      // logger.log(`✅ Successfully merged ${duplicateStationIds.length} duplicate stations`);
-      
-      res.json({
-        success: true,
-        message: `Successfully merged ${duplicateStationIds.length} stations`,
-        mergedStation: await Station.findById(primaryStationId)
-      });
-    } catch (error) {
-      // console.error('Error merging stations:', error);
-      res.status(500).json({ error: 'Failed to merge stations' });
-    }
-  });
-
-  // ADMIN GENRES API - Returns only real genres from database for management (Admin Only)
-  app.get("/api/admin/genres", requireAdmin, async (req, res) => {
-    try {
-      logger.log('🎵 Fetching ONLY real genres from database for admin management...');
-      
-      // Extract query parameters
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 50;
-      const search = (req.query.search as string)?.trim() || '';
-      const sortBy = (req.query.sortBy as string) || 'stationCount';
-      // Task #133: filter to only genres auto-demoted by the slug-cleanup
-      // migration so admins can review what went dark and decide whether to
-      // merge stations, rename one duplicate, or delete the row.
-      const demotedOnly =
-        req.query.demoted === '1' || req.query.demoted === 'true';
-      
-      // Build MongoDB query
-      const query: any = {};
-      
-      // Add search filter if provided (case-insensitive search in name field)
-      if (search) {
-        query.name = { $regex: search, $options: 'i' };
-      }
-
-      if (demotedOnly) {
-        query['cleanupDemotion.reason'] = { $in: ['empty-slug', 'collision'] };
-      }
-      
-      // Count total matching documents
-      const total = await Genre.countDocuments(query);
-      
-      // Get paginated genres from database (not dynamic ones generated from stations)
-      const skip = (page - 1) * limit;
-      
-      // Determine sort order
-      let sortOptions: any = { stationCount: -1 }; // Default: most popular first
-      if (sortBy === 'name') {
-        sortOptions = { name: 1 }; // Alphabetical A-Z
-      } else if (sortBy === 'recent') {
-        sortOptions = { createdAt: -1 }; // Newest first
-      } else if (sortBy === 'demotedAt') {
-        // Most recently demoted first — only meaningful when demotedOnly is on
-        // but harmless otherwise (genres without the field sort last).
-        sortOptions = { 'cleanupDemotion.demotedAt': -1 };
-      }
-      
-      const realGenres = await Genre.find(query)
-        .sort(sortOptions)
-        .skip(skip)
-        .limit(limit)
-        .lean();
-      
-      logger.log(`📊 Found ${realGenres.length} genres (page ${page}/${Math.ceil(total / limit)}, search: "${search}")`);
-      
-      // If no genres exist at all, populate from station tags first
-      if (total === 0 && !search) {
-        logger.log('📊 No genres found, attempting to populate from station tags...');
-        try {
-          await populateGenresFromStations();
-          const newTotal = await Genre.countDocuments(query);
-          const newGenres = await Genre.find(query).sort(sortOptions).skip(skip).limit(limit).lean();
-          logger.log(`✅ Successfully populated ${newTotal} genres from station data`);
-          return void res.json({
-            data: newGenres,
-            total: newTotal,
-            currentPage: page,
-            totalPages: Math.ceil(newTotal / limit),
-            populated: true
-          });
-        } catch (populateError) {
-          console.error('Failed to populate genres:', populateError);
-        }
-      }
-      
-      // Return in the format expected by the frontend
-      res.json({
-        data: realGenres,
-        total,
-        currentPage: page,
-        totalPages: Math.ceil(total / limit)
-      });
-    } catch (error) {
-      console.error('Error fetching admin genres:', error);
-      res.status(500).json({ error: 'Failed to fetch admin genres' });
-    }
-  });
-
-  // ADMIN MERGE-PREVIEW API (Task #288) - Read-only preview of which stations
-  // a `merge-into-winner` call would re-tag. Mirrors the matching rules used
-  // by the POST endpoint so admins see exactly the set of stations about to
-  // move before they pull the trigger. The matching set depends only on the
-  // demoted genre's name (not the chosen target), so `targetGenreId` is not
-  // required — but if supplied we surface basic guard errors (self-merge,
-  // missing target) so the dialog can warn before the admin clicks Merge.
-  app.get("/api/admin/genres/:id/merge-preview", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const rawTarget = req.query.targetGenreId;
-      const targetGenreId =
-        typeof rawTarget === 'string' && rawTarget.trim().length > 0
-          ? rawTarget.trim()
-          : undefined;
-      const rawLimit = Number.parseInt(String(req.query.limit ?? '50'), 10);
-      const sampleLimit =
-        Number.isFinite(rawLimit) && rawLimit > 0
-          ? Math.min(rawLimit, 200)
-          : 50;
-
-      type GenreLean = Pick<IGenre, 'name' | 'slug' | 'cleanupDemotion'> & {
-        _id: Types.ObjectId | string;
-      };
-      type StationPreviewLean = Pick<
-        IStation,
-        'name' | 'slug' | 'genre' | 'tags' | 'country'
-      > & { _id: Types.ObjectId };
-
-      const demoted = await Genre.findById(id)
-        .select('_id name slug cleanupDemotion')
-        .lean<GenreLean | null>();
-      if (!demoted) {
-        return void res.status(404).json({ error: 'Demoted genre not found' });
-      }
-      if (!demoted.cleanupDemotion) {
-        return void res.status(400).json({
-          error: 'Genre is not a slug-cleanup demoted row',
-        });
-      }
-      const demotedName = String(demoted.name || '').trim();
-      if (!demotedName) {
-        return void res.status(409).json({
-          error: 'Demoted genre is missing a usable name; cannot preview merge',
-        });
-      }
-
-      let winnerName: string | undefined;
-      let winnerSlug: string | undefined;
-      if (targetGenreId) {
-        if (String(targetGenreId) === String(demoted._id)) {
-          return void res.status(400).json({
-            error: 'Cannot merge a demoted genre into itself',
-          });
-        }
-        const winner = await Genre.findById(targetGenreId)
-          .select('_id name slug')
-          .lean<GenreLean | null>();
-        if (!winner) {
-          return void res.status(409).json({
-            error: 'Picked target genre no longer exists',
-          });
-        }
-        winnerName = String(winner.name || '').trim() || undefined;
-        winnerSlug = String(winner.slug || '').trim() || undefined;
-      }
-
-      const escapeForRegex = (s: string): string =>
-        s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const escapedDemoted = escapeForRegex(demotedName);
-      const matchFilter = {
-        $or: [
-          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedDemoted}\\s*(,|$)`, 'i') } },
-          { genre: { $regex: new RegExp(`^\\s*${escapedDemoted}\\s*$`, 'i') } },
-        ],
-      };
-
-      const [stationsMatched, sampleStations] = await Promise.all([
-        Station.countDocuments(matchFilter),
-        Station.find(matchFilter)
-          .select('_id name slug genre tags country')
-          .sort({ name: 1 })
-          .limit(sampleLimit)
-          .lean<StationPreviewLean[]>(),
-      ]);
-
-      return void res.json({
-        demotedGenreId: String(demoted._id),
-        demotedGenreName: demotedName,
-        demotedGenreSlug: demoted.slug,
-        targetGenreId: targetGenreId ?? null,
-        targetGenreName: winnerName ?? null,
-        targetGenreSlug: winnerSlug ?? null,
-        stationsMatched,
-        sampleLimit,
-        sampleStations: sampleStations.map((st) => ({
-          _id: String(st._id),
-          name: st.name,
-          slug: st.slug,
-          genre: st.genre ?? null,
-          tags: st.tags ?? null,
-          country: st.country ?? null,
-        })),
-      });
-    } catch (error) {
-      logger.error('Error building merge preview:', error);
-      res.status(500).json({ error: 'Failed to build merge preview' });
-    }
-  });
-
-  // ADMIN MERGE-INTO-WINNER API (Task #166) - Re-tag the stations attached to
-  // a demoted genre onto its recorded `cleanupDemotion.collisionWinnerId`,
-  // then delete the demoted row. Closes the loop on the slug-cleanup
-  // migration which intentionally avoids auto-merging stations.
-  //
-  // Task #214: also accepts an optional `targetGenreId` body param. When
-  // provided, the admin-picked target genre overrides the recorded
-  // collision winner — and the action becomes available for empty-slug
-  // demotions and any older demoted rows missing a `collisionWinnerId`.
-  app.post("/api/admin/genres/:id/merge-into-winner", requireAdmin, async (req, res) => {
-    try {
-      const { id } = req.params;
-      const rawTarget = (req.body as { targetGenreId?: unknown } | undefined)
-        ?.targetGenreId;
-      const targetGenreId =
-        typeof rawTarget === 'string' && rawTarget.trim().length > 0
-          ? rawTarget.trim()
-          : undefined;
-
-      // Genre._id is mixed (ObjectId for new docs, plain strings for legacy
-      // seed data — see mongo-schemas.ts), so type the lean shape with the
-      // shared interface plus the union _id.
-      type GenreLean = Pick<IGenre, 'name' | 'slug' | 'cleanupDemotion'> & {
-        _id: Types.ObjectId | string;
-      };
-      type StationLean = Pick<IStation, 'slug' | 'genre' | 'tags'> & {
-        _id: Types.ObjectId;
-      };
-
-      const demoted = await Genre.findById(id)
-        .select('_id name slug cleanupDemotion')
-        .lean<GenreLean | null>();
-      if (!demoted) {
-        return void res.status(404).json({ error: 'Demoted genre not found' });
-      }
-      const demotion: IGenreCleanupDemotion | undefined = demoted.cleanupDemotion;
-      if (!demotion) {
-        return void res.status(400).json({
-          error: 'Genre is not a slug-cleanup demoted row',
-        });
-      }
-
-      // Resolve which winner to merge into: an admin-picked override, or
-      // the recorded `collisionWinnerId` for the original auto-pick path.
-      const winnerId = targetGenreId ?? demotion.collisionWinnerId;
-      if (!winnerId) {
-        return void res.status(400).json({
-          error:
-            'No target genre supplied and this demoted row has no recorded winner — pick a target genre to merge into.',
-        });
-      }
-      if (String(winnerId) === String(demoted._id)) {
-        return void res.status(400).json({
-          error: 'Cannot merge a demoted genre into itself',
-        });
-      }
-
-      const winner = await Genre.findById(winnerId)
-        .select('_id name slug')
-        .lean<GenreLean | null>();
-      if (!winner) {
-        return void res.status(409).json({
-          error: targetGenreId
-            ? 'Picked target genre no longer exists; cannot merge'
-            : 'Recorded collision winner no longer exists; cannot merge',
-        });
-      }
-
-      const demotedName = String(demoted.name || '').trim();
-      const winnerName = String(winner.name || '').trim();
-      if (!demotedName || !winnerName) {
-        return void res.status(409).json({
-          error: 'Demoted or winner genre is missing a usable name; cannot merge',
-        });
-      }
-
-      // Find stations attached to the demoted genre via either the free-form
-      // `tags` (comma-separated) field or the singular `genre` field. Mirrors
-      // the matching logic used by GET /api/genres/:slug/stations so what the
-      // admin sees on the public listing is exactly what gets rewritten.
-      const escapeForRegex = (s: string): string =>
-        s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const escapedDemoted = escapeForRegex(demotedName);
-      const matchingStations = await Station.find({
-        $or: [
-          { tags: { $regex: new RegExp(`(^|,)\\s*${escapedDemoted}\\s*(,|$)`, 'i') } },
-          { genre: { $regex: new RegExp(`^\\s*${escapedDemoted}\\s*$`, 'i') } },
-        ],
-      })
-        .select('_id slug genre tags')
-        .lean<StationLean[]>();
-
-      const demotedLower = demotedName.toLowerCase();
-      let stationsRetagged = 0;
-
-      for (const st of matchingStations) {
-        const update: Partial<Pick<IStation, 'genre' | 'tags'>> = {};
-
-        if (typeof st.genre === 'string' && st.genre.trim().toLowerCase() === demotedLower) {
-          if (st.genre !== winnerName) {
-            update.genre = winnerName;
-          }
-        }
-
-        if (typeof st.tags === 'string' && st.tags.length > 0) {
-          const parts = st.tags
-            .split(',')
-            .map((t) => t.trim())
-            .filter((t) => t.length > 0);
-          let tagsChanged = false;
-          const rewritten: string[] = [];
-          const seen = new Set<string>();
-          for (const part of parts) {
-            const lower = part.toLowerCase();
-            const replaced = lower === demotedLower ? winnerName : part;
-            if (replaced !== part) tagsChanged = true;
-            const replacedLower = replaced.toLowerCase();
-            if (!seen.has(replacedLower)) {
-              seen.add(replacedLower);
-              rewritten.push(replaced);
-            } else {
-              // Deduplicated — that's still a change worth persisting.
-              tagsChanged = true;
-            }
-          }
-          if (tagsChanged) {
-            update.tags = rewritten.join(',');
-          }
-        }
-
-        if (Object.keys(update).length === 0) continue;
-
-        await Station.updateOne({ _id: st._id }, { $set: update });
-        stationsRetagged++;
-        if (st.slug) {
-          performanceCache.invalidateStationCache(st.slug);
-        }
-      }
-
-      // Refresh winner's stationCount so the admin list reflects the merge.
-      try {
-        const escapedWinner = escapeForRegex(winnerName);
-        const newWinnerCount = await Station.countDocuments({
-          $or: [
-            { tags: { $regex: new RegExp(`(^|,)\\s*${escapedWinner}\\s*(,|$)`, 'i') } },
-            { genre: { $regex: new RegExp(`^\\s*${escapedWinner}\\s*$`, 'i') } },
-          ],
-        });
-        await Genre.updateOne(
-          { _id: winner._id },
-          { $set: { stationCount: newWinnerCount, updatedAt: new Date() } },
-        );
-      } catch (countErr) {
-        logger.error('Failed to refresh winner stationCount after merge:', countErr);
-      }
-
-      // Task #289 — write a structured audit row BEFORE the irreversible
-      // demoted-row delete so a successful merge response is never returned
-      // without a queryable forensics record. Captures both the
-      // auto-recorded path (winner came from `cleanupDemotion`) and the
-      // manual override path (Task #214 admin-picked target), plus
-      // empty-slug and collision merges since both reach this branch.
-      // Errors here propagate to the outer catch and surface as a 500 — by
-      // that point stations have already been re-tagged, so the admin can
-      // retry the same endpoint to finish the delete + re-warm and produce
-      // an audit row, rather than losing the demotion record entirely.
-      const { GenreMergeAuditLog } = await import(
-        '@workspace/db-shared/mongo-schemas'
-      );
-      const actor = req.user as
-        | { _id?: unknown; id?: unknown; email?: string }
-        | undefined;
-      const actorUserId = (() => {
-        const raw = actor?._id ?? actor?.id;
-        if (raw === undefined || raw === null) return null;
-        const s = String(raw);
-        return s.length > 0 ? s : null;
-      })();
-      const actorEmail =
-        typeof actor?.email === 'string' && actor.email.length > 0
-          ? actor.email
-          : null;
-      await GenreMergeAuditLog.create({
-        demotedGenreId: String(demoted._id),
-        demotedGenreName: demotedName,
-        demotedGenreSlug: String(demoted.slug || ''),
-        winnerGenreId: String(winner._id),
-        winnerGenreName: winnerName,
-        winnerGenreSlug: String(winner.slug || ''),
-        targetSource: targetGenreId ? 'manual' : 'auto-recorded',
-        stationsMatched: matchingStations.length,
-        stationsRetagged,
-        actorUserId,
-        actorEmail,
-      });
-
-      // Delete the demoted row only AFTER the audit row is durably written
-      // so a successful response always corresponds to a queryable record.
-      await Genre.deleteOne({ _id: demoted._id });
-
-      // On-write prune so the audit collection stays bounded even under
-      // heavy admin usage. The 180-day TTL on the schema is the backstop;
-      // this keeps the admin panel and backing query snappy day-to-day.
-      // Failures here are non-fatal — the merge + audit row already
-      // succeeded — so the prune is best-effort and only logged.
-      try {
-        const MAX_ENTRIES = 1000;
-        const total = await GenreMergeAuditLog.estimatedDocumentCount();
-        if (total > MAX_ENTRIES) {
-          const excess = total - MAX_ENTRIES;
-          const oldest = await GenreMergeAuditLog
-            .find({}, { _id: 1 })
-            .sort({ createdAt: 1 })
-            .limit(excess)
-            .lean();
-          if (oldest.length > 0) {
-            await GenreMergeAuditLog.deleteMany({
-              _id: { $in: oldest.map((d) => d._id) },
             });
-          }
         }
-      } catch (pruneErr) {
-        logger.error('Failed to prune genre-merge audit log:', pruneErr);
-      }
-
-      // Same downstream re-warm the cleanup script uses (Task #133): drop the
-      // precomputed-genres caches and force-rebuild the sitemap manifests so
-      // the public surfaces stop linking to the demoted slug immediately.
-      try {
-        const { PrecomputedGenresService } = await import('../services/precomputed-genres');
-        await PrecomputedGenresService.refreshAll();
-      } catch (err) {
-        logger.error('Failed to refresh precomputed-genres caches after merge:', err);
-      }
-      try {
-        const { buildAllSitemapManifests } = await import('../seo/sitemap-manifest-builder');
-        await buildAllSitemapManifests({ force: true });
-      } catch (err) {
-        logger.error('Failed to rebuild sitemap manifests after merge:', err);
-      }
-
-      logger.log(
-        `🔀 Merged demoted genre "${demotedName}" → "${winnerName}": ${stationsRetagged}/${matchingStations.length} stations re-tagged, demoted row deleted.`,
-      );
-
-      return void res.json({
-        success: true,
-        demotedGenreId: String(demoted._id),
-        demotedGenreName: demotedName,
-        winnerGenreId: String(winner._id),
-        winnerGenreName: winnerName,
-        stationsMatched: matchingStations.length,
-        stationsRetagged,
-      });
-    } catch (error) {
-      console.error('Error merging demoted genre into winner:', error);
-      res.status(500).json({ error: 'Failed to merge demoted genre into winner' });
-    }
-  });
-
-  // ADMIN GENRE MERGE AUDIT LOG (Task #289) — paginated, filterable list
-  // of every successful merge so admins can answer "who merged what into
-  // where, and when" without grepping the api-server logs. The collection
-  // is bounded by both the schema TTL (180 days) and an on-write soft cap
-  // in the merge handler above, so this endpoint stays fast.
-  app.get(
-    "/api/admin/genres/merge-audit-log",
-    requireAdmin,
-    async (req, res) => {
-      try {
-        const { GenreMergeAuditLog } = await import(
-          '@workspace/db-shared/mongo-schemas'
-        );
-
-        const parseIntParam = (
-          raw: unknown,
-          fallback: number,
-          max?: number,
-        ) => {
-          const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
-          if (!Number.isFinite(n) || n < 0) return fallback;
-          return max !== undefined ? Math.min(n, max) : n;
-        };
-
-        const limit = Math.max(
-          1,
-          parseIntParam(req.query.limit, 50, 200),
-        );
-        const offset = parseIntParam(req.query.offset, 0);
-
-        const escapeForRegex = (s: string): string =>
-          s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-        const filter: Record<string, unknown> = {};
-
-        const targetSourceParam =
-          typeof req.query.targetSource === 'string'
-            ? req.query.targetSource
-            : undefined;
-        if (targetSourceParam && targetSourceParam !== 'all') {
-          if (
-            targetSourceParam !== 'manual' &&
-            targetSourceParam !== 'auto-recorded'
-          ) {
-            return void res
-              .status(400)
-              .json({ error: 'Invalid targetSource filter' });
-          }
-          filter.targetSource = targetSourceParam;
+        catch (error: any) {
+            console.error('Error auto-translating language:', error);
+            res.status(error?.status === 409 ? 409 : 500).json({ error: error?.status === 409 ? error.message : 'Failed to auto-translate language' });
         }
-
-        const actorEmail =
-          typeof req.query.actorEmail === 'string'
-            ? req.query.actorEmail.trim()
-            : '';
-        if (actorEmail) {
-          filter.actorEmail = {
-            $regex: escapeForRegex(actorEmail),
-            $options: 'i',
-          };
+        finally {
+            // Always release the per-language lock so a future job can run, even
+            // when the pipeline threw mid-batch.
+            if (lockKey) {
+                inFlightTranslateJobs.delete(lockKey);
+            }
         }
-
-        const genre =
-          typeof req.query.genre === 'string' ? req.query.genre.trim() : '';
-        if (genre) {
-          const re = { $regex: escapeForRegex(genre), $options: 'i' };
-          filter.$or = [
-            { demotedGenreName: re },
-            { demotedGenreSlug: re },
-            { winnerGenreName: re },
-            { winnerGenreSlug: re },
-          ];
-        }
-
-        const fromRaw =
-          typeof req.query.from === 'string' ? req.query.from : '';
-        const toRaw = typeof req.query.to === 'string' ? req.query.to : '';
-        const createdAt: Record<string, Date> = {};
-        const fromDate = fromRaw ? new Date(fromRaw) : null;
-        if (fromDate && !isNaN(fromDate.getTime())) {
-          createdAt.$gte = fromDate;
-        }
-        const toDate = toRaw ? new Date(toRaw) : null;
-        if (toDate && !isNaN(toDate.getTime())) {
-          if (/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
-            toDate.setUTCHours(23, 59, 59, 999);
-          }
-          createdAt.$lte = toDate;
-        }
-        if (Object.keys(createdAt).length > 0) {
-          filter.createdAt = createdAt;
-        }
-
-        const [entries, total] = await Promise.all([
-          GenreMergeAuditLog
-            .find(filter)
-            .sort({ createdAt: -1 })
-            .skip(offset)
-            .limit(limit)
-            .lean<Array<{
-              _id: unknown;
-              demotedGenreId: string;
-              demotedGenreName: string;
-              demotedGenreSlug: string;
-              winnerGenreId: string;
-              winnerGenreName: string;
-              winnerGenreSlug: string;
-              targetSource: 'manual' | 'auto-recorded';
-              stationsMatched: number;
-              stationsRetagged: number;
-              actorUserId: string | null;
-              actorEmail: string | null;
-              createdAt: Date;
-            }>>(),
-          GenreMergeAuditLog.countDocuments(filter),
-        ]);
-
-        res.json({
-          entries: entries.map((e) => ({
-            id: String(e._id),
-            demotedGenreId: e.demotedGenreId,
-            demotedGenreName: e.demotedGenreName,
-            demotedGenreSlug: e.demotedGenreSlug,
-            winnerGenreId: e.winnerGenreId,
-            winnerGenreName: e.winnerGenreName,
-            winnerGenreSlug: e.winnerGenreSlug,
-            targetSource: e.targetSource,
-            stationsMatched: e.stationsMatched,
-            stationsRetagged: e.stationsRetagged,
-            actorUserId: e.actorUserId,
-            actorEmail: e.actorEmail,
-            createdAt: e.createdAt,
-          })),
-          total,
-          limit,
-          offset,
-        });
-        return;
-      } catch (error) {
-        console.error('Error listing genre-merge audit log:', error);
-        res
-          .status(500)
-          .json({ error: 'Failed to list genre-merge audit log' });
-        return;
-      }
-    },
-  );
-
-  // ADMIN GENRE POPULATION API - Manually trigger genre population from station tags
-  app.post("/api/admin/populate-genres", requireAdmin, async (req, res) => {
-    try {
-      logger.log('🎵 Manually triggering genre population from station tags...');
-      
-      const result = await populateGenresFromStations();
-      
-      res.json({
-        success: true,
-        message: `Successfully populated ${result.genresCreated} genres from station data`,
-        genresCreated: result.genresCreated,
-        tagsProcessed: result.tagsProcessed
-      });
-    } catch (error) {
-      console.error('Error manually populating genres:', error);
-      res.status(500).json({ error: 'Failed to populate genres' });
-    }
-  });
-
-  // Helper function to populate genres from station tags
-  async function populateGenresFromStations() {
-    try {
-      logger.log('🎵 Starting genre population from station tags...');
-      
-      // Get all stations with tags
-      const stations = await Station.find({ 
-        $or: [
-          { tags: { $exists: true, $nin: [null, ''] } },
-          { genre: { $exists: true, $nin: [null, ''] } }
-        ]
-      }).lean();
-      
-      logger.log(`📊 Found ${stations.length} stations with tags/genres`);
-      
-      const tagCounts: Record<string, number> = {};
-      
-      // Parse and count all tags
-      stations.forEach(station => {
-        const allTags: string[] = [];
-        
-        // Handle 'tags' field
-        if (station.tags) {
-          if (typeof station.tags === 'string') {
-            // Handle comma-separated tags
-            allTags.push(...station.tags.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0));
-          } else if (Array.isArray(station.tags)) {
-            allTags.push(...(station.tags as any[]));
-          }
-        }
-        
-        // Handle 'genre' field
-        if (station.genre && typeof station.genre === 'string') {
-          allTags.push(station.genre.trim());
-        }
-        
-        allTags.forEach(tag => {
-          const normalizedTag = tag.toLowerCase().trim();
-          if (normalizedTag.length > 0 && normalizedTag.length < 50) { // Reasonable tag length
-            tagCounts[normalizedTag] = (tagCounts[normalizedTag] || 0) + 1;
-          }
-        });
-      });
-      
-      logger.log(`📈 Found ${Object.keys(tagCounts).length} unique tags`);
-      
-      // Create genres for tags with at least 1 station
-      // Task #110: skip empty/malformed slugs (would otherwise leak the
-      // XML-unsafe legacy values that #102 + #110 just cleaned up).
-      // Task #161: route this through the shared `normalizeGenreSlug`
-      // helper so every Genre.slug write site uses the same definition
-      // of "safe" — duplicating the regex inline meant a future tweak to
-      // SAFE_GENRE_SLUG_RE could silently drift away from this admin
-      // path and reintroduce malformed slugs.
-      let genresCreated = 0;
-      let genresSkipped = 0;
-      for (const [tag, count] of Object.entries(tagCounts)) {
-        if (count >= 1) {
-          const slug = normalizeGenreSlug(tag);
-          if (!slug || !SAFE_GENRE_SLUG_RE.test(slug)) {
-            genresSkipped++;
-            continue;
-          }
-          const genreData = {
-            name: tag.charAt(0).toUpperCase() + tag.slice(1), // Capitalize first letter
-            slug,
-            stationCount: count,
-            isDiscoverable: count >= 2, // Make discoverable if 2+ stations
-            createdAt: new Date(),
-            updatedAt: new Date()
-          };
-
-          // Insert genre (update if exists)
-          await Genre.findOneAndUpdate(
-            { slug: genreData.slug },
-            genreData,
-            { upsert: true, returnDocument: 'after', runValidators: true }
-          );
-          genresCreated++;
-        }
-      }
-      if (genresSkipped > 0) {
-        logger.log(`⏭️ Skipped ${genresSkipped} tags with unsafe/empty slugs`);
-      }
-      
-      logger.log(`✅ Successfully populated ${genresCreated} genres!`);
-      
-      return {
-        genresCreated,
-        tagsProcessed: Object.keys(tagCounts).length
-      };
-    } catch (error) {
-      console.error('❌ Error populating genres:', error);
-      throw error;
-    }
-  }
-
-  // LOCATION API - IP-based geolocation detection
-  // 🚀 OPTIMIZED: Uses Cloudflare headers for instant detection (0ms vs 300-800ms)
-  app.get("/api/location", async (req, res) => {
-    // CRITICAL: Prevent Cloudflare from caching location responses (user-specific data)
-    res.set({
-      'Cache-Control': 'no-store, no-cache, must-revalidate, private',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      'Vary': 'CF-Connecting-IP, X-Forwarded-For'
     });
-    
-    try {
-      // Get the client's IP address
-      let rawIP = req.headers['cf-connecting-ip'] || 
-                  req.headers['x-forwarded-for'] || 
-                  req.headers['x-real-ip'] || 
-                  req.connection.remoteAddress || 
-                  req.socket.remoteAddress || 
-                  (req.connection as any)?.socket?.remoteAddress ||
-                  req.ip;
-
-      // Parse the IP address - extract the first valid public IP from comma-separated list
-      let clientIP = rawIP;
-      if (typeof rawIP === 'string' && rawIP.includes(',')) {
-        const ips = rawIP.split(',').map(ip => ip.trim());
-        const publicIP = ips.find(ip => {
-          const isNotLocalhost = !ip.includes('127.0.0.1') && !ip.includes('::1') && ip !== '::ffff:127.0.0.1';
-          const isNotPrivate = !ip.includes('192.168.') && !ip.includes('10.0.') && !ip.includes('10.81.');
-          const isNotIPv6Local = !ip.includes('::ffff:') && !ip.includes('::1');
-          const hasValidFormat = ip.length > 0 && /^\d+\.\d+\.\d+\.\d+$/.test(ip);
-          return isNotLocalhost && isNotPrivate && isNotIPv6Local && hasValidFormat;
-        });
-        clientIP = publicIP || ips[0];
-      }
-
-      let locationData = {
-        country: 'all',
-        countryCode: 'all',
-        city: null as string | null,
-        region: null as string | null,
-        lat: null as number | null,
-        lng: null as number | null,
-        detected: false
-      };
-
-      // 🚀 PRIORITY 1: Cloudflare headers (INSTANT - 0ms)
-      const cfCountryCode = req.headers['cf-ipcountry'] as string;
-      const isCloudflareRequest = !!req.headers['cf-ray']; // CF-Ray header indicates Cloudflare
-      
-      if (cfCountryCode && cfCountryCode !== 'XX' && cfCountryCode !== 'T1') {
-        // Convert 2-letter code to full country name using existing mapping
-        const countryName = CODE_TO_COUNTRY[cfCountryCode.toLowerCase()];
-        if (countryName) {
-          locationData = {
-            country: countryName,
-            countryCode: cfCountryCode.toUpperCase(),
-            city: null,
-            region: null,
-            lat: null,
-            lng: null,
-            detected: true
-          };
-          
-          return void res.json({
-            location: locationData,
-            ip: rawIP,
-            source: 'cloudflare'
-          });
-        }
-      }
-
-      // 🔄 FALLBACK: ip-api.com for any environment when Cloudflare detection fails
-      const ipStr = typeof clientIP === 'string' ? clientIP : '';
-      const isLocalhost = !ipStr || 
-          ipStr === '127.0.0.1' || 
-          ipStr === '::1' || 
-          ipStr.includes('192.168.') || 
-          ipStr.includes('10.0.') ||
-          ipStr.includes('10.81.') ||
-          ipStr === '::ffff:127.0.0.1';
-
-      const cleanIP = ipStr.includes(',') ? ipStr.split(',')[0].trim() : ipStr;
-
-      if (!isLocalhost) {
+    // ADMIN REAL LANGUAGES API - Manage real languages from station database (Admin Only)
+    app.get("/api/admin/real-languages", requireAdmin, async (req, res) => {
         try {
-          const fetch = (await import('node-fetch')).default;
-          const response = await Promise.race([
-            fetch(`http://ip-api.com/json/${cleanIP}?fields=status,message,country,countryCode,region,city,lat,lon`),
-            new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 2000))
-          ]) as any;
-          const data = await response.json() as any;
-          
-          if (data && data.status === 'success') {
-            locationData = {
-              country: data.country,
-              countryCode: data.countryCode,
-              city: data.city,
-              region: data.region,
-              lat: data.lat,
-              lng: data.lon,
-              detected: true
+            // Language grouping map to consolidate variants
+            const languageGroups = {
+                'Turkish': ['turkish', 'türkiye', 'turk', 'türkçe', 'turkey'],
+                'German': ['german', 'deutsch', 'germany', 'deutsche'],
+                'English': ['english', 'en', 'eng'],
+                'Spanish': ['spanish', 'español', 'espanol', 'spain', 'es'],
+                'French': ['french', 'français', 'francais', 'france', 'fr'],
+                'Italian': ['italian', 'italiano', 'italy', 'it'],
+                'Portuguese': ['portuguese', 'português', 'portugues', 'brazil', 'brasil', 'pt'],
+                'Russian': ['russian', 'русский', 'russia', 'ru'],
+                'Chinese': ['chinese', 'china', 'zh', '中文'],
+                'Japanese': ['japanese', 'japan', 'ja', '日本語'],
+                'Korean': ['korean', 'korea', 'ko', '한국어'],
+                'Arabic': ['arabic', 'عربي', 'ar'],
+                'Dutch': ['dutch', 'nederlands', 'netherlands', 'nl'],
+                'Polish': ['polish', 'polski', 'poland', 'pl'],
+                'Swedish': ['swedish', 'svenska', 'sweden', 'se'],
+                'Norwegian': ['norwegian', 'norsk', 'norway', 'no'],
+                'Danish': ['danish', 'dansk', 'denmark', 'dk'],
+                'Finnish': ['finnish', 'suomi', 'finland', 'fi'],
+                'Greek': ['greek', 'ελληνικά', 'greece', 'gr'],
+                'Czech': ['czech', 'čeština', 'czechia', 'cz'],
+                'Hungarian': ['hungarian', 'magyar', 'hungary', 'hu'],
+                'Romanian': ['romanian', 'română', 'romania', 'ro'],
+                'Bulgarian': ['bulgarian', 'български', 'bulgaria', 'bg'],
+                'Croatian': ['croatian', 'hrvatski', 'croatia', 'hr'],
+                'Serbian': ['serbian', 'srpski', 'serbia', 'rs'],
+                'Ukrainian': ['ukrainian', 'українська', 'ukraine', 'ua'],
+                'Slovenian': ['slovenian', 'slovenščina', 'slovenia', 'si'],
+                'Slovak': ['slovak', 'slovenčina', 'slovakia', 'sk'],
+                'Lithuanian': ['lithuanian', 'lietuvių', 'lithuania', 'lt'],
+                'Latvian': ['latvian', 'latviešu', 'latvia', 'lv'],
+                'Estonian': ['estonian', 'eesti', 'estonia', 'ee']
             };
-          }
-        } catch (geoError: any) {
-          // Silent fallback - location detection is optional
-        }
-      }
-
-      res.json({
-        location: locationData,
-        ip: rawIP,
-        source: isLocalhost ? 'localhost' : 'ip-api'
-      });
-    } catch (error) {
-      res.json({
-        location: {
-          country: 'all',
-          countryCode: 'all',
-          city: null,
-          region: null,
-          lat: null,
-          lng: null,
-          detected: false
-        },
-        ip: null,
-        source: 'fallback'
-      });
-    }
-  });
-
-  // FILTERS COUNTRIES API
-  // INCIDENT 2026-05-14: this endpoint is hit on EVERY page load (header
-  // country picker) and was running an unbounded `Station.distinct('country')`
-  // collection scan with NO cache, taking 60s+ in production and frequently
-  // returning Cloudflare 520 because Atlas could not finish the scan inside
-  // the proxy timeout. Add 24h cache + 12s timeout + soft fallback so a
-  // slow Atlas response never blocks the UI shell.
-  app.get("/api/filters/countries", async (req, res) => {
-    try {
-      const cacheKey = 'filters:countries:v1';
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) {
-        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-        return void res.json(cached);
-      }
-      const countries = await (Station.distinct('country') as any).maxTimeMS(12000);
-      const filteredCountries = (countries as string[])
-        .filter((country: string) => country && country.trim() !== '')
-        .sort();
-      await CacheManager.set(cacheKey, filteredCountries, { ttl: 86400 });
-      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-      res.json(filteredCountries);
-    } catch (error: any) {
-      logger.warn('[filters/countries] failed: ' + (error?.message || 'unknown'));
-      // Soft-fail with empty list rather than 500 so the header still renders
-      res.set('Cache-Control', 'no-store');
-      res.json([]);
-    }
-  });
-
-  // FILTERS LANGUAGES API
-  // INCIDENT 2026-05-14: same pattern as /api/filters/countries — heavy
-  // aggregate hit on every page load with no cache. Add 24h cache + bounded
-  // execution + soft fallback.
-  app.get("/api/filters/languages", async (req, res) => {
-    const cacheKey = 'filters:languages:v1';
-    try {
-      // INCIDENT 2026-05-15 v10 — wrap the heavy distinct-language
-      // aggregate in single-flight so concurrent cold misses (homepage
-      // SSR fanout) coalesce to ONE Mongo call.
-      // INCIDENT 2026-05-15 v10.2 — upgraded singleflight → SWR
-      // (24h fresh / 7d stale) so a stressed cluster mid-refresh
-      // keeps serving the prior language list instead of falling
-      // through to the empty-array soft-fail.
-      const cleanLanguages = await CacheManager.getOrSetSWR<string[]>(cacheKey, async () => {
-      // Get aggregated language data with counts
-      const languageStats = await Station.aggregate([
-        {
-          $match: {
-            $and: [
-              { language: { $exists: true, $ne: "" } },
-              { language: { $ne: null } }
-            ]
-          }
-        },
-        {
-          $group: {
-            _id: "$language",
-            count: { $sum: 1 }
-          }
-        },
-        {
-          $match: {
-            count: { $gte: 3 } // Only languages with 3+ stations
-          }
-        },
-        {
-          $sort: { count: -1 }
-        }
-      // INCIDENT 2026-05-15 v10.1 — bumped 12s → 30s. Single-flight
-      // already coalesces concurrent misses to ONE call AND the 24h
-      // TTL means we eat this aggregate at most once per day. The
-      // prior 12s budget tripped MaxTimeMSExpired during M10 cluster
-      // stress and forced every visitor onto the empty-array fallback.
-      ]).option({ maxTimeMS: 30000, allowDiskUse: true });
-
-      // Clean up the language names - remove malformed data
-      const cleanLanguages = languageStats
-        .map(item => item._id)
-        .filter(lang => lang && lang.trim())
-        .map(lang => {
-          // Clean up common issues
-          lang = lang.trim();
-          if (lang.startsWith('"') && lang.endsWith('"')) {
-            lang = lang.slice(1, -1);
-          }
-          if (lang.startsWith('#')) {
-            lang = lang.substring(1);
-          }
-          // Split multi-language entries and take first clean one
-          if (lang.includes(',')) {
-            lang = lang.split(',')[0].trim().replace('#', '');
-          }
-          return lang;
-        })
-        .filter(lang => lang && lang.length > 1 && lang.length < 30) // Remove very short or long entries
-        .filter(lang => !lang.match(/^[^a-zA-Z]/) && !lang.includes('#')) // Remove entries starting with special chars or containing #
-        .filter((lang, index, arr) => arr.indexOf(lang) === index) // Remove duplicates
-        .slice(0, 50) // Limit results
-        .sort();
-
-        return cleanLanguages;
-      }, { freshTtl: 86400, staleTtl: 86400 * 7 });
-      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-      res.json(cleanLanguages);
-    } catch (error: any) {
-      logger.warn(`[filters/languages] failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || 'unknown'}`);
-      // INCIDENT 2026-05-15 v10.2 — read SWR envelope on fallback path.
-      let stale: any = null;
-      try { stale = await CacheManager.getSWR(cacheKey); } catch {}
-      res.set('Cache-Control', 'no-store');
-      res.json(Array.isArray(stale) ? stale : []);
-    }
-  });
-
-  // FILTERS GENRES API
-  // INCIDENT 2026-05-14: same pattern — `Station.distinct('tags')` is a full
-  // collection scan with no cache. Add 24h cache + bounded execution.
-  app.get("/api/filters/genres", async (req, res) => {
-    try {
-      const cacheKey = 'filters:genres:v1';
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) {
-        res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-        return void res.json(cached);
-      }
-      // Get all distinct tags from stations
-      const allTags = await (Station.distinct('tags') as any).maxTimeMS(12000);
-      
-      // Extract unique genre values from tags (tags are comma-separated)
-      const genreSet = new Set();
-      
-      (allTags as string[]).forEach(tagString => {
-        if (tagString && typeof tagString === 'string') {
-          // Split comma-separated tags and clean them up
-          const tags = tagString.split(',').map(tag => tag.trim().toLowerCase());
-          tags.forEach(tag => {
-            if (tag && tag.length > 0) {
-              genreSet.add(tag);
-            }
-          });
-        }
-      });
-      
-      // Debug logging to see what we're getting
-      logger.log('🔍 Tags debug:', { 
-        totalTags: allTags.length, 
-        sampleTags: allTags.slice(0, 5),
-        genreCount: genreSet.size,
-        sampleGenres: Array.from(genreSet).slice(0, 10)
-      });
-      
-      // Convert to sorted array
-      const genres = Array.from(genreSet).sort();
-      
-      await CacheManager.set('filters:genres:v1', genres, { ttl: 86400 });
-      res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
-      res.json(genres);
-    } catch (error: any) {
-      logger.warn('[filters/genres] failed: ' + (error?.message || 'unknown'));
-      res.set('Cache-Control', 'no-store');
-      res.json([]);
-    }
-  });
-
-  // Get stations by genre (for genre pages)
-  app.get("/api/stations/by-genre/:genre", async (req, res) => {
-    try {
-      const { genre } = req.params;
-      const { page = 1, limit = 20, country } = req.query;
-      
-      const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
-      
-      let query: any = {
-        $or: [
-          { genre: new RegExp(genre, 'i') },
-          { tags: new RegExp(genre, 'i') }
-        ]
-      };
-      
-      if (country && country !== 'All') {
-        query.country = country;
-      }
-      
-      const stations = await Station.find(query)
-        .sort({ votes: -1, clickCount: -1 })
-        .skip(skip)
-        .limit(parseInt(limit as string))
-        .lean();
-        
-      const total = await Station.countDocuments(query);
-      
-      res.json({
-        stations,
-        total,
-        page: parseInt(page as string),
-        totalPages: Math.ceil(total / parseInt(limit as string))
-      });
-    } catch (error) {
-      // console.error('Error fetching stations by genre:', error);
-      res.status(500).json({ error: 'Failed to fetch stations by genre' });
-    }
-  });
-
-  // Get genre statistics for landing pages
-  app.get("/api/genres/:slug/stats", async (req, res) => {
-    try {
-      const { slug } = req.params;
-      
-      // Convert slug back to genre name (replace hyphens with spaces, capitalize)
-      const genreName = slug.split('-').map(word => 
-        word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-      ).join(' ');
-      
-      // Get top countries for this genre
-      const topCountries = await Station.aggregate([
-        {
-          $match: {
-            $or: [
-              { genre: new RegExp(genreName, 'i') },
-              { tags: new RegExp(genreName, 'i') }
-            ]
-          }
-        },
-        {
-          $group: {
-            _id: "$country",
-            count: { $sum: 1 },
-            avgVotes: { $avg: "$votes" }
-          }
-        },
-        {
-          $match: { _id: { $nin: [null, ""] } }
-        },
-        {
-          $sort: { count: -1 }
-        },
-        {
-          $limit: 50
-        },
-        {
-          $project: {
-            name: "$_id",
-            count: 1,
-            avgVotes: { $round: ["$avgVotes", 1] }
-          }
-        }
-      ]);
-
-      // Get related genres based on stations that share multiple tags
-      const relatedGenres = await Station.aggregate([
-        {
-          $match: {
-            $or: [
-              { genre: new RegExp(genreName, 'i') },
-              { tags: new RegExp(genreName, 'i') }
-            ]
-          }
-        },
-        {
-          $project: {
-            tags: { $split: ["$tags", ","] }
-          }
-        },
-        {
-          $unwind: "$tags"
-        },
-        {
-          $group: {
-            _id: { $trim: { input: "$tags" } },
-            count: { $sum: 1 }
-          }
-        },
-        {
-          $match: {
-            _id: { 
-              $nin: [genreName, "", null, "music", "radio", "online", "live", "stream", "station"]
-            },
-            count: { $gte: 5 }
-          }
-        },
-        {
-          $sort: { count: -1 }
-        },
-        {
-          $limit: 8
-        },
-        {
-          $project: {
-            name: "$_id",
-            slug: {
-              $toLower: {
-                $replaceAll: {
-                  input: { $replaceAll: { input: "$_id", find: " ", replacement: "-" } },
-                  find: "--",
-                  replacement: "-"
+            // Get all unique languages from stations
+            const rawLanguages = (await pgStationFacetCounts('language')).map(row => ({ language: row._id, stationCount: row.count }));
+            // Group languages by their main language
+            const groupedLanguages: Record<string, any> = {};
+            const ungroupedLanguages: any[] = [];
+            rawLanguages.forEach(langData => {
+                const langName = langData.language.toLowerCase().trim();
+                let grouped = false;
+                // Check if this language belongs to any group
+                for (const [mainLang, variants] of Object.entries(languageGroups)) {
+                    if (variants.some(variant => langName.includes(variant) || variant.includes(langName))) {
+                        if (!groupedLanguages[mainLang]) {
+                            groupedLanguages[mainLang] = {
+                                mainLanguage: mainLang,
+                                variants: [],
+                                totalStations: 0
+                            };
+                        }
+                        groupedLanguages[mainLang].variants.push({
+                            originalName: langData.language,
+                            stationCount: langData.stationCount
+                        });
+                        groupedLanguages[mainLang].totalStations += langData.stationCount;
+                        grouped = true;
+                        break;
+                    }
                 }
-              }
-            },
-            count: 1
-          }
-        }
-      ]);
-
-      res.json({
-        topCountries,
-        relatedGenres
-      });
-    } catch (error) {
-      console.error('Error fetching genre stats:', error);
-      res.status(500).json({ error: 'Failed to fetch genre statistics' });
-    }
-  });
-
-
-
-  // STATION CLICK TRACKING
-  app.post("/api/stations/:id/click", async (req, res) => {
-    try {
-      const { id } = req.params;
-      await Station.findByIdAndUpdate(id, {
-        $inc: { clickcount: 1 },
-        $set: { clickTimestamp: new Date() }
-      });
-      // logger.log(` Station ${id} click tracked`);
-      res.json({ success: true });
-    } catch (error) {
-      // console.error('Error tracking station click:', error);
-      res.status(500).json({ error: 'Failed to track click' });
-    }
-  });
-
-  // STATION RATING SYSTEM
-  // Calculate rating statistics for a station
-  async function calculateStationRatingStats(stationId: string) {
-    const ratings = await StationRating.find({ stationId }).lean();
-    
-    if (ratings.length === 0) {
-      return {
-        averageRating: 0,
-        totalRatings: 0,
-        ratingBreakdown: { stars1: 0, stars2: 0, stars3: 0, stars4: 0, stars5: 0 }
-      };
-    }
-
-    const breakdown = { stars1: 0, stars2: 0, stars3: 0, stars4: 0, stars5: 0 };
-    let totalScore = 0;
-
-    for (const rating of ratings) {
-      totalScore += rating.rating;
-      breakdown[`stars${rating.rating}` as keyof typeof breakdown]++;
-    }
-
-    const averageRating = totalScore / ratings.length;
-
-    return {
-      averageRating: Math.round(averageRating * 10) / 10, // Round to 1 decimal
-      totalRatings: ratings.length,
-      ratingBreakdown: breakdown
-    };
-  }
-
-  // Rate a station
-  app.post("/api/stations/:id/rate", async (req, res) => {
-    try {
-      const { id: stationId } = req.params;
-      const { rating, userId, sessionId } = req.body;
-      let comment = req.body.comment;
-      if (comment && typeof comment === 'string') {
-        comment = comment.replace(/<[^>]*>/g, '').trim().slice(0, 1000);
-      }
-
-      // Validate rating
-      if (!rating || rating < 1 || rating > 5) {
-        return void res.status(400).json({ error: 'Rating must be between 1 and 5 stars' });
-      }
-
-      // Get user identifier and IP for duplicate prevention
-      const userIdentifier = userId || sessionId;
-      const ipAddress = req.ip || req.connection.remoteAddress;
-      const userAgent = req.get('User-Agent');
-
-      if (!userIdentifier && !ipAddress) {
-        return void res.status(400).json({ error: 'User identification required' });
-      }
-
-      // Check if station exists
-      const station = await Station.findById(stationId);
-      if (!station) {
-        return void res.status(404).json({ error: 'Station not found' });
-      }
-
-      // Build query for existing rating (prioritize userId, fallback to sessionId, then IP)
-      let existingRatingQuery: any = { stationId };
-      if (userId) {
-        existingRatingQuery.userId = userId;
-      } else if (sessionId) {
-        existingRatingQuery.sessionId = sessionId;
-      } else {
-        existingRatingQuery.ipAddress = ipAddress;
-      }
-
-      // Update or create rating
-      const existingRating = await StationRating.findOne(existingRatingQuery);
-
-      let ratingDoc;
-      if (existingRating) {
-        // Update existing rating
-        ratingDoc = await StationRating.findByIdAndUpdate(
-          existingRating._id,
-          { 
-            rating, 
-            comment: comment || undefined,
-            updatedAt: new Date()
-          },
-          { returnDocument: 'after' }
-        );
-      } else {
-        // Create new rating
-        ratingDoc = await StationRating.create({
-          stationId,
-          userId: userId || undefined,
-          sessionId: sessionId || undefined,
-          rating,
-          comment: comment || undefined,
-          ipAddress,
-          userAgent,
-          createdAt: new Date(),
-          updatedAt: new Date()
-        });
-      }
-
-      // Recalculate station rating statistics
-      const stats = await calculateStationRatingStats(stationId);
-
-      // Update station with new rating statistics and increment votes
-      await Station.findByIdAndUpdate(stationId, {
-        averageRating: stats.averageRating,
-        totalRatings: stats.totalRatings,
-        ratingBreakdown: stats.ratingBreakdown,
-        $inc: { votes: existingRating ? 0 : 1 } // Only increment votes for new ratings
-      });
-
-      res.json({
-        success: true,
-        rating: ratingDoc,
-        stats: {
-          averageRating: stats.averageRating,
-          totalRatings: stats.totalRatings,
-          ratingBreakdown: stats.ratingBreakdown,
-          votes: station.votes + (existingRating ? 0 : 1)
-        }
-      });
-
-    } catch (error) {
-      console.error('Error rating station:', error);
-      res.status(500).json({ error: 'Failed to rate station' });
-    }
-  });
-
-  // Get station ratings
-  app.get("/api/stations/:id/ratings", async (req, res) => {
-    try {
-      const { id: stationId } = req.params;
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10;
-      const skip = (page - 1) * limit;
-
-      const ratings = await StationRating.find({ stationId })
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean();
-
-      for (const r of ratings as any[]) {
-        if (r.comment && typeof r.comment === 'string') {
-          r.comment = r.comment.replace(/<[^>]*>/g, '').trim();
-        }
-      }
-
-      // Get total count
-      const total = await StationRating.countDocuments({ stationId });
-
-      // Calculate statistics
-      const stats = await calculateStationRatingStats(stationId);
-
-      res.json({
-        ratings,
-        pagination: {
-          page,
-          limit,
-          total,
-          totalPages: Math.ceil(total / limit)
-        },
-        stats
-      });
-
-    } catch (error) {
-      console.error('Error fetching station ratings:', error);
-      res.status(500).json({ error: 'Failed to fetch ratings' });
-    }
-  });
-
-  // Vote for a station - increments vote count by 1
-  app.post("/api/stations/:id/vote", async (req, res) => {
-    try {
-      const { id: stationId } = req.params;
-      
-      // Find station and increment votes
-      const station = await Station.findByIdAndUpdate(
-        stationId,
-        { $inc: { votes: 1 } },
-        { returnDocument: 'after' }
-      );
-      
-      if (!station) {
-        return void res.status(404).json({ error: 'Station not found' });
-      }
-      
-      res.json({
-        success: true,
-        votes: station.votes
-      });
-      
-    } catch (error) {
-      console.error('Error voting for station:', error);
-      res.status(500).json({ error: 'Failed to vote for station' });
-    }
-  });
-
-  // Get user's rating for a specific station
-  app.get("/api/stations/:id/user-rating", async (req, res) => {
-    try {
-      const { id: stationId } = req.params;
-      let { userId, sessionId } = req.query;
-
-      // Gracefully handle missing parameters - return null rating instead of 400
-      if (!userId && !sessionId) {
-        return void res.json({ rating: null });
-      }
-
-      // Ensure userId and sessionId are strings (not arrays from query params)
-      if (Array.isArray(userId)) userId = userId[0];
-      if (Array.isArray(sessionId)) sessionId = sessionId[0];
-
-      // Build query
-      let query: any = { stationId };
-      if (userId && typeof userId === 'string') {
-        query.userId = userId;
-      } else if (sessionId && typeof sessionId === 'string') {
-        query.sessionId = sessionId;
-      }
-
-      const rating = await StationRating.findOne(query).lean();
-
-      res.json({ rating: rating || null });
-
-    } catch (error) {
-      console.error('Error fetching user rating:', error);
-      res.json({ rating: null }); // Graceful fallback instead of 500
-    }
-  });
-
-  // ENSURE USER PROFILE IS PUBLIC (for testing purposes)
-  app.post("/api/test/make-user-public", async (req, res) => {
-    try {
-      const { email } = req.body;
-      // logger.log(' Making user profile public for testing:', email);
-      
-      const user = await User.findOneAndUpdate(
-        { email: email },
-        { 
-          isPublicProfile: true,
-          name: email.split('@')[0] // Use email prefix as name if no name set
-        },
-        { returnDocument: 'after' }
-      );
-      
-      if (!user) {
-        return void res.status(404).json({ error: 'User not found' });
-      }
-      
-      // logger.log(' User profile set to public:', user.email);
-      res.json({ message: 'User profile is now public', user: { email: user.email, isPublicProfile: user.isPublicProfile } });
-    } catch (error) {
-      // console.error('Error making user public:', error);
-      res.status(500).json({ error: 'Failed to update user profile' });
-    }
-  });
-
-  // ADD FAVORITES FOR USER (for testing purposes)
-  app.post("/api/test/add-favorites", async (req, res) => {
-    try {
-      const { email, stationIds } = req.body;
-      // logger.log(' Adding favorites for user:', email, 'stations:', stationIds);
-      
-      const user = await User.findOneAndUpdate(
-        { email: email },
-        { 
-          $addToSet: { favoriteStations: { $each: stationIds } },
-          isPublicProfile: true,
-          name: email.split('@')[0]
-        },
-        { returnDocument: 'after', upsert: true }
-      );
-      
-      // logger.log(' Added favorites to user:', user.email, 'total favorites:', user.favoriteStations.length);
-      res.json({ 
-        message: 'Favorites added successfully', 
-        user: { 
-          email: user.email, 
-          favoriteStations: user.favoriteStations,
-          isPublicProfile: user.isPublicProfile 
-        } 
-      });
-    } catch (error) {
-      // console.error('Error adding favorites:', error);
-      res.status(500).json({ error: 'Failed to add favorites' });
-    }
-  });
-
-  // UPDATE USER NAME (for fixing user profiles)
-  app.post("/api/test/update-user-name", async (req, res) => {
-    try {
-      const { email, name } = req.body;
-      // logger.log(' Updating user name:', email, 'to:', name);
-      
-      const user = await User.findOneAndUpdate(
-        { email: email },
-        { name: name },
-        { returnDocument: 'after' }
-      );
-      
-      if (!user) {
-        return void res.status(404).json({ error: 'User not found' });
-      }
-      
-      // logger.log(' Updated user name:', user.email, 'name:', user.name);
-      res.json({ 
-        message: 'User name updated successfully', 
-        user: { 
-          email: user.email, 
-          name: user.name,
-          isPublicProfile: user.isPublicProfile 
-        } 
-      });
-    } catch (error) {
-      // console.error('Error updating user name:', error);
-      res.status(500).json({ error: 'Failed to update user name' });
-    }
-  });
-
-  // DEBUG USER STATUS (for testing purposes)
-  app.get("/api/test/user-status/:email", async (req, res) => {
-    try {
-      const { email } = req.params;
-      // logger.log(' Checking user status for:', email);
-      
-      const user = await User.findOne({ email: email });
-      
-      if (!user) {
-        // logger.log(' User not found:', email);
-        return void res.json({ found: false, message: 'User not found' });
-      }
-      
-      // logger.log(' User found:', { email: user.email, isPublicProfile: user.isPublicProfile, favoriteStationsCount: user.favoriteStations?.length || 0, name: user.name });
-      
-      res.json({ 
-        found: true,
-        user: {
-          _id: user._id,
-          email: user.email,
-          name: user.name,
-          isPublicProfile: user.isPublicProfile,
-          favoriteStations: user.favoriteStations,
-          favoriteStationsCount: user.favoriteStations?.length || 0
-        }
-      });
-    } catch (error) {
-      // console.error('Error checking user status:', error);
-      res.status(500).json({ error: 'Failed to check user status' });
-    }
-  });
-
-  // GET USER PROFILE BY ID OR SLUG
-  app.get("/api/user-profile/:idOrSlug", async (req, res) => {
-    try {
-      const { idOrSlug } = req.params;
-      // logger.log(' Fetching user profile for ID/Slug:', idOrSlug);
-      
-      let user;
-      
-      // Check if it's a MongoDB ObjectId (24 hex characters)
-      if (/^[0-9a-fA-F]{24}$/.test(idOrSlug)) {
-        user = await User.findById(idOrSlug);
-      } else {
-        // Treat as slug
-        user = await User.findOne({ slug: idOrSlug });
-      }
-      
-      if (!user) {
-        // logger.log(' User not found:', idOrSlug);
-        return void res.status(404).json({ error: 'User not found' });
-      }
-      
-      // Calculate ACTUAL follower and following counts from UserFollow collection
-      const actualFollowersCount = await UserFollow.countDocuments({ followingUserId: user._id } as any);
-      const actualFollowingCount = await UserFollow.countDocuments({ userId: user._id });
-      
-      // Get correct favorites count from UserFavorite collection
-      const actualFavoritesCount = await UserFavorite.countDocuments({ userId: user._id } as any);
-      
-      // Sync the user document if counts are incorrect
-      const needsUpdate = user.followersCount !== actualFollowersCount || user.followingCount !== actualFollowingCount;
-      if (needsUpdate) {
-        // logger.log(` Syncing user ${user._id} counts: followers ${user.followersCount} -> ${actualFollowersCount}, following ${user.followingCount} -> ${actualFollowingCount}`);
-        await User.findByIdAndUpdate(user._id, {
-          followersCount: actualFollowersCount,
-          followingCount: actualFollowingCount
-        });
-      }
-      
-      // Only return public profile data
-      const profileData = {
-        _id: user._id,
-        email: user.email,
-        fullName: user.fullName,
-        name: user.name, // Keep name for backward compatibility
-        isPublicProfile: user.isPublicProfile,
-        favoriteStations: user.favoriteStations || [],
-        favoriteStationsCount: actualFavoritesCount, // Use correct count from UserFavorite collection
-        recentlyPlayedStations: user.recentlyPlayedStations || [],
-        createdAt: user.createdAt,
-        playAtLogin: user.playAtLogin,
-        theme: user.theme,
-        language: user.language,
-        autoplay: user.autoplay,
-        volume: user.volume,
-        followersCount: actualFollowersCount, // Always return the ACTUAL count
-        followingCount: actualFollowingCount
-      };
-      
-      // logger.log(' User profile found:', { id, isPublic: user.isPublicProfile, actualFavoritesCount, actualFollowersCount, fullName: user.fullName });
-      res.json(profileData);
-    } catch (error) {
-      // console.error('Error fetching user profile:', error);
-      res.status(500).json({ error: 'Failed to fetch user profile' });
-    }
-  });
-
-  // REMOVED: Conflicting route for favorites that only handled MongoDB IDs
-  // Using slug-capable route instead which is defined further below
-
-  // GET COMMUNITY FAVORITES - Most-favorited stations across all users (Public)
-  app.get("/api/community-favorites", async (req, res) => {
-    try {
-      const { country } = req.query;
-      const cacheKey = `community_favorites:${country || 'all'}:all:20`;
-      
-      // Try cache first
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) {
-        return void res.json(cached);
-      }
-      
-      // If not cached, refresh and return
-      await refreshCommunityFavoritesCache(country as string | undefined);
-      const data = await CacheManager.get(cacheKey);
-      res.json(data || []);
-    } catch (error) {
-      logger.log('Error fetching community favorites:', error);
-      res.status(500).json({ error: 'Failed to fetch community favorites' });
-    }
-  });
-
-  // GET CURRENT USER'S FAVORITE STATIONS (Authenticated)
-  app.get("/api/user/favorites", requireAuth, async (req, res) => {
-    try {
-      const currentUserId = (req.session as any)?.userId;
-      const sortQuery = (req.query.sort as string) || 'newest';
-      const page = parseInt(req.query.page as string) || 0;
-      const limit = Math.min(parseInt(req.query.limit as string) || 0, 100);
-      const fieldsParam = (req.query.fields as string) || '';
-      
-      if (!currentUserId) {
-        return void res.status(401).json({ error: 'Authentication required' });
-      }
-
-      let sortStage: any = { favoritedAt: -1 };
-      switch (sortQuery) {
-        case 'oldest':
-          sortStage = { favoritedAt: 1 };
-          break;
-        case 'name':
-          sortStage = { name: 1 };
-          break;
-        case 'country':
-          sortStage = { name: -1 };
-          break;
-        case 'newest':
-        default:
-          sortStage = { favoritedAt: -1 };
-          break;
-      }
-
-      const allFields: Record<string, string> = {
-        _id: '$station._id',
-        name: '$station.name',
-        url: '$station.url',
-        country: '$station.country',
-        genre: '$station.genre',
-        tags: '$station.tags',
-        votes: '$station.votes',
-        clickCount: '$station.clickCount',
-        codec: '$station.codec',
-        bitrate: '$station.bitrate',
-        favicon: '$station.favicon',
-        homepage: '$station.homepage',
-        iso_3166_1: '$station.iso_3166_1',
-        language: '$station.language',
-        languagecodes: '$station.languagecodes',
-        lastcheckok: '$station.lastcheckok',
-        lastchecktime: '$station.lastchecktime',
-        lastcheckoktime: '$station.lastcheckoktime',
-        clicktimestamp: '$station.clicktimestamp',
-        urlResolved: '$station.urlResolved',
-        ssl_error: '$station.ssl_error',
-        geo_lat: '$station.geo_lat',
-        geo_long: '$station.geo_long',
-        has_extended_info: '$station.has_extended_info',
-        slug: '$station.slug',
-        createdAt: '$station.createdAt',
-        updatedAt: '$station.updatedAt',
-        favoritedAt: '$createdAt'
-      };
-
-      let projectStage: Record<string, any>;
-      if (fieldsParam) {
-        const requestedFields = fieldsParam.split(',').map(f => f.trim());
-        projectStage = { _id: '$station._id', favoritedAt: '$createdAt' };
-        for (const field of requestedFields) {
-          if (allFields[field]) {
-            projectStage[field] = allFields[field];
-          }
-        }
-      } else {
-        projectStage = allFields;
-      }
-
-      const pipeline: any[] = [
-        { $match: { userId: currentUserId } },
-        {
-          $addFields: {
-            stationObjectId: { 
-              $cond: {
-                if: { $type: '$stationId' },
-                then: { 
-                  $cond: {
-                    if: { $eq: [{ $type: '$stationId' }, 'objectId'] },
-                    then: '$stationId',
-                    else: { $toObjectId: '$stationId' }
-                  }
-                },
-                else: null
-              }
-            }
-          }
-        },
-        {
-          $lookup: {
-            from: 'stations',
-            localField: 'stationObjectId',
-            foreignField: '_id',
-            as: 'station'
-          }
-        },
-        { $unwind: { path: '$station', preserveNullAndEmptyArrays: true } },
-        { $match: { 'station': { $exists: true, $ne: null } } },
-        { $project: projectStage },
-        { $sort: sortStage }
-      ];
-
-      if (page > 0 && limit > 0) {
-        const totalFavorites = await UserFavorite.countDocuments({ userId: currentUserId });
-        const skip = (page - 1) * limit;
-        pipeline.push({ $skip: skip });
-        pipeline.push({ $limit: limit });
-
-        const favorites = await UserFavorite.aggregate(pipeline);
-        const stations = favorites.map(station => ({
-          ...station,
-          clickcount: station.clickCount || 0
-        }));
-
-        return void res.json({
-          stations: stripPlaceholders(stations),
-          pagination: {
-            page,
-            limit,
-            total: totalFavorites,
-            totalPages: Math.ceil(totalFavorites / limit)
-          }
-        });
-      }
-
-      const favorites = await UserFavorite.aggregate(pipeline);
-      const stations = favorites.map(station => ({
-        ...station,
-        clickcount: station.clickCount || 0
-      }));
-      
-      res.json(stripPlaceholders(stations));
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch favorites' });
-    }
-  });
-
-  // GET RECENTLY PLAYED STATIONS (returns [] silently for anonymous — no console-noise 401)
-  app.get("/api/recently-played", async (req, res) => {
-    try {
-      const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
-      if (!currentUserId) return void res.json([]);
-
-      const cacheKey = `recently-played:${currentUserId}`;
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) return void res.json(cached);
-
-      const user = await User.findById(currentUserId).select('recentlyPlayedStations').lean();
-      if (!user || !user.recentlyPlayedStations || user.recentlyPlayedStations.length === 0) {
-        return void res.json([]);
-      }
-
-      const recentEntries = user.recentlyPlayedStations;
-      const stationIds = recentEntries.map((entry: any) => {
-        const id = entry.stationId || entry;
-        try { return new mongoose.Types.ObjectId(id.toString()); } catch { return id; }
-      });
-      const stations = await Station.find({
-        _id: { $in: stationIds }
-      }).select('name slug country votes url urlResolved codec bitrate favicon homepage tags lastCheckOk logoAssets').lean();
-
-      const stationMap = new Map(stations.map(s => [s._id.toString(), s]));
-      const orderedStations = recentEntries
-        .map((entry: any) => {
-          const id = (entry.stationId || entry).toString();
-          const station = stationMap.get(id);
-          if (!station) return null;
-          return { ...station, playedAt: entry.playedAt || null };
-        })
-        .filter(Boolean);
-
-      const result = stripPlaceholders(orderedStations);
-      await CacheManager.set(cacheKey, result, { ttl: 300 });
-      res.json(result);
-    } catch (error) {
-      console.error('Error fetching recently played:', error);
-      res.status(500).json({ error: 'Failed to fetch recently played' });
-    }
-  });
-
-  app.post("/api/recently-played", async (req, res) => {
-    try {
-      const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
-      if (!currentUserId) return void res.status(204).end();
-      const { stationId } = req.body;
-      
-      if (!stationId) {
-        return void res.status(400).json({ error: 'Station ID is required' });
-      }
-
-      if (isQuotaExceeded()) {
-        return void res.status(503).json({ error: 'Database temporarily unavailable' });
-      }
-
-      const station = await Station.findById(stationId);
-      if (!station) {
-        return void res.status(404).json({ error: 'Station not found' });
-      }
-
-      const pullResult = await safeWrite('recently-played:pull', () =>
-        User.findByIdAndUpdate(currentUserId, {
-          $pull: { recentlyPlayedStations: { stationId: stationId } }
-        })
-      );
-      if (pullResult === null && isQuotaExceeded()) {
-        return void res.status(503).json({ error: 'Database temporarily unavailable' });
-      }
-
-      await safeWrite('recently-played:push', () =>
-        User.findByIdAndUpdate(currentUserId, {
-          $push: {
-            recentlyPlayedStations: {
-              $each: [{ stationId: stationId, playedAt: new Date() }],
-              $position: 0,
-              $slice: 12
-            }
-          }
-        })
-      );
-
-      await CacheManager.clearByPattern(`recently-played:${currentUserId}`);
-      res.json({ success: true });
-    } catch (error: any) {
-      handleQuotaError('recently-played', error);
-      if (isQuotaError(error)) {
-        return void res.status(503).json({ error: 'Database temporarily unavailable' });
-      }
-      res.status(500).json({ error: 'Failed to add to recently played' });
-    }
-  });
-
-  // ADD STATION TO CURRENT USER'S FAVORITES (Authenticated)
-  app.post("/api/user/favorites", requireAuth, async (req, res) => {
-    try {
-      const currentUserId = (req.session as any)?.userId;
-      const { stationId } = req.body;
-      
-      if (!currentUserId) {
-        return void res.status(401).json({ error: 'Authentication required' });
-      }
-      
-      if (!stationId) {
-        return void res.status(400).json({ error: 'Station ID is required' });
-      }
-
-      if (isQuotaExceeded()) {
-        return void res.status(503).json({ error: 'Database temporarily unavailable' });
-      }
-
-      const station = await Station.findById(stationId);
-      if (!station) {
-        return void res.status(404).json({ error: 'Station not found' });
-      }
-
-      const existingFavorite = await UserFavorite.findOne({
-        userId: currentUserId,
-        stationId: stationId
-      });
-
-      if (existingFavorite) {
-        return void res.status(400).json({ error: 'Station already in favorites' });
-      }
-
-      const favorite = await safeWrite('favorites:create', () =>
-        UserFavorite.create({
-          userId: currentUserId,
-          stationId: stationId,
-          createdAt: new Date()
-        })
-      );
-
-      if (favorite === null && isQuotaExceeded()) {
-        return void res.status(503).json({ error: 'Database temporarily unavailable' });
-      }
-
-      await safeWrite('favorites:notification', () =>
-        UserNotification.create({
-          userId: currentUserId,
-          type: 'favorite_station',
-          title: '🌟 Station Added to Favorites',
-          message: `You added "${station.name}" to your favorites`,
-          data: { 
-            stationId: station._id,
-            stationName: station.name,
-            stationCountry: station.country,
-            stationGenre: station.genre
-          },
-          read: false,
-          createdAt: new Date()
-        }),
-        true
-      );
-
-      await CacheManager.clearByPattern(`user-favorites:${currentUserId}`);
-      res.json({ success: true, message: 'Station added to favorites', favorite });
-    } catch (error: any) {
-      handleQuotaError('favorites', error);
-      if (isQuotaError(error)) {
-        return void res.status(503).json({ error: 'Database temporarily unavailable' });
-      }
-      res.status(500).json({ error: 'Failed to add station to favorites' });
-    }
-  });
-
-  // REMOVE STATION FROM CURRENT USER'S FAVORITES (Authenticated)
-  app.delete("/api/user/favorites/:stationId", requireAuth, async (req, res) => {
-    try {
-      const currentUserId = (req.session as any)?.userId;
-      const { stationId } = req.params;
-      
-      if (!currentUserId) {
-        return void res.status(401).json({ error: 'Authentication required' });
-      }
-
-      // logger.log(`🗑️ Removing station ${stationId} from favorites for user ${currentUserId}`);
-      
-      // Remove from favorites
-      const deleted = await UserFavorite.findOneAndDelete({
-        userId: currentUserId,
-        stationId: stationId
-      });
-
-      if (!deleted) {
-        return void res.status(404).json({ error: 'Station not in favorites' });
-      }
-
-      // Get station info for notification
-      const station = await Station.findById(stationId).select('name country genre');
-      
-      // Create notification for the user about removing favorite
-      if (station) {
-        await UserNotification.create({
-          userId: currentUserId,
-          type: 'system',
-          title: '💔 Station Removed from Favorites',
-          message: `You removed "${station.name}" from your favorites`,
-          data: { 
-            stationId: stationId,
-            stationName: station.name,
-            stationCountry: station.country,
-            stationGenre: station.genre
-          },
-          read: false,
-          createdAt: new Date()
-        });
-      }
-
-      await CacheManager.clearByPattern(`user-favorites:${currentUserId}`);
-      res.json({ success: true, message: 'Station removed from favorites' });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to remove station from favorites' });
-    }
-  });
-
-  // CHECK IF STATION IS IN CURRENT USER'S FAVORITES (Authenticated)
-  app.get("/api/user/favorites/check/:stationId", requireAuth, async (req, res) => {
-    try {
-      const currentUserId = (req.session as any)?.userId;
-      const { stationId } = req.params;
-      
-      if (!currentUserId) {
-        return void res.status(401).json({ error: 'Authentication required' });
-      }
-
-      const isFavorited = await UserFavorite.exists({
-        userId: currentUserId,
-        stationId: stationId
-      });
-
-      res.json({ isFavorited: !!isFavorited });
-    } catch (error) {
-      // console.error('Error checking favorite status:', error);
-      res.status(500).json({ error: 'Failed to check favorite status' });
-    }
-  });
-
-  // GET CURRENT USER'S NOTIFICATIONS (Authenticated)
-  app.get("/api/user/notifications", async (req, res) => {
-    try {
-      let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
-      if (!currentUserId) {
-        const authHeader = req.headers['authorization'];
-        const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-        if (bearerToken) {
-          const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
-          if (tokenDoc) currentUserId = tokenDoc.userId?.toString();
-        }
-      }
-
-      const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 10;
-      const skip = (page - 1) * limit;
-      
-      if (!currentUserId) {
-        return void res.status(401).json({ error: 'Authentication required' });
-      }
-
-      const cacheKey = `notifications:${currentUserId}:${page}:${limit}`;
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) return void res.json(cached);
-
-      const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
-      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-      const dateFilter = {
-        userId: currentUserId,
-        $or: [
-          { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo } },
-          { type: 'new_message', createdAt: { $gte: sevenDaysAgo } }
-        ]
-      };
-
-      const [notifications, totalCount, unreadCount] = await Promise.all([
-        UserNotification.find(dateFilter as any)
-          .populate('fromUserId', 'fullName username avatar profileImageUrl')
-          .sort({ createdAt: -1 })
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        UserNotification.countDocuments(dateFilter as any),
-        UserNotification.countDocuments({
-          userId: currentUserId,
-          $or: [
-            { type: { $in: ['new_station', 'follow'] }, createdAt: { $gte: tenDaysAgo }, read: false },
-            { type: 'new_message', createdAt: { $gte: sevenDaysAgo }, read: false }
-          ]
-        })
-      ]);
-
-      const mappedNotifications = notifications.map(n => ({
-        ...n,
-        isRead: n.read
-      }));
-
-      const result = {
-        notifications: mappedNotifications,
-        pagination: {
-          page,
-          limit,
-          total: totalCount,
-          pages: Math.ceil(totalCount / limit)
-        },
-        unreadCount
-      };
-      await CacheManager.set(cacheKey, result, { ttl: 15 });
-      res.json(result);
-    } catch (error) {
-      // console.error('Error fetching user notifications:', error);
-      res.status(500).json({ error: 'Failed to fetch notifications' });
-    }
-  });
-
-  // MARK NOTIFICATION AS READ (Authenticated)
-  app.patch("/api/user/notifications/:id/read", async (req, res) => {
-    try {
-      let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
-      if (!currentUserId) {
-        const authHeader = req.headers['authorization'];
-        const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-        if (bearerToken) {
-          const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
-          if (tokenDoc) currentUserId = tokenDoc.userId?.toString();
-        }
-      }
-      const notificationId = req.params.id;
-      
-      if (!currentUserId) {
-        return void res.status(401).json({ error: 'Authentication required' });
-      }
-
-      const notification = await UserNotification.findOneAndUpdate(
-        { _id: notificationId, userId: currentUserId },
-        { read: true },
-        { returnDocument: 'after' }
-      );
-
-      if (!notification) {
-        return void res.status(404).json({ error: 'Notification not found' });
-      }
-
-      // logger.log(`📖 Marked notification ${notificationId} as read for user ${currentUserId}`);
-      res.json({ success: true, notification });
-    } catch (error) {
-      // console.error('Error marking notification as read:', error);
-      res.status(500).json({ error: 'Failed to mark notification as read' });
-    }
-  });
-
-  // MARK ALL NOTIFICATIONS AS READ (Authenticated)
-  app.patch("/api/user/notifications/read-all", async (req, res) => {
-    try {
-      let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
-      if (!currentUserId) {
-        const authHeader = req.headers['authorization'];
-        const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
-        if (bearerToken) {
-          const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } }).lean();
-          if (tokenDoc) currentUserId = tokenDoc.userId?.toString();
-        }
-      }
-      
-      if (!currentUserId) {
-        return void res.status(401).json({ error: 'Authentication required' });
-      }
-
-      const result = await UserNotification.updateMany(
-        { userId: currentUserId, read: false },
-        { read: true }
-      );
-
-      // logger.log(`📖 Marked ${result.modifiedCount} notifications as read for user ${currentUserId}`);
-      res.json({ success: true, markedCount: result.modifiedCount });
-    } catch (error) {
-      // console.error('Error marking all notifications as read:', error);
-      res.status(500).json({ error: 'Failed to mark all notifications as read' });
-    }
-  });
-
-  // GET USER PROFILE BY ID (for public profiles)
-  app.get("/api/user-profile/:id", async (req, res) => {
-    try {
-      const { id } = req.params;
-      
-      const user = await User.findById(id);
-      
-      if (!user || !user.isPublicProfile) {
-        return void res.status(404).json({ error: 'User not found or profile is private' });
-      }
-
-      // Return user profile in expected format
-      const profile = {
-        _id: user._id,
-        name: user.fullName || user.name || user.email?.split('@')[0] || 'User',
-        fullName: user.fullName,
-        email: user.email,
-        profileImageUrl: user.profileImageUrl,
-        isPublicProfile: user.isPublicProfile,
-        createdAt: user.createdAt,
-        followersCount: 0, // Default for now
-        followingCount: 0  // Default for now
-      };
-
-      res.json(profile);
-    } catch (error) {
-      console.error('Error fetching user profile:', error);
-      res.status(500).json({ error: 'Failed to fetch user profile' });
-    }
-  });
-
-  // Admin endpoint to fix specific user with debug info
-  app.post("/api/admin/fix-user/:userId", requireAdmin, async (req, res) => {
-    try {
-      const { userId } = req.params;
-      const user = await User.findById(userId);
-      
-      if (!user) {
-        return void res.status(404).json({ error: 'User not found' });
-      }
-
-      logger.log('🔧 Fixing user:', user.fullName, 'Email:', user.email);
-      logger.log('🔍 User object fields:', { 
-        fullName: user.fullName, 
-        username: user.username, 
-        name: user.name, 
-        email: user.email 
-      });
-
-      const updateData: any = {};
-      
-      // Set profile as public
-      updateData.isPublicProfile = true;
-      
-      // Generate slug manually to fix the issue
-      const generateSlug = (text: string): string => {
-        return text
-          .toLowerCase()
-          .replace(/[^\w\s-]/g, '') 
-          .replace(/\s+/g, '') // Remove spaces completely for "sahinyogurtcu" format
-          .replace(/-+/g, '-') 
-          .trim()
-          .replace(/^-+|-+$/g, '');
-      };
-
-      let slugSource = user.fullName || user.username || user.name || user.email?.split('@')[0] || 'user';
-      updateData.slug = generateSlug(slugSource);
-      logger.log(`✅ Generated slug from "${slugSource}": ${updateData.slug}`);
-      
-      logger.log('🔧 About to update user with data:', updateData);
-      const updatedUser = await User.findByIdAndUpdate(user._id, updateData, { returnDocument: 'after' });
-      logger.log('✅ User updated successfully. Full user object:');
-      logger.log('  - _id:', updatedUser?._id);
-      logger.log('  - fullName:', updatedUser?.fullName);
-      logger.log('  - slug:', updatedUser?.slug);
-      logger.log('  - isPublicProfile:', updatedUser?.isPublicProfile);
-      
-      // Sync favorites
-      await syncUserFavorites();
-
-      res.json({ 
-        success: true, 
-        message: `Fixed user ${user.fullName || user.email}`,
-        newSlug: updateData.slug
-      });
-    } catch (error) {
-      console.error('Error fixing user:', error);
-      res.status(500).json({ error: 'Failed to fix user' });
-    }
-  });
-
-  // Admin endpoint to fix user profiles (make public + generate slugs)
-  app.post("/api/admin/fix-user-profiles", requireAdmin, async (req, res) => {
-    try {
-      // Get all users without public profiles or with ID-based slugs
-      const users = await User.find({
-        $or: [
-          { isPublicProfile: { $ne: true } },
-          { slug: { $exists: false } },
-          { slug: { $regex: /^[0-9a-fA-F]{24}$/ } } // MongoDB ID pattern
-        ]
-      });
-
-      let fixedCount = 0;
-      for (const user of users) {
-        const updateData: any = {};
-        
-        // Set profile as public
-        if (!user.isPublicProfile) {
-          updateData.isPublicProfile = true;
-        }
-        
-        // Generate slug if missing or if it's a MongoDB ID
-        if (!user.slug || /^[0-9a-fA-F]{24}$/.test(user.slug)) {
-          updateData.slug = await generateUserSlug(user, user._id);
-        }
-        
-        if (Object.keys(updateData).length > 0) {
-          await User.findByIdAndUpdate(user._id, updateData);
-          fixedCount++;
-        }
-      }
-
-      // Also sync favorites to fix the favorites display issue
-      await syncUserFavorites();
-
-      res.json({ 
-        success: true, 
-        message: `Fixed ${fixedCount} user profiles and synced favorites`,
-        totalUsers: users.length
-      });
-    } catch (error) {
-      console.error('Error fixing user profiles:', error);
-      res.status(500).json({ error: 'Failed to fix user profiles' });
-    }
-  });
-
-  // GET USER'S FAVORITE STATIONS BY ID OR SLUG (for public profiles)
-  app.get("/api/users/:idOrSlug/favorites", async (req, res) => {
-    try {
-      const { idOrSlug } = req.params;
-      const page = parseInt(req.query.page as string) || 0;
-      const limit = Math.min(parseInt(req.query.limit as string) || 0, 100);
-      const fieldsParam = (req.query.fields as string) || '';
-      
-      let user;
-      if (/^[0-9a-fA-F]{24}$/.test(idOrSlug)) {
-        user = await User.findById(idOrSlug).select('_id').lean();
-      } else {
-        user = await User.findOne({ slug: idOrSlug }).select('_id').lean();
-      }
-      
-      if (!user) {
-        return void res.status(404).json({ error: 'User not found' });
-      }
-
-      const userId = user._id.toString();
-      const usePagination = page > 0 && limit > 0;
-      const cacheKey = `user-favorites:${userId}:p${page}:l${limit}:f${fieldsParam}`;
-      const cached = await CacheManager.get(cacheKey);
-      if (cached) {
-        return void res.json(cached);
-      }
-
-      const defaultMobileFields: Record<string, string> = {
-        _id: '$station._id',
-        name: '$station.name',
-        favicon: '$station.favicon',
-        country: '$station.country',
-        slug: '$station.slug',
-        url: '$station.url',
-        genre: '$station.genre',
-        tags: '$station.tags',
-        votes: '$station.votes',
-        codec: '$station.codec',
-        bitrate: '$station.bitrate',
-        language: '$station.language',
-        iso_3166_1: '$station.iso_3166_1',
-        urlResolved: '$station.urlResolved',
-        lastcheckok: '$station.lastcheckok',
-        clickCount: '$station.clickCount',
-        favoritedAt: '$createdAt'
-      };
-
-      let projectStage: Record<string, any>;
-      if (fieldsParam) {
-        const requested = fieldsParam.split(',').map(f => f.trim());
-        projectStage = { _id: '$station._id', favoritedAt: '$createdAt' };
-        for (const field of requested) {
-          if (defaultMobileFields[field]) {
-            projectStage[field] = defaultMobileFields[field];
-          }
-        }
-      } else {
-        projectStage = defaultMobileFields;
-      }
-
-      const pipeline: any[] = [
-        { $match: { userId } },
-        { $sort: { createdAt: -1 as const } },
-      ];
-
-      if (usePagination) {
-        pipeline.push({ $skip: (page - 1) * limit });
-        pipeline.push({ $limit: limit });
-      }
-
-      pipeline.push(
-        {
-          $addFields: {
-            stationObjectId: { $toObjectId: '$stationId' }
-          }
-        },
-        {
-          $lookup: {
-            from: 'stations',
-            localField: 'stationObjectId',
-            foreignField: '_id',
-            as: 'station'
-          }
-        },
-        { $match: { 'station.0': { $exists: true } } },
-        { $unwind: '$station' },
-        { $project: projectStage }
-      );
-
-      const [stations, totalCount] = await Promise.all([
-        UserFavorite.aggregate(pipeline),
-        usePagination ? UserFavorite.countDocuments({ userId }) : Promise.resolve(0)
-      ]);
-
-      let result: any;
-      if (usePagination) {
-        result = {
-          stations,
-          pagination: {
-            page,
-            limit,
-            total: totalCount,
-            totalPages: Math.ceil(totalCount / limit)
-          }
-        };
-      } else {
-        result = stations;
-      }
-
-      CacheManager.set(cacheKey, result, { ttl: 120 });
-      res.json(result);
-    } catch (error) {
-      console.error('Error fetching user favorites:', error);
-      res.status(500).json({ error: 'Failed to fetch user favorites' });
-    }
-  });
-
-  // GET USER'S RECENTLY PLAYED STATIONS
-  app.get("/api/users/:id/recent", async (req, res) => {
-    try {
-      const { id } = req.params;
-      // Fetching recent plays for user
-      
-      const user = await User.findById(id);
-      
-      if (!user || !user.isPublicProfile) {
-        return void res.status(404).json({ error: 'User not found or profile is private' });
-      }
-      
-      if (!user.recentlyPlayedStations || user.recentlyPlayedStations.length === 0) {
-        return void res.json([]);
-      }
-      
-      const recentEntries = user.recentlyPlayedStations;
-      const stationIds = recentEntries.map((entry: any) => {
-        const id = entry.stationId || entry;
-        try { return new mongoose.Types.ObjectId(id.toString()); } catch { return id; }
-      });
-      const stations = await Station.find({
-        _id: { $in: stationIds }
-      }).select({
-        name: 1,
-        url: 1,
-        country: 1,
-        genre: 1,
-        tags: 1,
-        votes: 1,
-        clickCount: 1,
-        codec: 1,
-        bitrate: 1,
-        favicon: 1,
-        homepage: 1,
-        language: 1,
-        slug: 1
-      }).lean();
-      
-      const stationMap = new Map(stations.map(s => [s._id.toString(), s]));
-      const orderedStations = recentEntries
-        .map((entry: any) => {
-          const id = (entry.stationId || entry).toString();
-          const station = stationMap.get(id);
-          if (!station) return null;
-          return { ...station, playedAt: entry.playedAt || null };
-        })
-        .filter(Boolean);
-      
-      res.json(orderedStations);
-    } catch (error) {
-      // console.error('Error fetching user recent plays:', error);
-      res.status(500).json({ error: 'Failed to fetch recent plays' });
-    }
-  });
-
-  // PUBLIC PROFILES API - 24-HOUR CACHE for Community Favorites section
-  app.get("/api/public-profiles", async (req, res) => {
-    try {
-      // Check cache first - 24 hours TTL (public profiles rarely change)
-      const cacheKey = 'public_profiles:v4';
-      const cachedData = await CacheManager.get(cacheKey);
-      if (cachedData) {
-        return void res.json({ data: cachedData });
-      }
-
-      // Step 1: Get all public users (same as original)
-      const users = await User.find({ 
-        $or: [
-          { isPublicProfile: true },
-          { isPublic: true },
-          { slug: 'sahinyogurtcu' }
-        ]
-      }).lean();
-
-      if (users.length === 0) {
-        // Cache empty result for shorter time
-        await CacheManager.set(cacheKey, [], { ttl: 30 });
-        return void res.json({ data: [] });
-      }
-
-      // Step 2: Batch fetch ALL favorites at once (NOT in a loop!)
-      const userIds = users.map(u => u._id.toString());
-      const allFavorites = await UserFavorite.find({ 
-        userId: { $in: userIds } 
-      }).lean();
-
-      // Early return if no favorites found
-      if (allFavorites.length === 0) {
-        await CacheManager.set(cacheKey, [], { ttl: 30 });
-        return void res.json({ data: [] });
-      }
-
-      // Step 3: Get all station IDs and fetch stations in one query
-      const allStationIds = [...new Set(allFavorites.map(f => f.stationId))];
-      const allStations = await Station.find({ 
-        _id: { $in: allStationIds } 
-      }).select('_id').lean();
-
-      // Step 4: Create a map for quick lookups
-      const stationExistsMap = new Set(allStations.map(s => s._id.toString()));
-      const userFavoritesMap: Record<string, any[]> = {};
-
-      // Step 5: Process favorites efficiently
-      allFavorites.forEach(fav => {
-        const userId = fav.userId;
-        if (!userFavoritesMap[userId]) {
-          userFavoritesMap[userId] = [];
-        }
-        if (stationExistsMap.has(fav.stationId)) {
-          userFavoritesMap[userId].push(fav.stationId);
-        }
-      });
-
-      // Step 6: Build profiles array with favorite counts
-      const publicProfiles = users
-        .map(user => {
-          const userId = user._id.toString();
-          const favoriteCount = userFavoritesMap[userId]?.length || 0;
-          
-          // Skip users with no valid favorites
-          if (favoriteCount === 0) {
-            return null;
-          }
-
-          // Determine display name (same logic as original)
-          let displayName = user.fullName || user.name;
-          if (!displayName && user.email) {
-            displayName = user.email.split('@')[0];
-          }
-
-          return {
-            _id: user._id,
-            name: displayName,
-            email: user.email,
-            profileImageUrl: user.avatar || user.profileImageUrl,
-            favorites_count: favoriteCount,
-            isPublicProfile: user.isPublicProfile,
-            slug: user.slug
-          };
-        })
-        .filter(Boolean) // Remove null entries (users with no favorites)
-        .sort((a: any, b: any) => b!.favorites_count - a!.favorites_count) as any[]; // Sort by favorites descending
-      
-      // Prioritize users with profile photos (any photo, not just randomuser.me)
-      // Real photos: Google OAuth avatars, uploaded photos, or randomuser.me
-      const withPhotos = publicProfiles.filter((p: any) => p!.profileImageUrl && p!.profileImageUrl.trim() !== '');
-      const withoutPhotos = publicProfiles.filter((p: any) => !p!.profileImageUrl || p!.profileImageUrl.trim() === '');
-      
-      // Sort photo users by favorites count descending
-      withPhotos.sort((a: any, b: any) => b!.favorites_count - a!.favorites_count);
-      withoutPhotos.sort((a: any, b: any) => b!.favorites_count - a!.favorites_count);
-      
-      // Final result: users with photos first, then others
-      const finalProfiles = [...withPhotos, ...withoutPhotos].slice(0, 70);
-
-      // Cache the results for 1 hour
-      await CacheManager.set(cacheKey, finalProfiles, { ttl: 3600 });
-
-      res.json({ data: finalProfiles });
-    } catch (error) {
-      console.error('Error fetching public profiles:', error);
-      res.status(500).json({ error: 'Failed to fetch public profiles' });
-    }
-  });
-
-
-
-  // LANGUAGES API - with station counts
-  app.get("/api/languages", async (req, res) => {
-    try {
-      // Fetching languages with station counts
-      
-      // Get languages with station counts using aggregation
-      const languageStats = await Station.aggregate([
-        {
-          $match: {
-            $and: [
-              { language: { $exists: true, $ne: "" } },
-              { language: { $ne: null } }
-            ]
-          }
-        },
-        {
-          $group: {
-            _id: "$language",
-            stationCount: { $sum: 1 }
-          }
-        },
-        {
-          $project: {
-            _id: 1,
-            name: "$_id",
-            code: { $toLower: "$_id" },
-            stationCount: 1
-          }
-        },
-        {
-          $sort: { stationCount: -1 }
-        },
-        {
-          $limit: 100
-        }
-      ]);
-
-      // Found languages with station data
-      res.json(languageStats);
-    } catch (error) {
-      // console.error('Error fetching languages:', error);
-      res.status(500).json({ error: 'Failed to fetch languages' });
-    }
-  });
-
-  // CODECS API - with station counts
-  app.get("/api/codecs", async (req, res) => {
-    try {
-      // Fetching codecs with station counts
-      
-      // Get codecs with station counts using aggregation
-      const codecStats = await Station.aggregate([
-        {
-          $match: {
-            $and: [
-              { codec: { $exists: true, $ne: "" } },
-              { codec: { $ne: null } }
-            ]
-          }
-        },
-        {
-          $group: {
-            _id: "$codec",
-            stationCount: { $sum: 1 }
-          }
-        },
-        {
-          $project: {
-            _id: 1,
-            name: "$_id",
-            stationCount: 1
-          }
-        },
-        {
-          $sort: { stationCount: -1 }
-        },
-        {
-          $limit: 50
-        }
-      ]);
-
-      // logger.log(` Found ${codecStats.length} codecs with stations`);
-      res.json(codecStats);
-    } catch (error) {
-      // console.error('Error fetching codecs:', error);
-      res.status(500).json({ error: 'Failed to fetch codecs' });
-    }
-  });
-
-  // RADIO BROWSER API ENDPOINTS - Direct integration with Radio-Browser.info API
-  
-  // Import the Radio Browser service
-  let radioBrowserService: any;
-  import('../services/radio-browser').then(module => {
-    radioBrowserService = module.radioBrowserService;
-  });
-
-  // Get Radio Browser API stats
-  app.get("/api/radio-browser/stats", async (req, res) => {
-    try {
-      if (!radioBrowserService) {
-        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-      }
-      
-      // logger.log(' Fetching Radio Browser API stats...');
-      const stats = await radioBrowserService.getStats();
-      res.json(stats);
-    } catch (error) {
-      // console.error('Error fetching Radio Browser stats:', error);
-      res.status(500).json({ error: 'Failed to fetch Radio Browser stats' });
-    }
-  });
-
-  // Get top clicked stations from Radio Browser API
-  app.get("/api/radio-browser/top-clicked", async (req, res) => {
-    try {
-      if (!radioBrowserService) {
-        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-      }
-      
-      const { limit = 100 } = req.query;
-      // logger.log('🔥 Fetching top ${limit} clicked stations from Radio Browser API...');
-      
-      const stations = await radioBrowserService.getTopClickedStations(Number(limit));
-      res.json({ stations });
-    } catch (error) {
-      // console.error('Error fetching top clicked stations:', error);
-      res.status(500).json({ error: 'Failed to fetch top clicked stations' });
-    }
-  });
-
-  // Get top voted stations from Radio Browser API
-  app.get("/api/radio-browser/top-voted", async (req, res) => {
-    try {
-      if (!radioBrowserService) {
-        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-      }
-      
-      const { limit = 100 } = req.query;
-      // logger.log(`⭐ Fetching top ${limit} voted stations from Radio Browser API...`);
-      
-      const stations = await radioBrowserService.getTopVotedStations(Number(limit));
-      res.json({ stations });
-    } catch (error) {
-      // console.error('Error fetching top voted stations:', error);
-      res.status(500).json({ error: 'Failed to fetch top voted stations' });
-    }
-  });
-
-  // Get recently changed stations from Radio Browser API
-  app.get("/api/radio-browser/recent", async (req, res) => {
-    try {
-      if (!radioBrowserService) {
-        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-      }
-      
-      const { limit = 100 } = req.query;
-      // logger.log('🕒 Fetching ${limit} recently changed stations from Radio Browser API...');
-      
-      const stations = await radioBrowserService.getRecentlyChangedStations(Number(limit));
-      res.json({ stations });
-    } catch (error) {
-      // console.error('Error fetching recently changed stations:', error);
-      res.status(500).json({ error: 'Failed to fetch recently changed stations' });
-    }
-  });
-
-  // Get broken stations from Radio Browser API
-  app.get("/api/radio-browser/broken", async (req, res) => {
-    try {
-      if (!radioBrowserService) {
-        return void res.status(503).json({ error: 'Radio Browser service not available yet' });
-      }
-      
-      const { limit = 50 } = req.query;
-      // logger.log('💔 Fetching ${limit} broken stations from Radio Browser API...');
-      
-      const stations = await radioBrowserService.getBrokenStations(Number(limit));
-      res.json({ stations });
-    } catch (error) {
-      // console.error('Error fetching broken stations:', error);
-      res.status(500).json({ error: 'Failed to fetch broken stations' });
-    }
-  });
-
-  // SYNC MANAGEMENT API ENDPOINTS
-  
-  // Get sync status
-  app.get("/api/sync/status", async (req, res) => {
-    try {
-      const status = await syncService.getStatus();
-      res.json(status);
-    } catch (error) {
-      console.error('Error fetching sync status:', error);
-      res.status(500).json({ error: 'Failed to fetch sync status' });
-    }
-  });
-
-  // Auto-flagged junk report — short summary of how many records the
-  // ingest pipeline marked as junk during the most recent sync runs.
-  // Backs the admin dashboard tile for task #20.
-  app.get("/api/admin/sync/auto-flagged-report", requireAdmin, async (req, res) => {
-    try {
-      const { SyncLog } = await import('@workspace/db-shared/mongo-schemas');
-      const recent = await SyncLog.find()
-        .sort({ startedAt: -1 })
-        .limit(10)
-        .select('syncType status startedAt completedAt stationsAdded stationsUpdated stationsAutoFlagged')
-        .lean();
-
-      const lastCompleted = recent.find((l: any) => l.status === 'completed');
-      const last = recent[0] || null;
-
-      res.json({
-        last: last
-          ? {
-              syncType: last.syncType,
-              status: last.status,
-              startedAt: last.startedAt,
-              completedAt: last.completedAt,
-              stationsAdded: last.stationsAdded || 0,
-              stationsUpdated: last.stationsUpdated || 0,
-              autoFlagged: last.stationsAutoFlagged || 0,
-            }
-          : null,
-        lastCompleted: lastCompleted
-          ? {
-              startedAt: lastCompleted.startedAt,
-              completedAt: lastCompleted.completedAt,
-              stationsAdded: lastCompleted.stationsAdded || 0,
-              stationsUpdated: lastCompleted.stationsUpdated || 0,
-              autoFlagged: lastCompleted.stationsAutoFlagged || 0,
-            }
-          : null,
-        recent: recent.map((l: any) => ({
-          syncType: l.syncType,
-          status: l.status,
-          startedAt: l.startedAt,
-          completedAt: l.completedAt,
-          autoFlagged: l.stationsAutoFlagged || 0,
-        })),
-      });
-    } catch (error) {
-      console.error('Error fetching auto-flagged report:', error);
-      res.status(500).json({ error: 'Failed to fetch auto-flagged report' });
-    }
-  });
-
-  // Get sync logs
-  app.get("/api/sync/logs", async (req, res) => {
-    try {
-      const { limit = 20 } = req.query;
-      const logs = await syncService.getLogs(Number(limit));
-      res.json(logs);
-    } catch (error) {
-      console.error('Error fetching sync logs:', error);
-      res.status(500).json({ error: 'Failed to fetch sync logs' });
-    }
-  });
-
-  // Force start sync — admin-only (was a public lever to spawn a heavy
-  // long-running sync that pulls 40k+ stations into memory).
-  app.post("/api/sync/force", requireAdmin, async (req, res) => {
-    try {
-      logger.log('🚀 Force starting sync...');
-      
-      // Start the sync asynchronously (don't wait for completion)
-      syncService.startSync()
-        .then(() => {
-          logger.log('✅ Force sync completed successfully');
-        })
-        .catch((error) => {
-          console.error('❌ Force sync failed:', error);
-        });
-
-      res.json({ 
-        success: true, 
-        message: 'Sync started successfully - check status for progress'
-      });
-    } catch (error) {
-      console.error('Error starting sync:', error);
-      res.status(500).json({ error: 'Failed to start sync' });
-    }
-  });
-
-  // Stop sync — admin-only.
-  app.post("/api/sync/stop", requireAdmin, async (req, res) => {
-    try {
-      logger.log('🛑 Stopping sync...');
-      
-      // Stop the sync service
-      syncService.stopSync();
-      
-      // Find running sync and mark as failed (stopped by admin)
-      const runningSyncs = await SyncLog.find({ status: 'running' });
-      
-      for (const sync of runningSyncs) {
-        sync.status = 'failed';
-        sync.completedAt = new Date();
-        sync.errorMessage = 'Manually stopped by admin';
-        await sync.save();
-      }
-
-      res.json({ 
-        success: true, 
-        message: 'Sync stopped successfully',
-        stoppedSyncs: runningSyncs.length 
-      });
-    } catch (error) {
-      console.error('Error stopping sync:', error);
-      res.status(500).json({ error: 'Failed to stop sync' });
-    }
-  });
-
-  // Flush all station data
-  app.post("/api/admin/flush-stations", requireAdmin, async (req, res) => {
-    try {
-      logger.log('🗑️ Flushing all station data...');
-      
-      const { Station, SyncLog, BlacklistedStation } = await import('@workspace/db-shared/mongo-schemas');
-      
-      // Delete all stations
-      const stationResult = await Station.deleteMany({});
-      logger.log(`✅ Deleted ${stationResult.deletedCount} stations`);
-      
-      // Clear sync logs to start fresh
-      const syncLogResult = await SyncLog.deleteMany({});
-      logger.log(`✅ Deleted ${syncLogResult.deletedCount} sync logs`);
-      
-      // Clear blacklisted stations if any
-      const blacklistResult = await BlacklistedStation.deleteMany({});
-      logger.log(`✅ Deleted ${blacklistResult.deletedCount} blacklisted stations`);
-      
-      performanceCache.clearSeoHtml();
-      performanceCache.clearPageData();
-      logger.log('🎯 Station data flush complete! Database is now empty and ready for fresh sync.');
-
-      // Fire-and-forget audit email summarising the wiped collections. Opt-in
-      // via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
-      const actorEmail =
-        (req.user as { email?: string } | undefined)?.email ?? undefined;
-      void import('../services/admin-audit-email')
-        .then(({ emailFlushStationsCsv }) =>
-          emailFlushStationsCsv({
-            counts: {
-              deletedStations: stationResult.deletedCount ?? 0,
-              deletedSyncLogs: syncLogResult.deletedCount ?? 0,
-              deletedBlacklisted: blacklistResult.deletedCount ?? 0,
-            },
-            actorEmail,
-          }),
-        )
-        .catch((err) => {
-          console.error('Failed to load admin-audit-email service:', err);
-        });
-
-      res.json({ 
-        success: true, 
-        message: 'All station data flushed successfully',
-        deletedStations: stationResult.deletedCount,
-        deletedSyncLogs: syncLogResult.deletedCount,
-        deletedBlacklisted: blacklistResult.deletedCount
-      });
-    } catch (error) {
-      console.error('❌ Error flushing station data:', error);
-      res.status(500).json({ error: 'Failed to flush station data' });
-    }
-  });
-
-  // ANALYTICS API ENDPOINTS
-  
-  // Remove playlist files (M3U, PLS, ASX) endpoint
-  app.post("/api/admin/remove-playlist-streams", requireAdmin, async (req, res) => {
-    try {
-      logger.log('🗑️ Starting removal of playlist files (M3U, PLS, ASX)...');
-
-      const playlistFilter = { url: { $regex: /\.(m3u|pls|asx)(\?|$)/i } };
-
-      // Per-extension counts so the audit email can break down what was wiped.
-      const [playlistCount, m3uCount, plsCount, asxCount] = await Promise.all([
-        Station.countDocuments(playlistFilter),
-        Station.countDocuments({ url: { $regex: /\.m3u(\?|$)/i } }),
-        Station.countDocuments({ url: { $regex: /\.pls(\?|$)/i } }),
-        Station.countDocuments({ url: { $regex: /\.asx(\?|$)/i } }),
-      ]);
-
-      logger.log(`Found ${playlistCount} playlist files to remove`);
-
-      // Capture a sample of the rows about to be deleted so the audit email
-      // can list specific stations (capped to keep the attachment small).
-      const sampleDocs = await Station.find(playlistFilter)
-        .select({ name: 1, url: 1, country: 1, countrycode: 1 })
-        .limit(500)
-        .lean();
-
-      // Remove all playlist file streams
-      const removalResult = await Station.deleteMany(playlistFilter);
-
-      logger.log(`✅ Removed ${removalResult.deletedCount} playlist streams`);
-      
-      // Get updated counts
-      const remainingTotal = await Station.countDocuments({});
-      const directMP3 = await Station.countDocuments({
-        url: { $regex: /\.mp3(\?|$)/i }
-      });
-      const directAAC = await Station.countDocuments({
-        url: { $regex: /\.aac(\?|$)/i }
-      });
-      const icecastCount = await Station.countDocuments({
-        url: { $regex: /(:8000|:8080|\/stream|\/radio|shoutcast|icecast)/i }
-      });
-      
-      const results = {
-        removed_count: removalResult.deletedCount,
-        remaining_stations: remainingTotal,
-        direct_playable: {
-          mp3_streams: directMP3,
-          aac_streams: directAAC,
-          icecast_shoutcast: icecastCount,
-          total_direct: directMP3 + directAAC + icecastCount
-        },
-        message: `Successfully removed ${removalResult.deletedCount} playlist streams. ${remainingTotal} direct-playable stations remain.`
-      };
-
-      // Fire-and-forget audit email summarising the wiped playlist streams.
-      // Opt-in via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
-      const removedCount = removalResult.deletedCount ?? 0;
-      const playlistActor =
-        (req.user as { email?: string } | undefined)?.email ?? undefined;
-      type StreamSampleDoc = {
-        name?: string;
-        url?: string;
-        country?: string;
-        countrycode?: string;
-      };
-      const playlistSamples = (sampleDocs as StreamSampleDoc[]).map((d) => ({
-        name: d.name ?? '',
-        url: d.url ?? '',
-        country: d.country ?? '',
-        countryCode: d.countrycode ?? '',
-      }));
-      void import('../services/admin-audit-email')
-        .then(({ emailRemovedStreamsCsv }) =>
-          emailRemovedStreamsCsv({
-            filenamePrefix: 'playlist-streams-removed',
-            subjectSummary: `Removed ${removedCount} playlist stream${removedCount === 1 ? '' : 's'} (M3U/PLS/ASX)`,
-            title: 'Playlist streams removed',
-            summary:
-              `${removedCount} playlist stream${removedCount === 1 ? '' : 's'} (M3U/PLS/ASX) ` +
-              `${removedCount === 1 ? 'was' : 'were'} removed. ${remainingTotal} stations remain.`,
-            categories: [
-              { label: 'M3U', count: m3uCount },
-              { label: 'PLS', count: plsCount },
-              { label: 'ASX', count: asxCount },
-              { label: 'Total removed', count: removedCount },
-              { label: 'Remaining stations', count: remainingTotal },
-            ],
-            samples: playlistSamples,
-            totalRemoved: removedCount,
-            actorEmail: playlistActor,
-          }),
-        )
-        .catch((err) => {
-          console.error('Failed to load admin-audit-email service:', err);
-        });
-
-      res.json(results);
-    } catch (error) {
-      console.error('Playlist removal error:', error);
-      res.status(500).json({ error: 'Failed to remove playlist streams' });
-    }
-  });
-
-  // Remove HLS/M3U8 streams endpoint (completed)
-  app.post("/api/admin/remove-hls-streams", requireAdmin, async (req, res) => {
-    try {
-      logger.log('🗑️ Starting removal of HLS/M3U8 streams...');
-
-      const hlsFilter = { url: { $regex: /hls|m3u8/i } };
-
-      // Count streams to be removed (broken down for the audit email).
-      const [m3u8Count, hlsRelatedCount] = await Promise.all([
-        Station.countDocuments({ url: { $regex: /\.m3u8/i } }),
-        Station.countDocuments(hlsFilter),
-      ]);
-
-      logger.log(`Found ${m3u8Count} .m3u8 streams and ${hlsRelatedCount} HLS-related streams to remove`);
-
-      // Capture sample of stations to be deleted for the audit attachment.
-      const hlsSampleDocs = await Station.find(hlsFilter)
-        .select({ name: 1, url: 1, country: 1, countrycode: 1 })
-        .limit(500)
-        .lean();
-
-      // Remove all streams with HLS/M3U8 in URL
-      const removalResult = await Station.deleteMany(hlsFilter);
-
-      logger.log(`✅ Removed ${removalResult.deletedCount} HLS/M3U8 streams`);
-      
-      // Get updated counts
-      const remainingTotal = await Station.countDocuments({});
-      const directMP3 = await Station.countDocuments({
-        url: { $regex: /\.mp3(\?|$)/i }
-      });
-      const icecastCount = await Station.countDocuments({
-        url: { $regex: /(:8000|:8080|\/stream|\/radio|shoutcast|icecast)/i }
-      });
-      
-      const results = {
-        removed_count: removalResult.deletedCount,
-        remaining_stations: remainingTotal,
-        direct_playable: {
-          mp3_streams: directMP3,
-          icecast_shoutcast: icecastCount,
-          total_direct: directMP3 + icecastCount
-        },
-        message: `Successfully removed ${removalResult.deletedCount} HLS/M3U8 streams. ${remainingTotal} direct-playable stations remain.`
-      };
-
-      // Fire-and-forget audit email summarising the wiped HLS streams. Opt-in
-      // via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
-      const hlsRemovedCount = removalResult.deletedCount ?? 0;
-      const hlsActor =
-        (req.user as { email?: string } | undefined)?.email ?? undefined;
-      type HlsSampleDoc = {
-        name?: string;
-        url?: string;
-        country?: string;
-        countrycode?: string;
-      };
-      const hlsSamples = (hlsSampleDocs as HlsSampleDoc[]).map((d) => ({
-        name: d.name ?? '',
-        url: d.url ?? '',
-        country: d.country ?? '',
-        countryCode: d.countrycode ?? '',
-      }));
-      const hlsOnlyCount = Math.max(hlsRelatedCount - m3u8Count, 0);
-      void import('../services/admin-audit-email')
-        .then(({ emailRemovedStreamsCsv }) =>
-          emailRemovedStreamsCsv({
-            filenamePrefix: 'hls-streams-removed',
-            subjectSummary: `Removed ${hlsRemovedCount} HLS/M3U8 stream${hlsRemovedCount === 1 ? '' : 's'}`,
-            title: 'HLS/M3U8 streams removed',
-            summary:
-              `${hlsRemovedCount} HLS/M3U8 stream${hlsRemovedCount === 1 ? '' : 's'} ` +
-              `${hlsRemovedCount === 1 ? 'was' : 'were'} removed. ${remainingTotal} stations remain.`,
-            categories: [
-              { label: '.m3u8', count: m3u8Count },
-              { label: 'Other HLS-related', count: hlsOnlyCount },
-              { label: 'Total removed', count: hlsRemovedCount },
-              { label: 'Remaining stations', count: remainingTotal },
-            ],
-            samples: hlsSamples,
-            totalRemoved: hlsRemovedCount,
-            actorEmail: hlsActor,
-          }),
-        )
-        .catch((err) => {
-          console.error('Failed to load admin-audit-email service:', err);
-        });
-
-      res.json(results);
-    } catch (error) {
-      console.error('HLS removal error:', error);
-      res.status(500).json({ error: 'Failed to remove HLS streams' });
-    }
-  });
-
-  // HTTPS/HTTP URL analysis endpoint
-  app.get("/api/stream-https-analysis", async (req, res) => {
-    try {
-      logger.log('🔍 Analyzing HTTPS vs HTTP URLs across all stations...');
-      
-      const totalStations = await Station.countDocuments({});
-      
-      // Count HTTPS URLs
-      const httpsCount = await Station.countDocuments({
-        url: { $regex: /^https:\/\//i }
-      });
-      
-      // Count HTTP URLs  
-      const httpCount = await Station.countDocuments({
-        url: { $regex: /^http:\/\//i }
-      });
-      
-      // Count resolved HTTPS URLs (urlResolved field)
-      const httpsResolvedCount = await Station.countDocuments({
-        urlResolved: { $regex: /^https:\/\//i }
-      });
-      
-      // Count resolved HTTP URLs
-      const httpResolvedCount = await Station.countDocuments({
-        urlResolved: { $regex: /^http:\/\//i }
-      });
-      
-      // Count stations with urlResolved field populated
-      const stationsWithResolvedUrl = await Station.countDocuments({
-        urlResolved: { $exists: true, $nin: [null, ""] }
-      });
-      
-      // Get some HTTPS URL samples
-      const httpsSamples = await Station.find({
-        url: { $regex: /^https:\/\//i }
-      }).limit(5).select('name url country');
-      
-      // Get some HTTP URL samples  
-      const httpSamples = await Station.find({
-        url: { $regex: /^http:\/\//i }
-      }).limit(5).select('name url country');
-      
-      // Get some resolved HTTPS URL samples
-      const httpsResolvedSamples = await Station.find({
-        urlResolved: { $regex: /^https:\/\//i }
-      }).limit(5).select('name url urlResolved country');
-      
-      const results = {
-        total_stations: totalStations,
-        original_urls: {
-          https_urls: httpsCount,
-          http_urls: httpCount,
-          https_percentage: ((httpsCount / totalStations) * 100).toFixed(2),
-          http_percentage: ((httpCount / totalStations) * 100).toFixed(2)
-        },
-        resolved_urls: {
-          stations_with_resolved: stationsWithResolvedUrl,
-          https_resolved: httpsResolvedCount,
-          http_resolved: httpResolvedCount,
-          https_resolved_percentage: stationsWithResolvedUrl > 0 ? ((httpsResolvedCount / stationsWithResolvedUrl) * 100).toFixed(2) : "0",
-          http_resolved_percentage: stationsWithResolvedUrl > 0 ? ((httpResolvedCount / stationsWithResolvedUrl) * 100).toFixed(2) : "0"
-        },
-        samples: {
-          https_samples: httpsSamples,
-          http_samples: httpSamples,
-          https_resolved_samples: httpsResolvedSamples
-        }
-      };
-      
-      logger.log('🔒 HTTPS/HTTP Analysis Results:', {
-        total: results.total_stations,
-        https: results.original_urls.https_urls,
-        http: results.original_urls.http_urls,
-        resolved: results.resolved_urls.stations_with_resolved,
-        https_resolved: results.resolved_urls.https_resolved
-      });
-      
-      res.json(results);
-    } catch (error) {
-      console.error('HTTPS analysis error:', error);
-      res.status(500).json({ error: 'Failed to analyze HTTPS URLs' });
-    }
-  });
-
-  // Stream type analysis endpoint
-  app.get("/api/stream-analysis", async (req, res) => {
-    try {
-      logger.log('🔍 Analyzing stream types across all stations...');
-      
-      const totalStations = await Station.countDocuments({});
-      
-      // Count .m3u8 URLs (HLS streams)
-      const m3u8Count = await Station.countDocuments({
-        url: { $regex: /\.m3u8/i }
-      });
-      
-      // Count HLS-related URLs (contains 'hls' or 'm3u8')
-      const hlsRelatedCount = await Station.countDocuments({
-        url: { $regex: /hls|m3u8/i }
-      });
-      
-      // Count playlist URLs (.m3u, .pls, .asx)
-      const playlistCount = await Station.countDocuments({
-        url: { $regex: /\.(m3u|pls|asx)$/i }
-      });
-      
-      // Count direct MP3 streams
-      const mp3Count = await Station.countDocuments({
-        url: { $regex: /\.mp3(\?|$)/i }
-      });
-      
-      // Count direct AAC streams
-      const aacCount = await Station.countDocuments({
-        url: { $regex: /\.aac(\?|$)/i }
-      });
-      
-      // Count Icecast/Shoutcast streams (common radio streaming)
-      const icecastCount = await Station.countDocuments({
-        url: { $regex: /(:8000|:8080|\/stream|\/radio|shoutcast|icecast)/i }
-      });
-      
-      // Get sample .m3u8 URLs
-      const m3u8Samples = await Station.find({
-        url: { $regex: /\.m3u8/i }
-      }).limit(10).select('name url country');
-      
-      // Get sample HLS URLs
-      const hlsSamples = await Station.find({
-        url: { $regex: /hls/i }
-      }).limit(10).select('name url country');
-      
-      const results = {
-        total_stations: totalStations,
-        stream_types: {
-          m3u8_urls: m3u8Count,
-          hls_related: hlsRelatedCount,
-          playlist_files: playlistCount,
-          direct_mp3: mp3Count,
-          direct_aac: aacCount,
-          icecast_shoutcast: icecastCount
-        },
-        percentages: {
-          m3u8_percentage: ((m3u8Count / totalStations) * 100).toFixed(2),
-          hls_percentage: ((hlsRelatedCount / totalStations) * 100).toFixed(2),
-          mp3_percentage: ((mp3Count / totalStations) * 100).toFixed(2),
-          icecast_percentage: ((icecastCount / totalStations) * 100).toFixed(2)
-        },
-        samples: {
-          m3u8_stations: m3u8Samples,
-          hls_stations: hlsSamples
-        }
-      };
-      
-      logger.log('📊 Stream Analysis Results:', {
-        total: results.total_stations,
-        m3u8: results.stream_types.m3u8_urls,
-        hls: results.stream_types.hls_related,
-        mp3: results.stream_types.direct_mp3,
-        icecast: results.stream_types.icecast_shoutcast
-      });
-      
-      res.json(results);
-    } catch (error) {
-      console.error('Stream analysis error:', error);
-      res.status(500).json({ error: 'Failed to analyze streams' });
-    }
-  });
-
-  // Get analytics events
-  app.get("/api/analytics", async (req, res) => {
-    try {
-      // logger.log(' Fetching analytics events...');
-      
-      const { startDate, endDate, event, limit = 100 } = req.query;
-      
-      // Build filter based on query params
-      const filter: any = {};
-      
-      if (startDate || endDate) {
-        filter.timestamp = {};
-        if (startDate) filter.timestamp.$gte = new Date(startDate as string);
-        if (endDate) filter.timestamp.$lte = new Date(endDate as string);
-      }
-      
-      if (event && event !== '') {
-        filter.event = event;
-      }
-
-      // Check if AnalyticsEvent collection exists and has data
-      const { AnalyticsEvent } = await import('@workspace/db-shared/mongo-schemas');
-      const events = await AnalyticsEvent.find(filter)
-        .sort({ timestamp: -1 })
-        .limit(Number(limit))
-        .lean();
-
-      // logger.log(` Found ${events.length} analytics events`);
-      res.json(events);
-    } catch (error) {
-      // console.error('Error fetching analytics:', error);
-      // Return sample data if collection doesn't exist yet
-      const sampleEvents = [
-        {
-          _id: '1',
-          stationId: '60f7b3b4b8f4e4001c8f4567',
-          event: 'play',
-          metadata: { duration: 300, quality: 'high' },
-          timestamp: new Date(Date.now() - 1000 * 60 * 10), // 10 minutes ago
-          ip: '127.0.0.1'
-        },
-        {
-          _id: '2',
-          stationId: '60f7b3b4b8f4e4001c8f4568',
-          event: 'favorite',
-          metadata: { action: 'add' },
-          timestamp: new Date(Date.now() - 1000 * 60 * 30), // 30 minutes ago
-        },
-        {
-          _id: '3',
-          stationId: '60f7b3b4b8f4e4001c8f4569',
-          event: 'click',
-          metadata: { source: 'homepage', position: 1 },
-          timestamp: new Date(Date.now() - 1000 * 60 * 60), // 1 hour ago
-        }
-      ];
-      res.json(sampleEvents);
-    }
-  });
-
-  // Get analytics summary/stats
-  app.get("/api/analytics/summary", async (req, res) => {
-    try {
-      // logger.log(' Fetching analytics summary...');
-      
-      const { period = '7d' } = req.query;
-      
-      // Calculate date range based on period
-      let startDate = new Date();
-      switch (period) {
-        case '24h':
-          startDate.setHours(startDate.getHours() - 24);
-          break;
-        case '7d':
-          startDate.setDate(startDate.getDate() - 7);
-          break;
-        case '30d':
-          startDate.setDate(startDate.getDate() - 30);
-          break;
-        default:
-          startDate.setDate(startDate.getDate() - 7);
-      }
-
-      // Get basic station stats from existing data
-      const totalStations = await Station.countDocuments();
-      const activeStations = await Station.countDocuments({ lastCheckOk: true });
-      const brokenStations = await Station.countDocuments({ lastCheckOk: false });
-      
-      // Get top countries by station count
-      const topCountries = await Station.aggregate([
-        { $match: { country: { $exists: true, $ne: "" } } },
-        { $group: { _id: "$country", count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 10 }
-      ]);
-
-      // Get top genres by station count
-      const topGenres = await Genre.aggregate([
-        { $sort: { stationCount: -1 } },
-        { $limit: 10 }
-      ]);
-
-      // Get top codecs
-      const topCodecs = await Station.aggregate([
-        { $match: { codec: { $exists: true, $ne: "" } } },
-        { $group: { _id: "$codec", count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 10 }
-      ]);
-
-      const summary = {
-        totalStations,
-        activeStations,
-        brokenStations,
-        healthPercentage: totalStations > 0 ? Math.round((activeStations / totalStations) * 100) : 0,
-        period,
-        topCountries: topCountries.map(c => ({ name: c._id, count: c.count })),
-        topGenres: topGenres.map(g => ({ name: g.name, count: g.stationCount })),
-        topCodecs: topCodecs.map(c => ({ name: c._id, count: c.count })),
-        lastUpdated: new Date()
-      };
-
-      // logger.log(` Analytics summary - ${totalStations} total stations, ${activeStations} active`);
-      res.json(summary);
-    } catch (error) {
-      // console.error('Error fetching analytics summary:', error);
-      res.status(500).json({ error: 'Failed to fetch analytics summary' });
-    }
-  });
-
-  // =========================================================================
-  // SEO TRANSLATIONS HUB (Task #519 — 2026-05-18)
-  // Five endpoints that back the /admin/seo-translations dashboard page.
-  // =========================================================================
-
-  const SEO_KEYS_ALL = [
-    // station-level (7)
-    'default_station_about', 'from', 'genres', 'station_additional_info',
-    'live_radio', 'online_radio', 'radio_streaming',
-    // homepage-level (8)
-    'hero_worlds_best_radio', 'hero_over_100_countries', 'hero_listen_everywhere',
-    'nav_genres', 'nav_regions', 'nav_stations',
-    'popular_genres_title', 'popular_countries_title',
-  ] as const;
-
-  let inFlightApplyJob: Promise<unknown> | null = null;
-  let inFlightRegenerateJob: Promise<unknown> | null = null;
-
-  // GET /api/admin/seo-translations/coverage
-  // Returns per-language coverage for the 15 required SEO keys + qualified-language state.
-  app.get('/api/admin/seo-translations/coverage', deps.requireAdmin, async (_req: any, res: any) => {
-    try {
-      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
-      const { getQualifiedLanguagesState } = await import('../seo/qualified-languages');
-
-      const [qualifiedState, keyDocs] = await Promise.all([
-        getQualifiedLanguagesState(),
-        TranslationKey.find({ key: { $in: SEO_KEYS_ALL as unknown as string[] } }, { key: 1 }).lean(),
-      ]);
-
-      const keyIdByName: Record<string, any> = {};
-      (keyDocs as any[]).forEach((k) => { keyIdByName[k.key] = k._id; });
-
-      const presentKeyIds = Object.values(keyIdByName);
-      const allLangCodes = (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).map((l: any) => l.code as string);
-
-      // One aggregation — fetch all translations for the 15 SEO keys across all languages.
-      const translationRows: { language: string; key: string }[] = await Translation.aggregate([
-        { $match: { keyId: { $in: presentKeyIds }, language: { $in: allLangCodes } } },
-        { $lookup: { from: 'translationkeys', localField: 'keyId', foreignField: '_id', as: 'k' } },
-        { $unwind: '$k' },
-        { $project: { _id: 0, language: 1, key: '$k.key' } },
-      ]).option({ maxTimeMS: 15000, allowDiskUse: true });
-
-      const byLang: Record<string, Set<string>> = {};
-      translationRows.forEach(({ language, key }) => {
-        if (!byLang[language]) byLang[language] = new Set();
-        byLang[language].add(key);
-      });
-
-      const qualifiedSet = new Set(qualifiedState.languages);
-      const allKeys = Array.from(SEO_KEYS_ALL);
-
-      const languages = (SEO_LANGUAGES as any[])
-        .filter((l: any) => l.enabled)
-        .map((l: any) => {
-          const completedKeys = allKeys.filter((k) => byLang[l.code]?.has(k));
-          const missingKeys = allKeys.filter((k) => !byLang[l.code]?.has(k));
-          return {
-            code: l.code,
-            name: l.name,
-            qualified: qualifiedSet.has(l.code),
-            completedKeys,
-            missingKeys,
-            completionPct: Math.round((completedKeys.length / allKeys.length) * 100),
-          };
-        })
-        .sort((a: any, b: any) => b.completionPct - a.completionPct);
-
-      res.json({ languages, totalQualified: qualifiedSet.size, qualifiedLangsState: qualifiedState });
-    } catch (err: any) {
-      logger.error('seo-translations/coverage failed:', err?.message);
-      res.status(500).json({ error: 'Failed to fetch SEO translation coverage' });
-    }
-  });
-
-  // POST /api/admin/seo-translations/apply
-  // Upserts the pre-generated Phase C translations into MongoDB.
-  // Translations are embedded directly so no filesystem access is needed
-  // at runtime inside the Docker container.
-  app.post('/api/admin/seo-translations/apply', deps.requireAdmin, async (_req: any, res: any) => {
-    if (inFlightApplyJob) {
-      return void res.status(409).json({ error: 'Apply job already running', code: 'apply_in_progress' });
-    }
-    const startMs = Date.now();
-    let resolve!: () => void;
-    inFlightApplyJob = new Promise<void>((r) => { resolve = r; });
-
-    try {
-      const TRANSLATIONS: Record<string, Record<string, string>> = getPhaseCTranslations();
-      const ALL_KEYS = Object.keys(TRANSLATIONS.en ?? {});
-      const LANG_CODES = Object.keys(TRANSLATIONS);
-      const EN = TRANSLATIONS.en ?? {};
-
-      // Upsert TranslationKey documents for each key.
-      const keyIdMap: Record<string, any> = {};
-      for (const key of ALL_KEYS) {
-        const doc = await TranslationKey.findOneAndUpdate(
-          { key },
-          { $setOnInsert: { key, defaultValue: EN[key] ?? '', category: 'seo', isPlural: false, createdAt: new Date(), updatedAt: new Date() } },
-          { upsert: true, returnDocument: 'after' },
-        ).lean();
-        keyIdMap[key] = (doc as any)?._id;
-      }
-
-      const byLanguage: Record<string, { inserted: number; skipped: number }> = {};
-      let totalInserted = 0;
-      let totalSkipped = 0;
-
-      for (const lang of LANG_CODES) {
-        let inserted = 0;
-        let skipped = 0;
-        for (const key of ALL_KEYS) {
-          const value = (TRANSLATIONS[lang]?.[key] ?? '').trim();
-          if (!value || !keyIdMap[key]) { skipped++; continue; }
-          const existing = await Translation.findOne({ keyId: keyIdMap[key], language: lang }).lean();
-          if (existing && (existing as any).value?.trim()) { skipped++; continue; }
-          await Translation.findOneAndUpdate(
-            { keyId: keyIdMap[key], language: lang },
-            { $set: { keyId: keyIdMap[key], language: lang, value, isCompleted: true, lastModified: new Date(), createdAt: new Date() } },
-            { upsert: true },
-          );
-          inserted++;
-        }
-        byLanguage[lang] = { inserted, skipped };
-        totalInserted += inserted;
-        totalSkipped += skipped;
-      }
-
-      res.json({
-        message: `Applied Phase C translations: ${totalInserted} inserted, ${totalSkipped} skipped`,
-        inserted: totalInserted,
-        skipped: totalSkipped,
-        byLanguage,
-        durationMs: Date.now() - startMs,
-      });
-    } catch (err: any) {
-      logger.error('seo-translations/apply failed:', err?.message);
-      res.status(500).json({ error: 'Apply failed: ' + (err?.message ?? 'unknown') });
-    } finally {
-      resolve();
-      inFlightApplyJob = null;
-    }
-  });
-
-  // POST /api/admin/seo-translations/regenerate
-  // Calls OpenAI gpt-4o-mini to fill any missing SEO keys.
-  app.post('/api/admin/seo-translations/regenerate', deps.requireAdmin, async (req: any, res: any) => {
-    if (inFlightRegenerateJob) {
-      return void res.status(409).json({ error: 'Regenerate job already running', code: 'regenerate_in_progress' });
-    }
-    if (!process.env.OPENAI_API_KEY) {
-      return void res.status(503).json({ error: 'OPENAI_API_KEY env var not set' });
-    }
-
-    const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
-    const force: boolean = req.body?.force === true;
-    const requestedLangs: string[] | undefined = Array.isArray(req.body?.languages) ? req.body.languages : undefined;
-    const targetLangs = requestedLangs
-      ? (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled && requestedLangs.includes(l.code)).map((l: any) => l.code as string)
-      : (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).map((l: any) => l.code as string);
-
-    const startMs = Date.now();
-    let resolve!: () => void;
-    inFlightRegenerateJob = new Promise<void>((r) => { resolve = r; });
-
-    try {
-      const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-      const keyDocs = await TranslationKey.find({ key: { $in: SEO_KEYS_ALL as unknown as string[] } }, { key: 1 }).lean();
-      const keyIdByName: Record<string, any> = {};
-      (keyDocs as any[]).forEach((k: any) => { keyIdByName[k.key] = k._id; });
-
-      const enRows = await Translation.find({ keyId: { $in: Object.values(keyIdByName) }, language: 'en' }).populate('keyId').lean();
-      const enDefaults: Record<string, string> = {};
-      (enRows as any[]).forEach((t: any) => { if (t.keyId?.key) enDefaults[t.keyId.key] = t.value; });
-
-      let totalGenerated = 0;
-      let totalSkipped = 0;
-      let totalFailed = 0;
-      const byLanguage: Record<string, { generated: number; skipped: number; failed: number }> = {};
-
-      const BATCH = 5;
-      for (let i = 0; i < targetLangs.length; i += BATCH) {
-        const batch = targetLangs.slice(i, i + BATCH);
-        await Promise.all(batch.map(async (lang) => {
-          const existing = await Translation.find({ keyId: { $in: Object.values(keyIdByName) }, language: lang }).populate('keyId').lean();
-          const existingKeys = new Set((existing as any[]).filter((t: any) => t.value?.trim()).map((t: any) => t.keyId?.key).filter(Boolean));
-          const missingKeys = force
-            ? (SEO_KEYS_ALL as readonly string[]).filter(() => true)
-            : (SEO_KEYS_ALL as readonly string[]).filter((k) => !existingKeys.has(k));
-
-          if (missingKeys.length === 0) { byLanguage[lang] = { generated: 0, skipped: SEO_KEYS_ALL.length, failed: 0 }; totalSkipped += SEO_KEYS_ALL.length; return; }
-
-          const langName = (SEO_LANGUAGES as any[]).find((l: any) => l.code === lang)?.name ?? lang;
-          try {
-            const prompt = `Translate the following JSON object values into ${langName} (${lang}). Keep keys exactly as-is. Do not translate brand name "Mega Radio" or placeholder "{STATION_NAME}". Return only valid JSON.\n\n${JSON.stringify(Object.fromEntries(missingKeys.map((k) => [k, enDefaults[k] ?? k])))}`;
-            const resp = await openai.chat.completions.create({
-              model: 'gpt-4o-mini',
-              messages: [{ role: 'user', content: prompt }],
-              response_format: { type: 'json_object' },
-              max_tokens: 1024,
+                // If not grouped, add to ungrouped
+                if (!grouped) {
+                    ungroupedLanguages.push({
+                        language: langData.language,
+                        stationCount: langData.stationCount
+                    });
+                }
             });
-            const translated: Record<string, string> = JSON.parse(resp.choices[0]?.message?.content ?? '{}');
-            let gen = 0;
-            for (const key of missingKeys) {
-              const value = (translated[key] ?? '').trim();
-              if (!value || !keyIdByName[key]) continue;
-              await Translation.findOneAndUpdate(
-                { keyId: keyIdByName[key], language: lang },
-                { $set: { keyId: keyIdByName[key], language: lang, value, isCompleted: true, lastModified: new Date(), createdAt: new Date() } },
-                { upsert: true },
-              );
-              gen++;
-            }
-            byLanguage[lang] = { generated: gen, skipped: existingKeys.size, failed: missingKeys.length - gen };
-            totalGenerated += gen;
-            totalFailed += missingKeys.length - gen;
-          } catch (e: any) {
-            byLanguage[lang] = { generated: 0, skipped: existingKeys.size, failed: missingKeys.length };
-            totalFailed += missingKeys.length;
-            logger.warn(`seo-translations/regenerate: OpenAI failed for ${lang}: ${e?.message}`);
-          }
-        }));
-      }
-
-      res.json({
-        message: `Regenerated SEO translations: ${totalGenerated} keys across ${targetLangs.length} languages`,
-        generated: totalGenerated,
-        skipped: totalSkipped,
-        failed: totalFailed,
-        byLanguage,
-        durationMs: Date.now() - startMs,
-      });
-    } catch (err: any) {
-      logger.error('seo-translations/regenerate failed:', err?.message);
-      res.status(500).json({ error: 'Regenerate failed: ' + (err?.message ?? 'unknown') });
-    } finally {
-      resolve();
-      inFlightRegenerateJob = null;
-    }
-  });
-
-  // POST /api/admin/seo-translations/invalidate-cache
-  // Forces re-computation of the qualified-languages list.
-  app.post('/api/admin/seo-translations/invalidate-cache', deps.requireAdmin, async (_req: any, res: any) => {
-    try {
-      const { invalidateQualifiedLanguages, getQualifiedLanguagesState } = await import('../seo/qualified-languages');
-      await invalidateQualifiedLanguages({ resetLkg: false });
-      const fresh = await getQualifiedLanguagesState();
-      res.json({
-        message: `Qualified-languages cache invalidated. ${fresh.languages.length} languages now qualified.`,
-        newQualifiedCount: fresh.languages.length,
-        qualifiedLanguages: fresh.languages,
-        source: fresh.source,
-        computedAt: fresh.computedAt,
-      });
-    } catch (err: any) {
-      logger.error('seo-translations/invalidate-cache failed:', err?.message);
-      res.status(500).json({ error: 'Invalidate failed: ' + (err?.message ?? 'unknown') });
-    }
-  });
-
-  // POST /api/admin/seo-translations/warm-all
-  // Triggers the batched 57-language translation warmup in the background.
-  app.post('/api/admin/seo-translations/warm-all', deps.requireAdmin, async (_req: any, res: any) => {
-    try {
-      const { performanceCache: pc } = await import('../performance-cache');
-      // Reset the memoized warmup promise so it runs again even if already completed.
-      (pc as any).warmupPromise = null;
-      const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
-      const total = (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).length;
-      // Fire-and-forget — client gets immediate response.
-      void pc.warmupCaches().catch((e: any) => logger.warn('warm-all failed:', e?.message));
-      res.json({ message: `Warming ${total} languages in background (batches of 5, 500ms between batches)`, totalLanguages: total });
-    } catch (err: any) {
-      logger.error('seo-translations/warm-all failed:', err?.message);
-      res.status(500).json({ error: 'Warm-all failed: ' + (err?.message ?? 'unknown') });
-    }
-  });
-
-  // POST /api/admin/scan-frontend-strings
-  // Scans the frontend source for t('key', 'default') calls and upserts new TranslationKey documents.
-  app.post('/api/admin/scan-frontend-strings', deps.requireAdmin, async (_req: any, res: any) => {
-    try {
-      const { TranslationSyncService } = await import('../services/translation-sync');
-      const result = await TranslationSyncService.syncNewKeys();
-      res.json({
-        message: `Scan complete: ${result.added} new keys added, ${result.existing} already existed`,
-        added: result.added,
-        existing: result.existing,
-      });
-    } catch (err: any) {
-      logger.error('scan-frontend-strings failed:', err?.message);
-      if (err?.code === 'ENOENT') {
-        res.status(422).json({ error: 'Frontend source directory not found — this feature only works when source files are present (development builds).' });
-      } else {
-        res.status(500).json({ error: 'Scan failed: ' + (err?.message ?? 'unknown') });
-      }
-    }
-  });
-
-  // POST /api/admin/translation-keys/add-faq-keys
-  // Upserts all FAQ question/answer TranslationKey documents from the seo-shared FAQ schema.
-  app.post('/api/admin/translation-keys/add-faq-keys', deps.requireAdmin, async (_req: any, res: any) => {
-    try {
-      const { FAQ_PAGE_ITEMS } = await import('@workspace/seo-shared/faq-schema');
-      const { bumpTranslationVersion } = await import('../services/translation-version');
-
-      let added = 0;
-      let existing = 0;
-
-      for (const item of FAQ_PAGE_ITEMS as any[]) {
-        const pairs = [
-          { key: item.qKey, defaultValue: item.qFallback, description: 'FAQ page question' },
-          { key: item.aKey, defaultValue: item.aFallback, description: 'FAQ page answer' },
-        ];
-        for (const { key, defaultValue, description } of pairs) {
-          const exists = await TranslationKey.exists({ key });
-          if (!exists) {
-            await TranslationKey.create({ key, defaultValue, description, category: 'faq', isPlural: false });
-            added++;
-          } else {
-            existing++;
-          }
+            // Convert grouped languages to array and sort by station count
+            const finalLanguages = (Object.values(groupedLanguages) as any[])
+                .sort((a: any, b: any) => b.totalStations - a.totalStations)
+                .map((group: any) => ({
+                ...group,
+                variants: group.variants.sort((a: any, b: any) => b.stationCount - a.stationCount)
+            }));
+            // Add ungrouped languages at the end, sorted by station count
+            const sortedUngrouped = ungroupedLanguages
+                .sort((a, b) => b.stationCount - a.stationCount)
+                .map(lang => ({
+                mainLanguage: lang.language,
+                variants: [{ originalName: lang.language, stationCount: lang.stationCount }],
+                totalStations: lang.stationCount
+            }));
+            const allLanguages = [...finalLanguages, ...sortedUngrouped];
+            res.json({
+                languages: allLanguages,
+                total: allLanguages.length,
+                totalStations: allLanguages.reduce((sum, lang) => sum + lang.totalStations, 0)
+            });
         }
-      }
-
-      if (added > 0) {
-        await bumpTranslationVersion(`FAQ keys seeded: ${added} added`);
-      }
-
-      res.json({
-        message: `FAQ keys: ${added} added, ${existing} already existed`,
-        added,
-        existing,
-      });
-    } catch (err: any) {
-      logger.error('add-faq-keys failed:', err?.message);
-      res.status(500).json({ error: 'Add FAQ keys failed: ' + (err?.message ?? 'unknown') });
+        catch (error) {
+            console.error('Error fetching real languages:', error);
+            res.status(500).json({ error: 'Failed to fetch real languages' });
+        }
+    });
+    // ADMIN MERGE STATIONS API - Merge duplicate stations manually (Admin Only)
+    app.post("/api/admin/stations/merge", requireAdmin, async (req, res) => {
+        try {
+            const { primaryStationId, duplicateStationIds, mergeData = {} } = req.body;
+            if (typeof primaryStationId !== 'string' || !Array.isArray(duplicateStationIds) || duplicateStationIds.some(id => typeof id !== 'string') || duplicateStationIds.includes(primaryStationId)) {
+                return void res.status(400).json({ error: 'A primary station and distinct duplicate IDs are required' });
+            }
+            const result = await pgCatalog().mergeDuplicates([primaryStationId, ...new Set<string>(duplicateStationIds)], { primaryId: primaryStationId, validateGroup: false, patch: mergeData });
+            if (!result.primary)
+                return void res.status(404).json({ error: 'Primary station not found' });
+            for (const station of [result.primary, ...result.duplicates])
+                if (station.slug)
+                    performanceCache.invalidateStationCache(station.slug);
+            res.json({ success: true, message: `Successfully merged ${result.deletedCount} stations`, mergedStation: result.primary });
+        }
+        catch (error) {
+            if ((error as any)?.code === 'PRIMARY_NOT_FOUND')
+                return void res.status(404).json({ error: 'Primary station not found' });
+            res.status(500).json({ error: 'Failed to merge stations' });
+        }
+    });
+    // ADMIN GENRES API - Returns only real genres from database for management (Admin Only)
+    app.get("/api/admin/genres", requireAdmin, async (req, res) => {
+        try {
+            logger.log('🎵 Fetching ONLY real genres from database for admin management...');
+            // Extract query parameters
+            const page = Math.max(1, parseInt(req.query.page as string) || 1);
+            const limit = Math.max(1, Math.min(500, parseInt(req.query.limit as string) || 50));
+            const search = (req.query.search as string)?.trim() || '';
+            const sortBy = (req.query.sortBy as string) || 'stationCount';
+            // Task #133: filter to only genres auto-demoted by the slug-cleanup
+            // migration so admins can review what went dark and decide whether to
+            // merge stations, rename one duplicate, or delete the row.
+            const demotedOnly = req.query.demoted === '1' || req.query.demoted === 'true';
+            // Count and page the native genre records.
+            const initialGenres = await pgListAdminGenres(search, demotedOnly, sortBy, limit, (page - 1) * limit);
+            const total = initialGenres.total;
+            // Get paginated genres from database (not dynamic ones generated from stations)
+            const skip = (page - 1) * limit;
+            const realGenres = initialGenres.rows;
+            logger.log(`📊 Found ${realGenres.length} genres (page ${page}/${Math.ceil(total / limit)}, search: "${search}")`);
+            // If no genres exist at all, populate from station tags first
+            if (total === 0 && !search && !demotedOnly) {
+                logger.log('📊 No genres found, attempting to populate from station tags...');
+                try {
+                    await populateGenresFromStations();
+                    const populated = await pgListAdminGenres(search, demotedOnly, sortBy, limit, skip);
+                    const newTotal = populated.total, newGenres = populated.rows;
+                    logger.log(`✅ Successfully populated ${newTotal} genres from station data`);
+                    return void res.json({
+                        data: newGenres,
+                        total: newTotal,
+                        currentPage: page,
+                        totalPages: Math.ceil(newTotal / limit),
+                        populated: true
+                    });
+                }
+                catch (populateError) {
+                    console.error('Failed to populate genres:', populateError);
+                }
+            }
+            // Return in the format expected by the frontend
+            res.json({
+                data: realGenres,
+                total,
+                currentPage: page,
+                totalPages: Math.ceil(total / limit)
+            });
+        }
+        catch (error) {
+            console.error('Error fetching admin genres:', error);
+            res.status(500).json({ error: 'Failed to fetch admin genres' });
+        }
+    });
+    // ADMIN MERGE-PREVIEW API (Task #288) - Read-only preview of which stations
+    // a `merge-into-winner` call would re-tag. Mirrors the matching rules used
+    // by the POST endpoint so admins see exactly the set of stations about to
+    // move before they pull the trigger. The matching set depends only on the
+    // demoted genre's name (not the chosen target), so `targetGenreId` is not
+    // required — but if supplied we surface basic guard errors (self-merge,
+    // missing target) so the dialog can warn before the admin clicks Merge.
+    app.get("/api/admin/genres/:id/merge-preview", requireAdmin, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const rawTarget = req.query.targetGenreId;
+            const targetGenreId = typeof rawTarget === 'string' && rawTarget.trim().length > 0
+                ? rawTarget.trim()
+                : undefined;
+            const rawLimit = Number.parseInt(String(req.query.limit ?? '50'), 10);
+            const sampleLimit = Number.isFinite(rawLimit) && rawLimit > 0
+                ? Math.min(rawLimit, 200)
+                : 50;
+            const demoted = await pgStoredGenreById(String(id));
+            if (!demoted) {
+                return void res.status(404).json({ error: 'Demoted genre not found' });
+            }
+            if (!demoted.cleanupDemotion) {
+                return void res.status(400).json({
+                    error: 'Genre is not a slug-cleanup demoted row',
+                });
+            }
+            const demotedName = String(demoted.name || '').trim();
+            if (!demotedName) {
+                return void res.status(409).json({
+                    error: 'Demoted genre is missing a usable name; cannot preview merge',
+                });
+            }
+            let winnerName: string | undefined;
+            let winnerSlug: string | undefined;
+            if (targetGenreId) {
+                if (String(targetGenreId) === String(demoted._id)) {
+                    return void res.status(400).json({
+                        error: 'Cannot merge a demoted genre into itself',
+                    });
+                }
+                const winner = await pgStoredGenreById(targetGenreId);
+                if (!winner) {
+                    return void res.status(409).json({
+                        error: 'Picked target genre no longer exists',
+                    });
+                }
+                winnerName = String(winner.name || '').trim() || undefined;
+                winnerSlug = String(winner.slug || '').trim() || undefined;
+            }
+            const escapeForRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const escapedDemoted = escapeForRegex(demotedName);
+            const matchFilter = {
+                $or: [
+                    { tags: { $regex: new RegExp(`(^|,)\\s*${escapedDemoted}\\s*(,|$)`, 'i') } },
+                    { genre: { $regex: new RegExp(`^\\s*${escapedDemoted}\\s*$`, 'i') } },
+                ],
+            };
+            const [stationsMatched, sampleStations] = await Promise.all([
+                pgCatalog().count(matchFilter),
+                pgCatalog().find(matchFilter, { sort: { name: 1 }, limit: sampleLimit, fields: ['name', 'slug', 'genre', 'tags', 'country'] }),
+            ]);
+            return void res.json({
+                demotedGenreId: String(demoted._id),
+                demotedGenreName: demotedName,
+                demotedGenreSlug: demoted.slug,
+                targetGenreId: targetGenreId ?? null,
+                targetGenreName: winnerName ?? null,
+                targetGenreSlug: winnerSlug ?? null,
+                stationsMatched,
+                sampleLimit,
+                sampleStations: sampleStations.map((st) => ({
+                    _id: String(st._id),
+                    name: st.name,
+                    slug: st.slug,
+                    genre: st.genre ?? null,
+                    tags: st.tags ?? null,
+                    country: st.country ?? null,
+                })),
+            });
+        }
+        catch (error) {
+            logger.error('Error building merge preview:', error);
+            res.status(500).json({ error: 'Failed to build merge preview' });
+        }
+    });
+    // ADMIN MERGE-INTO-WINNER API (Task #166) - Re-tag the stations attached to
+    // a demoted genre onto its recorded `cleanupDemotion.collisionWinnerId`,
+    // then delete the demoted row. Closes the loop on the slug-cleanup
+    // migration which intentionally avoids auto-merging stations.
+    //
+    // Task #214: also accepts an optional `targetGenreId` body param. When
+    // provided, the admin-picked target genre overrides the recorded
+    // collision winner — and the action becomes available for empty-slug
+    // demotions and any older demoted rows missing a `collisionWinnerId`.
+    app.post("/api/admin/genres/:id/merge-into-winner", requireAdmin, async (req, res) => {
+        try {
+            const { id } = req.params;
+            const rawTarget = (req.body as {
+                targetGenreId?: unknown;
+            } | undefined)
+                ?.targetGenreId;
+            const targetGenreId = typeof rawTarget === 'string' && rawTarget.trim().length > 0
+                ? rawTarget.trim()
+                : undefined;
+            const actor = req.user as any;
+            const merged = await pgMergeDemotedGenre(String(id), targetGenreId, { userId: actor?._id ? String(actor._id) : actor?.id ? String(actor.id) : null, email: actor?.email || null });
+            for (const slug of merged.changedSlugs)
+                performanceCache.invalidateStationCache(slug);
+            try {
+                await pgPruneGenreMergeAudit();
+            }
+            catch (error) {
+                logger.error('Failed to prune genre-merge audit log:', error);
+            }
+            // Same downstream re-warm the cleanup script uses (Task #133): drop the
+            // precomputed-genres caches and force-rebuild the sitemap manifests so
+            // the public surfaces stop linking to the demoted slug immediately.
+            try {
+                const { PrecomputedGenresService } = await import('../services/precomputed-genres');
+                await PrecomputedGenresService.refreshAll();
+            }
+            catch (err) {
+                logger.error('Failed to refresh precomputed-genres caches after merge:', err);
+            }
+            try {
+                const { buildAllSitemapManifests } = await import('../seo/sitemap-manifest-builder');
+                await buildAllSitemapManifests({ force: true });
+            }
+            catch (err) {
+                logger.error('Failed to rebuild sitemap manifests after merge:', err);
+            }
+            const { changedSlugs, ...response } = merged;
+            return void res.json(response);
+        }
+        catch (error: any) {
+            console.error('Error merging demoted genre into winner:', error);
+            res.status(error?.statusCode || 500).json({ error: error?.statusCode ? error.message : 'Failed to merge demoted genre into winner' });
+        }
+    });
+    // ADMIN GENRE MERGE AUDIT LOG (Task #289) — paginated, filterable list
+    // of every successful merge so admins can answer "who merged what into
+    // where, and when" without grepping the api-server logs. The collection
+    // is bounded by both the schema TTL (180 days) and an on-write soft cap
+    // in the merge handler above, so this endpoint stays fast.
+    app.get("/api/admin/genres/merge-audit-log", requireAdmin, async (req, res) => {
+        try {
+            const parseIntParam = (raw: unknown, fallback: number, max?: number) => {
+                const n = typeof raw === 'string' ? parseInt(raw, 10) : NaN;
+                if (!Number.isFinite(n) || n < 0)
+                    return fallback;
+                return max !== undefined ? Math.min(n, max) : n;
+            };
+            const limit = Math.max(1, parseIntParam(req.query.limit, 50, 200));
+            const offset = parseIntParam(req.query.offset, 0);
+            const escapeForRegex = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const filter: Record<string, unknown> = {};
+            const targetSourceParam = typeof req.query.targetSource === 'string'
+                ? req.query.targetSource
+                : undefined;
+            if (targetSourceParam && targetSourceParam !== 'all') {
+                if (targetSourceParam !== 'manual' &&
+                    targetSourceParam !== 'auto-recorded') {
+                    return void res
+                        .status(400)
+                        .json({ error: 'Invalid targetSource filter' });
+                }
+                filter.targetSource = targetSourceParam;
+            }
+            const actorEmail = typeof req.query.actorEmail === 'string'
+                ? req.query.actorEmail.trim()
+                : '';
+            if (actorEmail) {
+                filter.actorEmail = {
+                    $regex: escapeForRegex(actorEmail),
+                    $options: 'i',
+                };
+            }
+            const genre = typeof req.query.genre === 'string' ? req.query.genre.trim() : '';
+            if (genre) {
+                const re = { $regex: escapeForRegex(genre), $options: 'i' };
+                filter.$or = [
+                    { demotedGenreName: re },
+                    { demotedGenreSlug: re },
+                    { winnerGenreName: re },
+                    { winnerGenreSlug: re },
+                ];
+            }
+            const fromRaw = typeof req.query.from === 'string' ? req.query.from : '';
+            const toRaw = typeof req.query.to === 'string' ? req.query.to : '';
+            const createdAt: Record<string, Date> = {};
+            const fromDate = fromRaw ? new Date(fromRaw) : null;
+            if (fromDate && !isNaN(fromDate.getTime())) {
+                createdAt.$gte = fromDate;
+            }
+            const toDate = toRaw ? new Date(toRaw) : null;
+            if (toDate && !isNaN(toDate.getTime())) {
+                if (/^\d{4}-\d{2}-\d{2}$/.test(toRaw)) {
+                    toDate.setUTCHours(23, 59, 59, 999);
+                }
+                createdAt.$lte = toDate;
+            }
+            if (Object.keys(createdAt).length > 0) {
+                filter.createdAt = createdAt;
+            }
+            const { entries, total } = await pgGenreMergeAuditList({
+                targetSource: targetSourceParam, actorEmail, genre,
+                from: fromDate && !isNaN(fromDate.getTime()) ? fromDate : undefined,
+                to: toDate && !isNaN(toDate.getTime()) ? toDate : undefined,
+            }, limit, offset);
+            res.json({
+                entries: entries.map((e) => ({
+                    id: String(e._id),
+                    demotedGenreId: e.demotedGenreId,
+                    demotedGenreName: e.demotedGenreName,
+                    demotedGenreSlug: e.demotedGenreSlug,
+                    winnerGenreId: e.winnerGenreId,
+                    winnerGenreName: e.winnerGenreName,
+                    winnerGenreSlug: e.winnerGenreSlug,
+                    targetSource: e.targetSource,
+                    stationsMatched: e.stationsMatched,
+                    stationsRetagged: e.stationsRetagged,
+                    actorUserId: e.actorUserId,
+                    actorEmail: e.actorEmail,
+                    createdAt: e.createdAt,
+                })),
+                total,
+                limit,
+                offset,
+            });
+            return;
+        }
+        catch (error) {
+            console.error('Error listing genre-merge audit log:', error);
+            res
+                .status(500)
+                .json({ error: 'Failed to list genre-merge audit log' });
+            return;
+        }
+    });
+    // ADMIN GENRE POPULATION API - Manually trigger genre population from station tags
+    app.post("/api/admin/populate-genres", requireAdmin, async (req, res) => {
+        try {
+            logger.log('🎵 Manually triggering genre population from station tags...');
+            const result = await populateGenresFromStations();
+            res.json({
+                success: true,
+                message: `Successfully populated ${result.genresCreated} genres from station data`,
+                genresCreated: result.genresCreated,
+                tagsProcessed: result.tagsProcessed
+            });
+        }
+        catch (error) {
+            console.error('Error manually populating genres:', error);
+            res.status(500).json({ error: 'Failed to populate genres' });
+        }
+    });
+    // Helper function to populate genres from station tags
+    async function populateGenresFromStations() {
+        try {
+            logger.log('🎵 Starting genre population from station tags...');
+            const tagCounts = await pgGenrePopulationCounts();
+            logger.log(`📈 Found ${tagCounts.length} unique tags`);
+            // Create genres for tags with at least 1 station
+            // Task #110: skip empty/malformed slugs (would otherwise leak the
+            // XML-unsafe legacy values that #102 + #110 just cleaned up).
+            // Task #161: route this through the shared `normalizeGenreSlug`
+            // helper so every Genre.slug write site uses the same definition
+            // of "safe" — duplicating the regex inline meant a future tweak to
+            // SAFE_GENRE_SLUG_RE could silently drift away from this admin
+            // path and reintroduce malformed slugs.
+            let genresCreated = 0;
+            let genresSkipped = 0;
+            for (const {tag, count} of tagCounts) {
+                if (count >= 1) {
+                    const slug = normalizeGenreSlug(tag);
+                    if (!slug || !SAFE_GENRE_SLUG_RE.test(slug)) {
+                        genresSkipped++;
+                        continue;
+                    }
+                    const genreData = {
+                        name: tag.charAt(0).toUpperCase() + tag.slice(1), // Capitalize first letter
+                        slug,
+                        stationCount: count,
+                        isDiscoverable: count >= 2, // Make discoverable if 2+ stations
+                        createdAt: new Date(),
+                        updatedAt: new Date()
+                    };
+                    // Insert genre (update if exists)
+                    await pgUpsertPopulatedGenre(genreData);
+                    genresCreated++;
+                }
+            }
+            if (genresSkipped > 0) {
+                logger.log(`⏭️ Skipped ${genresSkipped} tags with unsafe/empty slugs`);
+            }
+            logger.log(`✅ Successfully populated ${genresCreated} genres!`);
+            return {
+                genresCreated,
+                tagsProcessed: tagCounts.length
+            };
+        }
+        catch (error) {
+            console.error('❌ Error populating genres:', error);
+            throw error;
+        }
     }
-  });
+    // LOCATION API - IP-based geolocation detection
+    // 🚀 OPTIMIZED: Uses Cloudflare headers for instant detection (0ms vs 300-800ms)
+    app.get("/api/location", async (req, res) => {
+        // CRITICAL: Prevent Cloudflare from caching location responses (user-specific data)
+        res.set({
+            'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+            'Pragma': 'no-cache',
+            'Expires': '0',
+            'Vary': 'CF-Connecting-IP, X-Forwarded-For'
+        });
+        try {
+            // Get the client's IP address
+            let rawIP = req.headers['cf-connecting-ip'] ||
+                req.headers['x-forwarded-for'] ||
+                req.headers['x-real-ip'] ||
+                req.connection.remoteAddress ||
+                req.socket.remoteAddress ||
+                (req.connection as any)?.socket?.remoteAddress ||
+                req.ip;
+            // Parse the IP address - extract the first valid public IP from comma-separated list
+            let clientIP = rawIP;
+            if (typeof rawIP === 'string' && rawIP.includes(',')) {
+                const ips = rawIP.split(',').map(ip => ip.trim());
+                const publicIP = ips.find(ip => {
+                    const isNotLocalhost = !ip.includes('127.0.0.1') && !ip.includes('::1') && ip !== '::ffff:127.0.0.1';
+                    const isNotPrivate = !ip.includes('192.168.') && !ip.includes('10.0.') && !ip.includes('10.81.');
+                    const isNotIPv6Local = !ip.includes('::ffff:') && !ip.includes('::1');
+                    const hasValidFormat = ip.length > 0 && /^\d+\.\d+\.\d+\.\d+$/.test(ip);
+                    return isNotLocalhost && isNotPrivate && isNotIPv6Local && hasValidFormat;
+                });
+                clientIP = publicIP || ips[0];
+            }
+            let locationData = {
+                country: 'all',
+                countryCode: 'all',
+                city: null as string | null,
+                region: null as string | null,
+                lat: null as number | null,
+                lng: null as number | null,
+                detected: false
+            };
+            // 🚀 PRIORITY 1: Cloudflare headers (INSTANT - 0ms)
+            const cfCountryCode = req.headers['cf-ipcountry'] as string;
+            const isCloudflareRequest = !!req.headers['cf-ray']; // CF-Ray header indicates Cloudflare
+            if (cfCountryCode && cfCountryCode !== 'XX' && cfCountryCode !== 'T1') {
+                // Convert 2-letter code to full country name using existing mapping
+                const countryName = CODE_TO_COUNTRY[cfCountryCode.toLowerCase()];
+                if (countryName) {
+                    locationData = {
+                        country: countryName,
+                        countryCode: cfCountryCode.toUpperCase(),
+                        city: null,
+                        region: null,
+                        lat: null,
+                        lng: null,
+                        detected: true
+                    };
+                    return void res.json({
+                        location: locationData,
+                        ip: rawIP,
+                        source: 'cloudflare'
+                    });
+                }
+            }
+            // 🔄 FALLBACK: ip-api.com for any environment when Cloudflare detection fails
+            const ipStr = typeof clientIP === 'string' ? clientIP : '';
+            const isLocalhost = !ipStr ||
+                ipStr === '127.0.0.1' ||
+                ipStr === '::1' ||
+                ipStr.includes('192.168.') ||
+                ipStr.includes('10.0.') ||
+                ipStr.includes('10.81.') ||
+                ipStr === '::ffff:127.0.0.1';
+            const cleanIP = ipStr.includes(',') ? ipStr.split(',')[0].trim() : ipStr;
+            if (!isLocalhost) {
+                try {
+                    const fetch = (await import('node-fetch')).default;
+                    const response = await Promise.race([
+                        fetch(`http://ip-api.com/json/${cleanIP}?fields=status,message,country,countryCode,region,city,lat,lon`),
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('Request timeout')), 2000))
+                    ]) as any;
+                    const data = await response.json() as any;
+                    if (data && data.status === 'success') {
+                        locationData = {
+                            country: data.country,
+                            countryCode: data.countryCode,
+                            city: data.city,
+                            region: data.region,
+                            lat: data.lat,
+                            lng: data.lon,
+                            detected: true
+                        };
+                    }
+                }
+                catch (geoError: any) {
+                }
+            }
+            res.json({
+                location: locationData,
+                ip: rawIP,
+                source: isLocalhost ? 'localhost' : 'ip-api'
+            });
+        }
+        catch (error) {
+            res.json({
+                location: {
+                    country: 'all',
+                    countryCode: 'all',
+                    city: null,
+                    region: null,
+                    lat: null,
+                    lng: null,
+                    detected: false
+                },
+                ip: null,
+                source: 'fallback'
+            });
+        }
+    });
+    // Cached native facets use the bounded public-query budget.
+    app.get("/api/filters/countries", async (req, res) => {
+        try {
+            const cacheKey = 'filters:countries:v1';
+            const cached = await CacheManager.get(cacheKey);
+            if (cached) {
+                res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+                return void res.json(cached);
+            }
+            const countries = (await pgStationFacetCounts('country')).map(row => row._id);
+            const filteredCountries = (countries as string[])
+                .filter((country: string) => country && country.trim() !== '')
+                .sort();
+            await CacheManager.set(cacheKey, filteredCountries, { ttl: 86400 });
+            res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+            res.json(filteredCountries);
+        }
+        catch (error: any) {
+            logger.warn('[filters/countries] failed: ' + (error?.message || 'unknown'));
+            res.set('Cache-Control', 'no-store');
+            res.status(503).json({error:'Country filters are temporarily unavailable'});
+        }
+    });
+    // FILTERS LANGUAGES API
+    // INCIDENT 2026-05-14: same pattern as /api/filters/countries — heavy
+    // aggregate hit on every page load with no cache. Add 24h cache + bounded
+    // execution + soft fallback.
+    app.get("/api/filters/languages", async (req, res) => {
+        const cacheKey = 'filters:languages:v1';
+        try {
+            // INCIDENT 2026-05-15 v10 — wrap the heavy distinct-language
+            // aggregate in single-flight so concurrent cold misses (homepage
+            // SSR fanout) coalesce to one PostgreSQL query.
+            // INCIDENT 2026-05-15 v10.2 — upgraded singleflight → SWR
+            // (24h fresh / 7d stale) so a stressed cluster mid-refresh
+            // keeps serving the prior language list instead of falling
+            // through to the empty-array soft-fail.
+            const cleanLanguages = await CacheManager.getOrSetSWR<string[]>(cacheKey, async () => {
+                // Get aggregated language data with counts
+                const languageStats = (await pgStationFacetCounts('language')).filter(row => row.count >= 3);
+                // Clean up the language names - remove malformed data
+                const cleanLanguages = languageStats
+                    .map(item => item._id)
+                    .filter(lang => lang && lang.trim())
+                    .map(lang => {
+                    // Clean up common issues
+                    lang = lang.trim();
+                    if (lang.startsWith('"') && lang.endsWith('"')) {
+                        lang = lang.slice(1, -1);
+                    }
+                    if (lang.startsWith('#')) {
+                        lang = lang.substring(1);
+                    }
+                    // Split multi-language entries and take first clean one
+                    if (lang.includes(',')) {
+                        lang = lang.split(',')[0].trim().replace('#', '');
+                    }
+                    return lang;
+                })
+                    .filter(lang => lang && lang.length > 1 && lang.length < 30) // Remove very short or long entries
+                    .filter(lang => !lang.match(/^[^a-zA-Z]/) && !lang.includes('#')) // Remove entries starting with special chars or containing #
+                    .filter((lang, index, arr) => arr.indexOf(lang) === index) // Remove duplicates
+                    .slice(0, 50) // Limit results
+                    .sort();
+                return cleanLanguages;
+            }, { freshTtl: 86400, staleTtl: 86400 * 7 });
+            res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+            res.json(cleanLanguages);
+        }
+        catch (error: any) {
+            logger.warn(`[filters/languages] failed: code=${error?.code || 'unknown'} codeName=${error?.codeName || 'unknown'} msg=${error?.message || 'unknown'}`);
+            // INCIDENT 2026-05-15 v10.2 — read SWR envelope on fallback path.
+            let stale: any = null;
+            try {
+                stale = await CacheManager.getSWR(cacheKey);
+            }
+            catch { }
+            res.set('Cache-Control', 'no-store');
+            if (Array.isArray(stale)) return void res.json(stale);
+            res.status(503).json({error:'Language filters are temporarily unavailable'});
+        }
+    });
+    // FILTERS GENRES API
+    // INCIDENT 2026-05-14: same pattern — `Station.distinct('tags')` is a full
+    // collection scan with no cache. Add 24h cache + bounded execution.
+    app.get("/api/filters/genres", async (req, res) => {
+        try {
+            const cacheKey = 'filters:genres:v1';
+            const cached = await CacheManager.get(cacheKey);
+            if (cached) {
+                res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+                return void res.json(cached);
+            }
+            // Get all distinct tags from stations
+            const allTags = (await pgStationFacetCounts('tags')).map(row => row._id);
+            // Extract unique genre values from tags (tags are comma-separated)
+            const genreSet = new Set();
+            (allTags as string[]).forEach(tagString => {
+                if (tagString && typeof tagString === 'string') {
+                    // Split comma-separated tags and clean them up
+                    const tags = tagString.split(',').map(tag => tag.trim().toLowerCase());
+                    tags.forEach(tag => {
+                        if (tag && tag.length > 0) {
+                            genreSet.add(tag);
+                        }
+                    });
+                }
+            });
+            // Debug logging to see what we're getting
+            logger.log('🔍 Tags debug:', {
+                totalTags: allTags.length,
+                sampleTags: allTags.slice(0, 5),
+                genreCount: genreSet.size,
+                sampleGenres: Array.from(genreSet).slice(0, 10)
+            });
+            // Convert to sorted array
+            const genres = Array.from(genreSet).sort();
+            await CacheManager.set('filters:genres:v1', genres, { ttl: 86400 });
+            res.set('Cache-Control', 'public, max-age=3600, s-maxage=86400');
+            res.json(genres);
+        }
+        catch (error: any) {
+            logger.warn('[filters/genres] failed: ' + (error?.message || 'unknown'));
+            res.set('Cache-Control', 'no-store');
+            res.status(503).json({error:'Genre filters are temporarily unavailable'});
+        }
+    });
+    // Get stations by genre (for genre pages)
+    app.get("/api/stations/by-genre/:genre", async (req, res) => {
+        try {
+            const { genre } = req.params;
+            const { page = 1, limit = 20, country } = req.query;
+            const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+            let query: any = {
+                $or: [
+                    { genre: new RegExp(genre, 'i') },
+                    { tags: new RegExp(genre, 'i') }
+                ]
+            };
+            if (country && country !== 'All') {
+                query.country = country;
+            }
+            const stations = await pgCatalog().find(query, { sort: { votes: -1, clickCount: -1 }, offset: skip, limit: parseInt(limit as string) });
+            const total = await pgCatalog().count(query);
+            res.json({
+                stations,
+                total,
+                page: parseInt(page as string),
+                totalPages: Math.ceil(total / parseInt(limit as string))
+            });
+        }
+        catch (error) {
+            // console.error('Error fetching stations by genre:', error);
+            res.status(500).json({ error: 'Failed to fetch stations by genre' });
+        }
+    });
+    // Get genre statistics for landing pages
+    app.get("/api/genres/:slug/stats", async (req, res) => {
+        try {
+            const { slug } = req.params;
+            // Convert slug back to genre name (replace hyphens with spaces, capitalize)
+            const genreName = slug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
+            // Get top countries for this genre
+            const topCountries = await pgGenreLandingCountries(genreName);
+            // Get related genres based on stations that share multiple tags
+            const relatedGenres = await pgGenreLandingRelated(genreName);
+            res.json({
+                topCountries,
+                relatedGenres
+            });
+        }
+        catch (error) {
+            console.error('Error fetching genre stats:', error);
+            res.status(500).json({ error: 'Failed to fetch genre statistics' });
+        }
+    });
+    // STATION CLICK TRACKING
+    app.post("/api/stations/:id/click", async (req, res) => {
+        try {
+            const { id } = req.params;
+            const found = await incrementStationClick(id);
+            if (!found)
+                return void res.status(404).json({ error: 'Station not found' });
+            // logger.log(` Station ${id} click tracked`);
+            res.json({ success: true });
+        }
+        catch (error) {
+            // console.error('Error tracking station click:', error);
+            res.status(500).json({ error: 'Failed to track click' });
+        }
+    });
+    // STATION RATING SYSTEM
+    // Calculate rating statistics for a station
+    app.post("/api/stations/:id/rate", async (req, res) => {
+        try {
+            const { id: stationId } = req.params;
+            const { rating, sessionId } = req.body;
+            const userId = await authenticatedUserId(req);
+            let comment = req.body.comment;
+            if (comment && typeof comment === 'string') {
+                comment = comment.replace(/<[^>]*>/g, '').trim().slice(0, 1000);
+            }
+            // Validate rating
+            if (!rating || rating < 1 || rating > 5) {
+                return void res.status(400).json({ error: 'Rating must be between 1 and 5 stars' });
+            }
+            // Get user identifier and IP for duplicate prevention
+            const userIdentifier = userId || sessionId;
+            const ipAddress = req.ip || req.connection.remoteAddress;
+            const userAgent = req.get('User-Agent');
+            if (!userIdentifier && !ipAddress) {
+                return void res.status(400).json({ error: 'User identification required' });
+            }
+            // Check if station exists
+            const station = await getStationByIdentifier(stationId);
+            if (!station) {
+                return void res.status(404).json({ error: 'Station not found' });
+            }
+            const identity = { userId, sessionId: userId ? undefined : sessionId, ipAddress: userId || sessionId ? undefined : ipAddress };
+            {
+                if (userId)
+                    await ensurePostgresUser(userId);
+                const pgResult = await pgRateStationIdentity(identity, stationId, Number(rating), comment || '');
+                return void res.json(pgResult);
+            }
+        }
+        catch (error) {
+            console.error('Error rating station:', error);
+            res.status(500).json({ error: 'Failed to rate station' });
+        }
+    });
+    // Get station ratings
+    app.get("/api/stations/:id/ratings", async (req, res) => {
+        try {
+            const { id: stationId } = req.params;
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 10;
+            {
+                return void res.json(await pgStationRatingsDetailed(stationId, page, Math.min(limit, 100)));
+            }
+        }
+        catch (error) {
+            console.error('Error fetching station ratings:', error);
+            res.status(500).json({ error: 'Failed to fetch ratings' });
+        }
+    });
+    // Vote for a station - increments vote count by 1
+    app.post("/api/stations/:id/vote", async (req, res) => {
+        try {
+            const { id: stationId } = req.params;
+            // Find station and increment votes
+            const votes = await incrementStationVote(stationId);
+            if (votes === null) {
+                return void res.status(404).json({ error: 'Station not found' });
+            }
+            res.json({
+                success: true,
+                votes
+            });
+        }
+        catch (error) {
+            console.error('Error voting for station:', error);
+            res.status(500).json({ error: 'Failed to vote for station' });
+        }
+    });
+    // Get user's rating for a specific station
+    app.get("/api/stations/:id/user-rating", async (req, res) => {
+        try {
+            const { id: stationId } = req.params;
+            let { sessionId } = req.query;
+            const userId = await authenticatedUserId(req);
+            // Gracefully handle missing parameters - return null rating instead of 400
+            if (!userId && !sessionId) {
+                return void res.json({ rating: null });
+            }
+            // Ensure userId and sessionId are strings (not arrays from query params)
+            if (Array.isArray(sessionId))
+                sessionId = sessionId[0];
+            {
+                const rating = await pgFindStationRating(stationId, {
+                    userId,
+                    sessionId: userId ? undefined : typeof sessionId === 'string' ? sessionId : undefined,
+                });
+                return void res.json({ rating });
+            }
+        }
+        catch (error) {
+            console.error('Error fetching user rating:', error);
+            res.json({ rating: null }); // Graceful fallback instead of 500
+        }
+    });
+    // ENSURE USER PROFILE IS PUBLIC (for testing purposes)
+    app.post("/api/test/make-user-public", requireAdmin, async (req, res) => {
+        try {
+            const { email } = req.body;
+            // logger.log(' Making user profile public for testing:', email);
+            if (typeof email !== 'string' || !email.includes('@')) return void res.status(400).json({error:'Valid email is required'});
+            const existing = await pgFindUserByEmail(email);
+            const user = existing ? await pgUpdateUser(existing._id, {isPublicProfile:true, name:email.split('@')[0]}) : null;
+            if (!user) {
+                return void res.status(404).json({ error: 'User not found' });
+            }
+            // logger.log(' User profile set to public:', user.email);
+            res.json({ message: 'User profile is now public', user: { email: user.email, isPublicProfile: user.isPublicProfile } });
+        }
+        catch (error) {
+            // console.error('Error making user public:', error);
+            res.status(500).json({ error: 'Failed to update user profile' });
+        }
+    });
+    // ADD FAVORITES FOR USER (for testing purposes)
+    app.post("/api/test/add-favorites", requireAdmin, async (req, res) => {
+        try {
+            const { email, stationIds } = req.body;
+            // logger.log(' Adding favorites for user:', email, 'stations:', stationIds);
+            if (typeof email !== 'string' || !email.includes('@') || !Array.isArray(stationIds) || stationIds.length > 1000 || stationIds.some(id => typeof id !== 'string' || !id)) {
+                return void res.status(400).json({error:'Valid email and up to 1000 station IDs are required'});
+            }
+            const user = await pgAdminAddFavorites(email, stationIds);
+            await CacheManager.clearByPattern(`user-favorites:${user._id}:`);
+            await refreshCommunityFavoritesCache();
+            // logger.log(' Added favorites to user:', user.email, 'total favorites:', user.favoriteStations.length);
+            res.json({
+                message: 'Favorites added successfully',
+                user: {
+                    email: user.email,
+                    favoriteStations: user.favoriteStations,
+                    isPublicProfile: user.isPublicProfile
+                }
+            });
+        }
+        catch (error) {
+            // console.error('Error adding favorites:', error);
+            res.status((error as any)?.statusCode || 500).json({ error: (error as any)?.statusCode === 400 ? (error as Error).message : 'Failed to add favorites' });
+        }
+    });
+    // UPDATE USER NAME (for fixing user profiles)
+    app.post("/api/test/update-user-name", requireAdmin, async (req, res) => {
+        try {
+            const { email, name } = req.body;
+            // logger.log(' Updating user name:', email, 'to:', name);
+            if (typeof email !== 'string' || !email.includes('@') || typeof name !== 'string' || !name.trim()) return void res.status(400).json({error:'Valid email and name are required'});
+            const existing = await pgFindUserByEmail(email);
+            const user = existing ? await pgUpdateUser(existing._id, {name,fullName:name}) : null;
+            if (!user) {
+                return void res.status(404).json({ error: 'User not found' });
+            }
+            // logger.log(' Updated user name:', user.email, 'name:', user.name);
+            res.json({
+                message: 'User name updated successfully',
+                user: {
+                    email: user.email,
+                    name: user.name,
+                    isPublicProfile: user.isPublicProfile
+                }
+            });
+        }
+        catch (error) {
+            // console.error('Error updating user name:', error);
+            res.status(500).json({ error: 'Failed to update user name' });
+        }
+    });
+    // DEBUG USER STATUS (for testing purposes)
+    app.get("/api/test/user-status/:email", requireAdmin, async (req, res) => {
+        try {
+            const { email } = req.params;
+            // logger.log(' Checking user status for:', email);
+            const user = await pgFindUserByEmail(email);
+            if (user) user.favoriteStations = await pgFavoriteIds(user._id);
+            if (!user) {
+                // logger.log(' User not found:', email);
+                return void res.json({ found: false, message: 'User not found' });
+            }
+            // logger.log(' User found:', { email: user.email, isPublicProfile: user.isPublicProfile, favoriteStationsCount: user.favoriteStations?.length || 0, name: user.name });
+            res.json({
+                found: true,
+                user: {
+                    _id: user._id,
+                    email: user.email,
+                    name: user.name,
+                    isPublicProfile: user.isPublicProfile,
+                    favoriteStations: user.favoriteStations,
+                    favoriteStationsCount: user.favoriteStations?.length || 0
+                }
+            });
+        }
+        catch (error) {
+            // console.error('Error checking user status:', error);
+            res.status(500).json({ error: 'Failed to check user status' });
+        }
+    });
+    // GET USER PROFILE BY ID OR SLUG
+    app.get("/api/user-profile/:idOrSlug", async (req, res) => {
+        try {
+            const { idOrSlug } = req.params;
+            {
+                const user = await pgFindUserByIdOrSlug(String(idOrSlug));
+                if (!user)
+                    return void res.status(404).json({ error: 'User not found' });
+                const [followCounts, favoriteCount] = await Promise.all([
+                    pgUserFollowCounts(String(user._id)), pgUserFavoriteCount(String(user._id)),
+                ]);
+                return void res.json({
+                    _id: user._id, email: user.email, fullName: user.fullName, name: user.name,
+                    isPublicProfile: user.isPublicProfile, favoriteStations: user.favoriteStations || [],
+                    favoriteStationsCount: favoriteCount,
+                    recentlyPlayedStations: user.recentlyPlayedStations || [], createdAt: user.createdAt,
+                    playAtLogin: user.playAtLogin, theme: user.theme, language: user.language,
+                    autoplay: user.autoplay, volume: user.volume,
+                    followersCount: followCounts.followersCount, followingCount: followCounts.followingCount,
+                });
+            }
+        }
+        catch (error) {
+            // console.error('Error fetching user profile:', error);
+            res.status(500).json({ error: 'Failed to fetch user profile' });
+        }
+    });
+    // REMOVED: Conflicting route for favorites that only handled MongoDB IDs
+    // Using slug-capable route instead which is defined further below
+    // GET COMMUNITY FAVORITES - Most-favorited stations across all users (Public)
+    app.get("/api/community-favorites", async (req, res) => {
+        try {
+            const { country } = req.query;
+            const cacheKey = `community_favorites:${country || 'all'}:all:20`;
+            // Try cache first
+            const cached = await CacheManager.get(cacheKey);
+            if (cached) {
+                return void res.json(cached);
+            }
+            // If not cached, refresh and return
+            await refreshCommunityFavoritesCache(country as string | undefined);
+            const data = await CacheManager.get(cacheKey);
+            res.json(data || []);
+        }
+        catch (error) {
+            logger.log('Error fetching community favorites:', error);
+            res.status(500).json({ error: 'Failed to fetch community favorites' });
+        }
+    });
+    // GET CURRENT USER'S FAVORITE STATIONS (Authenticated)
+    app.get("/api/user/favorites", requireAuth, async (req, res) => {
+        try {
+            const currentUserId = (req.session as any)?.userId;
+            const sortQuery = (req.query.sort as string) || 'newest';
+            const page = parseInt(req.query.page as string) || 0;
+            const limit = Math.min(parseInt(req.query.limit as string) || 0, 100);
+            const fieldsParam = (req.query.fields as string) || '';
+            if (!currentUserId) {
+                return void res.status(401).json({ error: 'Authentication required' });
+            }
+            {
+                const result = await pgFavoriteStationsForUser(currentUserId, sortQuery, page, limit);
+                const stations = stripPlaceholders(result.stations);
+                if (page > 0 && limit > 0) {
+                    return void res.json({ stations, pagination: {
+                            page, limit, total: result.total, totalPages: Math.ceil(result.total / limit),
+                        } });
+                }
+                return void res.json(stations);
+            }
+        }
+        catch (error) {
+            res.status(500).json({ error: 'Failed to fetch favorites' });
+        }
+    });
+    // GET RECENTLY PLAYED STATIONS (returns [] silently for anonymous — no console-noise 401)
+    app.get("/api/recently-played", async (req, res) => {
+        try {
+            const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
+            if (!currentUserId)
+                return void res.json([]);
+            const cacheKey = `recently-played:${currentUserId}`;
+            const cached = await CacheManager.get(cacheKey);
+            if (cached)
+                return void res.json(cached);
+            {
+                const result = stripPlaceholders(await pgRecentlyPlayedStations(currentUserId));
+                await CacheManager.set(cacheKey, result, { ttl: 300 });
+                return void res.json(result);
+            }
+        }
+        catch (error) {
+            console.error('Error fetching recently played:', error);
+            res.status(500).json({ error: 'Failed to fetch recently played' });
+        }
+    });
+    app.post("/api/recently-played", async (req, res) => {
+        try {
+            const currentUserId = (req.session as any)?.user?.userId || (req.session as any)?.userId;
+            if (!currentUserId)
+                return void res.status(204).end();
+            const { stationId } = req.body;
+            if (!stationId) {
+                return void res.status(400).json({ error: 'Station ID is required' });
+            }
+            {
+                await ensurePostgresUser(currentUserId);
+                const updated = await pgAddRecentlyPlayed(currentUserId, String(stationId));
+                if (!updated)
+                    return void res.status(404).json({ error: 'Station or user not found' });
+                await CacheManager.clearByPattern(`recently-played:${currentUserId}`);
+                return void res.json({ success: true });
+            }
+        }
+        catch (error: any) {
+            handleQuotaError('recently-played', error);
+            if (isQuotaError(error)) {
+                return void res.status(503).json({ error: 'Database temporarily unavailable' });
+            }
+            res.status(500).json({ error: 'Failed to add to recently played' });
+        }
+    });
+    // ADD STATION TO CURRENT USER'S FAVORITES (Authenticated)
+    app.post("/api/user/favorites", requireAuth, async (req, res) => {
+        try {
+            const currentUserId = (req.session as any)?.userId;
+            const { stationId } = req.body;
+            if (!currentUserId) {
+                return void res.status(401).json({ error: 'Authentication required' });
+            }
+            if (!stationId) {
+                return void res.status(400).json({ error: 'Station ID is required' });
+            }
+            const station = await getStationByIdentifier(String(stationId));
+            if (!station) {
+                return void res.status(404).json({ error: 'Station not found' });
+            }
+            const result = await userEngagementService.addFavorite(currentUserId, String(stationId));
+            if (!result.success)
+                return void res.status(500).json({ error: result.message });
+            await createUserNotification({
+                userId: currentUserId,
+                type: 'favorite_station',
+                title: '🌟 Station Added to Favorites',
+                message: `You added "${station.name}" to your favorites`,
+                data: {
+                    stationId: station._id,
+                    stationName: station.name,
+                    stationCountry: station.country,
+                    stationGenre: station.genre
+                },
+                read: false,
+                createdAt: new Date()
+            });
+            await CacheManager.clearByPattern(`user-favorites:${currentUserId}`);
+            res.json(result);
+        }
+        catch (error: any) {
+            handleQuotaError('favorites', error);
+            if (isQuotaError(error)) {
+                return void res.status(503).json({ error: 'Database temporarily unavailable' });
+            }
+            res.status(500).json({ error: 'Failed to add station to favorites' });
+        }
+    });
+    // REMOVE STATION FROM CURRENT USER'S FAVORITES (Authenticated)
+    app.delete("/api/user/favorites/:stationId", requireAuth, async (req, res) => {
+        try {
+            const currentUserId = (req.session as any)?.userId;
+            const { stationId } = req.params;
+            if (!currentUserId) {
+                return void res.status(401).json({ error: 'Authentication required' });
+            }
+            // logger.log(`🗑️ Removing station ${stationId} from favorites for user ${currentUserId}`);
+            const result = await userEngagementService.removeFavorite(currentUserId, stationId);
+            if (!result.success)
+                return void res.status(500).json({ error: result.message });
+            // Get station info for notification
+            const station = await getStationByIdentifier(stationId);
+            // Create notification for the user about removing favorite
+            if (station) {
+                await createUserNotification({
+                    userId: currentUserId,
+                    type: 'system',
+                    title: '💔 Station Removed from Favorites',
+                    message: `You removed "${station.name}" from your favorites`,
+                    data: {
+                        stationId: stationId,
+                        stationName: station.name,
+                        stationCountry: station.country,
+                        stationGenre: station.genre
+                    },
+                    read: false,
+                    createdAt: new Date()
+                });
+            }
+            await CacheManager.clearByPattern(`user-favorites:${currentUserId}`);
+            res.json(result);
+        }
+        catch (error) {
+            res.status(500).json({ error: 'Failed to remove station from favorites' });
+        }
+    });
+    // CHECK IF STATION IS IN CURRENT USER'S FAVORITES (Authenticated)
+    app.get("/api/user/favorites/check/:stationId", requireAuth, async (req, res) => {
+        try {
+            const currentUserId = (req.session as any)?.userId;
+            const { stationId } = req.params;
+            if (!currentUserId) {
+                return void res.status(401).json({ error: 'Authentication required' });
+            }
+            const isFavorited = await pgIsFavorite(currentUserId, stationId);
+            res.json({ isFavorited });
+        }
+        catch (error) {
+            // console.error('Error checking favorite status:', error);
+            res.status(500).json({ error: 'Failed to check favorite status' });
+        }
+    });
+    // GET CURRENT USER'S NOTIFICATIONS (Authenticated)
+    app.get("/api/user/notifications", async (req, res) => {
+        try {
+            let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
+            if (!currentUserId) {
+                const authHeader = req.headers['authorization'];
+                const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+                if (bearerToken) {
+                    const tokenDoc = await findActiveAuthToken(bearerToken);
+                    if (tokenDoc)
+                        currentUserId = tokenDoc.userId;
+                }
+            }
+            const page = parseInt(req.query.page as string) || 1;
+            const limit = parseInt(req.query.limit as string) || 10;
+            const skip = (page - 1) * limit;
+            if (!currentUserId) {
+                return void res.status(401).json({ error: 'Authentication required' });
+            }
+            const cacheKey = `notifications:postgres:${currentUserId}:${page}:${limit}`;
+            const cached = await CacheManager.get(cacheKey);
+            if (cached)
+                return void res.json(cached);
+            {
+                const pgResult = await pgListNotifications(currentUserId, page, Math.min(limit, 100));
+                const result = { ...pgResult, pagination: {
+                        ...pgResult.pagination, pages: pgResult.pagination.totalPages,
+                    } };
+                await CacheManager.set(cacheKey, result, { ttl: 15 });
+                return void res.json(result);
+            }
+        }
+        catch (error) {
+            // console.error('Error fetching user notifications:', error);
+            res.status(500).json({ error: 'Failed to fetch notifications' });
+        }
+    });
+    // MARK NOTIFICATION AS READ (Authenticated)
+    app.patch("/api/user/notifications/:id/read", async (req, res) => {
+        try {
+            let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
+            if (!currentUserId) {
+                const authHeader = req.headers['authorization'];
+                const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+                if (bearerToken) {
+                    const tokenDoc = await findActiveAuthToken(bearerToken);
+                    if (tokenDoc)
+                        currentUserId = tokenDoc.userId;
+                }
+            }
+            const notificationId = req.params.id;
+            if (!currentUserId) {
+                return void res.status(401).json({ error: 'Authentication required' });
+            }
+            let notification: any;
+            {
+                notification = await pgMarkNotificationRead(currentUserId, notificationId);
+            }
+            if (!notification) {
+                return void res.status(404).json({ error: 'Notification not found' });
+            }
+            await CacheManager.clearByPattern(`notifications:*:${currentUserId}:`);
+            // logger.log(`📖 Marked notification ${notificationId} as read for user ${currentUserId}`);
+            res.json({ success: true, notification });
+        }
+        catch (error) {
+            // console.error('Error marking notification as read:', error);
+            res.status(500).json({ error: 'Failed to mark notification as read' });
+        }
+    });
+    // MARK ALL NOTIFICATIONS AS READ (Authenticated)
+    app.patch("/api/user/notifications/read-all", async (req, res) => {
+        try {
+            let currentUserId = (req.session as any)?.userId || (req.session as any)?.user?.userId;
+            if (!currentUserId) {
+                const authHeader = req.headers['authorization'];
+                const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+                if (bearerToken) {
+                    const tokenDoc = await findActiveAuthToken(bearerToken);
+                    if (tokenDoc)
+                        currentUserId = tokenDoc.userId;
+                }
+            }
+            if (!currentUserId) {
+                return void res.status(401).json({ error: 'Authentication required' });
+            }
+            let markedCount = 0;
+            markedCount = await pgMarkAllNotificationsRead(currentUserId);
+            await CacheManager.clearByPattern(`notifications:*:${currentUserId}:`);
+            // logger.log(`📖 Marked ${result.modifiedCount} notifications as read for user ${currentUserId}`);
+            res.json({ success: true, markedCount });
+        }
+        catch (error) {
+            // console.error('Error marking all notifications as read:', error);
+            res.status(500).json({ error: 'Failed to mark all notifications as read' });
+        }
+    });
+    // GET USER PROFILE BY ID (for public profiles)
+    app.get("/api/user-profile/:id", async (req, res) => {
+        try {
+            const { id } = req.params;
+            const user: any = await pgFindUserByIdOrSlug(String(id));
+            if (!user || !user.isPublicProfile) {
+                return void res.status(404).json({ error: 'User not found or profile is private' });
+            }
+            // Return user profile in expected format
+            const profile = {
+                _id: user._id,
+                name: user.fullName || user.name || user.email?.split('@')[0] || 'User',
+                fullName: user.fullName,
+                email: user.email,
+                profileImageUrl: user.profileImageUrl,
+                isPublicProfile: user.isPublicProfile,
+                createdAt: user.createdAt,
+                ...await pgUserFollowCounts(String(user._id))
+            };
+            res.json(profile);
+        }
+        catch (error) {
+            console.error('Error fetching user profile:', error);
+            res.status(500).json({ error: 'Failed to fetch user profile' });
+        }
+    });
+    // Admin endpoint to fix specific user with debug info
+    app.post("/api/admin/fix-user/:userId", requireAdmin, async (req, res) => {
+        try {
+            const { userId } = req.params;
+            const user: any = await pgFindUserByIdOrSlug(String(userId));
+            if (!user) {
+                return void res.status(404).json({ error: 'User not found' });
+            }
+            logger.log('🔧 Fixing user:', user.fullName, 'Email:', user.email);
+            logger.log('🔍 User object fields:', {
+                fullName: user.fullName,
+                username: user.username,
+                name: user.name,
+                email: user.email
+            });
+            const updateData: any = {};
+            // Set profile as public
+            updateData.isPublicProfile = true;
+            // Generate slug manually to fix the issue
+            const generateSlug = (text: string): string => {
+                return text
+                    .toLowerCase()
+                    .replace(/[^\w\s-]/g, '')
+                    .replace(/\s+/g, '') // Remove spaces completely for "sahinyogurtcu" format
+                    .replace(/-+/g, '-')
+                    .trim()
+                    .replace(/^-+|-+$/g, '');
+            };
+            let slugSource = user.fullName || user.username || user.name || user.email?.split('@')[0] || 'user';
+            updateData.slug = generateSlug(slugSource);
+            logger.log(`✅ Generated slug from "${slugSource}": ${updateData.slug}`);
+            logger.log('🔧 About to update user with data:', updateData);
+            let updatedUser: any;
+            updatedUser = await pgUpdateUser(String(user._id), updateData);
+            logger.log('✅ User updated successfully. Full user object:');
+            logger.log('  - _id:', updatedUser?._id);
+            logger.log('  - fullName:', updatedUser?.fullName);
+            logger.log('  - slug:', updatedUser?.slug);
+            logger.log('  - isPublicProfile:', updatedUser?.isPublicProfile);
+            // Sync favorites
+            await refreshCommunityFavoritesCache();
+            res.json({
+                success: true,
+                message: `Fixed user ${user.fullName || user.email}`,
+                newSlug: updateData.slug
+            });
+        }
+        catch (error) {
+            console.error('Error fixing user:', error);
+            res.status(500).json({ error: 'Failed to fix user' });
+        }
+    });
+    // Admin endpoint to fix user profiles (make public + generate slugs)
+    app.post("/api/admin/fix-user-profiles", requireAdmin, async (req, res) => {
+        try {
+            // Get all users without public profiles or with ID-based slugs
+            const users: any[] = await pgUsersNeedingProfileFix();
+            let fixedCount = 0;
+            for (const user of users) {
+                const updateData: any = {};
+                // Set profile as public
+                if (!user.isPublicProfile) {
+                    updateData.isPublicProfile = true;
+                }
+                // Generate slug if missing or if it's a MongoDB ID
+                if (!user.slug || /^[0-9a-fA-F]{24}$/.test(user.slug)) {
+                    updateData.slug = await generateUserSlug(user, user._id);
+                }
+                if (Object.keys(updateData).length > 0) {
+                    await pgUpdateUser(String(user._id), updateData);
+                    fixedCount++;
+                }
+            }
+            // Also sync favorites to fix the favorites display issue
+            await refreshCommunityFavoritesCache();
+            res.json({
+                success: true,
+                message: `Fixed ${fixedCount} user profiles and synced favorites`,
+                totalUsers: users.length
+            });
+        }
+        catch (error) {
+            console.error('Error fixing user profiles:', error);
+            res.status(500).json({ error: 'Failed to fix user profiles' });
+        }
+    });
+    // GET USER'S FAVORITE STATIONS BY ID OR SLUG (for public profiles)
+    app.get("/api/users/:idOrSlug/favorites", async (req, res) => {
+        try {
+            const { idOrSlug } = req.params;
+            const page = parseInt(req.query.page as string) || 0;
+            const limit = Math.min(parseInt(req.query.limit as string) || 0, 100);
+            const fieldsParam = (req.query.fields as string) || '';
+            const user = await pgFindUserByIdOrSlug(idOrSlug);
+            const viewerId = await authenticatedUserId(req);
+            if (!user || (!user.isPublicProfile && viewerId !== user._id)) {
+                return void res.status(404).json({error:'User not found or profile is private'});
+            }
+            const userId = String(user._id);
+            const usePagination = page > 0 && limit > 0;
+            const cacheKey = `user-favorites:${userId}:p${page}:l${limit}:f${fieldsParam}`;
+            const cached = await CacheManager.get(cacheKey);
+            if (cached) {
+                return void res.json(cached);
+            }
+            const defaultMobileFields: Record<string, string> = {
+                _id: '$station._id',
+                name: '$station.name',
+                favicon: '$station.favicon',
+                country: '$station.country',
+                slug: '$station.slug',
+                url: '$station.url',
+                genre: '$station.genre',
+                tags: '$station.tags',
+                votes: '$station.votes',
+                codec: '$station.codec',
+                bitrate: '$station.bitrate',
+                language: '$station.language',
+                iso_3166_1: '$station.iso_3166_1',
+                urlResolved: '$station.urlResolved',
+                lastcheckok: '$station.lastcheckok',
+                clickCount: '$station.clickCount',
+                favoritedAt: '$createdAt'
+            };
+            let projectStage: Record<string, any>;
+            if (fieldsParam) {
+                const requested = fieldsParam.split(',').map(f => f.trim());
+                projectStage = { _id: '$station._id', favoritedAt: '$createdAt' };
+                for (const field of requested) {
+                    if (defaultMobileFields[field]) {
+                        projectStage[field] = defaultMobileFields[field];
+                    }
+                }
+            }
+            else {
+                projectStage = defaultMobileFields;
+            }
+            const favoritePage = await pgFavoriteStationsForUser(userId, 'newest', page, limit);
+            const stations = favoritePage.stations.map(station => Object.fromEntries(
+                Object.keys(projectStage).filter(field => station[field] !== undefined).map(field => [field,station[field]])
+            ));
+            const totalCount = favoritePage.total;
+            let result: any;
+            if (usePagination) {
+                result = {
+                    stations,
+                    pagination: {
+                        page,
+                        limit,
+                        total: totalCount,
+                        totalPages: Math.ceil(totalCount / limit)
+                    }
+                };
+            }
+            else {
+                result = stations;
+            }
+            CacheManager.set(cacheKey, result, { ttl: 120 });
+            res.json(result);
+        }
+        catch (error) {
+            console.error('Error fetching user favorites:', error);
+            res.status(500).json({ error: 'Failed to fetch user favorites' });
+        }
+    });
+    // GET USER'S RECENTLY PLAYED STATIONS
+    app.get("/api/users/:id/recent", async (req, res) => {
+        try {
+            const { id } = req.params;
+            {
+                const user = await pgFindUserByIdOrSlug(String(id));
+                if (!user || !user.isPublicProfile)
+                    return void res.status(404).json({ error: 'User not found or profile is private' });
+                return void res.json(await pgRecentlyPlayedStations(String(user._id)));
+            }
+        }
+        catch (error) {
+            // console.error('Error fetching user recent plays:', error);
+            res.status(500).json({ error: 'Failed to fetch recent plays' });
+        }
+    });
+    // PUBLIC PROFILES API - 24-HOUR CACHE for Community Favorites section
+    app.get("/api/public-profiles", async (req, res) => {
+        try {
+            // Check cache first - 24 hours TTL (public profiles rarely change)
+            const cacheKey = 'public_profiles:v4';
+            const cachedData = await CacheManager.get(cacheKey);
+            if (cachedData) {
+                return void res.json({ data: cachedData });
+            }
+            {
+                const profiles = await pgPopularProfiles(100);
+                await CacheManager.set(cacheKey, profiles, { ttl: 86400 });
+                return void res.json({ data: profiles });
+            }
+        }
+        catch (error) {
+            console.error('Error fetching public profiles:', error);
+            res.status(500).json({ error: 'Failed to fetch public profiles' });
+        }
+    });
+    // LANGUAGES API - with station counts
+    app.get("/api/languages", async (req, res) => {
+        try {
+            // Fetching languages with station counts
+            // Get languages with station counts using aggregation
+            const languageStats = (await pgStationFacetCounts('language')).slice(0,100).map(row => ({ _id: row._id, name: row._id, code: row._id.toLowerCase(), stationCount: row.count }));
+            // Found languages with station data
+            res.json(languageStats);
+        }
+        catch (error) {
+            // console.error('Error fetching languages:', error);
+            res.status(500).json({ error: 'Failed to fetch languages' });
+        }
+    });
+    // CODECS API - with station counts
+    app.get("/api/codecs", async (req, res) => {
+        try {
+            // Fetching codecs with station counts
+            // Get codecs with station counts using aggregation
+            const codecStats = (await pgStationFacetCounts('codec')).slice(0,50).map(row => ({ _id: row._id, name: row._id, stationCount: row.count }));
+            // logger.log(` Found ${codecStats.length} codecs with stations`);
+            res.json(codecStats);
+        }
+        catch (error) {
+            // console.error('Error fetching codecs:', error);
+            res.status(500).json({ error: 'Failed to fetch codecs' });
+        }
+    });
+    // RADIO BROWSER API ENDPOINTS - Direct integration with Radio-Browser.info API
+    // Import the Radio Browser service
+    let radioBrowserService: any;
+    import('../services/radio-browser').then(module => {
+        radioBrowserService = module.radioBrowserService;
+    });
+    // Get Radio Browser API stats
+    app.get("/api/radio-browser/stats", async (req, res) => {
+        try {
+            if (!radioBrowserService) {
+                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
+            }
+            // logger.log(' Fetching Radio Browser API stats...');
+            const stats = await radioBrowserService.getStats();
+            res.json(stats);
+        }
+        catch (error) {
+            // console.error('Error fetching Radio Browser stats:', error);
+            res.status(500).json({ error: 'Failed to fetch Radio Browser stats' });
+        }
+    });
+    // Get top clicked stations from Radio Browser API
+    app.get("/api/radio-browser/top-clicked", async (req, res) => {
+        try {
+            if (!radioBrowserService) {
+                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
+            }
+            const { limit = 100 } = req.query;
+            // logger.log('🔥 Fetching top ${limit} clicked stations from Radio Browser API...');
+            const stations = await radioBrowserService.getTopClickedStations(Number(limit));
+            res.json({ stations });
+        }
+        catch (error) {
+            // console.error('Error fetching top clicked stations:', error);
+            res.status(500).json({ error: 'Failed to fetch top clicked stations' });
+        }
+    });
+    // Get top voted stations from Radio Browser API
+    app.get("/api/radio-browser/top-voted", async (req, res) => {
+        try {
+            if (!radioBrowserService) {
+                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
+            }
+            const { limit = 100 } = req.query;
+            // logger.log(`⭐ Fetching top ${limit} voted stations from Radio Browser API...`);
+            const stations = await radioBrowserService.getTopVotedStations(Number(limit));
+            res.json({ stations });
+        }
+        catch (error) {
+            // console.error('Error fetching top voted stations:', error);
+            res.status(500).json({ error: 'Failed to fetch top voted stations' });
+        }
+    });
+    // Get recently changed stations from Radio Browser API
+    app.get("/api/radio-browser/recent", async (req, res) => {
+        try {
+            if (!radioBrowserService) {
+                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
+            }
+            const { limit = 100 } = req.query;
+            // logger.log('🕒 Fetching ${limit} recently changed stations from Radio Browser API...');
+            const stations = await radioBrowserService.getRecentlyChangedStations(Number(limit));
+            res.json({ stations });
+        }
+        catch (error) {
+            // console.error('Error fetching recently changed stations:', error);
+            res.status(500).json({ error: 'Failed to fetch recently changed stations' });
+        }
+    });
+    // Get broken stations from Radio Browser API
+    app.get("/api/radio-browser/broken", async (req, res) => {
+        try {
+            if (!radioBrowserService) {
+                return void res.status(503).json({ error: 'Radio Browser service not available yet' });
+            }
+            const { limit = 50 } = req.query;
+            // logger.log('💔 Fetching ${limit} broken stations from Radio Browser API...');
+            const stations = await radioBrowserService.getBrokenStations(Number(limit));
+            res.json({ stations });
+        }
+        catch (error) {
+            // console.error('Error fetching broken stations:', error);
+            res.status(500).json({ error: 'Failed to fetch broken stations' });
+        }
+    });
+    // SYNC MANAGEMENT API ENDPOINTS
+    // Get sync status
+    app.get("/api/sync/status", async (req, res) => {
+        try {
+            const status = await syncService.getStatus();
+            res.json(status);
+        }
+        catch (error) {
+            console.error('Error fetching sync status:', error);
+            res.status(500).json({ error: 'Failed to fetch sync status' });
+        }
+    });
+    // Auto-flagged junk report — short summary of how many records the
+    // ingest pipeline marked as junk during the most recent sync runs.
+    // Backs the admin dashboard tile for task #20.
+    app.get("/api/admin/sync/auto-flagged-report", requireAdmin, async (req, res) => {
+        try {
+            const recent = await pgSyncLogs(10);
+            const lastCompleted = recent.find((l: any) => l.status === 'completed');
+            const last = recent[0] || null;
+            res.json({
+                last: last
+                    ? {
+                        syncType: last.syncType,
+                        status: last.status,
+                        startedAt: last.startedAt,
+                        completedAt: last.completedAt,
+                        stationsAdded: last.stationsAdded || 0,
+                        stationsUpdated: last.stationsUpdated || 0,
+                        autoFlagged: last.stationsAutoFlagged || 0,
+                    }
+                    : null,
+                lastCompleted: lastCompleted
+                    ? {
+                        startedAt: lastCompleted.startedAt,
+                        completedAt: lastCompleted.completedAt,
+                        stationsAdded: lastCompleted.stationsAdded || 0,
+                        stationsUpdated: lastCompleted.stationsUpdated || 0,
+                        autoFlagged: lastCompleted.stationsAutoFlagged || 0,
+                    }
+                    : null,
+                recent: recent.map((l: any) => ({
+                    syncType: l.syncType,
+                    status: l.status,
+                    startedAt: l.startedAt,
+                    completedAt: l.completedAt,
+                    autoFlagged: l.stationsAutoFlagged || 0,
+                })),
+            });
+        }
+        catch (error) {
+            console.error('Error fetching auto-flagged report:', error);
+            res.status(500).json({ error: 'Failed to fetch auto-flagged report' });
+        }
+    });
+    // Get sync logs
+    app.get("/api/sync/logs", async (req, res) => {
+        try {
+            const { limit = 20 } = req.query;
+            const logs = await syncService.getLogs(Number(limit));
+            res.json(logs);
+        }
+        catch (error) {
+            console.error('Error fetching sync logs:', error);
+            res.status(500).json({ error: 'Failed to fetch sync logs' });
+        }
+    });
+    // Force start sync — admin-only (was a public lever to spawn a heavy
+    // long-running sync that pulls 40k+ stations into memory).
+    app.post("/api/sync/force", requireAdmin, async (req, res) => {
+        try {
+            logger.log('🚀 Force starting sync...');
+            // Start the sync asynchronously (don't wait for completion)
+            syncService.startSync()
+                .then(() => {
+                logger.log('✅ Force sync completed successfully');
+            })
+                .catch((error) => {
+                console.error('❌ Force sync failed:', error);
+            });
+            res.json({
+                success: true,
+                message: 'Sync started successfully - check status for progress'
+            });
+        }
+        catch (error) {
+            console.error('Error starting sync:', error);
+            res.status(500).json({ error: 'Failed to start sync' });
+        }
+    });
+    // Stop sync — admin-only.
+    app.post("/api/sync/stop", requireAdmin, async (req, res) => {
+        try {
+            logger.log('🛑 Stopping sync...');
+            await syncService.stopSync();
+            res.status(202).json({success:true, message:'Sync cancellation requested', status:'requested'});
+        }
+        catch (error) {
+            console.error('Error stopping sync:', error);
+            res.status(500).json({ error: 'Failed to stop sync' });
+        }
+    });
+    // Flush all station data
+    app.post("/api/admin/flush-stations", requireAdmin, async (req, res) => {
+        try {
+            logger.log('🗑️ Flushing all station data...');
+            const counts = await pgFlushStationData();
+            const stationResult = {deletedCount:counts.deletedStations};
+            const syncLogResult = {deletedCount:counts.deletedSyncLogs};
+            const blacklistResult = {deletedCount:counts.deletedBlacklisted};
+            await CacheManager.clearByPattern('user-favorites:');
+            await refreshCommunityFavoritesCache();
+            performanceCache.clearSeoHtml();
+            performanceCache.clearPageData();
+            logger.log('🎯 Station data flush complete! Database is now empty and ready for fresh sync.');
+            // Fire-and-forget audit email summarising the wiped collections. Opt-in
+            // via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+            const actorEmail = (req.user as {
+                email?: string;
+            } | undefined)?.email ?? undefined;
+            void import('../services/admin-audit-email')
+                .then(({ emailFlushStationsCsv }) => emailFlushStationsCsv({
+                counts: {
+                    deletedStations: stationResult.deletedCount ?? 0,
+                    deletedSyncLogs: syncLogResult.deletedCount ?? 0,
+                    deletedBlacklisted: blacklistResult.deletedCount ?? 0,
+                },
+                actorEmail,
+            }))
+                .catch((err) => {
+                console.error('Failed to load admin-audit-email service:', err);
+            });
+            res.json({
+                success: true,
+                message: 'All station data flushed successfully',
+                deletedStations: stationResult.deletedCount,
+                deletedSyncLogs: syncLogResult.deletedCount,
+                deletedBlacklisted: blacklistResult.deletedCount
+            });
+        }
+        catch (error) {
+            console.error('❌ Error flushing station data:', error);
+            res.status((error as any)?.statusCode || 500).json({ error: (error as any)?.statusCode === 409 ? (error as Error).message : 'Failed to flush station data' });
+        }
+    });
+    // ANALYTICS API ENDPOINTS
+    // Remove playlist files (M3U, PLS, ASX) endpoint
+    app.post("/api/admin/remove-playlist-streams", requireAdmin, async (req, res) => {
+        try {
+            logger.log('🗑️ Starting removal of playlist files (M3U, PLS, ASX)...');
+            const playlistFilter = { url: { $regex: /\.(m3u|pls|asx)(\?|$)/i } };
+            // Per-extension counts so the audit email can break down what was wiped.
+            const [playlistCount, m3uCount, plsCount, asxCount] = await Promise.all([
+                pgCatalog().count(playlistFilter),
+                pgCatalog().count({ url: { $regex: /\.m3u(\?|$)/i } }),
+                pgCatalog().count({ url: { $regex: /\.pls(\?|$)/i } }),
+                pgCatalog().count({ url: { $regex: /\.asx(\?|$)/i } }),
+            ]);
+            logger.log(`Found ${playlistCount} playlist files to remove`);
+            // Capture a sample of the rows about to be deleted so the audit email
+            // can list specific stations (capped to keep the attachment small).
+            const sampleDocs = await pgCatalog().find(playlistFilter, { limit: 500, fields: Object.keys({ name: 1, url: 1, country: 1, countrycode: 1 }) });
+            // Remove all playlist file streams
+            const removalResult = await pgCatalog().remove(playlistFilter);
+            logger.log(`✅ Removed ${removalResult.deletedCount} playlist streams`);
+            // Get updated counts
+            const remainingTotal = await pgCatalog().count({});
+            const directMP3 = await pgCatalog().count({
+                url: { $regex: /\.mp3(\?|$)/i }
+            });
+            const directAAC = await pgCatalog().count({
+                url: { $regex: /\.aac(\?|$)/i }
+            });
+            const icecastCount = await pgCatalog().count({
+                url: { $regex: /(:8000|:8080|\/stream|\/radio|shoutcast|icecast)/i }
+            });
+            const results = {
+                removed_count: removalResult.deletedCount,
+                remaining_stations: remainingTotal,
+                direct_playable: {
+                    mp3_streams: directMP3,
+                    aac_streams: directAAC,
+                    icecast_shoutcast: icecastCount,
+                    total_direct: directMP3 + directAAC + icecastCount
+                },
+                message: `Successfully removed ${removalResult.deletedCount} playlist streams. ${remainingTotal} direct-playable stations remain.`
+            };
+            // Fire-and-forget audit email summarising the wiped playlist streams.
+            // Opt-in via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+            const removedCount = removalResult.deletedCount ?? 0;
+            const playlistActor = (req.user as {
+                email?: string;
+            } | undefined)?.email ?? undefined;
+            type StreamSampleDoc = {
+                name?: string;
+                url?: string;
+                country?: string;
+                countrycode?: string;
+            };
+            const playlistSamples = (sampleDocs as StreamSampleDoc[]).map((d) => ({
+                name: d.name ?? '',
+                url: d.url ?? '',
+                country: d.country ?? '',
+                countryCode: d.countrycode ?? '',
+            }));
+            void import('../services/admin-audit-email')
+                .then(({ emailRemovedStreamsCsv }) => emailRemovedStreamsCsv({
+                filenamePrefix: 'playlist-streams-removed',
+                subjectSummary: `Removed ${removedCount} playlist stream${removedCount === 1 ? '' : 's'} (M3U/PLS/ASX)`,
+                title: 'Playlist streams removed',
+                summary: `${removedCount} playlist stream${removedCount === 1 ? '' : 's'} (M3U/PLS/ASX) ` +
+                    `${removedCount === 1 ? 'was' : 'were'} removed. ${remainingTotal} stations remain.`,
+                categories: [
+                    { label: 'M3U', count: m3uCount },
+                    { label: 'PLS', count: plsCount },
+                    { label: 'ASX', count: asxCount },
+                    { label: 'Total removed', count: removedCount },
+                    { label: 'Remaining stations', count: remainingTotal },
+                ],
+                samples: playlistSamples,
+                totalRemoved: removedCount,
+                actorEmail: playlistActor,
+            }))
+                .catch((err) => {
+                console.error('Failed to load admin-audit-email service:', err);
+            });
+            res.json(results);
+        }
+        catch (error) {
+            console.error('Playlist removal error:', error);
+            res.status(500).json({ error: 'Failed to remove playlist streams' });
+        }
+    });
+    // Remove HLS/M3U8 streams endpoint (completed)
+    app.post("/api/admin/remove-hls-streams", requireAdmin, async (req, res) => {
+        try {
+            logger.log('🗑️ Starting removal of HLS/M3U8 streams...');
+            const hlsFilter = { url: { $regex: /hls|m3u8/i } };
+            // Count streams to be removed (broken down for the audit email).
+            const [m3u8Count, hlsRelatedCount] = await Promise.all([
+                pgCatalog().count({ url: { $regex: /\.m3u8/i } }),
+                pgCatalog().count(hlsFilter),
+            ]);
+            logger.log(`Found ${m3u8Count} .m3u8 streams and ${hlsRelatedCount} HLS-related streams to remove`);
+            // Capture sample of stations to be deleted for the audit attachment.
+            const hlsSampleDocs = await pgCatalog().find(hlsFilter, { limit: 500, fields: Object.keys({ name: 1, url: 1, country: 1, countrycode: 1 }) });
+            // Remove all streams with HLS/M3U8 in URL
+            const removalResult = await pgCatalog().remove(hlsFilter);
+            logger.log(`✅ Removed ${removalResult.deletedCount} HLS/M3U8 streams`);
+            // Get updated counts
+            const remainingTotal = await pgCatalog().count({});
+            const directMP3 = await pgCatalog().count({
+                url: { $regex: /\.mp3(\?|$)/i }
+            });
+            const icecastCount = await pgCatalog().count({
+                url: { $regex: /(:8000|:8080|\/stream|\/radio|shoutcast|icecast)/i }
+            });
+            const results = {
+                removed_count: removalResult.deletedCount,
+                remaining_stations: remainingTotal,
+                direct_playable: {
+                    mp3_streams: directMP3,
+                    icecast_shoutcast: icecastCount,
+                    total_direct: directMP3 + icecastCount
+                },
+                message: `Successfully removed ${removalResult.deletedCount} HLS/M3U8 streams. ${remainingTotal} direct-playable stations remain.`
+            };
+            // Fire-and-forget audit email summarising the wiped HLS streams. Opt-in
+            // via ADMIN_AUDIT_EMAIL_RECIPIENTS env var; safe no-op when unset.
+            const hlsRemovedCount = removalResult.deletedCount ?? 0;
+            const hlsActor = (req.user as {
+                email?: string;
+            } | undefined)?.email ?? undefined;
+            type HlsSampleDoc = {
+                name?: string;
+                url?: string;
+                country?: string;
+                countrycode?: string;
+            };
+            const hlsSamples = (hlsSampleDocs as HlsSampleDoc[]).map((d) => ({
+                name: d.name ?? '',
+                url: d.url ?? '',
+                country: d.country ?? '',
+                countryCode: d.countrycode ?? '',
+            }));
+            const hlsOnlyCount = Math.max(hlsRelatedCount - m3u8Count, 0);
+            void import('../services/admin-audit-email')
+                .then(({ emailRemovedStreamsCsv }) => emailRemovedStreamsCsv({
+                filenamePrefix: 'hls-streams-removed',
+                subjectSummary: `Removed ${hlsRemovedCount} HLS/M3U8 stream${hlsRemovedCount === 1 ? '' : 's'}`,
+                title: 'HLS/M3U8 streams removed',
+                summary: `${hlsRemovedCount} HLS/M3U8 stream${hlsRemovedCount === 1 ? '' : 's'} ` +
+                    `${hlsRemovedCount === 1 ? 'was' : 'were'} removed. ${remainingTotal} stations remain.`,
+                categories: [
+                    { label: '.m3u8', count: m3u8Count },
+                    { label: 'Other HLS-related', count: hlsOnlyCount },
+                    { label: 'Total removed', count: hlsRemovedCount },
+                    { label: 'Remaining stations', count: remainingTotal },
+                ],
+                samples: hlsSamples,
+                totalRemoved: hlsRemovedCount,
+                actorEmail: hlsActor,
+            }))
+                .catch((err) => {
+                console.error('Failed to load admin-audit-email service:', err);
+            });
+            res.json(results);
+        }
+        catch (error) {
+            console.error('HLS removal error:', error);
+            res.status(500).json({ error: 'Failed to remove HLS streams' });
+        }
+    });
+    // HTTPS/HTTP URL analysis endpoint
+    app.get("/api/stream-https-analysis", async (req, res) => {
+        try {
+            logger.log('🔍 Analyzing HTTPS vs HTTP URLs across all stations...');
+            const totalStations = await pgCatalog().count({});
+            // Count HTTPS URLs
+            const httpsCount = await pgCatalog().count({
+                url: { $regex: /^https:\/\//i }
+            });
+            // Count HTTP URLs
+            const httpCount = await pgCatalog().count({
+                url: { $regex: /^http:\/\//i }
+            });
+            // Count resolved HTTPS URLs (urlResolved field)
+            const httpsResolvedCount = await pgCatalog().count({
+                urlResolved: { $regex: /^https:\/\//i }
+            });
+            // Count resolved HTTP URLs
+            const httpResolvedCount = await pgCatalog().count({
+                urlResolved: { $regex: /^http:\/\//i }
+            });
+            // Count stations with urlResolved field populated
+            const stationsWithResolvedUrl = await pgCatalog().count({
+                urlResolved: { $exists: true, $nin: [null, ""] }
+            });
+            // Get some HTTPS URL samples
+            const httpsSamples = await pgCatalog().find({
+                url: { $regex: /^https:\/\//i }
+            }, { limit: 5, fields: ["name", "url", "country"] });
+            // Get some HTTP URL samples
+            const httpSamples = await pgCatalog().find({
+                url: { $regex: /^http:\/\//i }
+            }, { limit: 5, fields: ["name", "url", "country"] });
+            // Get some resolved HTTPS URL samples
+            const httpsResolvedSamples = await pgCatalog().find({
+                urlResolved: { $regex: /^https:\/\//i }
+            }, { limit: 5, fields: ["name", "url", "urlResolved", "country"] });
+            const results = {
+                total_stations: totalStations,
+                original_urls: {
+                    https_urls: httpsCount,
+                    http_urls: httpCount,
+                    https_percentage: ((httpsCount / totalStations) * 100).toFixed(2),
+                    http_percentage: ((httpCount / totalStations) * 100).toFixed(2)
+                },
+                resolved_urls: {
+                    stations_with_resolved: stationsWithResolvedUrl,
+                    https_resolved: httpsResolvedCount,
+                    http_resolved: httpResolvedCount,
+                    https_resolved_percentage: stationsWithResolvedUrl > 0 ? ((httpsResolvedCount / stationsWithResolvedUrl) * 100).toFixed(2) : "0",
+                    http_resolved_percentage: stationsWithResolvedUrl > 0 ? ((httpResolvedCount / stationsWithResolvedUrl) * 100).toFixed(2) : "0"
+                },
+                samples: {
+                    https_samples: httpsSamples,
+                    http_samples: httpSamples,
+                    https_resolved_samples: httpsResolvedSamples
+                }
+            };
+            logger.log('🔒 HTTPS/HTTP Analysis Results:', {
+                total: results.total_stations,
+                https: results.original_urls.https_urls,
+                http: results.original_urls.http_urls,
+                resolved: results.resolved_urls.stations_with_resolved,
+                https_resolved: results.resolved_urls.https_resolved
+            });
+            res.json(results);
+        }
+        catch (error) {
+            console.error('HTTPS analysis error:', error);
+            res.status(500).json({ error: 'Failed to analyze HTTPS URLs' });
+        }
+    });
+    // Stream type analysis endpoint
+    app.get("/api/stream-analysis", async (req, res) => {
+        try {
+            logger.log('🔍 Analyzing stream types across all stations...');
+            const totalStations = await pgCatalog().count({});
+            // Count .m3u8 URLs (HLS streams)
+            const m3u8Count = await pgCatalog().count({
+                url: { $regex: /\.m3u8/i }
+            });
+            // Count HLS-related URLs (contains 'hls' or 'm3u8')
+            const hlsRelatedCount = await pgCatalog().count({
+                url: { $regex: /hls|m3u8/i }
+            });
+            // Count playlist URLs (.m3u, .pls, .asx)
+            const playlistCount = await pgCatalog().count({
+                url: { $regex: /\.(m3u|pls|asx)$/i }
+            });
+            // Count direct MP3 streams
+            const mp3Count = await pgCatalog().count({
+                url: { $regex: /\.mp3(\?|$)/i }
+            });
+            // Count direct AAC streams
+            const aacCount = await pgCatalog().count({
+                url: { $regex: /\.aac(\?|$)/i }
+            });
+            // Count Icecast/Shoutcast streams (common radio streaming)
+            const icecastCount = await pgCatalog().count({
+                url: { $regex: /(:8000|:8080|\/stream|\/radio|shoutcast|icecast)/i }
+            });
+            // Get sample .m3u8 URLs
+            const m3u8Samples = await pgCatalog().find({
+                url: { $regex: /\.m3u8/i }
+            }, { limit: 10, fields: ["name", "url", "country"] });
+            // Get sample HLS URLs
+            const hlsSamples = await pgCatalog().find({
+                url: { $regex: /hls/i }
+            }, { limit: 10, fields: ["name", "url", "country"] });
+            const results = {
+                total_stations: totalStations,
+                stream_types: {
+                    m3u8_urls: m3u8Count,
+                    hls_related: hlsRelatedCount,
+                    playlist_files: playlistCount,
+                    direct_mp3: mp3Count,
+                    direct_aac: aacCount,
+                    icecast_shoutcast: icecastCount
+                },
+                percentages: {
+                    m3u8_percentage: ((m3u8Count / totalStations) * 100).toFixed(2),
+                    hls_percentage: ((hlsRelatedCount / totalStations) * 100).toFixed(2),
+                    mp3_percentage: ((mp3Count / totalStations) * 100).toFixed(2),
+                    icecast_percentage: ((icecastCount / totalStations) * 100).toFixed(2)
+                },
+                samples: {
+                    m3u8_stations: m3u8Samples,
+                    hls_stations: hlsSamples
+                }
+            };
+            logger.log('📊 Stream Analysis Results:', {
+                total: results.total_stations,
+                m3u8: results.stream_types.m3u8_urls,
+                hls: results.stream_types.hls_related,
+                mp3: results.stream_types.direct_mp3,
+                icecast: results.stream_types.icecast_shoutcast
+            });
+            res.json(results);
+        }
+        catch (error) {
+            console.error('Stream analysis error:', error);
+            res.status(500).json({ error: 'Failed to analyze streams' });
+        }
+    });
+    // Raw analytics include user/session/network metadata and are admin-only.
+    app.get("/api/analytics", requireAdmin, async (req, res) => {
+        try {
+            const {startDate,endDate,event} = req.query;
+            const from=typeof startDate==='string'?new Date(startDate):undefined;
+            const to=typeof endDate==='string'?new Date(endDate):undefined;
+            if ((from&&isNaN(from.getTime()))||(to&&isNaN(to.getTime()))) return void res.status(400).json({error:'Invalid date filter'});
+            res.json(await pgAnalyticsEvents({from,to,event:typeof event==='string'?event:undefined,limit:Number(req.query.limit)||100}));
+        } catch(error) {
+            logger.error('Error fetching analytics:',error);
+            res.status(500).json({error:'Failed to fetch analytics'});
+        }
+    });
+    // Get analytics summary/stats
+    app.get("/api/analytics/summary", async (req, res) => {
+        try {
+            // logger.log(' Fetching analytics summary...');
+            const { period = '7d' } = req.query;
+            // Calculate date range based on period
+            let startDate = new Date();
+            switch (period) {
+                case '24h':
+                    startDate.setHours(startDate.getHours() - 24);
+                    break;
+                case '7d':
+                    startDate.setDate(startDate.getDate() - 7);
+                    break;
+                case '30d':
+                    startDate.setDate(startDate.getDate() - 30);
+                    break;
+                default:
+                    startDate.setDate(startDate.getDate() - 7);
+            }
+            // Get basic station stats from existing data
+            const totalStations = await pgCatalog().count();
+            const activeStations = await pgCatalog().count({ lastCheckOk: true });
+            const brokenStations = await pgCatalog().count({ lastCheckOk: false });
+            // Get top countries by station count
+            const topCountries = (await pgStationFacetCounts('country')).slice(0,10);
+            // Get top genres by station count
+            const topGenres = (await pgListAdminGenres('',false,'stationCount',10)).rows;
+            // Get top codecs
+            const topCodecs = (await pgStationFacetCounts('codec')).slice(0,10);
+            const summary = {
+                totalStations,
+                activeStations,
+                brokenStations,
+                healthPercentage: totalStations > 0 ? Math.round((activeStations / totalStations) * 100) : 0,
+                period,
+                topCountries: topCountries.map(c => ({ name: c._id, count: c.count })),
+                topGenres: topGenres.map(g => ({ name: g.name, count: g.stationCount })),
+                topCodecs: topCodecs.map(c => ({ name: c._id, count: c.count })),
+                lastUpdated: new Date()
+            };
+            // logger.log(` Analytics summary - ${totalStations} total stations, ${activeStations} active`);
+            res.json(summary);
+        }
+        catch (error) {
+            // console.error('Error fetching analytics summary:', error);
+            res.status(500).json({ error: 'Failed to fetch analytics summary' });
+        }
+    });
+    // =========================================================================
+    // SEO TRANSLATIONS HUB (Task #519 — 2026-05-18)
+    // Five endpoints that back the /admin/seo-translations dashboard page.
+    // =========================================================================
+    const SEO_KEYS_ALL = [
+        // station-level (7)
+        'default_station_about', 'from', 'genres', 'station_additional_info',
+        'live_radio', 'online_radio', 'radio_streaming',
+        // homepage-level (8)
+        'hero_worlds_best_radio', 'hero_over_100_countries', 'hero_listen_everywhere',
+        'nav_genres', 'nav_regions', 'nav_stations',
+        'popular_genres_title', 'popular_countries_title',
+    ] as const;
+    let inFlightApplyJob: Promise<unknown> | null = null;
+    let inFlightRegenerateJob: Promise<unknown> | null = null;
+    // GET /api/admin/seo-translations/coverage
+    // Returns per-language coverage for the 15 required SEO keys + qualified-language state.
+    app.get('/api/admin/seo-translations/coverage', deps.requireAdmin, async (_req: any, res: any) => {
+        try {
+            const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+            const { getQualifiedLanguagesState } = await import('../seo/qualified-languages');
+            const [qualifiedState, keyDocs] = await Promise.all([
+                getQualifiedLanguagesState(),
+                (pgLocalization().getKeys(SEO_KEYS_ALL)),
+            ]);
+            const keyIdByName: Record<string, any> = {};
+            (keyDocs as any[]).forEach((k) => { keyIdByName[k.key] = k._id; });
+            const presentKeyIds = Object.values(keyIdByName);
+            const allLangCodes = (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).map((l: any) => l.code as string);
+            // One aggregation — fetch all translations for the 15 SEO keys across all languages.
+            const translationRows: {
+                language: string;
+                key: string;
+            }[] = ((await pgLocalization().listTranslations(undefined, SEO_KEYS_ALL, true)).filter((row) => allLangCodes.includes(row.language)).map((row) => ({ language: row.language, key: row.keyId.key })));
+            const byLang: Record<string, Set<string>> = {};
+            translationRows.forEach(({ language, key }) => {
+                if (!byLang[language])
+                    byLang[language] = new Set();
+                byLang[language].add(key);
+            });
+            const qualifiedSet = new Set(qualifiedState.languages);
+            const allKeys = Array.from(SEO_KEYS_ALL);
+            const languages = (SEO_LANGUAGES as any[])
+                .filter((l: any) => l.enabled)
+                .map((l: any) => {
+                const completedKeys = allKeys.filter((k) => byLang[l.code]?.has(k));
+                const missingKeys = allKeys.filter((k) => !byLang[l.code]?.has(k));
+                return {
+                    code: l.code,
+                    name: l.name,
+                    qualified: qualifiedSet.has(l.code),
+                    completedKeys,
+                    missingKeys,
+                    completionPct: Math.round((completedKeys.length / allKeys.length) * 100),
+                };
+            })
+                .sort((a: any, b: any) => b.completionPct - a.completionPct);
+            res.json({ languages, totalQualified: qualifiedSet.size, qualifiedLangsState: qualifiedState });
+        }
+        catch (err: any) {
+            logger.error('seo-translations/coverage failed:', err?.message);
+            res.status(500).json({ error: 'Failed to fetch SEO translation coverage' });
+        }
+    });
+    // POST /api/admin/seo-translations/apply
+    // Upserts the pre-generated Phase C translations into PostgreSQL.
+    // Translations are embedded directly so no filesystem access is needed
+    // at runtime inside the Docker container.
+    app.post('/api/admin/seo-translations/apply', deps.requireAdmin, async (_req: any, res: any) => {
+        if (inFlightApplyJob) {
+            return void res.status(409).json({ error: 'Apply job already running', code: 'apply_in_progress' });
+        }
+        const startMs = Date.now();
+        let resolve!: () => void;
+        inFlightApplyJob = new Promise<void>((r) => { resolve = r; });
+        try {
+            const TRANSLATIONS: Record<string, Record<string, string>> = getPhaseCTranslations();
+            const ALL_KEYS = Object.keys(TRANSLATIONS.en ?? {});
+            const LANG_CODES = Object.keys(TRANSLATIONS);
+            const EN = TRANSLATIONS.en ?? {};
+            // Upsert TranslationKey documents for each key.
+            const keyIdMap: Record<string, any> = {};
+            for (const key of ALL_KEYS) {
+                const doc = (await pgLocalization().upsertKey({ key, defaultValue: EN[key] ?? '', category: 'seo', isPlural: false }, true));
+                keyIdMap[key] = (doc as any)?._id;
+            }
+            const byLanguage: Record<string, {
+                inserted: number;
+                skipped: number;
+            }> = {};
+            let totalInserted = 0;
+            let totalSkipped = 0;
+            for (const lang of LANG_CODES) {
+                let inserted = 0;
+                let skipped = 0;
+                for (const key of ALL_KEYS) {
+                    const value = (TRANSLATIONS[lang]?.[key] ?? '').trim();
+                    if (!value || !keyIdMap[key]) {
+                        skipped++;
+                        continue;
+                    }
+                    const existing = (await pgLocalization().findTranslation(String(keyIdMap[key]), lang));
+                    if (existing && (existing as any).value?.trim()) {
+                        skipped++;
+                        continue;
+                    }
+                    {
+                        await pgLocalization().upsertTranslation({ keyId: String(keyIdMap[key]), language: lang, value, isCompleted: true });
+                        inserted++;
+                        continue;
+                    }
+                }
+                byLanguage[lang] = { inserted, skipped };
+                totalInserted += inserted;
+                totalSkipped += skipped;
+            }
+            res.json({
+                message: `Applied Phase C translations: ${totalInserted} inserted, ${totalSkipped} skipped`,
+                inserted: totalInserted,
+                skipped: totalSkipped,
+                byLanguage,
+                durationMs: Date.now() - startMs,
+            });
+        }
+        catch (err: any) {
+            logger.error('seo-translations/apply failed:', err?.message);
+            res.status(500).json({ error: 'Apply failed: ' + (err?.message ?? 'unknown') });
+        }
+        finally {
+            resolve();
+            inFlightApplyJob = null;
+        }
+    });
+    // POST /api/admin/seo-translations/regenerate
+    // Calls OpenAI gpt-4o-mini to fill any missing SEO keys.
+    app.post('/api/admin/seo-translations/regenerate', deps.requireAdmin, async (req: any, res: any) => {
+        if (inFlightRegenerateJob) {
+            return void res.status(409).json({ error: 'Regenerate job already running', code: 'regenerate_in_progress' });
+        }
+        if (!process.env.OPENAI_API_KEY) {
+            return void res.status(503).json({ error: 'OPENAI_API_KEY env var not set' });
+        }
+        const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+        const force: boolean = req.body?.force === true;
+        const requestedLangs: string[] | undefined = Array.isArray(req.body?.languages) ? req.body.languages : undefined;
+        const targetLangs = requestedLangs
+            ? (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled && requestedLangs.includes(l.code)).map((l: any) => l.code as string)
+            : (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).map((l: any) => l.code as string);
+        const startMs = Date.now();
+        let resolve!: () => void;
+        inFlightRegenerateJob = new Promise<void>((r) => { resolve = r; });
+        try {
+            const OpenAI = (await import('openai')).default;
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const keyDocs = (await pgLocalization().getKeys(SEO_KEYS_ALL));
+            const keyIdByName: Record<string, any> = {};
+            (keyDocs as any[]).forEach((k: any) => { keyIdByName[k.key] = k._id; });
+            const enRows = (await pgLocalization().listTranslations('en', SEO_KEYS_ALL, true));
+            const enDefaults: Record<string, string> = {};
+            (enRows as any[]).forEach((t: any) => {
+                if (t.keyId?.key)
+                    enDefaults[t.keyId.key] = t.value;
+            });
+            let totalGenerated = 0;
+            let totalSkipped = 0;
+            let totalFailed = 0;
+            const byLanguage: Record<string, {
+                generated: number;
+                skipped: number;
+                failed: number;
+            }> = {};
+            const BATCH = 5;
+            for (let i = 0; i < targetLangs.length; i += BATCH) {
+                const batch = targetLangs.slice(i, i + BATCH);
+                await Promise.all(batch.map(async (lang) => {
+                    const existing = (await pgLocalization().listTranslations(lang, SEO_KEYS_ALL, true));
+                    const existingKeys = new Set((existing as any[]).filter((t: any) => t.value?.trim()).map((t: any) => t.keyId?.key).filter(Boolean));
+                    const missingKeys = force
+                        ? (SEO_KEYS_ALL as readonly string[]).filter(() => true)
+                        : (SEO_KEYS_ALL as readonly string[]).filter((k) => !existingKeys.has(k));
+                    if (missingKeys.length === 0) {
+                        byLanguage[lang] = { generated: 0, skipped: SEO_KEYS_ALL.length, failed: 0 };
+                        totalSkipped += SEO_KEYS_ALL.length;
+                        return;
+                    }
+                    const langName = (SEO_LANGUAGES as any[]).find((l: any) => l.code === lang)?.name ?? lang;
+                    try {
+                        const prompt = `Translate the following JSON object values into ${langName} (${lang}). Keep keys exactly as-is. Do not translate brand name "Mega Radio" or placeholder "{STATION_NAME}". Return only valid JSON.\n\n${JSON.stringify(Object.fromEntries(missingKeys.map((k) => [k, enDefaults[k] ?? k])))}`;
+                        const resp = await openai.chat.completions.create({
+                            model: 'gpt-4o-mini',
+                            messages: [{ role: 'user', content: prompt }],
+                            response_format: { type: 'json_object' },
+                            max_tokens: 1024,
+                        });
+                        const translated: Record<string, string> = JSON.parse(resp.choices[0]?.message?.content ?? '{}');
+                        let gen = 0;
+                        for (const key of missingKeys) {
+                            const value = (translated[key] ?? '').trim();
+                            if (!value || !keyIdByName[key])
+                                continue;
+                            {
+                                await pgLocalization().upsertTranslation({ keyId: String(keyIdByName[key]), language: lang, value, isCompleted: true });
+                                gen++;
+                                continue;
+                            }
+                        }
+                        byLanguage[lang] = { generated: gen, skipped: existingKeys.size, failed: missingKeys.length - gen };
+                        totalGenerated += gen;
+                        totalFailed += missingKeys.length - gen;
+                    }
+                    catch (e: any) {
+                        byLanguage[lang] = { generated: 0, skipped: existingKeys.size, failed: missingKeys.length };
+                        totalFailed += missingKeys.length;
+                        logger.warn(`seo-translations/regenerate: OpenAI failed for ${lang}: ${e?.message}`);
+                    }
+                }));
+            }
+            res.json({
+                message: `Regenerated SEO translations: ${totalGenerated} keys across ${targetLangs.length} languages`,
+                generated: totalGenerated,
+                skipped: totalSkipped,
+                failed: totalFailed,
+                byLanguage,
+                durationMs: Date.now() - startMs,
+            });
+        }
+        catch (err: any) {
+            logger.error('seo-translations/regenerate failed:', err?.message);
+            res.status(500).json({ error: 'Regenerate failed: ' + (err?.message ?? 'unknown') });
+        }
+        finally {
+            resolve();
+            inFlightRegenerateJob = null;
+        }
+    });
+    // POST /api/admin/seo-translations/invalidate-cache
+    // Forces re-computation of the qualified-languages list.
+    app.post('/api/admin/seo-translations/invalidate-cache', deps.requireAdmin, async (_req: any, res: any) => {
+        try {
+            const { invalidateQualifiedLanguages, getQualifiedLanguagesState } = await import('../seo/qualified-languages');
+            await invalidateQualifiedLanguages({ resetLkg: false });
+            const fresh = await getQualifiedLanguagesState();
+            res.json({
+                message: `Qualified-languages cache invalidated. ${fresh.languages.length} languages now qualified.`,
+                newQualifiedCount: fresh.languages.length,
+                qualifiedLanguages: fresh.languages,
+                source: fresh.source,
+                computedAt: fresh.computedAt,
+            });
+        }
+        catch (err: any) {
+            logger.error('seo-translations/invalidate-cache failed:', err?.message);
+            res.status(500).json({ error: 'Invalidate failed: ' + (err?.message ?? 'unknown') });
+        }
+    });
+    // POST /api/admin/seo-translations/warm-all
+    // Triggers the batched 57-language translation warmup in the background.
+    app.post('/api/admin/seo-translations/warm-all', deps.requireAdmin, async (_req: any, res: any) => {
+        try {
+            const { performanceCache: pc } = await import('../performance-cache');
+            // Reset the memoized warmup promise so it runs again even if already completed.
+            (pc as any).warmupPromise = null;
+            const { SEO_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+            const total = (SEO_LANGUAGES as any[]).filter((l: any) => l.enabled).length;
+            // Fire-and-forget — client gets immediate response.
+            void pc.warmupCaches().catch((e: any) => logger.warn('warm-all failed:', e?.message));
+            res.json({ message: `Warming ${total} languages in background (batches of 5, 500ms between batches)`, totalLanguages: total });
+        }
+        catch (err: any) {
+            logger.error('seo-translations/warm-all failed:', err?.message);
+            res.status(500).json({ error: 'Warm-all failed: ' + (err?.message ?? 'unknown') });
+        }
+    });
+    // POST /api/admin/scan-frontend-strings
+    // Scans the frontend source for t('key', 'default') calls and upserts new TranslationKey documents.
+    app.post('/api/admin/scan-frontend-strings', deps.requireAdmin, async (_req: any, res: any) => {
+        try {
+            const { TranslationSyncService } = await import('../services/translation-sync');
+            const result = await TranslationSyncService.syncNewKeys();
+            res.json({
+                message: `Scan complete: ${result.added} new keys added, ${result.existing} already existed`,
+                added: result.added,
+                existing: result.existing,
+            });
+        }
+        catch (err: any) {
+            logger.error('scan-frontend-strings failed:', err?.message);
+            if (err?.code === 'ENOENT') {
+                res.status(422).json({ error: 'Frontend source directory not found — package artifacts/megaradio/src or configure TRANSLATION_SOURCE_DIR.' });
+            }
+            else if (err?.status === 409) {
+                res.status(409).json({ error: err.message });
+            }
+            else {
+                res.status(500).json({ error: 'Scan failed: ' + (err?.message ?? 'unknown') });
+            }
+        }
+    });
+    // POST /api/admin/translation-keys/add-faq-keys
+    // Upserts all FAQ question/answer TranslationKey documents from the seo-shared FAQ schema.
+    app.post('/api/admin/translation-keys/add-faq-keys', deps.requireAdmin, async (_req: any, res: any) => {
+        try {
+            const { FAQ_PAGE_ITEMS } = await import('@workspace/seo-shared/faq-schema');
+            const { bumpTranslationVersion } = await import('../services/translation-version');
+            let added = 0;
+            let existing = 0;
+            for (const item of FAQ_PAGE_ITEMS as any[]) {
+                const pairs = [
+                    { key: item.qKey, defaultValue: item.qFallback, description: 'FAQ page question' },
+                    { key: item.aKey, defaultValue: item.aFallback, description: 'FAQ page answer' },
+                ];
+                for (const { key, defaultValue, description } of pairs) {
+                    const exists = (await pgLocalization().findKey(key));
+                    if (!exists) {
+                        await pgLocalization().upsertKey({ key, defaultValue, description, category: 'faq', isPlural: false }, true);
+                        added++;
+                    }
+                    else {
+                        existing++;
+                    }
+                }
+            }
+            if (added > 0) {
+                await bumpTranslationVersion(`FAQ keys seeded: ${added} added`);
+            }
+            res.json({
+                message: `FAQ keys: ${added} added, ${existing} already existed`,
+                added,
+                existing,
+            });
+        }
+        catch (err: any) {
+            logger.error('add-faq-keys failed:', err?.message);
+            res.status(500).json({ error: 'Add FAQ keys failed: ' + (err?.message ?? 'unknown') });
+        }
+    });
 }

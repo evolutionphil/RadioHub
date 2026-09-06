@@ -16,8 +16,9 @@
  * All upserts are idempotent.
  */
 
-import { TranslationKey, Translation } from '@workspace/db-shared/mongo-schemas';
+
 import { logger } from '../utils/logger';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 type FaqKeyName =
   | 'popular_stations'
@@ -420,39 +421,9 @@ const TRANSLATIONS: Record<string, LangFaqValues> = {
 // Add more languages here as translation resources become available.
 
 export async function seedHomepageFaqTranslations(): Promise<void> {
-  let totalUpserted = 0;
   const languages = Object.keys(TRANSLATIONS);
-
-  for (const lang of languages) {
-    const values = TRANSLATIONS[lang];
-    const keys = Object.keys(values) as FaqKeyName[];
-
-    for (const keyName of keys) {
-      const value = values[keyName];
-      const keyDoc = await TranslationKey.findOne({ key: keyName });
-      if (!keyDoc) continue; // seedSeoTranslationKeys must run first
-
-      const existing = await Translation.findOne({ keyId: keyDoc._id, language: lang });
-      if (existing) {
-        if (existing.value !== value) {
-          await Translation.updateOne(
-            { _id: existing._id },
-            { value, lastModified: new Date() },
-          );
-          totalUpserted++;
-        }
-      } else {
-        await Translation.create({
-          keyId: keyDoc._id,
-          language: lang,
-          value,
-          isCompleted: true,
-          lastModified: new Date(),
-        });
-        totalUpserted++;
-      }
-    }
-  }
-
+  const keys = [...new Set(Object.values(TRANSLATIONS).flatMap(values => Object.keys(values)))];
+  const definitions = await pgLocalization().getKeys(keys); // core key seeding runs first
+  const totalUpserted = await pgLocalization().seedTranslationBundle(definitions, TRANSLATIONS, 'homepage-faq', { bumpVersion: true });
   logger.log(`✅ seedHomepageFaqTranslations: ${totalUpserted} upserts across ${languages.length} languages`);
 }

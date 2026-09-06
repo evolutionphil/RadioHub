@@ -1,5 +1,5 @@
 import { CacheManager } from '../cache';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgTaxonomyRuntime } from '../data/postgres-taxonomy-runtime-store';
 import { logger } from '../utils/logger';
 
 interface CityData {
@@ -46,7 +46,7 @@ const COUNTRY_NAME_MAPPING: { [key: string]: string[] } = {
   'United States': ['The United States Of America', 'United States'],
   'Turkey': ['Turkey', 'Türkiye'],
   'China': ['China', "People's Republic of China"],
-  'United Kingdom': ['United Kingdom', 'Great Britain']
+  'United Kingdom': ['United Kingdom', 'Great Britain', 'The United Kingdom Of Great Britain And Northern Ireland']
 };
 
 function getCountrySearchPatterns(countryName: string): string[] {
@@ -57,9 +57,7 @@ function generateSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/--+/g, '-').replace(/^-|-$/g, '');
 }
 
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
+
 
 export class PrecomputedCitiesService {
   private static getCacheKey(countryName: string): string {
@@ -73,54 +71,12 @@ export class PrecomputedCitiesService {
       return { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
     }
 
-    // INCIDENT 2026-05-15 v10 — REWRITTEN. The previous implementation used
-    // a heavy $facet + $switch with N regex branches per document (Austria
-    // had 27 cities = 27 regex evals per station × thousands of docs). On
-    // cold M10 it routinely tripped 15s maxTimeMS and emitted "Failed to
-    // compute cities" SSR errors. New strategy: do ONE cheap indexed
-    // .find() for the country (uses country_1_votes_-1 or country_1
-    // index), project only the small fields we need, and bucket cities
-    // in Node memory. A typical country fetches <2k docs (well below
-    // the 16MB BSON limit), and the lean projection keeps payload tiny.
-    // $in exact strings — O(log n) index scan on country_1.
-    // Previous $or+regex used case-insensitive anchored regex which
-    // cannot use the index on M10, causing MaxTimeMSExpired at boot.
-    const searchPatterns = getCountrySearchPatterns(countryName);
-    const PER_COUNTRY_DOC_CAP = 5000;
-    const FIND_TIMEOUT_MS = 15000;
-    const COUNT_TIMEOUT_MS = 8000;
-    const filter = {
-      country: { $in: searchPatterns },
-      lastCheckOk: true
-    };
-
+    // One statement counts every matching station and assigns it to the first matching city.
+    // Country totals and city buckets share a snapshot; no document cap or partial count fallback.
     try {
-      const [docs, totalCountryStations] = await Promise.all([
-        Station.find(filter, { name: 1, tags: 1, state: 1 })
-          .lean()
-          .limit(PER_COUNTRY_DOC_CAP)
-          .maxTimeMS(FIND_TIMEOUT_MS),
-        Station.countDocuments(filter).maxTimeMS(COUNT_TIMEOUT_MS).catch(() => 0)
-      ]);
-
-      // Pre-build lowercase city patterns once.
-      const cityPatterns = cities.map(city => ({
-        name: city,
-        re: new RegExp(escapeRegex(city), 'i')
-      }));
-
-      const cityCountMap = new Map<string, number>();
-      for (const doc of docs as any[]) {
-        const name = doc.name || '';
-        const tags = typeof doc.tags === 'string' ? doc.tags : Array.isArray(doc.tags) ? doc.tags.join(',') : '';
-        const state = doc.state || '';
-        for (const cp of cityPatterns) {
-          if (cp.re.test(name) || cp.re.test(tags) || cp.re.test(state)) {
-            cityCountMap.set(cp.name, (cityCountMap.get(cp.name) || 0) + 1);
-            break; // a station is bucketed into the first matching city
-          }
-        }
-      }
+      const result = await pgTaxonomyRuntime().cityCounts(getCountrySearchPatterns(countryName),cities);
+      const totalCountryStations=result.total;
+      const cityCountMap=result.counts;
 
       const citiesWithCounts: CityData[] = cities
         .map(city => ({
@@ -146,12 +102,6 @@ export class PrecomputedCitiesService {
 
       return data;
     } catch (error: any) {
-      // INCIDENT 2026-05-15 v10.2 round 6 — RETHROW on transient
-      // compute failure so the singleflight wrapper does NOT cache the
-      // empty fallback for the full 7-day TTL. The wrapper in
-      // getCitiesForCountry catches and returns empty for the request,
-      // but the next request will retry the compute instead of being
-      // poisoned with an empty list for a week.
       logger.error(
         `❌ precomputed-cities ${countryName} failed: ` +
         `code=${error?.code || error?.codeName || 'unknown'} msg=${error?.message || error}`
@@ -162,24 +112,17 @@ export class PrecomputedCitiesService {
 
   static async getCitiesForCountry(countryName: string): Promise<PrecomputedCitiesData> {
     const cacheKey = this.getCacheKey(countryName);
-    // INCIDENT 2026-05-15 v10.2 round 8 — switched from plain
-    // singleflight to full SWR envelope. Stale-but-usable cities
-    // (older than 1 day, younger than 7) now serve immediately while
-    // a single coalesced background refresh runs. round-6 cache
-    // poisoning protection still applies: computeCitiesForCountry
-    // rethrows on transient failure, the catch below returns empty
-    // for THIS request without writing the empty fallback into the
-    // SWR envelope.
     try {
       return await CacheManager.getOrSetSWR<PrecomputedCitiesData>(
         cacheKey,
         () => this.computeCitiesForCountry(countryName),
         { freshTtl: 86400, staleTtl: CACHE_TTL }
       );
-    } catch {
-      // SWR loader threw on a cold miss (no envelope at all yet) — soft-fail.
+    } catch (error) {
+      // Serve only an existing valid snapshot; an outage is not an empty country.
       const stale = await CacheManager.getSWR<PrecomputedCitiesData>(cacheKey);
-      return stale || { cities: [], totalCountryStations: 0, computedAt: Date.now(), countryName };
+      if (stale) return stale;
+      throw error;
     }
   }
 
@@ -195,16 +138,18 @@ export class PrecomputedCitiesService {
     // Admin-only manual refresh path (called from /api/admin/sitemap/rebuild
     // and similar). Sequential, gentle, bounded.
     const countries = Object.keys(COUNTRY_CITIES);
+    const failures: unknown[] = [];
     logger.log(`🔄 Refreshing cities caches for ${countries.length} countries (admin-triggered)...`);
     for (const country of countries) {
       try {
-        await CacheManager.delSWR(this.getCacheKey(country));
         await this.computeCitiesForCountry(country);
         await new Promise(r => setTimeout(r, 250));
       } catch (err: any) {
+        failures.push(err);
         logger.warn(`refreshAllCaches: ${country} failed (${err?.message || 'unknown'}) — continuing`);
       }
     }
+    if (failures.length) throw new AggregateError(failures, 'Some city caches could not be refreshed; prior snapshots retained');
     logger.log('✅ Admin cities cache refresh complete');
   }
 

@@ -3,7 +3,7 @@
  * reference a real on-disk file or a resolvable workspace package.
  *
  * Background: when `src/shared/mongo-schemas.ts` was relocated to the shared
- * `@workspace/db-shared/mongo-schemas` package, two test files
+ * `@workspace/legacy-migration/mongo-schemas` package, two test files
  * (`country-language-mappings-audit.test.ts` and
  * `translation-admin-merge-into-winner.test.ts`) silently broke because they
  * still pointed their mock at `../src/shared/mongo-schemas.ts` — a path that
@@ -81,7 +81,7 @@ function extractMockCalls(file: string): MockCall[] {
 }
 
 function resolveWorkspaceSpecifier(specifier: string): string | null {
-  // e.g. "@workspace/db-shared/mongo-schemas" -> lib/db-shared
+  // e.g. "@workspace/legacy-migration/mongo-schemas" -> lib/db-shared
   const match = /^@workspace\/([^/]+)(?:\/(.+))?$/.exec(specifier);
   if (!match) return null;
   const pkgName = match[1];

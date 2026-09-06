@@ -5,7 +5,7 @@
  * /sitemap.xml, /sitemap-index.xml, /sitemap-main-{lang}.xml, /llms.txt
  * and /robots.txt only surface in production via Google Search Console
  * errors. This suite boots the real Express handlers with the
- * MongoDB-backed dependencies stubbed via `node:test` module mocks, then
+ * PostgreSQL store dependencies stubbed via `node:test` module mocks, then
  * makes real HTTP requests against an ephemeral server.
  *
  * Deviation from task spec: the spec asked for /sitemap.xml -> 301 to
@@ -171,6 +171,7 @@ mock.module(new URL('../src/seo/sitemap-manifest-builder.ts', import.meta.url).h
       };
     },
     startManifestRefreshLoop: () => {},
+    getTopCountryDbNames: async () => [],
     encodeTopCountryEntry: (regionSlug: string, countrySlug: string) =>
       `__topcountry__:${regionSlug}/${countrySlug}`,
     extractTopCountriesFromChunk: (
@@ -180,41 +181,12 @@ mock.module(new URL('../src/seo/sitemap-manifest-builder.ts', import.meta.url).h
   },
 });
 
-// SitemapManifest mongoose-model stub — used by /sitemap-index.xml via
-// `await import('@workspace/db-shared/mongo-schemas')`. The real handler does:
-//   SitemapManifest.find(...).select(...).lean()
-// so the chain returns a thenable / awaitable that resolves to fake docs.
+// Active native manifest fixtures used by the sitemap index.
 const FAKE_INDEX_MANIFESTS: FakeManifest[] = QUALIFIED_LANGS.flatMap((lang) => [
   buildFakeManifest('main', lang),
   buildFakeManifest('genres', lang),
   buildFakeManifest('stations', lang),
 ]);
-
-interface FakeQuery<T> extends PromiseLike<T> {
-  select: (..._args: unknown[]) => FakeQuery<T>;
-  sort: (..._args: unknown[]) => FakeQuery<T>;
-  lean: () => Promise<T>;
-}
-function fakeQuery<T>(value: T): FakeQuery<T> {
-  const q: FakeQuery<T> = {
-    select: () => q,
-    sort: () => q,
-    lean: async () => value,
-    then: (resolve, reject) => Promise.resolve(value).then(resolve, reject),
-  };
-  return q;
-}
-
-const FAKE_SITEMAP_MANIFEST_MODEL = {
-  find: () => fakeQuery(FAKE_INDEX_MANIFESTS),
-  findOne: () => fakeQuery(null),
-};
-
-const EMPTY_AGGREGATE = {
-  allowDiskUse: () => Promise.resolve([]),
-  exec: async () => [],
-  then: <T>(resolve: (v: unknown[]) => T) => Promise.resolve([]).then(resolve),
-};
 
 // Two fake stations:
 //   s1 — verified themegaradio.com host → MUST emit <image:image>
@@ -264,14 +236,7 @@ const FAKE_STATION_DOCS: FakeStationDoc[] = [
   },
 ];
 
-const FAKE_STATION_MODEL = {
-  find: () => fakeQuery(FAKE_STATION_DOCS),
-  aggregate: () => EMPTY_AGGREGATE,
-  countDocuments: async () => 0,
-};
-
-// Genres sitemap reads docs via `Genre.collection.find(...).toArray()` to
-// bypass mongoose ObjectId casting. Three docs:
+// Native genre rows preserve string IDs; unsafe slugs are filtered by the route.
 //   g1 'pop'         — safe slug, must appear
 //   g2 'rock'        — safe slug, must appear
 //   g3 'bad slug!'   — unsafe slug, must be filtered out by SAFE_SLUG_RE
@@ -281,65 +246,19 @@ const FAKE_GENRE_DOCS = [
   { _id: 'g3', slug: 'bad slug!', updatedAt: NOW },
 ];
 
-const FAKE_GENRE_MODEL = {
-  find: () => fakeQuery([]),
-  collection: {
-    find: () => ({ toArray: async () => FAKE_GENRE_DOCS }),
-  },
-};
-
-// Generic empty-collection stub for every other Mongoose model the
-// transitive import graph might pull in.
-const NULL_MODEL = {
-  find: () => fakeQuery([]),
-  findOne: () => fakeQuery(null),
-  findById: () => fakeQuery(null),
-  create: async () => ({}),
-  updateOne: async () => ({ matchedCount: 0 }),
-  updateMany: async () => ({ matchedCount: 0 }),
-  deleteOne: async () => ({ deletedCount: 0 }),
-  deleteMany: async () => ({ deletedCount: 0 }),
-  countDocuments: async () => 0,
-  aggregate: () => EMPTY_AGGREGATE,
-  insertMany: async () => [],
-  distinct: async () => [],
-};
-
-const ALL_MONGO_MODEL_NAMES = [
-  'AdminPreference', 'AdvancedSearch', 'Advertisement', 'AnalyticsEvent',
-  'ApiKey', 'ApiKeyModel', 'ApiUser', 'AppleWebhookEvent', 'AppLog',
-  'AuthToken', 'BackfillRun', 'BlacklistedStation', 'BulkDescriptionJob',
-  'CastCommand', 'CastNowPlaying', 'CastSession', 'Country',
-  'CoverageSnapshot', 'DemoUsage', 'DirectMessage', 'Feedback',
-  'FooterSocialMedia', 'Genre', 'GenreSlugCleanupRun', 'GenreWhitelistOverride',
-  'IapEvent', 'IndexNowLog', 'IndexNowSubmissionUrls',
-  'Language', 'ListeningSession', 'Notification',
-  'PublicUserProfile', 'PushToken', 'Recommendation', 'SeoMetadata',
-  'SeoQualifiedLanguagesLkg', 'SitemapManifest', 'Station', 'StationComment',
-  'StationDebugLog', 'StationRating', 'StationSimilarity', 'SyncLog',
-  'Translation', 'TranslationKey', 'TranslationLanguage', 'TranslationMetadata',
-  'TvLoginCode', 'UrlTranslation', 'User', 'UserDevice', 'UserFavorite',
-  'UserFollow', 'UserListeningHistory', 'UserMusicProfile', 'UserNotification',
-] as const;
-
-const mongoMockExports: Record<string, unknown> = {};
-for (const name of ALL_MONGO_MODEL_NAMES) {
-  mongoMockExports[name] = NULL_MODEL;
-}
-// Routes / handlers under test depend on these specific behaviours.
-mongoMockExports.SitemapManifest = FAKE_SITEMAP_MANIFEST_MODEL;
-mongoMockExports.Station = FAKE_STATION_MODEL;
-mongoMockExports.Genre = FAKE_GENRE_MODEL;
-// Constants & types re-exported as runtime values must also be present.
-mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
-// Task #365: `services/indexnow.ts` (transitively imported via the sitemap
-// routes module) pulls this retention-days constant at module load time.
-// Without it the test bundle fails with "does not provide an export named
-// INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS" before any sitemap test can run.
-mongoMockExports.INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = 30;
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: mongoMockExports,
+const actualCatalog=await import('../src/data/postgres-catalog-store');
+mock.module(new URL('../src/data/postgres-catalog-store.ts',import.meta.url).href,{
+  namedExports:{...actualCatalog,pgCatalog:()=>({
+    find:async()=>FAKE_STATION_DOCS,count:async()=>0,groupCount:async()=>[],
+  })},
+});
+const actualSeo=await import('../src/data/postgres-seo-indexing-store');
+mock.module(new URL('../src/data/postgres-seo-indexing-store.ts',import.meta.url).href,{
+  namedExports:{...actualSeo,pgActiveManifests:async()=>FAKE_INDEX_MANIFESTS,pgSeoGenres:async()=>FAKE_GENRE_DOCS,pgTopIndexableTags:async()=>[]},
+});
+const actualLocalization=await import('../src/data/postgres-localization-store');
+mock.module(new URL('../src/data/postgres-localization-store.ts',import.meta.url).href,{
+  namedExports:{...actualLocalization,pgLocalization:()=>({getKeys:async()=>[],getTranslations:async()=>({})})},
 });
 
 mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {

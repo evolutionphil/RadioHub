@@ -8,12 +8,10 @@
  *      capped at `BACKFILL_SAMPLE_STATIONS_PER_COUNTRY`, with `_id`,
  *      `slug`, and `name` populated from the seeded candidates.
  *
- *   2. The snapshot fires STRICTLY BEFORE the `$unset`. We monkey-patch
- *      the Mongoose model methods to record their invocation order.
- *      A future edit that swaps the order — or omits the snapshot
- *      entirely and re-queries after the unset — would silently produce
- *      a stale or empty sample because the unset rewrites the very
- *      subdocument the filter matches on.
+ *   2. The snapshot is materialized and locked before clearing logo assets
+ *      in the same SQL statement. We observe the real query and verify
+ *      both the captured sample and persisted asset clearing, guarding
+ *      against sampling rows only after their qualifying fields changed.
  *
  *   3. End-to-end: running an actual sweep via
  *      `ScheduledBackfillService.runOnce` persists `sampleStations`
@@ -30,10 +28,17 @@
  * Runner: `--experimental-test-module-mocks` (wired up in
  * artifacts/api-server/package.json#scripts.test).
  */
-import { test, mock, before, after } from 'node:test';
-import assert from 'node:assert/strict';
-import { MongoMemoryServer } from 'mongodb-memory-server';
-import mongoose from 'mongoose';
+import { test, mock, before, after } from "node:test";
+import assert from "node:assert/strict";
+import {
+  createNativePostgresFixture,
+  type NativePostgresFixture,
+} from "./helpers/native-postgres-fixture";
+import {
+  pgCoverage,
+  PostgresCoverageStore,
+} from "../src/data/postgres-coverage-store";
+import { getPostgresPool } from "../src/postgres-runtime";
 
 // Pin the cap to a small, easy-to-assert number BEFORE importing the
 // service module — the constant is resolved at module-load time.
@@ -42,7 +47,7 @@ process.env.BACKFILL_SAMPLE_STATIONS_PER_COUNTRY = String(SAMPLE_CAP);
 // Drop the inter-attempt backoff so a forced retry in a sweep test
 // wouldn't sleep for minutes. Belt-and-braces — none of the tests
 // below force retries, but cheaper to be safe.
-process.env.BACKFILL_RETRY_BASE_MS = '0';
+process.env.BACKFILL_RETRY_BASE_MS = "0";
 
 // ---------------------------------------------------------------------------
 // Module mocks — installed BEFORE the service is dynamically imported in
@@ -55,16 +60,19 @@ process.env.BACKFILL_RETRY_BASE_MS = '0';
 // the hydrator with the expected country / limit, and so the test can
 // fabricate per-country tag counts.
 const hydrateCalls: Array<{ countryCode?: string; limit?: number }> = [];
-let hydrateImpl: (opts: {
-  countryCode?: string;
-  limit?: number;
-}) => Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number }> =
-  async () => ({ processed: 0, hydrated: 0, emptyUpstream: 0, failed: 0 });
+let hydrateImpl: (opts: { countryCode?: string; limit?: number }) => Promise<{
+  processed: number;
+  hydrated: number;
+  emptyUpstream: number;
+  failed: number;
+}> = async () => ({ processed: 0, hydrated: 0, emptyUpstream: 0, failed: 0 });
 
-mock.module(new URL('../src/services/sync.ts', import.meta.url).href, {
+mock.module(new URL("../src/services/sync.ts", import.meta.url).href, {
   namedExports: {
     SyncService: class {
-      async hydrateMissingTagsInBackground(opts: { countryCode?: string; limit?: number } = {}) {
+      async hydrateMissingTagsInBackground(
+        opts: { countryCode?: string; limit?: number } = {},
+      ) {
         hydrateCalls.push({ countryCode: opts.countryCode, limit: opts.limit });
         return hydrateImpl(opts);
       }
@@ -78,44 +86,51 @@ mock.module(new URL('../src/services/sync.ts', import.meta.url).href, {
 // detector for these tests (huge minSamples / minBaseline so no
 // historical run ever qualifies), and notifyBackfillPhaseSlowdowns is a
 // no-op.
-mock.module(new URL('../src/services/backfill-notifier.ts', import.meta.url).href, {
-  namedExports: {
-    notifyBackfillResult: async () => {},
-    notifyBackfillPhaseSlowdowns: async () => {},
-    getBackfillPhaseSlowdownLookback: () => 10,
-    getBackfillPhaseSlowdownMinSamples: () => Number.MAX_SAFE_INTEGER,
-    getBackfillPhaseSlowdownMultiplier: () => 1000,
-    getBackfillPhaseSlowdownMinBaselineMs: () => Number.MAX_SAFE_INTEGER,
+mock.module(
+  new URL("../src/services/backfill-notifier.ts", import.meta.url).href,
+  {
+    namedExports: {
+      notifyBackfillResult: async () => {},
+      notifyBackfillPhaseSlowdowns: async () => {},
+      getBackfillPhaseSlowdownLookback: () => 10,
+      getBackfillPhaseSlowdownMinSamples: () => Number.MAX_SAFE_INTEGER,
+      getBackfillPhaseSlowdownMultiplier: () => 1000,
+      getBackfillPhaseSlowdownMinBaselineMs: () => Number.MAX_SAFE_INTEGER,
+    },
   },
-});
+);
 
-let mongod: MongoMemoryServer;
+let fixture: NativePostgresFixture;
 
 // Imported lazily inside `before()` so the env override above is in
 // effect when scheduled-backfill.ts evaluates BACKFILL_SAMPLE_STATIONS_PER_COUNTRY.
-type ServiceModule = typeof import('../src/services/scheduled-backfill.ts');
-type SchemasModule = typeof import('@workspace/db-shared/mongo-schemas');
+type ServiceModule = typeof import("../src/services/scheduled-backfill.ts");
 let service: ServiceModule;
-let schemas: SchemasModule;
 
 before(async () => {
-  mongod = await MongoMemoryServer.create();
-  await mongoose.connect(mongod.getUri());
-
-  schemas = await import('@workspace/db-shared/mongo-schemas');
-  service = await import('../src/services/scheduled-backfill.ts');
+  fixture = await createNativePostgresFixture("backfill-samples");
+  const acquireJob = PostgresCoverageStore.prototype.acquireJob;
+  // Keep real lock semantics without contending with another fixture schema.
+  mock.method(
+    PostgresCoverageStore.prototype,
+    "acquireJob",
+    function (name: string) {
+      return acquireJob.call(this, `${fixture.schema}:${name}`);
+    },
+  );
+  service = await import("../src/services/scheduled-backfill.ts");
 
   // Sanity: env override actually landed.
   assert.equal(
     service.BACKFILL_SAMPLE_STATIONS_PER_COUNTRY,
     SAMPLE_CAP,
-    'BACKFILL_SAMPLE_STATIONS_PER_COUNTRY must reflect the test env override',
+    "BACKFILL_SAMPLE_STATIONS_PER_COUNTRY must reflect the test env override",
   );
 });
 
 after(async () => {
-  await mongoose.disconnect();
-  if (mongod) await mongod.stop();
+  mock.restoreAll();
+  await fixture?.close();
 });
 
 // ---------------------------------------------------------------------------
@@ -125,7 +140,7 @@ after(async () => {
 let stationCounter = 0;
 function nextUuid(): string {
   stationCounter += 1;
-  return `uuid-${stationCounter.toString().padStart(6, '0')}`;
+  return `uuid-${stationCounter.toString().padStart(6, "0")}`;
 }
 
 async function seedLogoCandidate(opts: {
@@ -137,19 +152,19 @@ async function seedLogoCandidate(opts: {
   // 'pending'` branch. Explicit pending status (rather than an absent
   // logoAssets subdoc) so $unset has something to remove and
   // modifiedCount > 0.
-  await schemas.Station.create({
+  await fixture.insert("stations", {
     stationuuid: nextUuid(),
     name: opts.name,
-    url: 'https://example.com/stream',
-    favicon: 'https://example.com/favicon.png',
+    url: "https://example.com/stream",
+    favicon: "https://example.com/favicon.png",
     slug: opts.slug,
     countryCode: opts.countryCode,
-    logoAssets: { status: 'pending' },
+    logoAssets: { status: "pending" },
     // Non-empty `tags` so logo candidates are NOT also picked up by the
     // tags-backfill filter (which matches stations with missing/empty
     // tags). Without this, a sweep test that seeds both phases would
     // see logo candidates leak into the tags sample.
-    tags: 'placeholder',
+    tags: "placeholder",
   });
 }
 
@@ -160,10 +175,10 @@ async function seedTagsCandidate(opts: {
 }): Promise<void> {
   // Matches buildTagsBackfillFilter: stationuuid set, tags missing,
   // tagsCheckedAt missing.
-  await schemas.Station.create({
+  await fixture.insert("stations", {
     stationuuid: nextUuid(),
     name: opts.name,
-    url: 'https://example.com/stream',
+    url: "https://example.com/stream",
     slug: opts.slug,
     countryCode: opts.countryCode,
     // intentionally NO tags + NO tagsCheckedAt
@@ -174,8 +189,8 @@ async function seedTagsCandidate(opts: {
 // 1. enqueueLogosForCountry: capped sample with the right shape
 // ---------------------------------------------------------------------------
 
-test('enqueueLogosForCountry returns a capped sampleStations array with _id/slug/name', async () => {
-  const country = 'TR';
+test("enqueueLogosForCountry returns a capped sampleStations array with _id/slug/name", async () => {
+  const country = "TR";
   // Seed more candidates than the cap so we can prove the limit is
   // applied and not just "everything that happens to match".
   const seeded = SAMPLE_CAP + 2;
@@ -191,18 +206,18 @@ test('enqueueLogosForCountry returns a capped sampleStations array with _id/slug
 
   // A station in another country must NOT show up in TR's sample.
   await seedLogoCandidate({
-    countryCode: 'DE',
-    slug: 'de-station-1',
-    name: 'DE Station 1',
+    countryCode: "DE",
+    slug: "de-station-1",
+    name: "DE Station 1",
   });
 
   const result = await service.enqueueLogosForCountry(country);
 
-  assert.equal(result.candidates, seeded, 'all TR candidates must be counted');
+  assert.equal(result.candidates, seeded, "all TR candidates must be counted");
   assert.equal(
     result.enqueued,
     seeded,
-    'all TR candidates must have logoAssets unset',
+    "all TR candidates must have logoAssets unset",
   );
 
   assert.equal(
@@ -211,8 +226,8 @@ test('enqueueLogosForCountry returns a capped sampleStations array with _id/slug
     `sampleStations must be capped at BACKFILL_SAMPLE_STATIONS_PER_COUNTRY (${SAMPLE_CAP})`,
   );
   for (const sample of result.sampleStations) {
-    assert.equal(typeof sample._id, 'string', 'sample._id must be a string');
-    assert.ok(sample._id.length > 0, 'sample._id must be non-empty');
+    assert.equal(typeof sample._id, "string", "sample._id must be a string");
+    assert.ok(sample._id.length > 0, "sample._id must be non-empty");
     assert.ok(
       sample.slug && expectedSlugs.has(sample.slug),
       `sample.slug "${sample.slug}" must come from a seeded TR candidate`,
@@ -228,8 +243,8 @@ test('enqueueLogosForCountry returns a capped sampleStations array with _id/slug
 // 2. Call-ordering proof: snapshot must run BEFORE $unset
 // ---------------------------------------------------------------------------
 
-test('enqueueLogosForCountry calls Station.find for the snapshot BEFORE Station.updateMany($unset)', async () => {
-  const country = 'IT';
+test("enqueueLogosForCountry captures the locked snapshot before clearing assets atomically", async () => {
+  const country = "IT";
   for (let i = 0; i < 2; i++) {
     await seedLogoCandidate({
       countryCode: country,
@@ -238,37 +253,44 @@ test('enqueueLogosForCountry calls Station.find for the snapshot BEFORE Station.
     });
   }
 
-  const calls: string[] = [];
-  const Station = schemas.Station as unknown as {
-    find: (...a: unknown[]) => unknown;
-    updateMany: (...a: unknown[]) => unknown;
-  };
-  const origFind = Station.find.bind(Station);
-  const origUpdateMany = Station.updateMany.bind(Station);
-  Station.find = ((...args: unknown[]) => {
-    calls.push('find');
-    return origFind(...args);
-  }) as typeof Station.find;
-  Station.updateMany = ((...args: unknown[]) => {
-    calls.push('updateMany');
-    return origUpdateMany(...args);
-  }) as typeof Station.updateMany;
-
+  const statements: string[] = [];
+  const pool = getPostgresPool(),
+    original = pool.query.bind(pool);
+  const spy = mock.method(pool, "query", ((sql: any, ...args: any[]) => {
+    if (typeof sql === "string") statements.push(sql);
+    return (original as any)(sql, ...args);
+  }) as any);
   try {
     const result = await service.enqueueLogosForCountry(country);
-    assert.ok(result.sampleStations.length > 0, 'sample must not be empty');
-
-    const findIdx = calls.indexOf('find');
-    const updateIdx = calls.indexOf('updateMany');
-    assert.notEqual(findIdx, -1, 'Station.find must have been called for the snapshot');
-    assert.notEqual(updateIdx, -1, 'Station.updateMany must have been called for the $unset');
     assert.ok(
-      findIdx < updateIdx,
-      `Station.find (snapshot) must run BEFORE Station.updateMany ($unset); got order ${calls.join(' → ')}`,
+      result.sampleStations.length > 0,
+      "snapshot must survive the clear",
+    );
+    assert.equal(result.candidates, 2);
+    assert.equal(result.enqueued, 2);
+    const statement = statements.find((sql) => sql.includes("UPDATE stations"));
+    assert.ok(statement, "actual SQL update must execute");
+    assert.match(
+      statement,
+      /WITH selected AS MATERIALIZED\([\s\S]*FOR UPDATE\)/,
+      "lock and materialize the snapshot before mutation",
+    );
+    assert.ok(
+      statement.indexOf("WITH selected") < statement.indexOf("UPDATE stations"),
+      "snapshot must precede clearing",
+    );
+    const after = (
+      await fixture.pool.query(
+        "SELECT logo_assets FROM stations WHERE country_code=$1",
+        [country],
+      )
+    ).rows;
+    assert.ok(
+      after.every((row) => row.logo_assets === null),
+      "candidate logo assets must actually be cleared",
     );
   } finally {
-    Station.find = origFind as typeof Station.find;
-    Station.updateMany = origUpdateMany as typeof Station.updateMany;
+    spy.mock.restore();
   }
 });
 
@@ -276,8 +298,8 @@ test('enqueueLogosForCountry calls Station.find for the snapshot BEFORE Station.
 // 3. Empty country — no candidates, no sample, no exception
 // ---------------------------------------------------------------------------
 
-test('enqueueLogosForCountry returns an empty sample when nothing matches', async () => {
-  const result = await service.enqueueLogosForCountry('ZZ'); // unseeded
+test("enqueueLogosForCountry returns an empty sample when nothing matches", async () => {
+  const result = await service.enqueueLogosForCountry("ZZ"); // unseeded
   assert.equal(result.candidates, 0);
   assert.equal(result.enqueued, 0);
   assert.deepEqual(result.sampleStations, []);
@@ -290,8 +312,8 @@ test('enqueueLogosForCountry returns an empty sample when nothing matches', asyn
 //    document — not just what the helpers return in-process.
 // ---------------------------------------------------------------------------
 
-test('runOnce persists capped sampleStations on BackfillRun.logos[] and BackfillRun.tags[] for the swept country', async () => {
-  const country = 'FR';
+test("runOnce persists capped sampleStations on BackfillRun.logos[] and BackfillRun.tags[] for the swept country", async () => {
+  const country = "FR";
 
   // Seed extra candidates for both phases so the cap is actually
   // exercised in the persisted arrays.
@@ -331,42 +353,40 @@ test('runOnce persists capped sampleStations on BackfillRun.logos[] and Backfill
   // overrideCountry skips the top-N aggregation and runs both phases
   // for just this market — exactly the path admins hit when they
   // backfill a single country from the UI (Task #234's primary use case).
-  const ranSweep = await service.scheduledBackfill.runOnce('test:sweep', {
+  const ranSweep = await service.scheduledBackfill.runOnce("test:sweep", {
     countryCode: country,
   });
-  assert.ok(ranSweep, 'runOnce must return the persisted BackfillRun row');
+  assert.ok(ranSweep, "runOnce must return the persisted BackfillRun row");
 
   // Sanity: hydrator was called with the country we targeted.
-  assert.equal(hydrateCalls.length, 1, 'sync.hydrateMissingTagsInBackground must be called once');
+  assert.equal(
+    hydrateCalls.length,
+    1,
+    "sync.hydrateMissingTagsInBackground must be called once",
+  );
   assert.equal(hydrateCalls[0]?.countryCode, country);
 
-  // Re-read from Mongo so we assert against what was actually stored,
+  // Re-read from PostgreSQL so we assert against what was actually stored,
   // not the in-memory document that flowed through the worker.
-  const persisted = await schemas.BackfillRun.findById(ranSweep._id).lean<{
-    status: string;
-    logos: Array<{
-      countryCode: string;
-      candidates: number;
-      enqueued: number;
-      sampleStations?: Array<{ _id: string; slug?: string; name?: string }>;
-    }>;
-    tags: Array<{
-      countryCode: string;
-      processed: number;
-      sampleStations?: Array<{ _id: string; slug?: string; name?: string }>;
-    }>;
-  } | null>();
-  assert.ok(persisted, 'BackfillRun row must be persisted');
-  assert.equal(persisted!.status, 'completed', 'sweep must complete successfully');
+  const persisted = await pgCoverage().run(String(ranSweep._id));
+  assert.ok(persisted, "BackfillRun row must be persisted");
+  assert.equal(
+    persisted!.status,
+    "completed",
+    "sweep must complete successfully",
+  );
 
   // ---- Logos phase ------------------------------------------------------
   const logoEntry = persisted!.logos.find((l) => l.countryCode === country);
-  assert.ok(logoEntry, `BackfillRun.logos must include an entry for ${country}`);
+  assert.ok(
+    logoEntry,
+    `BackfillRun.logos must include an entry for ${country}`,
+  );
   assert.equal(logoEntry!.candidates, seededLogos);
   assert.equal(logoEntry!.enqueued, seededLogos);
   assert.ok(
     Array.isArray(logoEntry!.sampleStations),
-    'persisted logos[].sampleStations must be present (snapshot was captured)',
+    "persisted logos[].sampleStations must be present (snapshot was captured)",
   );
   assert.equal(
     logoEntry!.sampleStations!.length,
@@ -374,7 +394,7 @@ test('runOnce persists capped sampleStations on BackfillRun.logos[] and Backfill
     `persisted logos[].sampleStations must be capped at ${SAMPLE_CAP}`,
   );
   for (const sample of logoEntry!.sampleStations!) {
-    assert.ok(sample._id, 'persisted logo sample row must have _id');
+    assert.ok(sample._id, "persisted logo sample row must have _id");
     assert.ok(
       sample.slug && expectedLogoSlugs.has(sample.slug),
       `persisted logo sample slug "${sample.slug}" must come from a seeded FR logo candidate`,
@@ -390,7 +410,7 @@ test('runOnce persists capped sampleStations on BackfillRun.logos[] and Backfill
   assert.ok(tagEntry, `BackfillRun.tags must include an entry for ${country}`);
   assert.ok(
     Array.isArray(tagEntry!.sampleStations),
-    'persisted tags[].sampleStations must be present (snapshot was captured)',
+    "persisted tags[].sampleStations must be present (snapshot was captured)",
   );
   assert.equal(
     tagEntry!.sampleStations!.length,
@@ -398,7 +418,7 @@ test('runOnce persists capped sampleStations on BackfillRun.logos[] and Backfill
     `persisted tags[].sampleStations must be capped at ${SAMPLE_CAP}`,
   );
   for (const sample of tagEntry!.sampleStations!) {
-    assert.ok(sample._id, 'persisted tag sample row must have _id');
+    assert.ok(sample._id, "persisted tag sample row must have _id");
     assert.ok(
       sample.slug && expectedTagSlugs.has(sample.slug),
       `persisted tag sample slug "${sample.slug}" must come from a seeded FR tags candidate`,

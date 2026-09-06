@@ -29,51 +29,51 @@
  * Dry-run (logs URLs without sending):
  *   DRY_RUN=1 pnpm --filter @workspace/api-server run indexnow:task-152
  *
- * Environment: requires `MONGODB_URI` (or `MONGO_URI` / `DATABASE_URL`).
+ * Environment: requires `DATABASE_URL`.
  */
 
-import mongoose from 'mongoose';
-import { Station } from '@workspace/db-shared/mongo-schemas';
-import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
-import { buildLocalizedUrl } from '../seo/url-helpers';
+import { initializePostgres, closePostgres } from "../postgres-runtime";
+import { pgCatalog } from "../data/postgres-catalog-store";
+import { ACTIVE_SITEMAP_LANGUAGES } from "@workspace/seo-shared/seo-config";
+import { buildLocalizedUrl } from "../seo/url-helpers";
 import {
   canonicalizeCountry,
   countrySlug,
   getRegionSlugForCountry,
-} from '@workspace/seo-shared/country-regions';
-import { performanceCache } from '../performance-cache';
-import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
-import { IndexNowService } from '../services/indexnow';
-import { logger } from '../utils/logger';
+} from "@workspace/seo-shared/country-regions";
+import { performanceCache } from "../performance-cache";
+import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
+import { IndexNowService } from "../services/indexnow";
+import { logger } from "../utils/logger";
 
 const DRY_RUN =
-  process.env.DRY_RUN === '1' ||
-  process.env.DRY_RUN === 'true' ||
-  process.env.DRY_RUN === 'yes';
+  process.env.DRY_RUN === "1" ||
+  process.env.DRY_RUN === "true" ||
+  process.env.DRY_RUN === "yes";
 
-const HOST = 'themegaradio.com';
+const HOST = "themegaradio.com";
 const BASE_URL = `https://${HOST}`;
 
 // Static main pages added/expanded by Task #128. Keep in sync with
 // `mainPages` in `routes/seo-sitemap-routes.ts` (sitemap-main-{lang}.xml)
 // and `MAIN_STATIC_PAGES` in `seo/sitemap-manifest-builder.ts`.
 const STATIC_MAIN_PAGES = [
-  '',
-  '/stations',
-  '/genres',
-  '/about',
-  '/regions',
-  '/regions/europe',
-  '/regions/asia',
-  '/regions/africa',
-  '/regions/north-america',
-  '/regions/south-america',
-  '/regions/oceania',
-  '/faq',
-  '/contact',
-  '/privacy-policy',
-  '/terms-and-conditions',
-  '/applications',
+  "",
+  "/stations",
+  "/genres",
+  "/about",
+  "/regions",
+  "/regions/europe",
+  "/regions/asia",
+  "/regions/africa",
+  "/regions/north-america",
+  "/regions/south-america",
+  "/regions/oceania",
+  "/faq",
+  "/contact",
+  "/privacy-policy",
+  "/terms-and-conditions",
+  "/applications",
 ];
 
 const TOP_COUNTRY_LIMIT = 30;
@@ -87,7 +87,10 @@ async function loadUrlTranslationMap(): Promise<Map<string, string>> {
     const db = await performanceCache.getUrlTranslations();
     for (const [k, v] of db.entries()) map.set(k, v);
   } catch (err) {
-    logger.log('⚠️ task-152: performanceCache.getUrlTranslations failed, falling back to static URL_TRANSLATIONS only:', (err as Error).message);
+    logger.log(
+      "⚠️ task-152: performanceCache.getUrlTranslations failed, falling back to static URL_TRANSLATIONS only:",
+      (err as Error).message,
+    );
   }
   for (const [lang, translations] of Object.entries(URL_TRANSLATIONS)) {
     for (const [english, translated] of Object.entries(translations)) {
@@ -98,23 +101,20 @@ async function loadUrlTranslationMap(): Promise<Map<string, string>> {
   return map;
 }
 
-async function getTopCountries(limit: number): Promise<Array<{ regionSlug: string; countrySlug: string }>> {
-  const rows: Array<{ _id: string; count: number }> = await Station.aggregate([
-    {
-      $match: {
-        country: { $exists: true, $ne: '' },
-        $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-      },
-    },
-    { $group: { _id: '$country', count: { $sum: 1 } } },
-    { $sort: { count: -1 } },
-    { $limit: limit * 2 },
-  ]).allowDiskUse(true);
+async function getTopCountries(
+  limit: number,
+): Promise<Array<{ regionSlug: string; countrySlug: string }>> {
+  const rows = (
+    await pgCatalog().groupCount("country", {
+      country: { $exists: true, $ne: "" },
+      noIndex: { $ne: true },
+    })
+  ).slice(0, limit * 2);
 
   const out: Array<{ regionSlug: string; countrySlug: string }> = [];
   const seen = new Set<string>();
   for (const r of rows) {
-    const canonical = canonicalizeCountry(String(r._id || ''));
+    const canonical = canonicalizeCountry(String(r._id || ""));
     if (!canonical) continue;
     const region = getRegionSlugForCountry(canonical);
     if (!region) continue;
@@ -136,21 +136,17 @@ function chunk<T>(arr: T[], size: number): T[][] {
 }
 
 async function main(): Promise<void> {
-  const mongoUri =
-    process.env.MONGODB_URI ||
-    process.env.MONGO_URI ||
-    process.env.DATABASE_URL;
-  if (!mongoUri) {
-    throw new Error('MONGODB_URI (or MONGO_URI / DATABASE_URL) must be set');
-  }
-
-  logger.log(`🚀 task-152: connecting to MongoDB${DRY_RUN ? ' (DRY_RUN)' : ''}…`);
-  await mongoose.connect(mongoUri);
+  logger.log(
+    "Task-152: connecting to PostgreSQL" + (DRY_RUN ? " (DRY_RUN)" : ""),
+  );
+  await initializePostgres();
 
   try {
     const translations = await loadUrlTranslationMap();
     const topCountries = await getTopCountries(TOP_COUNTRY_LIMIT);
-    logger.log(`🌍 task-152: top-${topCountries.length} countries resolved (limit ${TOP_COUNTRY_LIMIT})`);
+    logger.log(
+      `🌍 task-152: top-${topCountries.length} countries resolved (limit ${TOP_COUNTRY_LIMIT})`,
+    );
 
     const langs = ACTIVE_SITEMAP_LANGUAGES as readonly string[];
     const urls = new Set<string>();
@@ -161,47 +157,65 @@ async function main(): Promise<void> {
         urls.add(`${BASE_URL}${path}`);
       }
       for (const { regionSlug, countrySlug: cSlug } of topCountries) {
-        const path = buildLocalizedUrl(`/regions/${regionSlug}/${cSlug}`, lang, undefined, translations);
+        const path = buildLocalizedUrl(
+          `/regions/${regionSlug}/${cSlug}`,
+          lang,
+          undefined,
+          translations,
+        );
         urls.add(`${BASE_URL}${path}`);
       }
     }
 
     const urlList = Array.from(urls).sort();
-    logger.log(`📦 task-152: built ${urlList.length} unique URLs across ${langs.length} languages`);
+    logger.log(
+      `📦 task-152: built ${urlList.length} unique URLs across ${langs.length} languages`,
+    );
 
     if (DRY_RUN) {
       for (const u of urlList.slice(0, 20)) logger.log(`   • ${u}`);
-      if (urlList.length > 20) logger.log(`   …and ${urlList.length - 20} more`);
-      logger.log('🟡 task-152: DRY_RUN set — skipping IndexNow submission and sitemap ping');
+      if (urlList.length > 20)
+        logger.log(`   …and ${urlList.length - 20} more`);
+      logger.log(
+        "🟡 task-152: DRY_RUN set — skipping IndexNow submission and sitemap ping",
+      );
       return;
     }
 
     logger.log(`📡 task-152: pinging IndexNow with /sitemap-index.xml…`);
-    const sitemapResult = await IndexNowService.submitSitemaps(HOST, 'manual');
-    logger.log(`   → success=${sitemapResult.success} ${sitemapResult.message ?? sitemapResult.error ?? ''}`);
+    const sitemapResult = await IndexNowService.submitSitemaps(HOST, "manual");
+    logger.log(
+      `   → success=${sitemapResult.success} ${sitemapResult.message ?? sitemapResult.error ?? ""}`,
+    );
 
     const batches = chunk(urlList, SUBMIT_CHUNK_SIZE);
     let successBatches = 0;
     for (let i = 0; i < batches.length; i++) {
       const batch = batches[i];
-      logger.log(`📡 task-152: submitting batch ${i + 1}/${batches.length} (${batch.length} URLs)…`);
-      const result = await IndexNowService.submitToIndexNow(batch, 'manual');
+      logger.log(
+        `📡 task-152: submitting batch ${i + 1}/${batches.length} (${batch.length} URLs)…`,
+      );
+      const result = await IndexNowService.submitToIndexNow(batch, "manual");
       if (result.success) {
         successBatches++;
-        logger.log(`   ✅ ${result.message ?? 'ok'}`);
+        logger.log(`   ✅ ${result.message ?? "ok"}`);
       } else {
-        logger.log(`   ❌ ${result.error ?? 'failed'}`);
+        logger.log(`   ❌ ${result.error ?? "failed"}`);
       }
     }
 
-    logger.log(`🏁 task-152: done — ${successBatches}/${batches.length} URL batches succeeded, sitemap-index ping=${sitemapResult.success ? 'ok' : 'failed'}`);
-    logger.log('ℹ️ task-152: GSC sitemap re-submission is a manual step — see BACKFILL_RUNBOOK.md.');
+    logger.log(
+      `🏁 task-152: done — ${successBatches}/${batches.length} URL batches succeeded, sitemap-index ping=${sitemapResult.success ? "ok" : "failed"}`,
+    );
+    logger.log(
+      "ℹ️ task-152: GSC sitemap re-submission is a manual step — see BACKFILL_RUNBOOK.md.",
+    );
   } finally {
-    await mongoose.disconnect();
+    await closePostgres();
   }
 }
 
 main().catch((err) => {
-  logger.error('❌ task-152: fatal error:', err);
+  logger.error("❌ task-152: fatal error:", err);
   process.exit(1);
 });

@@ -1,10 +1,6 @@
 import { logger } from '../utils/logger';
 import axios from 'axios';
-import {
-  IndexNowLog,
-  IndexNowSubmissionUrls,
-  INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgCreateIndexNowLog, pgSaveIndexNowUrls, INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS } from '../data/postgres-seo-indexing-store';
 import { validateOutboundUrl } from '../utils/safe-fetch';
 
 const INDEXNOW_ENDPOINT = 'https://api.indexnow.org/indexnow';
@@ -45,8 +41,8 @@ async function persistFullSubmissionUrls(
   try {
     const now = new Date();
     const expiresAt = new Date(now.getTime() + INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS * 24 * 60 * 60 * 1000);
-    await IndexNowSubmissionUrls.create({
-      logId: logDoc._id as import('mongoose').Types.ObjectId,
+    await pgSaveIndexNowUrls({
+      logId: String(logDoc._id),
       timestamp: now,
       host,
       trigger: trigger as any,
@@ -132,7 +128,7 @@ export class IndexNowService {
 
       // Log to database AFTER getting response
       try {
-        const logDoc = await IndexNowLog.create({
+        const logDoc = await pgCreateIndexNowLog({
           timestamp: new Date(),
           host,
           urlCount: urls.length,
@@ -178,7 +174,7 @@ export class IndexNowService {
       
       // Log error to database
       try {
-        const logDoc = await IndexNowLog.create({
+        const logDoc = await pgCreateIndexNowLog({
           timestamp: new Date(),
           host: host || 'unknown',
           urlCount: urls.length,

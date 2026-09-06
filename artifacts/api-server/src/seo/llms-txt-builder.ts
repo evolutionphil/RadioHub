@@ -36,7 +36,7 @@
  * to the previous minimal body so a Mongo blip can never 500 /llms.txt.
  */
 
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgTopIndexableTags } from '../data/postgres-seo-indexing-store';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 import { getActiveManifest, extractTopCountriesFromChunk } from './sitemap-manifest-builder';
 import { getCachedQualifiedLanguages } from './qualified-languages';
@@ -67,27 +67,7 @@ async function fetchTopGenres(): Promise<string[]> {
     // (sitemap-manifest-builder.ts:553) so the leaderboards align.
     // .allowDiskUse(true) is REQUIRED — see replit.md "MongoDB aggregation
     // memory limits" landmine note.
-    const rows: Array<{ _id: string; count: number }> = await Station.aggregate([
-      {
-        $match: {
-          tags: { $exists: true, $ne: '' },
-          $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-          $and: [
-            { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
-            { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
-          ],
-        },
-      },
-      // tags is a comma-separated string in this collection; explode by splitting on /,/.
-      { $project: { tagList: { $split: [{ $toLower: '$tags' }, ','] } } },
-      { $unwind: '$tagList' },
-      { $project: { tag: { $trim: { input: '$tagList' } } } },
-      { $match: { tag: { $ne: '' } } },
-      { $group: { _id: '$tag', count: { $sum: 1 } } },
-      { $sort: { count: -1, _id: 1 } },
-      { $limit: GENRE_CAP * 5 },
-    ])
-      .option({ maxTimeMS: 15000, allowDiskUse: true });
+    const rows = await pgTopIndexableTags(GENRE_CAP * 5);
 
     const whitelisted = rows
       .map((r) => String(r._id || '').replace(/\s+/g, '-'))

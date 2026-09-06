@@ -1,13 +1,13 @@
 /**
  * Runtime store that merges the static `GENRE_WHITELIST` / `GENRE_ALIASES`
  * seed in `genre-whitelist.ts` with admin-managed deltas stored in the
- * `GenreWhitelistOverride` collection (task #114).
+ * PostgreSQL override rows (task #114).
  *
  * Why a runtime store?
  *   - SSR + sitemap callers (`isWhitelistedGenreSlug`, `getCanonicalGenreSlug`)
  *     are sync. We want a sync read path with O(1) lookups.
- *   - The static seed is the safety net — if Mongo is unreachable we fall
- *     back to the seed alone, so SEO behavior never collapses.
+ *   - Static seeds support synchronous reads before the first database load;
+ *     failed refreshes retain the last successful snapshot and report failure.
  *   - Mutations from the admin dashboard refresh the in-memory snapshot
  *     synchronously after a successful write, and a periodic refresh
  *     catches changes from other replicas.
@@ -19,13 +19,12 @@
 // constants would be undefined during partial init and the snapshot
 // would seed empty.
 import { GENRE_WHITELIST_SEED, GENRE_ALIASES_SEED } from './genre-whitelist-seed';
-import { GenreWhitelistOverride } from '@workspace/db-shared/mongo-schemas';
+import { pgTaxonomyRuntime } from '../data/postgres-taxonomy-runtime-store';
 import { logger } from '../utils/logger';
 
 // Merged in-memory snapshot. Initialized from the static seed so the
 // store is usable even before the first DB load (e.g. during cold start
-// when Mongo isn't ready yet) and stays at the seed if Mongo never
-// answers — that is the documented safety fallback.
+// while PostgreSQL initializes). Startup must await the first successful load.
 let mergedSlugs: Set<string> = new Set(GENRE_WHITELIST_SEED);
 let mergedAliases: Map<string, string> = new Map(GENRE_ALIASES_SEED);
 let lastRefreshAt: Date | null = null;
@@ -54,13 +53,14 @@ export function getLastRefreshAt(): Date | null {
  * GenreWhitelistOverride rows. Safe to call concurrently — overlapping
  * calls share the same in-flight promise.
  */
-export async function refreshGenreWhitelistFromDb(): Promise<void> {
-  if (inflight) return inflight;
+export async function refreshGenreWhitelistFromDb(afterMutation = false): Promise<void> {
+  if (inflight) {
+    await inflight;
+    if (!afterMutation) return;
+  }
   inflight = (async () => {
     try {
-      const overrides = await GenreWhitelistOverride.find({})
-        .select('kind slug canonical')
-        .lean();
+      const overrides = await pgTaxonomyRuntime().overrides();
 
       const nextSlugs = new Set<string>(GENRE_WHITELIST_SEED);
       const nextAliases = new Map<string, string>(GENRE_ALIASES_SEED);
@@ -91,6 +91,8 @@ export async function refreshGenreWhitelistFromDb(): Promise<void> {
         }
       }
 
+      // Apply target removals after all deltas, independently of query order.
+      for (const [source,canonical] of nextAliases) if (!nextSlugs.has(canonical)) nextAliases.delete(source);
       mergedSlugs = nextSlugs;
       mergedAliases = nextAliases;
       lastRefreshAt = new Date();
@@ -102,6 +104,7 @@ export async function refreshGenreWhitelistFromDb(): Promise<void> {
       // Never crash the SEO path because of a refresh failure — keep the
       // previous snapshot in place. The static seed is still the floor.
       logger.error('❌ genre-whitelist-store: refresh failed (keeping previous snapshot)', err);
+      throw err;
     } finally {
       inflight = null;
     }
@@ -112,7 +115,7 @@ export async function refreshGenreWhitelistFromDb(): Promise<void> {
 /** Start the periodic background refresh. Idempotent. */
 export function startGenreWhitelistRefreshLoop(): void {
   if (refreshTimer) return;
-  // Fire-and-forget initial load; failures are swallowed inside.
+  // Background failures are already logged; explicit/admin callers receive rejection.
   refreshGenreWhitelistFromDb().catch(() => {});
   refreshTimer = setInterval(() => {
     refreshGenreWhitelistFromDb().catch(() => {});

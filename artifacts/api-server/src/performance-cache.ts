@@ -2,12 +2,8 @@ import NodeCache from 'node-cache';
 import { logger } from './utils/logger';
 import { sleep } from './utils/event-loop-yield';
 import { trackOperation } from './utils/operation-tracker';
-import {
-  CountryLanguageMapping,
-  UrlTranslation,
-  Translation,
-  Station as StationModel,
-} from '@workspace/db-shared/mongo-schemas';
+import { pgLocalization } from './data/postgres-localization-store';
+import { pgCatalog } from './data/postgres-catalog-store';
 
 /**
  * Recursively freeze a value before storing it in a `useClones: false` cache.
@@ -353,7 +349,7 @@ export class PerformanceCache {
     if (cached) return cached as Map<string, string>;
     
     
-    const mappings = await CountryLanguageMapping.find({ isActive: true }).lean();
+    const mappings = (await pgLocalization().getCountryLanguageMappings());
     
     const map = new Map<string, string>();
     mappings.forEach((m: any) => map.set(m.countryCode, m.languageCode));
@@ -374,7 +370,7 @@ export class PerformanceCache {
     if (cached) return cached as Map<string, string>;
     
     
-    const translations = await UrlTranslation.find({ isActive: true }).lean();
+    const translations = (await pgLocalization().listUrlTranslations());
     
     // Map key: "languageCode:englishPath" -> translatedPath
     const map = new Map<string, string>();
@@ -436,13 +432,12 @@ export class PerformanceCache {
       logger.log(`🔥 CACHE: Starting batched translation warmup (${allLangs.length} languages, batch=5)...`);
 
       const warmLanguage = async (language: string): Promise<number> => {
-        const translations = await Translation.find({ language }).populate('keyId').lean();
-        const translationMap: Record<string, string> = {};
-        (translations as any[]).forEach((t) => {
-          if (t.keyId?.key && t.value) translationMap[t.keyId.key] = t.value;
-        });
-        this.setTranslations(language, translationMap);
-        return Object.keys(translationMap).length;
+        {
+          const translations = await pgLocalization().getTranslations(language);
+          this.setTranslations(language, translations);
+          return Object.keys(translations).length;
+        }
+
       };
 
       try {
@@ -463,6 +458,7 @@ export class PerformanceCache {
         // Reset memo so a failed warmup can be retried.
         this.warmupPromise = null;
         console.error('❌ CACHE: Warmup failed:', error);
+        throw error;
       }
     });
     return this.warmupPromise;
@@ -478,12 +474,8 @@ export class PerformanceCache {
       
       const selectFields = '_id name slug favicon country countryCode tags votes clickCount bitrate codec logoAssets url url_resolved';
       
-      const countryStationCounts = await StationModel.aggregate([
-        { $match: { lastCheckOk: true } },
-        { $group: { _id: '$country', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 10 }
-      ]).option({ maxTimeMS: 20000, allowDiskUse: true });
+      const countryStationCounts = (await pgCatalog().groupCount('country', { lastCheckOk: true }))
+        .sort((a, b) => b.count - a.count).slice(0, 10);
       
       const topCountries = countryStationCounts.map((c: any) => c._id).filter(Boolean);
       
@@ -495,14 +487,9 @@ export class PerformanceCache {
         // Atlas shared/serverless tiers (no allowDiskUse) crash boot when
         // any country has enough stations to make the TopK heap+filter
         // path overflow the 33MB sort budget.
-        const stations = await StationModel.find({ 
-          country, 
-          lastCheckOk: true 
-        })
-        .sort({ votes: -1 })
-        .limit(30)
-        .select(selectFields)
-        .lean();
+        const stations = await pgCatalog().find({ country, lastCheckOk: true }, {
+          sort: { votes: -1 }, limit: 30, fields: selectFields.split(' '),
+        });
         
         this.setSimilarPool(country, stations);
         if (i < topCountries.length - 1) await sleep(100);
@@ -510,17 +497,16 @@ export class PerformanceCache {
       
       // Global pool — same pattern, use the {lastCheckOk:1, votes:-1}
       // compound index to skip any in-memory SORT.
-      const globalStations = await StationModel.find({ lastCheckOk: true })
-        .sort({ votes: -1 })
-        .limit(50)
-        .select(selectFields)
-        .lean();
+      const globalStations = await pgCatalog().find({ lastCheckOk: true }, {
+        sort: { votes: -1 }, limit: 50, fields: selectFields.split(' '),
+      });
       
       this.setGlobalPopularPool(globalStations);
       
       logger.log(`🔥 CACHE: Warmed up similar stations for ${topCountries.length} countries + global`);
     } catch (error) {
       console.error('❌ CACHE: Similar stations warmup failed:', error);
+      throw error;
     }
     });
   }

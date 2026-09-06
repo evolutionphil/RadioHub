@@ -2,9 +2,13 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from 'ws';
 import crypto from 'crypto';
-import mongoose from 'mongoose';
+import { getPostgresPool, getPostgresHealth } from './postgres-runtime';
+import { pgCatalog } from './data/postgres-catalog-store';
+import { pgCountryCounts, pgDiscoverableGenres, pgGenres } from './data/postgres-taxonomy-store';
+import { pgTrackVisitor, pgPruneVisitors, pgRecordListening } from './data/postgres-runtime-operations';
+import { pgDeleteOldAppLogs } from './data/postgres-content-store';
 import passport from './auth/passport-config';
-import { TranslationLanguage, Station, Genre, VisitorSession, UserListeningHistory } from '@workspace/db-shared/mongo-schemas';
+import { pgLocalization } from './data/postgres-localization-store';
 import { registerCountryLanguageMappingRoutes } from './routes/country-language-mappings';
 import urlTranslationsRouter from './routes/url-translations';
 import performanceRouter from './routes/performance';
@@ -68,7 +72,7 @@ import { registerAdminPreferencesRoutes } from './routes/admin-preferences-route
 import { registerAdminCoverageDropSettingsRoutes } from './routes/admin-coverage-drop-settings-routes';
 import { registerAdminMappingAuditDigestSettingsRoutes } from './routes/admin-mapping-audit-digest-settings-routes';
 import { registerAdminGenreWhitelistRoutes } from './routes/admin-genre-whitelist-routes';
-import { startGenreWhitelistRefreshLoop } from './seo/genre-whitelist-store';
+import { refreshGenreWhitelistFromDb, startGenreWhitelistRefreshLoop } from './seo/genre-whitelist-store';
 import { registerSilentPushRoutes } from './routes/silent-push-routes';
 import { registerMessagesRoutes } from './routes/messages-routes';
 import { registerStripeSubscriptionRoutes } from './routes/stripe-subscription-routes';
@@ -119,13 +123,14 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // permanent admin surface.
 
   // === HEALTH CHECK ===
-  app.get('/api/health', (_req, res) => {
-    const mongoStatus = mongoose.connection.readyState === 1 ? 'connected' : 'disconnected';
-    res.json({
-      status: 'ok',
+  app.get('/api/health', async (_req, res) => {
+    const postgres = await getPostgresHealth();
+    res.status(postgres.status === 'connected' ? 200 : 503).json({
+      status: postgres.status === 'connected' ? 'ok' : 'degraded',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
-      mongo: mongoStatus,
+      database: 'postgresql',
+      postgres: postgres.status,
       env: process.env.NODE_ENV || 'development'
     });
   });
@@ -231,7 +236,6 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   app.use((req, _res, next) => {
     if (!((req.path.startsWith('/api/') || req.path === '/' || !req.path.includes('.')))) return next();
     if (VISITOR_SKIP_PREFIXES.some(p => req.path.startsWith(p))) return next();
-    if (mongoose.connection.readyState !== 1) return next();
     // VISITOR-COUNT FIX (2026-07-05): req.ip behind Cloudflare → Railway →
     // web-proxy → api is the LAST proxy hop (trust proxy is 1, the chain is
     // 3+), so every real visitor upserted the SAME VisitorSession row and
@@ -244,109 +248,21 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       (req.headers['cf-connecting-ip'] as string | undefined)?.trim() ||
       (req.headers['x-forwarded-for'] as string | undefined)?.split(',')[0]?.trim() ||
       req.ip || req.connection.remoteAddress || 'unknown';
-    VisitorSession.findOneAndUpdate(
-      { ipAddress },
-      { $set: { lastActiveDate: new Date(), userAgent: req.get('user-agent') }, $inc: { visitCount: 1 } },
-      { upsert: true, returnDocument: 'after' }
-    ).catch(() => {});
+    void pgTrackVisitor(ipAddress,req.get('user-agent')).catch(error => logger.warn('Visitor metric write failed',error.message));
     next();
   });
 
-  // === DB INDEX CREATION ===
-  const createIndexes = async () => {
-    try {
-      await Station.collection.createIndex({ name: 1 });
-      await Station.collection.createIndex({ votes: -1 });
-      await Station.collection.createIndex({ createdAt: -1 });
-      await Station.collection.createIndex({ country: 1, votes: -1 });
-      await Station.collection.createIndex({ lastCheckOk: -1, votes: -1 });
-      await Station.collection.createIndex({ lastCheckOk: 1, isFeatured: 1, votes: -1, clickCount: -1 });
-      await Station.collection.createIndex({ lastCheckOk: 1, country: 1, isFeatured: 1, votes: -1, clickCount: -1 });
-      await Station.collection.createIndex({ playbackSuccessCount: -1 });
-      await Station.collection.createIndex({ state: 1, country: 1 });
-      await Station.collection.createIndex({ tags: 1 });
-      await Station.collection.createIndex({ language: 1 });
-      await Station.collection.createIndex({ tags: 1, votes: -1 });
-      await Station.collection.createIndex({ country: 1, language: 1 });
-      // INCIDENT 2026-05-15 v7 — two indexes added to eliminate the
-      // 60s "Executor error during getMore" timeouts on
-      // /api/stations/precomputed cold-fallback and PrecomputedStations
-      // computeCountryStationsByName. Both queries sort by
-      // {hasLogo:-1, votes:-1} which previously had NO supporting index
-      // → MongoDB executed an in-memory sort over 200k+ docs and hit the
-      // 32MB sort memory limit. With these compound indexes the planner
-      // can stream results pre-sorted (no SORT stage) and budget falls
-      // from 60s+ to <500ms typical, even on M10 cold start.
-      await Station.collection.createIndex(
-        { lastCheckOk: 1, hasLogo: -1, votes: -1 },
-        { background: true, name: 'lastCheckOk_1_hasLogo_-1_votes_-1' },
-      );
-      await Station.collection.createIndex(
-        { country: 1, lastCheckOk: 1, hasLogo: -1, votes: -1 },
-        { background: true, name: 'country_1_lastCheckOk_1_hasLogo_-1_votes_-1' },
-      );
-      try {
-        await Station.collection.dropIndex('station_text_search');
-        logger.log('✅ Dropped existing text search index to prevent conflicts');
-      } catch {}
-      await Station.collection.createIndex(
-        { name: 'text', country: 'text', tags: 'text' },
-        { name: 'station_text_search', weights: { name: 10, tags: 3, country: 1 }, textIndexVersion: 3, default_language: 'english' }
-      );
-      // Task #339: drop the legacy SitemapUrlSnapshot {type,language} unique
-      // index so the new composite {type,language,chunk} index (created by
-      // mongoose autoIndex) can coexist without colliding for 'stations'
-      // rows that share (type, language) but differ by chunk.
-      try {
-        const { SitemapUrlSnapshot } = await import('@workspace/db-shared/mongo-schemas');
-        await SitemapUrlSnapshot.collection.dropIndex('type_1_language_1');
-        logger.log('✅ Dropped legacy SitemapUrlSnapshot.{type,language} unique index');
-      } catch (err: any) {
-        // IndexNotFound (code 27 / "ns not found") is the steady-state happy
-        // path: the legacy index has already been dropped (or the collection
-        // doesn't exist yet on a fresh deploy). Anything else is unexpected
-        // and means stations rows could fail to upsert under the old unique
-        // constraint — surface it loudly so it's visible in boot logs.
-        const code = err?.code;
-        const msg = err?.message ?? String(err);
-        if (code === 27 || /index not found/i.test(msg) || /ns not found/i.test(msg)) {
-          logger.log('ℹ️ SitemapUrlSnapshot.{type,language} legacy index already absent — nothing to drop');
-        } else {
-          logger.warn(`⚠️ Failed to drop legacy SitemapUrlSnapshot.{type,language} unique index (code=${code}): ${msg} — per-chunk station snapshot upserts may collide`);
-        }
-      }
-      // Belt-and-braces: ensure the new composite unique index is present
-      // even if mongoose autoIndex is off in this environment, so the
-      // nightly sitemap-diff stations branch can rely on it.
-      try {
-        const { SitemapUrlSnapshot } = await import('@workspace/db-shared/mongo-schemas');
-        await SitemapUrlSnapshot.collection.createIndex(
-          { type: 1, language: 1, chunk: 1 },
-          { unique: true, name: 'type_1_language_1_chunk_1' },
-        );
-      } catch (err: any) {
-        logger.warn(`⚠️ Failed to ensure SitemapUrlSnapshot composite unique index: ${err?.message ?? err}`);
-      }
-      await Genre.collection.createIndex({ name: 1 });
-      await Genre.collection.createIndex({ slug: 1 });
-      await Genre.collection.createIndex({ isDiscoverable: 1, stationCount: -1 });
-      await Genre.collection.createIndex({ createdAt: -1 });
-      try {
-        await Station.collection.createIndex({ geoLat: 1, geoLong: 1 });
-        logger.log('✅ Geospatial index created for location queries');
-      } catch {}
-      logger.log('🚀 Performance indexes created successfully');
-    } catch (error: any) {
-      logger.log('Database indexes already exist or creation failed:', error.message);
-    }
-  };
-  createIndexes();
+  // All database indexes are versioned SQL migrations; no startup DDL.
+  setInterval(() => {
+    void Promise.all([pgPruneVisitors(),pgDeleteOldAppLogs(new Date(Date.now()-30*86400000))])
+      .catch(error=>logger.warn('PostgreSQL visitor/application-log retention failed',error.message));
+  },60*60*1000).unref();
 
   // === CACHE WARMUP FUNCTIONS ===
   async function warmupPopularStationsCache() {
     try {
       logger.log('🔥 Starting cache warmup - ALL translations FIRST for fast page load...');
-      const enabledLanguages = await TranslationLanguage.find({ isEnabled: true }).select('code').lean();
+      const enabledLanguages = (await pgLocalization().getTranslationLanguages(true));
       const languageCodes = enabledLanguages.map((l: any) => l.code);
       const criticalOrder = ['en', 'de', 'es', 'fr', 'it', 'tr', 'pt', 'nl', 'ru', 'pl'];
       const orderedLanguages = [
@@ -385,7 +301,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
       }
 
       try {
-        const genres = await Genre.find({ isDiscoverable: true }).sort({ stationCount: -1 }).limit(13).lean();
+        const genres = (await pgGenres()).sort((a,b) => b.stationCount-a.stationCount).slice(0,13);
         await CacheManager.set('genres:discoverable:all:13', genres, { ttl: 600 });
         logger.log('✅ Cached discoverable genres');
       } catch {}
@@ -417,12 +333,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
         'Spain', 'Italy', 'Netherlands', 'Austria', 'Switzerland', 'Brazil', 'Russia',
         'Japan', 'South Korea', 'India', 'Mexico', 'Canada', 'Australia', 'Poland'];
 
-      const tvCountries = (await Station.distinct('country')).filter((c: string) => c && c.trim() !== '').sort();
+      const tvCountries = (await pgCountryCounts()).map(row => row.name);
       await CacheManager.set('tv:countries:all', tvCountries, { ttl: 86400 });
 
-      const tvGenres = await Genre.find({ isDiscoverable: true })
-        .select(TV_GENRE_PROJECTION)
-        .sort({ displayOrder: 1 }).limit(13).lean();
+      const tvGenres = await pgDiscoverableGenres(undefined,13);
       await CacheManager.set('tv:genres:discoverable:slim', tvGenres.map(tvSlimGenre), { ttl: 86400 });
 
       const tvLangs = ['en', 'tr', 'de', 'es', 'fr', 'it', 'pt', 'nl', 'ru', 'ar', 'ja', 'ko', 'zh'];
@@ -440,13 +354,11 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
           let filter: any = {};
           if (c !== 'all') Object.assign(filter, normalizeCountryFilter(c));
 
-          const popStations = await Station.find(filter)
-            .sort({ votes: -1 }).limit(21).select(TV_STATION_PROJECTION).lean();
+          const popStations = await pgCatalog().find(filter,{ sort: {votes:-1},limit:21 });
           await CacheManager.set(`tv:popular:${c}`, popStations.map(tvSlimStation), { ttl: 86400 });
 
-          const total = await Station.countDocuments(filter);
-          const listStations = await Station.find(filter)
-            .sort({ votes: -1 }).limit(20).select(TV_STATION_PROJECTION).lean();
+          const total = await pgCatalog().count(filter);
+          const listStations = await pgCatalog().find(filter,{ sort: {votes:-1},limit:20 });
           await CacheManager.set(`tv:stations:${c}:all:all:all:all:createdAt:1:20:false:all`, {
             stations: listStations.map(tvSlimStation),
             totalCount: total,
@@ -611,13 +523,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     setTimeout(async () => {
       try {
         const t0 = Date.now();
-        await Station.findOne({ lastCheckOk: true })
-          .select('_id')
-          .lean()
-          .maxTimeMS(5000);
-        logger.log(`✅ Boot Mongo probe ok (${Date.now() - t0}ms) — caches will fill on first organic request`);
+        await getPostgresPool().query('SELECT 1');
+        logger.log(`✅ Boot PostgreSQL probe ok (${Date.now() - t0}ms) — caches will fill on first organic request`);
       } catch (err: any) {
-        logger.warn('⚠️ Boot Mongo probe failed (cluster cold or unreachable): ' + (err?.message || 'unknown'));
+        logger.warn('⚠️ Boot PostgreSQL probe failed (cluster cold or unreachable): ' + (err?.message || 'unknown'));
       }
     }, 5000);
 
@@ -637,79 +546,8 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     logger.log('⚡ Boot warmup skipped (dev mode) — caches fill on demand');
   }
 
-  // === HALOGO MIGRATION (one-time background, production only) ===
-  if (process.env.NODE_ENV !== 'development') setTimeout(async () => {
-    try {
-      const migrationKey = 'migration:hasLogo:v1';
-      const alreadyDone = await CacheManager.get(migrationKey);
-      if (alreadyDone) return;
-      // INCIDENT 2026-05-14 round 8: migration emitted `❌ MIGRATION:
-      // hasLogo migration failed: not primary` during the Atlas failover
-      // because it tried to bulkWrite while the primary was stepping down.
-      // Gate on a successful primary ping; if not primary, skip and let
-      // the next periodic warmup retry. The migration is idempotent and
-      // not time-sensitive — running it 50 minutes later is fine.
-      const mongoose = (await import('mongoose')).default;
-      if (mongoose.connection.readyState !== 1) {
-        logger.warn('🔧 MIGRATION: hasLogo skipped — Mongo not connected (readyState=' + mongoose.connection.readyState + '), will retry');
-        return;
-      }
-      try {
-        await mongoose.connection.db?.admin().ping();
-      } catch (pingErr: any) {
-        logger.warn('🔧 MIGRATION: hasLogo skipped — primary ping failed (' + (pingErr?.message || 'unknown') + '), will retry');
-        return;
-      }
-      // INCIDENT 2026-05-16 v12 — short-circuit: if zero docs still need
-      // hasLogo, skip the entire scan and persist the migration key.
-      // Previously every boot re-walked the whole stations collection
-      // (millions of docs, 2000-doc batches with 100ms gaps) and racked
-      // up pool pressure for ~10 minutes even when nothing needed
-      // updating. The cache write at the end is what marks it done,
-      // but the cache lives in NodeCache + Redis — a process restart
-      // or eviction reset it. Now we check Mongo state of truth first.
-      // INCIDENT 2026-05-16 v12 — marker TTL is effectively PERMANENT
-      // (75 years ≈ year 2099). Previously `ttl: 86400 * 365` (1 year)
-      // meant a normal Redis eviction or process restart after that
-      // window would re-trigger the full scan. hasLogo is a one-time
-      // backfill; once done, nothing in the codebase ever clears the
-      // flag, so the marker should never expire.
-      const PERMANENT_TTL = 86400 * 365 * 75;
-      try {
-        const pending = await Station.countDocuments({ hasLogo: { $exists: false } }).maxTimeMS(8000);
-        if (pending === 0) {
-          await CacheManager.set(migrationKey, true, { ttl: PERMANENT_TTL });
-          logger.log('✅ MIGRATION: hasLogo already populated for all stations — short-circuit, no scan needed');
-          return;
-        }
-        logger.log(`🔧 MIGRATION: hasLogo — ${pending} stations still need backfill`);
-      } catch (probeErr: any) {
-        logger.warn('🔧 MIGRATION: hasLogo pending-probe failed (' + (probeErr?.message || 'unknown') + '), will retry');
-        return;
-      }
-      logger.log('🔧 MIGRATION: Populating hasLogo field for all stations...');
-      const BATCH = 2000;
-      let skip = 0, totalUpdated = 0;
-      while (true) {
-        const stations = await Station.find({}, { _id: 1, favicon: 1, logo: 1, 'logoAssets.webp256': 1, 'logoAssets.webp96': 1 })
-          .skip(skip).limit(BATCH).lean();
-        if (stations.length === 0) break;
-        const ops = stations.map((s: any) => ({
-          updateOne: { filter: { _id: s._id }, update: { $set: { hasLogo: !!(s.logoAssets?.webp256 || s.logoAssets?.webp96 || s.favicon || s.logo) } } }
-        }));
-        await Station.bulkWrite(ops, { ordered: false });
-        totalUpdated += ops.length;
-        skip += BATCH;
-        await new Promise(r => setTimeout(r, 100));
-      }
-      await CacheManager.set(migrationKey, true, { ttl: PERMANENT_TTL });
-      logger.log(`✅ MIGRATION: hasLogo populated for ${totalUpdated} stations`);
-    } catch (err: any) {
-      // Downgrade to warn — migration is idempotent and retried on the next
-      // boot cycle, so a one-off failure (e.g. failover) is not a 5xx event.
-      logger.warn(`🔧 MIGRATION: hasLogo migration failed (will retry next boot): ${err?.message || 'unknown'}`);
-    }
-  }, 30000);
+  // has_logo is normalized during the offline import and native catalog writes.
+  // Never rescan and overwrite admin-managed logos at application startup.
 
   // === CRON JOBS ===
   const cron = await import('node-cron');
@@ -760,8 +598,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // cost ONCE and serves stale-while-revalidate afterward.
   setTimeout(async () => {
     try {
-      const { GenreCount } = await import('@workspace/db-shared/mongo-schemas');
-      const count = await GenreCount.estimatedDocumentCount();
+      const count = Number((await getPostgresPool().query('SELECT count(*) FROM genre_counts')).rows[0].count);
       if (count === 0) {
         logger.warn(
           `⚠️ [genre_counts] EMPTY at boot — nightly 3:30 AM cron has not populated yet. ` +
@@ -819,20 +656,10 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
     try {
       const { stationId, stationName, listenDuration, country, genre } = req.body;
       const userId = (req.session as any)?.user?.userId;
-      if (!userId || !stationId || !listenDuration || typeof listenDuration !== 'number') {
+      if (!userId || typeof stationId !== 'string' || !stationId || typeof listenDuration !== 'number' || !Number.isFinite(listenDuration) || listenDuration <= 0 || listenDuration > 2147483647) {
         return void res.status(400).json({ error: 'Missing required fields' });
       }
-      const listeningSession = new UserListeningHistory({
-        sessionId: userId.toString(),
-        stationId,
-        stationName: stationName || 'Unknown',
-        listenDuration: Math.max(1, Math.round(listenDuration)),
-        country: country || 'Unknown',
-        genre: genre || 'Unknown',
-        interactionType: 'listen',
-        listenedAt: new Date()
-      });
-      await listeningSession.save();
+      await pgRecordListening({ userId: String(userId),stationId,stationName,listenDuration,country,genre });
       res.json({ success: true, totalTime: listenDuration });
     } catch (error: any) {
       logger.error(`Error recording listening session: ${error.message}`);
@@ -941,26 +768,21 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   // === SPECIAL ROUTERS (registered before module routes) ===
   app.use('/api/user-engagement', userEngagementRouter);
   app.use('/api/api-keys', apiKeysRouter);
-  seedDemoApiKey();
+  await seedDemoApiKey();
   // seedSeoTranslationKeys must complete before the language seeders so that
   // TranslationKey documents exist when upserts run against them.
-  void seedSeoTranslationKeys()
+  const seedCoreTranslations = () => seedSeoTranslationKeys()
     .then(() => Promise.all([
       seedTurkishUiTranslations(),
       seedAllLanguagesSeoTranslations(),
       seedHomepageFaqTranslations(),
-    ]))
-    .catch((err: any) => {
-      logger.error('SEO translation seed failed — qualified-languages may be stale:', err?.message || err);
-    });
-  // Backfill in-page search_* translations for every SEO_LANGUAGES code.
-  // Guarded by tests/search-translations-db-coverage.test.ts (task #298).
-  void seedSearchPageTranslations();
-  // Backfill premium_* / onboarding_premium_* / code_* translation keys
-  // used by the TV PremiumUpgrade + OnboardingPremium screens.
-  void seedPremiumTranslations();
-  // Backfill subscription management UI keys (manage screen, status badges, past-due banner)
-  void seedSubscriptionUiTranslations();
+    ]));
+  {
+    // PostgreSQL startup must finish its required translation seeds before it
+    // advertises readiness; rejected database writes fail startup visibly.
+    await seedCoreTranslations();
+    await Promise.all([seedSearchPageTranslations(), seedPremiumTranslations(), seedSubscriptionUiTranslations()]);
+  }
   app.use('/api', apiKeyMiddleware);
   app.use('/api/admin/url-translations', urlTranslationsRouter);
   // Admin-only — performance routes include destructive ops (rebuild_indexes,
@@ -1009,6 +831,7 @@ export async function registerRoutes(app: Express, options?: RegisterRoutesOptio
   registerAdminGenreWhitelistRoutes(app, deps);
   // Task #114: prime the merged whitelist snapshot from Mongo and refresh
   // it periodically so admin overrides made on other replicas propagate.
+  await refreshGenreWhitelistFromDb();
   startGenreWhitelistRefreshLoop();
   registerSilentPushRoutes(app, deps);
   registerMessagesRoutes(app, chatWss, deps);

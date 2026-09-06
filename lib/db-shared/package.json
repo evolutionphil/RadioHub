@@ -4,11 +4,9 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./mongo-schemas": "./src/mongo-schemas.ts",
     "./schema": "./src/schema.ts"
   },
   "dependencies": {
-    "mongoose": "^9.6.1",
     "zod": "catalog:"
   },
   "devDependencies": {

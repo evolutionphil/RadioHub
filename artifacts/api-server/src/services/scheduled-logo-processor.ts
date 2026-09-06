@@ -1,5 +1,5 @@
 import cron from 'node-cron';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { logoProcessor } from './logo-processor';
 import { logger } from '../utils/logger';
 
@@ -164,8 +164,8 @@ class ScheduledLogoProcessor {
     let timedOut = false;
 
     try {
-      const initialPending = await Station.countDocuments(filter);
-      const completed = await Station.countDocuments({ 'logoAssets.status': 'completed' });
+      const initialPending = await pgCatalog().count(filter);
+      const completed = await pgCatalog().count({ 'logoAssets.status': 'completed' });
       logger.log(
         `🌙 Logo processor START (${trigger}): ${initialPending} pending, ${completed} already in S3`
       );
@@ -184,10 +184,7 @@ class ScheduledLogoProcessor {
           break;
         }
 
-        const stations = await Station.find(filter)
-          .select('_id name slug favicon')
-          .limit(this.BATCH_FETCH)
-          .lean();
+        const stations = await pgCatalog().find(filter, { fields: ["_id","name","slug","favicon"], limit: this.BATCH_FETCH });
 
         if (stations.length === 0) {
           logger.log('🎉 Logo processor: queue drained');
@@ -221,7 +218,7 @@ class ScheduledLogoProcessor {
         }
 
         if (rounds % 5 === 0) {
-          const remaining = await Station.countDocuments(filter);
+          const remaining = await pgCatalog().count(filter);
           const heapMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
           logger.log(
             `🌙 Logo processor round ${rounds}: ✅${successful} ❌${failed} | ${remaining} remaining | heap ${heapMB}MB`

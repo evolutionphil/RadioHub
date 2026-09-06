@@ -1,61 +1,54 @@
 /**
- * Sample-process a small cohort from each just-enqueued country, mimicking
- * what the nightly `scheduled-logo-processor` will do. Used purely to
- * gather empirical evidence that the enqueued stations don't bounce
- * straight into permanent-failure terminal states.
- *
- * Configurable via env:
- *   BACKFILL_COUNTRIES=US,DE,RU  (comma list, default US,DE,RU,FR,GB)
- *   SAMPLE=15                    (per-country cohort size, default 15)
+ * Process a bounded logo cohort per country using the production PostgreSQL store.
+ * BACKFILL_COUNTRIES=US,DE,RU,FR,GB; SAMPLE=15 (1..100).
  */
-import mongoose from 'mongoose';
-import { Station } from '@workspace/db-shared/mongo-schemas';
-import { logoProcessor } from '../services/logo-processor.js';
+import {
+  initializePostgres,
+  closePostgres,
+  getPostgresPool,
+} from "../postgres-runtime.js";
+import { logoProcessor } from "../services/logo-processor.js";
 
-const uri =
-  process.env.MONGODB_URI ||
-  process.env.DATABASE_URL ||
-  process.env.MONGO_URI;
-if (!uri) {
-  throw new Error(
-    'MONGODB_URI / DATABASE_URL / MONGO_URI not set in env — cannot connect to Mongo.',
-  );
-}
-
-const COUNTRIES = (process.env.BACKFILL_COUNTRIES || 'US,DE,RU,FR,GB')
-  .split(',')
-  .map((c) => c.trim().toUpperCase())
+const countries = (process.env.BACKFILL_COUNTRIES || "US,DE,RU,FR,GB")
+  .split(",")
+  .map((country) => country.trim().toUpperCase())
   .filter(Boolean);
-const SAMPLE = Number(process.env.SAMPLE || 15);
+const sample = Number(process.env.SAMPLE || 15);
+if (!Number.isInteger(sample) || sample < 1 || sample > 100)
+  throw new Error("SAMPLE must be an integer from 1 to 100");
+if (countries.some((country) => !/^[A-Z]{2}$/.test(country)))
+  throw new Error("BACKFILL_COUNTRIES must contain two-letter country codes");
 
-await mongoose.connect(uri);
-
-const totals: Record<string, Record<string, number>> = {};
-
-for (const cc of COUNTRIES) {
-  const cohort = await Station.find({
-    countryCode: cc,
-    favicon: { $exists: true, $nin: ['', null, 'null'] },
-    slug: { $exists: true, $ne: null },
-    logoAssets: { $exists: false },
-  })
-    .select('_id slug favicon')
-    .limit(SAMPLE)
-    .lean();
-
-  const bucket: Record<string, number> = {};
-  for (const s of cohort as Array<{ _id: unknown; slug: string; favicon: string }>) {
-    try {
-      const r = await logoProcessor.processFromUrl(String(s._id), s.slug, s.favicon);
-      const key = r.success ? 'completed' : `failed:${r.failureType ?? 'unknown'}`;
-      bucket[key] = (bucket[key] ?? 0) + 1;
-    } catch {
-      bucket['threw'] = (bucket['threw'] ?? 0) + 1;
+try {
+  await initializePostgres();
+  const totals: Record<string, Record<string, number>> = {};
+  for (const country of countries) {
+    const cohort = (
+      await getPostgresPool().query(
+        "SELECT id,slug,favicon FROM stations WHERE country_code=$1 AND favicon IS NOT NULL AND favicon NOT IN ('','null') AND slug IS NOT NULL AND (logo_assets IS NULL OR logo_assets='{}'::jsonb) ORDER BY id LIMIT $2",
+        [country, sample],
+      )
+    ).rows;
+    const bucket: Record<string, number> = {};
+    for (const station of cohort) {
+      try {
+        const result = await logoProcessor.processFromUrl(
+          station.id,
+          station.slug,
+          station.favicon,
+        );
+        const key = result.success
+          ? "completed"
+          : "failed:" + (result.failureType ?? "unknown");
+        bucket[key] = (bucket[key] ?? 0) + 1;
+      } catch {
+        bucket.threw = (bucket.threw ?? 0) + 1;
+      }
     }
+    totals[country] = bucket;
+    console.log(country, JSON.stringify(bucket));
   }
-  totals[cc] = bucket;
-  console.log(cc, JSON.stringify(bucket));
+  console.log("TOTALS", JSON.stringify(totals));
+} finally {
+  await closePostgres();
 }
-
-console.log('TOTALS', JSON.stringify(totals));
-await mongoose.disconnect();

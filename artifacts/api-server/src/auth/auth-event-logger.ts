@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import { AuthEventLog } from '@workspace/db-shared/mongo-schemas';
+import { pgInsertAuthEvent } from '../data/postgres-api-access-store';
 import { logger } from '../utils/logger';
 
 // 2026-05-13: structured + persistent auth-flow logging. Every step of every
@@ -7,9 +7,9 @@ import { logger } from '../utils/logger';
 // flows) is funnelled through `logAuthEvent`. The helper does TWO things:
 //   1) Prints a single-line structured record to stdout so it appears in the
 //      Railway/Replit live tail (✅ AUTH ... or ❌ AUTH ...).
-//   2) Persists the same record to the `auth_event_logs` MongoDB collection
+//   2) Persists the same record to the `auth_event_logs` PostgreSQL table
 //      asynchronously so it survives process restarts and page refreshes.
-// Failures of the Mongo write are themselves logged but NEVER throw — auth
+// Failures of the audit write are themselves logged but NEVER throw — auth
 // must keep working even if the audit collection is unavailable.
 
 export type AuthMethod =
@@ -95,7 +95,7 @@ export async function logAuthEvent(
     /* never fail auth on logging */
   }
   setImmediate(() => {
-    AuthEventLog.create({
+    pgInsertAuthEvent({
       ts,
       method: input.method,
       event: input.event,

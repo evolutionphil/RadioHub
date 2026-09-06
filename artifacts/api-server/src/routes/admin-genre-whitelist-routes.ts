@@ -1,28 +1,7 @@
 import type { Express, Request, Response } from 'express';
-import {
-  Genre,
-  GenreWhitelistOverride,
-  GenreStationCountsRun,
-  type IGenreStationCountsRun,
-  SAFE_GENRE_SLUG_RE,
-  Station,
-  normalizeGenreSlug,
-} from '@workspace/db-shared/mongo-schemas';
-
-// Lean projection of GenreStationCountsRun rows used to render the
-// admin Genre Whitelist history table. Keeps the route serializer
-// strictly typed instead of leaning on `any` (task #330).
-type GenreStationCountsRunLean = Pick<
-  IGenreStationCountsRun,
-  | 'trigger'
-  | 'status'
-  | 'startedAt'
-  | 'finishedAt'
-  | 'durationMs'
-  | 'totalGenres'
-  | 'updatedSlugs'
-  | 'errorMessage'
-> & { _id: unknown };
+import { pgTaxonomyRuntime } from '../data/postgres-taxonomy-runtime-store';
+import { pgStoredGenreBySlug } from '../data/postgres-taxonomy-store';
+import { SAFE_GENRE_SLUG_RE, normalizeGenreSlug } from '../seo/genre-slug';
 import {
   GENRE_WHITELIST,
   GENRE_ALIASES,
@@ -213,13 +192,13 @@ function triggerSearchEnginePush(
     // and overwritten `lastPushId` between our last `updatePushStep`
     // and this point, which would mis-attribute the alert. Runs on
     // every code path, including the zero-slug short-circuit above.
-    const finalStatus = completePushStatus(pushId);
+    const finalStatus = await completePushStatus(pushId);
     try {
       await notifyWhitelistPushResult(finalStatus);
     } catch (err) {
       logger.error('genre-whitelist: push notifier threw:', err);
     }
-  })();
+  })().catch(error=>logger.error('genre-whitelist: background push failed',error));
 }
 
 // Admin endpoints backing the "Genre whitelist" dashboard page (task #114).
@@ -305,7 +284,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
       try {
         // Make sure the snapshot reflects writes from other replicas
         // before we hand it back to the dashboard.
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
 
         const [
           overrides,
@@ -315,17 +294,14 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           lastNightlyRunRow,
           lastTest,
         ] = await Promise.all([
-          GenreWhitelistOverride.find({}).sort({ kind: 1, slug: 1 }).lean(),
+          pgTaxonomyRuntime().overrides(),
           getRecentPushHistory(PUSH_HISTORY_LIMIT),
           // Task #330: persisted history of recent Genre.stationCount
           // recomputes (newest first) so admins can confirm the
           // nightly cron has been firing reliably and spot a night
           // where 0 slugs were updated unexpectedly.
-          GenreStationCountsRun.find({})
-            .sort({ startedAt: -1 })
-            .limit(STATION_COUNTS_HISTORY_LIMIT)
-            .lean<GenreStationCountsRunLean[]>(),
-          GenreStationCountsRun.estimatedDocumentCount(),
+          pgTaxonomyRuntime().runs(STATION_COUNTS_HISTORY_LIMIT),
+          pgTaxonomyRuntime().runCount(),
           // Task #334: most-recent finished nightly cron run (success
           // or failure). The `stationCountsStatus` in-process snapshot
           // reflects the last recompute regardless of trigger (a manual
@@ -334,12 +310,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           // the persisted audit collection. Filter to triggers starting
           // with `cron:nightly` so future cron variants (e.g.
           // `cron:nightly-retry`) still count.
-          GenreStationCountsRun.findOne({
-            trigger: { $regex: '^cron:nightly' },
-            status: { $in: ['completed', 'failed'] },
-          })
-            .sort({ startedAt: -1 })
-            .lean<GenreStationCountsRunLean | null>(),
+          pgTaxonomyRuntime().runs(1,true).then(rows=>rows[0]??null),
           // Task #341: persisted summary of the most recent admin
           // "send test push-failure alert" attempt so the UI keeps
           // showing "last test: HTTP 200 at 14:32 by alice" after the
@@ -365,9 +336,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         const stationCounts: Record<string, number> = {};
         const slugsWithGenreRow = new Set<string>();
         if (sortedSlugs.length > 0) {
-          const genres = await Genre.find({ slug: { $in: sortedSlugs } })
-            .select('slug stationCount')
-            .lean();
+          const genres = await pgTaxonomyRuntime().genres(sortedSlugs);
           for (const g of genres as Array<{ slug?: string; stationCount?: number }>) {
             if (typeof g.slug === 'string') {
               stationCounts[g.slug] = g.stationCount ?? 0;
@@ -488,7 +457,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           ? Math.min(Math.max(Math.floor(rawLimit), 1), 200)
           : 50;
 
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
         const merged = getMergedWhitelist();
         const aliases = getMergedAliases();
 
@@ -496,14 +465,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // enough candidates after filtering out already-whitelisted /
         // aliased / reserved slugs.
         const fetchCap = Math.min(limit * 4, 500);
-        const genres = await Genre.find({
-          slug: { $exists: true, $ne: null },
-          stationCount: { $gt: 0 },
-        })
-          .select('slug stationCount')
-          .sort({ stationCount: -1 })
-          .limit(fetchCap)
-          .lean<Array<{ slug?: string; stationCount?: number }>>();
+        const genres = await pgTaxonomyRuntime().genres(undefined,fetchCap);
 
         const suggestions: Array<{
           slug: string;
@@ -538,50 +500,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         if (suggestions.length > 0) {
           const slugList = suggestions.map((s) => s.slug);
           try {
-            const perCountry = await Station.aggregate([
-              {
-                $addFields: {
-                  allTags: {
-                    $setUnion: [
-                      {
-                        $cond: [
-                          { $and: [{ $ne: ['$genre', null] }, { $ne: ['$genre', ''] }] },
-                          [{ $toLower: '$genre' }],
-                          [],
-                        ],
-                      },
-                      {
-                        $cond: [
-                          { $and: [{ $ne: ['$tags', null] }, { $ne: ['$tags', ''] }] },
-                          {
-                            $map: {
-                              input: { $split: ['$tags', ','] },
-                              as: 'tag',
-                              in: { $toLower: { $trim: { input: '$$tag' } } },
-                            },
-                          },
-                          [],
-                        ],
-                      },
-                    ],
-                  },
-                },
-              },
-              { $unwind: '$allTags' },
-              {
-                $match: {
-                  allTags: { $in: slugList },
-                  countryCode: { $nin: [null, ''] },
-                },
-              },
-              {
-                $group: {
-                  _id: { tag: '$allTags', cc: { $toUpper: '$countryCode' } },
-                  count: { $sum: 1 },
-                },
-              },
-              { $sort: { count: -1 } },
-            ]).option({ maxTimeMS: 30_000, allowDiskUse: true });
+            const perCountry = await pgTaxonomyRuntime().countryBreakdown(slugList);
 
             const byTag = new Map<string, Array<{ countryCode: string; stationCount: number }>>();
             for (const row of perCountry as Array<{
@@ -610,6 +529,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
               'genre-whitelist suggestions: per-country aggregation failed:',
               countryErr?.message ?? countryErr,
             );
+            throw countryErr;
           }
         }
 
@@ -674,9 +594,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         // Task #184: distinguish "Genre row exists with 0 stations" from
         // "no Genre row at all" so admins know whether the slug is a typo
         // (no row) or just genuinely empty (row exists, 0 stations).
-        const genreDoc = await Genre.findOne({ slug })
-          .select('stationCount')
-          .lean<{ stationCount?: number } | null>();
+        const genreDoc = await pgStoredGenreBySlug(slug);
         const hasGenreRow = genreDoc != null;
         const stationCount = genreDoc?.stationCount ?? 0;
         let warning: string | undefined;
@@ -686,24 +604,9 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           warning = `Genre row for "${slug}" exists but has 0 stations — the genre page will be empty until station tags are imported.`;
         }
 
-        // Wipe any prior 'slug-remove' for this slug — adding overrides
-        // removing.
-        await GenreWhitelistOverride.deleteOne({ kind: 'slug-remove', slug });
+        await pgTaxonomyRuntime().mutateOverride({kind:'slug-add',slug,notes,createdBy,seeded:GENRE_WHITELIST.has(slug)});
 
-        if (!GENRE_WHITELIST.has(slug)) {
-          // Only persist an explicit add when the slug isn't already in
-          // the static seed (otherwise it's redundant).
-          await GenreWhitelistOverride.findOneAndUpdate(
-            { kind: 'slug-add', slug },
-            {
-              $set: { canonical: null, notes },
-              $setOnInsert: { kind: 'slug-add', slug, createdBy, createdAt: new Date() },
-            },
-            { upsert: true, new: true },
-          );
-        }
-
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
         triggerSearchEnginePush([slug], { triggeredBy: createdBy, trigger: 'add-slug' });
         return void res.json({ ok: true, slug, stationCount, warning, rebuildQueued: true });
       } catch (error: any) {
@@ -731,32 +634,9 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
-        // Drop any admin add first.
-        await GenreWhitelistOverride.deleteOne({ kind: 'slug-add', slug });
+        await pgTaxonomyRuntime().mutateOverride({kind:'slug-remove',slug,createdBy,seeded:GENRE_WHITELIST.has(slug)});
 
-        // Garbage-collect alias-add overrides that pointed at this slug —
-        // otherwise they'd linger as inert rows in the audit trail (the
-        // runtime store already prunes them from the merged snapshot).
-        await GenreWhitelistOverride.deleteMany({ kind: 'alias-add', canonical: slug });
-
-        if (GENRE_WHITELIST.has(slug)) {
-          // Static seed — record a removal override so refresh keeps it gone.
-          await GenreWhitelistOverride.findOneAndUpdate(
-            { kind: 'slug-remove', slug },
-            {
-              $setOnInsert: {
-                kind: 'slug-remove',
-                slug,
-                canonical: null,
-                createdBy,
-                createdAt: new Date(),
-              },
-            },
-            { upsert: true, new: true },
-          );
-        }
-
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
         triggerSearchEnginePush([slug], { triggeredBy: createdBy, trigger: 'remove-slug' });
         return void res.json({ ok: true, slug, rebuildQueued: true });
       } catch (error: any) {
@@ -784,7 +664,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         const slug = slugResult.slug;
         // Refresh the in-memory snapshot before checking whitelist
         // membership so we don't reject a slug another replica just added.
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
         if (!getMergedWhitelist().has(slug)) {
           return void res.status(400).json({
             error: `"${slug}" is not on the whitelist — add it first`,
@@ -797,61 +677,9 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           .split('-')
           .map((part) => (part ? part[0].toUpperCase() + part.slice(1) : part))
           .join(' ');
-        // Upsert keeps this idempotent against concurrent clicks: the
-        // Genre collection has a (non-unique) index on slug but no
-        // uniqueness constraint, so a naive read-then-create would race.
-        // findOneAndUpdate with upsert relies on Mongo's atomic upsert
-        // semantics. We detect "row already existed" by checking
-        // lastErrorObject.upserted on the raw result.
-        type UpsertRawResult = {
-          lastErrorObject?: { upserted?: unknown };
-        };
-        const result = (await Genre.findOneAndUpdate(
-          { slug },
-          {
-            $setOnInsert: {
-              name,
-              slug,
-              stationCount: 0,
-              isDiscoverable: false,
-              createdAt: new Date(),
-            },
-          },
-          { upsert: true, new: false, rawResult: true },
-        )) as unknown as UpsertRawResult;
-        const created = result?.lastErrorObject?.upserted != null;
-        if (!created) {
-          return void res.status(409).json({ error: `Genre row for "${slug}" already exists` });
-        }
-        // Task #241: backfill stationCount immediately so admins can tell
-        // right away whether the slug actually matches anything in the
-        // catalog, rather than waiting for the next genre-count maintenance
-        // pass. Mirrors the regex pattern used by the merge-winner refresh
-        // in translation-admin-routes.ts: match the humanized name as a
-        // standalone tag (comma-delimited) or as the legacy `genre` field,
-        // case-insensitively. If the count call fails we keep the row at 0
-        // — the background recompute will correct it on its next pass.
-        let stationCount = 0;
-        try {
-          const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-          stationCount = await Station.countDocuments({
-            $or: [
-              { tags: { $regex: new RegExp(`(^|,)\\s*${escapedName}\\s*(,|$)`, 'i') } },
-              { genre: { $regex: new RegExp(`^\\s*${escapedName}\\s*$`, 'i') } },
-            ],
-          });
-          if (stationCount > 0) {
-            await Genre.updateOne(
-              { slug },
-              { $set: { stationCount, updatedAt: new Date() } },
-            );
-          }
-        } catch (countErr: any) {
-          logger.error(
-            `Failed to backfill stationCount for new Genre row "${slug}":`,
-            countErr?.message ?? countErr,
-          );
-        }
+        const result = await pgTaxonomyRuntime().createWhitelistedGenre(slug,name);
+        if (!result.created) return void res.status(409).json({error:`Genre row for "${slug}" already exists`});
+        const stationCount=result.stationCount;
         return void res.json({ ok: true, slug, name, stationCount });
       } catch (error: any) {
         logger.error('Error creating genre row for whitelist slug:', error);
@@ -896,7 +724,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
 
         // Make sure the merged snapshot is current before we validate
         // the canonical target — an admin could have just added it.
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
         if (!getMergedWhitelist().has(canonical)) {
           return void res.status(400).json({
             error: `Canonical "${canonical}" is not on the whitelist — add it first`,
@@ -916,20 +744,9 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
-        // Drop any prior 'alias-remove' for this source — adding overrides
-        // removing.
-        await GenreWhitelistOverride.deleteOne({ kind: 'alias-remove', slug: source });
+        await pgTaxonomyRuntime().mutateOverride({kind:'alias-add',slug:source,canonical,notes,createdBy,seeded:GENRE_ALIASES.has(source)});
 
-        await GenreWhitelistOverride.findOneAndUpdate(
-          { kind: 'alias-add', slug: source },
-          {
-            $set: { canonical, notes },
-            $setOnInsert: { kind: 'alias-add', slug: source, createdBy, createdAt: new Date() },
-          },
-          { upsert: true, new: true },
-        );
-
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
         // Push both the alias source (now 301s to canonical) and the
         // canonical (which may have just appeared) so search engines
         // pick up the new redirect target without waiting 6h.
@@ -937,6 +754,7 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
         return void res.json({ ok: true, source, canonical, rebuildQueued: true });
       } catch (error: any) {
         logger.error('Error adding genre alias:', error);
+        if (error?.code==='GENRE_ALIAS_CONFLICT') return void res.status(409).json({error:error.message});
         return void res.status(500).json({ error: 'Failed to add alias' });
       }
     },
@@ -960,25 +778,9 @@ export function registerAdminGenreWhitelistRoutes(app: Express, deps: any) {
           return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
-        await GenreWhitelistOverride.deleteOne({ kind: 'alias-add', slug: source });
+        await pgTaxonomyRuntime().mutateOverride({kind:'alias-remove',slug:source,createdBy,seeded:GENRE_ALIASES.has(source)});
 
-        if (GENRE_ALIASES.has(source)) {
-          await GenreWhitelistOverride.findOneAndUpdate(
-            { kind: 'alias-remove', slug: source },
-            {
-              $setOnInsert: {
-                kind: 'alias-remove',
-                slug: source,
-                canonical: null,
-                createdBy,
-                createdAt: new Date(),
-              },
-            },
-            { upsert: true, new: true },
-          );
-        }
-
-        await refreshGenreWhitelistFromDb();
+        await refreshGenreWhitelistFromDb(true);
         triggerSearchEnginePush([source], { triggeredBy: createdBy, trigger: 'remove-alias' });
         return void res.json({ ok: true, source, rebuildQueued: true });
       } catch (error: any) {

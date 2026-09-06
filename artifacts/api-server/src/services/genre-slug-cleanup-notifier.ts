@@ -1,12 +1,12 @@
 import { logger } from '../utils/logger';
-import type { IGenreSlugCleanupRun } from '@workspace/db-shared/mongo-schemas';
+import type { GenreSlugCleanupRun as IGenreSlugCleanupRun } from '../data/postgres-genre-cleanup-store';
 
 /**
  * Notifier for the weekly genre-slug cleanup cron (Task #160).
  *
  * In steady state the weekly run added in Task #132 should be a
  * no-op — the schema validator on `Genre.slug` blocks new bad writes
- * through the Mongoose layer, so a cleanup that suddenly normalizes or
+ * through the native genre write layer, so a cleanup that suddenly normalizes or
  * demotes a chunk of rows means something upstream (a bulk path, an
  * old code path, a Radio-Browser drift) is reintroducing bad data.
  * We want to know about that immediately rather than discovering it

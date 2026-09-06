@@ -10,34 +10,23 @@
  * Usage:  tsx src/scripts/run-search-translations-seed.ts
  */
 
-import mongoose from 'mongoose';
+import { initializePostgres, closePostgres } from "../postgres-runtime";
 
-import { seedSearchPageTranslations } from '../seo/search-page-translations-seed';
-import { logger } from '../utils/logger';
+import { seedSearchPageTranslations } from "../seo/search-page-translations-seed";
+import { logger } from "../utils/logger";
 
 async function main() {
-  const uri =
-    process.env.MONGODB_URI ||
-    process.env.DATABASE_URL ||
-    process.env.MONGO_URI ||
-    '';
-  if (!uri) {
-    logger.error(
-      'No Mongo URI configured (MONGODB_URI / DATABASE_URL / MONGO_URI). Aborting.',
-    );
-    process.exit(1);
-  }
+  await initializePostgres();
 
-  await mongoose.connect(uri, { serverSelectionTimeoutMS: 30000 });
   try {
     await seedSearchPageTranslations();
-    logger.log('search-page translation seed complete.');
+    logger.log("search-page translation seed complete.");
   } finally {
-    await mongoose.disconnect().catch(() => undefined);
+    await closePostgres().catch(() => undefined);
   }
 }
 
 main().catch((err) => {
-  logger.error('search-page translation seed failed:', err);
+  logger.error("search-page translation seed failed:", err);
   process.exit(1);
 });

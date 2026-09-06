@@ -18,3 +18,18 @@
 //   export type Post = typeof postsTable.$inferSelect;
 
 export * from "./schema";
+export * from "./relational";
+export * from "./api-access";
+export * from "./catalog-writes";
+export * from "./tv-cast";
+export * from "./seo-indexing";
+export * from "./recommendation-state";
+export * from "./taxonomy-runtime";
+export * from "./runtime-operations";
+export * from "./application-content";
+export * from "./coverage-operations";
+export * from "./station-debug";
+export * from "./admin-maintenance";
+export * from "./admin-auxiliary";
+export * from "./genre-merge-audit";
+export * from "./cleanup-state";

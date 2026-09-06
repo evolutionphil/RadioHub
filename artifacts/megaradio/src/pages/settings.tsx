@@ -50,7 +50,6 @@ interface SystemSettings {
   syncInterval: number;
   
   // Database Settings
-  mongoUrl: string;
   maxConnections: number;
   connectionTimeout: number;
   enableBackup: boolean;
@@ -105,7 +104,6 @@ const defaultSettings: SystemSettings = {
   syncInterval: 240, // 4 hours
   
   // Database
-  mongoUrl: "mongodb://localhost:27017/megaradio",
   maxConnections: 100,
   connectionTimeout: 30000,
   enableBackup: true,
@@ -184,8 +182,9 @@ export default function Settings() {
   // Test connection mutations
   const testDatabaseMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', '/api/settings/test-database');
-      return response.json();
+      const response = await apiRequest('GET', '/api/health');
+      const health = await response.json();
+      return { success:health.database?.engine==='postgresql' && health.database?.status==='connected', message:'PostgreSQL connection checked by the API server.' };
     },
     onSuccess: (data) => {
       toast({ 
@@ -481,12 +480,11 @@ export default function Settings() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="space-y-2">
-                <Label htmlFor="mongoUrl">MongoDB Connection URL</Label>
+                <Label htmlFor="databaseEngine">Database</Label>
                 <Input
-                  id="mongoUrl"
-                  type="password"
-                  value={settings.mongoUrl}
-                  onChange={(e) => handleSettingChange('mongoUrl', e.target.value)}
+                  id="databaseEngine"
+                  value="PostgreSQL — configured through the server DATABASE_URL"
+                  readOnly
                 />
                 <div className="flex justify-end">
                   <Button

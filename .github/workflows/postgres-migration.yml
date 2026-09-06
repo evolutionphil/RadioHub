@@ -1,0 +1,73 @@
+name: PostgreSQL migration
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  postgres-migration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: radiohub
+          POSTGRES_PASSWORD: radiohub_test
+          POSTGRES_DB: radiohub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U radiohub -d radiohub_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://radiohub:radiohub_test@localhost:5432/radiohub_test
+      POSTGRES_SSL: disable
+      POSTGRES_INTEGRATION_TEST: "true"
+      PG_TEST_DATABASE_URL: postgresql://radiohub:radiohub_test@localhost:5432/radiohub_test
+      PORT: "5000"
+      BASE_PATH: /
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.19.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node artifacts/api-server/scripts/apply-postgres-migrations.mjs
+      - name: Verify migration runner idempotency
+        run: node artifacts/api-server/scripts/apply-postgres-migrations.mjs
+      - run: node artifacts/api-server/scripts/verify-postgres-integration.mjs
+      - run: pnpm --filter @workspace/api-server run test:postgres-migration
+      - run: pnpm --filter @workspace/api-server run test
+      - run: pnpm --filter @workspace/megaradio run test
+      - run: pnpm run typecheck
+      - name: Build frontend and enforce all server dependency boundaries
+        run: |
+          pnpm --filter @workspace/megaradio run build
+          for entry in src/index.ts src/index-proxy.ts; do
+            ENTRY="$entry" pnpm --filter @workspace/api-server run build
+          done
+      - name: Package Mongo-free production API and web
+        run: |
+          ENTRY=src/index-api.ts pnpm --filter @workspace/api-server run build
+          pnpm --filter @workspace/api-server deploy --prod --legacy "$RUNNER_TEMP/radiohub-api-production"
+          cp -r artifacts/megaradio/dist/public "$RUNNER_TEMP/radiohub-api-production/dist/public"
+          mkdir -p "$RUNNER_TEMP/radiohub-api-production/artifacts/megaradio"
+          cp -r artifacts/megaradio/src "$RUNNER_TEMP/radiohub-api-production/artifacts/megaradio/src"
+          cp -r lib/db/migrations "$RUNNER_TEMP/radiohub-api-production/db-migrations"
+          ENTRY=src/index-web.ts pnpm --filter @workspace/api-server run build
+          pnpm --filter @workspace/api-server deploy --prod --legacy "$RUNNER_TEMP/radiohub-web-production"
+          cp -r artifacts/megaradio/dist/public "$RUNNER_TEMP/radiohub-web-production/dist/public"
+      - name: Boot real production processes with PostgreSQL and no external egress
+        env:
+          POSTGRES_PRODUCTION_SMOKE: "true"
+        run: >-
+          node artifacts/api-server/scripts/verify-postgres-production.mjs
+          --api-dir="$RUNNER_TEMP/radiohub-api-production"
+          --web-dir="$RUNNER_TEMP/radiohub-web-production"

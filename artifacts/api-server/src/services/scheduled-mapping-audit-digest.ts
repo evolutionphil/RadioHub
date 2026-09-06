@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { logger } from '../utils/logger';
+import { pgLocalization } from '../data/postgres-localization-store';
 import {
   emailMappingAuditDigest,
   type MappingAuditDigestEntry,
@@ -181,13 +182,8 @@ class ScheduledMappingAuditDigest {
           `lookback=${Math.round(resolved.lookbackMs / 3_600_000)}h ` +
           `source=${resolved.source}`,
       );
-      const { ClearedOverridesAuditLog } = await import(
-        '@workspace/db-shared/mongo-schemas'
-      );
-      const rows = await ClearedOverridesAuditLog
-        .find({ createdAt: { $gte: windowStart, $lt: windowEnd } })
-        .sort({ createdAt: 1 })
-        .lean();
+      const rows = (await pgLocalization().listMappingAudit({ from: windowStart, to: new Date(windowEnd.getTime()-1) })).entries
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
       const entries: MappingAuditDigestEntry[] = rows.map((r: any) => ({
         createdAt: r.createdAt instanceof Date ? r.createdAt : new Date(r.createdAt),
         action: r.action,

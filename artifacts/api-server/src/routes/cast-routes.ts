@@ -1,11 +1,13 @@
 import { type Express } from "express";
 import { type WebSocketServer, type WebSocket } from 'ws';
-import { AuthToken, CastSession } from '@workspace/db-shared/mongo-schemas';
+import { getCastSession } from '../data/postgres-cast-store';
+import { findActiveAuthToken } from '../data/auth-token-store';
 import { castService } from '../services/cast-service';
 import { logger } from '../utils/logger';
 
 export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps: any) {
   const { requireAuth } = deps;
+  castWss.on('close', () => { void castService.close().catch(error => logger.warn('Cast shutdown:', error)); });
 
   castWss.on('connection', async (socket: WebSocket, request) => {
     try {
@@ -24,20 +26,20 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
 
     let userId: string | null = null;
     try {
-      const tokenDoc = await AuthToken.findOne({ token, isRevoked: false, expiresAt: { $gt: new Date() } });
+      const tokenDoc = await findActiveAuthToken(token);
       if (!tokenDoc) {
         socket.send(JSON.stringify({ type: 'error', message: 'Invalid or expired token' }));
         socket.close(4002, 'Authentication failed');
         return;
       }
-      userId = tokenDoc.userId.toString();
+      userId = tokenDoc.userId;
     } catch (err) {
       socket.send(JSON.stringify({ type: 'error', message: 'Authentication error' }));
       socket.close(4002, 'Authentication failed');
       return;
     }
 
-    const session = await CastSession.findOne({ sessionId, expiresAt: { $gt: new Date() } });
+    const session = await getCastSession(sessionId, userId!);
     if (!session) {
       socket.send(JSON.stringify({ type: 'error', message: 'Session not found or expired' }));
       socket.close(4003, 'Session not found');
@@ -51,7 +53,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
     }
 
     if (role === 'tv') {
-      if (!session.tvDeviceId || (deviceId && session.tvDeviceId !== deviceId)) {
+      if (!deviceId || !session.tvDeviceId || session.tvDeviceId !== deviceId || session.userId !== userId) {
         socket.send(JSON.stringify({ type: 'error', message: 'TV device not paired with this session' }));
         socket.close(4004, 'Not authorized');
         return;
@@ -63,7 +65,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
       }
     }
 
-    castService.registerClient(clientId, socket, sessionId, role, userId, deviceId || undefined);
+    await castService.registerClient(clientId, socket, sessionId, role, userId, deviceId || undefined);
 
     socket.send(JSON.stringify({
       type: 'cast:connected',
@@ -78,6 +80,10 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
     socket.on('message', async (rawData) => {
       try {
         const msg = JSON.parse(rawData.toString());
+        if (!await findActiveAuthToken(token) || !await getCastSession(sessionId, userId!)) {
+          socket.close(4002, 'Session or authentication expired');
+          return;
+        }
 
         switch (msg.type) {
           case 'cast:command':
@@ -85,7 +91,7 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
             break;
 
           case 'cast:now_playing':
-            await castService.handleNowPlaying(sessionId, msg.data);
+            if (role === 'tv') await castService.handleNowPlaying(sessionId, msg.data, userId!);
             break;
 
           case 'cast:heartbeat':
@@ -126,8 +132,8 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
       if (sessionUserId) {
         userId = sessionUserId;
       } else if (bearerToken) {
-        const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } });
-        if (tokenDoc) userId = tokenDoc.userId.toString();
+        const tokenDoc = await findActiveAuthToken(bearerToken);
+        if (tokenDoc) userId = tokenDoc.userId;
       }
 
       if (!userId) {
@@ -215,7 +221,8 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
     }
   });
 
-  app.post('/api/cast/command', async (req: any, res) => {
+  app.post('/api/cast/command', async (req: any, res, next) => {
+    if (!req.body?.sessionId && req.body?.deviceId) return void next();
     try {
       const authHeader = req.headers['authorization'];
       const bearerToken = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -224,8 +231,8 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
       let userId: string | null = null;
       if (sessionUserId) userId = sessionUserId;
       else if (bearerToken) {
-        const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } });
-        if (tokenDoc) userId = tokenDoc.userId.toString();
+        const tokenDoc = await findActiveAuthToken(bearerToken);
+        if (tokenDoc) userId = tokenDoc.userId;
       }
 
       if (!userId) return void res.status(401).json({ error: 'Authentication required' });
@@ -263,8 +270,8 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
       let userId: string | null = null;
       if (sessionUserId) userId = sessionUserId;
       else if (bearerToken) {
-        const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } });
-        if (tokenDoc) userId = tokenDoc.userId.toString();
+        const tokenDoc = await findActiveAuthToken(bearerToken);
+        if (tokenDoc) userId = tokenDoc.userId;
       }
 
       if (!userId) return void res.status(401).json({ error: 'Authentication required' });
@@ -292,8 +299,8 @@ export function registerCastRoutes(app: Express, castWss: WebSocketServer, deps:
       let userId: string | null = null;
       if (sessionUserId) userId = sessionUserId;
       else if (bearerToken) {
-        const tokenDoc = await AuthToken.findOne({ token: bearerToken, isRevoked: false, expiresAt: { $gt: new Date() } });
-        if (tokenDoc) userId = tokenDoc.userId.toString();
+        const tokenDoc = await findActiveAuthToken(bearerToken);
+        if (tokenDoc) userId = tokenDoc.userId;
       }
 
       if (!userId) return void res.status(401).json({ error: 'Authentication required' });

@@ -2,7 +2,7 @@ import sharp from 'sharp';
 import path from 'path';
 import fs from 'fs';
 import fsp from 'fs/promises';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgSeoCatalog } from './data/postgres-seo-read-store';
 import NodeCache from 'node-cache';
 
 // INCIDENT 2026-05-15 v5: sharp's libvips cache held up to 50 MB native +
@@ -100,7 +100,7 @@ export async function generateStationOgImage(stationSlug: string): Promise<Buffe
   if (cached) return cached;
 
   try {
-    const station = await Station.findOne({ slug: stationSlug }).lean();
+    const station = await pgSeoCatalog().findOne({ slug: stationSlug });
     if (!station) return null;
 
     const logoBuffer = await getStationLogoBuffer(station);

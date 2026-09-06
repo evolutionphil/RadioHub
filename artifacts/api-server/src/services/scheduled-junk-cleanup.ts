@@ -1,5 +1,7 @@
 import cron from 'node-cron';
 import path from 'path';
+import { tmpdir } from 'node:os';
+import { pgCoverage } from '../data/postgres-coverage-store';
 import { logger } from '../utils/logger';
 import { runJunkCleanup, type JunkCleanupResult } from '../utils/clean-content-quality-urls';
 
@@ -98,7 +100,7 @@ class ScheduledJunkCleanup {
    * Runs one full sweep. Returns silently if a run is already in progress
    * (single-instance lock).
    *
-   * The cleanup script connects/disconnects mongoose itself when invoked from
+   * The cleanup script closes its PostgreSQL pool when invoked from
    * a shell. Here the app server has already opened a connection, so we pass
    * `manageConnection: false` to reuse it.
    */
@@ -108,6 +110,10 @@ class ScheduledJunkCleanup {
       return null;
     }
     this.isRunning = true;
+    let leader: Awaited<ReturnType<ReturnType<typeof pgCoverage>['acquireJob']>> = null;
+    try { leader = await pgCoverage().acquireJob('junk-cleanup'); }
+    catch (error) { this.isRunning = false; throw error; }
+    if (!leader) { this.isRunning = false; return null; }
     const startedAt = new Date();
     let result: JunkCleanupResult | null = null;
     let errorMsg: string | undefined;
@@ -117,15 +123,17 @@ class ScheduledJunkCleanup {
       // Persist the audit CSV in /tmp inside the container so a tiny disk
       // doesn't fill up over time. Operators can tail this file via
       // `docker exec` / Railway's shell when investigating a particular run.
-      const reportPath = path.join('/tmp', `junk-cleanup-${startedAt.toISOString().slice(0, 10)}.csv`);
+      const reportPath = path.join(tmpdir(), `junk-cleanup-${startedAt.toISOString().slice(0, 10)}.csv`);
       result = await runJunkCleanup({
         manageConnection: false,
+        assertOwned: () => leader!.assertOwned(),
         reportPath,
         log: (m) => logger.log(m),
       });
     } catch (err: any) {
       errorMsg = err?.message || String(err);
       logger.error('❌ Junk cleanup error:', errorMsg);
+      throw err;
     } finally {
       const finishedAt = new Date();
       this.lastRunAt = finishedAt;
@@ -150,7 +158,7 @@ class ScheduledJunkCleanup {
             durationMs: finishedAt.getTime() - startedAt.getTime(),
             error: errorMsg,
           };
-      this.isRunning = false;
+      try { await leader.release(); } finally { this.isRunning = false; }
       const seconds = Math.round((finishedAt.getTime() - startedAt.getTime()) / 1000);
       if (result) {
         logger.log(

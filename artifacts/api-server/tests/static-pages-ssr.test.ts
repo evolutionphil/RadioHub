@@ -27,110 +27,22 @@
 import { test, mock, before } from 'node:test';
 import assert from 'node:assert/strict';
 
-// ---------------------------------------------------------------------------
-// Module mocks: SeoRenderer pulls in mongoose models, the in-memory perf
-// cache, and the qualified-languages cache at import / call time. We don't
-// need the DB for the pure render-pipeline assertions exercised here, so
-// stub the few imports that would otherwise crash module load or hit Mongo.
-// Mirrors faq-schema-visible-content.test.ts.
-// ---------------------------------------------------------------------------
-
-interface FakeQuery<T> extends PromiseLike<T> {
-  select: (..._args: unknown[]) => FakeQuery<T>;
-  sort: (..._args: unknown[]) => FakeQuery<T>;
-  populate: (..._args: unknown[]) => FakeQuery<T>;
-  limit: (..._args: unknown[]) => FakeQuery<T>;
-  skip: (..._args: unknown[]) => FakeQuery<T>;
-  maxTimeMS: (..._args: unknown[]) => FakeQuery<T>;
-  setOptions: (..._args: unknown[]) => FakeQuery<T>;
-  lean: () => Promise<T>;
-}
-function fakeQuery<T>(value: T): FakeQuery<T> {
-  const q: FakeQuery<T> = {
-    select: () => q,
-    sort: () => q,
-    populate: () => q,
-    limit: () => q,
-    // The A-Z index letter query (Task #11) paginates with .skip() and caps
-    // with .maxTimeMS() — both must be chainable on the fake.
-    skip: () => q,
-    maxTimeMS: () => q,
-    // `withSignal()` wraps mongoose queries with `query.setOptions(...)` to
-    // attach the AbortSignal — must be present on the fake or every
-    // mocked Translation.find() call throws and gets swallowed by error
-    // handling, leaving noisy logs.
-    setOptions: () => q,
-    lean: async () => value,
-    then: (resolve, reject) =>
-      Promise.resolve(value).then(resolve, reject),
-  };
-  return q;
-}
-
-const NULL_MODEL = {
-  find: () => fakeQuery([]),
-  findOne: () => fakeQuery(null),
-  findById: () => fakeQuery(null),
-  countDocuments: () => fakeQuery(0),
-  aggregate: () => ({
-    allowDiskUse: () => Promise.resolve([]),
-    exec: async () => [],
-  }),
-};
-
-const MONGO_MODEL_NAMES = [
-  'AdminPreference', 'AdvancedSearch', 'Advertisement', 'AnalyticsEvent',
-  'ApiKey', 'ApiKeyModel', 'ApiUser', 'AppleWebhookEvent', 'AppLog',
-  'AuthToken', 'BackfillRun', 'BlacklistedStation', 'BulkDescriptionJob',
-  'CastCommand', 'CastNowPlaying', 'CastSession', 'Country',
-  'CoverageSnapshot', 'DemoUsage', 'DirectMessage', 'Feedback',
-  'FooterSocialMedia', 'Genre', 'GenreSlugCleanupRun', 'GenreWhitelistOverride',
-  'IapEvent', 'IndexNowLog', 'Language', 'ListeningSession', 'Notification',
-  'PublicUserProfile', 'PushToken', 'Recommendation', 'SeoMetadata',
-  'SeoQualifiedLanguagesLkg', 'SitemapManifest', 'Station', 'StationComment',
-  'StationDebugLog', 'StationRating', 'StationSimilarity', 'SyncLog',
-  'Translation', 'TranslationKey', 'TranslationLanguage', 'TranslationMetadata',
-  'TvLoginCode', 'UrlTranslation', 'User', 'UserDevice', 'UserFavorite',
-  'UserFollow', 'UserListeningHistory', 'UserMusicProfile', 'UserNotification',
-] as const;
-
-const mongoMockExports: Record<string, unknown> = {};
-for (const name of MONGO_MODEL_NAMES) mongoMockExports[name] = NULL_MODEL;
-mongoMockExports.SAFE_GENRE_SLUG_RE = /^[a-z0-9-]+$/;
-// 2026-07-03: mongo-schemas grew new exports (IndexNowSubmissionUrls,
-// GenreCount, MediaGroup, normalizeGenreSlug, ...) AFTER this mock's model
-// list was written, and the SSR import graph (seo-renderer -> services/
-// indexnow.ts et al.) now imports some of them at module level. Any missing
-// named export kills the WHOLE suite at module-instantiation ("does not
-// provide an export named ..." -> every test hookFailed/SyntaxError), which
-// is exactly how these suites silently rotted to 0 passing. Mirror EVERY
-// runtime export of mongo-schemas: models default to NULL_MODEL, the few
-// non-model exports get workable stand-ins below.
-const SUPPLEMENTAL_MONGO_EXPORT_NAMES = [
-  'AdminSetting', 'AdminSettingHistory', 'Ads', 'AuthEventLog',
-  'ClearedOverridesAuditLog', 'Codec', 'CountryLanguageMapping',
-  'CoverageBackfillRun', 'CoverageBackfillStatus', 'EnhancedLanguage',
-  'GenreCount', 'GenreMergeAuditLog', 'GenreStationCountsRun',
-  'GenreWhitelistPushLog', 'GscIndexingSnapshot', 'GscOAuthToken',
-  'GscUrlInspection', 'IndexNowSubmissionUrls', 'LaravelPage', 'MediaGroup',
-  'Page', 'SemrushIssue', 'SharedComparisonPreset', 'SitemapUrlSnapshot',
-  'StationEngagement', 'StationErrorLog', 'StationPlaybackCache',
-  'StationRequest', 'StationSubmission', 'StripeSaleEvent',
-  'StripeSubscriptionPlan', 'TvSubscriptionCode', 'TvTelemetry',
-  'TvTelemetryDaily', 'TvVersionConfig', 'UserProfile', 'UserSession',
-  'VisitorSession',
-] as const;
-for (const name of SUPPLEMENTAL_MONGO_EXPORT_NAMES) {
-  if (!(name in mongoMockExports)) mongoMockExports[name] = NULL_MODEL;
-}
-mongoMockExports.INDEXNOW_SUBMISSION_URLS_RETENTION_DAYS = 30;
-mongoMockExports.ADMIN_SETTING_HISTORY_RETENTION_PER_KEY = 20;
-mongoMockExports.normalizeGenreSlug = (raw: string) =>
-  String(raw ?? '').toLowerCase().trim().replace(/\s+/g, '-');
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: mongoMockExports,
-});
+// Keep the rendering assertions database-independent by stubbing native read stores.
+mock.module('../src/data/postgres-localization-store', { namedExports: {
+  pgLocalization: () => ({ getTranslations: async () => ({}) }),
+} });
+mock.module('../src/data/postgres-seo-read-store', { namedExports: {
+  pgSeoCatalog: () => ({ find: async () => [], count: async () => 0, findById: async () => null, findOne: async () => null }),
+} });
+mock.module('../src/data/postgres-taxonomy-store', { namedExports: { pgStoredGenreBySlug: async () => null } });
+mock.module('../src/data/postgres-content-store', { namedExports: { pgSeoMetadata: async () => null } });
+mock.module('../src/services/precomputed-genres', { namedExports: {
+  PrecomputedGenresService: { getGenres: async () => ({ genres: [], total: 0 }) },
+} });
+mock.module('../src/seo/qualified-languages', { namedExports: {
+  getCachedQualifiedLanguages: async () => ['en', 'tr', 'de', 'ja', 'ar', 'ru', 'fr'],
+  getCachedQualifiedLanguagesSync: () => ['en', 'tr', 'de', 'ja', 'ar', 'ru', 'fr'],
+} });
 
 mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
   namedExports: {

@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger';
-import type { IBackfillRun } from '@workspace/db-shared/mongo-schemas';
+import type { BackfillRun as IBackfillRun } from '../data/postgres-coverage-store';
 
 /**
  * Notifier for weekly backfill runs.

@@ -1,5 +1,5 @@
 import type { Express, Request, Response } from 'express';
-import { AdminPreference } from '@workspace/db-shared/mongo-schemas';
+import { pgAdminAux } from '../data/postgres-admin-auxiliary-store';
 import { logger } from '../utils/logger';
 
 // Generic per-admin key/value preferences store. Lets admin pages
@@ -36,7 +36,7 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
           return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
-        const doc = await AdminPreference.findOne({ adminUsername, key }).lean();
+        const doc = await pgAdminAux().preferenceGet(adminUsername,key);
         if (!doc) {
           return void res.json({ key, value: null, updatedAt: null });
         }
@@ -66,7 +66,7 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
           return void res.status(401).json({ error: 'Admin identity unavailable' });
         }
 
-        const result = await AdminPreference.deleteOne({ adminUsername, key });
+        const result = await pgAdminAux().preferenceDelete(adminUsername,key);
         return void res.json({
           key,
           deleted: result.deletedCount ?? 0,
@@ -99,11 +99,7 @@ export function registerAdminPreferencesRoutes(app: Express, deps: any) {
 
         const value = body.value ?? null;
         const now = new Date();
-        const doc = await AdminPreference.findOneAndUpdate(
-          { adminUsername, key },
-          { $set: { value, updatedAt: now }, $setOnInsert: { createdAt: now } },
-          { upsert: true, new: true },
-        ).lean();
+        const doc = await pgAdminAux().preferenceSet(adminUsername,key,value);
 
         return void res.json({
           key,

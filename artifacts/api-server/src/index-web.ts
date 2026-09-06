@@ -9,7 +9,8 @@ import path from "path";
 import { createServer } from "http";
 import { createServer as createHttpsServer } from "https";
 import { createProxyMiddleware } from 'http-proxy-middleware';
-import { connectToMongoDB } from "./db-mongo";
+import { seedPostgresDefaultLanguages } from "./services/postgres-bootstrap";
+import { closePostgres, initializePostgres, getPostgresHealth, postgresAvailable } from "./postgres-runtime";
 import { performanceCache } from "./performance-cache";
 import { CacheManager } from "./cache";
 import { htmlLangMiddleware, precomputeTranslationScripts } from "./html-lang-middleware";
@@ -46,6 +47,7 @@ for (const [country, lang] of Object.entries(COUNTRY_TO_LANGUAGE)) {
 const AUTH_NOINDEX_PATH = /^(?:\/[a-z]{2})?\/(?:auth(?:\/.*)?|login|signup|sign-in|sign-up|register|forgot-password|reset-password|change-password)(?:\/|$)/i;
 
 const app = express();
+let startupReady = false;
 
 app.set('trust proxy', 1);
 app.disable('x-powered-by');
@@ -71,12 +73,6 @@ process.on('uncaughtException', (err) => {
 });
 process.on('unhandledRejection', (reason: any) => {
   const msg = reason?.message || reason || 'unknown';
-  const msgStr = typeof msg === 'string' ? msg : '';
-  const isMongoTransient = /MongoNetworkError|MongoServerSelectionError|ECONNRESET|ETIMEDOUT|ENOTFOUND|server selection/i.test(msgStr);
-  if (isMongoTransient) {
-    console.warn('⚠️ UNHANDLED REJECTION (transient MongoDB, ignored):', msgStr);
-    return;
-  }
   console.error('🚨 UNHANDLED REJECTION:', msg);
   if (reason?.stack) console.error(reason.stack.split('\n').slice(0, 5).join('\n'));
   scheduleFatalExit('UNHANDLED_REJECTION');
@@ -86,6 +82,11 @@ const BACKEND_API_URL = process.env.BACKEND_API_URL || 'http://localhost:5000';
 const STREAM_PROXY_URL = process.env.STREAM_PROXY_URL || process.env.VITE_STREAM_PROXY_URL || 'https://stream.themegaradio.com';
 
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+app.get('/readyz', async (_req,res) => {
+  const postgres = await getPostgresHealth();
+  const ready = startupReady && postgres.status === 'connected';
+  res.status(ready ? 200 : 503).json({ ready,database:'postgresql',postgres:postgres.status });
+});
 
 // 2026-05-12 Semrush audit: `/llms.txt` was returning the SPA HTML shell
 // (Multiple-H1 notice) on production even though `routes/seo-sitemap-routes.ts`
@@ -564,7 +565,9 @@ const apiProxy = createProxyMiddleware({
 function sendAdminSpa(_req: any, res: any) {
   res.setHeader('X-Robots-Tag', 'noindex, nofollow');
   res.setHeader('Cache-Control', 'no-store');
-  res.sendFile(path.resolve(publicPath, 'index.html'), (err: any) => {
+  // Match serveStatic/getProdAssetTags: the deployed Vite shell is beside the
+  // server bundle under dist/public, not the optional user-upload public dir.
+  res.sendFile(path.resolve(import.meta.dirname, 'public', 'index.html'), (err: any) => {
     if (err) res.status(500).send('Admin shell unavailable');
   });
 }
@@ -597,7 +600,8 @@ app.use('/api/image', streamServiceProxy);
 app.use('/api/stream', streamServiceProxy);
 
 (async () => {
-  await connectToMongoDB();
+  await initializePostgres();
+  await seedPostgresDefaultLanguages();
 
   const seoSitemapDeps = {
     requireAdmin: (_req: any, res: any, next: any) => {
@@ -605,6 +609,7 @@ app.use('/api/stream', streamServiceProxy);
     }
   };
   await registerSeoSitemapRoutes(app, seoSitemapDeps);
+  startupReady = true;
   logger.log('✅ SEO/Sitemap routes registered on frontend-web (handles /api/seo/page-data locally)');
 
   app.use('/api', (req, res, next) => {
@@ -1209,16 +1214,16 @@ app.use('/api/stream', streamServiceProxy);
   let isShuttingDown = false;
 
   const port = parseInt(process.env.PORT || '3000', 10);
-  server.listen({ port, host: "0.0.0.0", reusePort: true }, () => {
+  server.listen({ port, host: "0.0.0.0", reusePort: process.platform !== 'win32' }, () => {
     logger.log(`🚀 FRONTEND-WEB: Listening on port ${port}`);
     logger.log(`🔗 Backend API URL: ${BACKEND_API_URL}`);
 
     let watchdogFailures = 0;
-    let mongoDownSince: number | null = null;
+    let postgresDownSince: number | null = null;
     const WATCHDOG_MAX_FAILURES = 3;
     const WATCHDOG_INTERVAL = 30_000;
     const WATCHDOG_TIMEOUT = 5_000;
-    const MONGO_DOWN_RESTART_MS = 3 * 60_000;
+    const POSTGRES_DOWN_RESTART_MS = 3 * 60_000;
 
     const watchdogTimer = setInterval(async () => {
       if (isShuttingDown) { clearInterval(watchdogTimer); return; }
@@ -1245,24 +1250,15 @@ app.use('/api/stream', streamServiceProxy);
           }
         }
 
-        try {
-          const mongooseModule = (await import('mongoose')).default;
-          const state = mongooseModule.connection.readyState;
-          if (state === 1) {
-            if (mongoDownSince !== null) {
-              console.log(`🐕 Watchdog: MongoDB recovered after ${Math.round((Date.now() - mongoDownSince) / 1000)}s`);
-              mongoDownSince = null;
-            }
-          } else {
-            if (mongoDownSince === null) mongoDownSince = Date.now();
-            const downFor = Date.now() - mongoDownSince;
-            console.error(`🐕 Watchdog: MongoDB readyState=${state}, down for ${Math.round(downFor / 1000)}s`);
-            if (downFor >= MONGO_DOWN_RESTART_MS) {
-              console.error(`🐕 Watchdog: MongoDB down >${MONGO_DOWN_RESTART_MS / 1000}s — forcing restart`);
-              process.kill(process.pid, 'SIGTERM');
-            }
+        if (await postgresAvailable()) {
+          postgresDownSince = null;
+        } else {
+          if (postgresDownSince === null) postgresDownSince = Date.now();
+          if (Date.now()-postgresDownSince >= POSTGRES_DOWN_RESTART_MS) {
+            console.error('PostgreSQL unavailable beyond watchdog deadline; restarting');
+            process.kill(process.pid,'SIGTERM');
           }
-        } catch {}
+        }
       } catch (err: any) {
         watchdogFailures++;
         console.error(`🐕 Watchdog error: ${err.message} (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
@@ -1286,10 +1282,8 @@ app.use('/api/stream', streamServiceProxy);
     const shutdownTimeout = setTimeout(() => { process.exit(1); }, 15000);
     try {
       await new Promise<void>((resolve) => { server.close(() => resolve()); setTimeout(resolve, 10000); });
-      const mongooseModule = (await import('mongoose')).default;
-      if (mongooseModule.connection.readyState === 1) {
-        await mongooseModule.connection.close(false);
-      }
+      startupReady = false;
+      await closePostgres();
       clearTimeout(shutdownTimeout);
       process.exit(0);
     } catch (err: any) {

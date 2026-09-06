@@ -1,125 +1,30 @@
 #!/usr/bin/env tsx
 /**
- * One-shot script: creates a test ApiUser + ApiKey so you can log in to
- * /api-user and verify the developer dashboard.
- *
- * Usage:
- *   pnpm --filter @workspace/api-server exec tsx src/scripts/seed-api-test-user.ts
- *
- * Credentials printed to stdout — keep them safe.
+ * Explicit, additive PostgreSQL developer-dashboard fixture.
+ * Set DATABASE_URL, API_TEST_EMAIL, API_TEST_PASSWORD and run:
+ * pnpm --filter @workspace/api-server exec tsx src/scripts/seed-api-test-user.ts
+ * Refuses production and never deletes/replaces an existing account.
+ * Newly generated API keys are printed once; the password is never printed.
  */
-
-import crypto from 'crypto';
 import bcrypt from 'bcrypt';
-import mongoose from 'mongoose';
-import { ApiUser, ApiKey } from '@workspace/db-shared/mongo-schemas';
-
-const MONGO_URI =
-  process.env.MONGODB_URI ||
-  process.env.DATABASE_URL ||
-  'mongodb://localhost:27017/mega';
-
-function generateApiKey(): string {
-  const randomPart = crypto.randomBytes(24).toString('base64url');
-  return `mr_${randomPart}`;
-}
-
-function hashKey(key: string): string {
-  return crypto.createHash('sha256').update(key).digest('hex');
-}
+import { closePostgres, getPostgresPool } from '../postgres-runtime';
+import { pgFindApiDeveloperByEmail, pgIssueApiKey, pgRegisterApiDeveloper, pgRevokeApiDeveloperSession } from '../data/postgres-api-access-store';
 
 async function main() {
-  await mongoose.connect(MONGO_URI);
-  console.log('Connected to MongoDB');
-
-  const email = 'test-api-user@themegaradio.com';
-  const password = 'TestApiUser2024!';
-
-  // Remove any existing test user to allow re-runs
-  const existing = await ApiUser.findOne({ email });
-  if (existing) {
-    await ApiKey.deleteMany({ userId: existing._id });
-    await existing.deleteOne();
-    console.log('Removed existing test user');
-  }
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  const user = await ApiUser.create({
-    email,
-    passwordHash,
-    name: 'Test Developer',
-    company: 'MegaRadio QA',
-    website: 'https://themegaradio.com',
-    plan: 'pro',
-    status: 'active',
-  });
-
-  // Create a free key with some synthetic usage so the admin table looks populated
-  const freeRawKey = generateApiKey();
-  const freeKey = await ApiKey.create({
-    keyHash: hashKey(freeRawKey),
-    keyPrefix: freeRawKey.substring(0, 7),
-    name: 'Test Developer',
-    email,
-    appName: 'My Radio App',
-    appUrl: 'https://example.com',
-    usageReason: 'Testing the MegaRadio API',
-    plan: 'free',
-    status: 'active',
-    rateLimitPerMin: 60,
-    dailyQuota: 1000,
-    monthlyQuota: 10000,
-    usage: {
-      todayCount: 42,
-      monthCount: 317,
-      totalCount: 1204,
-      lastUsedAt: new Date(),
-    },
-    userId: user._id,
-  });
-
-  // Create a pro key (simulate an upgrade)
-  const proRawKey = generateApiKey();
-  const proKey = await ApiKey.create({
-    keyHash: hashKey(proRawKey),
-    keyPrefix: proRawKey.substring(0, 7),
-    name: 'Test Developer',
-    email,
-    appName: 'My Radio App (Production)',
-    appUrl: 'https://example.com',
-    usageReason: 'Production traffic',
-    plan: 'pro',
-    status: 'active',
-    rateLimitPerMin: 300,
-    dailyQuota: 10000,
-    monthlyQuota: 100000,
-    usage: {
-      todayCount: 1839,
-      monthCount: 28471,
-      totalCount: 93204,
-      lastUsedAt: new Date(),
-    },
-    userId: user._id,
-  });
-
-  user.apiKeys = [freeKey._id as mongoose.Types.ObjectId, proKey._id as mongoose.Types.ObjectId];
-  await user.save();
-
-  console.log('\n========== TEST API USER CREATED ==========');
-  console.log(`Email    : ${email}`);
-  console.log(`Password : ${password}`);
-  console.log(`Plan     : pro`);
-  console.log('\nAPI Keys (save these — they are shown only once):');
-  console.log(`  Free key : ${freeRawKey}`);
-  console.log(`  Pro key  : ${proRawKey}`);
-  console.log('\nLogin at: https://themegaradio.com/api-user');
-  console.log('Admin view: https://themegaradio.com/admin/api-keys');
-  console.log('===========================================\n');
-
-  await mongoose.disconnect();
+  if (process.env.NODE_ENV === 'production') throw new Error('Test user seeding is disabled in production');
+  const email = process.env.API_TEST_EMAIL?.trim().toLowerCase();
+  const password = process.env.API_TEST_PASSWORD || '';
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || password.length < 12 || Buffer.byteLength(password, 'utf8') > 72)
+    throw new Error('Set API_TEST_EMAIL and API_TEST_PASSWORD (12+ characters, at most 72 UTF-8 bytes)');
+  if (await pgFindApiDeveloperByEmail(email)) throw new Error('Account already exists; no existing data was changed');
+  const fixture = await pgRegisterApiDeveloper({ email, name: 'Test Developer',
+    passwordHash: await bcrypt.hash(password, 10), company: 'MegaRadio QA', website: 'https://example.invalid' });
+  await pgRevokeApiDeveloperSession(fixture.token);
+  await getPostgresPool().query("UPDATE api_developer_users SET plan='pro' WHERE id=$1", [fixture.user._id]);
+  const pro = await pgIssueApiKey({ email, name: 'Test Developer', userId: fixture.user._id, plan: 'pro',
+    appName: 'Test App (Pro)', appUrl: 'https://example.invalid', usageReason: 'Developer dashboard testing' });
+  console.log('Test developer created:', email);
+  console.log('Free API key (shown once):', fixture.apiKey);
+  console.log('Pro API key (shown once):', pro.apiKey);
 }
-
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+main().catch(error => { console.error(error.message); process.exitCode = 1; }).finally(closePostgres);

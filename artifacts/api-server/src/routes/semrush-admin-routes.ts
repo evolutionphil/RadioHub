@@ -12,7 +12,7 @@
  */
 
 import type { Express, Request, Response } from 'express';
-import { SemrushIssue } from '@workspace/db-shared/mongo-schemas';
+import { pgAdminAux } from '../data/postgres-admin-auxiliary-store';
 import { logger } from '../utils/logger';
 
 const TTL_DAYS = 30;
@@ -109,9 +109,8 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
         expiresAt,
       }));
 
-      // Drop previous import before inserting new one (replace semantics).
-      await SemrushIssue.deleteMany({});
-      const result = await SemrushIssue.insertMany(docs, { ordered: false });
+      const imported = await pgAdminAux().replaceIssues(docs);
+      const result = { length:imported };
 
       logger.log(`SEMrush import: ${result.length} issues (headers: ${detectedHeaders.join(', ')})`);
       res.json({
@@ -134,18 +133,7 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
       const priority = String(req.query.priority ?? '');
       const issueType = String(req.query.issueType ?? '');
 
-      const filter: Record<string, unknown> = {};
-      if (priority && priority !== 'all') filter.priority = priority;
-      if (issueType && issueType !== 'all') filter.issueType = { $regex: issueType, $options: 'i' };
-
-      const [total, items] = await Promise.all([
-        SemrushIssue.countDocuments(filter),
-        SemrushIssue.find(filter)
-          .sort({ priority: 1, importedAt: -1 })
-          .skip((page - 1) * limit)
-          .limit(limit)
-          .lean(),
-      ]);
+      const { total,items } = await pgAdminAux().issues(priority,issueType,limit,(page-1)*limit);
 
       res.json({ total, page, limit, items });
     } catch (err: any) {
@@ -157,27 +145,7 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
   // GET /api/admin/semrush/summary
   app.get('/api/admin/semrush/summary', deps.requireAdmin, async (_req: Request, res: Response) => {
     try {
-      const [byPriority, byType, total, latest] = await Promise.all([
-        SemrushIssue.aggregate([
-          { $group: { _id: '$priority', count: { $sum: 1 } } },
-          { $sort: { _id: 1 } },
-        ]),
-        SemrushIssue.aggregate([
-          { $group: { _id: '$issueType', count: { $sum: 1 } } },
-          { $sort: { count: -1 } },
-          { $limit: 20 },
-        ]),
-        SemrushIssue.estimatedDocumentCount(),
-        SemrushIssue.findOne().sort({ importedAt: -1 }).select('importedAt expiresAt').lean(),
-      ]);
-
-      res.json({
-        total,
-        byPriority: byPriority.map((r: any) => ({ priority: r._id, count: r.count })),
-        topIssueTypes: byType.map((r: any) => ({ type: r._id, count: r.count })),
-        lastImportedAt: (latest as any)?.importedAt ?? null,
-        expiresAt: (latest as any)?.expiresAt ?? null,
-      });
+      res.json(await pgAdminAux().issueSummary());
     } catch (err: any) {
       logger.error('semrush/summary failed:', err?.message);
       res.status(500).json({ error: 'Failed to fetch summary' });
@@ -187,7 +155,7 @@ export function registerSemrushAdminRoutes(app: Express, deps: any) {
   // DELETE /api/admin/semrush/issues — clear all issues
   app.delete('/api/admin/semrush/issues', deps.requireAdmin, async (_req: Request, res: Response) => {
     try {
-      const result = await SemrushIssue.deleteMany({});
+      const result = await pgAdminAux().clearIssues();
       res.json({ message: `Deleted ${result.deletedCount} SEMrush issues` });
     } catch (err: any) {
       logger.error('semrush/issues DELETE failed:', err?.message);

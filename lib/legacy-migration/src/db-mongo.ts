@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
-import { TranslationLanguage } from '@workspace/db-shared/mongo-schemas';
-import { logger } from './utils/logger';
+import { TranslationLanguage } from './mongo-schemas';
+import { logger } from '../../../artifacts/api-server/src/utils/logger';
 
 // MongoDB connection string - use in-memory database for development
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/radiostation-dev';
@@ -414,6 +414,6 @@ export async function connectToMongoDB() {
 }
 
 // Re-export User model for deployment compatibility
-export { User } from '@workspace/db-shared/mongo-schemas';
+export { User } from './mongo-schemas';
 
 export default mongoose;

@@ -1,7 +1,11 @@
 import webpush from 'web-push';
-import { User } from '../db-mongo.js';
-import { PushToken, IUser } from '@workspace/db-shared/mongo-schemas';
+import { pgPushDevices } from '../data/postgres-push-store';
 import https from 'https';
+import {
+  pgGetUserPushSubscription,
+  pgListUserPushSubscriptions,
+  pgSetUserPushSubscription,
+} from '../data/postgres-user-store';
 
 // Configure web-push with VAPID keys (for browser/web push)
 // Only configure if keys are present (not available in all environments)
@@ -102,10 +106,9 @@ export class PushNotificationService {
    */
   static async sendToMobileUser(userId: string, payload: NotificationPayload): Promise<boolean> {
     try {
-      const pushTokens = await PushToken.find({ userId, isActive: true }).lean();
-      if (pushTokens.length === 0) return false;
-
-      const tokens = pushTokens.map(t => t.token);
+      const tokens: string[] = [];
+      for await (const device of pgPushDevices({ userId })) tokens.push(device.token);
+      if (!tokens.length) return false;
       const sent = await sendExpoNotifications(tokens, payload);
       return sent > 0;
     } catch {
@@ -119,8 +122,8 @@ export class PushNotificationService {
   static async sendToUser(userId: string, payload: NotificationPayload): Promise<boolean> {
     if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return false;
     try {
-      const user = await User.findById(userId);
-      if (!user?.pushSubscription) return false;
+      const pushSubscription: any = await pgGetUserPushSubscription(userId);
+      if (!pushSubscription) return false;
 
       const notificationPayload = JSON.stringify({
         title: payload.title,
@@ -136,7 +139,7 @@ export class PushNotificationService {
         timestamp: Date.now()
       });
 
-      await webpush.sendNotification(user.pushSubscription, notificationPayload);
+      await webpush.sendNotification(pushSubscription, notificationPayload);
       return true;
     } catch {
       return false;
@@ -194,22 +197,17 @@ export class PushNotificationService {
       // Stream user IDs in batches via cursor to avoid loading 10k+ docs into RAM
       const BATCH_SIZE = 500;
       let totalSent = 0;
-      let batch: string[] = [];
-      const cursor = User.find({ pushSubscription: { $exists: true, $ne: null } })
-        .select({ _id: 1 })
-        .lean()
-        .cursor({ batchSize: BATCH_SIZE });
-      for await (const user of cursor as any) {
-        batch.push((user._id as any).toString());
-        if (batch.length >= BATCH_SIZE) {
-          totalSent += await this.sendToMultipleUsers(batch, payload);
-          batch = [];
+      {
+        let offset = 0;
+        while (true) {
+          const rows = await pgListUserPushSubscriptions(offset, BATCH_SIZE);
+          if (!rows.length) break;
+          totalSent += await this.sendToMultipleUsers(rows.map((row) => row.id), payload);
+          if (rows.length < BATCH_SIZE) break;
+          offset += rows.length;
         }
+        return totalSent;
       }
-      if (batch.length > 0) {
-        totalSent += await this.sendToMultipleUsers(batch, payload);
-      }
-      return totalSent;
     } catch {
       return 0;
     }
@@ -355,25 +353,31 @@ export class PushNotificationService {
     try {
       // Stream via cursor — never load all subscribed users into memory
       let removedCount = 0;
-      const cursor = User.find({ pushSubscription: { $exists: true, $ne: null } })
-        .select({ _id: 1, pushSubscription: 1 })
-        .lean()
-        .cursor({ batchSize: 200 });
-      for await (const user of cursor as any) {
-        try {
-          await webpush.sendNotification(user.pushSubscription, JSON.stringify({
-            title: 'Test',
-            body: 'Connection test',
-            silent: true
-          }));
-        } catch (error: any) {
-          if (error.statusCode === 410 || error.statusCode === 404) {
-            await User.findByIdAndUpdate(user._id, { $unset: { pushSubscription: 1 } });
-            removedCount++;
+      {
+        let offset = 0;
+        const batchSize = 200;
+        while (true) {
+          const rows = await pgListUserPushSubscriptions(offset, batchSize);
+          if (!rows.length) break;
+          for (const user of rows) {
+            try {
+              await webpush.sendNotification(user.subscription as any, JSON.stringify({
+                title: 'Test', body: 'Connection test', silent: true,
+              }));
+              offset += 1;
+            } catch (error: any) {
+              if (error.statusCode === 410 || error.statusCode === 404) {
+                await pgSetUserPushSubscription(user.id, null);
+                removedCount++;
+              } else {
+                offset += 1;
+              }
+            }
           }
+          if (rows.length < batchSize) break;
         }
+        return removedCount;
       }
-      return removedCount;
     } catch {
       return 0;
     }

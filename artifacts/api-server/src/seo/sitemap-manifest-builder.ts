@@ -24,8 +24,8 @@
  */
 
 import crypto from 'crypto';
-import mongoose from 'mongoose';
-import { Station, Genre, SitemapManifest, ISitemapManifestChunk } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgWriteBuildingManifest, pgActivateManifest, pgFreshManifestCount, pgSeoGenres, pgTopSitemapCountries, pgRetireManifests, pgActiveManifest, pgSeoCleanup, type ISitemapManifestChunk } from '../data/postgres-seo-indexing-store';
 import { logger } from '../utils/logger';
 import { IndexNowService } from '../services/indexnow';
 import { getQualifiedLanguagesState, QualifiedLanguagesUnavailableError } from './qualified-languages';
@@ -54,7 +54,7 @@ const STALE_BUILDING_RECLAIM_MS = 30 * 60 * 1000;           // reclaim stuck bui
 let buildLock = false;
 
 interface StationLite {
-  _id: mongoose.Types.ObjectId;
+  _id: string;
   slug?: string;
   name?: string;
   url?: string;
@@ -125,200 +125,12 @@ async function writeBuildingManifest(args: {
   chunks: ISitemapManifestChunk[];
   totalUrls: number;
 }) {
-  const { type, language, qualifiedLanguages, qualifiedLanguagesHash, chunks, totalUrls } = args;
-  // Content-addressable version (stable when chunks are identical).
-  const version = makeContentVersion({ qualifiedLanguagesHash, chunks });
-  const now = new Date();
-
-  // Architect P0 fix: idempotent skip — if the active manifest already has
-  // this exact (type, language, version), there is nothing to swap. Return
-  // the active doc directly without writing a new building doc. This
-  // prevents Cloudflare cache stampede when chunks haven't changed but the
-  // 6h refresh loop fired.
-  //
-  // FRESHNESS BUG FIX (2026-05-09): even though `version` (ETag) intentionally
-  // excludes `maxUpdatedAt` to avoid cache stampedes from uptime-probe churn,
-  // the OLD code returned the existing-active doc untouched — so its
-  // `chunks[].maxUpdatedAt` (which DRIVES the sitemap <lastmod> and the
-  // Last-Modified HTTP header) was frozen at whatever value the manifest had
-  // when it was first written. Result observed in production: sitemap.xml
-  // lastmod was 3+ months stale (2026-02-10) and per-chunk lastmods were
-  // 9 months stale (2025-08-22), so Googlebot/Bingbot saw "no change" and
-  // skipped re-crawls indefinitely → SEO ranking decay.
-  //
-  // Fix: when the URL set hasn't changed (version match), do an in-place
-  // $set update of `chunks` (carries fresh maxUpdatedAt), `generatedAt`,
-  // and `expiresAt`. The `version` field stays identical → the sitemap-index
-  // ETag does NOT change → no cache stampede. But Last-Modified/<lastmod>
-  // now reflect today's freshest station updatedAt → search engines see
-  // proper freshness signals again.
-  const existingActive = await SitemapManifest.findOne({
-    type,
-    language,
-    status: 'active',
-    version,
-  }).lean();
-  if (existingActive) {
-    await SitemapManifest.updateOne(
-      { _id: existingActive._id },
-      {
-        $set: {
-          chunks,
-          totalUrls,
-          chunkCount: chunks.length,
-          generatedAt: now,
-          expiresAt: new Date(now.getTime() + MANIFEST_TTL_ACTIVE_MS),
-          qualifiedLanguages,
-          qualifiedLanguagesHash,
-        },
-      },
-    );
-    logger.debug(`✅ manifest freshness-bump: type=${type} lang=${language} version=${version} (chunks/lastmod refreshed in place)`);
-    // Return updated view so callers see the new chunks/generatedAt.
-    return {
-      ...existingActive,
-      chunks,
-      totalUrls,
-      chunkCount: chunks.length,
-      generatedAt: now,
-      qualifiedLanguages,
-      qualifiedLanguagesHash,
-    };
-  }
-
-  // Reclaim stuck building docs (process crashed mid-build).
-  await SitemapManifest.deleteMany({
-    type,
-    language,
-    status: 'building',
-    generatedAt: { $lt: new Date(Date.now() - STALE_BUILDING_RECLAIM_MS) },
-  });
-
-  // Webmaster #1 MEDIUM-3 fix (2026-04-30): handle E11000 from the
-  // partialFilterExpression unique index on (type, language, status='building').
-  // When two processes (multi-replica deploy + cron) race here, exactly one
-  // create succeeds. The loser must NOT bubble — it should re-check whether
-  // the winner already activated a matching version, and either return that
-  // active doc (idempotent skip) or wait one cycle and let the next refresh
-  // loop pick it up (return any existing active for this type/lang).
-  try {
-    return await SitemapManifest.create({
-      type,
-      language,
-      version,
-      status: 'building',
-      qualifiedLanguagesHash,
-      qualifiedLanguages,
-      chunks,
-      totalUrls,
-      chunkCount: chunks.length,
-      generatedAt: now,
-      expiresAt: new Date(now.getTime() + MANIFEST_TTL_BUILDING_MS),
-    });
-  } catch (err: any) {
-    if (err?.code !== 11000) throw err;
-    logger.warn(`⚠️ manifest-builder: E11000 race on (type=${type}, lang=${language}) — another builder is in flight; returning existing active doc as no-op`);
-    // Re-check active first (the winner may have already swapped to active).
-    const winnerActive = await SitemapManifest.findOne({
-      type,
-      language,
-      status: 'active',
-    }).sort({ generatedAt: -1 }).lean();
-    if (winnerActive) return winnerActive;
-    // Else return current building doc (caller will skip swap because
-    // status is 'building' but not its own _id — see callers' guard).
-    const winnerBuilding = await SitemapManifest.findOne({
-      type,
-      language,
-      status: 'building',
-    }).sort({ generatedAt: -1 }).lean();
-    if (winnerBuilding) {
-      // Mark with a sentinel flag so callers know NOT to call activateManifest()
-      // on the winner's _id (only the writer of a building doc may activate it).
-      return { ...winnerBuilding, status: 'active' as const, _raceLost: true } as any;
-    }
-    // Pathological: no row anywhere — let the caller throw normally on next access.
-    throw err;
-  }
+  return pgWriteBuildingManifest({ ...args, version: makeContentVersion(args) });
 }
 
-/** Atomically swap building → active and demote any existing active to
- * superseded. Per-(type, language). Uses a transaction when available; falls
- * back to a sequential best-effort path when transactions aren't supported
- * (standalone Mongo). The fallback is acceptable because:
- *   - Worst case: a few seconds where two manifests have status='active' for
- *     the same (type, lang). Sitemap routes pick the first one found and
- *     they are equivalent by construction (same hash, newer version).
- *   - The unique partialFilterExpression on (type, lang, status='active') is
- *     intentionally NOT created — only on status='building' — so we can
- *     tolerate this brief overlap. */
-async function activateManifest(buildingId: mongoose.Types.ObjectId, type: string, language: string) {
-  const conn = mongoose.connection as any;
-
-  const tryTransaction = async (): Promise<boolean> => {
-    let session: any;
-    try {
-      session = await mongoose.startSession();
-    } catch {
-      return false;
-    }
-    try {
-      await session.withTransaction(async () => {
-        await SitemapManifest.updateMany(
-          { type, language, status: 'active' } as any,
-          {
-            $set: {
-              status: 'superseded',
-              expiresAt: new Date(Date.now() + MANIFEST_TTL_SUPERSEDED_MS),
-            },
-          },
-          { session },
-        );
-        await SitemapManifest.updateOne(
-          { _id: buildingId },
-          {
-            $set: {
-              status: 'active',
-              expiresAt: new Date(Date.now() + MANIFEST_TTL_ACTIVE_MS),
-            },
-          },
-          { session },
-        );
-      });
-      return true;
-    } catch (err: any) {
-      // Mongo 20 = transactions not supported (e.g. standalone server).
-      if (err?.code === 20 || /Transaction numbers are only allowed/i.test(String(err?.message))) {
-        return false;
-      }
-      throw err;
-    } finally {
-      try { await session?.endSession(); } catch {}
-    }
-  };
-
-  const ok = await tryTransaction();
-  if (ok) return;
-
-  // Standalone Mongo fallback — sequential best-effort.
-  await SitemapManifest.updateMany(
-    { type, language, status: 'active' } as any,
-    {
-      $set: {
-        status: 'superseded',
-        expiresAt: new Date(Date.now() + MANIFEST_TTL_SUPERSEDED_MS),
-      },
-    },
-  );
-  await SitemapManifest.updateOne(
-    { _id: buildingId },
-    {
-      $set: {
-        status: 'active',
-        expiresAt: new Date(Date.now() + MANIFEST_TTL_ACTIVE_MS),
-      },
-    },
-  );
+/** Swap under a transaction; a reclaimed builder cannot demote the last good active manifest. */
+async function activateManifest(buildingId: string, type: string, language: string) {
+  await pgActivateManifest(String(buildingId), type, language);
 }
 
 /** Check if every (type, lang) already has an active manifest with the same
@@ -330,13 +142,7 @@ async function isManifestUpToDate(
 ): Promise<boolean> {
   const expected = ['stations', 'genres', 'main'].length * qualifiedLanguages.length;
   const cutoff = new Date(Date.now() - freshWindowMs);
-  const count = await SitemapManifest.countDocuments({
-    status: 'active',
-    qualifiedLanguagesHash: hash,
-    language: { $in: qualifiedLanguages },
-    type: { $in: ['stations', 'genres', 'main'] },
-    generatedAt: { $gte: cutoff },
-  });
+  const count = await pgFreshManifestCount(hash, qualifiedLanguages, cutoff);
   return count >= expected;
 }
 
@@ -351,52 +157,10 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
   totalUrls: Map<string, number>;
 }> {
   // Bucket per language: Array<{ id, votes, updatedAt }>.
-  const buckets = new Map<string, Array<{ id: mongoose.Types.ObjectId; votes: number; updatedAt?: Date }>>();
+  const buckets = new Map<string, Array<{ id: string; votes: number; updatedAt?: Date }>>();
   for (const lang of qualifiedLanguages) buckets.set(lang, []);
 
-  // FRESHNESS FIX (2026-05-09): force PRIMARY read preference for the manifest
-  // builder cursor. Without this, large catalog scans (60k+ stations) can be
-  // routed to a secondary that hasn't yet replicated the latest writes from
-  // the admin "Save station" / bulk import path. The freshness-bump branch in
-  // `writeBuildingManifest` then commits a STALE id set into the manifest while
-  // bumping `generatedAt` — admins see "lastmod updated" but the URL list
-  // inside is the same as before. Reading from primary closes that race.
-  // FRESHNESS BUG FIX (2026-05-09): `.allowDiskUse(true)` is REQUIRED here.
-  // The catalog has ~60K active stations and the `votes:-1, _id:1` sort
-  // exceeds Mongo Atlas' default 32MB in-memory sort budget, throwing
-  // `QueryExceededMemoryLimitNoDiskUseAllowed` and crashing the entire
-  // boot-time `buildAllSitemapManifests` call. Without this, every sitemap
-  // rebuild silently returned 0 manifests and the served XML went stale.
-  // ARCHITECT FIX (2026-05-10): force the {votes:-1} index via .hint() to
-  // BYPASS the multiplanner. Without the hint, Mongo evaluates several
-  // candidate plans during plan selection and one of them performs an
-  // in-memory sort over the full 48k+ result set — blowing the 32MB
-  // multiplanner budget with `QueryExceededMemoryLimitNoDiskUseAllowed`
-  // (code 292). `.allowDiskUse(true)` does NOT help here because that
-  // budget applies to the EXECUTION phase, not the plan-selection phase.
-  // With `.hint({votes:-1})` Mongo skips multiplanner entirely and uses
-  // the index immediately → no in-memory sort, no crash, and boot-time
-  // `buildAllSitemapManifests` succeeds.
-  // INCIDENT 2026-05-15 v10.2 round 7 — wrap cursor creation in a
-  // factory so we can retry without the .hint() if the planner
-  // rejects it with BadValue (code 2 — index hidden / renamed).
-  // This codifies the "code 2 → retry unhinted" discipline from
-  // replit.md for the only remaining hinted query in the codebase.
-  const buildStationCursor = (useHint: boolean) => {
-    const q = Station.find({
-      slug: { $exists: true, $ne: '' },
-      $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-    })
-      .select('_id slug name url homepage tags bitrate lastCheckOk lastCheckOkTime lastCheckTime country countryCode language languageCodes noIndex votes updatedAt logoAssets favicon descriptions')
-      .sort({ votes: -1 });
-    if (useHint) {
-      // HINT-VERIFIED 2026-05-15 - {votes:-1} (key-spec hint, not name; survives Atlas index renames/hides)
-      q.hint({ votes: -1 });
-    }
-    return q.read('primary').lean().cursor({ batchSize: 500 });
-  };
-
-  let cursor = buildStationCursor(true);
+  const cursor = pgCatalog().iterate({ slug: { $exists: true, $ne: '' }, noIndex: { $ne: true } }, { batchSize: 500 });
   let processed = 0;
   const consume = async (c: any) => {
     for await (const stationDoc of c) {
@@ -415,25 +179,14 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
       processed++;
     }
   };
-  try {
-    await consume(cursor);
-  } catch (err: any) {
-    if (err?.code === 2 || err?.codeName === 'BadValue') {
-      logger.warn(`[sitemap-builder] hinted Station cursor rejected (code=${err?.code}); retrying without index hint — ${err?.message || ''}`);
-      processed = 0;
-      buckets.forEach((b) => (b.length = 0));
-      cursor = buildStationCursor(false);
-      await consume(cursor);
-    } else {
-      throw err;
-    }
-  }
+  await consume(cursor);
   logger.log(`📦 manifest-builder: scanned ${processed} indexable stations across ${qualifiedLanguages.length} langs`);
 
   const perLang = new Map<string, ISitemapManifestChunk[]>();
   const totalUrls = new Map<string, number>();
 
   for (const [lang, bucket] of buckets.entries()) {
+    bucket.sort((a,b) => b.votes-a.votes || String(a.id).localeCompare(String(b.id)));
     // Already sorted by cursor(votes desc; ties broken by natural index
     // RecordId order) so chunk slicing is deterministic per process.
     const chunks: ISitemapManifestChunk[] = [];
@@ -472,35 +225,8 @@ async function buildStationBuckets(qualifiedLanguages: string[]): Promise<{
 /** Build the genres manifest — one chunk per language (genres are far below
  * 50K). Stores Genre._ids ordered by stationCount desc. */
 async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUpdatedAt?: Date; totalUrls: number }> {
-  // Task #104: only publish genre URLs whose slug is on the curated whitelist
-  // (real music/talk genres) AND that have at least MIN_STATIONS_FOR_GENRE_INDEX
-  // stations backing them. The historical sitemap had ~8,824 slugs/lang derived
-  // from raw station tags — ~80% of which were FM frequencies, city names,
-  // station/brand names, or random noise. Those URLs are now dropped from
-  // sitemaps; the SSR layer (seo-renderer.ts) noindex'es or 301's them.
-  // ARCHITECT FIX (2026-05-10): same multiplanner-bypass as the Station
-  // cursor — force the {stationCount:-1} index via .hint() so plan-eval
-  // never tries an in-memory sort.
-  // ARCHITECT FIX (2026-05-10, take 2): same blocking-SORT bug as the
-  // Station cursor — drop `_id` tie-breaker so the {stationCount:-1}
-  // index fully satisfies the sort with no in-memory SORT stage.
-  // INCIDENT 2026-05-15 v10.2 round 7 — same retry-without-hint
-  // pattern as the Station cursor above. If Atlas hides/renames the
-  // {stationCount:-1} index, the planner throws BadValue (code 2);
-  // we then re-issue without the hint so sitemap generation never
-  // hard-fails on an index-audit.
-  const buildGenreCursor = (useHint: boolean) => {
-    const q = Genre.find({ slug: { $exists: true, $ne: '' } })
-      .select('_id slug stationCount updatedAt')
-      .sort({ stationCount: -1 });
-    if (useHint) {
-      // HINT-VERIFIED 2026-05-15 - {stationCount:-1} (key-spec hint, not name; survives Atlas index renames/hides)
-      q.hint({ stationCount: -1 });
-    }
-    return q.lean().cursor({ batchSize: 500 });
-  };
-
-  const ids: mongoose.Types.ObjectId[] = [];
+  // Keep the curated genre whitelist and minimum station count gate.
+  const ids: string[] = [];
   const updatedAts: Date[] = [];
   let scanned = 0;
   let skippedNotWhitelisted = 0;
@@ -522,18 +248,7 @@ async function buildGenreChunks(): Promise<{ chunk: ISitemapManifestChunk; maxUp
       if ((g as any).updatedAt instanceof Date) updatedAts.push((g as any).updatedAt);
     }
   };
-  try {
-    await consumeGenres(buildGenreCursor(true));
-  } catch (err: any) {
-    if (err?.code === 2 || err?.codeName === 'BadValue') {
-      logger.warn(`[sitemap-builder] hinted Genre cursor rejected (code=${err?.code}); retrying without index hint — ${err?.message || ''}`);
-      scanned = 0; skippedNotWhitelisted = 0; skippedThin = 0;
-      ids.length = 0; updatedAts.length = 0;
-      await consumeGenres(buildGenreCursor(false));
-    } else {
-      throw err;
-    }
-  }
+  await consumeGenres(await pgSeoGenres());
   logger.log(
     `📦 manifest-builder: genres scanned=${scanned} kept=${ids.length} ` +
     `skipped_not_whitelisted=${skippedNotWhitelisted} skipped_thin=${skippedThin} ` +
@@ -587,7 +302,7 @@ export function encodeTopCountryEntry(regionSlug: string, countrySlug: string): 
 /** Parse top-country entries out of a main-manifest chunk's stationIds.
  * Filters strings prefixed with `tc:` and returns ordered { regionSlug, countrySlug }. */
 export function extractTopCountriesFromChunk(
-  stationIds: Array<mongoose.Types.ObjectId | string>,
+  stationIds: Array<string>,
 ): Array<{ regionSlug: string; countrySlug: string }> {
   const out: Array<{ regionSlug: string; countrySlug: string }> = [];
   for (const id of stationIds) {
@@ -634,19 +349,7 @@ async function computeTopCountriesForMain(limit: number): Promise<{
     // tie-break (alphabetical by canonical country name) so two countries
     // with identical counts produce a stable order across replicas — without
     // this, Cloudflare can cache divergent main sitemaps from different pods.
-    const rows: Array<{ _id: string; count: number; maxUpdatedAt?: Date }> = await Station.aggregate([
-      { $match: {
-          country: { $exists: true, $ne: '' },
-          $or: [{ noIndex: { $exists: false } }, { noIndex: { $ne: true } }],
-          $and: [
-            { $or: [{ isJunk: { $exists: false } }, { isJunk: { $ne: true } }] },
-            { $or: [{ lastCheckOk: { $exists: false } }, { lastCheckOk: { $ne: false } }] },
-          ],
-      } },
-      { $group: { _id: '$country', count: { $sum: 1 }, maxUpdatedAt: { $max: '$updatedAt' } } },
-      { $sort: { count: -1, _id: 1 } },
-      { $limit: limit * 2 },
-    ]).allowDiskUse(true);
+    const rows: Array<{ _id: string; count: number; maxUpdatedAt?: Date }> = await pgTopSitemapCountries(limit * 2);
 
     const entries: Array<{ regionSlug: string; countrySlug: string }> = [];
     const rawCountryNames: string[] = [];
@@ -672,7 +375,7 @@ async function computeTopCountriesForMain(limit: number): Promise<{
     return { entries, maxUpdatedAt: max, rawCountryNames };
   } catch (err) {
     logger.error('❌ computeTopCountriesForMain failed:', err);
-    return { entries: [], rawCountryNames: [] };
+    throw err;
   }
 }
 
@@ -779,7 +482,7 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
       // (content-version no-op). Otherwise activate the freshly written
       // building doc.
       if (stationsBuilding?.status !== 'active') {
-        await activateManifest(stationsBuilding._id as mongoose.Types.ObjectId, 'stations', lang);
+        await activateManifest(stationsBuilding._id as string, 'stations', lang);
         activatedCount++;
       }
 
@@ -791,7 +494,7 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
         totalUrls: genreData.totalUrls,
       });
       if (genresBuilding?.status !== 'active') {
-        await activateManifest(genresBuilding._id as mongoose.Types.ObjectId, 'genres', lang);
+        await activateManifest(genresBuilding._id as string, 'genres', lang);
         activatedCount++;
       }
 
@@ -802,7 +505,7 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
         chunks: [mainData.chunk], totalUrls: mainData.totalUrls,
       });
       if (mainBuilding?.status !== 'active') {
-        await activateManifest(mainBuilding._id as mongoose.Types.ObjectId, 'main', lang);
+        await activateManifest(mainBuilding._id as string, 'main', lang);
         activatedCount++;
       }
     }
@@ -818,11 +521,8 @@ export async function buildAllSitemapManifests(opts: { force?: boolean } = {}): 
     // surfaces them, and so getActiveManifest() can never return them.
     let retiredZombies = 0;
     try {
-      const zombieRes = await SitemapManifest.updateMany(
-        { status: 'active', language: { $nin: languages } },
-        { $set: { status: 'retired', retiredAt: new Date() } },
-      );
-      retiredZombies = zombieRes.modifiedCount ?? 0;
+      retiredZombies = await pgRetireManifests(languages);
+      await pgSeoCleanup();
       if (retiredZombies > 0) {
         logger.warn(`🧟 manifest-builder: retired ${retiredZombies} zombie manifest(s) for non-qualified languages`);
       }
@@ -859,16 +559,14 @@ export async function getActiveManifest(
 } | null> {
   // Sort by generatedAt desc so if a brief overlap exists (transactions
   // unavailable, swap mid-flight), the newer manifest wins.
-  const doc = await SitemapManifest.findOne({ type, language, status: 'active' })
-    .sort({ generatedAt: -1 })
-    .lean();
+  const doc = await pgActiveManifest(type, language);
   if (!doc) return null;
   // Compute overall maxUpdatedAt across chunks
   const dates = doc.chunks
-    .map((c) => c.maxUpdatedAt)
-    .filter((d): d is Date => d instanceof Date);
+    .map((c: ISitemapManifestChunk) => c.maxUpdatedAt)
+    .filter((d: Date | undefined): d is Date => d instanceof Date);
   const maxUpdatedAt = dates.length > 0
-    ? new Date(Math.max(...dates.map((d) => d.getTime())))
+    ? new Date(Math.max(...dates.map((d: Date) => d.getTime())))
     : undefined;
   return {
     type: doc.type,
@@ -886,7 +584,7 @@ export async function getActiveManifest(
 /** Fetch a single chunk slot from active stations manifest. Returns null if
  * the chunk index doesn't exist (caller should respond 410 Gone). */
 export async function getActiveStationChunk(language: string, chunk: number): Promise<{
-  stationIds: Array<mongoose.Types.ObjectId | string>;
+  stationIds: Array<string>;
   maxUpdatedAt?: Date;
   qualifiedLanguagesHash: string;
   version: string;

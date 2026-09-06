@@ -10,9 +10,10 @@
  * All upserts are idempotent — safe to run on every restart.
  */
 
-import { TranslationKey, Translation } from '@workspace/db-shared/mongo-schemas';
+
 import { CacheManager } from '../cache';
 import { logger } from '../utils/logger';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 // 15 required keys (mirrors REQUIRED_STATION_SEO_KEYS + REQUIRED_HOMEPAGE_SEO_KEYS)
 type SeoKeyName =
@@ -998,12 +999,10 @@ const LANG_SEO_TRANSLATIONS: Record<string, LangSeoValues> = {
 // Seeder
 // ---------------------------------------------------------------------------
 export async function seedAllLanguagesSeoTranslations(): Promise<void> {
-  const { bumpTranslationVersion } = await import('../services/translation-version');
-
   const keys = Object.keys(LANG_SEO_TRANSLATIONS[Object.keys(LANG_SEO_TRANSLATIONS)[0]]) as SeoKeyName[];
 
   // Pre-load all TranslationKey docs needed by this seeder in one query.
-  const keyDocs = await TranslationKey.find({ key: { $in: keys } }).lean();
+  const keyDocs = (await pgLocalization().getKeys(keys));
   const keyMap = new Map<string, string>(keyDocs.map((d: any) => [d.key, String(d._id)]));
 
   // Warn but DO NOT abort if a key is missing — writing the keys that DO exist
@@ -1015,21 +1014,8 @@ export async function seedAllLanguagesSeoTranslations(): Promise<void> {
     logger.warn(`seedAllLanguagesSeoTranslations: ${missingKeys.length} TranslationKey docs not found (seeding the rest anyway). Missing: ${missingKeys.join(', ')}`);
   }
 
-  let totalUpserted = 0;
-  for (const [lang, values] of Object.entries(LANG_SEO_TRANSLATIONS)) {
-    for (const keyName of keys) {
-      const keyId = keyMap.get(keyName);
-      if (!keyId) continue;
-      await Translation.findOneAndUpdate(
-        { keyId, language: lang },
-        { value: values[keyName], isCompleted: true, lastModified: new Date() },
-        { upsert: true },
-      );
-      totalUpserted++;
-    }
-  }
-
-  await CacheManager.clearByPattern('translations');
-  await bumpTranslationVersion('All-languages SEO keys seeded');
+  // Boot fills gaps only. Non-empty human edits (including drafts) survive every restart.
+  const totalUpserted = await pgLocalization().seedTranslationBundle(keyDocs, LANG_SEO_TRANSLATIONS, 'all-languages-seo', { bumpVersion: true });
+  if (totalUpserted) await CacheManager.clearByPattern('translations');
   logger.log(`✅ seedAllLanguagesSeoTranslations: ${totalUpserted} upserts across ${Object.keys(LANG_SEO_TRANSLATIONS).length} languages`);
 }

@@ -19,21 +19,21 @@
  * Runner: requires `--experimental-test-module-mocks` (wired up in
  * artifacts/api-server/package.json#scripts.test).
  */
-import { test, mock, before, after } from 'node:test';
-import assert from 'node:assert/strict';
+import { test, mock, before, after } from "node:test";
+import assert from "node:assert/strict";
 import express, {
   type Express,
   type Request,
   type Response,
   type NextFunction,
-} from 'express';
-import type { AddressInfo } from 'node:net';
-import type { Server as HttpServer } from 'node:http';
+} from "express";
+import type { AddressInfo } from "node:net";
+import type { Server as HttpServer } from "node:http";
 
 // ---------------------------------------------------------------------------
 // Mutable fake state for `scheduledGenreSlugCleanup`. The route only
-// touches `getStatus()` and `runOnce()`, so we expose just enough surface
-// to drive the lock contract without booting Mongo / cron.
+// touches `getStatus()` and `start()`, so we expose just enough surface
+// to drive the HTTP lock contract without running a scheduled sweep.
 // ---------------------------------------------------------------------------
 
 let isRunning = false;
@@ -44,13 +44,14 @@ let pendingResolve: ((value: unknown) => void) | null = null;
 
 const fakeScheduled = {
   getStatus: () => ({ isRunning, lastRunAt, lastRunId }),
-  runOnce: (_trigger: string) => {
+  start: async (_trigger: string) => {
     runOnceCalls += 1;
     isRunning = true;
     lastRunId = `run-${runOnceCalls}`;
-    return new Promise((resolve) => {
+    const completion = new Promise((resolve) => {
       pendingResolve = resolve;
     });
+    return { completion };
   },
 };
 
@@ -75,10 +76,8 @@ function resetState() {
 // ---------------------------------------------------------------------------
 
 mock.module(
-  new URL(
-    '../src/services/scheduled-genre-slug-cleanup.ts',
-    import.meta.url,
-  ).href,
+  new URL("../src/services/scheduled-genre-slug-cleanup.ts", import.meta.url)
+    .href,
   {
     namedExports: {
       scheduledGenreSlugCleanup: fakeScheduled,
@@ -88,10 +87,8 @@ mock.module(
 );
 
 mock.module(
-  new URL(
-    '../src/services/genre-slug-cleanup-notifier.ts',
-    import.meta.url,
-  ).href,
+  new URL("../src/services/genre-slug-cleanup-notifier.ts", import.meta.url)
+    .href,
   {
     namedExports: {
       getGenreSlugCleanupAlertThreshold: () => 5,
@@ -103,36 +100,26 @@ mock.module(
 // at the top of the file. They aren't exercised by the cleanup endpoint
 // but must resolve at import time, so we stub them with no-op surfaces.
 
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Station: {},
-    BackfillRun: {},
-    Genre: {},
-    GenreSlugCleanupRun: {},
-    AdminSetting: {},
-  },
-});
-
 mock.module(
-  new URL('../src/services/scheduled-backfill.ts', import.meta.url).href,
+  new URL("../src/services/scheduled-backfill.ts", import.meta.url).href,
   {
     namedExports: {
       BACKFILL_RETENTION_DAYS_MAX: 3650,
       BACKFILL_RETENTION_DAYS_MIN: 1,
       BACKFILL_RETENTION_MAX_ROWS_MAX: 100000,
       BACKFILL_RETENTION_MAX_ROWS_MIN: 10,
-      BACKFILL_RETENTION_SETTINGS_KEY: 'backfill-retention',
+      BACKFILL_RETENTION_SETTINGS_KEY: "backfill-retention",
       getDefaultBackfillRetention: () => ({ days: 90, maxRows: 200 }),
       getEnvBackfillRetention: () => ({
-        days: { source: 'default' as const, value: 90 },
-        maxRows: { source: 'default' as const, value: 200 },
+        days: { source: "default" as const, value: 90 },
+        maxRows: { source: "default" as const, value: 200 },
       }),
       invalidateBackfillRetentionCache: () => {},
       loadStoredBackfillRetentionSettings: async () => null,
       resolveBackfillRetentionSettings: async () => ({
         days: 90,
         maxRows: 200,
-        source: 'default' as const,
+        source: "default" as const,
       }),
       scheduledBackfill: {
         start: async () => null,
@@ -142,19 +129,16 @@ mock.module(
   },
 );
 
-mock.module(
-  new URL('../src/services/radio-browser.ts', import.meta.url).href,
-  {
-    namedExports: {
-      radioBrowserService: {
-        getStationByUuid: async () => null,
-      },
+mock.module(new URL("../src/services/radio-browser.ts", import.meta.url).href, {
+  namedExports: {
+    radioBrowserService: {
+      getStationByUuid: async () => null,
     },
   },
-);
+});
 
 mock.module(
-  new URL('../src/services/admin-setting-audit.ts', import.meta.url).href,
+  new URL("../src/services/admin-setting-audit.ts", import.meta.url).href,
   {
     namedExports: {
       clearAdminSettingWithHistory: async () => null,
@@ -165,7 +149,7 @@ mock.module(
   },
 );
 
-mock.module(new URL('../src/utils/logger.ts', import.meta.url).href, {
+mock.module(new URL("../src/utils/logger.ts", import.meta.url).href, {
   namedExports: {
     logger: {
       log: () => {},
@@ -185,19 +169,13 @@ let server: HttpServer;
 let baseUrl: string;
 
 before(async () => {
-  process.env.NODE_ENV = 'test';
+  process.env.NODE_ENV = "test";
 
-  const mod = (await import(
-    '../src/routes/admin-maintenance-routes.ts'
-  )) as {
+  const mod = (await import("../src/routes/admin-maintenance-routes.ts")) as {
     registerAdminMaintenanceRoutes: (
       app: Express,
       deps: {
-        requireAdmin: (
-          req: Request,
-          res: Response,
-          next: NextFunction,
-        ) => void;
+        requireAdmin: (req: Request, res: Response, next: NextFunction) => void;
       },
     ) => void;
   };
@@ -209,14 +187,14 @@ before(async () => {
   // Mirrors the pattern used by admin-genres-create-route.test.ts so the
   // 401 path can be exercised without standing up Passport / sessions.
   const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
-    if (req.header('x-admin') === '1') return next();
-    return void res.status(401).json({ error: 'Admin required' });
+    if (req.header("x-admin") === "1") return next();
+    return void res.status(401).json({ error: "Admin required" });
   };
 
   mod.registerAdminMaintenanceRoutes(app, { requireAdmin });
 
   server = app.listen(0);
-  await new Promise<void>((resolve) => server.once('listening', resolve));
+  await new Promise<void>((resolve) => server.once("listening", resolve));
   const addr = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${addr.port}`;
 });
@@ -230,29 +208,30 @@ after(async () => {
 // Tests
 // ---------------------------------------------------------------------------
 
-const ENDPOINT = '/api/admin/maintenance/genre-slug-cleanup/run';
+const ENDPOINT = "/api/admin/maintenance/genre-slug-cleanup/run";
 
-test('POST cleanup/run rejects non-admins with 401 and never invokes runOnce', async () => {
+test("POST cleanup/run rejects non-admins with 401 and never invokes runOnce", async () => {
   resetState();
-  const res = await fetch(`${baseUrl}${ENDPOINT}`, { method: 'POST' });
-  assert.equal(res.status, 401, 'requireAdmin must reject anonymous callers');
+  const res = await fetch(`${baseUrl}${ENDPOINT}`, { method: "POST" });
+  assert.equal(res.status, 401, "requireAdmin must reject anonymous callers");
+  await res.text();
   assert.equal(
     runOnceCalls,
     0,
-    'runOnce must NOT be invoked when the request is rejected by requireAdmin',
+    "runOnce must NOT be invoked when the request is rejected by requireAdmin",
   );
 });
 
-test('POST cleanup/run returns 409 with the live status while a previous run is still in flight', async () => {
+test("POST cleanup/run returns 409 with the live status while a previous run is still in flight", async () => {
   resetState();
 
   // First call kicks off a run that we deliberately leave pending so the
   // singleton lock stays held across the second POST.
   const first = await fetch(`${baseUrl}${ENDPOINT}`, {
-    method: 'POST',
-    headers: { 'x-admin': '1' },
+    method: "POST",
+    headers: { "x-admin": "1" },
   });
-  assert.equal(first.status, 200, 'first admin POST must start a run');
+  assert.equal(first.status, 200, "first admin POST must start a run");
   const firstBody = (await first.json()) as {
     ok: boolean;
     status: { isRunning: boolean; lastRunId: string | null };
@@ -261,42 +240,42 @@ test('POST cleanup/run returns 409 with the live status while a previous run is 
   assert.equal(
     firstBody.status.isRunning,
     true,
-    'status echoed by the first response must show the run is in flight',
+    "status echoed by the first response must show the run is in flight",
   );
-  assert.equal(firstBody.status.lastRunId, 'run-1');
+  assert.equal(firstBody.status.lastRunId, "run-1");
   assert.equal(runOnceCalls, 1);
 
   // Second POST while the first is still pending: must be rejected with
   // 409 and echo back the current status so the dashboard can render
   // "already running" without an extra round-trip.
   const second = await fetch(`${baseUrl}${ENDPOINT}`, {
-    method: 'POST',
-    headers: { 'x-admin': '1' },
+    method: "POST",
+    headers: { "x-admin": "1" },
   });
   assert.equal(
     second.status,
     409,
-    'concurrent POST must be rejected with 409 (already_running)',
+    "concurrent POST must be rejected with 409 (already_running)",
   );
   const secondBody = (await second.json()) as {
     error: string;
     status: { isRunning: boolean; lastRunId: string | null };
   };
-  assert.equal(secondBody.error, 'already_running');
+  assert.equal(secondBody.error, "already_running");
   assert.equal(
     secondBody.status.isRunning,
     true,
-    '409 payload must include the live status with isRunning=true',
+    "409 payload must include the live status with isRunning=true",
   );
   assert.equal(
     secondBody.status.lastRunId,
-    'run-1',
-    '409 payload must echo the in-flight runId so the dashboard can deep-link',
+    "run-1",
+    "409 payload must echo the in-flight runId so the dashboard can deep-link",
   );
   assert.equal(
     runOnceCalls,
     1,
-    'runOnce must NOT be invoked a second time while the lock is held',
+    "runOnce must NOT be invoked a second time while the lock is held",
   );
 
   // After the in-flight run finishes, a fresh POST is accepted again —
@@ -307,18 +286,19 @@ test('POST cleanup/run returns 409 with the live status while a previous run is 
   await new Promise((r) => setImmediate(r));
 
   const third = await fetch(`${baseUrl}${ENDPOINT}`, {
-    method: 'POST',
-    headers: { 'x-admin': '1' },
+    method: "POST",
+    headers: { "x-admin": "1" },
   });
   assert.equal(
     third.status,
     200,
-    'POST after the previous run finished must start a new run',
+    "POST after the previous run finished must start a new run",
   );
+  await third.text();
   assert.equal(
     runOnceCalls,
     2,
-    'runOnce must be invoked exactly once for the follow-up admin POST',
+    "runOnce must be invoked exactly once for the follow-up admin POST",
   );
 
   // Cleanup: resolve the run we just started so the `after` hook can

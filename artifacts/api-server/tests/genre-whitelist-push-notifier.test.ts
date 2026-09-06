@@ -23,33 +23,16 @@
  */
 import { test, mock, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+mock.module('../src/data/postgres-taxonomy-runtime-store', { namedExports: {
+  pgTaxonomyRuntime: () => ({savePush:async()=>{},recentPushes:async()=>[]}),
+} });
 
-// ---------------------------------------------------------------------------
-// Mock the mongo schemas so the in-app notification path is a no-op:
-// these tests only care about the in-process notifier hook.
-// ---------------------------------------------------------------------------
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    User: {
-      find: () => ({ lean: async () => [] as Array<{ _id: string }> }),
-    },
-    UserNotification: {
-      insertMany: async () => [],
-    },
-    // Stub for the persisted push log added by task #255 — these tests
-    // only care about the in-process notifier hook, not the database
-    // write side-effect of `completePushStatus`.
-    GenreWhitelistPushLog: {
-      create: async () => ({}),
-      find: () => ({
-        sort: () => ({
-          limit: () => ({ lean: async () => [] }),
-        }),
-      }),
-    },
-  },
-});
+const nativeNotifications:any[]=[];
+let failNativeNotification=false;
+mock.module('../src/data/postgres-user-store',{namedExports:{pgAdminUserIds:async()=>['admin-one','admin-two']}});
+mock.module('../src/data/postgres-notification-store',{namedExports:{pgCreateNotification:async(doc:any)=>{
+  if(failNativeNotification)throw new Error('PostgreSQL notification unavailable');nativeNotifications.push(doc);return doc;
+}}});
 
 import type { GenreWhitelistPushStatus } from '../src/seo/genre-whitelist-push-status.ts';
 
@@ -81,6 +64,7 @@ after(() => {
 });
 
 beforeEach(async () => {
+  nativeNotifications.length=0;failNativeNotification=false;
   delete process.env.GENRE_WHITELIST_PUSH_ALERT_DEDUPE_MS;
   delete process.env.ENABLE_GENRE_WHITELIST_PUSH_ALERTS;
   const { setGenreWhitelistPushNotifier, _resetGenreWhitelistPushDedupe } =
@@ -360,12 +344,12 @@ test('per-push isolation: concurrent pushes each notify with their own snapshot'
 
   // Push A finishes its remaining step and notifies with its own snapshot.
   updatePushStep(idA, 'indexnowGenreUrls', { status: 'skipped' });
-  const finalA = completePushStatus(idA);
+  const finalA = await completePushStatus(idA);
   await notifyWhitelistPushResult(finalA);
 
   // Push B finishes and notifies.
   updatePushStep(idB, 'indexnowGenreUrls', { status: 'failed', error: 'B boom' });
-  const finalB = completePushStatus(idB);
+  const finalB = await completePushStatus(idB);
   await notifyWhitelistPushResult(finalB);
 
   assert.equal(calls.length, 2, 'each push run should produce its own alert');
@@ -552,4 +536,19 @@ test('getFailedSteps surfaces only `failed` steps (not `pending` or `skipped`)',
     }),
   );
   assert.deepEqual(steps, [{ step: 'indexnowSitemap', error: 'boom' }]);
+});
+
+test('default notification channel writes native PostgreSQL notifications for each admin',async()=>{
+  const {sendTestWhitelistPushFailureInAppNotification}=await import('../src/services/genre-whitelist-push-notifier.ts');
+  assert.equal(await sendTestWhitelistPushFailureInAppNotification('operator'),2);
+  assert.deepEqual(nativeNotifications.map(n=>n.userId),['admin-one','admin-two']);
+  assert.equal(nativeNotifications[0].data.kind,'genre_whitelist_push_failure_test');
+});
+test('a failed PostgreSQL alert does not claim delivery or suppress its next retry',async()=>{
+  const {notifyWhitelistPushResult}=await import('../src/services/genre-whitelist-push-notifier.ts');
+  const status=makeStatus({indexnowSitemap:{status:'failed',error:'outage'}});
+  failNativeNotification=true;const first=await notifyWhitelistPushResult(status);
+  assert.equal(first.notified,false);assert.match(first.deliveryError??'',/delivery failed/);
+  failNativeNotification=false;const retried=await notifyWhitelistPushResult(status);
+  assert.equal(retried.notified,true);assert.equal(nativeNotifications.length,2);
 });

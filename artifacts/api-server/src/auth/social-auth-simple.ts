@@ -1,4 +1,6 @@
-import { Genre, normalizeGenreSlug, SAFE_GENRE_SLUG_RE, Station, User } from '@workspace/db-shared/mongo-schemas';
+import { normalizeGenreSlug, SAFE_GENRE_SLUG_RE } from '../seo/genre-slug';
+import { getPostgresPool } from '../postgres-runtime';
+import { pgCreateUser } from '../data/postgres-user-store';
 
 // Check if social auth is configured
 export function getSocialAuthStatus() {
@@ -15,8 +17,8 @@ export async function generateUniqueUsername(baseUsername: string): Promise<stri
   let counter = 0;
   
   while (true) {
-    const existingUser = await User.findOne({ username });
-    if (!existingUser) {
+    const existingUser = await getPostgresPool().query('SELECT 1 FROM users WHERE username=$1', [username]);
+    if (!existingUser.rowCount) {
       return username;
     }
     counter++;
@@ -73,8 +75,7 @@ export async function generateUniqueSlug(
       .replace(/^-+|-+$/g, '');
   }
 
-  const Model: { findOne: (filter: Record<string, unknown>) => Promise<unknown> } =
-    entityType === 'genre' ? (Genre as never) : entityType === 'station' ? (Station as never) : (User as never);
+  const table = entityType === 'genre' ? 'genres' : entityType === 'station' ? 'stations' : 'users';
 
   let uniqueSlug = baseSlug;
   let counter = 1;
@@ -85,8 +86,8 @@ export async function generateUniqueSlug(
       filter._id = { $ne: excludeId };
     }
 
-    const existing = await Model.findOne(filter);
-    if (!existing) {
+    const existing = await getPostgresPool().query(`SELECT 1 FROM ${table} WHERE slug=$1 AND ($2::text IS NULL OR id<>$2)`, [uniqueSlug, excludeId || null]);
+    if (!existing.rowCount) {
       break;
     }
 
@@ -158,8 +159,5 @@ export async function createUserFromSocialProfile(profile: any, provider: 'googl
   userData.slug = await generateUniqueSlug(slugSource, 'user');
   console.log(`🔤 Generated slug for social user: "${userData.slug}" (${userData.email})`);
 
-  const user = new User(userData);
-  await user.save();
-  
-  return user;
+  return pgCreateUser(userData);
 }

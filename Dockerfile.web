@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
+RUN corepack enable && corepack prepare pnpm@11.19.0 --activate
 
 WORKDIR /app
 
@@ -17,6 +17,7 @@ COPY tsconfig.base.json tsconfig.json ./
 COPY artifacts/api-server/package.json          ./artifacts/api-server/
 COPY artifacts/megaradio/package.json           ./artifacts/megaradio/
 COPY lib/db-shared/package.json                 ./lib/db-shared/
+COPY lib/legacy-migration/package.json          ./lib/legacy-migration/
 COPY lib/seo-shared/package.json                ./lib/seo-shared/
 COPY lib/api-client-react/package.json          ./lib/api-client-react/
 COPY lib/api-zod/package.json                   ./lib/api-zod/
@@ -60,6 +61,6 @@ EXPOSE 3000
 EXPOSE 443
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-  CMD node -e "const http=require('http');http.get('http://localhost:'+(process.env.PORT||3000)+'/healthz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));"
+  CMD node -e "const http=require('http');http.get('http://localhost:'+(process.env.PORT||3000)+'/readyz',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1));"
 
 CMD ["node", "--max-old-space-size=10240", "--max-semi-space-size=96", "--expose-gc", "dist/index-web.mjs"]

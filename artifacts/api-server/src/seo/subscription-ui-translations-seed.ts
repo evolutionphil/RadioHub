@@ -11,8 +11,9 @@
  * Invoked from `routes.ts` at boot alongside the other seeders.
  */
 
-import { Translation, TranslationKey } from '@workspace/db-shared/mongo-schemas';
+
 import { logger } from '../utils/logger';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 interface KeyDef {
   key: string;
@@ -370,75 +371,10 @@ const TRANSLATIONS: Record<string, Record<string, string>> = {
 };
 
 export async function seedSubscriptionUiTranslations(): Promise<void> {
-  try {
-    const keyOps = KEYS.map((def) => ({
-      updateOne: {
-        filter: { key: def.key },
-        update: {
-          $setOnInsert: {
-            key: def.key,
-            defaultValue: def.defaultValue,
-            description: def.description,
-            category: 'subscription',
-            createdAt: new Date(),
-          },
-          $set: { updatedAt: new Date() },
-        },
-        upsert: true,
-      },
-    }));
-    if (keyOps.length > 0) {
-      await TranslationKey.bulkWrite(keyOps, { ordered: false });
-    }
-
-    const keyDocs = await TranslationKey.find({ key: { $in: KEYS.map((d) => d.key) } })
-      .select({ _id: 1, key: 1 })
-      .lean();
-    const keyIdByKey = new Map<string, unknown>();
-    for (const doc of keyDocs) keyIdByKey.set(doc.key, doc._id);
-
-    const existing = await Translation.find({ keyId: { $in: keyDocs.map((d) => d._id) } })
-      .select({ keyId: 1, language: 1, value: 1 })
-      .lean();
-    const populated = new Set<string>();
-    for (const tx of existing) {
-      if (typeof tx.value === 'string' && tx.value.trim().length > 0) {
-        populated.add(`${String(tx.keyId)}::${tx.language}`);
-      }
-    }
-
-    const txOps: Parameters<typeof Translation.bulkWrite>[0] = [];
-    for (const [language, values] of Object.entries(TRANSLATIONS)) {
-      for (const def of KEYS) {
-        const keyId = keyIdByKey.get(def.key);
-        if (!keyId) continue;
-        const value = values[def.key];
-        if (typeof value !== 'string' || value.trim().length === 0) continue;
-        if (populated.has(`${String(keyId)}::${language}`)) continue;
-        txOps.push({
-          updateOne: {
-            filter: { keyId, language },
-            update: {
-              $set: { keyId, language, value, isCompleted: true, lastModified: new Date() },
-              $setOnInsert: { createdAt: new Date() },
-            },
-            upsert: true,
-          },
-        });
-      }
-    }
-
-    if (txOps.length > 0) {
-      const CHUNK = 500;
-      for (let i = 0; i < txOps.length; i += CHUNK) {
-        await Translation.bulkWrite(txOps.slice(i, i + CHUNK), { ordered: false });
-      }
-      logger.log(
-        `✅ seedSubscriptionUiTranslations: backfilled ${txOps.length} subscription UI rows ` +
-          `across ${Object.keys(TRANSLATIONS).length} languages.`,
-      );
-    }
-  } catch (err) {
-    logger.error('seedSubscriptionUiTranslations failed (non-fatal):', err);
+  {
+    const changed = await pgLocalization().seedTranslationBundle(KEYS, TRANSLATIONS, 'subscription');
+    logger.log(`seedSubscriptionUiTranslations: backfilled ${changed} PostgreSQL rows`);
+    return;
   }
+
 }

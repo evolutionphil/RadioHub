@@ -1,53 +1,33 @@
 /**
- * Regression guard: every `t("search_*", "...")` key used inside the SPA's
- * search results page must have a non-empty translation in the runtime DB
- * translation store for every language listed in SEO_LANGUAGES.
+ * Every search-page t("search_*") key must have a non-empty translation for
+ * every SEO language after the real PostgreSQL boot seeder runs. This tests the
+ * checked-in multilingual content, not English fallback or fabricated values.
+ * Deleting keys/rows and blanking values must produce actionable diagnostics.
  *
- * Background: Task #221 added a build-time guard for SEARCH_SEO_TEMPLATES
- * (the title / description / H1 SEO copy). The interactive SPA copy on the
- * search page (placeholder, no-results, paging hints, Esc hints, section
- * headings, ...) is keyed off a *separate* translation store loaded from
- * MongoDB at runtime. That store silently falls back to the hard-coded
- * English fallback per-key when a language hasn't been backfilled — exactly
- * the same silent-fallback hazard the SEO guard prevents, just for the
- * interactive UI half. This test is the missing other half.
- *
- * Strategy:
- *   1. Statically parse `artifacts/megaradio/src/pages/search.tsx` for
- *      every `t("search_*", ...)` call, so the allow-list can never
- *      drift from the source of truth.
- *   2. Connect to the runtime Mongo (MONGODB_URI / DATABASE_URL /
- *      MONGO_URI) using the production schemas, fetch the keys + every
- *      Translation row keyed off them, and assert that for each
- *      SEO_LANGUAGES code every search-page key has a non-empty value.
- *   3. If no Mongo connection string is configured (e.g. an isolated
- *      dev sandbox), skip — exactly like the production warmup loop
- *      can't run without a DB either. CI / merge runs always have it.
- *
- * Runner: requires `--experimental-test-module-mocks` (wired up in
- * artifacts/api-server/package.json#scripts.test).
+ * PG_TEST_DATABASE_URL is mandatory; each test process owns a random schema.
  */
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { describe, it, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
-import mongoose from 'mongoose';
-
-import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import {
-  Translation,
-  TranslationKey,
-} from '@workspace/db-shared/mongo-schemas';
+  createNativePostgresFixture,
+  type NativePostgresFixture,
+} from "./helpers/native-postgres-fixture";
+import { pgLocalization } from "../src/data/postgres-localization-store";
+import { seedSearchPageTranslations } from "../src/seo/search-page-translations-seed";
+
+import { SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const SEARCH_PAGE_SOURCE = resolve(
   __dirname,
-  '../../megaradio/src/pages/search.tsx',
+  "../../megaradio/src/pages/search.tsx",
 );
 
 /**
@@ -59,7 +39,7 @@ const SEARCH_PAGE_SOURCE = resolve(
  * surfaces and should grow their own coverage tests as needed.
  */
 function extractSearchKeysFromSource(): string[] {
-  const src = readFileSync(SEARCH_PAGE_SOURCE, 'utf8');
+  const src = readFileSync(SEARCH_PAGE_SOURCE, "utf8");
   // Match `t("search_*")`, `t('search_*')`, and `` t(`search_*`) `` so a
   // future quoting style change in the page source can't silently shrink
   // the allow-list. Computed keys (e.g. `t(varHoldingKey, ...)`) are
@@ -74,116 +54,52 @@ function extractSearchKeysFromSource(): string[] {
   return Array.from(seen).sort();
 }
 
-const MONGO_URI =
-  process.env.MONGODB_URI ||
-  process.env.DATABASE_URL ||
-  process.env.MONGO_URI ||
-  '';
-
-describe('Per-language search-page DB translation coverage', () => {
+describe("Per-language search-page DB translation coverage", () => {
   const searchKeys = extractSearchKeysFromSource();
 
   it('finds at least one t("search_*", ...) key in search.tsx', () => {
     assert.ok(
       searchKeys.length > 0,
       `No t("search_*", ...) calls found in ${SEARCH_PAGE_SOURCE}. ` +
-        'Either the regex stopped matching or the page no longer uses ' +
-        'the runtime translation store — update this test to match.',
+        "Either the regex stopped matching or the page no longer uses " +
+        "the runtime translation store — update this test to match.",
     );
   });
 
-  if (!MONGO_URI) {
-    it('requires MONGODB_URI to run the DB coverage check', () => {
-      // CI is the place this guard MUST fire — silently skipping there
-      // would let a regression land just because env wiring drifted.
-      // Locally (no CI=true), we soft-skip so an isolated dev sandbox
-      // without a Mongo URL doesn't block unrelated work.
-      if (process.env.CI) {
-        assert.fail(
-          '[search-translations-db-coverage] No Mongo URI configured ' +
-            '(MONGODB_URI / DATABASE_URL / MONGO_URI) but CI=true. ' +
-            'CI must provide a Mongo URI so the search-translation guard ' +
-            'cannot silently disable itself.',
-        );
-      }
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[search-translations-db-coverage] MONGODB_URI not set — skipping DB coverage assertion. ' +
-          'CI runs must have MONGODB_URI configured for this guard to fire.',
-      );
-      assert.ok(true);
-    });
-    return;
-  }
-
-  let connection: mongoose.Connection | null = null;
+  let fixture: NativePostgresFixture;
   let translationsByLanguage: Map<string, Map<string, string>> = new Map();
   let knownKeys: Set<string> = new Set();
-  let connectError: Error | null = null;
+
+  async function readCoverage(): Promise<void> {
+    knownKeys.clear();
+    translationsByLanguage.clear();
+    const keyDocs = await pgLocalization().getKeys(searchKeys);
+    for (const doc of keyDocs) knownKeys.add(doc.key);
+    for (const { code } of SEO_LANGUAGES)
+      translationsByLanguage.set(code, new Map());
+    const rows = await pgLocalization().listTranslations(
+      undefined,
+      searchKeys,
+      true,
+    );
+    for (const row of rows) {
+      translationsByLanguage.get(row.language)?.set(row.keyId.key, row.value);
+    }
+  }
 
   before(async () => {
-    try {
-      connection = await mongoose
-        .createConnection(MONGO_URI, {
-          serverSelectionTimeoutMS: 15000,
-        })
-        .asPromise();
-
-      // Bind production schemas to *this* isolated connection so we never
-      // contaminate the default mongoose connection that the api-server
-      // owns at runtime. Reusing the schema objects guarantees the
-      // collection names line up with what the production warmup queries.
-      const KeyModel = connection.model(
-        'TranslationKey',
-        TranslationKey.schema,
-      );
-      const TxModel = connection.model('Translation', Translation.schema);
-
-      const keyDocs = await KeyModel.find({ key: { $in: searchKeys } })
-        .select({ _id: 1, key: 1 })
-        .lean();
-      const keyIdToKey = new Map<string, string>();
-      for (const doc of keyDocs) {
-        keyIdToKey.set(String(doc._id), doc.key);
-        knownKeys.add(doc.key);
-      }
-
-      const languageCodes = SEO_LANGUAGES.map((l) => l.code);
-      const txDocs = await TxModel.find({
-        language: { $in: languageCodes },
-        keyId: { $in: keyDocs.map((d) => d._id) },
-      })
-        .select({ keyId: 1, language: 1, value: 1 })
-        .lean();
-
-      for (const code of languageCodes) {
-        translationsByLanguage.set(code, new Map());
-      }
-      for (const tx of txDocs) {
-        const key = keyIdToKey.get(String(tx.keyId));
-        if (!key) continue;
-        const value = typeof tx.value === 'string' ? tx.value : '';
-        translationsByLanguage.get(tx.language)?.set(key, value);
-      }
-    } catch (err) {
-      connectError = err as Error;
-    }
+    fixture = await createNativePostgresFixture("search-translation-coverage");
+    // Exercise the actual checked-in multilingual boot seeder, not placeholder
+    // values: a newly referenced key or language without seed content must fail.
+    await seedSearchPageTranslations();
+    await readCoverage();
   });
 
   after(async () => {
-    if (connection) {
-      await connection.close().catch(() => undefined);
-    }
+    await fixture?.close();
   });
 
-  it('has a TranslationKey + non-empty Translation for every search_* key in every SEO_LANGUAGES code', () => {
-    if (connectError) {
-      assert.fail(
-        `Could not connect to Mongo to verify search-page translations: ${connectError.message}. ` +
-          'Either MONGODB_URI is misconfigured or the DB is unreachable from the test runner.',
-      );
-    }
-
+  function assertCompleteCoverage(): void {
     // Surface absent TranslationKey rows separately from absent
     // Translation rows — the fix is different (create the key once vs
     // backfill one row per language), so naming them distinctly makes
@@ -203,7 +119,7 @@ describe('Per-language search-page DB translation coverage', () => {
         // map for every code. If it does, treat every key as missing for
         // that language so the failure message is unambiguous.
         for (const key of searchKeys) {
-          missing.push({ language: code, key, reason: 'no rows for language' });
+          missing.push({ language: code, key, reason: "no rows for language" });
         }
         continue;
       }
@@ -213,14 +129,14 @@ describe('Per-language search-page DB translation coverage', () => {
         // list stays focused on rows the team actually has to write.
         if (!knownKeys.has(key)) continue;
         const value = langMap.get(key);
-        if (typeof value !== 'string' || value.trim().length === 0) {
+        if (typeof value !== "string" || value.trim().length === 0) {
           missing.push({
             language: code,
             key,
             reason:
               value === undefined
-                ? 'no Translation row'
-                : 'empty/whitespace value',
+                ? "no Translation row"
+                : "empty/whitespace value",
           });
         }
       }
@@ -232,13 +148,13 @@ describe('Per-language search-page DB translation coverage', () => {
       !hasGap,
       [
         `The runtime DB translation store is missing search-page entries.`,
-        'Each missing entry causes the SPA to silently fall back to the hard-coded English copy for that language.',
-        '',
+        "Each missing entry causes the SPA to silently fall back to the hard-coded English copy for that language.",
+        "",
         ...(missingKeyRows.length > 0
           ? [
               `Missing TranslationKey rows (${missingKeyRows.length}) — create one row per key, then a Translation per language:`,
               ...missingKeyRows.map((k) => `  - key="${k}"`),
-              '',
+              "",
             ]
           : []),
         ...(missing.length > 0
@@ -255,7 +171,39 @@ describe('Per-language search-page DB translation coverage', () => {
                 : []),
             ]
           : []),
-      ].join('\n'),
+      ].join("\n"),
     );
+  }
+
+  it(
+    "has a TranslationKey and non-empty seeded Translation for every search key and SEO language",
+    assertCompleteCoverage,
+  );
+
+  it("reports missing keys, missing translations and whitespace values from PostgreSQL", async () => {
+    const [deletedKey, missingTranslationKey, blankTranslationKey] = searchKeys;
+    assert.ok(deletedKey && missingTranslationKey && blankTranslationKey);
+    const language = SEO_LANGUAGES[0].code;
+    await fixture.pool.query("DELETE FROM translation_keys WHERE key=$1", [
+      deletedKey,
+    ]);
+    await fixture.pool.query(
+      "DELETE FROM translations WHERE key_id=(SELECT id FROM translation_keys WHERE key=$1) AND language=$2",
+      [missingTranslationKey, language],
+    );
+    await fixture.pool.query(
+      "UPDATE translations SET value=$3 WHERE key_id=(SELECT id FROM translation_keys WHERE key=$1) AND language=$2",
+      [blankTranslationKey, language, "   "],
+    );
+    await readCoverage();
+    assert.throws(assertCompleteCoverage, (error: any) => {
+      assert.match(error.message, /Missing TranslationKey rows/);
+      assert.match(error.message, /no Translation row/);
+      assert.match(error.message, /empty\/whitespace value/);
+      assert.ok(error.message.includes(deletedKey));
+      assert.ok(error.message.includes(missingTranslationKey));
+      assert.ok(error.message.includes(blankTranslationKey));
+      return true;
+    });
   });
 });

@@ -21,7 +21,9 @@
  */
 
 import cron from 'node-cron';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import type pg from 'pg';
+import { getPostgresCoordinationPool } from '../postgres-runtime';
 import { logger } from '../utils/logger';
 import { stripPlaceholders } from '../routes/shared-utils';
 
@@ -122,35 +124,27 @@ class ScheduledDescriptionFill {
     let skipped = 0;
     let stoppedEarly = false;
     let stopReason: string | undefined;
+    let leader: pg.PoolClient | undefined;
+    let ownsLeadership = false;
+    let leadershipError: Error | undefined;
+    const onLeadershipError = (error:Error) => { leadershipError=error; };
+    const assertLeadership = () => { if(leadershipError) throw new Error('Description fill leadership lost',{cause:leadershipError}); };
 
     logger.log(`📝 Description fill START (${trigger})`);
 
     try {
+      leader = await getPostgresCoordinationPool().connect();
+      leader.on('error',onLeadershipError);
+      ownsLeadership = (await leader.query("SELECT pg_try_advisory_lock(hashtext('radiohub-description-fill')) AS acquired")).rows[0].acquired;
+      if (!ownsLeadership) throw new Error('already_running');
       const { generateStationDescription, detectStationLanguage, translateDescription } =
         await import('./ai-station-description');
 
       // ── Phase 1: stations with NO descriptions ─────────────────────────
-      const noDescFilter = {
-        noIndex: { $ne: true },
-        aiDescriptionSkipped: { $ne: true },
-        $or: [
-          { descriptions: { $exists: false } },
-          { descriptions: null },
-          { descriptions: {} },
-          {
-            $expr: {
-              $eq: [{ $size: { $objectToArray: { $ifNull: ['$descriptions', {}] } } }, 0],
-            },
-          },
-        ],
-      };
-
-      const noDescCursor = Station.find(noDescFilter)
-        .select('_id name countryCode language tags homepage slug')
-        .lean()
-        .cursor();
+      const noDescCursor = pgCatalog().descriptionFillCandidates('empty',UNIVERSAL_14);
 
       for await (const station of noDescCursor) {
+        assertLeadership();
         if (Date.now() > deadline) {
           stoppedEarly = true;
           stopReason = 'hard_timeout';
@@ -178,10 +172,12 @@ class ScheduledDescriptionFill {
             meta: stripPlaceholders(result.metaDescription),
           };
 
-          await Station.updateOne(
-            { _id: station._id },
+          assertLeadership();
+          const savedNative = await pgCatalog().update(
+            { _id: station._id,[`descriptions.${nativeLang}`]:station.descriptions?.[nativeLang] ?? null,'manualEditFields.descriptions':{$ne:true} },
             { $set: { [`descriptions.${nativeLang}`]: nativeDesc } },
           );
+          if (!savedNative.modifiedCount) { skipped++;continue; }
           generated++;
 
           // Translate to remaining 13 languages
@@ -212,10 +208,14 @@ class ScheduledDescriptionFill {
                   },
                 });
               }
-              if (bulkOps.length > 0) await Station.bulkWrite(bulkOps);
-              translated += translations.size;
+              for (const operation of bulkOps) {
+                assertLeadership();
+                const field = Object.keys(operation.updateOne.update.$set)[0];
+                const lang = field.slice('descriptions.'.length);
+                translated += (await pgCatalog().update({ ...operation.updateOne.filter,[field]:station.descriptions?.[lang] ?? null,'manualEditFields.descriptions':{$ne:true} },operation.updateOne.update)).modifiedCount;
+              }
               logger.log(
-                `✅ [fill] "${station.name}" — generated ${nativeLang} + translated ${translations.size} langs`,
+                `✅ [fill] "${station.name}" — generated ${nativeLang}; received ${translations.size} translations (concurrent edits preserved)`,
               );
             } catch (transErr: any) {
               logger.warn(`⚠️ [fill] Translation failed for "${station.name}": ${transErr.message}`);
@@ -232,45 +232,10 @@ class ScheduledDescriptionFill {
 
       // ── Phase 2: stations with PARTIAL descriptions ────────────────────
       if (!stoppedEarly) {
-        const partialFilter: any = {
-          noIndex: { $ne: true },
-          aiDescriptionSkipped: { $ne: true },
-          descriptions: { $exists: true, $type: 'object' },
-          // Item 4 (re-audit 2026-06-20): count only langs with a VALID `full`
-          // description (string, > 20 chars) rather than raw key count. A
-          // station can have all 14 KEYS present but with empty/short/placeholder
-          // `full` values (a failed or empty translation) — under the old
-          // key-count gate its $size was 14, so it escaped BOTH phases and stayed
-          // permanently incomplete. Counting valid entries re-queues it until
-          // every one of the 14 langs is real. (This also subsumes the old lower
-          // bound: a doc with keys but zero valid entries now matches too.)
-          $expr: {
-            $lt: [
-              {
-                $size: {
-                  $filter: {
-                    input: { $objectToArray: { $ifNull: ['$descriptions', {}] } },
-                    as: 'd',
-                    cond: {
-                      $and: [
-                        { $eq: [{ $type: '$$d.v.full' }, 'string'] },
-                        { $gt: [{ $strLenCP: { $ifNull: ['$$d.v.full', ''] } }, 20] },
-                      ],
-                    },
-                  },
-                },
-              },
-              14,
-            ],
-          },
-        };
-
-        const partialCursor = Station.find(partialFilter)
-          .select('_id name countryCode language tags descriptions slug')
-          .lean()
-          .cursor();
+        const partialCursor = pgCatalog().descriptionFillCandidates('partial',UNIVERSAL_14);
 
         for await (const station of partialCursor) {
+          assertLeadership();
           if (Date.now() > deadline) {
             stoppedEarly = true;
             stopReason = 'hard_timeout';
@@ -335,10 +300,14 @@ class ScheduledDescriptionFill {
                 },
               });
             }
-            if (bulkOps.length > 0) await Station.bulkWrite(bulkOps);
-            translated += translations.size;
+            for (const operation of bulkOps) {
+              assertLeadership();
+              const field = Object.keys(operation.updateOne.update.$set)[0];
+              const lang = field.slice('descriptions.'.length);
+              translated += (await pgCatalog().update({ ...operation.updateOne.filter,[field]:station.descriptions?.[lang] ?? null,'manualEditFields.descriptions':{$ne:true} },operation.updateOne.update)).modifiedCount;
+            }
             logger.log(
-              `✅ [fill] "${station.name}" — filled ${translations.size} missing langs`,
+              `✅ [fill] "${station.name}" — received ${translations.size} missing-language translations (concurrent edits preserved)`,
             );
           } catch (err: any) {
             failed++;
@@ -349,11 +318,17 @@ class ScheduledDescriptionFill {
         }
       }
     } catch (err: any) {
-      logger.error('❌ Description fill top-level error:', err);
+      if (err.message==='already_running') logger.log('Description fill skipped: another PostgreSQL worker owns the job');
+      else logger.error('❌ Description fill top-level error:', err);
       stoppedEarly = true;
       stopReason = err.message;
     } finally {
       this.isRunning = false;
+      if (leader) {
+        if (ownsLeadership && !leadershipError) await leader.query("SELECT pg_advisory_unlock(hashtext('radiohub-description-fill'))").catch(error=>{ leadershipError=error; });
+        leader.removeListener('error',onLeadershipError);
+        leader.release(Boolean(leadershipError));
+      }
     }
 
     const completedAt = new Date();

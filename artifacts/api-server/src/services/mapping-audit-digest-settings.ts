@@ -1,5 +1,5 @@
 import { logger } from '../utils/logger';
-import { AdminSetting } from '@workspace/db-shared/mongo-schemas';
+import { getAdminSetting } from '../data/postgres-admin-settings-store';
 
 /**
  * Task #284 — admin-tunable cadence for the mapping-audit digest email
@@ -80,20 +80,16 @@ export async function loadStoredMappingAuditDigestSettings(
     return settingsCache.value;
   }
   try {
-    const doc = await AdminSetting.findOne({
-      key: MAPPING_AUDIT_DIGEST_SETTINGS_KEY,
-    }).lean();
+    const doc = await getAdminSetting(MAPPING_AUDIT_DIGEST_SETTINGS_KEY);
     const value = sanitizeStoredSettings(doc?.value);
     settingsCache = { at: Date.now(), value };
     return value;
   } catch (err) {
     logger.warn(
-      '⚠️  Failed to load mapping-audit digest settings from DB, using env/defaults:',
+      'Failed to load mapping-audit digest settings from PostgreSQL:',
       err,
     );
-    const value: MappingAuditDigestSettings = { cadence: null };
-    settingsCache = { at: Date.now(), value };
-    return value;
+    throw err;
   }
 }
 

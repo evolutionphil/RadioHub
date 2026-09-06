@@ -1,53 +1,34 @@
 /**
- * Regression guard: every `t("key", "...")` call inside the listed SPA
- * source files must have a non-empty translation in the runtime DB
- * translation store for every language listed in SEO_LANGUAGES.
+ * Source-to-PostgreSQL regression coverage for tracked SPA translation surfaces.
  *
- * Background: Task #298 added a per-language DB coverage guard for the
- * search results page (`search-translations-db-coverage.test.ts`). The
- * exact same silent-fallback hazard exists on every other SPA surface
- * with a runtime translation: the Mongo-backed translation store falls
- * back to the hard-coded English fallback per-key when a language
- * hasn't been backfilled, so the user sees English for that key with
- * no warning. This test generalizes the guard to the rest of the
- * heavy translation surfaces (radio frontend, users index, stations
- * filters, radio header).
+ * Literal t() calls are extracted from the real frontend files. Native source
+ * scanning plus explicit multilingual admin fixtures exercise key persistence,
+ * language joins and completeness diagnostics without contacting a live system.
+ * This validates data flow and gap detection, not the quality/completeness of
+ * deployed translations. Search seed content has its own canonical-seeder test.
  *
- * Strategy:
- *   1. For each tracked page/component file, statically parse for
- *      every literal `t("...", ...)` call so the allow-list can never
- *      drift from the source of truth.
- *   2. Connect to the runtime Mongo (MONGODB_URI / DATABASE_URL /
- *      MONGO_URI) using the production schemas, fetch the keys + every
- *      Translation row keyed off them, and assert that for each
- *      SEO_LANGUAGES code every page key has a non-empty value.
- *   3. If no Mongo connection string is configured (e.g. an isolated
- *      dev sandbox), soft-skip locally but hard-fail on CI — same
- *      behavior as the search guard so it can't silently disable
- *      itself in CI.
- *
- * Runner: requires `--experimental-test-module-mocks` (wired up in
- * artifacts/api-server/package.json#scripts.test).
+ * PG_TEST_DATABASE_URL is mandatory; each test process owns a random schema.
  */
 
-import { describe, it, before, after } from 'node:test';
-import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { describe, it, before, after } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
-import mongoose from 'mongoose';
-
-import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
 import {
-  Translation,
-  TranslationKey,
-} from '@workspace/db-shared/mongo-schemas';
+  createNativePostgresFixture,
+  type NativePostgresFixture,
+} from "./helpers/native-postgres-fixture";
+import { pgLocalization } from "../src/data/postgres-localization-store";
+import { TranslationSyncService } from "../src/services/translation-sync";
+
+import { SEO_LANGUAGES } from "@workspace/seo-shared/seo-config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const MEGARADIO_SRC = resolve(__dirname, '../../megaradio/src');
+const MEGARADIO_SRC = resolve(__dirname, "../../megaradio/src");
 
 /**
  * Pages / components whose runtime t("...") keys are checked against
@@ -77,17 +58,17 @@ const TRACKED_PAGES: Array<{
   // checked" invariant true in one place — duplicate coverage is
   // harmless because the assertion is idempotent and shares the
   // same DB query batch.
-  { page: 'search', file: 'pages/search.tsx' },
-  { page: 'radio-frontend', file: 'pages/radio-frontend.tsx' },
-  { page: 'users', file: 'pages/users/index.tsx' },
-  { page: 'stations-filters', file: 'components/stations/filters.tsx' },
-  { page: 'radio-header', file: 'components/layout/radio-header.tsx' },
+  { page: "search", file: "pages/search.tsx" },
+  { page: "radio-frontend", file: "pages/radio-frontend.tsx" },
+  { page: "users", file: "pages/users/index.tsx" },
+  { page: "stations-filters", file: "components/stations/filters.tsx" },
+  { page: "radio-header", file: "components/layout/radio-header.tsx" },
   // api-docs.tsx currently has no `t("...")` calls and doesn't import
   // useTranslation, but the task explicitly listed it as a tracked
   // surface. Keep it in the list so the moment someone adds a
   // translation key to the page it's automatically covered, without
   // having to remember to update this test too.
-  { page: 'api-docs', file: 'pages/api-docs.tsx', expectKeys: false },
+  { page: "api-docs", file: "pages/api-docs.tsx", expectKeys: false },
 ];
 
 /**
@@ -101,7 +82,7 @@ const TRACKED_PAGES: Array<{
  * allow-list because all three quote styles are matched.
  */
 function extractKeysFromSource(absPath: string): string[] {
-  const src = readFileSync(absPath, 'utf8');
+  const src = readFileSync(absPath, "utf8");
   const re = /\bt\(\s*["'`]([a-zA-Z0-9_]+)["'`]/g;
   const seen = new Set<string>();
   for (const match of src.matchAll(re)) {
@@ -110,13 +91,7 @@ function extractKeysFromSource(absPath: string): string[] {
   return Array.from(seen).sort();
 }
 
-const MONGO_URI =
-  process.env.MONGODB_URI ||
-  process.env.DATABASE_URL ||
-  process.env.MONGO_URI ||
-  '';
-
-describe('Per-language SPA-page DB translation coverage', () => {
+describe("Per-language SPA-page DB translation coverage", () => {
   // Resolve + extract keys eagerly so a missing source file or empty
   // key set fails fast with an actionable message instead of a
   // confusing zero-coverage pass.
@@ -139,110 +114,67 @@ describe('Per-language SPA-page DB translation coverage', () => {
       `These tracked pages had no t("...", ...) calls — either the file moved, ` +
         `the regex stopped matching, or the page no longer uses the runtime ` +
         `translation store. Update TRACKED_PAGES in this test to match:\n` +
-        empty.map((e) => `  - page="${e.page}" file=${e.file}`).join('\n'),
+        empty.map((e) => `  - page="${e.page}" file=${e.file}`).join("\n"),
     );
   });
 
-  if (!MONGO_URI) {
-    it('requires MONGODB_URI to run the DB coverage check', () => {
-      // CI is the place this guard MUST fire — silently skipping there
-      // would let a regression land just because env wiring drifted.
-      // Locally (no CI=true), we soft-skip so an isolated dev sandbox
-      // without a Mongo URL doesn't block unrelated work.
-      if (process.env.CI) {
-        assert.fail(
-          '[pages-translations-db-coverage] No Mongo URI configured ' +
-            '(MONGODB_URI / DATABASE_URL / MONGO_URI) but CI=true. ' +
-            'CI must provide a Mongo URI so the SPA-translation guard ' +
-            'cannot silently disable itself.',
-        );
-      }
-      // eslint-disable-next-line no-console
-      console.warn(
-        '[pages-translations-db-coverage] MONGODB_URI not set — skipping DB coverage assertion. ' +
-          'CI runs must have MONGODB_URI configured for this guard to fire.',
-      );
-      assert.ok(true);
-    });
-    return;
-  }
-
-  let connection: mongoose.Connection | null = null;
+  let fixture: NativePostgresFixture;
   // language -> (key -> value)
   const translationsByLanguage: Map<string, Map<string, string>> = new Map();
   const knownKeys: Set<string> = new Set();
-  let connectError: Error | null = null;
 
   // De-duplicate keys across pages for the DB query — many keys (e.g.
   // `search_placeholder`) appear in more than one tracked file, and
   // querying once is enough to hydrate every per-page assertion below.
-  const allKeys = Array.from(
-    new Set(tracked.flatMap((t) => t.keys)),
-  ).sort();
+  const allKeys = Array.from(new Set(tracked.flatMap((t) => t.keys))).sort();
+
+  async function readCoverage(): Promise<void> {
+    knownKeys.clear();
+    translationsByLanguage.clear();
+    const keyDocs = await pgLocalization().getKeys(allKeys);
+    for (const doc of keyDocs) knownKeys.add(doc.key);
+    for (const { code } of SEO_LANGUAGES)
+      translationsByLanguage.set(code, new Map());
+    const rows = await pgLocalization().listTranslations(
+      undefined,
+      allKeys,
+      true,
+    );
+    for (const row of rows) {
+      translationsByLanguage.get(row.language)?.set(row.keyId.key, row.value);
+    }
+  }
 
   before(async () => {
-    try {
-      connection = await mongoose
-        .createConnection(MONGO_URI, {
-          serverSelectionTimeoutMS: 15000,
-        })
-        .asPromise();
-
-      // Bind production schemas to *this* isolated connection so we never
-      // contaminate the default mongoose connection that the api-server
-      // owns at runtime. Reusing the schema objects guarantees the
-      // collection names line up with what the production warmup queries.
-      const KeyModel = connection.model(
-        'TranslationKey',
-        TranslationKey.schema,
-      );
-      const TxModel = connection.model('Translation', Translation.schema);
-
-      const keyDocs = await KeyModel.find({ key: { $in: allKeys } })
-        .select({ _id: 1, key: 1 })
-        .lean();
-      const keyIdToKey = new Map<string, string>();
-      for (const doc of keyDocs) {
-        keyIdToKey.set(String(doc._id), doc.key);
-        knownKeys.add(doc.key);
-      }
-
-      const languageCodes = SEO_LANGUAGES.map((l) => l.code);
-      const txDocs = await TxModel.find({
-        language: { $in: languageCodes },
-        keyId: { $in: keyDocs.map((d) => d._id) },
-      })
-        .select({ keyId: 1, language: 1, value: 1 })
-        .lean();
-
-      for (const code of languageCodes) {
-        translationsByLanguage.set(code, new Map());
-      }
-      for (const tx of txDocs) {
-        const key = keyIdToKey.get(String(tx.keyId));
-        if (!key) continue;
-        const value = typeof tx.value === 'string' ? tx.value : '';
-        translationsByLanguage.get(tx.language)?.set(key, value);
-      }
-    } catch (err) {
-      connectError = err as Error;
-    }
+    fixture = await createNativePostgresFixture("page-translation-coverage");
+    // These are explicitly synthetic admin-provided fixtures, not certified
+    // production-language content. Discover keys with the real source scanner;
+    // preserve every page/language completeness assertion on SQL round trips.
+    const wanted = new Set(allKeys);
+    const definitions = (
+      await TranslationSyncService.scanFrontendForKeys()
+    ).filter((definition) => wanted.has(definition.key));
+    const values = Object.fromEntries(
+      SEO_LANGUAGES.map(({ code }) => [
+        code,
+        Object.fromEntries(
+          definitions.map(({ key }) => [key, "Fixture " + code + ": " + key]),
+        ),
+      ]),
+    );
+    await pgLocalization().seedTranslationBundle(
+      definitions,
+      values,
+      fixture.schema,
+    );
+    await readCoverage();
   });
 
   after(async () => {
-    if (connection) {
-      await connection.close().catch(() => undefined);
-    }
+    await fixture?.close();
   });
 
-  it('has a TranslationKey + non-empty Translation for every t("...", ...) key in every SEO_LANGUAGES code, for every tracked page', () => {
-    if (connectError) {
-      assert.fail(
-        `Could not connect to Mongo to verify SPA-page translations: ${connectError.message}. ` +
-          'Either MONGODB_URI is misconfigured or the DB is unreachable from the test runner.',
-      );
-    }
-
+  function assertCompleteCoverage(): void {
     // Surface absent TranslationKey rows separately from absent
     // Translation rows — the fix is different (create the key once vs
     // backfill one row per language), so naming them distinctly makes
@@ -276,7 +208,7 @@ describe('Per-language SPA-page DB translation coverage', () => {
               page,
               language: code,
               key,
-              reason: 'no rows for language',
+              reason: "no rows for language",
             });
           }
           continue;
@@ -288,15 +220,15 @@ describe('Per-language SPA-page DB translation coverage', () => {
           // actually has to write.
           if (!knownKeys.has(key)) continue;
           const value = langMap.get(key);
-          if (typeof value !== 'string' || value.trim().length === 0) {
+          if (typeof value !== "string" || value.trim().length === 0) {
             missingTranslations.push({
               page,
               language: code,
               key,
               reason:
                 value === undefined
-                  ? 'no Translation row'
-                  : 'empty/whitespace value',
+                  ? "no Translation row"
+                  : "empty/whitespace value",
             });
           }
         }
@@ -310,15 +242,15 @@ describe('Per-language SPA-page DB translation coverage', () => {
       !hasGap,
       [
         `The runtime DB translation store is missing SPA-page entries.`,
-        'Each missing entry causes the SPA to silently fall back to the hard-coded English copy for that language.',
-        '',
+        "Each missing entry causes the SPA to silently fall back to the hard-coded English copy for that language.",
+        "",
         ...(missingKeyRowsByPage.length > 0
           ? [
               `Missing TranslationKey rows (${missingKeyRowsByPage.length}) — create one row per key, then a Translation per language:`,
               ...missingKeyRowsByPage.map(
                 (m) => `  - page="${m.page}" key="${m.key}"`,
               ),
-              '',
+              "",
             ]
           : []),
         ...(missingTranslations.length > 0
@@ -335,7 +267,39 @@ describe('Per-language SPA-page DB translation coverage', () => {
                 : []),
             ]
           : []),
-      ].join('\n'),
+      ].join("\n"),
     );
+  }
+
+  it(
+    "round-trips every source-discovered page key and SEO language through the native translation store",
+    assertCompleteCoverage,
+  );
+
+  it("reports missing keys, missing translations and whitespace values from PostgreSQL", async () => {
+    const [deletedKey, missingTranslationKey, blankTranslationKey] = allKeys;
+    assert.ok(deletedKey && missingTranslationKey && blankTranslationKey);
+    const language = SEO_LANGUAGES[0].code;
+    await fixture.pool.query("DELETE FROM translation_keys WHERE key=$1", [
+      deletedKey,
+    ]);
+    await fixture.pool.query(
+      "DELETE FROM translations WHERE key_id=(SELECT id FROM translation_keys WHERE key=$1) AND language=$2",
+      [missingTranslationKey, language],
+    );
+    await fixture.pool.query(
+      "UPDATE translations SET value=$3 WHERE key_id=(SELECT id FROM translation_keys WHERE key=$1) AND language=$2",
+      [blankTranslationKey, language, "   "],
+    );
+    await readCoverage();
+    assert.throws(assertCompleteCoverage, (error: any) => {
+      assert.match(error.message, /Missing TranslationKey rows/);
+      assert.match(error.message, /no Translation row/);
+      assert.match(error.message, /empty\/whitespace value/);
+      assert.ok(error.message.includes(deletedKey));
+      assert.ok(error.message.includes(missingTranslationKey));
+      assert.ok(error.message.includes(blankTranslationKey));
+      return true;
+    });
   });
 });

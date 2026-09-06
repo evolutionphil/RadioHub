@@ -3457,7 +3457,7 @@ function CoverageBackfillBootStatusCard() {
 
   const handleRunNow = () => {
     const confirmMsg = dryRun
-      ? 'Run a DRY RUN of the historical coverage backfill?\n\nThis aggregates the stations collection day-by-day to report what would be written. Nothing will be saved to MongoDB.'
+      ? 'Run a DRY RUN of the historical coverage backfill?\n\nThis aggregates the stations collection day-by-day to report what would be written. Nothing will be saved to PostgreSQL.'
       : 'Re-run the historical coverage backfill now?\n\nThis re-walks the last 30 UTC days and inserts any missing per-country snapshots. Real cron-written rows are preserved (idempotent), but the seeder can take a minute or two on a large stations collection.';
     if (!window.confirm(confirmMsg)) return;
     runNowMutation.mutate({ dryRun });

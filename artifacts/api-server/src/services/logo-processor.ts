@@ -1,10 +1,11 @@
 import fs from 'fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'path';
 import axios from 'axios';
 import sharp from 'sharp';
 import zlib from 'zlib';
 import { promisify } from 'util';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { logger } from '../utils/logger';
 import { uploadToS3, deleteFolderFromS3, isS3Configured } from './s3-storage';
 import { validateOutboundUrl, INTERNAL_SERVICE_PORTS } from '../utils/safe-fetch';
@@ -491,7 +492,7 @@ export class LogoProcessor {
   /**
    * Process a station's logo from favicon URL
    */
-  async processFromUrl(stationId: string, slug: string, faviconUrl: string): Promise<LogoProcessResult> {
+  async processFromUrl(stationId: string, slug: string, faviconUrl: string, expectedFavicon: string | null = faviconUrl): Promise<LogoProcessResult> {
     if (!faviconUrl || !faviconUrl.startsWith('http')) {
       return { success: false, error: 'Invalid favicon URL', failureType: 'invalid_format' };
     }
@@ -504,18 +505,19 @@ export class LogoProcessor {
     
     const shortUrl = faviconUrl.length > 80 ? faviconUrl.substring(0, 80) + '...' : faviconUrl;
 
+    const operationId = randomUUID();
+    let claimedFavicon: string | null = null;
     try {
-      const folderName = this.getFolderName(slug, stationId);
+      const folderName = `${this.getFolderName(slug, stationId)}-${operationId}`;
       const useS3 = isS3Configured();
 
       if (!useS3) {
         logger.warn(`⚠️ S3 NOT configured — BUCKET: ${process.env.AWS_BUCKET_NAME ? 'SET' : 'MISSING'}, KEY: ${process.env.AWS_ACCESS_KEY_ID ? 'SET' : 'MISSING'}, SECRET: ${process.env.AWS_SECRET_ACCESS_KEY ? 'SET' : 'MISSING'}`);
       }
 
-      await Station.updateOne(
-        { _id: stationId },
-        { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName, 'logoAssets.lastAttempt': new Date() } }
-      );
+      const claim = await pgCatalog().claimLogo(stationId, operationId, folderName, expectedFavicon);
+      if (!claim) return { success: false, error: 'Station missing or logo already claimed by another worker' };
+      claimedFavicon = claim.favicon;
 
       if (!useS3) {
         const folderPath = path.join(LOGOS_DIR, folderName);
@@ -563,37 +565,15 @@ export class LogoProcessor {
         }
       }
 
-      // Always commit the latest logoAssets (these are the freshest mirror
-      // results — overwriting older ones is correct).
-      await Station.updateOne(
-        { _id: stationId },
-        {
-          $set: {
-            hasLogo: true,
-            logoAssets: {
-              ...logoAssets,
-              status: 'completed',
-              processedAt: new Date()
-            }
-          }
-        }
+      // Commit metadata and favicon together only if this operation still owns
+      // the claim and no newer admin edit changed the source favicon.
+      const mirror = useS3 && /^https?:\/\//.test(logoAssets.webp256 || '');
+      const committed = await pgCatalog().update(
+        { _id: stationId, 'logoAssets.operationId': operationId, favicon: claimedFavicon },
+        { $set: { hasLogo: true, logoAssets: { ...logoAssets, operationId, status: 'completed', processedAt: new Date() },
+          ...(mirror ? { favicon: logoAssets.webp256, hasCustomFavicon: true } : {}) } }
       );
-
-      // Mirror logoAssets.webp256 → station.favicon ONLY when station.favicon
-      // still equals the URL we just processed (compare-and-swap guard). This
-      // prevents a slow background mirror for old URL A from silently clobbering
-      // a newer admin-saved URL B that finished while A was still processing.
-      // Only mirror when we actually produced an S3 URL (useS3 path); local-disk
-      // fallback stores relative filenames which would break frontend rendering.
-      if (useS3 && typeof logoAssets.webp256 === 'string' && logoAssets.webp256.startsWith('http')) {
-        const cas = await Station.updateOne(
-          { _id: stationId, favicon: faviconUrl },
-          { $set: { favicon: logoAssets.webp256, hasCustomFavicon: true } }
-        );
-        if (cas.matchedCount === 0) {
-          logger.log(`⚠️ Skipped favicon mirror for ${stationId}: station.favicon changed during processing (admin save or newer mirror won)`);
-        }
-      }
+      if (!committed.matchedCount) return { success: false, error: 'Logo source changed during processing' };
 
       return { success: true, folder: folderName };
 
@@ -615,11 +595,10 @@ export class LogoProcessor {
         failureType = 'invalid_format';
       }
 
-      await Station.updateOne(
-        { _id: stationId },
+      await pgCatalog().update(
+        { _id: stationId, 'logoAssets.operationId': operationId, favicon: claimedFavicon },
         {
           $set: {
-            hasLogo: false,
             'logoAssets.status': 'failed',
             'logoAssets.error': errorMsg,
             'logoAssets.failureType': failureType,
@@ -647,19 +626,20 @@ export class LogoProcessor {
     }
     this.processingQueue.add(stationId);
 
+    const operationId = randomUUID();
+    let claimedFavicon: string | null = null;
     try {
       const validation = await this.isValidImageBuffer(buffer);
       if (!validation.valid) {
         return { success: false, error: validation.reason || 'Invalid image format', failureType: 'invalid_format' };
       }
 
-      const folderName = this.getFolderName(slug, stationId);
+      const folderName = `${this.getFolderName(slug, stationId)}-${operationId}`;
       const useS3 = isS3Configured();
 
-      await Station.updateOne(
-        { _id: stationId },
-        { $set: { 'logoAssets.status': 'processing', 'logoAssets.folder': folderName, 'logoAssets.lastAttempt': new Date() } }
-      );
+      const claim = await pgCatalog().claimLogo(stationId, operationId, folderName);
+      if (!claim) return { success: false, error: 'Station missing or logo already claimed by another worker' };
+      claimedFavicon = claim.favicon;
 
       const ext = path.extname(originalFilename) || '.png';
       const originalFile = `original${ext}`;
@@ -687,32 +667,34 @@ export class LogoProcessor {
         }
       }
 
-      await Station.updateOne(
-        { _id: stationId },
+      const committed = await pgCatalog().update(
+        { _id: stationId, 'logoAssets.operationId': operationId, favicon: claimedFavicon },
         {
           $set: {
             hasLogo: true,
             logoAssets: {
               ...logoAssets,
+              operationId,
               status: 'completed',
               processedAt: new Date()
             },
-            hasCustomFavicon: true
+            hasCustomFavicon: true,
+            ...(useS3 && /^https?:\/\//.test(logoAssets.webp256 || '') ? { favicon: logoAssets.webp256 } : {})
           }
         }
       );
 
+      if (!committed.matchedCount) return { success: false, error: 'Logo source changed during processing' };
       logger.log(`✅ Logo uploaded: ${folderName} (${useS3 ? 'S3' : 'local'})`);
       return { success: true, folder: folderName };
 
     } catch (error: any) {
       logger.log(`❌ Logo upload failed for ${stationId}: ${error.message}`);
       
-      await Station.updateOne(
-        { _id: stationId },
+      await pgCatalog().update(
+        { _id: stationId, 'logoAssets.operationId': operationId, favicon: claimedFavicon },
         {
           $set: {
-            hasLogo: false,
             'logoAssets.status': 'failed',
             'logoAssets.error': error.message?.substring(0, 200)
           }

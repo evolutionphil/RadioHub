@@ -1,7 +1,7 @@
 import http2 from 'http2';
 import https from 'https';
 import jwt from 'jsonwebtoken';
-import { PushToken } from '@workspace/db-shared/mongo-schemas';
+import { pgPushDevices } from '../data/postgres-push-store';
 import { logger } from '../utils/logger';
 
 export type SilentPushAction = 'cache_refresh' | 'popular_update' | 'genres_update' | 'favorites_sync' | 'clear_cache';
@@ -347,13 +347,9 @@ export class SilentPushService {
       timestamp: new Date().toISOString(),
     };
 
-    const filter: any = { isActive: true };
-    if (userId) filter.userId = userId;
-    if (country) filter.country = country;
-
     // Stream devices via cursor — avoids loading every push token document into RAM
     // when broadcasting to the entire user base (can be hundreds of thousands).
-    const cursor = PushToken.find(filter).lean().cursor({ batchSize: 500 });
+    const cursor = pgPushDevices({ userId, country });
 
     const result: SilentPushResult = {
       totalDevices: 0,

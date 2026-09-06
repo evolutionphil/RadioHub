@@ -14,12 +14,13 @@
 //      step state. `lastPushStatus` is just a derived pointer to the
 //      most recently *started* push for the "Last push" admin card.
 //   2. On completion, the specific completed record is persisted to the
-//      `GenreWhitelistPushLog` Mongo collection so the previous N
+//      PostgreSQL push log table so the previous N
 //      attempts survive an api-server restart and admins can spot a
 //      flapping IndexNow endpoint or a slug that keeps failing across
 //      multiple pushes (task #255).
 
-import { GenreWhitelistPushLog } from '@workspace/db-shared/mongo-schemas';
+import { pgTaxonomyRuntime } from '../data/postgres-taxonomy-runtime-store';
+import { randomBytes } from 'node:crypto';
 import { logger } from '../utils/logger';
 
 export type StepStatus = 'pending' | 'success' | 'failed' | 'skipped';
@@ -61,12 +62,12 @@ let pushSeq = 0;
 
 function newPushId(): PushId {
   pushSeq += 1;
-  return `${Date.now().toString(36)}-${pushSeq.toString(36)}`;
+  return `${Date.now().toString(36)}-${pushSeq.toString(36)}-${randomBytes(8).toString('hex')}`;
 }
 
 function evictOldest(): void {
   while (pushes.size > MAX_TRACKED_PUSHES) {
-    const oldestKey = pushes.keys().next().value;
+    const oldestKey = [...pushes].find(([id,status])=>id!==lastPushId && status.completedAt!==null)?.[0];
     if (oldestKey === undefined) break;
     if (oldestKey === lastPushId) break; // never evict the visible "last push"
     pushes.delete(oldestKey);
@@ -116,32 +117,16 @@ export function updatePushStep(
   pushes.set(pushId, { ...current, [step]: result });
 }
 
-export function completePushStatus(pushId: PushId): GenreWhitelistPushStatus | null {
+export async function completePushStatus(pushId: PushId): Promise<GenreWhitelistPushStatus | null> {
   const current = pushes.get(pushId);
   if (!current) return null;
   const completedAtIso = new Date().toISOString();
   const completed: GenreWhitelistPushStatus = { ...current, completedAt: completedAtIso };
-  pushes.set(pushId, completed);
-  // Best-effort persist; never let a logging failure crash the push
-  // pipeline. The in-memory record remains authoritative for the
-  // currently-displayed "Last push" card either way. We persist from
-  // the specific completed snapshot (not any global mutable state) so
-  // overlapping pushes can't cross-pollute the persisted row.
-  void GenreWhitelistPushLog.create({
-    triggeredAt: new Date(completed.triggeredAt),
-    completedAt: new Date(completedAtIso),
-    triggeredBy: completed.triggeredBy,
-    trigger: completed.trigger,
-    affectedSlugs: completed.affectedSlugs,
-    sitemapRebuild: stepToDoc(completed.sitemapRebuild),
-    indexnowSitemap: stepToDoc(completed.indexnowSitemap),
-    indexnowGenreUrls: stepToDoc(completed.indexnowGenreUrls),
-  }).catch((err: any) => {
-    logger.error(
-      'genre-whitelist-push-status: failed to persist push log:',
-      err?.message ?? err,
-    );
+  await pgTaxonomyRuntime().savePush(pushId,{...completed,
+    sitemapRebuild:stepToDoc(completed.sitemapRebuild),indexnowSitemap:stepToDoc(completed.indexnowSitemap),indexnowGenreUrls:stepToDoc(completed.indexnowGenreUrls),
   });
+  pushes.set(pushId,completed);
+  evictOldest();
   // Return the completed snapshot so callers (e.g. the failure
   // notifier in `triggerSearchEnginePush`) can act on the exact
   // run-local state, even if a concurrent push has already started
@@ -161,7 +146,7 @@ function stepToDoc(step: PushStepResult) {
 
 /**
  * Return the most recent N completed pushes (newest first), read from
- * the persisted `GenreWhitelistPushLog` collection. Used by the admin
+ * the PostgreSQL push log table. Used by the admin
  * page to render a timeline under the "Last push" card so admins can
  * spot flapping endpoints or slugs that keep failing (task #255).
  */
@@ -170,10 +155,7 @@ export async function getRecentPushHistory(
 ): Promise<GenreWhitelistPushStatus[]> {
   const cap = Math.min(Math.max(Math.floor(limit), 1), 100);
   try {
-    const rows = await GenreWhitelistPushLog.find({})
-      .sort({ triggeredAt: -1 })
-      .limit(cap)
-      .lean();
+    const rows = await pgTaxonomyRuntime().recentPushes(cap);
     return rows.map((r: any) => ({
       triggeredAt: new Date(r.triggeredAt).toISOString(),
       completedAt: r.completedAt ? new Date(r.completedAt).toISOString() : null,
@@ -189,7 +171,7 @@ export async function getRecentPushHistory(
       'genre-whitelist-push-status: failed to read push history:',
       err?.message ?? err,
     );
-    return [];
+    throw err;
   }
 }
 

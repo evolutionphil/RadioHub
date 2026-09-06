@@ -18,10 +18,10 @@
  *   tsx scripts/clean-content-quality-urls.ts --dry-run
  */
 
-import mongoose from 'mongoose';
+import { getPostgresPool, closePostgres } from '../postgres-runtime';
 import fs from 'fs/promises';
 import path from 'path';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import {
   slugifyStationName,
   evaluateJunkStation,
@@ -41,11 +41,13 @@ export interface JunkCleanupOptions {
   dryRun?: boolean;
   /** Where to write the audit CSV. Defaults to attached_assets/task-17-audit-report.csv. */
   reportPath?: string;
-  /** When true, this function manages mongoose connect/disconnect. When false,
+  /** When true, this function manages PostgreSQL connection cleanup. When false,
    *  the caller is expected to have already connected (e.g. the app server). */
   manageConnection?: boolean;
   /** Optional logger; defaults to console. */
   log?: (msg: string) => void;
+  /** Scheduler fencing check; aborts promptly if the worker lost its PostgreSQL leadership connection. */
+  assertOwned?: () => void;
 }
 
 export interface JunkCleanupResult {
@@ -67,13 +69,11 @@ export async function runJunkCleanup(
   const log = options.log ?? ((m: string) => console.log(m));
 
   if (manageConnection) {
-    const uri = process.env.MONGODB_URI || process.env.MONGO_URI;
-    if (!uri) throw new Error('MONGODB_URI / MONGO_URI not set in env');
-    log(`[task-17] Connecting to Mongo (dryRun=${dryRun})…`);
-    await mongoose.connect(uri);
+    log(`[task-17] Connecting to PostgreSQL (dryRun=${dryRun})…`);
+    await getPostgresPool().query('SELECT 1');
   }
 
-  const totalStations = await Station.countDocuments();
+  const totalStations = await pgCatalog().count();
   log(`[task-17] Scanning ${totalStations} stations (dryRun=${dryRun})`);
 
   const auditRows: string[] = [
@@ -86,18 +86,14 @@ export async function runJunkCleanup(
   let bothChanges = 0;
 
   // Stream via cursor — bounded memory for the whole collection.
-  const cursor = Station.find({})
-    .select(
-      'slug slugAliases noIndex name url homepage tags country countryCode language languageCodes bitrate',
-    )
-    .lean()
-    .cursor({ batchSize: 500 });
+  const cursor = pgCatalog().iterate({}, { batchSize: 500 });
 
   // Track in-memory uniqueness of the new slugs we hand out so we don't
   // accidentally collide two stations onto the same slug during the rewrite.
   const reservedSlugs = new Set<string>();
 
   for await (const station of cursor as any) {
+    options.assertOwned?.();
     processed++;
     if (processed % 5000 === 0) {
       log(
@@ -121,7 +117,7 @@ export async function runJunkCleanup(
       // eslint-disable-next-line no-await-in-loop
       while (
         reservedSlugs.has(candidate) ||
-        (await Station.exists({
+        (await pgCatalog().findOne({
           slug: candidate,
           _id: { $ne: station._id },
         }))
@@ -183,7 +179,7 @@ export async function runJunkCleanup(
       const counter = parseInt(dupeMatch[2], 10);
       // Only consider small counters typical of collision suffixes.
       if (counter > 0 && counter <= 10) {
-        const sibling = await Station.exists({
+        const sibling = await pgCatalog().findOne({
           slug: baseSlug,
           _id: { $ne: station._id },
         });
@@ -197,7 +193,7 @@ export async function runJunkCleanup(
     if (!dupeOfBase) {
       const freqBase = frequencyPrefixBaseSlug(finalSlugForDupe || '');
       if (freqBase) {
-        const sibling = await Station.exists({
+        const sibling = await pgCatalog().findOne({
           slug: freqBase,
           _id: { $ne: station._id },
         });
@@ -248,10 +244,12 @@ export async function runJunkCleanup(
 
     // ---- 4) Write -----------------------------------------------------------
     if (!dryRun) {
-      await Station.updateOne({ _id: station._id }, { $set: ops });
+      options.assertOwned?.();
+      await pgCatalog().update({ _id: station._id }, { $set: ops });
     }
   }
 
+  options.assertOwned?.();
   await fs.mkdir(path.dirname(reportPath), { recursive: true });
   await fs.writeFile(reportPath, auditRows.join('\n'), 'utf8');
 
@@ -265,7 +263,7 @@ export async function runJunkCleanup(
   if (dryRun) log('[task-17] DRY RUN — no DB writes performed');
 
   if (manageConnection) {
-    await mongoose.disconnect();
+    await closePostgres();
   }
 
   return {
@@ -290,7 +288,7 @@ if (isDirectInvocation) {
     .catch(async (err) => {
       console.error('[task-17] migration failed:', err);
       try {
-        await mongoose.disconnect();
+        await closePostgres();
       } catch {}
       process.exit(1);
     });

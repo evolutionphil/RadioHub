@@ -1,5 +1,5 @@
-import mongoose from 'mongoose';
-import { Station, SyncLog } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog, pgCreateSyncRun, pgSaveSyncRun, pgSyncLogs, pgSyncBlacklist } from '../data/postgres-catalog-store';
+import { getPostgresPool, getPostgresCoordinationPool } from '../postgres-runtime';
 import axios from 'axios';
 import NodeCache from 'node-cache';
 import { ImageManager } from './image-manager';
@@ -86,35 +86,49 @@ export class SyncService {
   private isRunning = false;
   private lastSyncResult: any = null;
   private imageManager = new ImageManager();
+  private activeRun: any = null;
+  private stopRequested = false;
+  private leaderError: Error | null = null;
 
   async startSync(): Promise<{ success: boolean; message: string }> {
     if (this.isRunning) {
       return { success: false, message: 'Sync already running' };
     }
 
+    const leader = await getPostgresCoordinationPool().connect();
+    let lock;
+    try { lock = await leader.query("SELECT pg_try_advisory_lock(hashtext('radiohub-provider-sync')) AS acquired"); }
+    catch (error) { leader.release(true); throw error; }
+    if (!lock.rows[0]?.acquired) {
+      leader.release();
+      return { success: false, message: 'Sync already running on another worker' };
+    }
     this.isRunning = true;
+    this.stopRequested = false;
+    this.leaderError = null;
+    const onLeaderError = (error: Error) => { this.leaderError = error; };
+    leader.on('error', onLeaderError);
     logger.log('🚀 Starting incremental station sync from Radio Browser API...');
 
     try {
+      // Holding the singleton lock proves any previous running row belongs to
+      // a terminated worker, not another active replica.
+      await leader.query("UPDATE catalog_sync_runs SET status='failed',error='Worker terminated before completion',completed_at=now() WHERE status='running'");
       // Create sync log
-      const syncLog = new SyncLog({
-        syncType: 'incremental',
-        status: 'running',
-        startedAt: new Date()
-      });
-      await this.withMongoRetry('syncLog.create', () => syncLog.save());
+      const syncLog = await pgCreateSyncRun();
+      this.activeRun = syncLog;
 
       // Load blacklisted stations to prevent re-import
       logger.log('📋 Loading blacklisted stations...');
-      const { BlacklistedStation } = await import('@workspace/db-shared/mongo-schemas');
-      const blacklistedStations = await BlacklistedStation.find().select('stationUuid url').lean();
+      const blacklistedStations = await pgSyncBlacklist();
       const blacklistedUuids = new Set(blacklistedStations.map(b => b.stationUuid).filter(Boolean) as string[]);
       const blacklistedUrls = new Set(blacklistedStations.map(b => b.url).filter(Boolean) as string[]);
       logger.log(`🚫 Loaded ${blacklistedUuids.size} blacklisted station UUIDs`);
 
       // Create indexes for better performance (only if they don't exist)
       logger.log('🔨 Ensuring database indexes...');
-      await this.createIndexes();
+      // Indexes are versioned schema migrations, never DDL in a live sync job.
+      await getPostgresPool().query("SELECT 1 FROM catalog_sync_runs LIMIT 0");
 
       // Fetch and process stations page-by-page so we never hold all ~43K records
       // in memory at once. Each 5K-station page is fully processed before the next
@@ -124,6 +138,7 @@ export class SyncService {
       const result = { processed: 0, inserted: 0, updated: 0, skipped: 0, blacklisted: 0, autoFlagged: 0 };
       let totalFetched = 0;
       for await (const pageStations of this.fetchStationPages()) {
+        if (await this.isStopRequested()) break;
         totalFetched += pageStations.length;
         const pageResult = await this.syncStationsIncrementally(pageStations, syncLog, blacklistedUuids, blacklistedUrls);
         result.processed   += pageResult.processed;
@@ -137,50 +152,45 @@ export class SyncService {
 
       logger.log(`🚯 Auto-flagged ${result.autoFlagged} junk stations during ingest`);
       
-      // Download favicon images in background after sync completes
-      logger.log('🖼️ Starting favicon download process...');
-      this.downloadFaviconsInBackground();
-      
-      // Process logos with new optimization pipeline (parallel, non-blocking)
-      logger.log('🎨 Starting logo optimization process...');
-      this.processLogosInBackground();
-
-      // Hydrate stations whose `tags` field is missing/empty by re-fetching
-      // them from Radio-Browser by stationuuid (TR audit P2). Non-blocking.
-      logger.log('🏷️ Starting missing-tags hydration...');
-      this.hydrateMissingTagsInBackground();
+      let cancelled = await this.isStopRequested();
       
       // Update sync log with final status
-      syncLog.status = 'completed';
+      syncLog.status = cancelled ? 'stopped' : 'completed';
       syncLog.stationsProcessed = result.processed;
       syncLog.stationsAdded = result.inserted;
       syncLog.stationsUpdated = result.updated;
       syncLog.stationsSkipped = result.skipped + result.blacklisted;
       syncLog.stationsAutoFlagged = result.autoFlagged;
       syncLog.completedAt = new Date();
-      await this.withMongoRetry('syncLog.complete', () => syncLog.save());
+      await pgSaveSyncRun(syncLog);
+      cancelled = syncLog.status !== 'completed';
+      // Only the durably completed run can schedule follow-up work. A stale
+      // worker or a concurrent cancellation cannot launch jobs after fencing.
+      if (!cancelled) {
+        this.downloadFaviconsInBackground();
+        this.processLogosInBackground();
+        this.hydrateMissingTagsInBackground();
+      }
 
       this.lastSyncResult = result;
       this.isRunning = false;
 
-      const totalInDb = await Station.countDocuments();
-      logger.log('🎉 Incremental sync completed successfully!');
+      const totalInDb = await pgCatalog().count();
+      logger.log(`Incremental sync ${syncLog.status}`);
       logger.log(`📊 Results: ➕${result.inserted} new, 🔄${result.updated} updated, ⚫${result.blacklisted} blacklisted, ⏭️${result.skipped} skipped`);
       logger.log(`📊 Total stations in database: ${totalInDb}`);
       
       // Trigger IndexNow notification for newly synced stations (non-blocking)
-      if (result.inserted > 0) {
+      if (!cancelled && result.inserted > 0) {
         setImmediate(async () => {
           try {
             // Import IndexNowService (dynamic import to avoid circular dependency)
             const { IndexNowService } = await import('./indexnow');
             
             // Get recently added stations with slugs
-            const recentStations = await Station.find({ slug: { $exists: true, $ne: null } })
-              .sort({ createdAt: -1 })
-              .limit(Math.min(result.inserted, 1000))
-              .select('slug')
-              .lean();
+            const recentStations = await pgCatalog().find({ slug: { $ne: null } }, {
+              sort: { createdAt: -1 }, limit: Math.min(result.inserted, 1000), fields: ['slug'],
+            });
             
             if (recentStations.length > 0) {
               const slugs = recentStations.map(s => s.slug).filter(Boolean) as string[];
@@ -196,19 +206,14 @@ export class SyncService {
       }
 
       return { 
-        success: true, 
-        message: `Incremental sync completed: ➕${result.inserted} new, 🔄${result.updated} updated, ⚫${result.blacklisted} blacklisted | Total: ${totalInDb} stations` 
+        success: syncLog.status === 'completed',
+        message: `Incremental sync ${syncLog.status}: ➕${result.inserted} new, 🔄${result.updated} updated, ⚫${result.blacklisted} blacklisted | Total: ${totalInDb} stations`
       };
 
     } catch (error: any) {
       this.isRunning = false;
-      // INCIDENT 2026-05-15 v10.1 — sync runs on a periodic interval and
-      // is automatically retried on the next tick. A MongoNetworkTimeout
-      // mid-cycle is an expected condition during cluster stress, not a
-      // 5xx-class error — downgrade to warn so the failure shows up in
-      // the live tail without polluting alert dashboards.
       const msg = error?.message || String(error);
-      const isNetTimeout = /MongoNetworkTimeoutError|timed out|MaxTimeMSExpired/i.test(msg);
+      const isNetTimeout = /timed out|ECONNRESET/i.test(msg);
       if (isNetTimeout) {
         logger.warn(`⚠️ Sync skipped (cluster cold, will retry next cycle): ${msg}`);
       } else {
@@ -216,91 +221,41 @@ export class SyncService {
       }
       
       // Log the error
-      await SyncLog.findOneAndUpdate(
-        { status: 'running' },
-        { 
-          status: 'failed',
-          error: error.message,
-          completedAt: new Date()
-        }
-      );
+      if (this.activeRun) {
+        Object.assign(this.activeRun, { status: 'failed', error: msg, completedAt: new Date() });
+        await pgSaveSyncRun(this.activeRun).catch((logError) => logger.error('Sync failure audit could not persist', logError));
+      }
 
       return { success: false, message: `Sync failed: ${error.message}` };
+    } finally {
+      this.isRunning = false;
+      this.activeRun = null;
+      syncCache.del('sync-status');
+      await leader.query("SELECT pg_advisory_unlock(hashtext('radiohub-provider-sync'))").catch(() => undefined);
+      leader.removeListener('error', onLeaderError);
+      leader.release(Boolean(this.leaderError));
     }
   }
 
-  private async createIndexes(): Promise<void> {
-    const collection = Station.collection;
-
-    // INCIDENT 2026-05-15: previous version called `collection.dropIndexes()`
-    // before recreating, which kills any in-flight admin aggregation that was
-    // using one of those indexes. Production logs showed:
-    //   "PlanExecutor error during aggregation :: caused by :: query plan
-    //    killed :: index 'tags_1' dropped"
-    // exactly when the nightly sync ran while admin tags-status-summary was
-    // open. We never need to drop these — `createIndex` is idempotent and a
-    // no-op when the index already exists with the same definition. The new
-    // `background: true` keeps even brand-new index builds non-blocking.
-    const ix = (spec: any, opts: any = {}) =>
-      collection.createIndex(spec, { background: true, ...opts });
-
-    await ix({ stationuuid: 1 }, { unique: true });
-    await ix({ votes: -1 });
-    await ix({ country: 1 });
-    await ix({ language: 1 });
-    await ix({ tags: 1, votes: -1 });
-    await ix({ country: 1, language: 1 });
-
-    // Create text search index with proper language settings
-    await ix(
-      { name: 'text', country: 'text', tags: 'text' },
-      {
-        name: 'station_text_search',
-        weights: { name: 10, tags: 3, country: 1 },
-        textIndexVersion: 3,
-        default_language: 'english', // Prevent language override errors
-      },
-    );
-
-    logger.log('✅ Database indexes ensured (idempotent, no drop)');
+  private async isStopRequested(): Promise<boolean> {
+    if (this.leaderError) throw new Error('PostgreSQL sync leadership lost', { cause: this.leaderError });
+    if (this.stopRequested) return true;
+    if (!this.activeRun) return false;
+    const result = await getPostgresPool().query("SELECT cancel_requested,status FROM catalog_sync_runs WHERE id=$1", [this.activeRun._id]);
+    return this.stopRequested = !result.rowCount || result.rows[0].cancel_requested === true || result.rows[0].status !== 'running';
   }
 
-  /**
-   * Retry helper for transient Mongo write errors during sync. The Mongo node
-   * driver already retries idempotent writes once, but in 2026-05-15 we saw a
-   * `MongoNetworkTimeoutError` (errorLabel: RetryableWriteError) during a
-   * routine sync that aborted the whole job. Wrap the bulk insert/update +
-   * syncLog.save() calls so a transient blip costs us a few seconds, not the
-   * entire 60K-station ingest.
-   */
-  private async withMongoRetry<T>(
-    op: string,
-    fn: () => Promise<T>,
-    maxAttempts = 4,
-  ): Promise<T> {
-    let lastErr: any;
-    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-      try {
-        return await fn();
-      } catch (err: any) {
-        lastErr = err;
-        const labels: Set<string> | undefined = err?.errorLabelSet;
-        const isNetTimeout = err?.name === 'MongoNetworkTimeoutError';
-        const isRetryable =
-          isNetTimeout ||
-          (labels && (labels.has('RetryableWriteError') || labels.has('TransientTransactionError'))) ||
-          /timed out|topology was destroyed|server selection|ECONNRESET/i.test(err?.message || '');
-        if (!isRetryable || attempt >= maxAttempts) {
-          throw err;
-        }
-        const backoff = Math.min(1000 * 2 ** (attempt - 1), 8000) + Math.floor(Math.random() * 250);
-        logger.warn(
-          `🔁 sync.${op}: retryable error on attempt ${attempt}/${maxAttempts} — backing off ${backoff}ms (${err?.name || 'Error'}: ${(err?.message || '').slice(0, 120)})`,
-        );
-        await new Promise((r) => setTimeout(r, backoff));
+  // Retry only transaction failures PostgreSQL guarantees were rolled back.
+  // An ambiguous network error must not replay non-idempotent counter changes.
+  private async withPostgresRetry<T>(op: string, fn: () => Promise<T>, maxAttempts = 4): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try { return await fn(); }
+      catch (error: any) {
+        if (!['40001','40P01'].includes(error?.code) || attempt >= maxAttempts) throw error;
+        logger.warn(`Retrying rolled-back PostgreSQL operation ${op}, attempt ${attempt}`);
+        await new Promise((resolve) => setTimeout(resolve, Math.min(250 * 2 ** attempt, 4000)));
       }
     }
-    throw lastErr;
   }
 
   // Async generator that yields one page (~5 K stations) at a time.
@@ -419,6 +374,7 @@ export class SyncService {
     let autoFlagged = 0;
 
     for (let i = 0; i < apiStations.length; i += batchSize) {
+      if (await this.isStopRequested()) break;
       const batch = apiStations.slice(i, i + batchSize);
       
       // Filter out blacklisted stations and stations with URLs as names
@@ -450,12 +406,10 @@ export class SyncService {
       // on update — slug for codec-suffix matching, noIndex to detect
       // transitions so we don't double-count already-flagged stations).
       const batchUuids = nonBlacklistedBatch.map(s => s.stationuuid);
-      const existingStations = await Station.find({
-        stationuuid: { $in: batchUuids }
-      }).select('stationuuid slug noIndex').lean();
+      const existingStations = await pgCatalog().find({ stationuuid: { $in: batchUuids } });
 
       const existingByUuid = new Map<string, { slug?: string; noIndex?: boolean }>(
-        existingStations.map((s: any) => [s.stationuuid, { slug: s.slug, noIndex: s.noIndex }])
+        existingStations.map((s: any) => [s.stationuuid, s])
       );
 
       // CONTENT-KEY DEDUP (2026-05-23): Radio-Browser occasionally re-issues a
@@ -476,9 +430,7 @@ export class SyncService {
           url: (s.url || '').trim(),
           countryCode: (s.countrycode || '').toUpperCase(),
         }));
-        const contentDupes = await Station.find({ $or: contentQuery })
-          .select('name url countryCode')
-          .lean();
+        const contentDupes = await pgCatalog().find({ $or: contentQuery });
         const contentKeySet = new Set(
           contentDupes.map((s: any) =>
             `${(s.name || '').trim()}|${(s.url || '').trim()}|${(s.countryCode || '').toUpperCase()}`
@@ -526,16 +478,16 @@ export class SyncService {
           return doc;
         });
         try {
-          const insertResult = await this.withMongoRetry(
+          const insertResult = await this.withPostgresRetry(
             `insertMany.batch${Math.ceil((i + 1) / batchSize)}`,
-            () => Station.insertMany(convertedNewStations, { ordered: false }),
+            () => pgCatalog().insertMany(convertedNewStations, { syncRunId: syncLog._id }),
           );
           inserted += insertResult.length;
           autoFlagged += batchAutoFlagged;
           logger.log(`➕ Batch ${Math.ceil((i + 1) / batchSize)}: Inserted ${insertResult.length} new stations (🚯 ${batchAutoFlagged} auto-flagged junk)`);
         } catch (error: any) {
           console.error(`❌ Batch ${Math.ceil((i + 1) / batchSize)} insert error:`, error.message);
-          skipped += newStations.length;
+          throw error;
         }
       }
 
@@ -559,9 +511,7 @@ export class SyncService {
         let existingBaseSlugs = new Set<string>();
         if (baseSlugSet.size > 0) {
           try {
-            const found = await Station.find({
-              slug: { $in: Array.from(baseSlugSet) },
-            }).select('slug').lean();
+            const found = await pgCatalog().find({ slug: { $in: Array.from(baseSlugSet) } }, { fields: ['slug'] });
             existingBaseSlugs = new Set(found.map((s: any) => s.slug));
           } catch (err) {
             logger.log(`⚠️ Frequency-prefix sibling lookup failed: ${(err as Error).message}`);
@@ -608,14 +558,15 @@ export class SyncService {
         });
 
         try {
-          const updateResult = await this.withMongoRetry(
+          const updateResult = await this.withPostgresRetry(
             `bulkWrite.batch${Math.ceil((i + 1) / batchSize)}`,
-            () => Station.bulkWrite(bulkOps, { ordered: false }),
+            () => pgCatalog().updateProviderBatch(bulkOps.map((op) => ({ uuid: op.updateOne.filter.stationuuid, patch: op.updateOne.update.$set })), syncLog._id),
           );
-          updated += updateResult.modifiedCount || existingStationsToUpdate.length;
+          updated += updateResult.modifiedCount;
           logger.log(`🔄 Batch ${Math.ceil((i + 1) / batchSize)}: Updated ${updateResult.modifiedCount} existing stations`);
         } catch (error: any) {
           console.error(`❌ Batch ${Math.ceil((i + 1) / batchSize)} update error:`, error.message);
+          throw error;
         }
       }
 
@@ -625,9 +576,9 @@ export class SyncService {
       // progress write must NOT abort the whole 60K-station sync).
       syncLog.stationsProcessed = processed;
       try {
-        await this.withMongoRetry(
+        await this.withPostgresRetry(
           `syncLog.progress.batch${Math.ceil((i + 1) / batchSize)}`,
-          () => syncLog.save(),
+          () => pgSaveSyncRun(syncLog),
           2, // tighter retry — progress write is non-critical
         );
       } catch (err: any) {
@@ -765,87 +716,35 @@ export class SyncService {
   }
 
   private sanitizeLanguage(language: string): string {
-    if (!language || language.trim() === '') {
-      return 'en';
-    }
-    
-    const lang = language.toLowerCase().trim();
-    
-    // Map problematic language codes to supported ones
-    const languageMap: Record<string, string> = {
-      'no': 'en', // Norwegian causes language override errors
-      'norwegian': 'en',
-      'pl': 'en', // Polish not supported
-      'cs': 'en', // Czech not supported
-      'bg': 'en', // Bulgarian not supported
-      'el': 'en', // Greek not supported
-      'ar': 'en', // Arabic not supported
-      'he': 'en', // Hebrew not supported
-      'hi': 'en', // Hindi not supported
-      'zh': 'en', // Chinese not supported
-      'ja': 'en', // Japanese not supported
-      'ko': 'en', // Korean not supported
-      'th': 'en', // Thai not supported
-      'vi': 'en', // Vietnamese not supported
-    };
-
-    if (languageMap[lang]) {
-      return languageMap[lang];
-    }
-
-    // MongoDB text search supported languages
-    const mongoSupportedLanguages = [
-      'da', 'de', 'en', 'es', 'fi', 'fr', 'hu', 'it', 'nb', 'nl', 'pt', 'ro', 'ru', 'sv', 'tr'
-    ];
-
-    if (lang.length <= 3 && /^[a-z]+$/.test(lang) && mongoSupportedLanguages.includes(lang)) {
-      return lang;
-    }
-
-    return 'en';
+    // PostgreSQL does not impose text-index language names on stored values.
+    // Retain the provider's real language instead of rewriting Arabic/Japanese/etc to English.
+    return typeof language === 'string' && language.trim() ? language.trim().toLowerCase() : 'en';
   }
 
   async getStatus(): Promise<any> {
-    const cachedStatus = syncCache.get('sync-status');
-    if (cachedStatus) {
-      return cachedStatus;
-    }
-
-    const lastSyncLog = await SyncLog.findOne().sort({ startedAt: -1 });
+    const lastSyncLog = (await pgSyncLogs(1))[0] || null;
     
     const status = {
-      isRunning: this.isRunning,
+      isRunning: this.isRunning || lastSyncLog?.status === 'running',
       lastFullSync: lastSyncLog?.syncType === 'full' ? lastSyncLog.completedAt : null,
       lastSyncLog: lastSyncLog || null
     };
 
-    syncCache.set('sync-status', status);
     return status;
   }
 
   async getLogs(limit: number = 10): Promise<any[]> {
-    return await SyncLog.find()
-      .sort({ startedAt: -1 })
-      .limit(limit);
+    return pgSyncLogs(limit);
   }
 
   async stopSync(): Promise<{ success: boolean; message: string }> {
-    if (!this.isRunning) {
-      return { success: false, message: 'No sync running' };
-    }
-
-    this.isRunning = false;
-    
-    // Update any running sync logs
-    await SyncLog.findOneAndUpdate(
-      { status: 'running' },
-      { 
-        status: 'stopped',
-        completedAt: new Date()
-      }
+    const result = await getPostgresPool().query(
+      "UPDATE catalog_sync_runs SET cancel_requested=true WHERE status='running' RETURNING id",
     );
-
-    return { success: true, message: 'Sync stopped' };
+    if (!result.rowCount) return { success: false, message: 'No sync running' };
+    this.stopRequested = true;
+    syncCache.del('sync-status');
+    return { success: true, message: 'Sync cancellation requested' };
   }
 
   /**
@@ -855,10 +754,10 @@ export class SyncService {
   async downloadFaviconsInBackground(): Promise<void> {
     try {
       // Find stations with favicon URLs but no local images (limit to prevent overload)
-      const stationsWithFavicons = await Station.find({
+      const stationsWithFavicons = await pgCatalog().find({
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         localImagePath: { $in: [null, ''] }
-      }).limit(1000); // Process 1000 at a time
+      }, { limit: 1000 }); // Process 1000 at a time
 
       logger.log(`🖼️ Found ${stationsWithFavicons.length} stations needing favicon downloads`);
 
@@ -881,9 +780,7 @@ export class SyncService {
             );
             
             if (localImagePath) {
-              await Station.findByIdAndUpdate(station._id, { 
-                localImagePath: localImagePath 
-              });
+              await pgCatalog().update({ _id: station._id }, { $set: { localImagePath } });
               return true;
             }
             return false;
@@ -927,7 +824,7 @@ export class SyncService {
   async processLogosInBackground(): Promise<void> {
     try {
       // Find stations with favicon but no processed logoAssets
-      const stationsNeedingLogos = await Station.find({
+      const stationsNeedingLogos = await pgCatalog().find({
         favicon: { $exists: true, $nin: ['', null, 'null'] },
         slug: { $exists: true, $ne: null },
         $or: [
@@ -935,7 +832,7 @@ export class SyncService {
           { 'logoAssets.status': 'pending' },
           { 'logoAssets.status': 'failed' }
         ]
-      }).limit(500).lean();
+      }, { limit: 500 });
 
       if (stationsNeedingLogos.length === 0) {
         logger.log('🎨 All logos already processed');
@@ -1056,16 +953,13 @@ export class SyncService {
 
     try {
       type TagHydrationCandidate = {
-        _id: mongoose.Types.ObjectId;
+        _id: string;
         stationuuid: string;
         name?: string;
       };
       type RadioBrowserTagsResponse = Array<{ tags?: string }>;
 
-      const stations = (await Station.find(filter)
-        .select('_id stationuuid name')
-        .limit(limit)
-        .lean()) as unknown as TagHydrationCandidate[];
+      const stations = await pgCatalog().find(filter, { fields: ['stationuuid','name'], limit }) as TagHydrationCandidate[];
 
       if (stations.length === 0) {
         logger.log('🏷️ No stations need tags hydration');
@@ -1112,13 +1006,13 @@ export class SyncService {
             const tags =
               remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
             if (!tags) {
-              await Station.updateOne(
+              await pgCatalog().update(
                 { _id: station._id },
                 { $set: { tagsCheckedAt: new Date() } },
               );
               return { hydrated: false, empty: true };
             }
-            await Station.updateOne(
+            await pgCatalog().update(
               { _id: station._id },
               { $set: { tags, tagsCheckedAt: new Date() } },
             );
@@ -1182,16 +1076,14 @@ export class SyncService {
   }> {
     type RadioBrowserTagsResponse = Array<{ tags?: string }>;
     interface StationTagProjection {
-      _id: mongoose.Types.ObjectId;
+      _id: string;
       stationuuid?: string;
       name?: string;
     }
-    if (!mongoose.Types.ObjectId.isValid(stationId)) {
+    if (!/^[a-fA-F0-9]{24}$/.test(stationId)) {
       return { success: false, hydrated: false, emptyUpstream: false, error: 'Invalid stationId' };
     }
-    const station = (await Station.findById(stationId)
-      .select('_id stationuuid name')
-      .lean()) as unknown as StationTagProjection | null;
+    const station = await pgCatalog().findById(stationId) as StationTagProjection | null;
     if (!station) {
       return { success: false, hydrated: false, emptyUpstream: false, error: 'Station not found' };
     }
@@ -1218,13 +1110,13 @@ export class SyncService {
         remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
       const now = new Date();
       if (!tags) {
-        await Station.updateOne(
+        await pgCatalog().update(
           { _id: station._id },
           { $set: { tagsCheckedAt: now } },
         );
         return { success: true, hydrated: false, emptyUpstream: true, tags: '' };
       }
-      await Station.updateOne(
+      await pgCatalog().update(
         { _id: station._id },
         { $set: { tags, tagsCheckedAt: now } },
       );
@@ -1262,14 +1154,14 @@ export class SyncService {
     isCancelled?: () => boolean,
   ): Promise<{ processed: number; hydrated: number; emptyUpstream: number; failed: number; cancelled?: boolean }> {
     interface StationTagProjection {
-      _id: mongoose.Types.ObjectId;
+      _id: string;
       stationuuid?: string;
       name?: string;
     }
     type RadioBrowserTagsResponse = Array<{ tags?: string }>;
 
     const validIds = stationIds.filter((id) =>
-      mongoose.Types.ObjectId.isValid(id),
+      /^[a-fA-F0-9]{24}$/.test(id),
     );
     let processed = 0;
     let hydrated = 0;
@@ -1281,12 +1173,9 @@ export class SyncService {
     }
 
     try {
-      const stations = (await Station.find({
-        _id: { $in: validIds.map((id) => new mongoose.Types.ObjectId(id)) },
-        stationuuid: { $exists: true, $nin: [null, ''] },
-      })
-        .select('_id stationuuid name')
-        .lean()) as unknown as StationTagProjection[];
+      const stations = await pgCatalog().find({
+        _id: { $in: validIds }, stationuuid: { $exists: true, $nin: [null, ''] },
+      }, { fields: ['stationuuid','name'] }) as StationTagProjection[];
 
       if (stations.length === 0) {
         logger.log('🏷️ Bulk re-check: no eligible stations found');
@@ -1331,13 +1220,13 @@ export class SyncService {
               remote && typeof remote.tags === 'string' ? remote.tags.trim() : '';
             const now = new Date();
             if (!tags) {
-              await Station.updateOne(
+              await pgCatalog().update(
                 { _id: station._id },
                 { $set: { tagsCheckedAt: now } },
               );
               return { hydrated: false, empty: true };
             }
-            await Station.updateOne(
+            await pgCatalog().update(
               { _id: station._id },
               { $set: { tags, tagsCheckedAt: now } },
             );

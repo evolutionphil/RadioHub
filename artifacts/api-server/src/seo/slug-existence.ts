@@ -31,7 +31,8 @@
  * not on the hot path).
  */
 
-import { Station, Genre, Country } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
+import { pgStationSlugRows, pgSeoGenres, pgSlugCountryNames, pgSlugCountryStates } from '../data/postgres-seo-indexing-store';
 import {
   COUNTRY_TO_REGION_SLUG,
   canonicalizeCountry,
@@ -144,28 +145,10 @@ export function hasCityDataForCountry(countrySlugValue: string): boolean {
 export async function loadSlugExistence(): Promise<void> {
   try {
     const [stationDocs, genreDocs, countryDocs, distinctStationCountries] = await Promise.all([
-      Station.find(
-        { slug: { $exists: true, $ne: null } },
-        // Extra fields (name/url/noIndex/lastCheck*) are needed to
-        // precompute `isJunkStation()` per station so the alias map's
-        // junk bit is correct. Footprint stays small (~100B per doc on
-        // average) compared to the typical 1-2 KB full station record.
-        {
-          slug: 1, slugAliases: 1, noIndex: 1, name: 1, url: 1,
-          lastCheckOk: 1, lastCheckOkTime: 1, lastCheckTime: 1,
-          _id: 0,
-        },
-      ).lean(),
-      Genre.find(
-        { slug: { $exists: true, $ne: null } },
-        { slug: 1, _id: 0 },
-      ).lean(),
-      Country.find({}, { name: 1, _id: 0 }).lean(),
-      Station.distinct('country').then((vals: unknown[]) =>
-        (vals as Array<string | null | undefined>).filter(
-          (v): v is string => typeof v === 'string' && v.length > 0,
-        ),
-      ),
+      pgStationSlugRows(),
+      pgSeoGenres(),
+      pgSlugCountryNames(),
+      pgCatalog().groupCount('country').then(rows=>rows.map(row=>row._id).filter((value):value is string=>typeof value==='string'&&value.length>0)),
     ]);
 
     const nextStations = new Set<string>();
@@ -264,17 +247,7 @@ export async function loadSlugExistence(): Promise<void> {
     let fallbackCities = 0;
     const fallbackSets = new Map<string, Set<string>>();
     try {
-      const stateRows = (await Station.aggregate([
-        {
-          $match: {
-            country: { $type: 'string', $ne: '' },
-            state: { $type: 'string', $ne: '' },
-          },
-        },
-        { $group: { _id: { country: '$country', state: '$state' } } },
-      ])
-        .option({ maxTimeMS: 30000, allowDiskUse: true })
-        .exec()) as Array<{ _id: { country: string; state: string } }>;
+      const stateRows = await pgSlugCountryStates();
 
       for (const row of stateRows) {
         const cSlug = countrySlug(canonicalizeCountry(row._id.country));

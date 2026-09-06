@@ -19,7 +19,6 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-// Remove PostgreSQL import - we're using MongoDB now
 // import { type StationWithCountry } from '@workspace/db-shared/schema';
 import { useDebounce } from "@/hooks/use-debounce";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";

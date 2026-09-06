@@ -1,5 +1,5 @@
 import { CacheManager } from '../cache';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { logger } from '../utils/logger';
 import { sleep } from '../utils/event-loop-yield';
 import { trackOperation } from '../utils/operation-tracker';
@@ -148,9 +148,7 @@ export class PrecomputedStationsService {
     }
 
     const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const dbCountry = await Station.findOne(
-      { country: { $regex: new RegExp(`^${escapedName}$`, 'i') } }
-    ).select('country').lean() as any;
+    const dbCountry = await pgCatalog().findOne({ country: { $regex: new RegExp(`^${escapedName}$`, 'i') } }, { fields: ['country'] });
     if (dbCountry?.country) {
       this.setResolvedCache(cacheKey, dbCountry.country);
       return dbCountry.country;
@@ -166,7 +164,7 @@ export class PrecomputedStationsService {
     }
     
     try {
-      const countries = await Station.distinct('country');
+      const countries = (await pgCatalog().groupCount('country')).map(row => row._id);
       this.allCountries = countries
         .filter((c: any) => c && typeof c === 'string' && c.trim().length > 0)
         .map((c: any) => c.trim());
@@ -185,69 +183,15 @@ export class PrecomputedStationsService {
     }
 
     return trackOperation('precompute-country', async () => {
-    // INCIDENT 2026-05-15 v10 — REMOVED `.hint('country_1_lastCheckOk_1_hasLogo_-1_votes_-1')`.
-    // The May 14 Atlas index audit hid several stations indexes;
-    // hinting a hidden index throws BadValue and silently 500'd this
-    // service. Trust the planner. New hints require HINT-VERIFIED tag.
-    let stations = await Station.aggregate([
-      {
-        $match: {
-          country: countryName,
-          lastCheckOk: true
-        }
-      },
-      {
-        $sort: {
-          hasLogo: -1,
-          votes: -1
-        }
-      },
-      // ORPHAN FIX (2026-07-01): raised 1500 -> 3000. The region SSR country
-      // catalogue renders up to 50 pages x 60 = 3000 station links, but this
-      // cap only fed it 1500 — so every station ranked 1501+ in a high-volume
-      // country (DE, IN, TR, US ...) got ZERO internal inlinks and Ahrefs
-      // flagged it "Orphan page" (in sitemap, 0 href inlinks). 3000 exactly
-      // fills the existing 50-page catalogue, doubling tail coverage with no
-      // pagination/crawl-depth change. maxTimeMS + allowDiskUse unchanged.
-      { $limit: 3000 },
-      {
-        $project: {
-          _id: 1,
-          slug: 1,
-          name: 1,
-          url: 1,
-          url_resolved: 1,
-          favicon: 1,
-          country: 1,
-          state: 1,
-          votes: 1,
-          hasLogo: 1,
-          tags: 1,
-          codec: 1,
-          bitrate: 1,
-          // LOGO OUTAGE FIX (2026-07-03): `status` MUST be projected — the
-          // frontend StationLogo gates the S3 asset path on
-          // `logoAssets.status === 'completed'` and silently falls back to
-          // the (mostly dead) favicon proxy without it. The global pool
-          // projects the full object; this country projection dropping
-          // `status` made every country view render placeholder icons.
-          logoAssets: { webp48: 1, webp96: 1, webp256: 1, folder: 1, status: 1 }
-        }
-      }
-    ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
-
+    const fields = ['_id', 'slug', 'name', 'url', 'urlResolved', 'favicon', 'country', 'state', 'votes', 'hasLogo', 'tags', 'codec', 'bitrate', 'logoAssets'];
+    let stations = await pgCatalog().find({ country: countryName, lastCheckOk: true },
+      { sort: { hasLogo: -1, votes: -1 }, limit: 3000, fields });
     if (stations.length === 0) {
       const escapedName = countryName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      stations = await Station.aggregate([
-        { $match: { country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, lastCheckOk: true } },
-        { $sort: { hasLogo: -1, votes: -1 } },
-        // ORPHAN FIX (2026-07-01): keep in sync with the primary aggregate cap above.
-        { $limit: 3000 },
-        // LOGO OUTAGE FIX (2026-07-03): keep in sync with the primary
-        // projection above — `status` is required by the frontend gate.
-        { $project: { _id: 1, slug: 1, name: 1, url: 1, url_resolved: 1, favicon: 1, country: 1, state: 1, votes: 1, hasLogo: 1, tags: 1, codec: 1, bitrate: 1, logoAssets: { webp48: 1, webp96: 1, webp256: 1, folder: 1, status: 1 } } }
-      ]).option({ maxTimeMS: 15000, allowDiskUse: true }).exec();
+      stations = await pgCatalog().find({ country: { $regex: new RegExp(`^${escapedName}$`, 'i') }, lastCheckOk: true },
+        { sort: { hasLogo: -1, votes: -1 }, limit: 3000, fields });
     }
+    stations = stations.map(station => ({ ...station, url_resolved: station.urlResolved }));
 
     const data: PrecomputedCountryData = {
       stations: stations as PrecomputedStation[],
@@ -493,7 +437,7 @@ export class PrecomputedStationsService {
       return pool;
     };
 
-    const countries = await Station.distinct('country', { lastCheckOk: true });
+    const countries = (await pgCatalog().groupCount('country', { lastCheckOk: true })).map(row => row._id);
     const validCountries = countries
       .filter((c: any) => c && typeof c === 'string' && c.trim().length > 0)
       .map((c: any) => c.trim());
@@ -504,14 +448,9 @@ export class PrecomputedStationsService {
 
     for (const country of validCountries) {
       try {
-        const batch = await Station.aggregate([
-          { $match: { country, lastCheckOk: true, noIndex: { $ne: true } } },
-          { $sort: { hasLogo: -1, votes: -1 } },
-          { $limit: PER_COUNTRY_LIMIT },
-          { $project: PROJECT },
-        ])
-          .option({ maxTimeMS: 10000, allowDiskUse: true })
-          .exec();
+        const batch = await pgCatalog().find({ country, lastCheckOk: true, noIndex: { $ne: true } },
+          { sort: { hasLogo: -1, votes: -1 }, limit: PER_COUNTRY_LIMIT, fields: [...Object.keys(PROJECT), 'urlResolved'] });
+        for (const station of batch) station.url_resolved = station.urlResolved;
         if (batch.length > 0) pool.push(...batch);
       } catch (err) {
         perCountryFailures++;
@@ -533,7 +472,7 @@ export class PrecomputedStationsService {
     const stations = pool;
 
     // Get total count for pagination info
-    const totalCount = await Station.countDocuments({ lastCheckOk: true });
+    const totalCount = await pgCatalog().count({ lastCheckOk: true });
     if (perCountryFailures > 0) {
       logger.warn(
         `⚠️ global-batch: ${perCountryFailures}/${validCountries.length} per-country batches failed — using best-effort merged top ${stations.length}`,

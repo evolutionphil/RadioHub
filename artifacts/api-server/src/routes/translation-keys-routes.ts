@@ -1,7 +1,17 @@
 import type { Express } from "express";
-import { TranslationKey, Translation, TranslationLanguage } from '@workspace/db-shared/mongo-schemas';
+
 import { logger } from "../utils/logger";
 import CacheManager from "../cache";
+import { pgLocalization } from '../data/postgres-localization-store';
+import type { TranslationInput } from '../data/postgres-localization-store';
+
+async function findTranslationKey(key: string): Promise<any | null> {
+  return (pgLocalization().findKey(key));
+}
+
+async function saveTranslationValue(input: TranslationInput): Promise<any> {
+  return (pgLocalization().upsertTranslation(input));
+}
 
 export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   const { requireAdmin } = deps;
@@ -12,7 +22,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       // logger.log('🔑 Fetching admin translation keys...');
       
       // Get all translation keys from database
-      const translationKeys = await TranslationKey.find({}).lean();
+      const translationKeys = (await pgLocalization().getKeys());
       
       // logger.log(`✅ Found ${translationKeys.length} translation keys`);
       res.json(translationKeys);
@@ -34,13 +44,13 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       }
 
       // Check if key already exists
-      const existingKey = await TranslationKey.findOne({ key });
+      const existingKey = await findTranslationKey(key);
       if (existingKey) {
         return void res.status(400).json({ error: 'Translation key already exists' });
       }
 
       // Create new translation key
-      const newKey = await TranslationKey.create({
+      const input = {
         key,
         defaultValue,
         description: description || '',
@@ -49,7 +59,8 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
         isPlural: isPlural || false,
         createdAt: new Date(),
         updatedAt: new Date()
-      });
+      };
+      const newKey = (await pgLocalization().createKey(input));
 
       logger.log(`✅ Created translation key: ${key}`);
 
@@ -67,6 +78,9 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       res.status(201).json(newKey);
     } catch (error) {
       console.error('Error creating translation key:', error);
+      if ((error as any).code === '23505') {
+        return void res.status(400).json({ error: 'Translation key already exists' });
+      }
       res.status(500).json({ error: 'Failed to create translation key' });
     }
   });
@@ -79,19 +93,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       const { key, defaultValue, description, context, category, isPlural } = req.body;
 
       // Find and update the key
-      const updatedKey = await TranslationKey.findByIdAndUpdate(
-        id,
-        {
-          key,
-          defaultValue,
-          description,
-          context,
-          category,
-          isPlural,
-          updatedAt: new Date()
-        },
-        { returnDocument: 'after' }
-      );
+      const updatedKey = (await pgLocalization().updateKey(String(id), { key, defaultValue, description, context, category, isPlural }));
 
       if (!updatedKey) {
         return void res.status(404).json({ error: 'Translation key not found' });
@@ -124,14 +126,14 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       const { id } = req.params;
 
       // Find and delete the key
-      const deletedKey = await TranslationKey.findByIdAndDelete(id);
+      const deletedKey = (await pgLocalization().deleteKey(String(id)));
 
       if (!deletedKey) {
         return void res.status(404).json({ error: 'Translation key not found' });
       }
 
       // Also delete all translations for this key
-      await Translation.deleteMany({ keyId: id });
+
 
       logger.log(`✅ Deleted translation key: ${deletedKey.key}`);
 
@@ -205,27 +207,14 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       let updatedCount = 0;
       
       for (const translation of faqTranslations) {
-        const existingKey = await TranslationKey.findOne({ key: translation.key });
-        
-        if (existingKey) {
-          await TranslationKey.updateOne(
-            { key: translation.key },
-            { 
-              defaultValue: translation.defaultValue,
-              description: translation.description,
-              category: translation.category,
-              updatedAt: new Date()
-            }
-          );
-          updatedCount++;
-        } else {
-          await TranslationKey.create({
-            ...translation,
-            createdAt: new Date(),
-            updatedAt: new Date()
-          });
-          createdCount++;
+        const existingKey = await findTranslationKey(translation.key);
+        {
+          await pgLocalization().upsertKey(translation);
+          if (existingKey) updatedCount++; else createdCount++;
+          continue;
         }
+
+
       }
       
       // Bump translation version
@@ -302,34 +291,13 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       logger.log(`📝 Processing ${authTranslations.length} auth translation keys...`);
       
       for (const item of authTranslations) {
+        {
+          const key = await pgLocalization().upsertKey({ key: item.key, defaultValue: item.defaultValue, category: 'auth' });
+          await pgLocalization().upsertTranslation({ keyId: key._id, language: 'en', value: item.en, isCompleted: true });
+          continue;
+        }
         // Create or update the translation key
-        const translationKey = await TranslationKey.findOneAndUpdate(
-          { key: item.key },
-          {
-            key: item.key,
-            defaultValue: item.defaultValue,
-            category: 'auth',
-            createdAt: new Date(),
-            updatedAt: new Date()
-          },
-          { upsert: true, returnDocument: 'after' }
-        );
 
-        // Create or update the English translation
-        await Translation.findOneAndUpdate(
-          { keyId: translationKey._id, language: 'en' },
-          {
-            keyId: translationKey._id,
-            language: 'en',
-            value: item.en,
-            isCompleted: true,
-            lastModified: new Date(),
-            createdAt: new Date()
-          },
-          { upsert: true, returnDocument: 'after' }
-        );
-
-        logger.log(`✅ Added English translation for: ${item.key} = "${item.en}"`);
       }
       
       // Clear English translation cache to ensure fresh data is served
@@ -378,43 +346,21 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
 
       for (const [keyName, turkishValue] of Object.entries(turkishTranslations)) {
         // Find the translation key
-        const translationKey = await TranslationKey.findOne({ key: keyName });
+        const translationKey = await findTranslationKey(keyName);
         if (!translationKey) {
           logger.log(`⚠️  Translation key not found: ${keyName}`);
           continue;
         }
 
-        // Check if Turkish translation exists
-        const existingTranslation = await Translation.findOne({
-          keyId: translationKey._id,
-          language: 'tr'
-        });
-
-        if (existingTranslation) {
-          // Update existing
-          await Translation.findOneAndUpdate(
-            { keyId: translationKey._id, language: 'tr' },
-            { 
-              value: turkishValue,
-              isCompleted: true,
-              lastModified: new Date()
-            }
-          );
-          updatedCount++;
-          logger.log(`📝 Updated Turkish translation for: ${keyName}`);
-        } else {
-          // Create new
-          await new Translation({
-            keyId: translationKey._id,
-            language: 'tr',
-            value: turkishValue,
-            isCompleted: true,
-            lastModified: new Date(),
-            createdAt: new Date()
-          }).save();
-          addedCount++;
-          logger.log(`✅ Added Turkish translation for: ${keyName}`);
+        {
+          const existing = await pgLocalization().findTranslation(translationKey._id, 'tr');
+          await pgLocalization().upsertTranslation({ keyId: translationKey._id, language: 'tr', value: turkishValue, isCompleted: true });
+          if (existing) updatedCount++; else addedCount++;
+          continue;
         }
+
+        // Check if Turkish translation exists
+
       }
 
       // Clear Turkish translation cache
@@ -442,7 +388,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   // Get all translations for admin filtering
   app.get("/api/admin/all-translations", requireAdmin, async (req, res) => {
     try {
-      const allTranslations = await Translation.find({}).lean();
+      const allTranslations = (await pgLocalization().listTranslations());
       res.json(allTranslations);
     } catch (error) {
       console.error('Error fetching all translations:', error);
@@ -456,34 +402,20 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       const { bumpTranslationVersion } = await import('../services/translation-version');
       const { translations } = req.body;
       
-      if (!translations || !Array.isArray(translations)) {
+      if (!Array.isArray(translations) || translations.length > 10_000 || translations.some((item) => !item ||
+        typeof item.keyId !== 'string' || !item.keyId || typeof item.language !== 'string' || !item.language ||
+        typeof item.value !== 'string' || (item.isCompleted !== undefined && typeof item.isCompleted !== 'boolean'))) {
         return void res.status(400).json({ error: 'Invalid translations data' });
       }
-      
-      const results = [];
-      for (const translation of translations) {
-        const { keyId, language, value, isCompleted } = translation;
-        
-        const result = await Translation.findOneAndUpdate(
-          { keyId, language },
-          { 
-            value, 
-            isCompleted, 
-            lastModified: new Date() 
-          },
-          { 
-            upsert: true, 
-            returnDocument: 'after' 
-          }
-        );
-        
-        results.push(result);
+
+      {
+        const updated = await pgLocalization().bulkUpsertTranslations(translations);
+        await bumpTranslationVersion('Bulk translations upserted');
+        await CacheManager.clearByPattern('translations');
+        return void res.json({ success: true, updated });
       }
       
-      // Bump translation version
-      await bumpTranslationVersion('Bulk translations upserted');
       
-      res.json({ success: true, updated: results.length });
     } catch (error) {
       console.error('Error bulk upserting translations:', error);
       res.status(500).json({ error: 'Failed to bulk upsert translations' });
@@ -491,7 +423,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   });
 
   // QUICK FIX: Add missing Turkish genre translations (temporary endpoint)
-  app.post("/api/fix-turkish-genres", async (req, res) => {
+  app.post("/api/fix-turkish-genres", requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('../services/translation-version');
       const turkishTranslations = [
@@ -510,31 +442,17 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       let updatedCount = 0;
 
       for (const { key, value } of turkishTranslations) {
-        const translationKey = await TranslationKey.findOne({ key });
+        const translationKey = await findTranslationKey(key);
         if (!translationKey) continue;
 
-        const existingTranslation = await Translation.findOne({
-          keyId: translationKey._id,
-          language: 'tr'
-        });
-
-        if (existingTranslation) {
-          await Translation.findOneAndUpdate(
-            { keyId: translationKey._id, language: 'tr' },
-            { value, isCompleted: true, lastModified: new Date() }
-          );
-          updatedCount++;
-        } else {
-          await new Translation({
-            keyId: translationKey._id,
-            language: 'tr',
-            value,
-            isCompleted: true,
-            lastModified: new Date(),
-            createdAt: new Date()
-          }).save();
-          addedCount++;
+        {
+          const existing = await pgLocalization().findTranslation(translationKey._id, 'tr');
+          await pgLocalization().upsertTranslation({ keyId: translationKey._id, language: 'tr', value, isCompleted: true });
+          if (existing) updatedCount++; else addedCount++;
+          continue;
         }
+
+
       }
 
       // Clear cache (safe approach) - simplified
@@ -557,7 +475,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   });
 
   // SEED: Add missing station page translation keys
-  app.post("/api/seed-station-translations", async (req, res) => {
+  app.post("/api/seed-station-translations", requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('../services/translation-version');
       
@@ -577,38 +495,14 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
       let existsCount = 0;
       
       for (const keyData of keysToAdd) {
-        const existing = await TranslationKey.findOne({ key: keyData.key });
-        if (existing) {
-          existsCount++;
-          logger.log(`✓ Key already exists: ${keyData.key}`);
-        } else {
-          await TranslationKey.create({
-            key: keyData.key,
-            defaultValue: keyData.defaultValue,
-            description: keyData.description,
-            category: 'station',
-            createdAt: new Date(),
-            updatedAt: new Date()
-          });
-          createdCount++;
-          logger.log(`+ Created key: ${keyData.key}`);
+        const existing = await findTranslationKey(keyData.key);
+        {
+          const key = await pgLocalization().upsertKey({ ...keyData, category: 'station' }, true);
+          await pgLocalization().upsertTranslation({ keyId: key._id, language: 'en', value: keyData.defaultValue, isCompleted: true });
+          if (existing) existsCount++; else createdCount++;
+          continue;
         }
         
-        // Also add English translation
-        const translationKey = await TranslationKey.findOne({ key: keyData.key });
-        if (translationKey) {
-          await Translation.findOneAndUpdate(
-            { keyId: translationKey._id, language: 'en' },
-            { 
-              keyId: translationKey._id, 
-              language: 'en', 
-              value: keyData.defaultValue,
-              isCompleted: true,
-              lastModified: new Date()
-            },
-            { upsert: true }
-          );
-        }
       }
       
       // Clear cache
@@ -633,7 +527,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   });
 
   // QUICK FIX: Fix German translations - remove all English words
-  app.post("/api/fix-german-translations", async (req, res) => {
+  app.post("/api/fix-german-translations", requireAdmin, async (req, res) => {
     try {
       const { bumpTranslationVersion } = await import('../services/translation-version');
       const germanTranslations = [
@@ -705,13 +599,9 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
 
       let updatedCount = 0;
       for (const item of germanTranslations) {
-        const keyDoc = await TranslationKey.findOne({ key: item.key });
+        const keyDoc = await findTranslationKey(item.key);
         if (keyDoc) {
-          await Translation.findOneAndUpdate(
-            { keyId: keyDoc._id, language: 'de' },
-            { value: item.value, isCompleted: true, lastModified: new Date() },
-            { upsert: true }
-          );
+          await saveTranslationValue({ keyId: keyDoc._id, language: 'de', value: item.value, isCompleted: true, lastModified: new Date() });
           updatedCount++;
         }
       }
@@ -730,7 +620,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   // Run once after deploy: POST /api/admin/seed-turkish-ui
   app.post('/api/admin/seed-turkish-ui', requireAdmin, async (req, res) => {
     try {
-      const result = await seedTurkishUiTranslations();
+      const result = await seedTurkishUiTranslations({ force: req.body?.force === true });
       res.json(result);
     } catch (error) {
       console.error('Error seeding Turkish UI translations:', error);
@@ -739,9 +629,7 @@ export async function registerTranslationKeyRoutes(app: Express, deps: any) {
   });
 }
 
-export async function seedTurkishUiTranslations(): Promise<{ success: boolean; upserted: number; skipped: number; total: number }> {
-  const { bumpTranslationVersion } = await import('../services/translation-version');
-
+export async function seedTurkishUiTranslations(options: { force?: boolean } = {}): Promise<{ success: boolean; upserted: number; skipped: number; total: number }> {
   const turkishUi: Array<{ key: string; value: string }> = [
         // Navigation
         { key: 'nav_home',                             value: 'Ana Sayfa' },
@@ -876,21 +764,13 @@ export async function seedTurkishUiTranslations(): Promise<{ success: boolean; u
         { key: 'popular_countries_title',              value: 'Ülkelere Göre Radyo İstasyonları' },
       ];
 
-  let upserted = 0;
-  let skipped = 0;
-  for (const item of turkishUi) {
-    const keyDoc = await TranslationKey.findOne({ key: item.key });
-    if (!keyDoc) { skipped++; continue; }
-    await Translation.findOneAndUpdate(
-      { keyId: keyDoc._id, language: 'tr' },
-      { value: item.value, isCompleted: true, lastModified: new Date() },
-      { upsert: true },
-    );
-    upserted++;
-  }
-
-  await CacheManager.clearByPattern('translations');
-  await bumpTranslationVersion('Turkish UI translations seeded');
+  const definitions = await pgLocalization().getKeys(turkishUi.map(item => item.key));
+  const existingKeys = new Set(definitions.map(key => key.key));
+  const skipped = turkishUi.filter(item => !existingKeys.has(item.key)).length;
+  const upserted = await pgLocalization().seedTranslationBundle(definitions,
+    { tr: Object.fromEntries(turkishUi.map(item => [item.key, item.value])) }, 'turkish-ui',
+    { bumpVersion: true, overwriteExisting: options.force === true });
+  if (upserted) await CacheManager.clearByPattern('translations');
   logger.log(`✅ Turkish UI translations seeded: ${upserted} upserted, ${skipped} key(s) not found`);
   return { success: true, upserted, skipped, total: turkishUi.length };
 }
@@ -953,23 +833,14 @@ export async function seedSeoTranslationKeys(): Promise<void> {
   ];
 
   for (const item of seoKeys) {
-    const existing = await TranslationKey.findOne({ key: item.key });
+    const existing = await findTranslationKey(item.key);
     if (!existing) {
-      const translationKey = await TranslationKey.create({
-        key: item.key,
-        defaultValue: item.defaultValue,
-        category: item.category,
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-      await Translation.create({
-        keyId: translationKey._id,
-        language: 'en',
-        value: item.defaultValue,
-        isCompleted: true,
-        lastModified: new Date()
-      });
-      logger.log(`✅ Seeded SEO translation key: ${item.key}`);
+      {
+        const key = await pgLocalization().upsertKey(item, true);
+        await pgLocalization().upsertTranslation({ keyId: key._id, language: 'en', value: item.defaultValue, isCompleted: true }, true);
+        continue;
+      }
+
     }
   }
 }

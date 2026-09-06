@@ -29,7 +29,7 @@
  */
 
 import cron from 'node-cron';
-import { Station } from '@workspace/db-shared/mongo-schemas';
+import { pgCatalog } from '../data/postgres-catalog-store';
 import { logger } from '../utils/logger';
 import { logoProcessor } from './logo-processor';
 import { isS3Configured } from './s3-storage';
@@ -211,9 +211,9 @@ class ScheduledLogoEnrichment {
             ? Math.min(Math.floor(slice.limit), 100_000)
             : null;
 
-        let query = Station.find(filter).select('_id name slug homepage favicon').lean();
-        if (sliceLimit) query = query.limit(sliceLimit);
-        const cursor = query.cursor({ batchSize: BATCH_FETCH });
+        const cursor = pgCatalog().iterate(filter, {
+          fields: ['_id','name','slug','homepage','favicon'], batchSize: BATCH_FETCH, limit: sliceLimit ?? undefined,
+        });
 
         for await (const station of cursor) {
           if (Date.now() > deadline) {
@@ -255,7 +255,9 @@ class ScheduledLogoEnrichment {
                   iconFound = true;
                   for (const candidate of candidates) {
                     try {
-                      const r = await logoProcessor.processFromUrl(stationId, slug, candidate);
+                      // The discovered icon differs from the old favicon, but
+                      // may replace it only while this scan's before-image holds.
+                      const r = await logoProcessor.processFromUrl(stationId, slug, candidate, s.favicon ?? null);
                       if (r.success) {
                         result = 'enriched';
                         enriched++;
@@ -291,7 +293,7 @@ class ScheduledLogoEnrichment {
           }
 
           try {
-            await Station.updateOne(
+            await pgCatalog().update(
               { _id: s._id },
               {
                 $set: {

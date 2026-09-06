@@ -83,7 +83,7 @@ export default function LLMsPage() {
             <li><strong>SEO Strategy:</strong> Single domain authority with country/language subdirectories</li>
             <li><strong>Streaming:</strong> HLS adaptive streaming with browser compatibility</li>
             <li><strong>Data Source:</strong> Radio-Browser API integration</li>
-            <li><strong>Platform:</strong> React frontend, Node.js backend, MongoDB database</li>
+            <li><strong>Platform:</strong> React frontend, Node.js backend, PostgreSQL database</li>
           </ul>
 
           <h2 className="text-2xl font-bold mt-8 mb-4 text-gray-900 dark:text-white">AI & Search Engine Access</h2>

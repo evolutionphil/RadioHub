@@ -58,7 +58,8 @@ vi.mock("@/components/HighlightMatch", () => ({
   default: ({ text }: { text: string }) => <>{text}</>,
 }));
 
-vi.mock("@/lib/utils", () => ({
+vi.mock("@/lib/utils", async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/lib/utils')>(),
   getImageUrl: (s: string) => s,
   cn: (...args: unknown[]) => args.filter(Boolean).join(" "),
 }));

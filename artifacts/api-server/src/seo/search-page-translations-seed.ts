@@ -23,11 +23,9 @@
  * be caught by the build-time guard, not silently fallen back.
  */
 
-import {
-  Translation,
-  TranslationKey,
-} from '@workspace/db-shared/mongo-schemas';
+
 import { logger } from '../utils/logger';
+import { pgLocalization } from '../data/postgres-localization-store';
 
 interface SearchKeyDef {
   key: string;
@@ -1652,102 +1650,10 @@ const TRANSLATIONS: Record<Lang, Record<string, string>> = {
  *     not crash the server boot.
  */
 export async function seedSearchPageTranslations(): Promise<void> {
-  try {
-    // Step 1: ensure every TranslationKey row exists. One bulk write
-    // round-trip is dramatically faster than 20 sequential upserts and
-    // matters at server boot where this runs alongside other warmups.
-    const keyOps = SEARCH_KEYS.map((def) => ({
-      updateOne: {
-        filter: { key: def.key },
-        update: {
-          $setOnInsert: {
-            key: def.key,
-            defaultValue: def.defaultValue,
-            description: def.description,
-            category: 'search',
-            createdAt: new Date(),
-          },
-          $set: { updatedAt: new Date() },
-        },
-        upsert: true,
-      },
-    }));
-    if (keyOps.length > 0) {
-      await TranslationKey.bulkWrite(keyOps, { ordered: false });
-    }
-
-    const keyDocs = await TranslationKey.find({
-      key: { $in: SEARCH_KEYS.map((d) => d.key) },
-    })
-      .select({ _id: 1, key: 1 })
-      .lean();
-    const keyIdByKey = new Map<string, unknown>();
-    for (const doc of keyDocs) keyIdByKey.set(doc.key, doc._id);
-
-    // Step 2: read every existing search-page Translation row in one
-    // shot so we can skip the ones that already have a non-empty value
-    // (admin-edited copy must win over the seeded baseline). Then issue
-    // a single bulkWrite for everything that's still missing.
-    const existing = await Translation.find({
-      keyId: { $in: keyDocs.map((d) => d._id) },
-    })
-      .select({ keyId: 1, language: 1, value: 1 })
-      .lean();
-    const populated = new Set<string>();
-    for (const tx of existing) {
-      if (typeof tx.value === 'string' && tx.value.trim().length > 0) {
-        populated.add(`${String(tx.keyId)}::${tx.language}`);
-      }
-    }
-
-    const txOps: Parameters<typeof Translation.bulkWrite>[0] = [];
-    for (const [language, values] of Object.entries(TRANSLATIONS)) {
-      for (const def of SEARCH_KEYS) {
-        const keyId = keyIdByKey.get(def.key);
-        if (!keyId) continue;
-        const value = values[def.key];
-        if (typeof value !== 'string' || value.trim().length === 0) {
-          // Skip — the build-time guard will name this gap so it can
-          // be added intentionally rather than silently filled with
-          // the English fallback.
-          continue;
-        }
-        if (populated.has(`${String(keyId)}::${language}`)) continue;
-        txOps.push({
-          updateOne: {
-            filter: { keyId, language },
-            update: {
-              $set: {
-                keyId,
-                language,
-                value,
-                isCompleted: true,
-                lastModified: new Date(),
-              },
-              $setOnInsert: { createdAt: new Date() },
-            },
-            upsert: true,
-          },
-        });
-      }
-    }
-
-    if (txOps.length > 0) {
-      // Mongo's bulkWrite has a per-batch document limit (currently
-      // 100k, way above our ~1.1k ops) but chunking still keeps memory
-      // and oplog pressure predictable.
-      const CHUNK = 500;
-      for (let i = 0; i < txOps.length; i += CHUNK) {
-        await Translation.bulkWrite(txOps.slice(i, i + CHUNK), {
-          ordered: false,
-        });
-      }
-      logger.log(
-        `✅ seedSearchPageTranslations: backfilled ${txOps.length} search_* translation rows ` +
-          `across ${Object.keys(TRANSLATIONS).length} languages.`,
-      );
-    }
-  } catch (err) {
-    logger.error('seedSearchPageTranslations failed (non-fatal):', err);
+  {
+    const changed = await pgLocalization().seedTranslationBundle(SEARCH_KEYS, TRANSLATIONS, 'search');
+    logger.log(`seedSearchPageTranslations: backfilled ${changed} PostgreSQL rows`);
+    return;
   }
+
 }

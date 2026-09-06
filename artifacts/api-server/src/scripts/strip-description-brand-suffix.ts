@@ -1,6 +1,8 @@
+import { pathToFileURL } from "node:url";
+import path from "node:path";
 /**
  * One-shot script: strips the "Listen now on Mega Radio!" (and its
- * translations) from existing station AI descriptions in MongoDB.
+ * translations) from existing station AI descriptions in PostgreSQL.
  *
  * Why: every description was generated with the prompt instruction
  * "End with call-to-action to listen on Mega Radio", creating a
@@ -14,14 +16,12 @@
  * Safe to re-run (idempotent). Logs count of modified documents.
  */
 
-import mongoose from 'mongoose';
-import { Station } from '@workspace/db-shared/mongo-schemas';
-import { logger } from '../utils/logger';
-
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  process.env.DATABASE_URL ||
-  'mongodb://localhost:27017/mega';
+import {
+  initializePostgres,
+  closePostgres,
+  getPostgresPool,
+} from "../postgres-runtime";
+import { logger } from "../utils/logger";
 
 // Regex that matches the branded CTA sentence at the end of a description.
 // Covers English + the translated variants from ctaTranslations map + the
@@ -68,11 +68,14 @@ const SUFFIX_PATTERNS = [
   /\s*Mega Radio에서 (?:지금 )?들어보세요[!！。]?\s*$/gi,
 ];
 
-function stripSuffix(text: string): { stripped: string; changed: boolean } {
+export function stripSuffix(text: string): {
+  stripped: string;
+  changed: boolean;
+} {
   let result = text;
   for (const pattern of SUFFIX_PATTERNS) {
     const before = result;
-    result = result.replace(pattern, '');
+    result = result.replace(pattern, "");
     pattern.lastIndex = 0; // reset global regex
     if (result !== before) {
       result = result.trimEnd();
@@ -83,66 +86,65 @@ function stripSuffix(text: string): { stripped: string; changed: boolean } {
 }
 
 async function main() {
-  await mongoose.connect(MONGODB_URI);
-  logger.log('Connected to MongoDB');
-
-  // Find stations that have descriptions with any language key
-  const cursor = Station.find({
-    descriptions: { $exists: true, $ne: {} },
-  })
-    .select('descriptions')
-    .lean()
-    .cursor();
-
-  let processed = 0;
-  let modified = 0;
-  const BATCH = 500;
-  const bulk: any[] = [];
-
-  for await (const doc of cursor) {
-    processed++;
-    const descriptions: Record<string, any> = (doc as any).descriptions || {};
-    const updates: Record<string, string> = {};
-
-    for (const [lang, entry] of Object.entries(descriptions)) {
-      if (!entry || typeof entry !== 'object') continue;
-
-      if (typeof entry.full === 'string' && entry.full.length > 0) {
-        const { stripped, changed } = stripSuffix(entry.full);
-        if (changed) updates[`descriptions.${lang}.full`] = stripped;
+  await initializePostgres();
+  let cursor = "",
+    processed = 0,
+    modified = 0,
+    concurrentChanges = 0;
+  try {
+    while (true) {
+      const batch = (
+        await getPostgresPool().query(
+          "SELECT id,descriptions FROM stations WHERE id>$1 AND jsonb_typeof(descriptions)='object' AND descriptions<>'{}'::jsonb ORDER BY id LIMIT 500",
+          [cursor],
+        )
+      ).rows;
+      if (!batch.length) break;
+      for (const row of batch) {
+        processed++;
+        const original = JSON.stringify(row.descriptions);
+        let changed = false;
+        for (const entry of Object.values(row.descriptions) as any[]) {
+          if (!entry || typeof entry !== "object") continue;
+          for (const field of ["full", "meta"]) {
+            if (typeof entry[field] !== "string") continue;
+            const result = stripSuffix(entry[field]);
+            if (result.changed) {
+              entry[field] = result.stripped;
+              changed = true;
+            }
+          }
+        }
+        if (changed) {
+          // Compare-and-swap: never overwrite a concurrent editor/AI update.
+          const result = await getPostgresPool().query(
+            "UPDATE stations SET descriptions=$2::jsonb,updated_at=now() WHERE id=$1 AND descriptions=$3::jsonb",
+            [row.id, JSON.stringify(row.descriptions), original],
+          );
+          if (result.rowCount) modified++;
+          else concurrentChanges++;
+        }
       }
-      if (typeof entry.meta === 'string' && entry.meta.length > 0) {
-        const { stripped, changed } = stripSuffix(entry.meta);
-        if (changed) updates[`descriptions.${lang}.meta`] = stripped;
-      }
+      cursor = batch[batch.length - 1].id;
     }
-
-    if (Object.keys(updates).length > 0) {
-      modified++;
-      bulk.push({
-        updateOne: {
-          filter: { _id: (doc as any)._id },
-          update: { $set: updates },
-        },
-      });
-    }
-
-    if (bulk.length >= BATCH) {
-      await Station.bulkWrite(bulk, { ordered: false });
-      logger.log(`  Flushed ${bulk.length} updates (${processed} processed, ${modified} modified so far)`);
-      bulk.length = 0;
-    }
+    logger.log(
+      "Done. Processed: " +
+        processed +
+        ", Modified: " +
+        modified +
+        ", Concurrent changes skipped: " +
+        concurrentChanges,
+    );
+  } finally {
+    await closePostgres();
   }
-
-  if (bulk.length > 0) {
-    await Station.bulkWrite(bulk, { ordered: false });
-  }
-
-  logger.log(`Done. Processed: ${processed}, Modified: ${modified}`);
-  await mongoose.disconnect();
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+)
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });

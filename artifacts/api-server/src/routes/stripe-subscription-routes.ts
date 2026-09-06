@@ -1,9 +1,16 @@
 import type { Express, Request, Response } from "express";
 import Stripe from "stripe";
 import { Paddle, Environment } from "@paddle/paddle-node-sdk";
-import { User, TvSubscriptionCode, StripeSubscriptionPlan, StripeSaleEvent } from "@workspace/db-shared/mongo-schemas";
+import { completeTvSubscription, createTvCode, getSubscriptionPlan, getTvCode, tvSubscriptionToken } from "../data/postgres-tv-store";
 import { logger } from "../utils/logger";
-import { generateAuthToken } from "../middleware/auth";
+import {
+  pgApplySubscriptionEvent,
+  pgFindSubscriptionUser,
+  pgGetSubscription,
+  pgRecordBillingEvent,
+  pgUpsertSubscription,
+} from "../data/postgres-billing-store";
+import { pgFindUserById } from "../data/postgres-user-store";
 
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
@@ -30,7 +37,7 @@ function getPaddle(): Paddle | null {
 // Falls back to env vars so Railway secrets still work as a safety net.
 async function getPaddlePriceId(plan: string): Promise<string | null> {
   try {
-    const doc = await StripeSubscriptionPlan.findOne({ planId: plan as any, isActive: true }).lean();
+    const doc = await getSubscriptionPlan(plan);
     if ((doc as any)?.paddlePriceId) return (doc as any).paddlePriceId as string;
   } catch {}
   // env var fallback
@@ -78,8 +85,31 @@ function normalizePlanForTv(plan: string) {
   }
 }
 
-function generateCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+function plainSubscriptionPatch(update: Record<string, any>): Record<string, any> {
+  return Object.fromEntries(Object.entries(update).map(([key, candidate]) => [key.replace(/^subscription\./, ""), candidate]));
+}
+
+async function persistSubscription(
+  userId: string,
+  update: Record<string, any>,
+): Promise<void> {
+  await pgUpsertSubscription(userId, plainSubscriptionPatch(update));
+}
+
+function formatSubscriptionStatus(sub: Record<string, any>): Record<string, unknown> {
+  const isPremium = !!sub.isActive && sub.plan && sub.plan !== "none" && sub.plan !== "remove_ads";
+  if (!isPremium) return { tier: "free", status: "active" };
+  const plan = sub.plan === "premium_monthly" ? "monthly" : sub.plan === "premium_yearly"
+    ? "annual" : sub.plan === "premium_lifetime" ? "lifetime" : sub.plan;
+  const valid = ["active", "past_due", "canceled", "trialing"];
+  const status = valid.includes(sub.subscriptionStatus)
+    ? sub.subscriptionStatus : sub.isActive ? "active" : "canceled";
+  const cancelAtPeriodEnd = !!sub.cancelAtPeriodEnd;
+  const response: Record<string, unknown> = {
+    tier: "premium", plan, status, validUntil: sub.expiresAt ?? null, cancelAtPeriodEnd,
+  };
+  if (!cancelAtPeriodEnd && status !== "canceled") response.renewsAt = sub.renewsAt ?? sub.expiresAt ?? null;
+  return response;
 }
 
 export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
@@ -137,50 +167,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         return void res.status(400).json({ error: "platform must be tizen, webos, or other" });
       }
 
-      // Rate-limit: max 5 codes per deviceId per hour
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-      const recentCount = await TvSubscriptionCode.countDocuments({
-        deviceId,
-        createdAt: { $gte: oneHourAgo },
-      });
-      if (recentCount >= 5) {
-        return void res.status(429).json({ error: "Too many code requests. Try again in an hour." });
-      }
-
-      // Expire any still-pending codes for this device
-      await TvSubscriptionCode.updateMany(
-        { deviceId, status: "pending" },
-        { $set: { status: "expired" } }
-      );
-
-      // Generate a unique 6-digit code
-      let code: string = "";
-      let attempts = 0;
-      do {
-        code = generateCode();
-        const exists = await TvSubscriptionCode.findOne({
-          code,
-          status: "pending",
-          expiresAt: { $gt: new Date() },
-        });
-        if (!exists) break;
-        attempts++;
-      } while (attempts < 10);
-
-      if (attempts >= 10) {
-        return void res.status(503).json({ error: "Unable to generate unique code. Try again." });
-      }
-
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
-
-      await TvSubscriptionCode.create({
-        code,
-        deviceId,
-        platform,
-        status: "pending",
-        expiresAt,
-        createdAt: new Date(),
-      });
+      const { code, expiresAt } = await createTvCode('subscription', deviceId, platform);
 
       logger.log(`[TV SUB] Code ${code} generated for device ${deviceId} (${platform})`);
 
@@ -193,7 +180,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       });
     } catch (err: any) {
       logger.error("[TV SUB] Code generation error:", err.message);
-      res.status(500).json({ error: "Failed to generate code" });
+      res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : "Failed to generate code" });
     }
   });
 
@@ -214,8 +201,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 
       // Sort by _id desc: if an old expired doc exists with the same code
       // (6-digit reuse across sessions), we get the newest one first.
-      const filter = webCaller ? { code } : { code, deviceId: deviceId! };
-      const tvCode = await TvSubscriptionCode.findOne(filter).sort({ _id: -1 });
+      const tvCode = await getTvCode('subscription', String(code), webCaller ? undefined : deviceId);
       if (!tvCode) {
         return void res.status(200).json({ status: "not_found" });
       }
@@ -223,10 +209,6 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       // Auto-expire overdue pending codes and return 200 expired (not 404 —
       // 404 causes TV to treat it as "still pending" and poll forever).
       if (tvCode.status === "expired") {
-        return void res.json({ status: "expired" });
-      }
-      if (tvCode.status === "pending" && tvCode.expiresAt < new Date()) {
-        await TvSubscriptionCode.updateOne({ _id: tvCode._id }, { $set: { status: "expired" } });
         return void res.json({ status: "expired" });
       }
 
@@ -238,9 +220,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           return void res.json({ status: "activated" });
         }
 
-        const user = await User.findById(tvCode.userId)
-          .select("_id email subscription")
-          .lean() as any;
+        const user = await pgFindUserById(String(tvCode.userId));
 
         const plan = user?.subscription?.plan || tvCode.plan || "none";
         const normalized = normalizePlanForTv(plan);
@@ -248,7 +228,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         // Mint a long-lived TV bearer token (90 days, same as mobile TV login)
         let token: string | undefined;
         try {
-          token = await generateAuthToken(String(tvCode.userId), "tv", "TV Subscription Activation");
+          token = await tvSubscriptionToken(tvCode.id, deviceId!) ?? undefined;
         } catch (tokenErr: any) {
           logger.error("[TV SUB] Failed to generate auth token:", tokenErr.message);
           // Don't fail the whole response — TV can still refresh later via /api/subscription/status
@@ -288,16 +268,14 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       return void res.status(400).json({ error: "Invalid plan. Supported: remove_ads, premium_monthly, premium_yearly, premium_lifetime" });
     }
 
-    // Validate the TV code if provided
+    // Bind the checkout to this specific code issuance, not a reusable six-digit PIN.
+    let validatedTvCodeId = '';
     if (tvCode) {
-      const code = await TvSubscriptionCode.findOne({
-        code: tvCode,
-        status: "pending",
-        expiresAt: { $gt: new Date() },
-      });
-      if (!code) {
+      const code = await getTvCode('subscription', tvCode);
+      if (!code || code.status !== 'pending') {
         return void res.status(400).json({ error: "TV code is invalid or expired" });
       }
+      validatedTvCodeId = code.id;
     }
 
     // ── Paddle branch ────────────────────────────────────────────────────────
@@ -341,7 +319,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           success: true,
           paddleCheckout: {
             priceId,
-            customData: { userId: String(userId), plan, tvCode: tvCode || "" },
+            customData: { userId: String(userId), plan, tvCode: tvCode || "", tvCodeId: validatedTvCodeId },
             successUrl,
             // Include the client-side token so the frontend never needs to
             // bake VITE_PADDLE_CLIENT_TOKEN into a build-time env var.
@@ -371,7 +349,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       // Price ID: DB (admin-managed) takes precedence over env vars
       let priceId: string | null = null;
       try {
-        const planDoc = await StripeSubscriptionPlan.findOne({ planId: plan, isActive: true }).lean();
+        const planDoc = await getSubscriptionPlan(plan);
         if (planDoc?.stripePriceId) priceId = planDoc.stripePriceId;
       } catch {}
       if (!priceId) {
@@ -386,7 +364,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         return void res.status(503).json({ error: `No Stripe price configured for plan: ${plan}. Set it in admin → Stripe Plans, or switch to PAYMENT_PROVIDER=paddle.` });
       }
 
-      const user = await User.findById(userId).select("email subscription").lean() as any;
+      const user = await pgFindUserById(String(userId));
       if (!user) {
         return void res.status(404).json({ error: "User not found" });
       }
@@ -396,7 +374,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       if (!customerId) {
         const customer = await stripe.customers.create({ email: user.email, metadata: { userId: String(userId) } });
         customerId = customer.id;
-        await User.updateOne({ _id: userId }, { $set: { "subscription.stripeCustomerId": customerId } });
+        await persistSubscription(String(userId),
+          { "subscription.stripeCustomerId": customerId },
+        );
       }
 
       // Auto-detect checkout mode from the Stripe price type to avoid mode-mismatch 500s.
@@ -420,11 +400,11 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         cancel_url: tvCode
           ? `${WEB_BASE_URL}/activate?code=${tvCode}`
           : `${WEB_BASE_URL}/premium`,
-        metadata: { userId: String(userId), plan, tvCode: tvCode || "" },
+        metadata: { userId: String(userId), plan, tvCode: tvCode || "", tvCodeId: validatedTvCodeId },
       };
       if (mode === "subscription") {
         sessionParams.subscription_data = {
-          metadata: { userId: String(userId), plan, tvCode: tvCode || "" },
+          metadata: { userId: String(userId), plan, tvCode: tvCode || "", tvCodeId: validatedTvCodeId },
         };
       }
       const session = await stripe.checkout.sessions.create(sessionParams);
@@ -447,33 +427,28 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
     "/api/webhooks/stripe",
     async (req: Request, res: Response) => {
       const stripe = getStripe();
-      if (!stripe) return void res.status(200).json({ received: true });
+      if (!stripe) return void res.status(503).json({ error: "Stripe webhook is not configured" });
 
       const sig = req.headers["stripe-signature"] as string;
       // rawBody is captured by the global express.json() verify callback.
       const rawBody = (req as any).rawBody || "";
 
       if (!STRIPE_WEBHOOK_SECRET) {
-        logger.warn("[TV SUB] STRIPE_WEBHOOK_SECRET not set — skipping signature verification");
-      } else {
-        try {
-          stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
-        } catch (err: any) {
-          logger.warn("[TV SUB] Webhook signature invalid:", err.message);
-          return void res.status(400).json({ error: "Invalid signature" });
-        }
+        logger.error("[TV SUB] STRIPE_WEBHOOK_SECRET not configured");
+        return void res.status(503).json({ error: "Stripe webhook is not configured" });
       }
 
       let event: Stripe.Event;
       try {
-        event = JSON.parse(rawBody) as Stripe.Event;
-      } catch {
-        return void res.status(400).json({ error: "Invalid JSON" });
+        event = stripe.webhooks.constructEvent(rawBody, sig, STRIPE_WEBHOOK_SECRET);
+      } catch (err: any) {
+        logger.warn("[TV SUB] Webhook signature invalid:", err.message);
+        return void res.status(400).json({ error: "Invalid signature" });
       }
 
       if (event.type === "checkout.session.completed") {
         const session = event.data.object as Stripe.Checkout.Session;
-        const { userId, plan, tvCode } = session.metadata || {};
+        const { userId, plan, tvCode, tvCodeId } = session.metadata || {};
 
         if (!userId || !plan) {
           logger.warn("[TV SUB] Webhook missing userId or plan in metadata");
@@ -486,10 +461,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
           // by isActive + the Stripe customer portal / renewal events.
           const expiresAt: Date | null = null;
 
-          await User.updateOne(
-            { _id: userId },
-            {
-              $set: {
+          const subscriptionUpdate = {
                 "subscription.plan": plan,
                 "subscription.platform": "stripe",
                 "subscription.stripeCustomerId": session.customer as string,
@@ -498,48 +470,31 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
                 "subscription.startedAt": new Date(),
                 "subscription.expiresAt": expiresAt,
                 "subscription.lastVerifiedAt": new Date(),
-              },
-            }
-          );
-
-          logger.log(`[TV SUB] Subscription activated for user ${userId}, plan=${plan}, stripeSessionId=${session.id}`);
-
-          // Record sale event for revenue dashboard
-          try {
-            await StripeSaleEvent.create({
-              userId: userId || null,
-              plan,
-              stripeSessionId: session.id,
-              stripeCustomerId: typeof session.customer === "string" ? session.customer : undefined,
-              amount: session.amount_total ?? 0,
-              currency: session.currency ?? "usd",
-              isLifetime: plan === "premium_lifetime",
-              tvCode: tvCode || undefined,
-              createdAt: new Date(),
+          };
+          {
+            const outcome = await pgApplySubscriptionEvent(userId, plainSubscriptionPatch(subscriptionUpdate), {
+              provider: "stripe", providerEventId: event.id, userId,
+              eventType: event.type, status: "processed", plan,
+              amountMinor: session.amount_total, currency: session.currency,
+              occurredAt: new Date(event.created * 1000), payload: event as any,
+            }, {
+              order: { field: "lastStripeEventTime", timestamp: event.created * 1000, isDowngrade: false },
             });
-          } catch (saleErr: any) {
-            // Sale event write is best-effort — don't fail the webhook
-            logger.warn("[TV SUB] Failed to record sale event:", saleErr.message);
+            if (outcome === "stale") return void res.status(200).json({ received: true, skipped: "stale_event" });
           }
 
+          logger.log(`[TV SUB] Checkout notification processed for user ${userId}, plan=${plan}, stripeSessionId=${session.id}`);
+
+          // The atomic payment receipt above also feeds the revenue dashboard.
+
           // Activate the TV code so the device can poll and get the result
-          if (tvCode) {
-            await TvSubscriptionCode.updateMany(
-              { code: tvCode, status: "pending" },
-              {
-                $set: {
-                  status: "completed",
-                  userId,
-                  plan,
-                  stripeSessionId: session.id,
-                  completedAt: new Date(),
-                },
-              }
-            );
+          if (tvCode && (tvCodeId || session.created)) {
+            await completeTvSubscription(tvCode, userId, plan, session.id, tvCodeId, session.created ? new Date(session.created * 1000) : undefined);
             logger.log(`[TV SUB] TV code ${tvCode} marked completed`);
           }
         } catch (err: any) {
           logger.error("[TV SUB] Webhook processing error:", err.message);
+          return void res.status(503).set("Retry-After", "30").json({ error: "Webhook processing failed" });
         }
       }
 
@@ -548,26 +503,36 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
       // GET /api/subscription/status never needs to call Stripe inline.
       if (event.type === "customer.subscription.updated") {
         try {
-          await handleStripeSubscriptionUpdated(event.data.object);
+          await handleStripeSubscriptionUpdated(event.data.object, event);
         } catch (err: any) {
           logger.error("[STRIPE WEBHOOK] subscription.updated error:", err.message);
+          return void res.status(503).set("Retry-After", "30").json({ error: "Webhook processing failed" });
         }
       }
 
       if (event.type === "invoice.payment_failed") {
         try {
-          await handleStripeInvoicePaymentFailed(event.data.object);
+          await handleStripeInvoicePaymentFailed(event.data.object, event);
         } catch (err: any) {
           logger.error("[STRIPE WEBHOOK] invoice.payment_failed error:", err.message);
+          return void res.status(503).set("Retry-After", "30").json({ error: "Webhook processing failed" });
         }
       }
 
       if (event.type === "customer.subscription.deleted") {
         try {
-          await handleStripeSubscriptionDeleted(event.data.object);
+          await handleStripeSubscriptionDeleted(event.data.object, event);
         } catch (err: any) {
           logger.error("[STRIPE WEBHOOK] subscription.deleted error:", err.message);
+          return void res.status(503).set("Retry-After", "30").json({ error: "Webhook processing failed" });
         }
+      }
+
+      {
+        await pgRecordBillingEvent({
+          provider: "stripe", providerEventId: event.id, eventType: event.type,
+          status: "processed", occurredAt: new Date(event.created * 1000), payload: event as any,
+        });
       }
 
       res.status(200).json({ received: true });
@@ -581,21 +546,23 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
     "/api/webhooks/paddle",
     async (req: Request, res: Response) => {
       const paddle = getPaddle();
-      if (!paddle) return void res.status(200).json({ received: true });
+      if (!paddle) return void res.status(503).json({ error: "Paddle webhook is not configured" });
 
       const sig = req.headers["paddle-signature"] as string;
       // rawBody is captured by the global express.json() verify callback.
       const rawBody = (req as any).rawBody || JSON.stringify(req.body || {});
 
       if (!PADDLE_WEBHOOK_SECRET) {
-        logger.warn("[PADDLE] PADDLE_WEBHOOK_SECRET not set — skipping signature check");
-      } else if (sig) {
-        try {
-          await paddle.webhooks.isSignatureValid(rawBody, PADDLE_WEBHOOK_SECRET, sig);
-        } catch (err: any) {
-          logger.warn("[PADDLE] Webhook signature invalid:", err.message);
+        logger.error("[PADDLE] PADDLE_WEBHOOK_SECRET not configured");
+        return void res.status(503).json({ error: "Paddle webhook is not configured" });
+      }
+      try {
+        if (!sig || !(await paddle.webhooks.isSignatureValid(rawBody, PADDLE_WEBHOOK_SECRET, sig))) {
           return void res.status(400).json({ error: "Invalid signature" });
         }
+      } catch (err: any) {
+        logger.warn("[PADDLE] Webhook signature invalid:", err.message);
+        return void res.status(400).json({ error: "Invalid signature" });
       }
 
       let event: any;
@@ -621,10 +588,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
         }
 
         try {
-          await User.updateOne(
-            { _id: userId },
-            {
-              $set: {
+          const subscriptionUpdate = {
                 "subscription.plan": plan,
                 "subscription.platform": "paddle",
                 "subscription.paddleCustomerId": txnData.customer_id || undefined,
@@ -633,46 +597,28 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
                 "subscription.startedAt": new Date(),
                 "subscription.expiresAt": null,
                 "subscription.lastVerifiedAt": new Date(),
-              },
-            }
-          );
-
-          logger.log(`[PADDLE] Subscription activated: user=${userId}, plan=${plan}, txn=${txnData.id}`);
-
-          // Record sale event for revenue dashboard
-          try {
-            await StripeSaleEvent.create({
-              userId: userId || null,
-              plan,
-              stripeSessionId: txnData.id,     // reusing field — txn ID stored here
-              stripeCustomerId: txnData.customer_id || undefined,
-              amount: txnData.details?.totals?.total ? parseInt(txnData.details.totals.total, 10) : 0,
-              currency: txnData.currency_code || "eur",
-              isLifetime: plan === "premium_lifetime",
-              tvCode: tvCode || undefined,
-              createdAt: new Date(),
+          };
+          {
+            await pgApplySubscriptionEvent(userId, plainSubscriptionPatch(subscriptionUpdate), {
+              provider: "paddle", providerEventId: String(event?.event_id || txnData.id), userId,
+              eventType, status: "processed", plan,
+              amountMinor: txnData.details?.totals?.total ? parseInt(txnData.details.totals.total, 10) : null,
+              currency: txnData.currency_code || null, occurredAt: event.occurred_at ? new Date(event.occurred_at) : new Date(),
+              payload: event,
             });
-          } catch (saleErr: any) {
-            logger.warn("[PADDLE] Failed to record sale event:", saleErr.message);
           }
 
-          if (tvCode) {
-            await TvSubscriptionCode.updateMany(
-              { code: tvCode, status: "pending" },
-              {
-                $set: {
-                  status: "completed",
-                  userId,
-                  plan,
-                  stripeSessionId: txnData.id,
-                  completedAt: new Date(),
-                },
-              }
-            );
+          logger.log(`[PADDLE] Checkout notification processed: user=${userId}, plan=${plan}, txn=${txnData.id}`);
+
+          // The atomic payment receipt above also feeds the revenue dashboard.
+
+          if (tvCode && (customData.tvCodeId || txnData.created_at)) {
+            await completeTvSubscription(tvCode, userId, plan, txnData.id, customData.tvCodeId, txnData.created_at ? new Date(txnData.created_at) : undefined);
             logger.log(`[PADDLE] TV code ${tvCode} marked completed`);
           }
         } catch (err: any) {
           logger.error("[PADDLE] Webhook processing error:", err.message);
+          return void res.status(503).set("Retry-After", "30").json({ error: "Webhook processing failed" });
         }
       }
 
@@ -687,53 +633,9 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
   app.get("/api/subscription/status", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = (req.session as any)?.user?.userId || (req as any).userId;
-      const user = await User.findById(userId).select("subscription").lean() as any;
-
-      if (!user) {
-        return void res.status(404).json({ error: "User not found" });
-      }
-
-      const sub = user.subscription || {};
-      const isPremium =
-        !!sub.isActive &&
-        sub.plan &&
-        sub.plan !== "none" &&
-        sub.plan !== "remove_ads";
-
-      if (!isPremium) {
-        return void res.json({ tier: "free", status: "active" });
-      }
-
-      // Normalise internal plan names → what the TV spec expects
-      const planLabel =
-        sub.plan === "premium_monthly" ? "monthly" :
-        sub.plan === "premium_yearly"  ? "annual"  :
-        sub.plan === "premium_lifetime"? "lifetime":
-        sub.plan;
-
-      // subscriptionStatus is populated by Stripe/Paddle webhook handlers.
-      // Fall back to 'active' for legacy rows that pre-date this field.
-      const VALID_STATUSES = ["active", "past_due", "canceled", "trialing"] as const;
-      const status: typeof VALID_STATUSES[number] =
-        VALID_STATUSES.includes(sub.subscriptionStatus)
-          ? sub.subscriptionStatus
-          : sub.isActive ? "active" : "canceled";
-
-      const cancelAtPeriodEnd = !!sub.cancelAtPeriodEnd;
-
-      const response: Record<string, unknown> = {
-        tier: "premium",
-        plan: planLabel,
-        status,
-        validUntil: sub.expiresAt ?? null,
-        cancelAtPeriodEnd,
-      };
-      // renewsAt only makes sense when subscription is not heading to cancellation
-      if (!cancelAtPeriodEnd && status !== "canceled") {
-        response.renewsAt = sub.renewsAt ?? sub.expiresAt ?? null;
-      }
-
-      res.json(response);
+      const subscription = await pgGetSubscription(userId);
+      if (!subscription && !await pgFindUserById(userId)) return void res.status(404).json({ error: "User not found" });
+      res.json(formatSubscriptionStatus(subscription || {}));
     } catch (err: any) {
       logger.error("[TV SUB] Status error:", err.message);
       res.status(500).json({ error: "Failed to fetch subscription status" });
@@ -746,7 +648,7 @@ export function registerStripeSubscriptionRoutes(app: Express, deps: any) {
 // These keep User.subscription in sync with Stripe's subscription state so
 // /api/subscription/status never needs to call Stripe inline.
 
-export async function handleStripeSubscriptionUpdated(sub: any): Promise<void> {
+export async function handleStripeSubscriptionUpdated(sub: any, event?: Stripe.Event): Promise<void> {
   // sub is a Stripe.Subscription object (already parsed from raw body)
   const stripeSubId: string | undefined = sub.id;
   const userId: string | undefined = sub.metadata?.userId;
@@ -771,31 +673,21 @@ export async function handleStripeSubscriptionUpdated(sub: any): Promise<void> {
     "subscription.lastVerifiedAt": new Date(),
   };
 
-  // Prefer userId from metadata for direct lookup; fall back to subscriptionId index
-  if (userId) {
-    await User.updateOne({ _id: userId }, { $set: update });
-  } else {
-    await User.updateOne(
-      { "subscription.stripeSubscriptionId": stripeSubId },
-      { $set: update }
-    );
-  }
+  await persistStripeLifecycle(stripeSubId, userId, update, event, !isActive);
   logger.log(`[STRIPE WEBHOOK] subscription.updated ${stripeSubId} → status=${subscriptionStatus} cancelAtPeriodEnd=${cancelAtPeriodEnd}`);
 }
 
-export async function handleStripeInvoicePaymentFailed(invoice: any): Promise<void> {
+export async function handleStripeInvoicePaymentFailed(invoice: any, event?: Stripe.Event): Promise<void> {
   const stripeSubId: string | undefined =
     typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
   if (!stripeSubId) return;
 
-  await User.updateOne(
-    { "subscription.stripeSubscriptionId": stripeSubId },
-    { $set: { "subscription.subscriptionStatus": "past_due", "subscription.lastVerifiedAt": new Date() } }
-  );
+  const update = { "subscription.subscriptionStatus": "past_due", "subscription.lastVerifiedAt": new Date() };
+  await persistStripeLifecycle(stripeSubId, undefined, update, event, true);
   logger.log(`[STRIPE WEBHOOK] invoice.payment_failed → sub ${stripeSubId} marked past_due`);
 }
 
-export async function handleStripeSubscriptionDeleted(sub: any): Promise<void> {
+export async function handleStripeSubscriptionDeleted(sub: any, event?: Stripe.Event): Promise<void> {
   const stripeSubId: string | undefined = sub.id;
   const userId: string | undefined = sub.metadata?.userId;
   if (!stripeSubId) return;
@@ -807,13 +699,35 @@ export async function handleStripeSubscriptionDeleted(sub: any): Promise<void> {
     "subscription.lastVerifiedAt": new Date(),
   };
 
-  if (userId) {
-    await User.updateOne({ _id: userId }, { $set: update });
-  } else {
-    await User.updateOne(
-      { "subscription.stripeSubscriptionId": stripeSubId },
-      { $set: update }
-    );
-  }
+  await persistStripeLifecycle(stripeSubId, userId, update, event, true);
   logger.log(`[STRIPE WEBHOOK] subscription.deleted ${stripeSubId} → canceled`);
+}
+
+async function persistStripeLifecycle(
+  stripeSubscriptionId: string,
+  metadataUserId: string | undefined,
+  update: Record<string, unknown>,
+  event: Stripe.Event | undefined,
+  isDowngrade: boolean,
+): Promise<void> {
+  let userId = metadataUserId;
+  if (!userId) {
+    userId = await pgFindSubscriptionUser({ stripeSubscriptionId }) || undefined;
+  }
+  // A Stripe account may deliver events for customers this application has
+  // never linked. There is no local entitlement to change in that case.
+  if (!userId) return;
+
+  if (event) {
+    await pgApplySubscriptionEvent(userId, plainSubscriptionPatch(update), {
+      provider: "stripe", providerEventId: event.id, userId,
+      eventType: event.type, status: "processed", occurredAt: new Date(event.created * 1000),
+      payload: event as any,
+    }, {
+      order: { field: "lastStripeEventTime", timestamp: event.created * 1000, isDowngrade },
+    });
+  } else {
+    // Preserve direct helper callers that do not have a provider delivery ID.
+    await pgUpsertSubscription(userId, plainSubscriptionPatch(update));
+  }
 }

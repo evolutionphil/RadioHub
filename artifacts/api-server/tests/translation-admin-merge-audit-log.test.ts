@@ -21,6 +21,7 @@
  */
 import { test, mock, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { genreAdminPgFixture } from './helpers/genre-admin-pg-fixture';
 import express, {
   type Express,
   type Request,
@@ -31,7 +32,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
 
 // ---------------------------------------------------------------------------
-// In-memory state used by the mocked Mongo models.
+// In-memory records behind the native PostgreSQL transport fixture.
 // ---------------------------------------------------------------------------
 
 interface FakeGenreRow {
@@ -79,200 +80,13 @@ let auditIdSeq = 0;
 // actorUserId / actorEmail capture paths.
 let currentUser: { _id?: string; id?: string; email?: string } | null = null;
 
-function fakeQuery<T>(value: T) {
-  const q: {
-    select: () => typeof q;
-    lean: <U = T>() => Promise<U>;
-    then: <R>(onFulfilled?: (v: T) => R) => Promise<R>;
-  } = {
-    select: () => q,
-    lean: async () => value as unknown as never,
-    then: (resolve) =>
-      Promise.resolve(value).then(resolve as (v: T) => unknown) as Promise<never>,
-  };
-  return q;
-}
-
-const FakeGenreModel = {
-  findById: (id: string) => {
-    const row = genres.find((g) => g._id === String(id)) ?? null;
-    return fakeQuery(row);
-  },
-  updateOne: async (
-    filter: { _id?: string },
-    update: { $set?: Partial<FakeGenreRow> },
-  ) => {
-    const row = genres.find((g) => g._id === String(filter._id));
-    if (row && update.$set) Object.assign(row, update.$set);
-    return { matchedCount: row ? 1 : 0, modifiedCount: row ? 1 : 0 };
-  },
-  deleteOne: async (filter: { _id?: string }) => {
-    const idx = genres.findIndex((g) => g._id === String(filter._id));
-    if (idx >= 0) genres.splice(idx, 1);
-    return { deletedCount: idx >= 0 ? 1 : 0 };
-  },
-};
-
-interface OrFilter {
-  $or: Array<
-    | { tags: { $regex: RegExp } }
-    | { genre: { $regex: RegExp } }
-  >;
-}
-
-function matchStationAgainstOr(st: FakeStationRow, filter: OrFilter): boolean {
-  return filter.$or.some((clause) => {
-    if ('tags' in clause) {
-      return typeof st.tags === 'string' && clause.tags.$regex.test(st.tags);
-    }
-    return typeof st.genre === 'string' && clause.genre.$regex.test(st.genre);
-  });
-}
-
-const FakeStationModel = {
-  find: (filter: OrFilter) => {
-    const matches = stations.filter((s) => matchStationAgainstOr(s, filter));
-    return fakeQuery(matches);
-  },
-  updateOne: async (
-    filter: { _id?: string },
-    update: { $set?: Partial<FakeStationRow> },
-  ) => {
-    const row = stations.find((s) => s._id === String(filter._id));
-    if (row && update.$set) Object.assign(row, update.$set);
-    return { matchedCount: row ? 1 : 0, modifiedCount: row ? 1 : 0 };
-  },
-  countDocuments: async (filter: OrFilter) => {
-    return stations.filter((s) => matchStationAgainstOr(s, filter)).length;
-  },
-};
-
-// ---------------------------------------------------------------------------
-// GenreMergeAuditLog mock — must support the route's write path AND the
-// list-endpoint's filter / sort / skip / limit / countDocuments calls.
-// ---------------------------------------------------------------------------
-
-interface AuditFilter {
-  targetSource?: string;
-  actorEmail?: { $regex: string; $options?: string };
-  $or?: Array<Record<string, { $regex: string; $options?: string }>>;
-  createdAt?: { $gte?: Date; $lte?: Date };
-}
-
-function regexTest(
-  cond: { $regex: string; $options?: string } | undefined,
-  value: string | null | undefined,
-): boolean {
-  if (!cond) return true;
-  const re = new RegExp(cond.$regex, cond.$options ?? '');
-  return typeof value === 'string' && re.test(value);
-}
-
-function matchAuditRow(row: FakeAuditRow, filter: AuditFilter): boolean {
-  if (filter.targetSource && row.targetSource !== filter.targetSource) {
-    return false;
-  }
-  if (filter.actorEmail && !regexTest(filter.actorEmail, row.actorEmail)) {
-    return false;
-  }
-  if (filter.$or) {
-    const ok = filter.$or.some((clause) => {
-      const [field, cond] = Object.entries(clause)[0] ?? [];
-      const v = (row as unknown as Record<string, unknown>)[field];
-      return regexTest(
-        cond as { $regex: string; $options?: string },
-        typeof v === 'string' ? v : null,
-      );
-    });
-    if (!ok) return false;
-  }
-  if (filter.createdAt) {
-    const t = row.createdAt.getTime();
-    if (filter.createdAt.$gte && t < filter.createdAt.$gte.getTime()) {
-      return false;
-    }
-    if (filter.createdAt.$lte && t > filter.createdAt.$lte.getTime()) {
-      return false;
-    }
-  }
-  return true;
-}
-
-const FakeAuditModel = {
-  create: async (entry: Omit<FakeAuditRow, '_id' | 'createdAt'> & { createdAt?: Date }) => {
-    auditIdSeq += 1;
-    const row: FakeAuditRow = {
-      _id: `audit-${auditIdSeq}`,
-      createdAt: entry.createdAt ?? new Date(),
-      ...entry,
-    } as FakeAuditRow;
-    auditRows.push(row);
-    return row;
-  },
-  estimatedDocumentCount: async () => auditRows.length,
-  countDocuments: async (filter: AuditFilter = {}) =>
-    auditRows.filter((r) => matchAuditRow(r, filter)).length,
-  find: (filter: AuditFilter = {}, _projection?: unknown) => {
-    let snapshot = auditRows.filter((r) => matchAuditRow(r, filter));
-    let skipN = 0;
-    let limitN = Number.POSITIVE_INFINITY;
-    let sortDir: 1 | -1 | null = null;
-    const builder = {
-      sort: (spec: { createdAt?: 1 | -1 }) => {
-        sortDir = spec.createdAt ?? null;
-        return builder;
-      },
-      skip: (n: number) => {
-        skipN = n;
-        return builder;
-      },
-      limit: (n: number) => {
-        limitN = n;
-        return builder;
-      },
-      lean: async () => {
-        if (sortDir !== null) {
-          const dir = sortDir;
-          snapshot = [...snapshot].sort(
-            (a, b) =>
-              (a.createdAt.getTime() - b.createdAt.getTime()) * dir,
-          );
-        }
-        return snapshot.slice(skipN, skipN + limitN);
-      },
-    };
-    return builder;
-  },
-  deleteMany: async () => ({ deletedCount: 0 }),
-};
-
-// ---------------------------------------------------------------------------
-// Module mocks — installed BEFORE the route module is imported.
-// ---------------------------------------------------------------------------
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Genre: FakeGenreModel,
-    Station: FakeStationModel,
-    GenreMergeAuditLog: FakeAuditModel,
-    // Other models destructured at the top of the route file are
-    // unused here — empty stubs keep the destructure from blowing up.
-    TranslationKey: {},
-    Translation: {},
-    TranslationLanguage: {},
-    User: {},
-    Language: {},
-    UserFavorite: {},
-    UserNotification: {},
-    UserFollow: {},
-    AuthToken: {},
-    StationRating: {},
-    SyncLog: {},
-    BlacklistedStation: {},
-    SAFE_GENRE_SLUG_RE: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-    normalizeGenreSlug: (s: string) => String(s ?? '').toLowerCase(),
-  },
-});
+const nativeFixture=genreAdminPgFixture({genres:()=>genres,stations:()=>stations,audits:()=>auditRows});
+mock.module('../src/postgres-runtime',{namedExports:{getPostgresPool: () => nativeFixture.pool, getPostgresCoordinationPool: () => nativeFixture.pool,closePostgres:async()=>{}}});
+mock.module('../src/data/postgres-catalog-store',{namedExports:{
+  pgCatalog:()=>nativeFixture.catalog,pgSyncLogs:async()=>[],PostgresCatalogStore:class {},
+}});
+// The real native genre-admin store executes its merge transaction against the
+// fixture transport; no Mongoose models or fake merge business logic are used.
 
 mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
   namedExports: {
@@ -368,6 +182,8 @@ beforeEach(() => {
   auditRows = [];
   auditIdSeq = 0;
   currentUser = null;
+  nativeFixture.setAuditFailure(false);
+  nativeFixture.statements.length=0;
 });
 
 // ---------------------------------------------------------------------------
@@ -521,7 +337,7 @@ function seedAuditRows(rows: Array<Partial<FakeAuditRow>>): void {
 }
 
 test('GET merge-audit-log paginates with limit + offset and returns total', async () => {
-  const base = Date.UTC(2026, 0, 1, 12, 0, 0);
+  const base = Date.now() - 86400000;
   seedAuditRows(
     Array.from({ length: 5 }, (_, i) => ({
       demotedGenreName: `Demoted ${i}`,
@@ -623,14 +439,16 @@ test('GET merge-audit-log filters by targetSource', async () => {
 });
 
 test('GET merge-audit-log filters by from/to date range (inclusive)', async () => {
+  // Relative dates keep this range inside the native 180-day retention window.
+  const at=(daysAgo:number)=>{const date=new Date(Date.now()-daysAgo*86400000);date.setUTCHours(10,0,0,0);return date;};
   seedAuditRows([
-    { demotedGenreName: 'Jan2', createdAt: new Date('2026-01-02T10:00:00Z') },
-    { demotedGenreName: 'Jan5', createdAt: new Date('2026-01-05T10:00:00Z') },
-    { demotedGenreName: 'Jan9', createdAt: new Date('2026-01-09T10:00:00Z') },
+    { demotedGenreName: 'Jan2', createdAt: at(12) },
+    { demotedGenreName: 'Jan5', createdAt: at(9) },
+    { demotedGenreName: 'Jan9', createdAt: at(5) },
   ]);
 
   const res = await fetch(
-    `${baseUrl}/api/admin/genres/merge-audit-log?from=2026-01-03&to=2026-01-09`,
+    `${baseUrl}/api/admin/genres/merge-audit-log?from=${at(11).toISOString().slice(0,10)}&to=${at(5).toISOString().slice(0,10)}`,
   );
   const body = (await res.json()) as {
     total: number;
@@ -642,4 +460,24 @@ test('GET merge-audit-log filters by from/to date range (inclusive)', async () =
     body.entries.map((e) => e.demotedGenreName).sort(),
     ['Jan5', 'Jan9'],
   );
+});
+
+test('mandatory PostgreSQL audit failure rolls back retagging, survivor count and demoted deletion',async()=>{
+  genres.push({_id:'winner',name:'Rock',slug:'rock',stationCount:10},{_id:'demoted',name:'Rock Music',slug:'rock-music',cleanupDemotion:{reason:'collision',collisionWinnerId:'winner'}});
+  stations.push({_id:'s',slug:'s',genre:'Rock Music',tags:'Rock Music,indie'});
+  nativeFixture.setAuditFailure(true);
+  const response=await fetch(`${baseUrl}/api/admin/genres/demoted/merge-into-winner`,{method:'POST'});
+  assert.equal(response.status,500);assert.equal(genres.length,2);assert.equal(genres.find(g=>g._id==='winner')?.stationCount,10);
+  assert.equal(stations[0].genre,'Rock Music');assert.equal(stations[0].tags,'Rock Music,indie');assert.equal(auditRows.length,0);
+  assert.ok(nativeFixture.statements.some(s=>s.sql==='ROLLBACK'));assert.equal(nativeFixture.statements.some(s=>s.sql==='COMMIT'),false);
+});
+
+test('native audit list excludes expired records and treats punctuation as literal bound search input',async()=>{
+  seedAuditRows([{demotedGenreName:'Rock (alt)',actorEmail:'[admin]+one@example.com'},{demotedGenreName:'Rock alternative',actorEmail:'other@example.com'},
+    {demotedGenreName:'Expired',createdAt:new Date(Date.now()-181*86400000)}]);
+  const all=await(await fetch(`${baseUrl}/api/admin/genres/merge-audit-log`)).json() as any;assert.equal(all.total,2);
+  const search='[admin]+';const response=await fetch(`${baseUrl}/api/admin/genres/merge-audit-log?actorEmail=${encodeURIComponent(search)}`);
+  const body=await response.json() as any;assert.equal(body.total,1);assert.equal(body.entries[0].demotedGenreName,'Rock (alt)');
+  assert.ok(nativeFixture.statements.some(s=>s.sql.startsWith('SELECT * FROM genre_merge_audit_logs')&&s.values[1]===search));
+  assert.ok(nativeFixture.statements.every(s=>!s.sql.includes(search)));
 });

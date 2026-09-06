@@ -1,22 +1,14 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
-import { Translation, Station, Genre, SeoMetadata, ISeoMetadata } from '@workspace/db-shared/mongo-schemas';
+import { pgSeoCatalog } from './data/postgres-seo-read-store';
+import { pgStoredGenreBySlug } from './data/postgres-taxonomy-store';
+import { pgSeoMetadata } from './data/postgres-content-store';
+import { pgLocalization } from './data/postgres-localization-store';
 import { PrecomputedGenresService } from './services/precomputed-genres';
 import { AZ_INDEX_KEYS, azDisplayLabel, azSlugBounds, matchAzIndexPath } from './seo/az-station-index';
 
-// Lean document shapes returned by Mongoose `.lean()` for the queries in this
-// module. Mongoose 8's typings hand `.lean()` results back as `unknown` once
-// they are wrapped in a generic helper like `withSignal<T>` (T is inferred as
-// `unknown` from the `query: any` parameter), which spammed TS18046 errors
-// across the file. Defining the small subset of fields we actually read keeps
-// type-checking honest without re-typing the entire schema.
-interface LeanTranslationDoc {
-  language: string;
-  value: string;
-  keyId?: { key?: string } | null;
-}
-
+// The renderer only needs this small subset of the normalized catalog shape.
 interface LeanStationCard {
-  _id: unknown;
+  _id?: unknown;
   name?: string;
   slug?: string;
   favicon?: string;
@@ -35,7 +27,7 @@ interface LeanStationCard {
   noIndex?: boolean;
 }
 
-type LeanSeoMetadataDoc = Omit<ISeoMetadata, keyof import('mongoose').Document>;
+type LeanSeoMetadataDoc = Record<string, any>;
 import { performanceCache } from './performance-cache';
 import { logger } from './utils/logger';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
@@ -125,12 +117,13 @@ let eventLoopLagMs = 0;
 // allowing normal SSR work to complete.
 const EVENT_LOOP_LAG_THRESHOLD_MS = 800;
 
-setInterval(() => {
+const eventLoopLagTimer = setInterval(() => {
   const start = Date.now();
   setImmediate(() => {
     eventLoopLagMs = Date.now() - start;
   });
 }, 2000);
+eventLoopLagTimer.unref();
 
 export function getSeoRenderStats() {
   return { active: seoRenderActive, rejected: seoRenderRejected, eventLoopLag: eventLoopLagMs };
@@ -148,25 +141,20 @@ export function getSeoRenderStats() {
 // proper <h1>/<h2> and an indexable body.
 const DB_QUERY_TIMEOUT_MS = 4_000;
 
-function withSignal<T>(query: any, signal?: AbortSignal): Promise<T> {
-  if (signal?.aborted) return Promise.reject(new DOMException('Aborted', 'AbortError'));
-  if (!signal) return query;
-  
-  query.setOptions({ maxTimeMS: DB_QUERY_TIMEOUT_MS });
-  
-  return new Promise<T>((resolve, reject) => {
+function withSignal<T>(query: PromiseLike<T>, signal?: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve,reject) => {
     let settled = false;
-    const onAbort = () => {
-      if (!settled) {
-        settled = true;
-        reject(new DOMException('Aborted', 'AbortError'));
-      }
+    const finish = (error?: unknown,value?: T) => {
+      if(settled)return;
+      settled=true;clearTimeout(timer);signal?.removeEventListener('abort',onAbort);
+      error ? reject(error) : resolve(value as T);
     };
-    signal.addEventListener('abort', onAbort, { once: true });
-    (query as Promise<T>).then(
-      (val) => { if (!settled) { settled = true; signal.removeEventListener('abort', onAbort); resolve(val); } },
-      (err) => { if (!settled) { settled = true; signal.removeEventListener('abort', onAbort); reject(err); } }
-    );
+    const onAbort = () => finish(new DOMException('Aborted','AbortError'));
+    const timer=setTimeout(()=>finish(new Error('SEO database read budget exceeded')),DB_QUERY_TIMEOUT_MS);
+    timer.unref();
+    signal?.addEventListener('abort',onAbort,{once:true});
+    Promise.resolve(query).then(value=>finish(undefined,value),error=>finish(error));
+    if(signal?.aborted)onAbort();
   });
 }
 
@@ -205,17 +193,9 @@ export class SeoRenderer {
     }
     
     try {
-      const translations = await withSignal<LeanTranslationDoc[]>(
-        Translation.find({ language }).populate('keyId').lean(),
-        signal,
-      );
-      const translationMap: Record<string, string> = {};
-
-      translations.forEach((t) => {
-        if (t.keyId?.key && t.value) {
-          translationMap[t.keyId.key] = t.value;
-        }
-      });
+      signal?.throwIfAborted();
+      const translationMap = await pgLocalization().getTranslations(language);
+      signal?.throwIfAborted();
       
       // Cache for future requests
       performanceCache.setTranslations(language, translationMap);
@@ -224,7 +204,7 @@ export class SeoRenderer {
     } catch (error: any) {
       if (error?.name === 'AbortError' || signal?.aborted) throw error;
       console.error(`❌ Failed to fetch translations for ${language}:`, error);
-      return {};
+      throw error;
     }
   }
   
@@ -235,12 +215,9 @@ export class SeoRenderer {
   async getCustomSeoMetadata(pageType: string, routeKey: string, language: string, signal?: AbortSignal): Promise<any | null> {
     try {
       const metadata = await withSignal<LeanSeoMetadataDoc | null>(
-        SeoMetadata.findOne({
-          pageType: pageType as ISeoMetadata['pageType'],
-          routeKey: routeKey || '',
-          language,
-          status: 'published',
-        }).lean(),
+        pgSeoMetadata({
+          pageType,routeKey: routeKey || '',language,status:'published',
+        }),
         signal,
       );
       
@@ -457,14 +434,14 @@ export class SeoRenderer {
       const stationSlug = stationCheck.stationSlug;
       if (stationSlug) {
         try {
-          stationData = await withSignal(Station.findOne({ slug: stationSlug }).lean(), signal);
+          stationData = await withSignal(pgSeoCatalog().findOne({ slug: stationSlug }), signal);
 
           // Fall back to slug aliases (old slugs from before transliteration fix).
           // When matched, signal a 301 redirect to the canonical URL so search
           // engines consolidate ranking on the new slug instead of indexing both.
           if (!stationData) {
             const aliasMatch: any = await withSignal(
-              Station.findOne({ slugAliases: stationSlug }).lean(),
+              pgSeoCatalog().findOne({ slugAliases: stationSlug }),
               signal,
             );
             if (aliasMatch && aliasMatch.slug && aliasMatch.slug !== stationSlug) {
@@ -531,7 +508,7 @@ export class SeoRenderer {
           }
 
           if (!stationData && stationSlug.match(/^[0-9a-fA-F]{24}$/)) {
-            stationData = await withSignal(Station.findById(stationSlug).lean(), signal);
+            stationData = await withSignal(pgSeoCatalog().findById(stationSlug), signal);
           }
 
           // Frequency-format duplicate canonicalization (2026-06-18): if the
@@ -681,7 +658,7 @@ export class SeoRenderer {
           // never disagree.
           try {
             const genreDoc = await withSignal<{ stationCount?: number } | null>(
-              Genre.findOne({ slug: canonicalSlug }).select('stationCount').lean(),
+              pgStoredGenreBySlug(canonicalSlug),
               signal,
             );
             if (genreDoc && typeof genreDoc.stationCount === 'number') {
@@ -705,16 +682,12 @@ export class SeoRenderer {
           // Escape regex meta-chars (replit.md SSRF/NoSQL rule)
           const escapedTerm = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
           const topStations = await withSignal<LeanStationCard[]>(
-            Station.find({
+            pgSeoCatalog().find({
               tags: { $regex: escapedTerm },
               slug: { $exists: true, $ne: '' },
               noIndex: { $ne: true },
               votes: { $gt: 0 },
-            })
-              .sort({ votes: -1 })
-              .limit(24)
-              .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
-              .lean(),
+            }, { sort: { votes: -1 }, limit: 24 }),
             signal
           );
           // DALGA 2 W2.REVIEW P2: Apply junk-station gate per replit.md INDEXABILITY-GATE rule.
@@ -826,20 +799,13 @@ export class SeoRenderer {
         const azData = await CacheManager.getOrSetSingleFlight(
           `az-index:${azLetter}:${page}`,
           async () => {
-            const docs = await Station.find(
-              { slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } },
-              { slug: 1, name: 1, country: 1, votes: 1, favicon: 1, logo: 1, logoAssets: 1, hasLogo: 1, tags: 1, noIndex: 1 },
-            )
-              .sort({ slug: 1 })
-              .skip((page - 1) * PAGE_SIZE)
-              .limit(PAGE_SIZE)
-              .maxTimeMS(8000)
-              .lean();
+            const docs = await pgSeoCatalog().find(
+              { slug: { $gte: gte, $lt: lt }, lastCheckOk: true, noIndex: { $ne: true } }, { sort: { slug: 1 }, offset: (page - 1) * PAGE_SIZE, limit: PAGE_SIZE });
             // Range-only predicate → index-bounded count on {slug:1}. The
             // junk/noIndex fraction is not subtracted (that would force a
             // doc scan); totalPages is therefore a slight over-estimate,
             // clamped to 50 like the hub.
-            const total = await Station.countDocuments({ slug: { $gte: gte, $lt: lt } }).maxTimeMS(8000);
+            const total = await pgSeoCatalog().count({ slug: { $gte: gte, $lt: lt } });
             return { docs, total };
           },
           { ttl: 21600 },
@@ -976,16 +942,12 @@ export class SeoRenderer {
           try {
             const countryName = additionalData.regionName as string;
             const topStations = await withSignal<LeanStationCard[]>(
-              Station.find({
+              pgSeoCatalog().find({
                 country: countryName,
                 slug: { $exists: true, $ne: '' },
                 noIndex: { $ne: true },
                 votes: { $gt: 0 },
-              })
-                .sort({ votes: -1 })
-                .limit(24)
-                .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
-                .lean(),
+              }, { sort: { votes: -1 }, limit: 24 }),
               signal
             );
             // DALGA 2 W2.REVIEW P2: Junk gate via isJunkStation + noIndex (see W2.1 comment).
@@ -1147,15 +1109,11 @@ export class SeoRenderer {
       pageType = 'home';
       try {
         const popularStations = await withSignal<LeanStationCard[]>(
-          Station.find({
+          pgSeoCatalog().find({
             votes: { $gt: 0 },
             slug: { $exists: true, $ne: '' },
             noIndex: { $ne: true },
-          })
-            .sort({ votes: -1 })
-            .limit(24)
-            .select('name slug favicon logoAssets country countryCode tags votes descriptions url homepage bitrate lastCheckOk lastCheckOkTime lastCheckTime')
-            .lean(),
+          }, { sort: { votes: -1 }, limit: 24 }),
           signal
         );
         // Apply the junk-station gate (same as genre/region SSR surfaces) so the
@@ -1446,22 +1404,14 @@ export class SeoRenderer {
         // pseudo-family of thousands of unrelated "Radio X" stations.
         const sameCountryQ: Promise<any[]> = country
           ? withSignal<any[]>(
-              Station.find({ ...baseFilter, country })
-                .sort({ votes: -1 })
-                .limit(8)
-                .select(projection)
-                .lean(),
+              pgSeoCatalog().find({ ...baseFilter, country }, { sort: { votes: -1 }, limit: 8 }),
               signal,
             ).catch(() => [])
           : Promise.resolve([]);
         const sameGenreQ: Promise<any[]> = Promise.resolve([]);
         const sameCityQ: Promise<any[]> = stateName
           ? withSignal<any[]>(
-              Station.find({ ...baseFilter, state: stateName })
-                .sort({ votes: -1 })
-                .limit(6)
-                .select(projection)
-                .lean(),
+              pgSeoCatalog().find({ ...baseFilter, state: stateName }, { sort: { votes: -1 }, limit: 6 }),
               signal,
             ).catch(() => [])
           : Promise.resolve([]);
@@ -1483,14 +1433,10 @@ export class SeoRenderer {
         })();
         const samePublisherQ: Promise<any[]> = brandToken
           ? withSignal<any[]>(
-              Station.find({
+              pgSeoCatalog().find({
                 ...baseFilter,
                 name: { $regex: `^${brandToken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}` },
-              })
-                .sort({ votes: -1 })
-                .limit(7)
-                .select(projection)
-                .lean(),
+              }, { sort: { votes: -1 }, limit: 7 }),
               signal,
             ).catch(() => [])
           : Promise.resolve([]);
@@ -3250,7 +3196,7 @@ export class SeoRenderer {
         "iOS", "Android", "Swift", "Kotlin", "TypeScript",
         "Cloud Architecture", "GDPR", "Radio Streaming",
         "SEO", "Mobile App Development", "Web Development",
-        "Node.js", "React", "MongoDB", "Docker"
+        "Node.js", "React", "PostgreSQL", "Docker"
       ],
       "knowsLanguage": ["de", "en", "tr"],
       "nationality": {

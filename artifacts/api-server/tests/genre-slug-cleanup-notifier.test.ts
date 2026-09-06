@@ -23,7 +23,7 @@
 import { test, mock, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import type { IGenreSlugCleanupRun } from '@workspace/db-shared/mongo-schemas';
+import type { GenreSlugCleanupRun as IGenreSlugCleanupRun } from '../src/data/postgres-genre-cleanup-store';
 
 // ---------------------------------------------------------------------------
 // Module mocks for the integration-style runOnce() test. Must be installed
@@ -73,10 +73,18 @@ const FakeGenreSlugCleanupRun = {
   },
 };
 
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    GenreSlugCleanupRun: FakeGenreSlugCleanupRun,
-  },
+mock.module('../src/data/postgres-genre-cleanup-store', {
+  namedExports: { pgGenreCleanup: () => ({
+    createRun: (trigger: string) => FakeGenreSlugCleanupRun.create({ trigger }),
+    saveRun: async () => {},
+    recoverInterruptedRuns: async () => {},
+    prune: async () => ({ removed: 0 }),
+  }) },
+});
+mock.module('../src/data/postgres-coverage-store', {
+  namedExports: { pgCoverage: () => ({
+    acquireJob: async () => ({ assertOwned() {}, release: async () => {} }),
+  }) },
 });
 
 // runGenreSlugCleanup is hot-swapped per test via this mutable reference.
@@ -370,7 +378,7 @@ test('runOnce() calls the notifier with reason="failed" when the cleanup throws'
   );
 
   cleanupImpl = async () => {
-    throw new Error('mongo down');
+    throw new Error('PostgreSQL down');
   };
 
   const calls: Array<{ reason: string; status: string; errorMessage?: string }> = [];
@@ -383,7 +391,7 @@ test('runOnce() calls the notifier with reason="failed" when the cleanup throws'
   assert.equal(calls.length, 1);
   assert.equal(calls[0].reason, 'failed');
   assert.equal(calls[0].status, 'failed');
-  assert.equal(calls[0].errorMessage, 'mongo down');
+  assert.equal(calls[0].errorMessage, 'PostgreSQL down');
 });
 
 test('runOnce() stays silent when the cleanup changes fewer rows than the threshold', async () => {

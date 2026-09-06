@@ -22,6 +22,7 @@
  */
 import { test, mock, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { genreAdminPgFixture } from './helpers/genre-admin-pg-fixture';
 import express, {
   type Express,
   type Request,
@@ -32,7 +33,7 @@ import type { AddressInfo } from 'node:net';
 import type { Server as HttpServer } from 'node:http';
 
 // ---------------------------------------------------------------------------
-// In-memory state used by the mocked Mongo models.
+// In-memory records behind the native PostgreSQL transport fixture.
 // ---------------------------------------------------------------------------
 
 interface FakeGenreRow {
@@ -61,115 +62,13 @@ let auditLogEntries: Array<Record<string, unknown>> = [];
 let precomputedRefreshCalls = 0;
 let sitemapRebuildCalls = 0;
 
-function fakeQuery<T>(value: T) {
-  const q: {
-    select: () => typeof q;
-    lean: <U = T>() => Promise<U>;
-    then: <R>(onFulfilled?: (v: T) => R) => Promise<R>;
-  } = {
-    select: () => q,
-    lean: async () => value as unknown as never,
-    then: (resolve) => Promise.resolve(value).then(resolve as (v: T) => unknown) as Promise<never>,
-  };
-  return q;
-}
-
-const FakeGenreModel = {
-  findById: (id: string) => {
-    const row = genres.find((g) => g._id === String(id)) ?? null;
-    return fakeQuery(row);
-  },
-  updateOne: async (
-    filter: { _id?: string },
-    update: { $set?: Partial<FakeGenreRow> },
-  ) => {
-    const row = genres.find((g) => g._id === String(filter._id));
-    if (row && update.$set) Object.assign(row, update.$set);
-    return { matchedCount: row ? 1 : 0, modifiedCount: row ? 1 : 0 };
-  },
-  deleteOne: async (filter: { _id?: string }) => {
-    const idx = genres.findIndex((g) => g._id === String(filter._id));
-    if (idx >= 0) genres.splice(idx, 1);
-    return { deletedCount: idx >= 0 ? 1 : 0 };
-  },
-};
-
-interface OrFilter {
-  $or: Array<
-    | { tags: { $regex: RegExp } }
-    | { genre: { $regex: RegExp } }
-  >;
-}
-
-function matchStationAgainstOr(st: FakeStationRow, filter: OrFilter): boolean {
-  return filter.$or.some((clause) => {
-    if ('tags' in clause) {
-      return typeof st.tags === 'string' && clause.tags.$regex.test(st.tags);
-    }
-    return typeof st.genre === 'string' && clause.genre.$regex.test(st.genre);
-  });
-}
-
-const FakeStationModel = {
-  find: (filter: OrFilter) => {
-    const matches = stations.filter((s) => matchStationAgainstOr(s, filter));
-    return fakeQuery(matches);
-  },
-  updateOne: async (
-    filter: { _id?: string },
-    update: { $set?: Partial<FakeStationRow> },
-  ) => {
-    const row = stations.find((s) => s._id === String(filter._id));
-    if (row && update.$set) Object.assign(row, update.$set);
-    return { matchedCount: row ? 1 : 0, modifiedCount: row ? 1 : 0 };
-  },
-  countDocuments: async (filter: OrFilter) => {
-    return stations.filter((s) => matchStationAgainstOr(s, filter)).length;
-  },
-};
-
-// ---------------------------------------------------------------------------
-// Module mocks — installed BEFORE the route module is imported.
-// ---------------------------------------------------------------------------
-
-mock.module('@workspace/db-shared/mongo-schemas', {
-  namedExports: {
-    Genre: FakeGenreModel,
-    Station: FakeStationModel,
-    // The route module destructures a number of other models at the top of
-    // the file. They go unused for these tests — exporting empty stubs
-    // keeps the destructure from blowing up at import time.
-    TranslationKey: {},
-    Translation: {},
-    TranslationLanguage: {},
-    User: {},
-    Language: {},
-    UserFavorite: {},
-    UserNotification: {},
-    UserFollow: {},
-    AuthToken: {},
-    StationRating: {},
-    SyncLog: {},
-    BlacklistedStation: {},
-    GenreMergeAuditLog: {
-      create: async (entry: Record<string, unknown>) => {
-        auditLogEntries.push(entry);
-        return entry;
-      },
-      estimatedDocumentCount: async () => auditLogEntries.length,
-      find: () => ({
-        sort: () => ({
-          limit: () => ({
-            lean: async () => [],
-          }),
-        }),
-      }),
-      deleteMany: async () => ({ deletedCount: 0 }),
-    },
-    SAFE_GENRE_SLUG_RE: /^[a-z0-9]+(?:-[a-z0-9]+)*$/,
-    normalizeGenreSlug: (s: string) => String(s ?? '').toLowerCase(),
-  },
-});
+const nativeFixture=genreAdminPgFixture({genres:()=>genres,stations:()=>stations,audits:()=>auditLogEntries});
+mock.module('../src/postgres-runtime',{namedExports:{getPostgresPool: () => nativeFixture.pool, getPostgresCoordinationPool: () => nativeFixture.pool,closePostgres:async()=>{}}});
+mock.module('../src/data/postgres-catalog-store',{namedExports:{
+  pgCatalog:()=>nativeFixture.catalog,pgSyncLogs:async()=>[],PostgresCatalogStore:class {},
+}});
+// The real native genre-admin store executes its merge transaction against the
+// fixture transport; no Mongoose models or fake merge business logic are used.
 
 mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
   namedExports: {

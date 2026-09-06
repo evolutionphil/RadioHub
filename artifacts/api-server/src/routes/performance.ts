@@ -211,7 +211,7 @@ router.post('/optimize', async (req: Request, res: Response) => {
 router.get('/jobs/:jobId', async (req: Request, res: Response) => {
   try {
     const { jobId } = req.params;
-    const job = performanceService.getOptimizationJob(jobId as string);
+    const job = await performanceService.getOptimizationJob(jobId as string);
 
     if (!job) {
       return void res.status(404).json({ 

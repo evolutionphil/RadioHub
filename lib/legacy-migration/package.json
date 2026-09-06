@@ -1,0 +1,29 @@
+{
+  "name": "@workspace/legacy-migration",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Offline-only MongoDB import and archived legacy regression tooling. Never a production application dependency.",
+  "exports": {
+    "./migrate-mongo-to-postgres": "./src/migrate-mongo-to-postgres.ts",
+    "./legacy-document-codec": "./src/legacy-document-codec.ts",
+    "./mongo-schemas": "./src/mongo-schemas.ts",
+    "./postgres-station-sync": "./src/postgres-station-sync.ts",
+    "./station-change-stream-cdc": "./src/station-change-stream-cdc.ts"
+  },
+  "scripts": {
+    "migrate": "tsx src/migrate-mongo-to-postgres.ts",
+    "verify": "tsx src/migrate-mongo-to-postgres.ts --phase=verify",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "mongodb": "7.2.0",
+    "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@types/pg": "^8.18.0",
+    "mongoose": "^9.6.1",
+    "tsx": "catalog:"
+  }
+}
