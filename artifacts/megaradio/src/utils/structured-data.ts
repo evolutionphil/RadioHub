@@ -62,10 +62,6 @@ export interface RadioStationData {
       addressCountry: string;
     };
   };
-  broadcastAffiliateOf?: {
-    "@type": "Organization";
-    name: string;
-  };
   areaServed?: {
     "@type": "Country";
     name: string;
@@ -176,10 +172,6 @@ export const generateRadioStationData = (station: Station, currentUrl: string): 
       ...(station.country && {
         address: { "@type": "PostalAddress" as const, addressCountry: station.country }
       })
-    },
-    broadcastAffiliateOf: {
-      "@type": "Organization",
-      name: "Mega Radio"
     },
     ...(station.country && {
       areaServed: { "@type": "Country" as const, name: station.country }

@@ -35,19 +35,6 @@ export function generateOrganizationSchema(
   // Build localized URL with language prefix
   const localizedUrl = language === 'en' ? `https://${domain}` : `https://${domain}/${language}`;
   
-  // D-A3 FIX (2026-05-08): expose social profiles via sameAs so Google
-  // can link the Knowledge Graph entity to our verified accounts.
-  // Empty strings are filtered out so unset accounts don't ship as
-  // dead links. Override per-deploy via env vars at the call site if
-  // these handles change.
-  const sameAs = [
-    'https://www.facebook.com/megaradio',
-    'https://twitter.com/megaradio',
-    'https://www.instagram.com/megaradio',
-    'https://www.youtube.com/@megaradio',
-    'https://www.linkedin.com/company/megaradio',
-  ].filter(Boolean);
-
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -62,10 +49,7 @@ export function generateOrganizationSchema(
       "width": 212,
       "height": 212
     },
-    // 2026-05-12 SEO audit: Organization needs a real PostalAddress so
-    // Google's Knowledge Graph + Semrush LocalBusiness validator stop
-    // flagging "missing address". Mega Radio HQ is Bäckerstraße 7,
-    // Vienna 1010, Austria.
+    // Organization address is optional, unlike some LocalBusiness fields.
     "address": {
       "@type": "PostalAddress",
       "streetAddress": "Bäckerstraße 7",
@@ -78,7 +62,6 @@ export function generateOrganizationSchema(
       "contactType": "Customer Service",
       "availableLanguage": availableLanguages
     },
-    "sameAs": sameAs,
   };
 }
 
@@ -179,11 +162,6 @@ export function generateRadioStationSchema(
     "url": stationUrl,
     "image": station.favicon || `https://${domain}/images/no-image.webp`,
     "broadcaster": broadcaster,
-    "broadcastAffiliateOf": {
-      "@type": "Organization",
-      "@id": `https://${domain}/#organization`,
-      "name": "Mega Radio"
-    },
     "category": keywords,
     "inLanguage": language, // BCP-47 page language (en, tr, …)
     "potentialAction": {

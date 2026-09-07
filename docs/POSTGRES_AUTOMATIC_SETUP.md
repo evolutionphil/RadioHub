@@ -36,17 +36,32 @@ worker, cron ve WebSocket yazıcıları durdurulmalıdır**. Rolling deploy bunu
 garanti etmez: yeni sürüm hazır olana kadar eski sürüm yazmaya devam edebilir.
 Bu script başka servisleri kapatmaz, yedek aldığını varsaymaz, MongoDB'yi kilitlemez
 ve kaynak veriyi silmez. Onay değişkenleri bu işlemlerin yerine geçmez.
+Uygulama yazıcılarını durdurmak MongoDB'nin TTL silmelerini durdurmaz; kaynak
+dondurma koşulları aşağıdaki TTL kontrol listesiyle birlikte sağlanmalıdır.
 
-Yeni bir geçici servis, aynı GitHub deposunu ve depo kökünü kullanır. Yalnız bu
-servisin Railway Config File yolu `/railway.migration.json` olmalıdır. Bu ayar
-`Dockerfile.migration` imajını ve otomatik başlangıç komutunu seçer. Public domain,
-HTTP healthcheck veya cron gerekmez. Başarılı süreç `0` ile çıkar; sürekli yeniden
-başlatan `Always` politikasını kullanmayın.
+Yeni bir geçici servis, aynı GitHub deposunu ve depo kökünü kullanır. **Yeni
+servislerde Dashboard ayarlarını açıkça yapılandırın:** build türü Dockerfile,
+dosya `Dockerfile.migration`, başlangıç Docker CMD'si (`node dist/bootstrap.mjs`),
+HTTP healthcheck kapalı, restart politikası `ON_FAILURE` ve en fazla **3** yeniden
+deneme. Public domain veya cron gerekmez. Başarılı süreç `0` ile çıkar; sürekli
+yeniden başlatan `Always` politikasını kullanmayın.
 
-Railway mevcut serviste config-as-code kullanmıyorsa yalnız JSON dosyası eklemek
-ayarları etkinleştirmez. Dashboard'da aynı Dockerfile, başlangıç komutu ve HTTP
-healthcheck kapalı ayarları kullanılmalıdır. Çalışan aktarım servisini sırf bu
-başlangıç iyileştirmesi için yeniden deploy etmeyin.
+**Railway yapılandırma değişikliği (2026-09-07 kontrolü):** Config as Code artık
+deprecated durumdadır. Dashboard uyarısına göre 2026-08-28'den itibaren bu özelliği
+daha önce kullanmamış servisler yeni katılım yapamaz. Mevcut legacy
+`railway.json` / `railway.toml` kullanımları ise 2026-12-01'e kadar desteklenir.
+[Resmî Config as Code belgesi](https://docs.railway.com/config-as-code) yeni
+servislerin katılamadığını ve bu son tarihi doğrular. Depodaki
+`railway.migration.json` yalnız desteklenen mevcut kullanımlar için referanstır;
+dosyayı eklemek veya push etmek yeni servisin Dashboard ayarlarını değiştirmez.
+
+Deployment detayında gerçekten kullanılan Dockerfile, başlangıç komutu,
+healthcheck ve restart değerlerini kontrol edin; yalnız dosyanın varlığına
+güvenmeyin. Legacy dosya gerçekten etkinse Dashboard değerlerini geçersiz
+kılabilir. Railway'in yerine önerdiği
+[Infrastructure as Code](https://docs.railway.com/infrastructure-as-code)
+proje kapsamlıdır; bu ilk aktarım runbook'u bütün projeyi otomatik IaC'ye taşımaz.
+Çalışan aktarım servisini sırf başlangıç iyileştirmesi için yeniden deploy etmeyin.
 
 | Servis | Değişken / ayar |
 | --- | --- |
@@ -81,6 +96,58 @@ aktarımın bitmesini bekleyin veya yalnız API/web'i hedefleyen dağıtım kull
 Railway'de bakım sunucusu `Active` görünse bile bu veri aktarımının tamamlandığını
 göstermez; gerçek hazır olma ölçütü uygulama `/readyz` yanıtıdır.
 
+## Kaynağı gerçekten dondurma: TTL kontrolü ve güvenli kurtarma
+
+MongoDB TTL temizliği `mongod` içindeki arka plan işlemiyle yürür. API, web,
+worker ve cron kapalıyken de süresi dolan kayıtlar silinebilir. Kaynak bağlantı
+hesabını salt okunur yapmak veya `MIGRATION_SOURCE_WRITERS_STOPPED=true` vermek
+bu işlemi durdurmaz. Time-series koleksiyonlarında koleksiyon düzeyindeki
+saklama süresi de ayrıca incelenmelidir. Bu davranış MongoDB'nin
+[TTL belgelerinde](https://www.mongodb.com/docs/manual/core/index-ttl/) açıklanır.
+
+İlk aktarım veya kaynak değiştikten sonra yeni aktarım için kontrol listesi:
+
+1. Bütün kaynak koleksiyonlarında TTL indekslerini ve time-series saklama
+   ayarlarını salt okunur envanterleyin. İndeks tanımlarını, `expireAfterSeconds`,
+   varsa kısmi filtreleri ve koleksiyon seçeneklerini **özgün değerleriyle**
+   bağımsız olarak yedekleyin. Sadece uygulama şema dosyasına bakmak, canlı
+   indekslerin aynı olduğunu kanıtlamaz.
+2. İlgili tarih alanlarının türlerini, eksik/geçersiz değerlerini, en eski/yeni
+   tarihlerini ve UTC zamanını doğrulayın. Ancak bundan sonra, gerekiyorsa,
+   aktarım ve doğrulamaya yetecek **sınırlı ve geri alınabilir** bir saklama
+   düzenlemesi planlayın. Her değişiklik için kapsam, son zaman sınırı ve özgün
+   ayara dönüş planı bulunmalıdır. Körlemesine uzun bir TTL değeri atamayın,
+   indeksleri silmeyin veya kayıtların tarih/sona erme alanlarını değiştirmeyin.
+   Uygun sınırlı dondurma sağlanamıyorsa değişmez, izole bir kaynak anlık
+   görüntüsü kullanın. Bu belge herhangi bir canlı TTL değişikliğini otomatik
+   olarak yapmaz veya onaylamaz.
+3. Tüm eski uygulama yazıcılarını ve hedef yazıcılarını durdurun; rolling deploy,
+   zamanlanmış işler ve başka replikaların yazmaya devam etmediğini doğrulayın.
+   Dondurulmuş kaynağın ve mevcut PostgreSQL'in bağımsız yedeklerini alın.
+   Yedeklerin yalnız oluştuğunu veya listeye açıldığını kontrol etmek yetmez:
+   izole ortama gerçekten geri yükleyin; bütün tablo/koleksiyon sayılarını,
+   kimlikleri, JSON/BSON checksum'larını ve ilişkileri doğrulayın. Kaynak aktarım
+   boyunca aynı kalmalı; kısa süreli eşit sayımlar tek başına bunu garanti etmez.
+4. Önceki aktarımda kaynak sayısı/içeriği zaten değişmişse eski PostgreSQL'i,
+   `legacy_documents` kayıtlarını, kontrol noktalarını ve yedeklerini koruyun.
+   Doğrulanmış sabit kaynaktan **yeni, boş ve izole bir PostgreSQL veritabanına**
+   aktarın; mevcut veritabanını/şemayı sıfırlamayın. Aynı şemada yazma yetkisini
+   veya çalışma işaretlerini silerek yeniden başlatmayın. Sayıları eşitlemek için
+   `MIGRATION_PRUNE` açmayın; süresi dolmuş token, oturum veya geçici kayıtları
+   canlı MongoDB'ye geri yüklemeyin ve sürelerini yenilemeyin. Eski arşivde kalan
+   kayıtlarla güncel kaynak arasındaki farkı açıklamadan kayıpsızlık iddia etmeyin.
+5. Yeni hedefte tüm kopyalama, normalizasyon ve doğrulama adımları başarıyla
+   bitmeden uygulama bağlantılarını değiştirmeyin. Kalıcı çalışma/kontrol noktası
+   başarısı, kaynak-hedef karşılaştırması ve gerçek uygulamanın `/readyz` yanıtını
+   birlikte kontrol edin. Varsa geçici saklama ayarlarını özgün değerlerine
+   döndürmek ayrı, kontrollü bir adımdır; yeniden etkinleşen silmelerin etkisini
+   değerlendirin ve yedekleri koruyun.
+
+**Başarılı yedek veya geri yükleme, tamamlanmış veri aktarımı değildir.** Örneğin
+`legacy_documents` içeriğinin doğrulanması o arşivin sağlamlığını gösterir;
+`stations`, `users` ve diğer uygulama tablolarının dolduğunu, güncel MongoDB'nin
+tamamının taşındığını veya production'ın hazır olduğunu tek başına göstermez.
+
 ## Hata / yeniden deneme
 
 - Yarım aktarım nedeniyle başlangıç durursa initializer, mevcut PostgreSQL
@@ -112,11 +179,22 @@ göstermez; gerçek hazır olma ölçütü uygulama `/readyz` yanıtıdır.
   değişmiş kayıt, bilinen kaynak sayısındaki değişiklik ya da yeni hedef verisi
   varsa durur. Daha önce okunmamış kaynak kayıtlarının geçmiş hâli doğrulanamaz;
   kaynak yazıcıları kapalı tutma ve bağımsız yedek koşulları geçerliliğini korur.
+- `Initial capture resume refused source-count drift` bir koruma reddidir:
+  kaynağın eski kontrol noktasındaki sayısı değiştiği için yazmadan durur.
+  Yeni hata metni koleksiyon adı/kimlik/içerik yerine sıralı koleksiyon
+  numarasını (`collection <sıra>/<toplam>`), `recorded` ve `current` sayılarını,
+  `change=growth` (artış) veya `change=shrink` (azalış) bilgisini gösterir.
+  Bu çıktı nedeni tek başına kanıtlamaz; uygulama yazıları, TTL envanteri ve
+  kaynak kimliği ayrıca incelenir. Aynı koşullarda sürekli yeniden başlatmak
+  hatayı gidermez. Kontrol noktasındaki sayıyı değiştirmeyin, checksum/kimlik
+  korumalarını atlamayın; yukarıdaki dondurma ve yeni hedef kurtarma akışını
+  uygulayın.
 - Doğrulama geçerse aynı çalışma baştan okunur: mevcut kayıtlar yeniden yazılmaz,
   yalnız eksikler eklenir. Kayıtlar ve checkpoint aynı transaction içinde yazılır.
   `[resume:validation]`, `[mirror:progress]` ve aşama logları ilerlemeyi gösterir.
   İşlem tamamlanana kadar yeni deployment başlatmayın; aktarım servisinin HTTP
-  healthcheck'i kapalı ve config dosyası `/railway.migration.json` olmalıdır.
+  healthcheck'i kapalı, etkin Dockerfile/başlangıç/restart ayarları yukarıdaki
+  Dashboard kontrol listesiyle uyumlu olmalıdır.
 - Diğer yarım aktarımlar veya önceden var olan satırlar otomatik silinmez. Böyle
   bir durumda güvenli yeniden uzlaştırma runbook'u gerekir. `MIGRATION_PRUNE`
   normal ilk kurulumda veya silmesiz devamda açılmaz; yalnız durdurulmuş

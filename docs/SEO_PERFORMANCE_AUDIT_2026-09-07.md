@@ -8,7 +8,8 @@ istasyon ve liste sayfaları; tasarım ve işlevler korunarak kod düzeltmeleri.
 - Search Console, kullanıcının oturum açtığı tarayıcıdan salt okunur incelendi.
 - Kullanıcı production'ın PostgreSQL taşıması nedeniyle kapalı olduğunu
   doğruladı. Bu sıradaki 502 yanıtları yeni bir SEO kod hatası olarak
-  sınıflandırılmadı. Taşıma, production verileri ve deployment değiştirilmedi.
+  sınıflandırılmadı. Daha sonra taşımanın yeniden başlatma sorunu da incelendi;
+  aşağıdaki durum kaydı, aktarımın veya deployment'ın tamamlandığı anlamına gelmez.
 - Search Console sayfa raporu **4.09.2026** güncellemesini gösteriyor.
   Örneklerin son taramaları Ekim 2025–Eylül 2026 arasında değişiyor;
   eski kayıtlar mevcut kodun aynı hatayı hâlâ ürettiğini tek başına kanıtlamaz.
@@ -128,7 +129,7 @@ yönlendirmek veya noindex kurallarını topluca kaldırmak doğru değildir.
 
 ## Öncelikli kod bulguları
 
-Aşağıdaki 11 başlığın kod düzeltmeleri uygulandı; üretimde yeniden tarama
+Aşağıdaki 13 başlığın kod düzeltmeleri uygulandı; üretimde yeniden tarama
 ve gerçek içerik doğrulaması aşağıdaki açık kontrollerde ayrı tutuldu.
 
 1. **P0 — Geçici veri hatasının kalıcı sayfa kaldırma sinyaline dönüşmesi.**
@@ -188,26 +189,67 @@ ve gerçek içerik doğrulaması aşağıdaki açık kontrollerde ayrı tutuldu.
     kullanım dışı `area` yerine mevcut `areaServed` korunuyor. Ücretsiz erişim
     bilgisi WebPage'e taşındı, Service için uygun olmayan `additionalProperty`
     kaldırıldı. Frekans değeri/birimi QuantitativeValue ile temsil ediliyor.
-    Yardımcı broadcaster Organization koordinatları Place.location altında.
+    Yardımcı broadcaster Organization koordinatları `location` içindeki Place'in
+    `geo` alanında.
     Kullanılmayan istemci yardımcıdaki tıklama/oy sayısından yıldız uydurma
     hesabı kaldırıldı; gerçek kullanıcı puanları ve görünür UI korunuyor.
+12. **P2 — Kanıtlanmamış schema kimlik ve yayın ağı ilişkileri.**
+    Sabit, sahipliği doğrulanmamış sosyal hesapların `sameAs` listesi ve
+    yeterli dayanağı olmayan görünmez Person bloğu kaldırıldı. Bu, kişinin
+    varlığına ilişkin olumsuz bir iddia değildir. Dizinde yer almak
+    yayın ağına bağlılık anlamına gelmediği için tüm istasyonlara otomatik
+    eklenen Mega Radio `broadcastAffiliateOf` ilişkisi SSR, ortak yardımcı
+    ve istemci üreticilerinden çıkarıldı; resmi ürün tanımı da kamusal
+    istasyonları dizinleme/orijinal yayına yönlendirmeyi anlatıyor.
+    [Vision GO ürün açıklaması](https://visiongo.at/projekte/megaradio.html),
+    [Schema.org ilişki tanımı](https://schema.org/broadcastAffiliateOf).
+    Vision GO adresindeki kapı bilgisi resmi künyedeki `Bäckerstraße 7/7`
+    ile eşitlendi. [Vision GO resmi künye](https://visiongo.at/impressum.html).
+    Mega Radio marka düğümündeki mevcut adres bu çalışmada bağımsız
+    doğrulanmadı ve değiştirilmedi. Görünür içerik,
+    gerçek puanlar, oynatıcı, tasarım ve UI sosyal bağlantıları değiştirilmedi.
+13. **P1 — Deployment sonrasında eski HTML / silinmiş bundle önbelleği.**
+    Başarılı SSR HIT/MISS, doğrudan HTML ve SPA fallback yanıtları artık
+    `public, no-cache, max-age=0, must-revalidate` kullanıyor. Böylece yeniden
+    kullanımdan önce tarayıcı ve CDN doğrulaması gerekiyor; ETag/304 desteği
+    ve sunucunun SEO önbelleği korunuyor. Mevcut hashed asset'lerin immutable
+    politikası değişmedi. Bulunamayan `/assets/*` istekleri artık SPA HTML'i
+    yerine düz metin **404/no-store/nosniff** dönüyor ve eski Expires başlığı
+    kaldırılıyor. Geçici 503/Retry-After ve daha katı no-store yanıtları
+    korunuyor. Bu bağımsız yayın güvenliği düzeltmesi, taşıma sırasındaki
+    mevcut 502'lerin nedeni olarak sunulmuyor.
 
 ## Doğrulama
 
-- API tam paket: **979 test başarılı, 0 başarısız, 0 atlanan**. Yerel ve
+- Son API tam paket: **998 test başarılı, 0 başarısız, 0 atlanan**. Yerel ve
   tek kullanımlık test PostgreSQL/Mongo fixture'ları; production bağlantısı yok.
   Mongo yalnızca eski verinin tek seferlik aktarım testinde kullanıldı;
   uygulamaya Mongo bağımlılığı eklenmedi.
-- Frontend tam paket: **130 test başarılı**, 13 dosya. Son eklenen alan
-  kapsamı testleri de dahil. React DOM testleri `NODE_ENV=test` ile çalıştırıldı.
+- Son frontend tam paket: **131 test başarılı**, 13 dosya. Son eklenen
+  schema kimlik/ilişki testleri de dahil. React DOM testleri `NODE_ENV=test`
+  ile çalıştırıldı.
+- HTML/asset önbellek regresyonları: **14 yeni test başarılı**. Geçici hata
+  ve production bağımlılık sınırı kontrolleriyle hedefli koşu **23/23** geçti;
+  bunlar tam paket sayısına ayrıca eklenen test toplamları değildir.
 - Ayrı PostgreSQL sitemap/diagnostics entegrasyonu: **11 başarılı**.
 - 14 dil canonical/hreflang/x-default kümesi: **11 başarılı**.
 - SSR/schema görünür içerik ve nesne/HTML eşitliği: **65 başarılı**.
 - Eski dil yönlendirme + mevcut A–Z yönlendirme kontrolleri: **41 başarılı**.
 - API ve frontend TypeScript kontrolleri başarılı; `git diff --check` temiz.
+- Son eklenen slim SEO endpoint sözleşmesiyle hedefli tekrar: **30 başarılı**;
+  yerelleştirilmiş şema bağlamı, slim global/page payload'ı, eski tam-preview
+  sözleşmesi ve hata sonrası toparlanma korundu.
+- Production frontend Vite derlemesi, API ve web esbuild derlemeleri
+  **bellekte (`write:false`) başarılı**. Frontend giriş paketi 480.985 bayt /
+  154.106 gzip bayt; bu canlı hız artışı ölçümü değildir. API 2.610, web
+  1.189 derleme girdisi; her iki dependency raporunda **MongoDB 0**.
+  Kurulu production bağımlılık grafiğinde **387 paket, MongoDB 0** doğrulandı.
+  API/web çalışma zamanı ile tek seferlik eski veri aktarım aracı ayrı kalıyor.
 - İlk paralel API koşusunda Node test-runner IPC serileştirme hatası görüldü;
   ilgili iki dosyanın tekil tekrarı geçti, ardından **bütün paket seri olarak
-  tekrar çalıştırıldı ve 979/979 geçti**. Bu hata production hatası sayılmadı.
+  tekrar çalıştırıldı ve 979/979 geçti**. Bu önceki ara doğrulamadır;
+  sonraki düzeltmelerle güncel tam paket sonucu yukarıdaki **998/998**'dir.
+  Test-runner hatası production hatası sayılmadı.
 
 Tekrarlanabilir temel komutlar (kurulu bağımlılıklarla):
 
@@ -226,10 +268,28 @@ node node_modules/typescript/bin/tsc -p artifacts/megaradio/tsconfig.json --noEm
 git diff --check
 ```
 
+## PostgreSQL taşıması — son gözlem, tamamlanma kaydı değil
+
+- Kaynak MongoDB son sayımında **100 collection / 940.071 doküman** vardı;
+  bunların **61.291'i istasyon** kaydıydı.
+- Hedef PostgreSQL son kontrolünde **407.791 legacy capture** bulunuyordu;
+  native `stations` ve `users` tabloları ile yazma yetkisi kayıtları
+  (`database_write_authority`) **0** idi. `legacy_documents` içindeki kayıtlar,
+  native tablolara dönüşümün ve uygulama açılışının tamamlandığını göstermez.
+- İncelenen yeniden başlatma akışında önce **SIGTERM ile kesilme**, sonraki
+  devam doğrulamasında ise TTL ile temizlenen kaynak kayıtlarının değişmesi
+  (**TTL drift**) görüldü. Bunlar ayrı aşamalardır; hepsi PostgreSQL'in
+  boş olması veya yeni bir SEO hatası olarak değerlendirilmedi.
+- Devam doğrulamasındaki hedefli kod düzeltmeleri test edildi. Bu sayımlar
+  yalnızca okuma anının fotoğrafıdır; aktarımın bittiği, bütün verilerin
+  doğrulandığı veya yeni bir veritabanı oluşturulduğu iddia edilmiyor.
+
 ## Açık kontroller / yayın sonrası
 
-- **Deploy yapılmadı.** Önceki taşıma/startup değişiklikleri korundu;
-  bu SEO çalışması Git commit/push, Railway restart veya veri değişikliği yapmadı.
+- **Son yayın ve production çalışma zamanı doğrulaması hâlâ bekliyor.**
+  Önceki SEO/taşıma düzeltmeleri mevcut `main` commit'i `b11a2ebf5` içinde;
+  bu rapor son eklenen düzeltmelerin push/deploy edildiğine veya Railway'de
+  doğrulandığına dair bir tamamlanma kaydı değildir.
 - Taşıma tamamlandıktan sonra native istasyonlar, sitemap manifestleri ve
   14 dilde `full`+`meta` çevirileri gerçek veriden kontrol edilmeli. 14 dil
   kodda korunuyor; eksik veya aynı dilde tekrar eden içerik otomatik olarak
@@ -240,20 +300,20 @@ git diff --check
 - Çalışan site üzerinde mobil+desktop PSI ve render edilmiş HTML/schema
   doğrulaması tekrarlanmalı. Tasarımsal ekran karşılaştırması ve gerçek
   oynatma/dil/gezinme smoke kontrolleri deployment sonrasında gerekli.
-- HTML CDN politikası hâlâ 24 saat + stale-while-revalidate. Kod yorumu her
-  deploy'da purge varsayıyor, repo içinde doğrulanmış purge otomasyonu yok.
-  Bu, gelecekte eski HTML/yeni asset uyuşmazlığı riski; mevcut planlı 502'nin
-  kanıtlanmış nedeni değil. Deploy sırasında HTML cache temizliği veya
-  eski hashed asset'lerin tutulması doğrulanmalı; cache politikası değiştirilmedi.
-- Schema'daki sabit sosyal hesaplar, adres/kurucu bilgileri ve her istasyona
-  verilen Mega Radio `broadcastAffiliateOf` ilişkisi gerçek içerikle
-  doğrulanmalı. Bu ilişki “dizinde listeleniyor” demek değildir; yayın ağını
-  ifade eder. Kanıt olmadan kimlik/ilişki bilgileri yeniden yazılmadı.
+- HTML önbellek politikası kodda düzeltildi; önceden 24 saatlik eski başlıklarla
+  CDN'e girmiş yanıtlar kendiliğinden geriye dönük değişmez. Sağlıklı deployment
+  sonrasında eski HTML'in süresi veya yalnızca ilgili HTML URL'lerinin hedefli
+  invalidasyonu kontrol edilmeli. Mevcut hashed asset'ler topluca silinmemeli.
+- Schema kimlik/ilişki düzeltmeleri kodda ve testlerde tamamlandı. Canlı
+  render edilen JSON-LD'nin aynı sonucu verdiği ayrıca doğrulanmalı; kaydı
+  kaldırılan hesapların gerçekte hiçbir zaman kuruma ait olmadığı gibi daha
+  geniş bir iddia yapılmıyor. Mega Radio marka adresinin bağımsız teyidi de
+  açık kalıyor; doğrulanan resmi adres Vision GO şirketine aittir.
 - Tüm Search Console URL'lerini indeksletmek veya her hata kategorisini
   sıfırlamak başarı ölçütü değildir. Önemli, özgün, erişilebilir canonical
   sayfaların indekslenmesi ve sağlıklı kullanıcı deneyimi hedeflenir.
 
-## Google kaynakları
+## Birincil kaynaklar
 
 - [İndeksleme raporunun yorumlanması](https://support.google.com/webmasters/answer/7440203)
 - [HTTP durumlarının tarama/indekslemeye etkisi](https://developers.google.com/crawling/docs/troubleshooting/http-status-codes)
@@ -265,3 +325,6 @@ git diff --check
 - [Ücretsiz erişim alanı](https://schema.org/isAccessibleForFree)
 - [Yayın ağı ilişkisi](https://schema.org/broadcastAffiliateOf)
 - [Yapılandırılmış veri doğruluk kuralları](https://developers.google.com/search/docs/appearance/structured-data/sd-policies)
+- [Organization: yalnızca ilgili ve doğru özellikler](https://developers.google.com/search/docs/appearance/structured-data/organization)
+- [Vision GO resmi şirket künyesi](https://visiongo.at/impressum.html)
+- [Vision GO MegaRadio ürün tanımı](https://visiongo.at/projekte/megaradio.html)

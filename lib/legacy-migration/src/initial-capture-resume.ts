@@ -134,7 +134,13 @@ export async function validateCapturedSource(client: Client, mongoDb: Db, runId:
     const checkpoint = await client.query<{ source_count: number }>("SELECT source_count FROM migration_checkpoints WHERE collection_name=$1", [name]);
     if (checkpoint.rows.length) {
       const currentCount = await mongoDb.collection(name).countDocuments({}, { signal: options.signal });
-      if (currentCount !== Number(checkpoint.rows[0].source_count)) throw new Error("Initial capture resume refused source-count drift");
+      const recordedCount = Number(checkpoint.rows[0].source_count);
+      if (currentCount !== recordedCount) {
+        // Keep this refusal diagnostic-only: disclose aggregate counts and the
+        // stable sorted ordinal, never source names, identifiers or payloads.
+        const change = currentCount > recordedCount ? "growth" : currentCount < recordedCount ? "shrink" : "invalid-count";
+        throw new Error(`Initial capture resume refused source-count drift (collection ${completedCollections + 1}/${collections.rows.length}; recorded=${recordedCount}; current=${currentCount}; change=${change})`);
+      }
     }
     const countCaptured = async () => {
       const count = await client.query<{ captured_count: string }>("SELECT count(*)::text AS captured_count FROM legacy_documents WHERE collection_name=$1", [name]);

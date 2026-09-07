@@ -241,6 +241,56 @@ test('shared schema builder replaces station entities with the current listing a
   assert.equal(hidden.page.some(schema => ['RadioBroadcastService', 'RadioStation', 'WebPage'].includes(schema['@type'])), false);
 });
 
+test('all 14 locales preserve station identity without fabricated network, profile, or person claims', async () => {
+  const { SITEMAP_PRIORITY_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+  const renderer = new SeoRenderer();
+  for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
+    const station = {
+      _id: 'independent-radio', slug: 'independent-radio', name: 'Independent Radio',
+      homepage: 'https://independent-radio.example/', country: 'Germany', countryCode: 'DE',
+      tags: 'news', descriptions: { [language]: { full: `${language}: Independent radio description` } },
+    };
+    for (const pageType of ['home', 'station']) {
+      const cleanPath = pageType === 'home' ? '/' : '/station/independent-radio';
+      const tags = { title: station.name, description: `${language}: Summary`, canonical: `${DOMAIN}/${language}${cleanPath}` };
+      const args = [tags, language, {}, cleanPath, pageType === 'station' ? station : undefined,
+        undefined, { pageType, popularStations: [station] }] as const;
+      const data = renderer.generateStructuredData(...args);
+      const html = renderer.generateHtmlHead(...args);
+      assert.equal(data.global.some(schema => schema['@type'] === 'Person'), false);
+      assert.deepEqual(extractSchemasOfType(html, 'Person'), []);
+      assert.equal(JSON.stringify(data).includes('broadcastAffiliateOf'), false, `${language}/${pageType}: directory is not a broadcast network`);
+      const brand = data.global.find(schema => schema['@id'] === `${DOMAIN}/#organization`);
+      assert.equal(brand?.name, 'Mega Radio');
+      assert.equal(brand?.sameAs, undefined, 'do not guess organization social profiles from its name');
+      const studio = data.global.find(schema => schema['@id'] === 'https://visiongo.at/#organization');
+      assert.equal(studio?.name, 'Vision GO');
+      assert.equal(studio?.address.streetAddress, 'Bäckerstraße 7/7');
+      if (pageType === 'station') {
+        const radio = data.page.find(schema => schema['@type'] === 'RadioBroadcastService');
+        assert.equal(radio?.sameAs, station.homepage, 'station-owned homepage must not be removed with guessed organization profiles');
+        assert.equal(radio?.broadcaster.name, station.name);
+        assert.equal(radio?.description, `${language}: Independent radio description`);
+        const webPage = data.page.find(schema => schema['@type'] === 'WebPage');
+        assert.equal(webPage?.mainEntity['@id'], radio['@id']);
+        assert.equal(data.global.find(schema => schema['@type'] === 'WebSite')?.['@id'], `${DOMAIN}/#website`);
+      }
+    }
+  }
+});
+
+test('schema builders cannot silently reintroduce directory-as-network affiliation', () => {
+  for (const path of [
+    '../src/seo-renderer.ts',
+    '../../../lib/seo-shared/src/structured-data.ts',
+    '../../megaradio/src/utils/structured-data.ts',
+    '../../megaradio/src/pages/RegionStationsPage.tsx',
+  ]) {
+    const source = readFileSync(new URL(path, import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /["']?broadcastAffiliateOf["']?\s*:/, path);
+  }
+});
+
 // ===========================================================================
 // 0. Source-scan guard: catch new BreadcrumbList emissions on unexpected
 //    surfaces. Mirrors the FAQPage source-scan in

@@ -191,10 +191,6 @@ export default function RegionStationsPage() {
               "address": { "@type": "PostalAddress", "addressCountry": station.country }
             })
           },
-          "broadcastAffiliateOf": {
-            "@type": "Organization",
-            "name": "MegaRadio"
-          },
           "isAccessibleForFree": true,
           "keywords": (() => {
             const t = station.tags ? station.tags.split(',').map(s => s.trim()).filter(Boolean) : [];
@@ -283,10 +279,6 @@ export default function RegionStationsPage() {
             ...(station.country && {
               "address": { "@type": "PostalAddress", "addressCountry": station.country }
             })
-          },
-          "broadcastAffiliateOf": {
-            "@type": "Organization",
-            "name": "MegaRadio"
           },
           "isAccessibleForFree": true,
           "keywords": (() => {

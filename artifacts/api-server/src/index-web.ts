@@ -17,7 +17,7 @@ import { htmlLangMiddleware, precomputeTranslationScripts } from "./html-lang-mi
 import { logger } from './utils/logger';
 import { urlRedirectMiddleware } from './url-redirect-middleware';
 import { stationCountryValidator } from './station-country-validator';
-import { serveStatic, log } from "./serve-static";
+import { serveStatic, log, HTML_CACHE_CONTROL } from "./serve-static";
 import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
 import { markSeoTemporarilyUnavailable } from './seo/temporary-unavailable';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
@@ -804,10 +804,9 @@ app.use('/api/stream', streamServiceProxy);
     // deprecated in 2022 and treats as a cloaking signal under the spam
     // algorithm. Now everyone gets the same HTML, eliminating the risk.
     //
-    // Performance: the cache-HIT and cache-MISS branches both already emit
-    // `Cache-Control: public, max-age=3600, s-maxage=86400, stale-while-
-    // revalidate=3600`, so Cloudflare absorbs the extra traffic at the edge
-    // and Railway sees no measurable load increase. Login/profile/settings
+    // Performance: the origin's SEO cache avoids repeated rendering, while
+    // HTML ETags allow conditional validation across deployments. Hashed
+    // assets retain long-lived caching. Login/profile/settings
     // are filtered out by `isSeoEligiblePage === false` and still hit the
     // SPA fallback as before.
     if (!isSeoEligiblePage) {
@@ -886,17 +885,12 @@ app.use('/api/stream', streamServiceProxy);
         res.removeHeader('X-Robots-Tag');
         res.setHeader('X-Robots-Tag', 'noindex, follow');
       }
-      // DEPLOY-STALENESS FIX (2026-07-04): browser max-age dropped 3600 -> 60.
-      // HTML references hashed /assets chunks that exist only for the CURRENT
-      // build; a browser holding HTML for an hour after a deploy requests
-      // dead chunk URLs, gets the SPA shell as text/html and dynamic import
-      // dies ("Failed to fetch dynamically imported module" -> blank page).
-      // 60s means browsers revalidate against the (purgeable) edge within a
-      // minute of a deploy+purge. s-maxage stays 86400 -- the edge is ours
-      // to purge on every deploy.
+      // HTML references chunks from this deployment only. Revalidate in both
+      // browsers and CDNs instead of relying on an unverified deploy purge.
+      // The in-process SEO cache and HTTP ETags still avoid repeated work.
       res.status(200).set({
         'Content-Type': 'text/html',
-        'Cache-Control': 'public, max-age=60, s-maxage=86400, stale-while-revalidate=3600',
+        'Cache-Control': HTML_CACHE_CONTROL,
         'X-SEO-Cache': 'HIT'
       }).send(cachedHtml);
       return;
@@ -929,9 +923,9 @@ app.use('/api/stream', streamServiceProxy);
       // SEO-CACHE SAFETY (2026-07-02 audit P1): the preferredLanguage cookie
       // used to override the URL-derived render language here (a TR-cookied
       // visitor on /de/sender/x got Turkish HTML with a /tr canonical). But
-      // this response is cached PUBLICLY — origin seoHtml cache + CDN
-      // (s-maxage=86400) — keyed by URL only, and Cloudflare ignores Vary on
-      // HTML. One cookied visitor therefore poisoned the URL for every
+      // this response is cached PUBLICLY — origin seoHtml cache + conditional
+      // HTTP caches — keyed by URL only. One cookied visitor therefore
+      // poisoned the URL for every
       // subsequent visitor INCLUDING Googlebot (wrong lang + wrong canonical =
       // hreflang/canonical chaos in GSC). The URL is the single source of
       // truth for SSR language; a user's preferred UI language is applied
@@ -1139,11 +1133,10 @@ app.use('/api/stream', streamServiceProxy);
         }
         res.status(stationNotFound ? 404 : 200).set({
           'Content-Type': 'text/html',
-          // DEPLOY-STALENESS FIX (2026-07-04): browser max-age 60 (see the
-          // cache-HIT branch above for the full rationale).
+          // Same revalidation policy as the HTML cache-HIT branch.
           'Cache-Control': (stationNotFound || stationDbError)
             ? 'no-store'
-            : 'public, max-age=60, s-maxage=86400, stale-while-revalidate=3600',
+            : HTML_CACHE_CONTROL,
           'X-SEO-Cache': 'MISS'
         }).send(htmlContent);
       }

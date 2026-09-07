@@ -3113,9 +3113,8 @@ export class SeoRenderer {
         "height": 80
       },
       "description": getLocalizedText('faq_seo_intro', 'Free online radio platform featuring 60,000+ radio stations from 120+ countries worldwide'),
-      // 2026-05-12 SEO audit: real PostalAddress so the Knowledge Graph
-      // + LocalBusiness validator stop flagging "missing address" on the
-      // Organization node (was the last remaining Org-level invalid).
+      // Organization address is optional; it must describe the organization,
+      // not be added merely to satisfy a LocalBusiness validator.
       "address": {
         "@type": "PostalAddress",
         "streetAddress": "Bäckerstraße 7",
@@ -3133,18 +3132,12 @@ export class SeoRenderer {
         "@type": "ContactPoint",
         "contactType": "Customer Service",
         "availableLanguage": SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.code)
-      },
-      "sameAs": [
-        "https://www.facebook.com/megaradio",
-        "https://twitter.com/megaradio",
-        "https://www.instagram.com/megaradio",
-        "https://www.youtube.com/@megaradio",
-        "https://www.linkedin.com/company/megaradio",
-      ]
+      }
     };
 
-    // Vision GO organization node — referenced by the Person schema below.
+    // Vision GO is the software studio behind MegaRadio.
     // @id uses visiongo.at (the parent company domain), not the radio app domain.
+    // Identity and full address: https://visiongo.at/impressum.html
     const visionGoOrgSchema = {
       "@context": "https://schema.org",
       "@type": "Organization",
@@ -3154,38 +3147,10 @@ export class SeoRenderer {
       "description": "Vienna-based software studio building MegaRadio, ScanUp, eSIMfo, TaxiHub and Online Snake.",
       "address": {
         "@type": "PostalAddress",
-        "streetAddress": "Bäckerstraße 7",
+        "streetAddress": "Bäckerstraße 7/7",
         "addressLocality": "Vienna",
         "postalCode": "1010",
         "addressCountry": "AT"
-      }
-    };
-
-    // Person schema — Muhammed Fatih Geyik, founder & lead developer.
-    // Invisible to site visitors; picked up by Google's Knowledge Graph and
-    // search-result entity cards when someone searches the founder's name.
-    const personSchema = {
-      "@context": "https://schema.org",
-      "@type": "Person",
-      "@id": "https://visiongo.at/#mfg-person",
-      "name": "Muhammed Fatih Geyik",
-      "givenName": "Muhammed Fatih",
-      "familyName": "Geyik",
-      "jobTitle": "Founder, Head of IT & Lead Developer",
-      "description": "Founder, Head of IT and lead software architect at Vision GO. Designs and builds the products MegaRadio, ScanUp, eSIMfo, TaxiHub and Online Snake.",
-      "worksFor": {
-        "@id": "https://visiongo.at/#organization"
-      },
-      "knowsAbout": [
-        "iOS", "Android", "Swift", "Kotlin", "TypeScript",
-        "Cloud Architecture", "GDPR", "Radio Streaming",
-        "SEO", "Mobile App Development", "Web Development",
-        "Node.js", "React", "PostgreSQL", "Docker"
-      ],
-      "knowsLanguage": ["de", "en", "tr"],
-      "nationality": {
-        "@type": "Country",
-        "name": "AT"
       }
     };
 
@@ -3461,13 +3426,11 @@ export class SeoRenderer {
         '';
       const stationLogo = /^https?:\/\//i.test(stationLogoRaw) ? stationLogoRaw : null;
       
-      // D-A1 FIX (2026-05-08): broadcastDisplayName is required for Google's
-      // RadioStation rich result. broadcastFrequency is emitted as a
+      // broadcastDisplayName identifies the station. broadcastFrequency is emitted as a
       // structured BroadcastFrequencySpecification when we can parse a real
       // frequency from station tags (e.g. "FM 102.5"); otherwise we fall
-      // back to the simple "FM"/"AM" string. broadcastAffiliateOf links
-      // the station to the parent Mega Radio Organization @id so the
-      // entity graph cross-references correctly.
+      // back to the simple "FM"/"AM" string. Listing a station in the
+      // directory does not establish affiliation with a MegaRadio network.
       let parsedBroadcastFrequency: any = undefined;
       const tagsForFreq = Array.isArray(stationData.tags) ? stationData.tags.join(',') : (stationData.tags || '');
       if (tagsForFreq) {
@@ -3596,11 +3559,6 @@ export class SeoRenderer {
         }),
         ...(parsedBroadcastFrequency && { "broadcastFrequency": parsedBroadcastFrequency }),
         "broadcaster": stationBroadcaster,
-        "broadcastAffiliateOf": {
-          "@type": "Organization",
-          "@id": `${baseDomain}/#organization`,
-          "name": "Mega Radio"
-        },
         "potentialAction": {
           "@type": "ListenAction",
           "target": {
@@ -3678,7 +3636,7 @@ export class SeoRenderer {
     }
     
     return {
-      global: [websiteSchema, organizationSchema, visionGoOrgSchema, personSchema],
+      global: [websiteSchema, organizationSchema, visionGoOrgSchema],
       page: [
         breadcrumbSchema,
         faqPageSchema,

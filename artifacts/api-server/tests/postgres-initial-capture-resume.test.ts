@@ -157,6 +157,46 @@ test("missing collections, changed source counts and mixed ownership fail before
   }
 });
 
+test("source-count drift reports sanitized aggregate growth or shrink without weakening the read-only refusal", async () => {
+  for (const [sourceCount, change] of [[3, "growth"], [1, "shrink"]] as const) {
+    const f = fixture({ sourceCount });
+    const before = JSON.stringify(f.state);
+    await assert.rejects(validateCapturedSource(f.client, f.mongo, "run-1", {}), (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(error.message, `Initial capture resume refused source-count drift (collection 1/1; recorded=2; current=${sourceCount}; change=${change})`);
+      assert.doesNotMatch(error.message, /fixtures|opaque-id|507f1f77|original|second|run-1|source_test/);
+      return true;
+    });
+    assert.equal(f.counts().sourceReads, 0);
+    assert.ok(f.queries.every((sql) => sql.startsWith("SELECT")));
+    assert.ok(!f.queries.some((sql) => sql.startsWith("SELECT collection_name,document_id")));
+    assert.equal(JSON.stringify(f.state), before);
+  }
+});
+
+test("source-count drift identifies the sorted collection ordinal without revealing its name", async () => {
+  const f = fixture({ sourceCount: 3, checkpoints: [
+    { collection_name: "fixtures", source_count: "2" },
+    { collection_name: "aaa_private_collection", source_count: 0 },
+  ] });
+  const originalCollection = f.mongo.collection;
+  f.mongo.listCollections = () => ({ async toArray() { return [{ name: "fixtures" }, { name: "aaa_private_collection" }]; } });
+  f.mongo.collection = (name: string) => name === "aaa_private_collection" ? {
+    async countDocuments() { return 0; },
+    find() { throw new Error("Empty collection must not read source documents"); },
+  } : originalCollection(name);
+  const before = JSON.stringify(f.state);
+  await assert.rejects(validateCapturedSource(f.client, f.mongo, "run-1", {}), (error: unknown) => {
+    assert.ok(error instanceof Error);
+    assert.equal(error.message, "Initial capture resume refused source-count drift (collection 2/2; recorded=2; current=3; change=growth)");
+    assert.doesNotMatch(error.message, /fixtures|aaa_private_collection|opaque-id|507f1f77|run-1/);
+    return true;
+  });
+  assert.equal(f.counts().sourceReads, 0);
+  assert.ok(f.queries.every((sql) => sql.startsWith("SELECT")));
+  assert.equal(JSON.stringify(f.state), before);
+});
+
 test("capture ahead of old checkpoint and empty collections without a checkpoint are not cursor assumptions", async () => {
   const f = fixture({ checkpoints: [] });
   await validateCapturedSource(f.client, f.mongo, "run-1", { batchSize: 1 });
