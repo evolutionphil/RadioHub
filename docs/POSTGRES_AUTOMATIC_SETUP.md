@@ -14,10 +14,14 @@ hazırlandıktan sonra SQL veya aktarım komutu elle çalıştırılmaz.
    İlk kurulumda MongoDB primary üzerinden bütün koleksiyonları okur,
    PostgreSQL tablolarına aktarır, kimlik/içerik/ilişki doğrulamasını çalıştırır.
 3. API ve web doğrulama tamamlanana kadar uygulama modüllerini ve işleri yüklemez.
-   Başlangıç kontrolü varsayılan olarak 4 dakika, 5 saniyelik aralıklarla bekler;
-   hâlâ hazır değilse sıfır olmayan kodla çıkar. Yeniden başlatmada tekrar kontrol
-   eder. Çok büyük aktarımlarda platformun healthcheck ve retry süreleri de
-   aktarım süresine uygun olmalıdır; eski canlı deployment kendiliğinden durmaz.
+   Başlangıç kontrolü varsayılan olarak süre sınırı olmadan, 5 saniyelik aralıklarla
+   bekler. Şema kurulduktan ve veri aktarımının henüz hazır olmadığı belirlendikten
+   sonra aynı `PORT` üzerinde küçük bir bakım sunucusu açılır. `/healthz` yalnız
+   sürecin çalıştığını bildirir (200, `ready:false`); `/readyz` ve uygulama istekleri
+   503 kalır. Web bakım sayfası otomatik yenilenir; yanıtlar önbelleğe alınmaz.
+   Doğrulama tamamlanınca bakım sunucusu portu bırakır ve gerçek uygulama otomatik
+   başlar. Manuel normalize/verify/başlat komutu gerekmez. Gerçek yapılandırma,
+   şema veya bağlantı hataları başarı gibi gösterilmez.
 4. Başarılı aktarım kalıcı `migration_runs` ve `migration_checkpoints` kayıtlarıyla
    belirlenir. Sonraki initializer çalışmaları MongoDB'ye bağlanmadan çıkar.
    PostgreSQL yazma yetkisi zaten etkinse eski kaynağı hiçbir zaman tekrar oynatmaz.
@@ -39,6 +43,11 @@ servisin Railway Config File yolu `/railway.migration.json` olmalıdır. Bu ayar
 HTTP healthcheck veya cron gerekmez. Başarılı süreç `0` ile çıkar; sürekli yeniden
 başlatan `Always` politikasını kullanmayın.
 
+Railway mevcut serviste config-as-code kullanmıyorsa yalnız JSON dosyası eklemek
+ayarları etkinleştirmez. Dashboard'da aynı Dockerfile, başlangıç komutu ve HTTP
+healthcheck kapalı ayarları kullanılmalıdır. Çalışan aktarım servisini sırf bu
+başlangıç iyileştirmesi için yeniden deploy etmeyin.
+
 | Servis | Değişken / ayar |
 | --- | --- |
 | PostgreSQL | Mevcut veritabanı; uygulama veya importer Dockerfile'ını bu servise uygulamayın. |
@@ -49,6 +58,8 @@ başlatan `Always` politikasını kullanmayın.
 | Geçici initializer | `MIGRATION_SOURCE_BACKUP_CONFIRMED=true`: bağımsız yedeğin geri yüklenebilirliği doğrulandıktan sonra. |
 | API ve web | Mevcut PostgreSQL `DATABASE_URL` referansı; doğru TLS/CA ayarları. `POSTGRES_INIT_MODE` varsayılanı `import`, değiştirmeyin. |
 | API ve web | Dockerfile sırasıyla `Dockerfile.api` ve `Dockerfile.web`; eski özel Start Command varsa kaldırın, yeni Docker CMD kullanılsın. |
+| API ve web | Railway Settings → Deploy → Healthcheck Path: `/healthz`. `/readyz` gerçek uygulama hazırlığını izlemek içindir; uzun ilk aktarım sırasında Railway deploy kontrolü olarak kullanılmaz. |
+| API ve web | `POSTGRES_INIT_WAIT_MS` yoksa süresiz bekler. Eski sonlu değer varsa kaldırın veya `forever` kullanın. Yeni değişken zorunlu değildir. |
 | API | Mevcut güçlü `SESSION_SECRET` korunur. |
 | Web | `BACKEND_API_URL` gerçek API servis adresini göstermeli. |
 
@@ -60,6 +71,15 @@ salt okunur tutun.
 `POSTGRES_SSL_CA` gerektiren bağlantıda doğru CA sağlayın; sertifika doğrulamasını
 sadece bağlantıyı çalıştırmak için kapatmayın. Özel ağdaki PostgreSQL referansı
 kullanılabilir; bu akış veritabanını public ağa açmayı gerektirmez.
+
+**Zaten durmuş eski sürüm:** Yeni launcher kodu eski/crashed container'ı uzaktan
+başlatamaz. Yeni kodun API/web'e bir kez deploy edilmesi ve yukarıdaki sağlık
+kontrolünün seçilmesi gerekir; bundan sonra devam eden aktarımın bitişi otomatik
+algılanır. Dockerfile sağlık kontrolü değişikliği Railway Dashboard ayarını
+değiştirmez. Aynı GitHub push aktarım servisini de yeniden deploy edecekse önce
+aktarımın bitmesini bekleyin veya yalnız API/web'i hedefleyen dağıtım kullanın.
+Railway'de bakım sunucusu `Active` görünse bile bu veri aktarımının tamamlandığını
+göstermez; gerçek hazır olma ölçütü uygulama `/readyz` yanıtıdır.
 
 ## Hata / yeniden deneme
 
@@ -94,7 +114,7 @@ kullanılabilir; bu akış veritabanını public ağa açmayı gerektirmez.
   kaynak yazıcıları kapalı tutma ve bağımsız yedek koşulları geçerliliğini korur.
 - Doğrulama geçerse aynı çalışma baştan okunur: mevcut kayıtlar yeniden yazılmaz,
   yalnız eksikler eklenir. Kayıtlar ve checkpoint aynı transaction içinde yazılır.
-  `[resume:progress]`, `[mirror:progress]` ve aşama logları ilerlemeyi gösterir.
+  `[resume:validation]`, `[mirror:progress]` ve aşama logları ilerlemeyi gösterir.
   İşlem tamamlanana kadar yeni deployment başlatmayın; aktarım servisinin HTTP
   healthcheck'i kapalı ve config dosyası `/railway.migration.json` olmalıdır.
 - Diğer yarım aktarımlar veya önceden var olan satırlar otomatik silinmez. Böyle
@@ -108,8 +128,8 @@ kullanılabilir; bu akış veritabanını public ağa açmayı gerektirmez.
   kurulum içindir. Bu projenin mevcut verilerini taşırken **kullanmayın**. Başlamış
   veya başarısız bir aktarımı atlatmak için de kullanılamaz.
 
-Şema bekleme / sorgu sınırları: `POSTGRES_INIT_WAIT_MS` (0–3600000, varsayılan
-240000), `POSTGRES_MIGRATION_LOCK_TIMEOUT_MS` (varsayılan 60000),
+Şema bekleme / sorgu sınırları: `POSTGRES_INIT_WAIT_MS` (varsayılan veya `forever`:
+süresiz; açıkça verilen sayı: 0–3600000 ms), `POSTGRES_MIGRATION_LOCK_TIMEOUT_MS` (varsayılan 60000),
 `POSTGRES_MIGRATION_STATEMENT_TIMEOUT_MS` (varsayılan 300000).
 
 Aktarım paketi varsayılan olarak 250 belge ve 4 MiB serileştirilmiş JSON+BSON
@@ -131,6 +151,7 @@ Operatör ortamında eşdeğer giriş: `pnpm --filter @workspace/legacy-migratio
 Bu komut ve tek seferlik imaj aynı akışı kullanır. Üretim API/web imajları bu
 paketi çalıştırmaz veya yüklemez.
 
-Kaynaklar: [Railway config-as-code](https://docs.railway.com/config-as-code/reference),
+Kaynaklar: [Railway sağlık kontrolleri](https://docs.railway.com/deployments/healthchecks),
+[Railway config-as-code desteği](https://docs.railway.com/config-as-code),
 [yeniden başlatma politikaları](https://docs.railway.com/deployments/restart-policy),
 [PostgreSQL servis bağlantıları](https://docs.railway.com/databases/postgresql).

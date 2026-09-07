@@ -253,8 +253,19 @@ mock.module(new URL('../src/data/postgres-catalog-store.ts',import.meta.url).hre
   })},
 });
 const actualSeo=await import('../src/data/postgres-seo-indexing-store');
+let sitemapReadRows: any[] = FAKE_STATION_DOCS;
+const sitemapReadBatches: string[][] = [];
+let manifestReadFails = false;
 mock.module(new URL('../src/data/postgres-seo-indexing-store.ts',import.meta.url).href,{
-  namedExports:{...actualSeo,pgActiveManifests:async()=>FAKE_INDEX_MANIFESTS,pgSeoGenres:async()=>FAKE_GENRE_DOCS,pgTopIndexableTags:async()=>[]},
+  namedExports:{...actualSeo,pgActiveManifests:async()=>{
+    if (manifestReadFails) throw new Error('temporary PostgreSQL manifest read failure');
+    return FAKE_INDEX_MANIFESTS;
+  },pgSeoGenres:async()=>FAKE_GENRE_DOCS,pgTopIndexableTags:async()=>[],
+    pgSitemapStationBatch: async (ids: string[]) => {
+      sitemapReadBatches.push([...ids]);
+      return sitemapReadRows.filter(row => ids.includes(row._id)).reverse();
+    },
+  },
 });
 const actualLocalization=await import('../src/data/postgres-localization-store');
 mock.module(new URL('../src/data/postgres-localization-store.ts',import.meta.url).href,{
@@ -348,6 +359,134 @@ after(async () => {
   // setup error with a "Cannot read properties of undefined" from close().
   if (!server) return;
   await new Promise<void>((resolve) => server.close(() => resolve()));
+});
+
+test('SEO page-data never returns synthetic metadata on transient errors, including slim navigation responses', async () => {
+  const { SeoRenderer } = await import('../src/seo-renderer');
+  const render = mock.method(SeoRenderer.prototype, 'renderStaticPage', async () => ({
+    language: 'en', cleanPath: '/station/recovery-fm', translations: {},
+    seoTags: { title: 'Synthetic metadata must not reach the SPA' }, pageData: { stationDbError: true },
+  }));
+  try {
+    for (const suffix of ['', '&slim=1']) {
+      const response = await fetch(`${baseUrl}/api/seo/page-data?url=/en/station/recovery-fm${suffix}`);
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('retry-after'), '60');
+      assert.equal((await response.json() as any).seoTags, undefined);
+    }
+    render.mock.mockImplementation(async () => { throw new Error('SEO_RENDER_TIMEOUT'); });
+    assert.equal((await fetch(`${baseUrl}/api/seo/page-data?url=/en`)).status, 503);
+    render.mock.mockImplementation(async () => ({ language: 'en', cleanPath: '/', translations: {}, seoTags: { title: 'Recovered metadata' }, pageData: {} }));
+    const recovered = await fetch(`${baseUrl}/api/seo/page-data?url=/en&slim=1`);
+    assert.equal(recovered.status, 200);
+    assert.equal((await recovered.json() as any).seoTags.title, 'Recovered metadata');
+  } finally { render.mock.restore(); }
+});
+
+test('slim SEO page-data forwards the exact localized renderer context and preserves the full preview contract', async () => {
+  const { SeoRenderer } = await import('../src/seo-renderer');
+  const fixture = {
+    language: 'fr', cleanPath: '/station/station-one', translations: { genres: 'Genres français' },
+    seoTags: { title: 'Station One en direct', canonical: 'https://themegaradio.com/fr/station/station-one' },
+    urlTranslations: new Map([['fr:station', 'station']]),
+    pageData: { pageType: 'station', station: { ...FAKE_STATION_DOCS[0], descriptions: { fr: { full: 'Description française', meta: 'Écoutez cette station' } } } },
+  };
+  const structuredData = {
+    global: [{ '@type': 'WebSite', '@id': 'https://themegaradio.com/#website' }],
+    page: [{ '@type': 'RadioStation', name: fixture.pageData.station.name, url: fixture.seoTags.canonical, inLanguage: 'fr' }],
+  };
+  const render = mock.method(SeoRenderer.prototype, 'renderStaticPage', async () => fixture);
+  const generate = mock.method(SeoRenderer.prototype, 'generateStructuredData', () => structuredData);
+  try {
+    const requestedUrl = '/fr/station/station-one';
+    const full = await fetch(`${baseUrl}/api/seo/page-data?url=${requestedUrl}`);
+    assert.equal(full.status, 200);
+    const preview = await full.json() as any;
+    assert.deepEqual(preview.pageData, JSON.parse(JSON.stringify(fixture.pageData)));
+    assert.deepEqual(preview.translations, fixture.translations);
+    assert.equal(preview.structuredData, undefined);
+    assert.equal(generate.mock.callCount(), 0);
+
+    const slim = await fetch(`${baseUrl}/api/seo/page-data?url=${requestedUrl}&slim=1`);
+    assert.equal(slim.status, 200);
+    const payload = await slim.json() as any;
+    assert.deepEqual(payload, { language: fixture.language, cleanPath: fixture.cleanPath, seoTags: fixture.seoTags, structuredData });
+    assert.deepEqual(render.mock.calls.at(-1)!.arguments, [requestedUrl, 'https://themegaradio.com']);
+    assert.equal(generate.mock.callCount(), 1);
+    const expectedArguments = [fixture.seoTags, fixture.language, fixture.translations, fixture.cleanPath, fixture.pageData.station, fixture.urlTranslations, fixture.pageData];
+    generate.mock.calls[0].arguments.forEach((argument, index) => assert.strictEqual(argument, expectedArguments[index]));
+    assert.equal(generate.mock.calls[0].arguments.length, expectedArguments.length);
+  } finally { render.mock.restore(); generate.mock.restore(); }
+});
+
+test('large station sitemaps read bounded batches and retain manifest order, omissions and XML validity', async () => {
+  const ids = Array.from({ length: 1201 }, (_, n) => `batch-${1200 - n}`);
+  sitemapReadRows = ids.map((_id, n) => ({ ...FAKE_STATION_DOCS[0], _id, slug: `${_id}-radio`, noIndex: n === 500 }));
+  // A deleted station must be omitted without disturbing neighboring entries.
+  sitemapReadRows = sitemapReadRows.filter(row => row._id !== ids[1000]);
+  sitemapReadBatches.length = 0;
+  builderOverrides.getActiveStationChunk = async () => ({ stationIds: ids, maxUpdatedAt: NOW, qualifiedLanguagesHash: TEST_HASH, version: 'bounded-read-test' });
+  try {
+    const response = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+    assert.equal(response.status, 200);
+    const xml = await response.text();
+    assertValidXml(xml, 'batched station sitemap');
+    assert.deepEqual(sitemapReadBatches.map(batch => batch.length), [500, 500, 201]);
+    assert.deepEqual(sitemapReadBatches.flat(), ids);
+    const slugs = [...xml.matchAll(/<loc>[^<]*\/station\/([^<]+)<\/loc>/g)].map(match => match[1]);
+    assert.deepEqual(slugs, ids.filter((_, n) => n !== 500 && n !== 1000).map(id => `${id}-radio`));
+    const cached = await fetch(`${baseUrl}/sitemap-stations-en-1.xml`);
+    assert.equal(await cached.text(), xml);
+    assert.equal(sitemapReadBatches.length, 3, 'cached sitemap must not query another batch');
+  } finally {
+    sitemapReadRows = FAKE_STATION_DOCS;
+    builderOverrides.getActiveStationChunk = null;
+  }
+});
+
+test('active but empty sitemap manifests are retryable, never a 200 empty index or a stale 304', async () => {
+  const normal = await fetch(`${baseUrl}/sitemap-index.xml`);
+  assert.equal(normal.status, 200);
+  const etag = normal.headers.get('etag');
+  assert.ok(etag);
+  const saved = FAKE_INDEX_MANIFESTS.map(manifest => ({ ...manifest }));
+  for (const manifest of FAKE_INDEX_MANIFESTS) {
+    manifest.chunks = []; manifest.chunkCount = 0; manifest.totalUrls = 0;
+  }
+  try {
+    for (const variant of ['empty', 'invalid-station-chunks']) {
+      if (variant === 'invalid-station-chunks') {
+        for (const manifest of FAKE_INDEX_MANIFESTS.filter(row => row.type === 'stations')) {
+          manifest.chunkCount = 2;
+          manifest.chunks = [{ chunk: 0, urlCount: 50, maxUpdatedAt: NOW }, { chunk: 10000, urlCount: 50, maxUpdatedAt: NOW }];
+        }
+      }
+      for (const pathname of ['/sitemap-index.xml', '/sitemap.xml', '/sitemap-en.xml']) {
+        const response = await fetch(`${baseUrl}${pathname}`, { headers: { 'If-None-Match': etag! } });
+        assert.equal(response.status, 503, `${variant}: ${pathname}`);
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+        assert.equal(response.headers.get('retry-after'), '120');
+        assert.doesNotMatch(await response.text(), /<sitemapindex/);
+      }
+    }
+  } finally {
+    saved.forEach((manifest, index) => Object.assign(FAKE_INDEX_MANIFESTS[index], manifest));
+  }
+  assert.equal((await fetch(`${baseUrl}/sitemap-index.xml`)).status, 200);
+});
+
+test('sitemap manifest database errors cannot be cached as successful empty indexes', async () => {
+  manifestReadFails = true;
+  try {
+    for (const pathname of ['/sitemap-index.xml', '/sitemap.xml', '/sitemap-en.xml']) {
+      const response = await fetch(`${baseUrl}${pathname}`);
+      assert.equal(response.status, 503);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.equal(response.headers.get('retry-after'), '120');
+    }
+  } finally { manifestReadFails = false; }
+  assert.equal((await fetch(`${baseUrl}/sitemap-index.xml`)).status, 200);
 });
 
 function countLocs(xml: string): number {

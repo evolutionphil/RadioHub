@@ -567,7 +567,7 @@ export class SeoRenderer {
           if (error?.name === 'AbortError' || signal?.aborted) throw error;
           // DB error — transient; don't mark notFound so the URL stays in
           // Google's crawl queue. Placeholder data is synthetic — flag it so
-          // the HTTP layer sets noindex, preventing indexing of empty content.
+          // the HTTP layer returns a retryable 503, not a permanent 410/noindex.
           const stationName = stationSlug
             .replace(/-/g, ' ')
             .replace(/\b\w/g, (l: string) => l.toUpperCase());
@@ -1158,8 +1158,8 @@ export class SeoRenderer {
     //    dump ~55 of them into "Crawled - currently not indexed".
     let stationIsJunkFlag = false;
     let langRedirectUrl: string | null = null;
-    const stationDbErrorFlag = !!(stationData as any)?._dbError;
-    if (pageType === 'station' && stationData && !stationNotFound) {
+    let stationDbErrorFlag = !!(stationData as any)?._dbError;
+    if (pageType === 'station' && stationData && !stationNotFound && !stationDbErrorFlag) {
       try {
         const {
           isJunkStation,
@@ -1230,6 +1230,11 @@ export class SeoRenderer {
           // gone page must not expose alternates (Google policy).
           stationIsJunkFlag = true;
           seoTags.hreflangs = [];
+        } else if (numericOnlySlug) {
+          // Keep legitimate numeric callsigns playable (200 + noindex), but
+          // do not advertise language alternates for these excluded URLs.
+          // This is not a junk decision and must not become a 410 or 301.
+          seoTags.hreflangs = [];
         } else if (!langIneligible) {
           // Hreflang alternates come from the SAME unified gate that the
           // sitemap uses — so the two surfaces advertise the exact same
@@ -1246,20 +1251,14 @@ export class SeoRenderer {
           );
         }
       } catch (e: any) {
-        // FAIL-CLOSED: if the indexability gate can't run we cannot verify the
-        // station is quality, so we must NOT leave the default `index, follow`
-        // (that would let junk/thin stations slip into the index — the exact
-        // problem this gate exists to prevent). Serve `noindex, follow` until
-        // the gate is healthy again; `follow` preserves crawl of internal links.
-        // The gate is a local static import, so a failure here means a broken
-        // build (loud + recoverable), not a per-request transient blip.
-        seoTags.robots = 'noindex, follow';
-        seoTags.noIndex = true;
+        // Qualification can fail on a transient database/cache outage too.
+        // Fail closed with an uncached 503, not a lasting noindex decision.
+        stationDbErrorFlag = true;
         seoTags.hreflangs = [];
         try {
           const { logger } = await import('./utils/logger');
           logger.warn(
-            `⚠️ seo-renderer: station indexability gate failed — failing CLOSED to noindex: ${e?.message || e}`,
+            `⚠️ seo-renderer: station indexability gate failed — temporarily unavailable: ${e?.message || e}`,
           );
         } catch {}
       }
@@ -1571,7 +1570,9 @@ export class SeoRenderer {
       }
     };
     
-    performanceCache.setPageData(cacheKey, pageData);
+    // A failed lookup must be retried on the very next request. Caching its
+    // synthetic data kept healthy station URLs unavailable after PG recovered.
+    if (!stationDbErrorFlag) performanceCache.setPageData(cacheKey, pageData);
     
     return pageData;
     }, url);
@@ -3064,27 +3065,10 @@ export class SeoRenderer {
     return breadcrumbHtml + content;
   }
 
-  generateHtmlHead(seoTags: any, language: string = 'en', translations: Record<string, string> = {}, cleanPath: string = '', stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any): string {
-    
-    // Enhanced social media meta tags
-    // CRITICAL: WhatsApp requires minimum 600x315px images for preview
-    // Use dynamic OG image generator for station pages (1200x630 with station logo)
-    // For OG images: use actual domain from seoTags (supports dev testing)
-    // Extract just the domain without protocol for og:image URLs
-    let ogDomain = 'themegaradio.com';
-    if (seoTags.domain) {
-      ogDomain = seoTags.domain.replace(/^https?:\/\//, '');
-    }
-    const defaultSocialImage = `https://${ogDomain}/api/og-image`;
-    let ogImage = seoTags.ogImage || defaultSocialImage;
-    
-    // For station pages, use dynamic OG image with station logo
-    if (stationData && stationData.slug) {
-      ogImage = `https://${ogDomain}/api/og-image/${stationData.slug}`;
-    }
-    
-    const twitterImage = seoTags.twitterImage || ogImage;
-    
+  // One schema builder for both the initial HTML and in-app navigation.
+  // The two scopes allow the client to replace page entities without deleting
+  // the shared organization/site entities or third-party JSON-LD.
+  generateStructuredData(seoTags: any, language: string = 'en', translations: Record<string, string> = {}, cleanPath: string = '', stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any): { global: any[]; page: any[] } {
     // Get base domain for structured data
     const baseDomain = seoTags.canonical ? new URL(seoTags.canonical).origin : 'https://themegaradio.com';
     
@@ -3356,7 +3340,7 @@ export class SeoRenderer {
         // 2026-05-12 SEO audit: each ItemList child also flipped from
         // RadioStation → RadioBroadcastService for the same reason as the
         // top-level station schema. `address` removed (not on Service);
-        // `genre` replaced with `keywords` (default ["Music"]) so the
+        // `genre` replaced with Service.category (default ["Music"]) so the
         // taxonomy field is always populated.
         const childKeywords: string[] = stationGenres.length > 0 ? stationGenres : ["Music"];
         return {
@@ -3379,11 +3363,9 @@ export class SeoRenderer {
               },
             }),
             ...(station.country && {
-              "area": { "@type": "Country", "name": getLocalizedCountryName(station.country, language) },
               "areaServed": getLocalizedCountryName(station.country, language),
             }),
-            "keywords": childKeywords,
-            "isAccessibleForFree": true,
+            "category": childKeywords,
           },
         };
       });
@@ -3496,9 +3478,11 @@ export class SeoRenderer {
           if (Number.isFinite(value)) {
             parsedBroadcastFrequency = {
               "@type": "BroadcastFrequencySpecification",
-              "broadcastFrequencyValue": value,
+              "broadcastFrequencyValue": {
+                "@type": "QuantitativeValue", "value": value,
+                "unitText": band === 'FM' ? 'MHz' : 'kHz',
+              },
               "broadcastSignalModulation": band,
-              "frequencyUnit": band === 'FM' ? 'MHz' : 'kHz',
             };
           } else {
             parsedBroadcastFrequency = band;
@@ -3546,7 +3530,7 @@ export class SeoRenderer {
       // inLanguage). RadioBroadcastService extends BroadcastService and
       // legitimizes them all. Removed: broadcastFormat (NOT in schema.org),
       // broadcastLanguage (NOT in schema.org), genre (NOT on Service).
-      // Tags now ship as `keywords` (Thing-level, valid anywhere) with
+      // Tags use Service.category; keywords is not defined on Service. Keep
       // ["Music"] default so we never ship empty/missing taxonomy.
       // Physical address moved off Service onto broadcaster Organization
       // (Service has no `address` property — only `area`).
@@ -3578,13 +3562,8 @@ export class SeoRenderer {
         };
       }
 
-      const stationAdditionalProps: any[] = [];
-      if (stationData.bitrate) {
-        stationAdditionalProps.push({ "@type": "PropertyValue", "name": "bitrate", "value": `${stationData.bitrate} kbps` });
-      }
-      if (stationData.codec) {
-        stationAdditionalProps.push({ "@type": "PropertyValue", "name": "codec", "value": String(stationData.codec).toUpperCase() });
-      }
+      // Bitrate/codec remain in the visible station details. additionalProperty
+      // is not defined on Service; do not invent an identifier or product for it.
 
       // REAL listener ratings only (see localRadioStationSchema note above).
       // Denormalized onto the Station doc by POST /api/stations/:id/rate
@@ -3613,14 +3592,9 @@ export class SeoRenderer {
         ...(stationLogo && { "logo": stationLogo, "image": stationLogo }),
         ...(stationData.homepage && { "sameAs": stationData.homepage }),
         ...(stationData.country && {
-          "area": {
-            "@type": "Country",
-            "name": getLocalizedCountryName(stationData.country, language),
-          },
           "areaServed": getLocalizedCountryName(stationData.country, language),
         }),
         ...(parsedBroadcastFrequency && { "broadcastFrequency": parsedBroadcastFrequency }),
-        ...(stationAdditionalProps.length > 0 && { "additionalProperty": stationAdditionalProps }),
         "broadcaster": stationBroadcaster,
         "broadcastAffiliateOf": {
           "@type": "Organization",
@@ -3640,8 +3614,7 @@ export class SeoRenderer {
             ]
           }
         },
-        "keywords": stationKeywords,
-        "isAccessibleForFree": true,
+        "category": stationKeywords,
         // Item 3 (re-audit 2026-06-20): inLanguage must describe the language of
         // the RENDERED content, i.e. the PAGE language (varies per /xx/ variant).
         // stationData.language is a per-station value identical across all 14
@@ -3694,6 +3667,7 @@ export class SeoRenderer {
           "name": stationData.name,
           "url": stationUrl,
           "inLanguage": language,
+          "isAccessibleForFree": true,
           "speakable": {
             "@type": "SpeakableSpecification",
             "cssSelector": ["h1", ".station-intro"],
@@ -3703,6 +3677,25 @@ export class SeoRenderer {
       }
     }
     
+    return {
+      global: [websiteSchema, organizationSchema, visionGoOrgSchema, personSchema],
+      page: [
+        breadcrumbSchema,
+        faqPageSchema,
+        ...(seoTags?.noIndex !== true ? [radioStationSchema, localRadioStationSchema, stationWebPageSchema, popularStationsSchema] : []),
+        collectionPageSchema,
+      ].filter(Boolean),
+    };
+  }
+
+  generateHtmlHead(seoTags: any, language: string = 'en', translations: Record<string, string> = {}, cleanPath: string = '', stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any): string {
+    const structuredData = this.generateStructuredData(seoTags, language, translations, cleanPath, stationData, urlTranslations, additionalData);
+    let ogDomain = 'themegaradio.com';
+    if (seoTags.domain) ogDomain = seoTags.domain.replace(/^https?:\/\//, '');
+    let ogImage = seoTags.ogImage || `https://${ogDomain}/api/og-image`;
+    if (stationData?.slug) ogImage = `https://${ogDomain}/api/og-image/${stationData.slug}`;
+    const twitterImage = seoTags.twitterImage || ogImage;
+
     // SAFETY NET: cap every <meta name="description"> / og:description /
     // twitter:description at 145 characters with word-boundary truncation
     // (≤1000 px ≈ Sebility / Yandex limit). The legacy English padding tail
@@ -3797,48 +3790,7 @@ export class SeoRenderer {
     ${seoTags.hreflangs ? seoTags.hreflangs.map((h: any) => `<link rel="alternate" hreflang="${esc(h.hreflang)}" href="${esc(h.url)}" data-managed="seo-head">`).join('\n    ') : ''}
     
     <!-- JSON-LD Structured Data for Rich Snippets -->
-    <script type="application/ld+json">
-    ${jsonLd(websiteSchema)}
-    </script>
-    
-    <script type="application/ld+json">
-    ${jsonLd(organizationSchema)}
-    </script>
-
-    <script type="application/ld+json">
-    ${jsonLd(visionGoOrgSchema)}
-    </script>
-
-    <script type="application/ld+json">
-    ${jsonLd(personSchema)}
-    </script>
-    ${breadcrumbSchema ? `
-    <script type="application/ld+json">
-    ${jsonLd(breadcrumbSchema)}
-    </script>` : ''}
-    ${faqPageSchema ? `
-    <script type="application/ld+json">
-    ${jsonLd(faqPageSchema)}
-    </script>` : ''}
-    ${radioStationSchema && seoTags?.noIndex !== true ? `
-    <script type="application/ld+json">
-    ${jsonLd(radioStationSchema)}
-    </script>` : ''}
-    ${localRadioStationSchema && seoTags?.noIndex !== true ? `
-    <script type="application/ld+json">
-    ${jsonLd(localRadioStationSchema)}
-    </script>` : ''}
-    ${stationWebPageSchema && seoTags?.noIndex !== true ? `
-    <script type="application/ld+json">
-    ${jsonLd(stationWebPageSchema)}
-    </script>` : ''}
-    ${collectionPageSchema ? `
-    <script type="application/ld+json">
-    ${jsonLd(collectionPageSchema)}
-    </script>` : ''}
-    ${popularStationsSchema && seoTags?.noIndex !== true ? `
-    <script type="application/ld+json">
-    ${jsonLd(popularStationsSchema)}
-    </script>` : ''}`;
+    ${structuredData.global.map(schema => `<script type="application/ld+json" data-managed="seo-structured-data" data-schema-scope="global">${jsonLd(schema)}</script>`).join('\n    ')}
+    ${structuredData.page.map(schema => `<script type="application/ld+json" data-managed="seo-structured-data" data-schema-scope="page">${jsonLd(schema)}</script>`).join('\n    ')}`;
   }
 }

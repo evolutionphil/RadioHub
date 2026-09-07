@@ -448,20 +448,20 @@ for (const c of STATION_CASES) {
         'Translated country names must match the visible "Country: ..." line — see Task #372.',
     );
 
-    // -- keywords (tags) ----------------------------------------------------
+    // -- category (tags) ----------------------------------------------------
     // 2026-05-12: `genre` is not a valid Service property; tags ship as
-    // Thing-level `keywords` instead. Same visible-content contract: every
+    // Service-level `category` instead. Same visible-content contract: every
     // keyword must appear verbatim in the body's "Genres: ..." line.
     assert.ok(
-      Array.isArray(schema.keywords) && schema.keywords.length > 0,
-      `${c.label}: schema.keywords must be a non-empty array (got ${JSON.stringify(schema.keywords)})`,
+      Array.isArray(schema.category) && schema.category.length > 0,
+      `${c.label}: schema.category must be a non-empty array (got ${JSON.stringify(schema.category)})`,
     );
-    for (const g of schema.keywords as string[]) {
+    for (const g of schema.category as string[]) {
       const trimmed = String(g).trim();
       if (!trimmed || trimmed === 'Music') continue; // "Music" is the empty-tags default, not body copy
       assert.ok(
         body.includes(escapeHtml(trimmed)),
-        `${c.label}: keywords value "${trimmed}" not found verbatim in body. ` +
+        `${c.label}: category value "${trimmed}" not found verbatim in body. ` +
           'Genre tags in JSON-LD must match the visible "Genres: ..." line — see Task #372.',
       );
     }

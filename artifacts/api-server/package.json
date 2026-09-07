@@ -103,6 +103,7 @@
     "dist",
     "scripts/apply-postgres-migrations.mjs",
     "scripts/postgres-initialization.mjs",
-    "scripts/start-postgres.mjs"
+    "scripts/start-postgres.mjs",
+    "scripts/postgres-startup-server.mjs"
   ]
 }

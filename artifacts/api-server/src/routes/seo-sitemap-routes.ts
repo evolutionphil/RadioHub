@@ -1,8 +1,8 @@
 import type { Express, Request } from "express";
 import crypto from 'crypto';
-import { pgCatalog } from '../data/postgres-catalog-store';
 import { pgReportStationDebugLog, pgListStationDebugLogs } from '../data/postgres-station-debug-store';
-import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStationDiagnostics } from '../data/postgres-seo-indexing-store';
+import { pgActiveManifests, pgSeoGenres, pgTouchSitemapStations, pgSitemapStationDiagnostics, pgSitemapStationBatch, SITEMAP_STATION_READ_BATCH_SIZE } from '../data/postgres-seo-indexing-store';
+import { markSeoTemporarilyUnavailable } from '../seo/temporary-unavailable';
 import { logger } from "../utils/logger";
 import { SeoRenderer, buildLocalizedUrl } from "../seo-renderer";
 import { SITEMAP_CONFIG, ACTIVE_SITEMAP_LANGUAGES, REQUIRED_STATION_SEO_KEYS, hasCompleteSeoTranslations, SEO_LANGUAGES, LOCALIZED_LOGO_WORD, LOCALIZED_RADIO_STATION_WORD } from '@workspace/seo-shared/seo-config';
@@ -125,6 +125,25 @@ function send503QualifiedLangs(res: any, route: string): void {
   res.setHeader('Retry-After', '300');
   res.setHeader('Cache-Control', 'no-store');
   res.status(503).send('Sitemap temporarily unavailable — qualified-languages cache cold. Retry in 5 minutes.');
+}
+
+/** Active manifest metadata alone is not proof that a sitemap has children.
+ * During an initial build/rolling replacement, empty manifests must not turn
+ * into a successful empty index (or 304) that search engines retain. */
+function hasPublishableSitemapChildren(manifests: Iterable<any>): boolean {
+  for (const manifest of manifests) {
+    if ((manifest.type === 'main' || manifest.type === 'genres') && manifest.chunkCount > 0) return true;
+    if (manifest.type === 'stations' && Array.isArray(manifest.chunks) && manifest.chunks.some((chunk: any) =>
+      chunk && Number.isInteger(chunk.chunk) && chunk.chunk >= 1 && chunk.chunk <= 9999 && chunk.urlCount > 0)) return true;
+  }
+  return false;
+}
+
+function send503EmptySitemapIndex(res: any): void {
+  res.setHeader('Content-Type', 'text/plain');
+  res.setHeader('Retry-After', '120');
+  res.setHeader('Cache-Control', 'no-store');
+  res.status(503).send('Sitemap manifest building — retry shortly');
 }
 
 /** Format a Date as ISO 8601 (YYYY-MM-DD) for sitemap <lastmod>. Returns empty
@@ -439,24 +458,31 @@ export async function registerSeoSitemapRoutes(app: Express, deps: any, options?
       const fullDomain = getProductionDomain(req.get('host'));
 
       const seoData = await seoRenderer.renderStaticPage(url, fullDomain);
-      // PageSpeed 2026-07-03: the SPA's SeoPageWrapper consumes ONLY
-      // seoTags from this payload, but the full render result also carries
-      // the whole translations dictionary, urlTranslations map and pageData
-      // station lists (~100 KB JSON for /en). slim=1 strips those for the
-      // client-side navigation path; the admin seo-preview keeps the full
-      // response by simply not passing the flag.
+      if (seoData.pageData?.stationDbError) {
+        markSeoTemporarilyUnavailable(res);
+        res.json({ error: 'SEO metadata temporarily unavailable' });
+        return;
+      }
+      // The SPA needs page metadata and the same structured-data objects as
+      // SSR, not duplicate translation dictionaries or full station records.
+      // The admin SEO preview retains the full response without slim=1.
       if (String(req.query.slim || '') === '1') {
         res.json({
           language: (seoData as any).language,
           cleanPath: (seoData as any).cleanPath,
           seoTags: (seoData as any).seoTags,
+          structuredData: seoRenderer.generateStructuredData(
+            seoData.seoTags, seoData.language, seoData.translations || {},
+            seoData.cleanPath, seoData.pageData?.station, seoData.urlTranslations, seoData.pageData,
+          ),
         });
         return;
       }
       res.json(seoData);
     } catch (error) {
       console.error('SEO Page Data error:', error);
-      res.status(500).json({ error: 'Failed to fetch SEO page data' });
+      markSeoTemporarilyUnavailable(res);
+      res.json({ error: 'SEO metadata temporarily unavailable' });
     }
   });
 
@@ -1438,20 +1464,18 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       const { forwardMap: urlTranslations } = await ensureUrlTranslationsLoaded();
       const { getIndexableLanguagesForStation } = await import('../seo/junk-station-rules');
 
-      // Bulk-fetch the stations from the manifest. Mongo $in is bounded
-      // (max 1000 per chunk) so a single round-trip is safe.
-      const stationDocs = await pgCatalog().find({ _id: { $in: chunkInfo.stationIds.map(String) } });
-
-      // Re-order by manifest order (Mongo doesn't preserve $in order).
-      const byId = new Map<string, any>();
-      for (const s of stationDocs) byId.set(String((s as any)._id), s);
-
       const parts: string[] = [];
       parts.push(`<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">`);
 
       let stationCount = 0;
-      for (const objId of chunkInfo.stationIds) {
+      for (let offset = 0; offset < chunkInfo.stationIds.length; offset += SITEMAP_STATION_READ_BATCH_SIZE) {
+        const batchIds = chunkInfo.stationIds.slice(offset, offset + SITEMAP_STATION_READ_BATCH_SIZE).map(String);
+        const stationDocs = await pgSitemapStationBatch(batchIds);
+        // SQL ANY does not promise input ordering; retain the manifest's
+        // deterministic order while keeping only one bounded batch of rows.
+        const byId = new Map(stationDocs.map((station) => [String(station._id), station]));
+      for (const objId of batchIds) {
         const station = byId.get(String(objId));
         if (!station || !station.slug) continue; // station deleted between build and serve — skip
 
@@ -1509,6 +1533,7 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         parts.push(`
     <xhtml:link rel="alternate" hreflang="x-default" href="${escapeXml(baseUrl + enPath)}"/>
   </url>`);
+      }
       }
       parts.push(`
 </urlset>`);
@@ -1769,6 +1794,10 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
       const manifests = allActiveManifests.filter(
         (m: any) => (m.qualifiedLanguagesHash || 'unknown') === pickedHash,
       );
+      if (!hasPublishableSitemapChildren(manifests)) {
+        send503EmptySitemapIndex(res);
+        return;
+      }
 
       // Compute ETag from qualified-langs hash + sorted manifest versions.
       const manifestSig = manifests
@@ -1939,6 +1968,10 @@ ${buildHreflangLinks(altLang, baseUrl + altPath).slice(1)}`);
         res.setHeader('Retry-After', '120');
         res.setHeader('Cache-Control', 'no-store');
         return void res.status(503).send('Sitemap manifest building — retry shortly');
+      }
+      if (!hasPublishableSitemapChildren(langManifests)) {
+        send503EmptySitemapIndex(res);
+        return;
       }
 
       // Per-type lookup with maxUpdatedAt computed from chunks

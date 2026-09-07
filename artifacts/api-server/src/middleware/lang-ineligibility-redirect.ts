@@ -22,7 +22,7 @@
 
 import type { Request, Response, NextFunction } from 'express';
 import { SEO_LANGUAGES } from '@workspace/seo-shared/seo-config';
-import { reverseTranslateUrl } from '@workspace/seo-shared/url-translations';
+import { reverseTranslateUrl, URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
 
 // Universal 14 languages: always eligible for every station.
 const UNIVERSAL_14 = new Set([
@@ -34,32 +34,15 @@ const ENABLED_LANGS = new Set(
   SEO_LANGUAGES.filter((l) => l.enabled).map((l) => l.code.toLowerCase()),
 );
 
-// Station URL segments across all languages (e.g. "station", "istasyon",
-// "sender", "stazione" …) — sourced lazily from the in-memory URL translations.
-let stationSegments: Set<string> | null = null;
-
-function getStationSegments(): Set<string> {
-  if (stationSegments) return stationSegments;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { URL_TRANSLATIONS } = require('@workspace/seo-shared/url-translations') as {
-      URL_TRANSLATIONS: Record<string, Record<string, string>>;
-    };
-    const segs = new Set<string>();
-    const stationMap = URL_TRANSLATIONS['station'];
-    if (stationMap) {
-      for (const seg of Object.values(stationMap)) {
-        if (seg) segs.add(seg.toLowerCase());
-      }
-    }
-    // Always include the English fallback
-    segs.add('station');
-    stationSegments = segs;
-  } catch {
-    stationSegments = new Set(['station']);
-  }
-  return stationSegments;
-}
+// URL_TRANSLATIONS is language -> route names, not route -> languages.
+// Recognize localized detail routes before generic reverse translation, which
+// would otherwise translate a station slug that happens to match a UI word.
+const stationSegments = new Set([
+  'station',
+  ...Object.values(URL_TRANSLATIONS)
+    .map(translations => translations.station?.toLowerCase())
+    .filter((segment): segment is string => !!segment),
+]);
 
 export async function langIneligibilityRedirectMiddleware(
   req: Request,
@@ -73,14 +56,15 @@ export async function langIneligibilityRedirectMiddleware(
   // Never touch static-asset requests (e.g. /xx/something.js) — only HTML routes.
   if (/\.[a-z0-9]{2,5}$/i.test(rawPath)) return next();
 
-  let cleanPath: string;
+  let parts: string[];
   try {
-    cleanPath = decodeURIComponent(rawPath);
+    // Decode each segment separately: an encoded slash belongs to the slug,
+    // not to the route structure.
+    parts = rawPath.split('/').filter(Boolean).map(decodeURIComponent);
   } catch {
     return next();
   }
 
-  const parts = cleanPath.split('/').filter(Boolean);
   if (parts.length === 0) return next();
 
   const lang = parts[0].toLowerCase();
@@ -91,8 +75,7 @@ export async function langIneligibilityRedirectMiddleware(
   // Universal-14: always eligible / always indexable — no redirect, no DB hit.
   if (UNIVERSAL_14.has(lang)) return next();
 
-  const segments = getStationSegments();
-  const isStationUrl = parts.length === 3 && segments.has(parts[1].toLowerCase());
+  const isStationUrl = parts.length === 3 && stationSegments.has(parts[1].toLowerCase());
 
   // BROWSE-PAGE REDIRECT (2026-06-18): for non-universal languages, every
   // non-station page (homepage, genres, regions, search, about, faq, …) is
@@ -132,7 +115,9 @@ export async function langIneligibilityRedirectMiddleware(
   //   (c) emits a single clean hop to the English canonical.
   // Junk stations resolve to 410 Gone at the /en canonical, so the "gone"
   // signal is preserved exactly one hop downstream.
-  const slug = parts[2].toLowerCase();
+  // Preserve the slug as one URL component. Raw Unicode can make Node reject
+  // Location, and decoded ?/# must not become query/fragment delimiters.
+  const slug = encodeURIComponent(parts[2].toLowerCase());
   return send301(req, res, `/en/station/${slug}`);
 }
 
@@ -143,7 +128,6 @@ function send301(req: Request, res: Response, target: string): void {
     // Short cache so removing a redirect (e.g. a language becomes universal)
     // clears from CDN/browser within minutes.
     'Cache-Control': 'public, max-age=300, s-maxage=300',
-    'Location': target + qs,
   });
-  res.status(301).end();
+  res.location(target + qs).status(301).end();
 }

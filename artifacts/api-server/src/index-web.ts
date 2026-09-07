@@ -19,6 +19,7 @@ import { urlRedirectMiddleware } from './url-redirect-middleware';
 import { stationCountryValidator } from './station-country-validator';
 import { serveStatic, log } from "./serve-static";
 import { SeoRenderer, getSeoRenderStats } from './seo-renderer';
+import { markSeoTemporarilyUnavailable } from './seo/temporary-unavailable';
 import { registerSeoSitemapRoutes } from './routes/seo-sitemap-routes';
 import { getBaseUrl } from './routes/shared-utils';
 import { startOperation, endOperation, getActiveOperations, getGcStats } from './utils/operation-tracker';
@@ -914,12 +915,8 @@ app.use('/api/stream', streamServiceProxy);
       if (!responded && !res.headersSent) {
         responded = true;
         clearTimeout(reqTimeout);
-        logger.log(`⏰ SEO request timeout (15s), falling back to SPA (noindex): ${url}`);
-        // Serving the SPA shell as indexable on timeout causes Google to index
-        // an empty-content page. Set noindex so bots skip this response and
-        // retry; browsers ignore X-Robots-Tag and still get a working SPA.
-        res.setHeader('X-Robots-Tag', 'noindex, follow');
-        res.setHeader('Cache-Control', 'no-store');
+        logger.log(`⏰ SEO request timeout (15s), falling back to SPA (503): ${url}`);
+        markSeoTemporarilyUnavailable(res);
         next();
       }
     }, 15000);
@@ -998,7 +995,7 @@ app.use('/api/stream', streamServiceProxy);
     <link rel="preload" as="font" href="/fonts/ubuntu-500.woff2" type="font/woff2" crossorigin>
     <link rel="preload" as="font" href="/fonts/ubuntu-600.woff2" type="font/woff2" crossorigin>
     <link rel="preload" as="font" href="/fonts/ubuntu-700.woff2" type="font/woff2" crossorigin>
-    ${pageType === 'home' ? '<link rel="preload" as="image" imagesrcset="/images/hero-bg-430w.webp 430w, /images/hero-bg.webp 1920w" imagesizes="100vw" fetchpriority="high">' : ''}
+    ${pageType === 'home' ? '<link rel="preload" as="image" href="/images/hero-bg-430w.webp" type="image/webp" media="(max-width: 767px)" fetchpriority="high"><link rel="preload" as="image" href="/images/hero-bg.webp" type="image/webp" media="(min-width: 768px)" fetchpriority="high">' : ''}
     ${prodTags.styles}
     ${prodTags.preloads}
     <style>
@@ -1077,6 +1074,15 @@ app.use('/api/stream', streamServiceProxy);
           return;
         }
 
+        // Handle transient data failures BEFORE the permanent quality gates.
+        // Synthetic station placeholders have no stream URL; treating them as
+        // junk used to turn a brief database read failure into a cached 410.
+        if (seoData.pageData?.stationDbError) {
+          markSeoTemporarilyUnavailable(res);
+          next();
+          return;
+        }
+
         const stationNotFound = !!seoData.pageData?.notFound;
         // Architect P0: junk station URLs (test feeds, codec-suffix slugs,
         // song-name slugs, frequency-prefix duplicates, or DB records with
@@ -1147,11 +1153,8 @@ app.use('/api/stream', streamServiceProxy);
         clearTimeout(reqTimeout);
         const errMsg = error?.message || '';
         const isOverload = errMsg === 'SEO_RENDER_OVERLOADED' || errMsg === 'SEO_RENDER_TIMEOUT';
-        logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), falling back to SPA (noindex): ${url} — ${errMsg}`);
-        // Same rationale as the timeout branch: SPA shell without real content
-        // must not be indexed. Bots will retry; browser users still get SPA.
-        res.setHeader('X-Robots-Tag', 'noindex, follow');
-        res.setHeader('Cache-Control', 'no-store');
+        logger.log(`⚠️ SSR error (${isOverload ? 'overload' : 'render'}), falling back to SPA (503): ${url} — ${errMsg}`);
+        markSeoTemporarilyUnavailable(res);
         next();
       }
     }
@@ -1167,7 +1170,10 @@ app.use('/api/stream', streamServiceProxy);
   // SSR layer at the target then emits the proper localized canonical
   // and hreflang, so Googlebot consolidates ranking on the right URL.
   const { bareSlugRedirectMiddleware } = await import('./middleware/bare-slug-redirect');
-  app.use(bareSlugRedirectMiddleware);
+  app.use((req, res, next) => {
+    if (res.statusCode === 503) return next();
+    return bareSlugRedirectMiddleware(req, res, next);
+  });
 
   // Task #158: lightweight slug-shape 404 for non-bot visitors. Bots
   // already get a proper 404 from the SSR catch-all above; this fills
@@ -1175,12 +1181,16 @@ app.use('/api/stream', streamServiceProxy);
   // `/regions/regio's/germany` or `/genres/<unknown>` and otherwise see
   // a blank loading screen with HTTP 200 (the SPA shell).
   const { createSlugShape404Middleware } = await import('./middleware/slug-shape-404');
-  app.use(createSlugShape404Middleware({
+  const slugShape404Middleware = createSlugShape404Middleware({
     regionsAlts: seoRegionAlts,
     genresAlts: seoGenreAlts,
     stationSingularAlts: seoStationSingularAlts,
     stationsPluralAlts: seoStationPluralAlts,
-  }));
+  });
+  app.use((req, res, next) => {
+    if (res.statusCode === 503) return next();
+    return slugShape404Middleware(req, res, next);
+  });
 
   serveStatic(app);
 

@@ -1393,41 +1393,16 @@ export function generateLanguageUrls(
       return true;
     });
   
-  // x-default: ONLY emit from the English page, not from all 14 language
-  // variants. When every language variant declares x-default → /en/station/slug,
-  // Google receives 14 signals pointing at the English URL and treats it as the
-  // universal canonical, overriding the per-language self-canonicals and filing
-  // the other 13 variants as "Duplicate, Google chose different canonical."
-  // Emitting x-default only from the English page removes the competing signal:
-  // other languages keep their own self-canonical without pointing a "fallback"
-  // arrow at the English version.
-  // Guard: English must also be in the allow-list (not stripped for junk/noindex).
-  if (currentLanguage === 'en' && (!allowSet || allowSet.has('en'))) {
-    // Strip trailing-slash so x-default never resolves to /en/ (301 hop).
-    const enPath = cleanPath === '/' || cleanPath === '' ? '' : cleanPath.replace(/\/+$/, '');
+  // Every locale must publish the same alternate cluster. x-default selects
+  // a fallback for unmatched languages; it is NOT a canonical directive.
+  // Reuse an already-qualified URL so this never introduces an ineligible
+  // English variant or disagrees with a self-referential URL.
+  // https://developers.google.com/search/docs/specialty/international/localized-versions
+  const fallback = hreflangs.find((entry) => entry.lang === 'en') || hreflangs[0];
+  if (fallback) {
     return hreflangs.concat([
-      {
-        lang: 'x-default',
-        url: `${currentDomain}/en${enPath}`,
-        hreflang: 'x-default'
-      }
+      { lang: 'x-default', url: fallback.url, hreflang: 'x-default' },
     ]);
-  }
-
-  // When English IS available, the English variant already emits the single
-  // x-default → /en URL; non-English variants must NOT emit a competing
-  // x-default (doing so pointed x-default at an arbitrary first-allowed
-  // language). Only when English is absent from this page's allow-list
-  // (e.g. a station not indexable in English) do we fall back to the first
-  // allowed language. See SEO re-audit 2026-06-20, Finding B.
-  const enInAllowSet = !allowSet || allowSet.has('en');
-  if (!enInAllowSet) {
-    const fallback = hreflangs[0];
-    if (fallback) {
-      return hreflangs.concat([
-        { lang: 'x-default', url: fallback.url, hreflang: 'x-default' },
-      ]);
-    }
   }
   return hreflangs;
 }

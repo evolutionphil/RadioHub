@@ -95,6 +95,19 @@ export async function pgStationSlugRows():Promise<any[]> {
     last_check_ok AS "lastCheckOk",last_check_time AS "lastCheckTime",source->>'lastCheckOkTime' AS "lastCheckOkTime"
     FROM stations WHERE slug IS NOT NULL ORDER BY id`)).rows;
 }
+/** Sitemap rendering needs identity, image and indexability fields, not the
+ * duplicated provider payload in source. Bound each read so a 10,000-URL
+ * sitemap never holds every full station/translation document in memory. */
+export const SITEMAP_STATION_READ_BATCH_SIZE = 500;
+export async function pgSitemapStationBatch(ids: readonly string[]): Promise<any[]> {
+  if (ids.length > SITEMAP_STATION_READ_BATCH_SIZE) throw new Error('Sitemap station read batch exceeds 500 IDs');
+  if (ids.length === 0) return [];
+  return (await getPostgresPool().query(`SELECT id AS _id,slug,name,url,homepage,tags_raw AS tags,bitrate,
+    country,country_code AS "countryCode",language,language_codes AS "languageCodes",descriptions,
+    no_index AS "noIndex",last_check_ok AS "lastCheckOk",last_check_time AS "lastCheckTime",
+    source->>'lastCheckOkTime' AS "lastCheckOkTime",updated_at AS "updatedAt",logo_assets AS "logoAssets",favicon
+    FROM stations WHERE id=ANY($1::text[])`, [ids])).rows;
+}
 export async function pgSlugCountryNames():Promise<Array<{name:string}>> {
   return (await getPostgresPool().query('SELECT name FROM countries ORDER BY name')).rows;
 }

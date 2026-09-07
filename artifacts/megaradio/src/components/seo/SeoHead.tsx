@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { SeoMetaTags, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
+import { applyServerStructuredData, type ServerStructuredData } from '@/utils/server-structured-data';
 
 interface SeoHeadProps {
   seoData: SeoMetaTags;
+  structuredData?: ServerStructuredData;
 }
 
-export function SeoHead({ seoData }: SeoHeadProps) {
+export function SeoHead({ seoData, structuredData }: SeoHeadProps) {
   useEffect(() => {
     // Update document title
     if (seoData.title) {
@@ -58,6 +60,7 @@ export function SeoHead({ seoData }: SeoHeadProps) {
     // (Ahrefs "Meta description too long"); word-boundary safe.
     const cappedDescription = truncateAtWordBoundary(seoData.description || '', 160);
     updateMetaTag('description', cappedDescription);
+    if (seoData.robots) updateMetaTag('robots', seoData.robots);
 
     // Open Graph tags - ALL 4 REQUIRED properties
     updateMetaTag('', seoData.ogTitle || seoData.title, 'og:title');
@@ -112,8 +115,8 @@ export function SeoHead({ seoData }: SeoHeadProps) {
       });
     }
     
-    // SEO meta tags updated successfully
-  }, [seoData]);
+    if (structuredData) applyServerStructuredData(structuredData);
+  }, [seoData, structuredData]);
 
   return null; // This component doesn't render anything visible
 }

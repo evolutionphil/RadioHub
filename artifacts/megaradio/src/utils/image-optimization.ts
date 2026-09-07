@@ -1,4 +1,5 @@
 import { getStreamProxyUrl } from '@/lib/utils';
+import { getLanguageFromPath } from '@workspace/seo-shared/seo-config';
 
 // Check if browser supports WebP format.
 // Memoized: WebP support cannot change during a page's lifetime, so the
@@ -71,14 +72,25 @@ export const preloadImage = (src: string): Promise<void> => {
 export const preloadCriticalImages = async () => {
   if (typeof window === 'undefined') return;
 
-  const criticalImages = [
-    '/images/hero-bg-430w.webp',
-    '/header-logo-80w.webp',
-    '/images/no-image.webp'
-  ];
+  const criticalImages = ['/header-logo-80w.webp'];
+  // Only home renders the hero. Match its <picture> / HTML preload breakpoint
+  // so desktop visitors do not also download the unused mobile image.
+  if (getLanguageFromPath(window.location.pathname).cleanPath === '/') {
+    const desktop = window.matchMedia?.('(min-width: 768px)').matches ?? window.innerWidth >= 768;
+    criticalImages.push(desktop ? '/images/hero-bg.webp' : '/images/hero-bg-430w.webp');
+  }
+
+  // The HTML normally already starts these requests before JS runs. Keep this
+  // helper as a fallback for shells without hints, not a second preloader.
+  const hintedImages = new Set(
+    Array.from(document.querySelectorAll<HTMLLinkElement>('link[rel="preload"][as="image"]'))
+      .filter(link => !link.media || window.matchMedia?.(link.media).matches)
+      .map(link => link.href),
+  );
+  const missingImages = criticalImages.filter(src => !hintedImages.has(new URL(src, window.location.href).href));
 
   try {
-    await Promise.all(criticalImages.map(preloadImage));
+    await Promise.all(missingImages.map(preloadImage));
   } catch (error) {
     console.warn('⚠️ Some critical images failed to preload:', error);
   }
@@ -145,8 +157,12 @@ export class ImageLazyLoader {
 
 // Progressive image enhancement
 export const enhanceImage = (img: HTMLImageElement) => {
-  // Add loading="lazy" if not present
-  if (!img.loading) {
+  // A fetch-priority hint must never be contradicted by lazy loading. In
+  // particular the home hero has fetchPriority="high" but no loading prop.
+  const isPriority = img.getAttribute('fetchpriority') === 'high' || img.dataset.priority === 'high';
+  if (isPriority) {
+    img.loading = 'eager';
+  } else if (!img.getAttribute('loading')) {
     img.loading = 'lazy';
   }
 

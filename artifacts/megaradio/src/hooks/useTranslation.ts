@@ -188,13 +188,9 @@ export function useTranslation() {
 
   // Translation loading state tracking
 
-  // Force fresh data for Turkish translations
-  useEffect(() => {
-    if (language === 'tr') {
-      // Force Turkish translations refresh to get latest data
-      queryClient.invalidateQueries({ queryKey: ["/api/translations", "tr"] });
-    }
-  }, [language, queryClient]);
+  // All locales use the query freshness policy above. Invalidating Turkish on
+  // every hook mount made each station card/logo refetch the shared dictionary.
+  // Explicit refresh remains available through refetch() and admin updates.
 
   // Fetch English translations as fallback for unsupported languages
   const { data: englishTranslations } = useQuery<Record<string, string>>({

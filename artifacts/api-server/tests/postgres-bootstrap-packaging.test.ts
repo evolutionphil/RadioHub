@@ -12,9 +12,10 @@ test('API and web images use the guarded launcher and both package schema assets
     assert.match(docker, /\/app\/lib\/db\/migrations \/deploy\/db-migrations/);
     assert.ok(docker.includes(`"scripts/start-postgres.mjs", "dist/index-${service}.mjs"`));
     assert.doesNotMatch(docker, /COPY.*(?:auto-bootstrap|legacy-migration\/dist)|CMD.*bootstrap\.mjs/);
+    assert.match(docker, /http\.get\([^\n]+\/healthz/);
   }
   const manifest = JSON.parse(read('artifacts/api-server/package.json'));
-  for (const file of ['apply-postgres-migrations', 'postgres-initialization', 'start-postgres']) {
+  for (const file of ['apply-postgres-migrations', 'postgres-initialization', 'start-postgres', 'postgres-startup-server']) {
     assert.ok(manifest.files.includes(`scripts/${file}.mjs`), `${file} must survive production deployment`);
   }
   assert.match(manifest.scripts.start, /scripts\/start-postgres\.mjs dist\/index\.mjs/);

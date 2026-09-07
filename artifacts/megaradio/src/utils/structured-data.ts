@@ -52,9 +52,8 @@ export interface RadioStationData {
   name: string;
   url: string;
   description?: string;
-  keywords?: string[];
+  category?: string[];
   inLanguage?: string;
-  isAccessibleForFree?: boolean;
   broadcaster?: {
     "@type": "Organization";
     name: string;
@@ -67,7 +66,7 @@ export interface RadioStationData {
     "@type": "Organization";
     name: string;
   };
-  area?: {
+  areaServed?: {
     "@type": "Country";
     name: string;
   };
@@ -97,6 +96,7 @@ export interface ItemListData {
   name: string;
   description?: string;
   numberOfItems: number;
+  inLanguage?: string;
   itemListElement: Array<{
     "@type": "ListItem";
     position: number;
@@ -157,45 +157,8 @@ export const generateWebSiteData = (): WebSiteData => {
 
 // Generate RadioStation structured data
 export const generateRadioStationData = (station: Station, currentUrl: string): RadioStationData => {
-  // Calculate aggregateRating based on votes or clickCount
-  let aggregateRating;
-  const metricValue = station.votes || station.clickCount || 0;
-  const metricCount = station.votes || station.clickCount || 0;
-  
-  if (metricValue > 0) {
-    // Use logarithmic scale for realistic rating distribution
-    let ratingValue = 3.0; // Default baseline
-    
-    if (metricValue >= 5000) {
-      ratingValue = 5.0;      // Exceptional popularity
-    } else if (metricValue >= 2000) {
-      ratingValue = 4.8;      // Very high popularity
-    } else if (metricValue >= 1000) {
-      ratingValue = 4.5;      // High popularity
-    } else if (metricValue >= 500) {
-      ratingValue = 4.2;      // Good popularity
-    } else if (metricValue >= 200) {
-      ratingValue = 4.0;      // Moderate popularity
-    } else if (metricValue >= 100) {
-      ratingValue = 3.7;      // Decent popularity
-    } else if (metricValue >= 50) {
-      ratingValue = 3.5;      // Some popularity
-    } else if (metricValue >= 20) {
-      ratingValue = 3.2;      // Low popularity
-    } else if (metricValue >= 10) {
-      ratingValue = 3.0;      // Very low popularity
-    } else {
-      ratingValue = 2.5;      // Minimal popularity
-    }
-    
-    aggregateRating = {
-      "@type": "AggregateRating" as const,
-      ratingValue,
-      ratingCount: metricCount,
-      bestRating: 5,
-      worstRating: 1
-    };
-  }
+  // Click counts and one-way votes are not star reviews. The authoritative
+  // server renderer emits ratings only from genuine user rating aggregates.
   
   const keywords: string[] = (station.tags && station.tags.length > 0)
     ? station.tags.slice(0, 8)
@@ -206,8 +169,7 @@ export const generateRadioStationData = (station: Station, currentUrl: string): 
     name: station.name,
     url: currentUrl,
     description: station.name + (station.tags ? ` - ${station.tags.join(', ')}` : ''),
-    keywords,
-    isAccessibleForFree: true,
+    category: keywords,
     broadcaster: {
       "@type": "Organization",
       name: station.name,
@@ -220,9 +182,8 @@ export const generateRadioStationData = (station: Station, currentUrl: string): 
       name: "Mega Radio"
     },
     ...(station.country && {
-      area: { "@type": "Country" as const, name: station.country }
+      areaServed: { "@type": "Country" as const, name: station.country }
     }),
-    aggregateRating
   };
 };
 
@@ -242,7 +203,10 @@ export const generateBreadcrumbData = (breadcrumbs: Array<{name: string, url: st
 };
 
 // Generate ItemList structured data for station listings
-export const generateStationListData = (stations: Station[], listName: string, listDescription?: string): ItemListData => {
+export const generateStationListData = (
+  stations: Station[], listName: string, listDescription?: string,
+  localizedPath: (path: string) => string = path => `/en${path}`,
+): ItemListData => {
   const domain = getCurrentDomain();
   
   return {
@@ -255,16 +219,17 @@ export const generateStationListData = (stations: Station[], listName: string, l
       "@type": "ListItem",
       position: index + 1,
       name: station.name,
-      url: `${domain}/station/${station.slug || station._id}`,
-      description: station.name + (station.country ? ` from ${station.country}` : '')
+      url: `${domain}${localizedPath(`/station/${station.slug || station._id}`)}`,
     }))
   };
 };
 
 // Generate Genre ItemList structured data
-export const generateGenreListData = (genres: Array<{name: string, slug: string}>, currentCountry?: string): ItemListData => {
+export const generateGenreListData = (
+  genres: Array<{name: string, slug: string}>, currentCountry?: string,
+  localizedPath: (path: string) => string = path => `/en${path}`,
+): ItemListData => {
   const domain = getCurrentDomain();
-  const countryPrefix = currentCountry && currentCountry !== 'all' ? `/${currentCountry.toLowerCase()}` : '';
   
   return {
     "@context": "https://schema.org",
@@ -280,8 +245,8 @@ export const generateGenreListData = (genres: Array<{name: string, slug: string}
       "@type": "ListItem",
       position: index + 1,
       name: genre.name,
-      url: `${domain}${countryPrefix}/genre/${genre.slug}`,
-      description: `${genre.name} radio stations`
+      // Country is a UI filter, not a prefix of the canonical genre route.
+      url: `${domain}${localizedPath(`/genres/${genre.slug}`)}`,
     }))
   };
 };
@@ -320,4 +285,18 @@ export const injectMultipleStructuredData = (dataArray: any[]): void => {
       document.head.appendChild(script);
     });
   }
+};
+
+/** A component may replace only its own JSON-LD; never a sibling or SSR node. */
+export const injectOwnedStructuredData = (dataArray: unknown[], owner: string): (() => void) => {
+  if (typeof document === 'undefined') return () => {};
+  const scripts = dataArray.map(data => {
+    const script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.dataset.structuredDataOwner = owner;
+    script.textContent = JSON.stringify(data);
+    document.head.appendChild(script);
+    return script;
+  });
+  return () => scripts.forEach(script => script.remove());
 };

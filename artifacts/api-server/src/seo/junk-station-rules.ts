@@ -483,6 +483,10 @@ export function getIndexableLanguagesForStation(
 ): string[] {
   if (!station) return [];
   if (station.noIndex === true) return [];
+  // Match SSR's existing policy: numeric callsign URLs remain usable but
+  // noindex; negative numeric artifact URLs are gone. Neither belongs in a
+  // sitemap or an indexable hreflang cluster.
+  if (isNumericOnlySlug(station.slug)) return [];
   if (isJunkStation(station)) return [];
 
   const eligible = getEligibleLanguages(station);

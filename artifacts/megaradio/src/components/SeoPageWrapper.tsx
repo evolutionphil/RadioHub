@@ -1,81 +1,57 @@
-import { useEffect, useState } from "react";
+import { useLayoutEffect } from 'react';
 import { useQuery } from "@tanstack/react-query";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { SeoHead } from "@/components/seo/SeoHead";
 import { SeoMetaTags } from "@workspace/seo-shared/seo-config";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
+import { preserveInitialSsrHead, ServerSeoHeadContext } from "@/utils/ssr-seo-head";
+import { clearPageStructuredData, type ServerStructuredData } from "@/utils/server-structured-data";
 
 interface SeoPageWrapperProps {
   children: React.ReactNode;
   pageType?: string;
 }
 
-// PageSpeed 2026-07-03: when the server SSR-rendered this page it already
-// injected the full <head> (title/meta/canonical/hreflang/JSON-LD) AND
-// window.__INITIAL_TRANSLATIONS__ — re-fetching /api/seo/page-data for the
-// SAME url only re-applied identical tags at the cost of a ~100 KB JSON
-// response in the critical window. Capture the SSR'd pathname once; the
-// fetch is skipped ONLY while the user is still on that exact first page.
-// The first client-side navigation releases the guard permanently (so
-// navigating away and back re-fetches and canonical/hreflang stay correct).
-const initialSsrPath: string | null =
-  typeof window !== 'undefined' && window.__INITIAL_TRANSLATIONS__?.meta_title
-    ? window.location.pathname
-    : null;
-let leftInitialSsrPage = false;
-
+// SSR owns the initial head. Only fetch page-specific data after navigation
+// (or on a dev page with no SSR head), without downloading the translation
+// dictionary and station lists a second time.
 export function SeoPageWrapper({ children, pageType = 'home' }: SeoPageWrapperProps) {
-  const { currentLanguage, cleanPath } = useSeoRouting();
+  const { currentLanguage } = useSeoRouting();
   const [location] = useLocation();
+  const search = useSearch();
   
   // CRITICAL FIX: Use full URL with country code, not just cleanPath
   // This ensures the API returns SEO in the correct language
-  const fullUrl = location;
-  
-  // CRITICAL FIX: Initialize with server-preloaded title (already language-correct from htmlLangMiddleware)
-  // instead of hardcoded English 'MegaRadio - Free Online Radio' — this eliminates the window
-  // where analytics tools (Flowalive) or bots capture an English title on non-English pages.
-  const [seoTags, setSeoTags] = useState<SeoMetaTags>(() => {
-    const preTitle =
-      typeof window !== 'undefined' && window.__INITIAL_TRANSLATIONS__?.meta_title
-        ? window.__INITIAL_TRANSLATIONS__.meta_title
-        : 'MegaRadio - Free Online Radio';
-    const preDesc =
-      typeof window !== 'undefined' && window.__INITIAL_TRANSLATIONS__?.meta_description
-        ? window.__INITIAL_TRANSLATIONS__.meta_description
-        : 'Listen to free online radio stations from around the world.';
-    return { title: preTitle, description: preDesc };
-  });
+  const fullUrl = `${location}${search ? `?${search}` : ''}`;
+  const ssrHeadAlreadyCorrect = preserveInitialSsrHead(fullUrl);
 
-  // Release the SSR guard permanently on the first client-side navigation.
-  if (initialSsrPath && fullUrl !== initialSsrPath) leftInitialSsrPage = true;
-  const ssrHeadAlreadyCorrect =
-    !!initialSsrPath && !leftInitialSsrPage && fullUrl === initialSsrPath;
+  // Remove the old page's entities immediately on route change, including
+  // failed/aborted navigation requests. Global entities remain applicable.
+  // Layout timing ensures a cached current-route head can apply afterwards.
+  useLayoutEffect(() => {
+    if (!ssrHeadAlreadyCorrect) clearPageStructuredData();
+  }, [fullUrl, ssrHeadAlreadyCorrect]);
 
   // Fetch SEO data from server using FULL URL with country code.
-  // slim=1: only seoTags is consumed here, so ask the server to drop the
-  // translations/urlTranslations/pageData bulk (~100 KB → a few KB).
-  const { data: seoData } = useQuery({
+  // slim=1 keeps only metadata and structured data, excluding duplicate
+  // translations/urlTranslations/pageData dictionaries and station records.
+  const { data: seoData } = useQuery<{ seoTags?: SeoMetaTags; structuredData?: ServerStructuredData }>({
     queryKey: ['/api/seo/page-data', fullUrl, currentLanguage],
     enabled: !ssrHeadAlreadyCorrect,
-    queryFn: async () => {
-      const response = await fetch(`/api/seo/page-data?url=${encodeURIComponent(fullUrl)}&slim=1`);
+    queryFn: async ({ signal }) => {
+      const response = await fetch(`/api/seo/page-data?url=${encodeURIComponent(fullUrl)}&slim=1`, { signal });
+      if (!response.ok) throw new Error(`SEO page data unavailable (${response.status})`);
       return response.json();
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
-  // Update SEO tags when data changes
-  useEffect(() => {
-    if (seoData?.seoTags) {
-      setSeoTags(seoData.seoTags);
-    }
-  }, [seoData]);
-
   return (
-    <>
-      <SeoHead seoData={seoTags} />
+    <ServerSeoHeadContext.Provider value={true}>
+      {/* Never replace a complete SSR head with homepage translation keys or
+          the previous route's tags while the current request is pending. */}
+      {!ssrHeadAlreadyCorrect && seoData?.seoTags && <SeoHead seoData={seoData.seoTags} structuredData={seoData.structuredData} />}
       {children}
-    </>
+    </ServerSeoHeadContext.Provider>
   );
 }

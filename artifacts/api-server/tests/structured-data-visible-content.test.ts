@@ -129,6 +129,10 @@ mock.module(new URL('../src/performance-cache.ts', import.meta.url).href, {
 // ---------------------------------------------------------------------------
 
 let SeoRenderer: new () => {
+  generateStructuredData: (
+    seoTags: any, language?: string, translations?: Record<string, string>,
+    cleanPath?: string, stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any,
+  ) => { global: any[]; page: any[] };
   generateHtmlBody: (pageData: any) => string;
   generateHtmlHead: (
     seoTags: any,
@@ -186,6 +190,56 @@ function extractSchemasOfType(head: string, type: string): any[] {
 }
 
 const DOMAIN = 'https://themegaradio.com';
+
+test('SSR and SPA share identical structured-data objects across all 14 indexable locales', async () => {
+  const { SITEMAP_PRIORITY_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+  const renderer = new SeoRenderer();
+  assert.equal(SITEMAP_PRIORITY_LANGUAGES.universal14.length, 14);
+  for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
+    const station = {
+      _id: 'schema-fixture', slug: 'fixture-radio', name: 'Fixture Radio', country: 'Germany', countryCode: 'DE',
+      tags: 'pop, FM 102.5', bitrate: 128, codec: 'mp3', descriptions: { [language]: { full: `${language}: Station description`, meta: `${language}: Station summary` } },
+    };
+    const translatedSegment = language === 'tr' ? 'istasyon' : language === 'de' ? 'sender' : 'station';
+    const urlTranslations = new Map([[`${language}:station`, translatedSegment]]);
+    const canonical = `${DOMAIN}/${language}/${translatedSegment}/fixture-radio`;
+    const tags = { title: 'Fixture Radio', description: `${language}: Station summary`, canonical, domain: DOMAIN };
+    const args = [tags, language, {}, '/station/fixture-radio', station, urlTranslations, { pageType: 'station' }] as const;
+    const data = renderer.generateStructuredData(...args);
+    const html = renderer.generateHtmlHead(...args);
+    for (const scope of ['global', 'page'] as const) {
+      const matches = [...html.matchAll(new RegExp(`<script[^>]*data-schema-scope="${scope}"[^>]*>([\\s\\S]*?)<\\/script>`, 'g'))];
+      assert.deepEqual(matches.map(match => JSON.parse(match[1])), data[scope], `${language}: ${scope} schema diverged`);
+    }
+    const stationSchema = data.page.find(schema => schema['@type'] === 'RadioBroadcastService');
+    assert.equal(stationSchema.url, canonical);
+    assert.equal(stationSchema.inLanguage, language);
+    assert.equal(stationSchema.description, `${language}: Station description`);
+    assert.equal(stationSchema.aggregateRating, undefined, 'no synthetic ratings introduced by SPA payload');
+    assert.deepEqual(stationSchema.category, ['pop', 'FM 102.5']);
+    for (const invalidOrSuperseded of ['keywords', 'additionalProperty', 'isAccessibleForFree', 'area']) {
+      assert.equal(invalidOrSuperseded in stationSchema, false, `${language}: Service must not emit ${invalidOrSuperseded}`);
+    }
+    assert.deepEqual(stationSchema.broadcastFrequency.broadcastFrequencyValue, {
+      '@type': 'QuantitativeValue', value: 102.5, unitText: 'MHz',
+    });
+    assert.equal('frequencyUnit' in stationSchema.broadcastFrequency, false);
+    assert.equal(data.page.find(schema => schema['@type'] === 'WebPage')?.isAccessibleForFree, true);
+    assert.doesNotThrow(() => JSON.stringify(data), 'payload must be JSON serializable');
+  }
+});
+
+test('shared schema builder replaces station entities with the current listing and retains noindex gates', () => {
+  const renderer = new SeoRenderer();
+  const seoTags = { title: 'Genres', description: 'Genre list', canonical: `${DOMAIN}/de/genres` };
+  const listing = renderer.generateStructuredData(seoTags, 'de', {}, '/genres', undefined, undefined, { pageType: 'genres' });
+  assert.equal(listing.page.some(schema => schema['@type'] === 'RadioBroadcastService'), false);
+  assert.equal(listing.global.some(schema => schema['@type'] === 'WebSite'), true);
+  const hidden = renderer.generateStructuredData({ ...seoTags, noIndex: true }, 'de', {}, '/station/hidden', {
+    slug: 'hidden', name: 'Hidden station', descriptions: { de: { full: 'Verborgener Sender' } },
+  }, undefined, { pageType: 'station' });
+  assert.equal(hidden.page.some(schema => ['RadioBroadcastService', 'RadioStation', 'WebPage'].includes(schema['@type'])), false);
+});
 
 // ===========================================================================
 // 0. Source-scan guard: catch new BreadcrumbList emissions on unexpected

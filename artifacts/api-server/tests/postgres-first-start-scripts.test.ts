@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { EventEmitter } from "node:events";
 import { test } from "node:test";
 import { applyPostgresMigrations, postgresMigrationConnectionOptions, postgresMigrationLockTimeout, safePostgresInitializationError } from "../scripts/apply-postgres-migrations.mjs";
 import { assertPostgresInitializationReady, postgresInitializationMode } from "../scripts/postgres-initialization.mjs";
@@ -134,7 +135,8 @@ test("only final successful import or verification with completed matching check
 
 function launch(db: ReturnType<typeof fixture>, options: Record<string, any> = {}) {
   return startPostgresApplication("dist/index-api.mjs", { environment, cwd: repository,
-    applyMigrations: async () => {}, createPool: db.createPool, importApplication: async () => "loaded", log() {}, ...options });
+    applyMigrations: async () => {}, createPool: db.createPool, importApplication: async () => "loaded",
+    startMaintenanceServer: async () => ({ close: async () => {}, failureSignal: new AbortController().signal }), log() {}, ...options });
 }
 
 test("launcher refuses unknown entry or mode before schema/database/application effects", async () => {
@@ -208,6 +210,122 @@ test("launcher stops pending polling at its deadline", async () => {
   assert.equal(time, 7000);
   assert.equal(waits, 2);
   assert.equal(db.ends, 1);
+});
+
+test("default waiting survives a multi-hour import and hands off automatically without loading jobs early", async () => {
+  const db = fixture({ run: null });
+  let time = 0;
+  let waits = 0;
+  let opened = 0;
+  let closed = 0;
+  let imported = 0;
+  assert.equal(await launch(db, {
+    environment: { DATABASE_URL: environment.DATABASE_URL }, now: () => time,
+    startMaintenanceServer: async () => {
+      assert.equal(db.calls.at(-1), "ROLLBACK");
+      assert.equal(db.releases, 1);
+      opened += 1;
+      return { close: async () => { closed += 1; }, failureSignal: new AbortController().signal };
+    },
+    wait: async (ms: number) => {
+      assert.equal(ms, 5000);
+      assert.equal(imported, 0);
+      time += 3_600_000;
+      if (++waits === 2) db.state.run = verified;
+    },
+    importApplication: async () => {
+      assert.equal(closed, 1);
+      assert.equal(db.ends, 1);
+      assert.equal(db.calls.at(-1), "COMMIT");
+      imported += 1;
+      return "automatically-opened";
+    },
+  }), "automatically-opened");
+  assert.equal(opened, 1);
+  assert.equal(imported, 1);
+  assert.equal(time, 7_200_000);
+});
+
+test("explicit forever waiting and lock contention still require completed verification", async () => {
+  const db = fixture({ lockAvailable: false });
+  await launch(db, { environment: { ...environment, POSTGRES_INIT_WAIT_MS: "forever" }, wait: async () => {
+    assert.equal(db.calls.some((sql) => sql.startsWith("SELECT domain")), false);
+    db.state.lockAvailable = true;
+  } });
+  assert.equal(db.connections, 2);
+});
+
+test("ready startup and invalid schema never open a maintenance listener", async () => {
+  let opened = 0;
+  const options = { startMaintenanceServer: async () => { opened += 1; throw new Error("unexpected listener"); } };
+  assert.equal(await launch(fixture(), options), "loaded");
+  await assert.rejects(launch(fixture(), { ...options, applyMigrations: async () => { throw new Error("schema failed"); } }), /schema failed/);
+  assert.equal(opened, 0);
+});
+
+test("cancelled waiting closes maintenance and never imports the application", async () => {
+  const db = fixture({ run: null });
+  const controller = new AbortController();
+  let closed = 0;
+  let imported = 0;
+  await assert.rejects(launch(db, { environment: { DATABASE_URL: environment.DATABASE_URL }, signal: controller.signal,
+    startMaintenanceServer: async () => ({ close: async () => { closed += 1; }, failureSignal: new AbortController().signal }),
+    wait: async () => { controller.abort(); }, importApplication: async () => { imported += 1; },
+  }), /interrupted/);
+  assert.equal(closed, 1);
+  assert.equal(db.ends, 1);
+  assert.equal(imported, 0);
+});
+
+test("an already-cancelled startup does not apply schema or open connections", async () => {
+  const db = fixture();
+  const controller = new AbortController();
+  controller.abort();
+  let applied = false;
+  await assert.rejects(launch(db, { signal: controller.signal, applyMigrations: async () => { applied = true; } }), /interrupted/);
+  assert.equal(applied, false);
+  assert.equal(db.connections, 0);
+});
+
+test("indefinite startup does not retain listeners on normally retired PostgreSQL clients", async () => {
+  const db = fixture({ run: null });
+  const clients: EventEmitter[] = [];
+  let waits = 0;
+  await launch(db, { environment: { DATABASE_URL: environment.DATABASE_URL },
+    createPool: () => ({
+      async connect() {
+        const client = Object.assign(new EventEmitter(), {
+          query: db.client.query,
+          release() { this.emit("end"); },
+        });
+        clients.push(client);
+        return client;
+      },
+      async end() {},
+    }),
+    wait: async () => {
+      for (const client of clients) {
+        assert.equal(client.listenerCount("error"), 0);
+        assert.equal(client.listenerCount("end"), 0);
+      }
+      if (++waits === 3) db.state.run = verified;
+    },
+  });
+  assert.equal(clients.length, 4);
+});
+
+test("a maintenance listener failure aborts waiting without false success", async () => {
+  const db = fixture({ run: null });
+  const controller = new AbortController();
+  let closed = 0;
+  let imported = 0;
+  await assert.rejects(launch(db, { environment: { DATABASE_URL: environment.DATABASE_URL },
+    startMaintenanceServer: async () => ({ close: async () => { closed += 1; }, failureSignal: controller.signal }),
+    wait: async () => { controller.abort(new Error("private listener details")); },
+    importApplication: async () => { imported += 1; },
+  }), /maintenance listener failed/);
+  assert.equal(closed, 1);
+  assert.equal(imported, 0);
 });
 
 test("launcher does not retry schema, connection, query, or empty-mode safety errors", async () => {

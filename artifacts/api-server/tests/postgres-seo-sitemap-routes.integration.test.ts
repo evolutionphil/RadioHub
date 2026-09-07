@@ -144,4 +144,30 @@ describe('PostgreSQL public sitemap and playback diagnostics',{skip:!connectionS
     assert.ok(Date.now()-started<6500);assert.notEqual((await pool.query('SHOW statement_timeout')).rows[0].statement_timeout,'4s');
     assert.equal((await pgSeoCatalog().findOne({slug:'berlin-music'}))?.name,'Berlin & Music');
   });
+  it('native slim sitemap reads preserve all language, quality, image and lastmod inputs without duplicating provider payloads',async()=>{
+    const stationId=randomUUID();
+    await pgCatalog().insertMany([{_id:stationId,stationuuid:randomUUID(),name:'Projection Radio',slug:'projection-radio',
+      url:'https://stream.example.invalid/projection',country:'Turkey',countryCode:'TR',language:'Turkish',languageCodes:'tr,es',
+      tags:'pop, news',lastCheckOk:false,lastCheckOkTime:new Date('2026-01-01T00:00:00Z'),lastCheckTime:new Date('2026-01-02T00:00:00Z'),
+      descriptions:{de:{full:'Beschreibung',meta:'Kurzbeschreibung'},ja:{full:'詳細',meta:'説明'},fr:{full:'',meta:'Incomplete'}},
+      logoAssets:{webp256:'https://cdn.themegaradio.com/projection.webp'},upstreamDiagnosticPayload:'x'.repeat(100_000)}]);
+    const full=await pgCatalog().findOne({_id:stationId});
+    const [slim]=await seo.pgSitemapStationBatch([stationId,'missing-native-id']);
+    assert.ok(full);assert.ok(slim);
+    for(const field of ['_id','slug','name','url','homepage','tags','bitrate','country','countryCode','language','languageCodes','descriptions','noIndex','lastCheckOk','lastCheckTime','updatedAt','logoAssets','favicon']) {
+      assert.deepEqual(slim[field]??null,full![field]??null,`projection parity: ${field}`);
+    }
+    assert.equal(new Date(slim.lastCheckOkTime).toISOString(),new Date(full!.lastCheckOkTime).toISOString());
+    assert.equal(slim.source,undefined);assert.equal(slim.upstreamDiagnosticPayload,undefined);
+    assert.ok(JSON.stringify(slim).length<JSON.stringify(full).length/10);
+    const {getIndexableLanguagesForStation}=await import('../src/seo/junk-station-rules');
+    const languages=['en','tr','es','de','ja','fr'];
+    assert.deepEqual(getIndexableLanguagesForStation(slim,languages),getIndexableLanguagesForStation(full!,languages));
+    await pgCatalog().update({_id:stationId},{$set:{lastCheckOk:true}});
+    const [healthySlim]=await seo.pgSitemapStationBatch([stationId]);
+    const healthyFull=await pgCatalog().findOne({_id:stationId});
+    assert.deepEqual(getIndexableLanguagesForStation(healthySlim,languages),getIndexableLanguagesForStation(healthyFull!,languages));
+    assert.ok(getIndexableLanguagesForStation(healthySlim,languages).includes('ja'));
+    assert.equal(getIndexableLanguagesForStation(healthySlim,languages).includes('fr'),false);
+  });
 });

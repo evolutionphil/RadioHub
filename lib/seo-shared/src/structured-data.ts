@@ -132,11 +132,10 @@ export function generateRadioStationSchema(
   // RadioBroadcastService (extends BroadcastService extends Service),
   // which legitimizes ALL the broadcast* + inLanguage fields. genre /
   // broadcastFormat / broadcastLanguage are NOT in any Service-side
-  // vocabulary, so we move tags to `keywords` (Thing-level, valid
-  // anywhere) and default to ["Music"] when a station ships no tags so
+  // vocabulary, so we move tags to Service.category
+  // and default to ["Music"] when a station ships no tags so
   // we never emit an empty list. Physical address belongs on the
-  // broadcaster Organization, not on the Service — Service uses `area`
-  // (which we already cover via broadcaster.areaServed at SSR layer).
+  // broadcaster Organization, not on the Service — Service uses areaServed.
   const rawTagList: string[] = (() => {
     if (!station.tags) return [];
     const raw = Array.isArray(station.tags)
@@ -160,10 +159,13 @@ export function generateRadioStationSchema(
     };
   }
   if (station.geoLat && station.geoLong) {
-    broadcaster.geo = {
-      "@type": "GeoCoordinates",
-      "latitude": parseFloat(station.geoLat),
-      "longitude": parseFloat(station.geoLong),
+    broadcaster.location = {
+      "@type": "Place",
+      "geo": {
+        "@type": "GeoCoordinates",
+        "latitude": parseFloat(station.geoLat),
+        "longitude": parseFloat(station.geoLong),
+      },
     };
   }
 
@@ -182,9 +184,8 @@ export function generateRadioStationSchema(
       "@id": `https://${domain}/#organization`,
       "name": "Mega Radio"
     },
-    "keywords": keywords,
+    "category": keywords,
     "inLanguage": language, // BCP-47 page language (en, tr, …)
-    "isAccessibleForFree": true,
     "potentialAction": {
       "@type": "ListenAction",
       "target": {
@@ -197,7 +198,7 @@ export function generateRadioStationSchema(
 
   // Service-level area served (Place) when we know the country
   if (station.country) {
-    schema.area = {
+    schema.areaServed = {
       "@type": "Country",
       "name": station.country,
     };
@@ -215,28 +216,8 @@ export function generateRadioStationSchema(
   // If real user ratings are added later, re-introduce aggregateRating from
   // that genuine data (and surface the reviews visibly on the page).
 
-  // 2026-05-12: bitrate/codec info goes into `additionalProperty` so we
-  // don't pollute the Service node with encodingFormat (CreativeWork-only)
-  // or broadcastChannelId (BroadcastChannel-only). Both were tripping
-  // Semrush's "property not in vocabulary" check.
-  const additionalProps: any[] = [];
-  if (station.bitrate) {
-    additionalProps.push({
-      "@type": "PropertyValue",
-      "name": "bitrate",
-      "value": `${station.bitrate} kbps`,
-    });
-  }
-  if (station.codec) {
-    additionalProps.push({
-      "@type": "PropertyValue",
-      "name": "codec",
-      "value": String(station.codec).toUpperCase(),
-    });
-  }
-  if (additionalProps.length > 0) {
-    schema.additionalProperty = additionalProps;
-  }
+  // Bitrate and codec belong to the visible station data, not to Service's
+  // vocabulary. additionalProperty is not defined on Service either.
 
   // D-A1 FIX (2026-05-08): emit broadcastFrequency as a structured
   // BroadcastFrequencySpecification when we can parse a real frequency
@@ -252,9 +233,11 @@ export function generateRadioStationSchema(
       if (Number.isFinite(value)) {
         schema.broadcastFrequency = {
           "@type": "BroadcastFrequencySpecification",
-          "broadcastFrequencyValue": value,
+          "broadcastFrequencyValue": {
+            "@type": "QuantitativeValue", "value": value,
+            "unitText": band === 'FM' ? 'MHz' : 'kHz',
+          },
           "broadcastSignalModulation": band,
-          "frequencyUnit": band === 'FM' ? 'MHz' : 'kHz',
         };
       } else {
         schema.broadcastFrequency = band;

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { COUNTRY_TO_LANGUAGE } from '@workspace/seo-shared/seo-config';
+import { getLanguageFromPath } from '@workspace/seo-shared/seo-config';
 
 /**
  * TranslationPreloader - Intelligent translation loading based on user preferences
@@ -12,33 +12,11 @@ export function TranslationPreloader() {
   useEffect(() => {
     const intelligentTranslationLoading = async () => {
     // CRITICAL: Non-blocking background load - allows LCP to happen immediately
-      // CRITICAL: Global views (no country code in URL) ALWAYS use English
-      // Only use browser/location detection for country-specific views
-      let detectedLanguage = 'en'; // Default fallback
-      
-      // Check if URL has a country code (e.g., /de/, /tr/, /es/)
-      const hasCountryCodeInUrl = window.location.pathname.match(/^\/[a-z]{2}(?:\/|$)/);
-      
-      // ONLY detect language if URL has a country code
-      if (hasCountryCodeInUrl) {
-        try {
-          // Try to get detected language from location data
-          const locationData = queryClient.getQueryData(['/api/location']);
-          if (locationData && (locationData as any).location?.countryCode) {
-            const countryCode = (locationData as any).location.countryCode;
-            // Use shared COUNTRY_TO_LANGUAGE mapping from seo-config (single source of truth)
-            // Country codes are uppercase from location API, convert to lowercase for lookup
-            detectedLanguage = COUNTRY_TO_LANGUAGE[countryCode.toLowerCase()] || 'en';
-          }
-        } catch (error) {
-          // Fallback to browser language (only for country-specific views)
-          const browserLang = navigator.language.split('-')[0];
-          if (['de', 'es', 'fr', 'it', 'pt', 'ru', 'tr', 'nl', 'pl', 'sv'].includes(browserLang)) {
-            detectedLanguage = browserLang;
-          }
-        }
-      }
-      // If no country code in URL, detectedLanguage stays 'en' (global = English only)
+      // Use the same URL locale resolver as the actual translation consumer.
+      // IP location is unrelated to the requested language: a visitor in
+      // Germany on /tr needs Turkish, not an unused German dictionary.
+      // Unprefixed global pages still resolve to English.
+      const { language: detectedLanguage } = getLanguageFromPath(window.location.pathname);
 
       // Loading translations in background (non-blocking for LCP)
 

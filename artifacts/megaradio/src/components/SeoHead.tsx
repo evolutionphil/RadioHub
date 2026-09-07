@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useContext, useEffect } from 'react';
+import { useLocation, useSearch } from 'wouter';
+import { preserveInitialSsrHead, ServerSeoHeadContext } from '@/utils/ssr-seo-head';
 import { useTranslation } from '@/hooks/useTranslation';
 import { generateSeoTags, getLanguageFromPath, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 // PageSpeed 2026-07-03: the four per-language template registries below
@@ -36,6 +37,8 @@ interface SeoHeadProps {
 
 export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadProps) {
   const [location] = useLocation();
+  const serverHeadOwned = useContext(ServerSeoHeadContext);
+  const search = useSearch();
   const { language } = useTranslation();
 
   // Get translations for SEO
@@ -58,6 +61,9 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
   });
 
   useEffect(() => {
+    // SSR already includes translated page metadata and admin overrides. Do
+    // not replace it with client defaults (or a loading station placeholder).
+    if (serverHeadOwned || preserveInitialSsrHead(`${location}${search ? `?${search}` : ''}`)) return;
     // Update HTML lang attribute
     document.documentElement.lang = language;
 
@@ -210,7 +216,7 @@ export function SeoHead({ stationData, pageType = 'home', genreName }: SeoHeadPr
     return () => {
       cancelled = true;
     };
-  }, [location, language, translations, stationData, pageType]);
+  }, [location, search, language, translations, stationData, pageType, genreName, serverHeadOwned]);
 
   return null; // This component only manages head tags
 }
