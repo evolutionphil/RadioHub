@@ -3,6 +3,43 @@
 Tarih: 7 Eylül 2026. Kapsam: `themegaradio.com`, mevcut 14 SEO dili,
 istasyon ve liste sayfaları; tasarım ve işlevler korunarak kod düzeltmeleri.
 
+## En güncel canlı durum — 15:32 UTC
+
+- Tam kaynak hash/parite doğrulaması tamamlanan PostgreSQL kopyası yeni
+  production `radiohub_ready` veritabanına alındı. Web/API yaklaşık 15:24 UTC'de
+  `/readyz` 200, `ready: true`, PostgreSQL bildirdi; kaynak geçmişi değiştirilmedi.
+  Taşıma, yedek, deployment ve güvenlik kanıtları
+  `POSTGRES_RECOVERY_2026-09-07.md` içindedir. Aşağıdaki önceki aşama kayıtları
+  tarihsel kanıttır; artık production'ın kapalı olduğu anlamına gelmez.
+- Cloudflare'da 14 dil öneki ve beş kök/keşif URL'si temizlendikten sonra
+  **142 canlı HTTP isteği / 84 sayfa / 14 dil / sıfır tespit edilen sorun**:
+  ana sayfa, istasyon ve tür sayfalarında mobil/masaüstü istemci başlıkları,
+  canonical/hreflang, HTML/API metadata ve 14 kritik çeviri sözlüğü doğrulandı.
+  HTML yeniden doğrulama başlıkları, immutable hashed dosyalar ve bulunmayan
+  dosyada 404/no-store doğru. `/at` tek 301 ile Almanca `/de` sayfasına gidiyor;
+  `/tr` Türkçe kalıyor. Canlı yanıtta ETag bulunmadığından canlı 304 testi yapılmadı.
+- Robots sitemap bildirimi, **98 child referansı ve 16 örnek XML** geçti.
+  Örnek istasyon shard'ı 10.000 URL / 31.449.732 byte ile protokol sınırlarında.
+  Bu, bütün shard'ların/sayfaların tarandığı veya Google'da indekslendiği iddiası
+  değildir; tüm native manifest üyeliğinin ayrı kopyadaki tam kontrolü aşağıdadır.
+- Gerçek tarayıcıda **ORF Radio Wien** açıldı ve ses oynatma ilerledi
+  (`paused=false`, `readyState=4`, `currentTime=15.36`); ardından durduruldu.
+  Bu örnek kontrolde konsol hatası görülmedi; tüm kullanıcı akışları veya bütün
+  cihazlar için kapsamlı görsel/işlevsel garanti değildir.
+- Search Console, `https://themegaradio.com/sitemap-index.xml` yeniden gönderimini
+  7 Eylül'de **başarıyla kabul etti**. Eski 28 Ağustos son-okuma/0 keşif sayısı
+  anında değişmedi; gönderim, yeniden tarama veya indekslenme garantisi değildir.
+- Bu revizyonda canlı tarayıcının bulduğu bozuk alt şablonu (kart ve SSR),
+  null/geçersiz mesafe etiketi ve SSR H1 çift HTML kaçış hatası düzeltildi.
+  Geçerli çeviriler ve XSS koruması korundu: **20 frontend + 34 API testi**,
+  iki typecheck ve frontend production build geçti; tasarım değiştirilmedi.
+- **Açık işler:** Dört PageSpeed API profili Google günlük kota **429** yanıtı
+  verdi; geçerli PSI puanı/başarılı Core Web Vitals sonucu yok. PageSpeed UI
+  ölçümleri ve Search Console canlı URL testi hâlâ bekliyor. Bu revizyonun
+  dağıtımı tamamlandığında yeni statik dosyalar ve alt metin yeniden denetlenmeli.
+  Squirrel sağlık puanı üretilmedi. Kanıt dosyaları görev geçici dizininde
+  `report-1788794767501.json` (canlı HTTP) ve `report-1788794838100.json` (PSI kota).
+
 ## Doğrulanmış PostgreSQL kopyasındaki son kontrol
 
 - Gerçek 940.071 kayıtla, kaynak üzerinde uygulama başlatmadan oluşturulan ayrı

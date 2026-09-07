@@ -9,6 +9,7 @@ import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useLocation, Link } from "wouter";
+import { getStationImageAlt } from "@workspace/seo-shared/station-image-alt";
 
 const formatVoteCount = (count: number): string => {
   if (count >= 1000000) {
@@ -89,7 +90,8 @@ const StationCard = memo(function StationCard({
   const [isFavorite, setIsFavorite] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
+  const hasDistance = typeof station.distance === 'number' && Number.isFinite(station.distance) && station.distance >= 0;
   const [location, setLocation] = useLocation();
   
   // Get global player state to check if this station is currently playing
@@ -195,11 +197,7 @@ const StationCard = memo(function StationCard({
         <StationLogo
           station={station}
           size="card"
-          alt={
-            station.country && station.country.trim() !== ''
-              ? t('seo_station_logo_alt_with_country', `Listen to ${station.name} live from ${station.country} - ${station.genre || 'radio'} station`, { name: station.name, country: station.country, genre: station.genre || 'radio' })
-              : t('seo_station_logo_alt', `Listen to ${station.name} live - ${station.genre || 'radio'} station`, { name: station.name, genre: station.genre || 'radio' })
-          }
+          alt={getStationImageAlt(station, language, t)}
           className="absolute inset-0 rounded-[9px]"
         />
       </Link>
@@ -257,7 +255,7 @@ const StationCard = memo(function StationCard({
           );
         })()}
         {/* Distance display for nearby stations */}
-        {station.distance !== undefined && (
+        {hasDistance && (
           <div 
             className="flex items-center gap-1 text-gray-400"
             title={`${station.distance}km away from your location`}

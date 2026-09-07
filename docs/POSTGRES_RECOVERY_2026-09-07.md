@@ -1,7 +1,50 @@
 # PostgreSQL recovery and release — 2026-09-07
 
-This is an operational journal, **not a declaration that production is ready**.
+This is an operational journal. The latest verified status below supersedes
+earlier maintenance/pending entries; remaining SEO/performance work is explicit.
 The SEO/code audit is recorded separately in `SEO_PERFORMANCE_AUDIT_2026-09-07.md`.
+
+## Latest verified production status — 15:32 UTC
+
+- The source-bound, fully verified local v2 PostgreSQL snapshot was uploaded
+  and its remote hash matched: **1,772,706,039 bytes**, SHA256
+  `48216910c0699107a3685bf14681640d670e04afcbd9c7b49fdad9800e78ab88`.
+  `pg_restore --no-owner --no-privileges -j2` into the **new** production
+  `radiohub_ready` database completed around 15:18. Its migration history
+  truthfully retains `source_database=radiohub_backup_verify_20260907`.
+- Around 15:21 the independent read-only before-cutover verifier passed all
+  **100 collections / 940,071 source JSON/BSON captures and source hashes**;
+  all checked native parity counters were zero. No history or completion
+  markers were fabricated to substitute for this proof.
+- Web deployment `ce376adc-bf45-4347-8886-97fc68cf2939` and API deployment
+  `20328846-c449-4212-bbd4-37da20be0e8c` both returned `/readyz` **200**,
+  `ready: true`, PostgreSQL, around 15:24. Runtime counts: **61,291 stations,
+  170 users, 940,071 captures, 679,973 GSC inspection rows, 26 devices plus
+  two quarantine records**, all 13 PostgreSQL authority domains, and zero
+  invalid indexes/foreign keys.
+- PostgreSQL `PGDATABASE`, `POSTGRES_DB` and `DATABASE_URL` defaults were aligned
+  to `radiohub_ready` with skip-deploys; PostgreSQL was **not restarted**.
+  Reloading Railway's database viewer displayed populated stations, page 1 of
+  6,130. API/web have no MongoDB environment variables.
+- Cloudflare purge of 14 localized prefixes and five root/discovery URLs
+  succeeded. The live HTTP audit passed **142 requests / 84 pages / 14 locales,
+  zero detected issues**, including 98 sitemap child references and 16 sampled
+  XML files. Browser playback of **ORF Radio Wien** reached `paused=false`,
+  `readyState=4`, `currentTime=15.36`; playback was then stopped
+  (`paused=true`). No browser console errors were observed in that smoke test.
+- The parallel old `radiohub` initializer was still verifying, not complete.
+  Its exact deployment `15084044-5a90-4ab9-a2d4-7c15378e3f9b` was explicitly
+  stopped around 15:32 **after the verified replacement was live**. Its MongoDB
+  URI was removed and its future database URL points to `radiohub_ready`.
+  All 21 original source TTL definitions were restored and confirmed.
+  The old databases, original captures and all backups remain preserved.
+- Search Console accepted resubmission of the canonical sitemap index on
+  September 7. This does not establish a new Google crawl or indexing result.
+- **Still pending:** The Google live-URL test and usable mobile/desktop
+  PageSpeed UI measurements. The four PSI API profiles returned Google quota
+  **429**, not performance results. This revision includes tested card/SSR
+  alt-text, invalid distance and single-escaped H1 fixes (20 frontend + 34 API
+  tests, both typechecks and frontend build passed); verify its rollout separately.
 
 ## Release update — 14:10 UTC
 

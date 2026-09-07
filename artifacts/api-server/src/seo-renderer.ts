@@ -1,4 +1,5 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
+import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { pgSeoCatalog } from './data/postgres-seo-read-store';
 import { pgStoredGenreBySlug } from './data/postgres-taxonomy-store';
 import { pgSeoMetadata } from './data/postgres-content-store';
@@ -1993,6 +1994,7 @@ export class SeoRenderer {
   }
 
   private getH1Text(pageType: string, language: string, translations: Record<string, string>, seoTags?: any, stationData?: any, additionalData?: any): string {
+    // Return plain text: generateHtmlBody escapes every H1 exactly once.
     // Helper function to get localized text from DATABASE ONLY (no hardcoded translations)
     const FALLBACK_TEXTS: Record<string, string> = {
       genres_page_title: 'Radio Genres — Browse All Music Genres | Mega Radio',
@@ -2065,13 +2067,13 @@ export class SeoRenderer {
           // keywords are retained in <title>, meta description, breadcrumbs and
           // the "About {station}" <h2>, so keyword coverage is unaffected.
           if (stationData.name && stationData.name.trim()) {
-            return this.escapeHtml(stationData.name.trim());
+            return stationData.name.trim();
           }
           // Fallback only when the name is missing: derive from the title minus CTA.
           const fullTitle = generateLocalizedStationTitle(stationData, language, translations);
           const dashIdx = fullTitle.lastIndexOf(' — ');
           const h1Source = dashIdx > 0 ? fullTitle.slice(0, dashIdx) : fullTitle;
-          return this.escapeHtml(h1Source);
+          return h1Source;
         }
         return deriveH1FromTitle(getLocalizedText('stations_page_title'));
       
@@ -2082,7 +2084,7 @@ export class SeoRenderer {
           const genreSeo = buildGenreSeo(additionalData.genreName, language, translations);
           // H1 = bare genreSeo.h1 (no " | Mega Radio" suffix) — title in
           // genre-seo-templates.ts already carries the brand suffix.
-          return this.escapeHtml(genreSeo.h1);
+          return genreSeo.h1;
         }
         return deriveH1FromTitle(getLocalizedText('genres_page_title'));
       
@@ -2098,14 +2100,10 @@ export class SeoRenderer {
           // "Italia", and (b) fall back to LOCALIZED_LABELS (per-language
           // hand-curated copy) when the DB key is missing instead of dumping
           // English into a non-English page.
-          const localizedRegion = this.escapeHtml(
-            getLocalizedCountryName(additionalData.regionName, language)
-          );
-          const radioStationsText = this.escapeHtml(
-            translations['seo_radio_stations']?.trim()
+          const localizedRegion = getLocalizedCountryName(additionalData.regionName, language);
+          const radioStationsText = translations['seo_radio_stations']?.trim()
               || LOCALIZED_RADIO_STATIONS[language]
-              || 'Radio Stations'
-          );
+              || 'Radio Stations';
           // H1 = "{region} {radio_stations}" — drop "— Listen Live | Mega
           // Radio" tail (kept on <title>) so the visible heading differs.
           return `${localizedRegion} ${radioStationsText}`;
@@ -2346,22 +2344,13 @@ export class SeoRenderer {
                   const logo = this.pickLogoUrl(stationData);
                   if (!logo) return '';
                   const name = this.escapeHtml(stationData.name || 'Radio Station');
-                  const country = stationData.country ? this.escapeHtml(getLocalizedCountryName(stationData.country, language)) : '';
-                  // SEO audit 2026-06, Finding D: the alt text was hardcoded
-                  // English ("logo") on every localized SSR page, so Google
-                  // Images indexed English alt text on the /tr, /de, /ar …
-                  // variants. Reuse the same translation keys the React
-                  // component uses (present for all 14 languages) with {name}/
-                  // {country} interpolation; fall back to the English string.
-                  const interpAlt = (tmpl: string): string =>
-                    tmpl.replace(/\{name\}/gi, name).replace(/\{country\}/gi, country);
-                  const altText = country
-                    ? interpAlt(getLocalizedText('seo_station_logo_alt_with_country', `${name} logo — ${country}`))
-                    : interpAlt(getLocalizedText('seo_station_logo_alt', `${name} logo`));
+                  const countryName = stationData.country ? getLocalizedCountryName(stationData.country, language) : '';
+                  const country = this.escapeHtml(countryName);
+                  const altText = getStationImageAlt({ ...stationData, country: countryName }, language, getLocalizedText);
                   const caption = country ? `${name} — ${country}` : name;
                   return `
                 <figure class="station-logo">
-                  <img src="${this.escapeHtml(logo)}" alt="${altText}" width="256" height="256" loading="eager" decoding="async">
+                  <img src="${this.escapeHtml(logo)}" alt="${this.escapeHtml(altText)}" width="256" height="256" loading="eager" decoding="async">
                   <figcaption>${caption}</figcaption>
                 </figure>`;
                 })()}

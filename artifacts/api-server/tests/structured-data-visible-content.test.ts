@@ -192,6 +192,54 @@ function extractSchemasOfType(head: string, type: string): any[] {
 
 const DOMAIN = 'https://themegaradio.com';
 
+test('SSR H1 emits special characters as text exactly once, including already literal entity text', async () => {
+  const { buildGenreSeo } = await import('@workspace/seo-shared/genre-seo-templates');
+  const { generateLocalizedStationTitle } = await import('@workspace/seo-shared/seo-config');
+  const renderer = new SeoRenderer();
+  const maliciousName = `Radio "Jazz" & O'Neil <img src=x onerror=alert(1)>`;
+  const missingName = { name: '', country: 'Country & "Region"' };
+  const fallbackTitle = generateLocalizedStationTitle(missingName, 'en', {});
+  const lastDash = fallbackTitle.lastIndexOf(' — ');
+  const fixtures = [
+    { pageType: 'station', stationData: { name: maliciousName }, expected: maliciousName },
+    { pageType: 'station', stationData: { name: 'Radio &amp; Roll' }, expected: 'Radio &amp; Roll' },
+    { pageType: 'station', stationData: missingName, expected: lastDash > 0 ? fallbackTitle.slice(0, lastDash) : fallbackTitle },
+    { pageType: 'genres', additionalData: { genreName: 'Rock & Roll' }, expected: buildGenreSeo('Rock & Roll', 'en', {}).h1 },
+    { pageType: 'regions', additionalData: { regionName: 'R&B <Region>' }, translations: { seo_radio_stations: 'Radio & "Shows"' }, expected: 'R&B <Region> Radio & "Shows"' },
+    { pageType: 'home', translations: { hero_worlds_best_radio: 'Radio & "Music"' }, expected: 'Radio & "Music"' },
+  ];
+  for (const fixture of fixtures) {
+    const html = renderer.generateHtmlBody({ language: 'en', translations: {}, ...fixture,
+      seoTags: { title: 'Fixture', description: 'Fixture', domain: DOMAIN },
+      urlTranslations: new Map(), cleanPath: '/' });
+    const headings = [...html.matchAll(/<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>/g)];
+    assert.equal(headings.length, 1, fixture.pageType);
+    assert.equal(headings[0][1], escapeHtml(fixture.expected), fixture.pageType);
+    assert.doesNotMatch(headings[0][1], /<img|<script|<Region>/, 'untrusted text must never become HTML');
+  }
+});
+
+test('SSR station image alt rejects corrupt templates in 14 locales and safely retains valid custom text', async () => {
+  const { LOCALIZED_LOGO_WORD, SITEMAP_PRIORITY_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+  const renderer = new SeoRenderer();
+  const station = { name: 'Test "Radio" & $&', slug: 'test-radio', genre: 'rock',
+    logoAssets: { webp256: 'https://example.invalid/logo.png' }, descriptions: {} };
+  const body = (language: string, translation: string) => renderer.generateHtmlBody({
+    pageType: 'station', language, stationData: station,
+    translations: { seo_station_logo_alt: translation }, additionalData: { pageType: 'station' },
+    urlTranslations: new Map(), cleanPath: '/station/test-radio',
+    seoTags: { title: station.name, description: 'Fixture station', domain: DOMAIN, canonical: `${DOMAIN}/${language}/station/test-radio` },
+  });
+  for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
+    const html = body(language, 'Listen to ${station.name} live - ${station.genre ||');
+    assert.ok(html.includes(`alt="${escapeHtml(station.name)} ${LOCALIZED_LOGO_WORD[language]}"`));
+    assert.doesNotMatch(html, /\$\{station\./);
+  }
+  const custom = body('tr', 'Özel "{NAME}" & {genre}');
+  assert.ok(custom.includes(`alt="${escapeHtml(`Özel "${station.name}" & rock`)}"`));
+  assert.doesNotMatch(custom.match(/<img[^>]*alt="([^"]*)"/)?.[1] || '', /&amp;quot;/, 'escape the completed alt only once');
+});
+
 test('SSR head retains localized station meta selection and explicit admin override priority in all 14 locales', async () => {
   const { generateSeoTags, getStationMetaDescription, SITEMAP_PRIORITY_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
   const renderer = new SeoRenderer();
