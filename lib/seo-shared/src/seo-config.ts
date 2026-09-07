@@ -1273,6 +1273,15 @@ export function generateLanguageUrls(
   // `undefined` preserves legacy behaviour (emit every enabled language).
   allowedLanguages?: string[] | ReadonlyArray<string> | null,
 ): Array<{ lang: string; url: string; hreflang: string }> {
+  // German/Chinese/Japanese/Korean use the same segment for the catalog
+  // and station detail. Reverse translation may therefore return `stations`.
+  // A non-A-Z leaf is still a detail page: build its alternates from the
+  // singular route without changing its opaque slug or catalog/A-Z paths.
+  const pluralLeaf = cleanPath.match(/^\/stations\/([^/]+)\/?$/);
+  if (pluralLeaf && !/^(?:[a-z]|0-9)$/i.test(pluralLeaf[1])) {
+    cleanPath = `/station/${pluralLeaf[1]}`;
+  }
+
   // Normalise the allow-list. `null` and `undefined` both mean "no filter",
   // but an empty ARRAY is a meaningful signal of "emit zero alternates".
   const allowlistProvided =

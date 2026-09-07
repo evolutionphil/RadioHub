@@ -3,6 +3,23 @@
 Tarih: 7 Eylül 2026. Kapsam: `themegaradio.com`, mevcut 14 SEO dili,
 istasyon ve liste sayfaları; tasarım ve işlevler korunarak kod düzeltmeleri.
 
+## Doğrulanmış PostgreSQL kopyasındaki son kontrol
+
+- Gerçek 940.071 kayıtla, kaynak üzerinde uygulama başlatmadan oluşturulan ayrı
+  kopyada 143 HTTP isteği / 84 sayfa kontrolü geçti: ana sayfa, istasyon ve tür
+  sayfaları × 14 dil × mobil/masaüstü istemci başlığı. Son raporda hata yok.
+- Bu kontrolün bulduğu iki dar sorun düzeltildi: de/zh/ja/ko dillerindeki ortak
+  katalog/istasyon yolunun alternatif dil bağlantılarında yanlış çoğul rotaya
+  dönüşmesi ve HTML ile slim API açıklama uzunluğunun farklı olması. Altı yeni
+  regresyon dahil 54 hedefli test, API typecheck ve üretim derlemeleri geçti.
+  Saklanan açıklamalar, admin öncelikleri, tam gövde metni ve tasarım korunuyor.
+- Tüm 61.291 istasyondan hesaplanan 14 dilli sitemap manifestinde 671.895
+  istasyon URL'si için eksik/fazla kimlik yok. 98 yayımlanacak sitemap çocuğu,
+  robots bildirimi ve 16 örnek XML dosyası doğrulandı; her dosyanın canlıda
+  indirildiği veya Google'ın her URL'yi indekslediği iddia edilmiyor.
+- Bunlar izole kopya ve HTTP testleridir; production yayını, gerçek tarayıcı,
+  PageSpeed ve CrUX sonuçları ayrı doğrulama gerektirir.
+
 ## Kapsam ve kanıt sınırları
 
 - Search Console, kullanıcının oturum açtığı tarayıcıdan salt okunur incelendi.

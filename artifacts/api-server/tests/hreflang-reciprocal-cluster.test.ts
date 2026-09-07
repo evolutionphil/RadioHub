@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateLanguageUrls, ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { generateLanguageUrls, getLanguageFromPath, ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
 const origin = 'https://themegaradio.com';
 const languages = ACTIVE_SITEMAP_LANGUAGES;
@@ -31,4 +31,30 @@ test('x-default uses an existing qualified alternate when English is unavailable
 
 test('non-indexable pages do not advertise an alternate or fallback cluster', () => {
   assert.deepEqual(generateLanguageUrls('/station/test', origin, 'en', undefined, undefined, []), []);
+});
+
+test('real localized station paths reverse-translate into reciprocal singular detail alternates', () => {
+  const baseline = generateLanguageUrls('/station/mangoradio', origin, 'en', undefined, undefined, languages);
+  for (const language of languages) {
+    const current = baseline.find(entry => entry.lang === language)!.url;
+    const parsed = getLanguageFromPath(new URL(current).pathname);
+    const actual = generateLanguageUrls(parsed.cleanPath, origin, language, undefined, current, languages);
+    assert.deepEqual(actual, baseline, `${language}: localized singular/plural collision`);
+  }
+});
+
+test('ambiguous station leaf normalization preserves opaque slugs and database route overrides', () => {
+  const map = new Map([['de:station', 'mein-sender'], ['de:stations', 'sender-liste']]);
+  for (const slug of ['station', 'profile', '1-21', 'a%3Fb%23c', encodeURIComponent('東京 ラジオ')]) {
+    const actual = generateLanguageUrls(`/stations/${slug}`, origin, 'en', map, undefined, languages);
+    assert.equal(actual.find(entry => entry.lang === 'en')?.url, `${origin}/en/station/${slug}`);
+    assert.equal(actual.find(entry => entry.lang === 'de')?.url, `${origin}/de/mein-sender/${slug}`);
+  }
+});
+
+test('station catalog hubs and A-Z leaves stay plural', () => {
+  for (const path of ['/stations', '/stations/a', '/stations/Z', '/stations/0-9']) {
+    const actual = generateLanguageUrls(path, origin, 'en', undefined, undefined, languages);
+    assert.equal(actual.find(entry => entry.lang === 'en')?.url, origin + '/en' + path);
+  }
 });

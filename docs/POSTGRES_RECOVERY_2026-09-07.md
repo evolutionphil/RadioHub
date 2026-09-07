@@ -3,6 +3,39 @@
 This is an operational journal, **not a declaration that production is ready**.
 The SEO/code audit is recorded separately in `SEO_PERFORMANCE_AUDIT_2026-09-07.md`.
 
+## Release update — 14:10 UTC
+
+- The startup lock timeout was traced to one abandoned `pg_dump` connection,
+  waiting in `ClientWrite` for over 11 hours and blocking migration 0025.
+  The independently restored full backup's SHA256 was rechecked before terminating
+  only that exact, guarded session. Migrations 0025 and 0026 then applied; no
+  database rows or backups were removed. API/web commit `9c35ff8f9` is deployed
+  successfully, but remains in maintenance on the old database.
+- The fresh source comparison finished at 14:01:18 UTC: all 100 collections,
+  940,071 documents and original raw-BSON fingerprints matched the verified
+  backup. All 21 temporary TTL definitions matched before and after the scan.
+  Its report is retained privately beside the archive. A subsequent redundant
+  read-only scan was stopped after this completed proof was recovered.
+- To reduce downtime, the tested initializer and isolated fresh rehearsal now run
+  in parallel. Production deployment `15084044-5a90-4ab9-a2d4-7c15378e3f9b`
+  builds commit `9c35ff8f9` with `node dist/bootstrap.mjs`, targeting the confirmed
+  empty `radiohub` database on the expanded 20 GB volume. This supersedes the
+  earlier sequential rehearsal-before-import plan below, not the verification
+  requirement before application cutover. Old `railway` and all backups remain.
+- The latest code suite passed **1,091 tests across 108 API test files** with
+  no failures, cancellations or skips; API and migration typechecks also passed.
+  Production native parity, application readiness and live SEO remain pending.
+- At 14:16:35 UTC the pristine local bundled-bootstrap rehearsal finished with
+  exit 0 in 12m51s: all 940,071 JSON/BSON captures, native content, foreign keys
+  and 64 nonempty capture checkpoints passed. Counts: 61,291 stations, 170 users,
+  26 runtime device records plus two preserved historical quarantine records.
+  There are 26 valid applied migrations, no PostgreSQL write authority and no
+  remaining connections or stderr output. Database size is 5,945,996,979 bytes.
+  Runtime smoke uses a separate disposable clone of this verified database.
+- Both application services are now in Virginia with one replica each. The
+  post-deployment web-to-database probe measured a mean **1.2 ms** across eight
+  read-only `SELECT 1` calls, versus 93–94 ms before the region alignment.
+
 ## Confirmed interruption and recovery decisions
 
 - The previous initial capture received SIGTERM before completion. Its next

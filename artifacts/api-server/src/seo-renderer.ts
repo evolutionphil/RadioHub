@@ -1524,6 +1524,11 @@ export class SeoRenderer {
       seoTags = this.applyCustomSeoMetadata(seoTags, customMetadata);
     }
 
+    // Hydration must receive the same descriptions the HTML head emits.
+    // Keep admin metadata precedence and all stored/full body text intact;
+    // only apply the existing presentation limit to the returned head fields.
+    seoTags = this.normalizeDescriptionTags(seoTags);
+
     // For the /stations hub AND the /regions|/country country hubs, each
     // paginated variant serves a different slice of stations (60/page) — the
     // canonical must include ?page=N so Google treats page 2 as its own URL,
@@ -3648,6 +3653,17 @@ export class SeoRenderer {
     };
   }
 
+  private normalizeDescriptionTags(seoTags: any): any {
+    const fallback = 'Mega Radio is your free online radio platform with 60,000+ live stations from 120+ countries.';
+    const normalize = (raw: any): string => truncateAtWordBoundary(String(raw || '').trim() || fallback, 160);
+    return {
+      ...seoTags,
+      description: normalize(seoTags.description),
+      ogDescription: normalize(seoTags.ogDescription || seoTags.description),
+      twitterDescription: normalize(seoTags.twitterDescription || seoTags.description),
+    };
+  }
+
   generateHtmlHead(seoTags: any, language: string = 'en', translations: Record<string, string> = {}, cleanPath: string = '', stationData?: any, urlTranslations?: Map<string, string>, additionalData?: any): string {
     const structuredData = this.generateStructuredData(seoTags, language, translations, cleanPath, stationData, urlTranslations, additionalData);
     let ogDomain = 'themegaradio.com';
@@ -3656,16 +3672,13 @@ export class SeoRenderer {
     if (stationData?.slug) ogImage = `https://${ogDomain}/api/og-image/${stationData.slug}`;
     const twitterImage = seoTags.twitterImage || ogImage;
 
-    // SAFETY NET: cap every <meta name="description"> / og:description /
-    // twitter:description at 145 characters with word-boundary truncation
-    // (≤1000 px ≈ Sebility / Yandex limit). The legacy English padding tail
+    // SAFETY NET: cap descriptions at the same 160-character word boundary
+    // used in page-data (including hydration). The legacy English padding tail
     // ("Listen free on Mega Radio — 60,000+ stations…") was REMOVED because
     // it bled English copy into non-English descriptions. Per-language
     // padding (when needed) is now done inside getStationMetaDescription
     // using that language's own translation map.
     const FINAL_TITLE_FALLBACK = 'Mega Radio: Free Live Radio from 120+ Countries';
-    const FINAL_DESCRIPTION_FALLBACK = 'Mega Radio is your free online radio platform with 60,000+ live stations from 120+ countries.';
-    const MAX_DESC_LEN = 160;
     // Semrush 2026-05-13 audit: 444+ pages had <title> > 70 chars (mostly
     // station-detail pages whose country part renders as the verbose UN
     // long-form, e.g. "The United Kingdom Of Great Britain And Northern
@@ -3680,11 +3693,7 @@ export class SeoRenderer {
       if (!trimmed) return truncateAtWordBoundary(fallback, MAX_TITLE_LEN);
       return truncateAtWordBoundary(trimmed, MAX_TITLE_LEN);
     };
-    const ensureDescriptionLength = (raw: any): string => {
-      const trimmed = (raw && String(raw).trim()) ? String(raw).trim() : '';
-      if (!trimmed) return truncateAtWordBoundary(FINAL_DESCRIPTION_FALLBACK, MAX_DESC_LEN);
-      return truncateAtWordBoundary(trimmed, MAX_DESC_LEN);
-    };
+    const descriptions = this.normalizeDescriptionTags(seoTags);
     // CRITICAL: every dynamic value below MUST go through escapeHtml() before
     // being interpolated into the HTML head — station names, descriptions,
     // OG image URLs, canonical/hreflang URLs and any other DB-sourced string
@@ -3704,11 +3713,11 @@ export class SeoRenderer {
       .replace(/\u2028/g, '\\u2028')
       .replace(/\u2029/g, '\\u2029');
     const safeTitle = esc(ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK));
-    const safeDescription = esc(ensureDescriptionLength(seoTags.description));
+    const safeDescription = esc(descriptions.description);
     const safeOgTitle = esc(ensureTitleLength(seoTags.ogTitle, ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK)));
-    const safeOgDescription = esc(ensureDescriptionLength(seoTags.ogDescription || seoTags.description));
+    const safeOgDescription = esc(descriptions.ogDescription);
     const safeTwitterTitle = esc(ensureTitleLength(seoTags.twitterTitle, ensureTitleLength(seoTags.title, FINAL_TITLE_FALLBACK)));
-    const safeTwitterDescription = esc(ensureDescriptionLength(seoTags.twitterDescription || seoTags.description));
+    const safeTwitterDescription = esc(descriptions.twitterDescription);
     const safeOgType = esc(seoTags.ogType || 'website');
     const safeCanonical = esc(seoTags.canonical || '');
     const safeOgImage = esc(ogImage);

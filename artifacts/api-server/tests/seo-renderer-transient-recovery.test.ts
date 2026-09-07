@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { beforeEach, mock, test } from 'node:test';
-import { ACTIVE_SITEMAP_LANGUAGES } from '@workspace/seo-shared/seo-config';
+import { ACTIVE_SITEMAP_LANGUAGES, generateLanguageUrls, truncateAtWordBoundary } from '@workspace/seo-shared/seo-config';
 import { getIndexableLanguagesForStation, isStationIndexableInLanguage } from '../src/seo/junk-station-rules';
 
 const pageCache = new Map<string, any>();
@@ -10,6 +10,7 @@ let missing = false;
 let noIndex = false;
 let stationReads = 0;
 let stationOverrides: Record<string, any> = {};
+let customMetadata: Record<string, any> | null = null;
 let qualifiedLanguages = ['en'];
 const station = { _id: 'test-station', name: 'Recovery FM', slug: 'recovery-fm', url: 'https://stream.example.invalid/live', country: 'Germany', tags: 'pop', lastCheckOk: true };
 mock.module('../src/performance-cache', { namedExports: { performanceCache: {
@@ -26,7 +27,7 @@ mock.module('../src/data/postgres-seo-read-store', { namedExports: { pgSeoCatalo
   },
   find: async () => [], count: async () => 0, groupCount: async () => [],
 }) } });
-mock.module('../src/data/postgres-content-store', { namedExports: { pgSeoMetadata: async () => null } });
+mock.module('../src/data/postgres-content-store', { namedExports: { pgSeoMetadata: async () => customMetadata } });
 mock.module('../src/services/precomputed-genres', { namedExports: { PrecomputedGenresService: {} } });
 mock.module('../src/seo/qualified-languages', { namedExports: { getCachedQualifiedLanguages: async () => {
   if (qualificationFails) throw new Error('temporary qualification outage');
@@ -38,7 +39,7 @@ const url = '/en/station/recovery-fm';
 beforeEach(() => {
   pageCache.clear(); databaseFails = false; qualificationFails = false;
   missing = false; noIndex = false; stationReads = 0;
-  stationOverrides = {}; qualifiedLanguages = ['en'];
+  stationOverrides = {}; qualifiedLanguages = ['en']; customMetadata = null;
 });
 
 test('transient PostgreSQL placeholder is not permanent junk and the next request re-reads recovered data', async () => {
@@ -108,4 +109,55 @@ test('a normal station with complete content retains all fourteen indexable loca
   assert.equal(page.pageData?.redirectTo, undefined);
   assert.deepEqual(new Set(page.seoTags.hreflangs.filter((entry: any) => entry.lang !== 'x-default').map((entry: any) => entry.lang)), new Set(qualifiedLanguages));
   assert.deepEqual(new Set(getIndexableLanguagesForStation({ ...station, ...stationOverrides }, qualifiedLanguages)), new Set(qualifiedLanguages));
+});
+
+test('actual localized SSR station routes retain the same reciprocal fourteen-language cluster', async () => {
+  qualifiedLanguages = [...ACTIVE_SITEMAP_LANGUAGES];
+  stationOverrides = { descriptions: Object.fromEntries(qualifiedLanguages.map(lang => [lang, { full: `Full ${lang}`, meta: `Meta ${lang}` }])) };
+  const expected = generateLanguageUrls('/station/recovery-fm', 'https://themegaradio.com', 'en', undefined, undefined, qualifiedLanguages)
+    .map(entry => ({ ...entry, url: new URL(entry.url).href }));
+  for (const entry of expected.filter(item => item.lang !== 'x-default')) {
+    const page = await renderer.renderStaticPage(new URL(entry.url).pathname, 'https://themegaradio.com');
+    assert.equal(page.pageData?.pageType, 'station');
+    assert.equal(page.seoTags.canonical, entry.url);
+    assert.deepEqual(page.seoTags.hreflangs.map((item: any) => ({ ...item, url: new URL(item.url).href })), expected, entry.lang);
+  }
+});
+
+const escapeHead = (value: string) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+test('page-data and HTML emit identical bounded descriptions without shortening stored body content', async () => {
+  qualifiedLanguages = [...ACTIVE_SITEMAP_LANGUAGES];
+  const full = 'Full station editorial text with a final unpunctuated tail '.repeat(12);
+  stationOverrides = { descriptions: Object.fromEntries(qualifiedLanguages.map(lang => [lang, { full, meta: `${lang}: ` + 'Music, news & "special" programming for every listener. '.repeat(5) }])) };
+  for (const language of qualifiedLanguages) {
+    const entry = generateLanguageUrls('/station/recovery-fm', 'https://themegaradio.com', 'en', undefined, undefined, qualifiedLanguages).find(item => item.lang === language)!;
+    const page = await renderer.renderStaticPage(new URL(entry.url).pathname, 'https://themegaradio.com');
+    const head = renderer.generateHtmlHead(page.seoTags, language, {}, page.cleanPath, page.pageData?.station);
+    const expected = truncateAtWordBoundary(stationOverrides.descriptions[language].meta, 160);
+    assert.equal(page.seoTags.description, expected);
+    assert.equal(page.pageData?.seoTags.description, expected);
+    assert.ok(head.includes(`<meta name="description" content="${escapeHead(expected)}">`));
+    assert.ok(head.includes(`<meta property="og:description" content="${escapeHead(page.seoTags.ogDescription)}">`));
+    assert.ok(head.includes(`<meta name="twitter:description" content="${escapeHead(page.seoTags.twitterDescription)}">`));
+    assert.equal(page.pageData?.station.descriptions[language].full, full);
+    assert.ok(stationOverrides.descriptions[language].meta.length > 160, 'stored value is not rewritten');
+  }
+});
+
+test('published admin descriptions keep priority and match HTML presentation limits without mutating overrides or titles', async () => {
+  customMetadata = {
+    title: 'An intentional full editorial title '.repeat(4),
+    description: 'Admin-approved meta description & special programming. '.repeat(5),
+    ogDescription: 'Admin-approved social description. '.repeat(8),
+    twitterDescription: 'Admin-approved Twitter description. '.repeat(8),
+  };
+  const original = { ...customMetadata };
+  const page = await renderer.renderStaticPage(url, 'https://themegaradio.com');
+  const head = renderer.generateHtmlHead(page.seoTags, 'en', {}, page.cleanPath, page.pageData?.station);
+  for (const field of ['description', 'ogDescription', 'twitterDescription']) {
+    assert.equal(page.seoTags[field], truncateAtWordBoundary(original[field], 160));
+    assert.ok(head.includes(`content="${escapeHead(page.seoTags[field])}"`));
+  }
+  assert.equal(page.seoTags.title, original.title, 'H1/title derivation keeps its full source input');
+  assert.deepEqual(customMetadata, original, 'admin data is not mutated');
 });
