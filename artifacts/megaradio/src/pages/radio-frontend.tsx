@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, Suspense, lazy } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { homeStationPageOptions, selectPopularHomeStations } from '@/lib/home-station-query';
 import { Link } from "wouter";
 import StationCard from "@/components/ui/station-card";
 import StationCardSkeleton from "@/components/ui/station-card-skeleton";
@@ -464,22 +465,8 @@ export default function RadioFrontend({
   // PROGRESSIVE LOADING: Ultra-fast precomputed stations (7-day cache, zero DB queries)
   // 🚀 PERF FIX: Gate behind countryReady to prevent fetching for 'all' if redirect coming
   const { data: stationsData, isLoading: stationsLoading } = useQuery({
-    queryKey: ['/api/stations/precomputed', selectedCountry, loadMorePage],
+    ...homeStationPageOptions(selectedCountry, loadMorePage),
     enabled: countryReady, // 🚀 PERF: Wait for country detection on first visit
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      params.append('countryName', selectedCountry === 'all' ? 'global' : selectedCountry);
-      params.append('page', loadMorePage.toString());
-      params.append('limit', '18'); // Load 18 stations per page (3 columns x 6 rows)
-      const url = `/api/stations/precomputed?${params}&slim=1`;
-      const response = await fetch(url);
-      if (!response.ok) throw new Error('Failed to fetch stations');
-      const result = await response.json();
-      // Return stations array for compatibility with existing code
-      return { stations: result.data, pagination: result.pagination };
-    },
-    staleTime: 7 * 24 * 60 * 60 * 1000, // Cache for 7 days (matches precomputed TTL)
-    gcTime: 7 * 24 * 60 * 60 * 1000, // Keep in cache for 7 days
   });
 
   // ASYNC LOAD: Load more all stations in background from 7-day cache
@@ -711,22 +698,13 @@ export default function RadioFrontend({
     }
   });
 
-  // PROGRESSIVE LOADING: Load 12 popular stations from 7-day cache (hasLogo→votes sorted)
-  // DEFERRED: Load popular stations after page interactive (below fold content)
+  // Popular is the first twelve of the same ordered first page used below.
+  // A separate observer keeps it on page one when All Stations loads page two,
+  // while TanStack shares the initial request/cache (no extra gate or download).
   const { data: popularStationsData, isPending: popularStationsPending } = useQuery({
-    queryKey: ['/api/stations/popular', selectedCountry, 'initial'],
-    enabled: shouldLoadDiscoverableGenres, // DEFERRED
-    queryFn: async () => {
-      // The home page displays only twelve popular stations. Its former
-      // shared 200-row recommendation pool downloaded 188 unused rows.
-      const countryName = selectedCountry === 'all' ? 'global' : selectedCountry;
-      const response = await fetch(`/api/stations/precomputed?countryName=${encodeURIComponent(countryName)}&page=1&limit=12&slim=1`);
-      if (!response.ok) throw new Error('Failed to fetch popular stations');
-      const result = await response.json();
-      return (result.data || []) as any[];
-    },
-    staleTime: 7 * 24 * 60 * 60 * 1000, // Cache for 7 days
-    gcTime: 7 * 24 * 60 * 60 * 1000, // Keep in cache for 7 days
+    ...homeStationPageOptions(selectedCountry),
+    enabled: countryReady,
+    select: selectPopularHomeStations,
   });
 
   // PERF: `extendedPopularStationsData` removed — it duplicated the exact same

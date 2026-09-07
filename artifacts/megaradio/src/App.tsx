@@ -121,9 +121,7 @@ import { URL_TRANSLATIONS } from "@workspace/seo-shared/url-translations";
 const AddYourStationModal = lazy(() => import("@/components/modals/AddYourStationModal"));
 import StructuredData from "@/components/seo/StructuredData";
 
-// 🚀 LAZY: Toaster only renders when a toast is triggered. The Radix toast
-// primitives stay out of the entry until first toast.
-const Toaster = lazy(() => import("@/components/ui/toaster").then((m) => ({ default: m.Toaster })));
+import { LazyToaster } from '@/components/LazyToaster';
 import { initializeBackgroundPlayback } from "@/lib/backgroundAudio";
 
 // Module-level constant (outside any component) — prevents useEffect from firing on every render
@@ -1344,7 +1342,7 @@ function App() {
         <ThemeProvider defaultTheme="system" storageKey="radio-ui-theme">
           <LazyGlobalPlayerProvider>
             <TooltipProvider>
-              <Suspense fallback={null}><Toaster /></Suspense>
+              <LazyToaster />
               <StructuredData />
               <Router />
             </TooltipProvider>
