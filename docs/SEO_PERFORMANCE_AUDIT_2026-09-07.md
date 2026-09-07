@@ -3,6 +3,24 @@
 Tarih: 7 Eylül 2026. Kapsam: `themegaradio.com`, mevcut 14 SEO dili,
 istasyon ve liste sayfaları; tasarım ve işlevler korunarak kod düzeltmeleri.
 
+## Sonraki canlı kontrol — 15:44 UTC sonrası
+
+- Search Console `/en` canlı testi: **Google tarafından kullanılabilir / sayfa
+  dizine eklenebilir**. İndeksleme isteği de kabul edildi. Sitemap gönderimiyle
+  birlikte bu, Google'ın tüm radyo/dil URL'lerini indekslediği anlamına gelmez.
+- `26e3629d` dağıtımında bozuk şablon alt metinleri tarayıcıda sıfıra indi.
+  84 yerelleştirilmiş HTML örneği geçti; fakat çeviri API'si 502 verdiği için
+  bu ikinci tam HTTP denetimi durduruldu, başarılı sayılmadı.
+- API'nin kendi bellek koruması exit 0 ile kapanıp Railway `ON_FAILURE`
+  politikasını atlıyordu. Veriler sağlam; hata ve kurtarma kanıtları PostgreSQL
+  günlüğünde. RSS eşiği doğrulanan Pro kapasitesine göre ayarlanıp API yeniden
+  açıldı. Dahili restart çıkış kodu, gerçek SQL alan seçimi ve 500 kayıtlık
+  sitemap-diff okumaları düzeltildi: **55 test / 0 skip**, API typecheck ve
+  production build geçti. Google keşfi dahil hiçbir arka plan işi kapatılmadı.
+- PageSpeed UI de kullanılabilir sonuç üretmedi (yükleniyor); API kotası 429.
+  Mobil/masaüstü Lighthouse ve gerçek kullanıcı Core Web Vitals geçişi hâlâ
+  doğrulanmış değildir. Önceki bakım sayfasının puanı karşılaştırma için kullanılmaz.
+
 ## En güncel canlı durum — 15:32 UTC
 
 - Tam kaynak hash/parite doğrulaması tamamlanan PostgreSQL kopyası yeni

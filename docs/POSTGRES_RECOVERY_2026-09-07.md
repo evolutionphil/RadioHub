@@ -4,6 +4,47 @@ This is an operational journal. The latest verified status below supersedes
 earlier maintenance/pending entries; remaining SEO/performance work is explicit.
 The SEO/code audit is recorded separately in `SEO_PERFORMANCE_AUDIT_2026-09-07.md`.
 
+## API recovery follow-up — after 15:44 UTC
+
+- Deployment `5933fc27-0b73-4d22-b296-9f1c288087eb` (commit `26e3629d`)
+  stopped after its internal RSS guard reported 3,245 MB. The graceful SIGTERM
+  handler returned exit 0, so Railway's `ON_FAILURE` policy did not restart it;
+  a deployment labelled SUCCESS was not evidence of a running API.
+  Web remained ready, but API and proxied critical translations returned 502.
+- Pro settings: 24 GB replica memory ceiling, V8 old-space 4 GB, no RSS overrides.
+  Set `RSS_CRITICAL_MB=4500` and `RSS_RESTART_MB=6000`, preserving the guard with
+  native-memory headroom; redeployed API as `897a5a10-7928-40c2-893b-e78b3c878cb4`.
+  API/critical dictionary returned 200. Sampled heap rose to 3,127 MB then fell to
+  1,162 MB without restarting; these samples do not establish a persistent leak.
+- Fresh read-only PostgreSQL check: 61,291 stations, 170 users, 679,973 GSC
+  inspections, 940,071 source captures, 13 PostgreSQL authority domains and zero
+  invalid indexes/constraints. No import is needed before opening the site;
+  the fully verified snapshot already includes Google crawl history.
+- Search Console live inspection of `/en` reported Google can access and index
+  the URL; its indexing request was accepted after sitemap resubmission.
+  This is a live-test result, not a guarantee of indexing every station.
+- The final 26e HTTP run passed 84 localized HTML samples, then stopped at the
+  critical translation API's 502. It is not a complete passing audit.
+  Final deployment verification is retained in the private recovery evidence.
+- Follow-up code passes **55 targeted tests, zero skips**, including actual local
+  PostgreSQL projection/mutation parity; API typecheck and production-boundary
+  build also pass (387 production packages, 2,612 API inputs, zero Mongo imports).
+  Internal watchdog/RSS/fatal restarts now retain failure exit intent through
+  graceful cleanup; ordinary external termination remains exit 0.
+- Requested catalog projections now select only their native SQL columns (and
+  source only for provider-only fields), preserving returned field semantics.
+  This fixes the boot GSC discovery slug-only query unnecessarily decoding all
+  station descriptions/source 30 seconds after startup. Its timing matches the
+  observed rise; no heap profile was captured to claim it was the only allocation.
+  Sitemap diff reads at most 500 native station rows at a time instead of
+  retaining a whole language's full documents. No background job was disabled.
+- Validation note: the first combined local run used the wrong `/postgres` test
+  database and parallel extension setup; the new safety guard rejected it and
+  another suite hit a local extension-creation race. Rerun in the established
+  loopback `radiohub_test` database with serial test files passed all 55 tests.
+  A global pnpm auto-install was also aborted by its no-TTY safeguard; direct
+  local TypeScript/esbuild validation succeeded without reinstalling dependencies.
+
 ## Latest verified production status — 15:32 UTC
 
 - The source-bound, fully verified local v2 PostgreSQL snapshot was uploaded

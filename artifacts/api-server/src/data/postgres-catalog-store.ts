@@ -170,7 +170,18 @@ export class PostgresCatalogStore {
     let suffix = "";
     if (options.limit !== undefined) { values.push(Math.max(0,Math.min(100_000,Math.trunc(options.limit)))); suffix += ` LIMIT $${values.length}`; }
     if (options.offset) { values.push(Math.max(0,Math.trunc(options.offset))); suffix += ` OFFSET $${values.length}`; }
-    const result = await this.pool.query(`SELECT s.* FROM stations s WHERE ${sql} ORDER BY ${sort}${suffix}`,values);
+    let selection = 's.*';
+    if (options.fields) {
+      // Keep catalogShape + nested JS selection semantics, but do not decode
+      // every station's large source/descriptions for a small scalar read.
+      const columns = new Set(['id']);
+      for (const field of options.fields) {
+        const root = pathParts(field)[0];
+        columns.add(fields[root]?.[0] || 'source');
+      }
+      selection = [...columns].map(column => `s.${column}`).join(',');
+    }
+    const result = await this.pool.query(`SELECT ${selection} FROM stations s WHERE ${sql} ORDER BY ${sort}${suffix}`,values);
     return result.rows.map((row) => {
       const doc = catalogShape(row);
       if (!options.fields) return doc;

@@ -14,8 +14,7 @@
  * pattern consistent with `indexnow-resubmit-task-152.ts`).
  */
 
-import { pgCatalog } from '../data/postgres-catalog-store';
-import { pgActiveManifest, pgActiveManifests, pgSeoGenres, pgGetUrlSnapshot, pgSaveUrlSnapshot, withSeoJobLock, type SeoJobLock } from '../data/postgres-seo-indexing-store';
+import { pgActiveManifest, pgActiveManifests, pgSeoGenres, pgGetUrlSnapshot, pgSaveUrlSnapshot, pgSitemapStationBatch, SITEMAP_STATION_READ_BATCH_SIZE, withSeoJobLock, type SeoJobLock } from '../data/postgres-seo-indexing-store';
 import { logger } from '../utils/logger';
 import { performanceCache } from '../performance-cache';
 import { URL_TRANSLATIONS } from '@workspace/seo-shared/url-translations';
@@ -172,12 +171,14 @@ export interface StationSitemapDoc {
   tags?: string;
   bitrate?: number;
   lastCheckOk?: boolean;
+  lastCheckTime?: Date | string | null;
   lastCheckOkTime?: Date | string | null;
   country?: string;
   countryCode?: string;
   language?: string;
   languageCodes?: string;
   noIndex?: boolean;
+  descriptions?: Record<string, { full?: string; meta?: string } | null | undefined> | null;
 }
 
 /** Build the canonical URL set that the live `/sitemap-stations-{lang}-{chunk}.xml`
@@ -334,40 +335,30 @@ async function runSitemapDiffUnlocked(opts: {
     }
 
     // ---- stations (task #339) — per-chunk diff against snapshot rows
-    // keyed by (type='stations', language, chunk). One bulk Station fetch
-    // per language amortizes across all chunks (chunks are bounded at 1000
-    // ids each by the manifest builder). ----
+    // keyed by (type='stations', language, chunk). Read bounded station
+    // batches within each chunk: retaining a whole language's full station
+    // documents also retained every translated description and provider copy.
     const stationsManifest = await pgActiveManifest('stations', language);
     if (!stationsManifest) {
       logger.log(`⏭️ sitemap-diff: no active stations manifest for lang=${language}, skipping stations`);
     } else if (stationsManifest.chunks.length === 0) {
       logger.log(`⏭️ sitemap-diff: stations manifest for lang=${language} has zero chunks, skipping`);
     } else {
-      const allIds: Array<string> = [];
-      const seenId = new Set<string>();
-      for (const c of stationsManifest.chunks) {
-        for (const id of c.stationIds) {
-          const k = String(id);
-          if (seenId.has(k)) continue;
-          seenId.add(k);
-          allIds.push(id);
-        }
-      }
-      const stationDocs = await pgCatalog().find({ _id: { $in: allIds.map(String) } }) as StationSitemapDoc[];
-      const stationsById = new Map<string, StationSitemapDoc>();
-      for (const s of stationDocs) stationsById.set(String(s._id), s);
-
       // Sort chunks by index for deterministic per-language ordering in the
       // returned summary (purely cosmetic; snapshot rows are independent).
       const sortedChunks = [...stationsManifest.chunks].sort((a, b) => a.chunk - b.chunk);
       for (const c of sortedChunks) {
-        const todayUrls = computeStationsSitemapUrlsForChunk({
-          language,
-          qualifiedLanguages,
-          stationIds: c.stationIds,
-          stationsById,
-          translations,
-        });
+        const urls = new Set<string>();
+        for (let offset = 0; offset < c.stationIds.length; offset += SITEMAP_STATION_READ_BATCH_SIZE) {
+          lock?.assertOwned();
+          const stationIds = c.stationIds.slice(offset, offset + SITEMAP_STATION_READ_BATCH_SIZE).map(String);
+          const stationDocs = await pgSitemapStationBatch(stationIds);
+          const stationsById = new Map<string, StationSitemapDoc>(stationDocs.map(s => [String(s._id), s]));
+          for (const url of computeStationsSitemapUrlsForChunk({
+            language, qualifiedLanguages, stationIds, stationsById, translations,
+          })) urls.add(url);
+        }
+        const todayUrls = [...urls].sort();
         const result = await processLanguageDiff({
           type: 'stations',
           language,

@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import axios from 'axios';
 import { logger } from '../utils/logger';
+import { requestGracefulRestart } from '../utils/graceful-restart';
 import { performanceCache } from '../performance-cache';
 import { PrecomputedStationsService } from './precomputed-stations';
 import { TranslationSyncService } from './translation-sync';
@@ -88,7 +89,7 @@ export class ScheduledCacheClearService {
       cron.schedule('0 4 * * *', () => {
         logger.log('🔄 DAILY RESTART (opt-in): scheduled nightly restart triggered');
         setTimeout(() => {
-          process.kill(process.pid, 'SIGTERM');
+          requestGracefulRestart();
         }, 3000);
       }, {
         timezone: 'Europe/Berlin'

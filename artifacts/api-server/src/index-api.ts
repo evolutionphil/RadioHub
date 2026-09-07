@@ -39,6 +39,7 @@ import {
 import { PostgresSessionStore } from "./data/postgres-session-store";
 import { performanceCache } from "./performance-cache";
 import { logger } from './utils/logger';
+import { requestGracefulRestart, requestedShutdownExitCode } from './utils/graceful-restart';
 import { initLogCollector } from './services/log-collector';
 import { startOperation, endOperation, getActiveOperations, getGcStats, getActiveOperationsSummary, resetGcStats, initGcTracking } from './utils/operation-tracker';
 
@@ -124,7 +125,7 @@ function scheduleFatalExit(label: string) {
   uncaughtExitScheduled = true;
   console.error(`🚨 ${label} — scheduling fail-fast exit in 1s for clean restart`);
   setTimeout(() => {
-    try { process.kill(process.pid, 'SIGTERM'); } catch { process.exit(1); }
+    requestGracefulRestart();
     setTimeout(() => process.exit(1), 10_000).unref();
   }, 1000).unref();
 }
@@ -552,6 +553,9 @@ app.use(session(sessionConfig));
   const gracefulShutdown = async (signal: string) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
+    // External deployment signals remain successful; internal recovery must
+    // exit nonzero so Railway ON_FAILURE does not leave the API stopped.
+    const shutdownExitCode = requestedShutdownExitCode();
     if (watchdogTimerRef) { try { clearInterval(watchdogTimerRef); } catch {} watchdogTimerRef = null; }
     console.log(`\n🛑 ${signal} received — starting graceful shutdown...`);
     const shutdownTimeout = setTimeout(() => {
@@ -584,7 +588,7 @@ app.use(session(sessionConfig));
 
       clearTimeout(shutdownTimeout);
       console.log('✅ Graceful shutdown complete');
-      process.exit(0);
+      process.exit(shutdownExitCode);
     } catch (err: any) {
       console.error('❌ Error during shutdown:', err.message);
       clearTimeout(shutdownTimeout);
@@ -729,7 +733,7 @@ app.use(session(sessionConfig));
           console.error(`🐕 Watchdog: self-ping failed (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
           if (watchdogFailures >= WATCHDOG_MAX_FAILURES) {
             console.error(`🐕 Watchdog: ${WATCHDOG_MAX_FAILURES} consecutive failures — forcing restart`);
-            process.kill(process.pid, 'SIGTERM');
+            requestGracefulRestart();
           }
         }
 
@@ -739,7 +743,7 @@ app.use(session(sessionConfig));
           if (postgresDownSince === null) postgresDownSince = Date.now();
           if (Date.now()-postgresDownSince >= POSTGRES_DOWN_RESTART_MS) {
             console.error('PostgreSQL unavailable beyond watchdog deadline; restarting');
-            process.kill(process.pid,'SIGTERM');
+            requestGracefulRestart();
           }
         }
       } catch (err: any) {
@@ -747,7 +751,7 @@ app.use(session(sessionConfig));
         console.error(`🐕 Watchdog error: ${err.message} (${watchdogFailures}/${WATCHDOG_MAX_FAILURES})`);
         if (watchdogFailures >= WATCHDOG_MAX_FAILURES) {
           console.error(`🐕 Watchdog: forcing restart after error`);
-          process.kill(process.pid, 'SIGTERM');
+          requestGracefulRestart();
         }
       }
     }, WATCHDOG_INTERVAL);
@@ -1005,7 +1009,7 @@ app.use(session(sessionConfig));
           const handles = getHandleDiagnostics();
           const handleStr = Object.entries(handles).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([k, v]) => `${k}:${v}`).join(' ');
           console.error(`🔄 RSS RESTART: rss=${rssMB}MB heap=${heapMB}MB ext=${externalMB}MB other≈${otherMB}MB | conns=${conns} | handles: ${handleStr}`);
-          process.kill(process.pid, 'SIGTERM');
+          requestGracefulRestart();
           return;
         }
 
