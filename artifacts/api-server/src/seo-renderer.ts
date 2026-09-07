@@ -2500,7 +2500,7 @@ export class SeoRenderer {
                     const ra = Number((stationData as any).averageRating || 0);
                     if (rc < 3 || !(ra >= 1 && ra <= 5)) return '';
                     const rounded = (Math.round(ra * 10) / 10).toFixed(1);
-                    const label = this.escapeHtml(getLocalizedText('listener_rating', 'Listener rating'));
+                    const label = this.escapeHtml(getStationPageCopy(language, translations).listenerRating);
                     return `
                   <p class="station-rating"><strong>${label}:</strong> ★ ${rounded} / 5 · ${rc}</p>`;
                   })()}
@@ -3565,7 +3565,7 @@ export class SeoRenderer {
       // pattern cleaned up on 2026-07-01 (that was two IDENTICAL types at the
       // same @id). Requires a country for the LocalBusiness `address`
       // recommendation — stations without one skip the entity.
-      if (aggregateRatingSchema && stationData.country && !stationData.notFound) {
+      if (aggregateRatingSchema && schemaCountry && !stationData.notFound) {
         localRadioStationSchema = {
           "@context": "https://schema.org",
           "@type": "RadioStation",
@@ -3576,9 +3576,7 @@ export class SeoRenderer {
           ...(stationLogo && { "image": stationLogo }),
           "address": {
             "@type": "PostalAddress",
-            "addressCountry":
-              (stationData.countryCode && String(stationData.countryCode).toUpperCase())
-              || stationData.country,
+            "addressCountry": schemaCountry.code || schemaCountry.name,
             ...(stationData.state && { "addressLocality": stationData.state }),
           },
           "aggregateRating": aggregateRatingSchema,

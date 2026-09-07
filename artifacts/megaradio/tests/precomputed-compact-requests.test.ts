@@ -18,7 +18,7 @@ it('coalesces compact requests and preserves station rows, order, country and sl
   expect(fetch).toHaveBeenCalledTimes(1);
 });
 
-it.each(['pages/radio-frontend.tsx', 'pages/AustriaRadiosPage.tsx', 'pages/genres/[slug].tsx', 'components/layout/ProfileLayout.tsx', 'pages/profile-discover.tsx', 'pages/recommendations.tsx', 'pages/radios.tsx', 'pages/search.tsx', 'pages/stations/[id].tsx'])(
+it.each(['pages/radio-frontend.tsx', 'pages/AustriaRadiosPage.tsx', 'pages/genres/[slug].tsx', 'components/layout/ProfileLayout.tsx', 'pages/profile-discover.tsx', 'pages/recommendations.tsx', 'pages/radios.tsx', 'pages/search.tsx', 'hooks/useStationRelatedStations.ts'])(
   '%s keeps all precomputed card-list requests compact without changing detail requests', file => {
     const source = readFileSync(resolve(process.cwd(), 'src', file), 'utf8');
     const requests = source.match(/\/api\/stations\/(?:precomputed|nearby)\?[^`'"\n]+/g) || [];
@@ -26,3 +26,14 @@ it.each(['pages/radio-frontend.tsx', 'pages/AustriaRadiosPage.tsx', 'pages/genre
     for (const request of requests) expect(request).toContain('slim=1');
   },
 );
+
+it('station details delegates compact related-list requests to its scoped hook without adding inline requests', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/pages/stations/[id].tsx'), 'utf8');
+  expect(source).toContain("from '@/hooks/useStationRelatedStations'");
+  expect(source).toContain('useStationRelatedStations(station, targetCountry, identifier)');
+  expect(source).not.toMatch(/\/api\/stations\/(?:precomputed|nearby)\?/);
+  const hook = readFileSync(resolve(process.cwd(), 'src/hooks/useStationRelatedStations.ts'), 'utf8');
+  const requests = hook.match(/\/api\/stations\/precomputed\?[^`'"\n]+/g) || [];
+  expect(requests).toHaveLength(3); // country30, global200, country60
+  for (const request of requests) expect(request).toContain('slim=1');
+});

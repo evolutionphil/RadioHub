@@ -5,7 +5,7 @@ export const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
 // Bearer fallback: after OAuth token-session, the auth_token is stored in
 // sessionStorage so that authenticated endpoints work even when the session
 // cookie is dropped by strict browser cookie policies (SameSite=None blocked).
-function oauthBearerHeader(): Record<string, string> {
+export function oauthBearerHeader(): Record<string, string> {
   try {
     const t = sessionStorage.getItem('_mrt_oat');
     return t ? { Authorization: `Bearer ${t}` } : {};

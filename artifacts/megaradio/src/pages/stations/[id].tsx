@@ -4,6 +4,8 @@ import { useState, useEffect, lazy, Suspense, memo, useCallback, useMemo } from 
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/useAuth";
+import { useStationRatings } from '@/hooks/useStationRatings';
+import { useStationRelatedStations, useStationDetailExpansion } from '@/hooks/useStationRelatedStations';
 import { usePremiumStatus } from "@/hooks/usePremiumStatus";
 import { useTranslation } from "@/hooks/useTranslation";
 import { useGlobalPlayer } from "@/hooks/useGlobalPlayer";
@@ -145,19 +147,6 @@ export default function StationDetails() {
     }
   }
   
-  const [stationRating, setStationRating] = useState(0);
-  const [userRating, setUserRating] = useState<any>(null);
-  const [ratingStats, setRatingStats] = useState<any>(null);
-  
-  // Similar stations state (fixed 12 stations, independent loading)
-  const [allSimilarStations, setAllSimilarStations] = useState<Station[]>([]);
-  const [loadingSimilar, setLoadingSimilar] = useState(true); // Start true for skeleton
-  
-  // Country stations state (independent from Similar, random from top 50)
-  const [allCountryStations, setAllCountryStations] = useState<Station[]>([]);
-  const [loadingCountry, setLoadingCountry] = useState(true); // Start true for skeleton
-  const [countryStationsTotal, setCountryStationsTotal] = useState(0);
-  const [showMoreCountryCount, setShowMoreCountryCount] = useState(0); // 0 = 12, 1 = 24, 2+ = all-radios
 
   
   // Fetch advertisements for display - Extended cache for performance
@@ -221,6 +210,7 @@ export default function StationDetails() {
     placeholderData: () => readStationBootstrap(identifier, language),
     enabled: !!identifier,
   });
+  const stationRatings = useStationRatings(station?._id, user?._id);
 
   // Task #371: publish the station name into the layout breadcrumb so the
   // last crumb shows the real name (matches SSR's stationData.name) instead
@@ -268,121 +258,14 @@ export default function StationDetails() {
   // Users must manually click the play button to start playback
   // This prevents the "play() failed because the user didn't interact with the document first" error
 
-  // ========== INDEPENDENT SECTION 1: SIMILAR RADIOS ==========
-  // Load similar stations from 7-day cache (hasLogo→votes sorted)
-  // Fallback: If country has < 6 stations, search globally by tags
-  useEffect(() => {
-    if (!station?._id) {
-      setLoadingSimilar(false);
-      return;
-    }
-    
-    const loadSimilarStations = async () => {
-      setLoadingSimilar(true);
-      try {
-        const currentTags = (station.tags || '').split(',').map((t: string) => t.trim().toLowerCase()).filter(Boolean);
-        
-        // Helper function to filter by tags
-        const filterByTags = (stations: any[], excludeId: string) => {
-          return stations.filter((s: any) => {
-            if (s._id === excludeId) return false;
-            const stationTags = (s.tags || '').split(',').map((t: string) => t.trim().toLowerCase());
-            const commonTags = currentTags.filter((t: string) => stationTags.includes(t));
-            return commonTags.length > 0;
-          });
-        };
-        
-        // Step 1: Try station's country first
-        let similarStations: any[] = [];
-        if (targetCountry) {
-          const params = new URLSearchParams();
-          params.append('countryName', targetCountry === 'all' ? 'global' : targetCountry);
-          params.append('page', '1');
-          params.append('limit', '30');
-          
-          const response = await fetch(`/api/stations/precomputed?${params}&slim=1`);
-          if (response.ok) {
-            const result = await response.json();
-            const stations = result.data || [];
-            similarStations = filterByTags(stations, station._id);
-            
-            // If not enough tag matches, use any stations from same country
-            if (similarStations.length < 6) {
-              similarStations = stations.filter((s: any) => s._id !== station._id);
-            }
-          }
-        }
-        
-        // Step 2: Fallback to GLOBAL search if country has < 12 similar stations
-        if (similarStations.length < 12 && currentTags.length > 0) {
-          const globalParams = new URLSearchParams();
-          globalParams.append('countryName', 'global');
-          globalParams.append('page', '1');
-          globalParams.append('limit', '200'); // Fetch more for better tag matching
-          
-          const globalResponse = await fetch(`/api/stations/precomputed?${globalParams}&slim=1`);
-          if (globalResponse.ok) {
-            const globalResult = await globalResponse.json();
-            const globalStations = globalResult.data || [];
-            const globalSimilar = filterByTags(globalStations, station._id);
-            
-            // Merge: country stations first, then global by tag
-            const existingIds = new Set(similarStations.map(s => s._id));
-            const additionalGlobal = globalSimilar.filter(s => !existingIds.has(s._id));
-            similarStations = [...similarStations, ...additionalGlobal].slice(0, 12);
-          }
-        }
-        
-        setAllSimilarStations(similarStations.slice(0, 12));
-      } catch (error) {
-        setAllSimilarStations([]);
-      } finally {
-        setLoadingSimilar(false);
-      }
-    };
-    
-    loadSimilarStations();
-  }, [station?._id, targetCountry, station?.tags]);
-  
-  // ========== INDEPENDENT SECTION 2: MORE FROM COUNTRY ==========
-  // Load country stations from 7-day cache (hasLogo→votes sorted)
-  useEffect(() => {
-    if (!station?.country || !station?._id) {
-      setLoadingCountry(false);
-      return;
-    }
-    
-    const loadCountryStations = async () => {
-      setLoadingCountry(true);
-      try {
-        // Use precomputed endpoint for 7-day cache (already sorted by hasLogo→votes)
-        const params = new URLSearchParams();
-        params.append('countryName', station.country);
-        params.append('page', '1');
-        params.append('limit', '60'); // Fetch top 60 for "See More" expand (12→24)
-        
-        const response = await fetch(`/api/stations/precomputed?${params}&slim=1`);
-        if (!response.ok) throw new Error('Failed to fetch country stations');
-        const result = await response.json();
-        
-        const stations = (result.data || []).filter((s: any) => s._id !== station._id);
-        setAllCountryStations(stations);
-        setCountryStationsTotal(result.pagination?.total || stations.length);
-      } catch (error) {
-        setAllCountryStations([]);
-        setCountryStationsTotal(0);
-      } finally {
-        setLoadingCountry(false);
-      }
-    };
-    
-    loadCountryStations();
-  }, [station?._id, station?.country]);
+  const { allSimilarStations, loadingSimilar, allCountryStations, loadingCountry, countryStationsTotal } =
+    useStationRelatedStations(station, targetCountry, identifier);
+  const { showMoreCountryCount, setShowMoreCountryCount, isAboutExpanded, setIsAboutExpanded } =
+    useStationDetailExpansion(identifier, station?._id);
 
   // Track if page has loaded for future use
   const [pageLoaded, setPageLoaded] = useState(false);
   const [autoPlayTriggered, setAutoPlayTriggered] = useState(false);
-  const [isAboutExpanded, setIsAboutExpanded] = useState(false);
 
   // DYNAMIC DEDUPLICATION: Filter similar names + exclude IDs across sections
   // Step 1: Filter Similar Radios for duplicate names
@@ -499,77 +382,14 @@ export default function StationDetails() {
     }
   };
 
-  // Get user's existing rating - with structured cache key
-  // BUG FIX (2026-07-03): the endpoint identifies the caller via
-  // ?userId=/?sessionId= query params; without them it always returned
-  // { rating: null }, so the star widget never pre-filled a returning
-  // visitor's previous rating. Send the same persistent identity the
-  // submit path uses (localStorage radio_session_id + logged-in userId).
-  const { data: existingUserRating } = useQuery({
-    queryKey: ['/api/stations', station?._id, 'user-rating', user?._id ?? 'anon'],
-    queryFn: async () => {
-      const params = new URLSearchParams();
-      if (user?._id) params.set('userId', user._id);
-      params.set('sessionId', generateSessionId());
-      const response = await fetch(`/api/stations/${station?._id}/user-rating?${params.toString()}`);
-      if (!response.ok) return null;
-      return response.json();
-    },
-    enabled: !!station?._id,
-    retry: false,
-    staleTime: 5 * 60 * 1000, // 5 minutes
-  });
-
-  // Get station ratings - with structured cache key
-  const { data: ratingsData, refetch: refetchRatings } = useQuery({
-    queryKey: ['/api/stations', station?._id, 'ratings'],
-    queryFn: async () => {
-      const response = await fetch(`/api/stations/${station?._id}/ratings`);
-      if (!response.ok) return null;
-      return response.json();
-    },
-    enabled: !!station?._id,
-    retry: false,
-    staleTime: 2 * 60 * 1000, // 2 minutes
-  });
-
-  // Submit rating function
   const submitRating = async (rating: number, comment?: string) => {
-    if (!station?._id) return;
-    
     try {
-      const payload = {
-        rating,
-        comment,
-        userId: user?._id,
-        sessionId: generateSessionId()
-      };
-
-      const response = await fetch(`/api/stations/${station._id}/rate`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to submit rating');
-      }
-
-      const result = await response.json();
-      
-      setStationRating(rating);
-      setUserRating(result.rating);
-      setRatingStats(result.stats);
-      
-      // Refetch ratings to update the display
-      refetchRatings();
-      
+      await stationRatings.submitRating(rating, comment);
       toast({ 
-        title: t('success_rating_saved', 'Rating saved'), 
+        title: `${station.name}: ${t('success_rating_saved', 'Rating saved')}`,
         description: t('success_thank_you_feedback', 'Thank you for your feedback!') 
       });
+      return true;
     } catch (error) {
       console.error('Rating submission error:', error);
       toast({ 
@@ -577,20 +397,8 @@ export default function StationDetails() {
         description: t('error_try_again', 'Please try again later.'),
         variant: "destructive"
       });
+      return false;
     }
-  };
-
-  // Helper function to generate session ID
-  const generateSessionId = () => {
-    if (typeof window !== 'undefined') {
-      let sessionId = localStorage.getItem('radio_session_id');
-      if (!sessionId) {
-        sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        localStorage.setItem('radio_session_id', sessionId);
-      }
-      return sessionId;
-    }
-    return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
 
   if (stationLoading) {
@@ -1084,23 +892,17 @@ export default function StationDetails() {
                     })()}
                   </div>
 
-                  {/* Listener rating (2026-07-03): interactive 1-5 star widget.
-                      The backend (POST /api/stations/:id/rate) + StarRating
-                      component existed but the widget was never rendered, so
-                      no real ratings were being collected. Real ratings feed
-                      the visible SSR rating line + AggregateRating JSON-LD
-                      (emitted only at >=3 ratings) — never derived from
-                      Radio-Browser votes. `key` remounts the widget once the
-                      visitor's previous rating loads (StarRating seeds its
-                      internal state from initialRating on mount only). */}
+                  {/* Genuine listener ratings, scoped to station and viewer.
+                      Radio-Browser popularity votes are not star ratings. */}
                   <div className="py-2" data-testid="station-rating-widget">
                     <StarRating
-                      key={`${station._id}-${userRating?.rating ?? existingUserRating?.rating?.rating ?? 0}`}
                       stationId={station._id}
-                      initialRating={userRating?.rating ?? existingUserRating?.rating?.rating ?? 0}
-                      initialComment={existingUserRating?.rating?.comment ?? ''}
-                      averageRating={(ratingStats ?? ratingsData?.stats)?.averageRating ?? 0}
-                      totalRatings={(ratingStats ?? ratingsData?.stats)?.totalRatings ?? 0}
+                      ratingScopeKey={stationRatings.ratingScopeKey}
+                      initialRating={stationRatings.userRating?.rating ?? 0}
+                      initialComment={stationRatings.userRating?.comment ?? ''}
+                      averageRating={stationRatings.stats?.averageRating ?? 0}
+                      totalRatings={stationRatings.stats?.totalRatings ?? 0}
+                      statsStatus={stationRatings.statsStatus}
                       onRatingSubmit={submitRating}
                       showStats={true}
                       editable={true}

@@ -17,13 +17,26 @@ const COPY: Record<string, readonly [string, string, string, string]> = {
   he: ['על התחנה', 'מידע על התחנה', 'האתר הרשמי', 'האזינו ל-{station_name} בשידור חי ב-Mega Radio.'],
 };
 
+const LISTENER_RATING: Record<string, string> = {
+  en: 'Listener rating', es: 'Valoración de los oyentes', fr: 'Note des auditeurs',
+  de: 'Hörerbewertung', pt: 'Avaliação dos ouvintes', it: 'Valutazione degli ascoltatori',
+  ru: 'Оценка слушателей', ar: 'تقييم المستمعين', zh: '听众评分', tr: 'Dinleyici puanı',
+  ja: 'リスナー評価', ko: '청취자 평점', hi: 'श्रोताओं की रेटिंग', he: 'דירוג המאזינים',
+};
+
 export function getStationPageCopy(language: string, translations: Record<string, string> = {}) {
   const [about, information, website, intro] = COPY[language] || COPY.en;
+  const locale = language.toLowerCase().split(/[-_]/)[0];
+  const ratingOverride = translations.listener_rating?.trim();
+  // A missing key or inherited English seed is not a localized override.
+  const localizedRatingOverride = ratingOverride && ratingOverride !== 'listener_rating'
+    && (locale === 'en' || ratingOverride.toLowerCase() !== LISTENER_RATING.en.toLowerCase());
   return {
     about: translations.station_about_station || translations.about_station || about,
     information: translations.station_information || information,
     website: translations.website || website,
     intro: translations.seo_station_intro_sentence || translations.default_station_about || intro,
     outro: translations.seo_station_outro_sentence || translations.station_additional_info || getHomeSeoTemplate(language).description,
+    listenerRating: localizedRatingOverride ? ratingOverride : LISTENER_RATING[locale] || LISTENER_RATING.en,
   };
 }

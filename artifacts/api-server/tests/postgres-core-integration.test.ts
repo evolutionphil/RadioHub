@@ -100,6 +100,45 @@ describe("PostgreSQL user, engagement and migration safety integration", { skip:
     assert.equal(result.stations[0].homepage, "https://example.invalid/home");
   });
 
+  it("keeps the same listener's ratings isolated across station navigation and updates", async () => {
+    await users.pgCreateUser({ id: "rating-scope-user", username: "rating-scope", email: "rating-scope@example.invalid" });
+    await pool.query(`INSERT INTO stations(id,station_uuid,name,url) VALUES
+      ('rating-scope-a','rating-scope-uuid-a','Station A','https://example.invalid/a'),
+      ('rating-scope-b','rating-scope-uuid-b','Station B','https://example.invalid/b')`);
+    const identities = [{ userId: "rating-scope-user" }, { sessionId: "same-browser-session" }, { ipAddress: "192.0.2.10" }];
+
+    // A returning listener may independently rate multiple stations. Neither
+    // anonymous nor authenticated identity uniqueness may span station IDs.
+    for (const identity of identities) {
+      assert.equal(await engagement.pgFindStationRating("rating-scope-b", identity), null);
+      const ratedA = await engagement.pgRateStationIdentity(identity, "rating-scope-a", 5, "A only");
+      assert.equal(ratedA.rating.station_id, "rating-scope-a");
+      assert.equal(await engagement.pgFindStationRating("rating-scope-b", identity), null);
+      const ratedB = await engagement.pgRateStationIdentity(identity, "rating-scope-b", 2, "B only");
+      assert.equal(ratedB.rating.station_id, "rating-scope-b");
+      assert.notEqual(ratedA.rating.id, ratedB.rating.id);
+    }
+    const ratingsB = await Promise.all(identities.map(identity => engagement.pgFindStationRating("rating-scope-b", identity)));
+    const statsB = await engagement.pgStationRatingsDetailed("rating-scope-b", 1, 10);
+    const nativeB = (await pool.query("SELECT average_rating,total_ratings,votes FROM stations WHERE id='rating-scope-b'")).rows[0];
+
+    await Promise.all(identities.map(identity => engagement.pgRateStationIdentity(identity, "rating-scope-a", 1, "A updated")));
+    for (let i = 0; i < identities.length; i++) {
+      const ratingA = await engagement.pgFindStationRating("rating-scope-a", identities[i]);
+      assert.equal(ratingA.stationId, "rating-scope-a"); assert.equal(ratingA.rating, 1);
+      assert.deepEqual(await engagement.pgFindStationRating("rating-scope-b", identities[i]), ratingsB[i]);
+    }
+    assert.deepEqual(await engagement.pgStationRatingsDetailed("rating-scope-b", 1, 10), statsB);
+    assert.deepEqual((await pool.query("SELECT average_rating,total_ratings,votes FROM stations WHERE id='rating-scope-b'")).rows[0], nativeB);
+    assert.deepEqual((await engagement.pgStationRatingsDetailed("rating-scope-a", 1, 10)).stats,
+      { averageRating: 1, totalRatings: 3, ratingBreakdown: { stars1: 3, stars2: 0, stars3: 0, stars4: 0, stars5: 0 } });
+    assert.deepEqual(statsB.stats,
+      { averageRating: 2, totalRatings: 3, ratingBreakdown: { stars1: 0, stars2: 3, stars3: 0, stars4: 0, stars5: 0 } });
+    const nativeA = (await pool.query("SELECT average_rating,total_ratings,votes FROM stations WHERE id='rating-scope-a'")).rows[0];
+    assert.equal(Number(nativeA.average_rating), 1); assert.equal(nativeA.total_ratings, 3); assert.equal(Number(nativeA.votes), 3);
+    assert.equal(Number(nativeB.average_rating), 2); assert.equal(nativeB.total_ratings, 3); assert.equal(Number(nativeB.votes), 3);
+  });
+
   it("persists cutover authority, blocks snapshot replay and rejects implicit rollback", async () => {
     const client = await pool.connect();
     try { await assertNoPostgresWriteAuthority(client); } finally { client.release(); }

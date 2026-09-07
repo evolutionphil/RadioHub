@@ -315,6 +315,53 @@ test('missing broadcast language is never inferred from the page locale or stati
   }
 });
 
+test('all14 station locales share honest rating aggregates, visible localized labels, and normalized geography', async () => {
+  const { SITEMAP_PRIORITY_LANGUAGES } = await import('@workspace/seo-shared/seo-config');
+  const { getStationPageCopy } = await import('@workspace/seo-shared/station-page-copy');
+  const renderer = new SeoRenderer();
+  const labels = new Set<string>();
+  for (const language of SITEMAP_PRIORITY_LANGUAGES.universal14) {
+    const station = { _id: 'real-rating-fixture', name: 'Independent Radio', slug: 'independent-radio',
+      country: 'Germany', countryCode: 'de', votes: 999999, totalRatings: 3, averageRating: 4.3,
+      descriptions: { [language]: { full: `${language}: Station information`, meta: 'Station summary' } } };
+    const tags = { title: station.name, description: 'Station summary',
+      canonical: `${DOMAIN}/${language}/station/independent-radio`, domain: DOMAIN };
+    const schema = (value: any) => renderer.generateStructuredData(tags, language, {}, '/station/independent-radio', value,
+      new Map(), { pageType: 'station' }).page;
+    const body = (value: any, translations: Record<string, string> = {}) => renderer.generateHtmlBody({
+      pageType: 'station', language, translations, stationData: value, seoTags: tags,
+      urlTranslations: new Map(), cleanPath: '/station/independent-radio', additionalData: {} });
+    const expected = { '@type': 'AggregateRating', ratingValue: 4.3, ratingCount: 3, bestRating: 5, worstRating: 1 };
+    const schemas = schema(station);
+    assert.deepEqual(schemas.find(item => item['@type'] === 'RadioBroadcastService').aggregateRating, expected);
+    const radio = schemas.find(item => item['@type'] === 'RadioStation');
+    assert.equal(radio.name, station.name);
+    assert.deepEqual(radio.aggregateRating, expected);
+    assert.equal(radio.address.addressCountry, 'DE');
+    const label = getStationPageCopy(language).listenerRating;
+    labels.add(label);
+    for (const override of [undefined, '', '  ', 'listener_rating', 'Listener rating']) {
+      const html = body(station, override === undefined ? {} : { listener_rating: override });
+      assert.ok(html.includes(`<p class="station-rating"><strong>${escapeHtml(label)}:</strong> ★ 4.3 / 5 · 3</p>`), language);
+    }
+    const custom = `${label} & "${station.name}"`;
+    assert.ok(body(station, { listener_rating: custom }).includes(`<strong>${escapeHtml(custom)}:</strong> ★ 4.3 / 5 · 3`));
+    for (const country of ['Unknown', 'N/A', '', undefined]) {
+      const withoutGeography = schema({ ...station, country, countryCode: undefined });
+      assert.equal(withoutGeography.some(item => item['@type'] === 'RadioStation'), false, `${language}: absent geography`);
+      assert.deepEqual(withoutGeography.find(item => item['@type'] === 'RadioBroadcastService').aggregateRating, expected);
+    }
+    const codeOnly = schema({ ...station, country: undefined, countryCode: 'TR' });
+    assert.equal(codeOnly.find(item => item['@type'] === 'RadioStation')?.address.addressCountry, 'TR');
+    for (const [totalRatings, averageRating] of [[0, 0], [1, 5], [2, 5], [3, 0], [3, 6], [3, Number.NaN]]) {
+      const unrated = { ...station, totalRatings, averageRating };
+      assert.equal(schema(unrated).some(item => item.aggregateRating), false, `${language}: invalid or insufficient real ratings`);
+      assert.doesNotMatch(body(unrated), /class="station-rating"/, `${language}: same visible/schema gate`);
+    }
+  }
+  assert.equal(labels.size, 14, 'every supported locale has its own rating fallback');
+});
+
 test('shared schema builder replaces station entities with the current listing and retains noindex gates', () => {
   const renderer = new SeoRenderer();
   const seoTags = { title: 'Genres', description: 'Genre list', canonical: `${DOMAIN}/de/genres` };
