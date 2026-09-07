@@ -227,6 +227,9 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
   };
 
   const isLoading = addToFavoritesMutation.isPending || removeFromFavoritesMutation.isPending;
+  const favoriteLabel = isFavorited
+    ? t('favorites_remove_from_favorites', 'Remove from favorites')
+    : t('favorites_add_to_favorites', 'Add to favorites');
 
   return (
     <>
@@ -235,14 +238,17 @@ const FavoriteButton = memo(function FavoriteButton({ stationId, className = "",
         disabled={isLoading}
         className={`relative flex items-center justify-center rounded-full border-black hover:border-[#FF4199] bg-black transition-colors ${className}`}
         style={{ borderWidth, borderStyle: 'solid' }}
-        title={isFavorited ? (t('favorites_remove_from_favorites') || "Remove from favorites") : (t('favorites_add_to_favorites') || "Add to favorites")}
+        title={favoriteLabel}
+        aria-label={favoriteLabel}
+        aria-pressed={isFavorited}
       >
         {isLoading ? (
           <div className="w-5 h-5 border-2 border-gray-400 border-t-[#FF4199] rounded-full animate-spin" />
         ) : (
           <img 
             src={customIcon || fav60Icon} 
-            alt="Favorite"
+            alt=""
+            aria-hidden="true"
             className={`transition-all ${!iconSizeOverride && size === 'default' && customIcon ? 'w-full h-full' : !iconSizeOverride && size === 'default' ? 'w-5 h-5 sm:w-6 sm:h-6' : ''}`}
             style={{
               ...(iconSizeOverride ? { width: iconSizeOverride, height: iconSizeOverride } : size === 'mobile' ? { width: '18.74px', height: '18.74px' } : {}),

@@ -4,11 +4,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
 import { LOCALIZED_LOGO_WORD, SITEMAP_PRIORITY_LANGUAGES } from '@workspace/seo-shared/seo-config';
 
-const state = vi.hoisted(() => ({ language: 'en', translations: {} as Record<string, string> }));
+const state = vi.hoisted(() => ({ language: 'en', translations: {} as Record<string, string>, isPlaying: false }));
 vi.mock('@/hooks/useTranslation', () => ({ useTranslation: () => ({ language: state.language,
   t: (key: string, fallback?: string) => state.translations[key] ?? fallback ?? key }) }));
 vi.mock('@/hooks/use-toast', () => ({ useToast: () => ({ toast: vi.fn() }) }));
-vi.mock('@/hooks/useGlobalPlayer', () => ({ useGlobalPlayer: () => ({ currentStation: null, isPlaying: false,
+vi.mock('@/hooks/useGlobalPlayer', () => ({ useGlobalPlayer: () => ({ currentStation: { _id: 'test-radio' }, isPlaying: state.isPlaying,
   stopStation: vi.fn(), playStation: vi.fn() }) }));
 vi.mock('@/components/ui/favorite-button', () => ({ default: () => null }));
 vi.mock('@/components/ui/station-logo', () => ({ StationLogo: ({ alt }: { alt: string }) => <img src="/logo.png" alt={alt} /> }));
@@ -18,9 +18,36 @@ vi.mock('wouter', () => ({ useLocation: () => ['/en', vi.fn()],
 
 import StationCard from '../src/components/ui/station-card';
 const station = { _id: 'test-radio', name: 'Test Radio', country: 'Germany', genre: 'rock' };
-beforeEach(() => { state.language = 'en'; state.translations = {}; });
+beforeEach(() => { state.language = 'en'; state.translations = {}; state.isPlaying = false; });
 
 describe('station card accessible text', () => {
+  it('replaces the exact English legacy default in a German dictionary with its localized play action', () => {
+    state.language = 'de'; state.translations = { seo_listen_to_station: 'Listen to ${station.name}', btn_play: 'Abspielen' };
+    render(<StationCard station={station} />);
+    expect(screen.getByRole('img').closest('a')).toHaveAttribute('aria-label', 'Abspielen — Test Radio');
+  });
+  it.each(['Listen to ${station.name}', 'Höre {NAME}', 'Höre ${name}'])('safely interpolates the legacy/full dictionary label %s', template => {
+    state.translations.seo_listen_to_station = template;
+    render(<StationCard station={{ ...station, name: 'Radio $& <One>' }} />);
+    const logoLink = screen.getByRole('img').closest('a')!;
+    expect(logoLink.getAttribute('aria-label')).toContain('Radio $& <One>');
+    expect(logoLink.getAttribute('aria-label')).not.toMatch(/\$\{|\{NAME\}/);
+  });
+  it.each(['Höre ${station.name ||', '${station.name.toUpperCase()}', '{missing}', '   '])('falls back to a translated action for invalid template %s', template => {
+    state.language = 'de'; state.translations = { seo_listen_to_station: template, btn_play: 'Abspielen' };
+    render(<StationCard station={station} />);
+    expect(screen.getByRole('img').closest('a')).toHaveAttribute('aria-label', 'Abspielen — Test Radio');
+  });
+  it('localizes play/stop controls and country display while preserving the state proper name and original station data', () => {
+    state.language = 'de'; state.translations = { btn_play: 'Abspielen', btn_stop: 'Stoppen' };
+    const record = { ...station, country: 'Austria', state: 'Vienna' };
+    const { rerender } = render(<StationCard station={record} />);
+    expect(screen.getByRole('button', { name: 'Abspielen' })).toBeInTheDocument();
+    expect(screen.getByText('Österreich')).toBeInTheDocument(); expect(screen.getByText(', Vienna')).toBeInTheDocument();
+    expect(record.country).toBe('Austria');
+    state.isPlaying = true; rerender(<StationCard station={{ ...record }} />);
+    expect(screen.getByRole('button', { name: 'Stoppen' })).toBeInTheDocument();
+  });
   it('preserves and safely interpolates valid localized alt templates', () => {
     state.language = 'tr';
     state.translations.seo_station_logo_alt_with_country = '{NAME}: {country} ülkesinden {genre} radyosu';

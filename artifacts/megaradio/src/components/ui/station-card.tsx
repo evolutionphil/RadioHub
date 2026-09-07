@@ -10,6 +10,8 @@ import { useTranslation } from "@/hooks/useTranslation";
 import { useSeoRouting } from "@/hooks/useSeoRouting";
 import { useLocation, Link } from "wouter";
 import { getStationImageAlt } from "@workspace/seo-shared/station-image-alt";
+import { getStationListenLabel } from '@/utils/station-accessible-text';
+import { getLocalizedCountryDisplayName } from '@/utils/localized-country';
 
 const formatVoteCount = (count: number): string => {
   if (count >= 1000000) {
@@ -191,7 +193,7 @@ const StationCard = memo(function StationCard({
           e.preventDefault();
           handleNavigateAndPlay();
         }}
-        aria-label={t('seo_listen_to_station', `Listen to ${station.name}`, { name: station.name })}
+        aria-label={getStationListenLabel(station.name, t, language)}
         className="flex-shrink-0 cursor-pointer relative bg-[#1a1a1a] rounded-[9px] overflow-hidden w-[70px] h-[70px] md:w-[90px] md:h-[90px] block"
       >
         <StationLogo
@@ -216,7 +218,7 @@ const StationCard = memo(function StationCard({
         </h4>
         {(() => {
           const originalCountry = station.country || 'Unknown';
-          const displayCountry = getDisplayCountryName(originalCountry);
+          const displayCountry = getDisplayCountryName(getLocalizedCountryDisplayName(originalCountry, language));
           // Prefer state field (which contains city data in radio-browser API)
           const city = station.state && station.state.trim() !== '' ? station.state.trim() : '';
           
@@ -307,7 +309,7 @@ const StationCard = memo(function StationCard({
             }}
             className="flex items-center justify-center w-12 h-12 rounded-full bg-[#656565] hover:bg-[#FF4199] transition-colors duration-300 group-hover:bg-[#FF4199]"
           >
-            <span className="sr-only">Play Radio</span>
+            <span className="sr-only">{t('btn_play', 'Play Radio')}</span>
             <svg className="h-[26px] w-[26px] text-white ml-0.5" fill="currentColor" viewBox="0 0 24 24">
               <path fillRule="evenodd" d="M4.5 5.653c0-1.426 1.529-2.33 2.779-1.643l11.54 6.348c1.295.712 1.295 2.573 0 3.285L7.28 19.991c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" />
             </svg>
@@ -320,7 +322,7 @@ const StationCard = memo(function StationCard({
             }}
             className="flex items-center justify-center w-12 h-12 rounded-full bg-[#FF4199] hover:bg-[#E63A87] transition-colors duration-300"
           >
-            <span className="sr-only">Stop Radio</span>
+            <span className="sr-only">{t('btn_stop', 'Stop Radio')}</span>
             <svg className="h-[26px] w-[26px] text-white" fill="currentColor" viewBox="0 0 24 24">
               <path fillRule="evenodd" d="M4.5 7.5a3 3 0 013-3h9a3 3 0 013 3v9a3 3 0 01-3 3h-9a3 3 0 01-3-3v-9z" clipRule="evenodd" />
             </svg>
