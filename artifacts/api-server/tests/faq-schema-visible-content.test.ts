@@ -433,11 +433,9 @@ for (const surface of FAQ_EMITTING_PAGE_TYPES) {
 //    (FAQPage on /about) where the schema leaked onto pages with no Q&A.
 // ---------------------------------------------------------------------------
 
-// 'home' emits an intentional 3-question FAQPage subset (matching the visible
-// .faq-section block) and genre DETAIL pages emit a 2-question subset — both
-// added after this list was written. 'genres' stays here because the LISTING
-// page (no genreName) must still not emit FAQ.
-const NON_FAQ_PAGE_TYPES = ['about', 'contact', 'genres', 'regions', 'stations', 'search'];
+// SSR-only Q&A on home/genre detail disappear when React mounts. They cannot
+// justify FAQ markup in the persistent head (live DOM checked 2026-09-08).
+const NON_FAQ_PAGE_TYPES = ['home', 'about', 'contact', 'genres', 'regions', 'stations', 'search'];
 
 for (const pageType of NON_FAQ_PAGE_TYPES) {
   test(`pageType="${pageType}" must NOT emit FAQPage JSON-LD (regression guard for Tasks #129/#164)`, () => {
@@ -454,7 +452,7 @@ for (const pageType of NON_FAQ_PAGE_TYPES) {
       pageType === 'home' ? '/' : `/${pageType}`,
       undefined,
       new Map<string, string>(),
-      { pageType },
+      { pageType, ...(pageType === 'genres' ? {genreName:'Rock'} : {}) },
     );
     const faqSchemas = extractFaqPageSchemas(head);
     assert.equal(

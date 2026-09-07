@@ -1,4 +1,25 @@
-import { SEO_LANGUAGES } from './seo-config';
+import { SEO_LANGUAGES, ACTIVE_SITEMAP_LANGUAGES } from './seo-config';
+import { getBrandSchemaCopy } from './brand-schema-copy';
+import { getLocalizedCountryName } from './country-name-translations';
+
+const regionNames = new Map<string, Intl.DisplayNames>();
+export function getSchemaCountry(station: {country?: unknown; countryCode?: unknown}, language: string): {name: string; code?: string} | undefined {
+  const locale = (ACTIVE_SITEMAP_LANGUAGES as readonly string[]).includes(language) ? language : 'en';
+  const code = typeof station.countryCode === 'string' ? station.countryCode.trim().toUpperCase() : '';
+  if (/^[A-Z]{2}$/.test(code) && !['ZZ','XX'].includes(code)) {
+    try {
+      let names = regionNames.get(locale);
+      if (!names) { names = new Intl.DisplayNames([locale], {type:'region',fallback:'none'}); regionNames.set(locale,names); }
+      const name = names.of(code);
+      if (name && name !== code) return {name,code};
+    } catch { /* Fall back to verified source names when Intl is unavailable. */ }
+  }
+  const raw = typeof station.country === 'string' ? station.country.trim() : '';
+  if (!raw || /^(unknown|n\/a|none|null|undefined|global|worldwide)$/i.test(raw)) return undefined;
+  const canonical = /^the united states of america$/i.test(raw) ? 'United States'
+    : /^the united kingdom of great britain and northern ireland$/i.test(raw) ? 'United Kingdom' : raw;
+  return {name:getLocalizedCountryName(canonical,locale)};
+}
 
 // Structured data schemas for SEO rich snippets
 export interface StructuredDataConfig {
@@ -42,62 +63,35 @@ export function getStationBroadcastLanguages(station: { languageCodes?: unknown;
   return languages.length === 1 ? languages[0] : languages.length ? languages : undefined;
 }
 
-// Organization schema for Mega Radio brand - with full multilingual support
-export function generateOrganizationSchema(
-  domain: string, 
-  language: string = 'en',
-  translations?: Record<string, string>
-): StructuredDataConfig {
-  // Get translated meta description from database (detailed, SEO-optimized version)
-  // Priority 1: meta_description (full, detailed description for schema)
-  // Fallback: hero_worlds_best_radio (short hero text) or default English
-  let description = translations?.['meta_description'] || 
-    translations?.['hero_worlds_best_radio'] || 
-    "Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free.";
-  
-  // Build list of all 57 available languages for contactPoint
-  const availableLanguages = [
-    "English", "Turkish", "Spanish", "French", "German", "Arabic", // 6
-    "Italian", "Portuguese", "Dutch", "Russian", "Polish", "Swedish", // 6
-    "Danish", "Norwegian", "Finnish", "Greek", "Hungarian", "Czech", // 6
-    "Slovak", "Romanian", "Bulgarian", "Croatian", "Serbian", "Slovenian", // 6
-    "Latvian", "Lithuanian", "Estonian", "Chinese", "Japanese", "Korean", // 6
-    "Hindi", "Thai", "Vietnamese", "Indonesian", "Malay", "Filipino", // 6
-    "Hebrew", "Persian", "Urdu", "Bengali", "Tamil", "Telugu", // 6
-    "Marathi", "Gujarati", "Kannada", "Malayalam", "Punjabi", "Swahili", // 6
-    "Amharic", "Zulu", "Afrikaans", "Albanian", "Azerbaijani", "Armenian", // 6
-    "Somali", "Ukrainian", "Bosnian" // 3 = 57 total
-  ];
-  
-  // Build localized URL with language prefix
-  const localizedUrl = language === 'en' ? `https://${domain}` : `https://${domain}/${language}`;
-  
+// Shared by the initial server HTML and client SEO responses.
+export function generateOrganizationSchema(domain: string, language: string = 'en', translations?: Record<string, string>): StructuredDataConfig {
+  const copy = getBrandSchemaCopy(language, translations);
   return {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "@id": `https://${domain}/#organization`,
-    "name": "Mega Radio",
-    "alternateName": "Mega Radio - Free Online Radio",
-    "description": description,
-    "url": `https://${domain}`,
-    "logo": {
-      "@type": "ImageObject",
-      "url": `https://${domain}/images/logo-icon.webp`,
-      "width": 212,
-      "height": 212
+    '@context': 'https://schema.org', '@type': 'Organization',
+    '@id': `https://${domain}/#organization`,
+    name: 'Mega Radio', alternateName: 'MegaRadio', description: copy.description,
+    url: `https://${domain}`,
+    logo: { '@type': 'ImageObject', url: `https://${domain}/images/logo-icon.webp`, width: 194, height: 180 },
+    address: {
+      '@type': 'PostalAddress', streetAddress: 'Bäckerstraße 7',
+      addressLocality: copy.vienna, postalCode: '1010', addressCountry: 'AT',
     },
-    // Organization address is optional, unlike some LocalBusiness fields.
-    "address": {
-      "@type": "PostalAddress",
-      "streetAddress": "Bäckerstraße 7",
-      "addressLocality": "Vienna",
-      "postalCode": "1010",
-      "addressCountry": "AT"
+    contactPoint: {
+      '@type': 'ContactPoint', contactType: copy.support,
+      availableLanguage: [...ACTIVE_SITEMAP_LANGUAGES],
     },
-    "contactPoint": {
-      "@type": "ContactPoint",
-      "contactType": "Customer Service",
-      "availableLanguage": availableLanguages
+  };
+}
+
+export function generateDeveloperOrganizationSchema(language: string = 'en'): StructuredDataConfig {
+  const copy = getBrandSchemaCopy(language);
+  return {
+    '@context': 'https://schema.org', '@type': 'Organization',
+    '@id': 'https://visiongo.at/#organization', name: 'Vision GO', url: 'https://visiongo.at',
+    description: copy.developer,
+    address: {
+      '@type': 'PostalAddress', streetAddress: 'Bäckerstraße 7/7',
+      addressLocality: copy.vienna, postalCode: '1010', addressCountry: 'AT',
     },
   };
 }
@@ -272,24 +266,16 @@ export function generateWebSiteSchema(
   language: string = 'en',
   translations?: Record<string, string>
 ): StructuredDataConfig {
-  // Get translated meta description from database (detailed, SEO-optimized version)
-  // Priority 1: meta_description (full, detailed description for schema)
-  // Fallback: hero_worlds_best_radio (short hero text) or default English
-  let description = translations?.['meta_description'] || 
-    translations?.['hero_worlds_best_radio'] || 
-    "Listen to live radio online with Mega Radio! 60,000+ AM/FM stations from 120+ countries, music, news, sports, and talk shows for free.";
-  
-  // Build localized URLs with language prefix
-  const localizedUrl = language === 'en' ? `https://${domain}` : `https://${domain}/${language}`;
-  const searchUrl = language === 'en' ? `https://${domain}/search?q={search_term_string}` : `https://${domain}/${language}/search?q={search_term_string}`;
+  const copy = getBrandSchemaCopy(language, translations);
+  const searchUrl = `https://${domain}/${language}/search?q={search_term_string}`;
   
   return {
     "@context": "https://schema.org",
     "@type": "WebSite",
     "@id": `https://${domain}/#website`,
     "name": "Mega Radio",
-    "alternateName": "Mega Radio - Free Online Radio",
-    "description": description,
+    "alternateName": "MegaRadio",
+    "description": copy.description,
     "url": `https://${domain}`,
     "inLanguage": language,
     "potentialAction": {

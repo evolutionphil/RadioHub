@@ -110,8 +110,8 @@ self.addEventListener('push', (event) => {
 
   const options = {
     body: data.body || 'New notification',
-    icon: data.icon || '/favicon.ico',
-    badge: data.badge || '/favicon.ico',
+    icon: data.icon || '/favicon.png',
+    badge: data.badge || '/favicon.png',
     image: data.image,
     tag: data.tag || 'default',
     requireInteraction: data.requireInteraction || false,

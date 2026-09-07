@@ -51,3 +51,17 @@ it('the application bridge has no permission poll or render-dependent initializa
   expect(initialize).toHaveBeenCalledTimes(1);
   expect(interval).not.toHaveBeenCalled();
 });
+
+it('test notifications use the existing PNG icon without bypassing permission checks', async () => {
+  const notification = vi.fn();
+  Object.defineProperty(notification, 'permission', { configurable: true, value: 'granted' });
+  vi.stubGlobal('Notification', notification);
+  const manager = PushNotificationManager.getInstance();
+  await manager.testNotification();
+  expect(notification).toHaveBeenCalledWith('🎵 Test Notification', expect.objectContaining({
+    icon: '/favicon.png', badge: '/favicon.png', tag: 'test',
+  }));
+  Object.defineProperty(notification, 'permission', { configurable: true, value: 'denied' });
+  await manager.testNotification();
+  expect(notification).toHaveBeenCalledTimes(1);
+});

@@ -10,6 +10,7 @@
     "./slug-utils": "./src/slug-utils.ts",
     "./faq-schema": "./src/faq-schema.ts",
     "./structured-data": "./src/structured-data.ts",
+    "./station-page-copy": "./src/station-page-copy.ts",
     "./station-image-alt": "./src/station-image-alt.ts",
     "./language-preference": "./src/language-preference.ts",
     "./seo-config": "./src/seo-config.ts",

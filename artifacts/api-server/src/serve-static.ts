@@ -8,6 +8,15 @@ import type { ServerResponse } from 'node:http';
 // Immutable caching remains appropriate for the existing hashed assets only.
 export const HTML_CACHE_CONTROL = 'public, no-cache, max-age=0, must-revalidate';
 
+// These public brand images are referenced by the site's favicon/Organization
+// markup. The non-SEO SPA fallback's noindex must not leak onto their responses.
+// Keep this exact: unrelated assets, private routes and missing files retain
+// their existing indexing policy.
+const PUBLIC_BRAND_IMAGES = new Set([
+  'favicon.png', 'apple-touch-icon.png', 'header-logo-80w.webp',
+  'logo-icon.webp', 'images/logo-icon.webp',
+]);
+
 function revalidateSuccessfulHtml(res: Pick<ServerResponse, 'statusCode' | 'getHeader' | 'setHeader' | 'removeHeader'>) {
   if (res.statusCode >= 400 || /\bno-store\b/i.test(String(res.getHeader('Cache-Control') || ''))) return;
   res.setHeader('Cache-Control', HTML_CACHE_CONTROL);
@@ -36,8 +45,20 @@ export function serveStatic(app: Express, distPath = path.resolve(import.meta.di
   app.use(express.static(distPath, {
     setHeaders(res, filePath) {
       if (filePath.endsWith('.html')) revalidateSuccessfulHtml(res);
+      if (PUBLIC_BRAND_IMAGES.has(path.relative(distPath, filePath).split(path.sep).join('/'))) {
+        res.removeHeader('X-Robots-Tag');
+      }
     },
   }));
+
+  // Browsers and older notification payloads still request the conventional
+  // ICO URL. Point it to the existing PNG instead of serving a 200 HTML shell.
+  app.get('/favicon.ico', (_req, res) => {
+    res.removeHeader('Expires');
+    res.removeHeader('X-Robots-Tag');
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.redirect(301, '/favicon.png');
+  });
 
   // A removed build chunk is not an SPA navigation. Never return/cache HTML
   // under its immutable JS/CSS URL, which could poison that URL for a year.

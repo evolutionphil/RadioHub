@@ -1,7 +1,8 @@
 import { generateSeoTags, getLanguageFromPath, DEFAULT_LANGUAGE, generateLanguageUrls, COUNTRY_TO_LANGUAGE, SEO_LANGUAGES, generateLocalizedStationTitle, truncateAtWordBoundary, LOCALIZED_LOGO_WORD, LOCALIZED_FLAG_WORD } from '@workspace/seo-shared/seo-config';
 import { buildDirectoryIndexSeo } from '@workspace/seo-shared/directory-index-seo';
 import { getStationImageAlt } from '@workspace/seo-shared/station-image-alt';
-import { getStationBroadcastLanguages } from '@workspace/seo-shared/structured-data';
+import { getStationBroadcastLanguages, getSchemaCountry, generateOrganizationSchema, generateWebSiteSchema, generateDeveloperOrganizationSchema } from '@workspace/seo-shared/structured-data';
+import { getStationPageCopy } from '@workspace/seo-shared/station-page-copy';
 import { pgSeoCatalog } from './data/postgres-seo-read-store';
 import { pgStoredGenreBySlug } from './data/postgres-taxonomy-store';
 import { pgSeoMetadata } from './data/postgres-content-store';
@@ -2412,19 +2413,16 @@ export class SeoRenderer {
                 </figure>`;
                 })()}
                 <!-- AI-Generated Description (unique per station) -->
-                <h2>${this.escapeHtml(getLocalizedText('about_station', 'About ' + stationData.name))}</h2>
+                <h2>${this.escapeHtml(getStationPageCopy(language, translations).about)}</h2>
                 <!-- DALGA 4: H1-keyword echo intro (single sentence, station-specific interpolation: name + country) -->
                 ${(() => {
-                  const introTemplate = getLocalizedText(
-                    'seo_station_intro_sentence',
-                    'Listen to {STATION} live online from {COUNTRY} — free internet radio streaming on Mega Radio.'
-                  );
+                  const introTemplate = getStationPageCopy(language, translations).intro;
                   const stationName = stationData.name || 'Radio Station';
                   const country = stationData.country
                     ? getLocalizedCountryName(stationData.country, language)
                     : 'around the world';
                   const introText = introTemplate
-                    .replace(/\{STATION\}/g, stationName)
+                    .replace(/\{STATION(?:_NAME)?\}/gi, stationName)
                     .replace(/\{COUNTRY\}/g, country);
                   return `<p class="station-intro">${this.escapeHtml(introText)}</p>`;
                 })()}
@@ -2468,10 +2466,7 @@ export class SeoRenderer {
                 })() : (stationData.description ? `<p>${this.escapeHtml(stationData.description)}</p>` : '')}
                 <!-- DALGA 4: Station-specific outro (25-35 words, interpolation: name + country + tags — NOT scaled boilerplate) -->
                 ${(() => {
-                  const outroTemplate = getLocalizedText(
-                    'seo_station_outro_sentence',
-                    'Stream {STATION} 24/7 from anywhere with internet access. Discover {GENRES} radio stations from {COUNTRY} and 60,000 more stations on Mega Radio — free, no signup required.'
-                  );
+                  const outroTemplate = getStationPageCopy(language, translations).outro;
                   const stationName = stationData.name || 'Radio Station';
                   const country = stationData.country
                     ? getLocalizedCountryName(stationData.country, language)
@@ -2492,7 +2487,7 @@ export class SeoRenderer {
                 
                 <!-- Station Details -->
                 <section class="station-details">
-                  <h2>${this.escapeHtml(getLocalizedText('station_information', 'Station Information'))}</h2>
+                  <h2>${this.escapeHtml(getStationPageCopy(language, translations).information)}</h2>
                   ${(() => {
                     // Visible listener rating (radio.at parity). Google's review
                     // snippet policy requires the aggregate rating to be VISIBLE
@@ -2526,7 +2521,7 @@ export class SeoRenderer {
                     // crawlers what the linked page is about while still
                     // exposing the URL for transparency.
                     const websiteLabel = this.escapeHtml(
-                      getLocalizedText('website', 'Official Website'),
+                      getStationPageCopy(language, translations).website,
                     );
                     const stationName = this.escapeHtml(stationData.name || '');
                     const anchorText = stationName
@@ -3184,82 +3179,12 @@ export class SeoRenderer {
       return translations[key] || fallback;
     };
 
-    // LOCALIZED: WebSite Schema with SearchAction (language-aware URLs)
-    // Prefix-all canonical: /${language}/search for ALL languages including English (DALGA 2 W2.3 fix)
-    const searchPath = `/${language}/search`;
-    const websiteSchema = {
-      "@context": "https://schema.org",
-      "@type": "WebSite",
-      "@id": `${baseDomain}/#website`,
-      "name": "Mega Radio",
-      "alternateName": "Mega Radio - Free Online Radio",
-      "url": baseDomain,
-      "inLanguage": language,
-      "description": getLocalizedText('faq_seo_intro', 'Mega Radio is your ultimate destination for discovering and streaming live radio stations from around the world.'),
-      "potentialAction": {
-        "@type": "SearchAction",
-        "target": {
-          "@type": "EntryPoint",
-          "urlTemplate": `${baseDomain}${searchPath}?q={search_term_string}`
-        },
-        "query-input": "required name=search_term_string"
-      }
-    };
-    
-    // LOCALIZED: Organization Schema for Google Knowledge Panel with ALL 57 languages
-    const organizationSchema = {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "@id": `${baseDomain}/#organization`,
-      "name": "Mega Radio",
-      "url": baseDomain,
-      "logo": {
-        "@type": "ImageObject",
-        "url": `${baseDomain}/images/logo-icon.webp`,
-        "width": 80,
-        "height": 80
-      },
-      "description": getLocalizedText('faq_seo_intro', 'Free online radio platform featuring 60,000+ radio stations from 120+ countries worldwide'),
-      // Organization address is optional; it must describe the organization,
-      // not be added merely to satisfy a LocalBusiness validator.
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Bäckerstraße 7",
-        "addressLocality": "Vienna",
-        "postalCode": "1010",
-        "addressCountry": "AT"
-      },
-      // 2026-05-12 SEO audit: `inLanguage` is NOT a valid Organization
-      // property in schema.org — it belongs to CreativeWork / Thing. Google
-      // (and Semrush's validator) flag it as "1 field: inLanguage". The
-      // correct property to express the customer-service languages is
-      // `contactPoint.availableLanguage`, which we already emit below.
-      // 1452 invalid-structured-data hits dropped to ~0 just from this.
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "Customer Service",
-        "availableLanguage": SEO_LANGUAGES.filter(lang => lang.enabled).map(lang => lang.code)
-      }
-    };
-
-    // Vision GO is the software studio behind MegaRadio.
-    // @id uses visiongo.at (the parent company domain), not the radio app domain.
-    // Identity and full address: https://visiongo.at/impressum.html
-    const visionGoOrgSchema = {
-      "@context": "https://schema.org",
-      "@type": "Organization",
-      "@id": "https://visiongo.at/#organization",
-      "name": "Vision GO",
-      "url": "https://visiongo.at",
-      "description": "Vienna-based software studio building MegaRadio, ScanUp, eSIMfo, TaxiHub and Online Snake.",
-      "address": {
-        "@type": "PostalAddress",
-        "streetAddress": "Bäckerstraße 7/7",
-        "addressLocality": "Vienna",
-        "postalCode": "1010",
-        "addressCountry": "AT"
-      }
-    };
+    // One locale-aware builder avoids SSR/client discrepancies and English
+    // fallback prose. Identity and schema vocabulary stay stable across locales.
+    const schemaDomain = new URL(baseDomain).host;
+    const websiteSchema = generateWebSiteSchema(schemaDomain, language, translations);
+    const organizationSchema = generateOrganizationSchema(schemaDomain, language, translations);
+    const visionGoOrgSchema = generateDeveloperOrganizationSchema(language);
 
     // LOCALIZED: BreadcrumbList with proper translated paths.
     // Items come from the shared `computeBreadcrumbItems` helper so the
@@ -3289,11 +3214,9 @@ export class SeoRenderer {
       }
     }
 
-    // FAQPage Schema — emitted on the dedicated /faq page (full FAQ_PAGE_ITEMS)
-    // AND on the homepage (3-question subset matching the visible .faq-section block).
-    // Genre pages also emit a 2-question FAQPage matching their .genre-faq block.
-    // Task #129 guard: schema must always match visible Q&A content to avoid
-    // Google's deceptive-markup penalty.
+    // Only the dedicated FAQ route renders these Q&A in the React interface.
+    // Home/genre SSR-only Q&A disappear on mount, so marking them as visible
+    // FAQs in persistent JSON-LD would misrepresent the rendered page.
     let faqPageSchema: any = null;
     if (additionalData?.pageType === 'faq') {
       faqPageSchema = {
@@ -3307,61 +3230,6 @@ export class SeoRenderer {
             "text": getLocalizedText(item.aKey, item.aFallback),
           },
         })),
-      };
-    } else if (additionalData?.pageType === 'home') {
-      faqPageSchema = {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_q_what_is', 'What is Mega Radio?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_a_what_is', 'Mega Radio is a free online radio platform that lets you stream live radio stations from around the world. You can listen to music, news, sports, talk shows, and more in dozens of languages — no subscription or account required.'),
-            },
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_q_how_many', 'How many radio stations are available?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_a_how_many', 'Mega Radio provides access to over 60,000 live radio stations from more than 120 countries. Stations are continuously updated so you always have access to the latest broadcasts.'),
-            },
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_q_devices', 'What devices can I use to listen?'),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_a_devices', 'You can listen on any web browser, as well as through dedicated apps for Android, iOS, Windows, and Smart TV platforms including Samsung and LG. All your favourite stations sync across devices automatically.'),
-            },
-          },
-        ],
-      };
-    } else if (additionalData?.pageType === 'genres' && additionalData?.genreName) {
-      const gn = additionalData.genreName as string;
-      faqPageSchema = {
-        "@context": "https://schema.org",
-        "@type": "FAQPage",
-        "mainEntity": [
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_q_genre_listen', 'How do I listen to {GENRE} radio stations?').replace(/\{GENRE\}/g, gn),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_a_genre_listen', 'Select any {GENRE} station from the list above to start streaming instantly. No download or account required — just click and listen for free on any device.').replace(/\{GENRE\}/g, gn),
-            },
-          },
-          {
-            "@type": "Question",
-            "name": getLocalizedText('faq_q_genre_free', 'Are {GENRE} radio stations free?').replace(/\{GENRE\}/g, gn),
-            "acceptedAnswer": {
-              "@type": "Answer",
-              "text": getLocalizedText('faq_a_genre_free', 'Yes. All radio stations on Mega Radio, including {GENRE} stations, are completely free to listen to with no subscription or registration required.').replace(/\{GENRE\}/g, gn),
-            },
-          },
-        ],
       };
     }
 
@@ -3406,9 +3274,8 @@ export class SeoRenderer {
         // `countryCode` (preferred, ISO-3166 alpha-2) OR `country` (full
         // name) is present. `areaServed` still needs the full country
         // name so we keep it gated on `country`.
-        const stationCountryForAddress =
-          (station.countryCode && String(station.countryCode).toUpperCase())
-          || station.country;
+        const schemaCountry = getSchemaCountry(station, language);
+        const stationCountryForAddress = schemaCountry?.code || schemaCountry?.name;
         // 2026-05-12 SEO audit: each ItemList child also flipped from
         // RadioStation → RadioBroadcastService for the same reason as the
         // top-level station schema. `address` removed (not on Service);
@@ -3434,8 +3301,8 @@ export class SeoRenderer {
                 },
               },
             }),
-            ...(station.country && {
-              "areaServed": getLocalizedCountryName(station.country, language),
+            ...(schemaCountry && {
+              "areaServed": schemaCountry.name,
             }),
             "category": childKeywords,
           },
@@ -3622,12 +3489,12 @@ export class SeoRenderer {
         "name": stationData.name,
         ...(stationData.homepage && { "url": stationData.homepage }),
       };
-      if (stationData.country) {
+      const schemaCountry = getSchemaCountry(stationData, language);
+      if (schemaCountry) {
         stationBroadcaster.address = {
           "@type": "PostalAddress",
           "addressCountry":
-            (stationData.countryCode && String(stationData.countryCode).toUpperCase())
-            || stationData.country,
+            schemaCountry.code || schemaCountry.name,
           ...(stationData.state && { "addressLocality": stationData.state }),
         };
       }
@@ -3662,8 +3529,8 @@ export class SeoRenderer {
         "url": stationUrl,
         ...(stationLogo && { "logo": stationLogo, "image": stationLogo }),
         ...(stationData.homepage && { "sameAs": stationData.homepage }),
-        ...(stationData.country && {
-          "areaServed": getLocalizedCountryName(stationData.country, language),
+        ...(schemaCountry && {
+          "areaServed": schemaCountry.name,
         }),
         ...(parsedBroadcastFrequency && { "broadcastFrequency": parsedBroadcastFrequency }),
         "broadcaster": stationBroadcaster,

@@ -1,16 +1,17 @@
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
+import { useQueryClient } from '@tanstack/react-query';
 import { getLanguageFromPath, DEFAULT_LANGUAGE, SEO_LANGUAGES, COUNTRY_TO_LANGUAGE } from "@workspace/seo-shared/seo-config";
 import { translateUrl, reverseTranslateUrl, normalizeUrlForLanguage } from "@workspace/seo-shared/url-translations";
-import { useTranslation } from "./useTranslation";
-import { getBrowserLanguage, saveBrowserLanguage } from '@/lib/browser-language';
+import { getBrowserLanguage, saveBrowserLanguage, syncBrowserLanguageFromUrl } from '@/lib/browser-language';
+import { prefetchNavigationTranslations } from '@/lib/translation-navigation-prefetch';
 import { getExplicitLanguageFromPath } from '@workspace/seo-shared/language-preference';
 import { logger } from '@/lib/logger';
 
 // Language-prefixed URLs are authoritative; country selection is a content filter.
 export function useSeoRouting() {
   const [location, setLocation] = useLocation();
-  const { setLanguage: setTranslationLanguage } = useTranslation();
+  const queryClient = useQueryClient();
   
   // Parse current URL for language
   const { language: urlLanguage, cleanPath } = getLanguageFromPath(location);
@@ -56,13 +57,15 @@ export function useSeoRouting() {
   useEffect(() => {
     if (effectiveLanguage !== currentLanguage) {
       setCurrentLanguage(effectiveLanguage);
-      setTranslationLanguage(effectiveLanguage);
+      // Routing does not consume translated text. Keep the target dictionary
+      // warm without creating five translation/auth observers per URL helper.
+      void prefetchNavigationTranslations(queryClient, effectiveLanguage);
     }
     
     // Persist explicit URL choices in both stores, including English. A bare
     // content URL's fallback must not overwrite a previously chosen language.
-    if (getExplicitLanguageFromPath(location)) saveBrowserLanguage(effectiveLanguage);
-  }, [location, effectiveLanguage, currentLanguage, setTranslationLanguage]);
+    if (getExplicitLanguageFromPath(location)) syncBrowserLanguageFromUrl(effectiveLanguage);
+  }, [location, effectiveLanguage, currentLanguage, queryClient]);
 
   // Note: Location data is fetched in radio-frontend.tsx to avoid duplicate calls
 

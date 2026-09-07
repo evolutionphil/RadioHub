@@ -349,8 +349,8 @@ export class PushNotificationManager {
 
     new Notification('🎵 Test Notification', {
       body: 'This is a test notification from Megaradio',
-      icon: '/favicon.ico',
-      badge: '/favicon.ico',
+      icon: '/favicon.png',
+      badge: '/favicon.png',
       tag: 'test'
     });
   }
